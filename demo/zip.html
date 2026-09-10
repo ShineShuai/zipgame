@@ -1,0 +1,472 @@
+<div id="app"></div>
+<style>
+#app{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:640px;margin:0 auto;color:#1a1a1a}
+.card{background:#fff;border:1px solid #e2e2e2;border-radius:12px;padding:20px;margin-bottom:14px}
+.btn{background:#1a1a1a;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:14px;cursor:pointer;font-weight:500}
+.btn:hover{background:#333}
+.btn.secondary{background:#fff;color:#1a1a1a;border:1px solid #ccc}
+.btn.secondary:hover{background:#f5f5f5}
+.btn:disabled{opacity:.4;cursor:default}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+input[type=text]{border:1px solid #ccc;border-radius:8px;padding:8px 10px;font-size:14px}
+.grid-wrap{display:flex;justify-content:center;margin:16px 0}
+.hud{display:flex;justify-content:space-between;font-size:14px;color:#555;margin-bottom:10px}
+.hud b{color:#1a1a1a;font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #eee}
+th{color:#777;font-weight:500}
+.tag{font-size:11px;padding:2px 7px;border-radius:20px;background:#eef;color:#334}
+.tag.done{background:#e3f5e6;color:#1a6e2c}
+.small{font-size:12px;color:#888}
+</style>
+<script>
+(function(){
+
+// ---------- Hamiltonian-path grid generator ----------
+function genPuzzle(size, seed){
+  let s = seed >>> 0;
+  function rnd(){ s = (s*1664525+1013904223)>>>0; return s/4294967296; }
+  const N = size;
+  const cells = N*N;
+  function idx(r,c){return r*N+c;}
+  const dirs = [[0,1],[0,-1],[1,0],[-1,0]];
+
+  // build a random Hamiltonian path via randomized DFS with backtracking
+  let path;
+  for(let attempt=0; attempt<50; attempt++){
+    const visited = new Array(cells).fill(false);
+    const order = [];
+    const startR = Math.floor(rnd()*N), startC = Math.floor(rnd()*N);
+    function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+    function dfs(r,c){
+      visited[idx(r,c)]=true;
+      order.push(idx(r,c));
+      if(order.length===cells) return true;
+      const nd = shuffle(dirs.slice());
+      for(const [dr,dc] of nd){
+        const nr=r+dr, nc=c+dc;
+        if(nr>=0&&nr<N&&nc>=0&&nc<N&&!visited[idx(nr,nc)]){
+          if(dfs(nr,nc)) return true;
+        }
+      }
+      // backtrack
+      visited[idx(r,c)]=false;
+      order.pop();
+      return false;
+    }
+    if(dfs(startR,startC)){ path = order; break; }
+  }
+  if(!path) return genPuzzle(size, seed+1); // retry with new seed on failure
+
+  // place K checkpoint numbers along the path (start, end, evenly spaced interior)
+  const K = Math.min(Math.max(4, Math.floor(N)), 8);
+  const checkpointIdx = [];
+  for(let i=0;i<K;i++){
+    checkpointIdx.push(Math.round(i*(cells-1)/(K-1)));
+  }
+  const numbers = {}; // cellIndex -> number label
+  checkpointIdx.forEach((pos,i)=>{ numbers[path[pos]] = i+1; });
+
+  return { N, path, numbers, seed };
+}
+
+// ---------- Stats: Welford online mean/variance ----------
+function newStat(){ return {n:0, mean:0, M2:0, recent:[]}; }
+function updateStat(st, x){
+  st.n += 1;
+  const delta = x - st.mean;
+  st.mean += delta/st.n;
+  const delta2 = x - st.mean;
+  st.M2 += delta*delta2;
+  st.recent.push(x);
+  if(st.recent.length>20) st.recent.shift();
+  return st;
+}
+function statSummary(st){
+  if(st.n===0) return {n:0, mean:0, sd:0};
+  const variance = st.n>1 ? st.M2/(st.n-1) : 0;
+  return {n:st.n, mean:st.mean, sd:Math.sqrt(variance)};
+}
+
+// ---------- App state ----------
+let state = {
+  screen: 'menu', // menu | local | online-lobby | online-play
+  size: 6,
+  puzzle: null,
+  path: [],       // player's drawn path (array of cell idx)
+  startTime: null,
+  elapsed: 0,
+  timerId: null,
+  finished: false,
+  room: null,
+  playerId: null,
+  playerName: '',
+  pollId: null,
+};
+
+function cellRC(i,N){ return [Math.floor(i/N), i%N]; }
+function adjacent(a,b,N){
+  const [r1,c1]=cellRC(a,N), [r2,c2]=cellRC(b,N);
+  return Math.abs(r1-r2)+Math.abs(c1-c2)===1;
+}
+
+function render(){
+  const app = document.getElementById('app');
+  if(state.screen==='menu') app.innerHTML = renderMenu();
+  else if(state.screen==='local') app.innerHTML = renderGame(false);
+  else if(state.screen==='online-lobby') app.innerHTML = renderLobby();
+  else if(state.screen==='online-play') app.innerHTML = renderGame(true);
+  attachHandlers();
+}
+
+function renderMenu(){
+  return `
+  <div class="card">
+    <h3 style="margin:0 0 4px;font-size:18px;font-weight:500">Zip</h3>
+    <p class="small" style="margin:0 0 16px">Connect the numbers in order through every cell. No revisits, no crossings.</p>
+    <div class="row" style="margin-bottom:12px">
+      <label class="small">Grid size</label>
+      <select id="sizeSel">
+        <option value="5">5x5</option>
+        <option value="6" selected>6x6</option>
+        <option value="7">7x7</option>
+        <option value="8">8x8</option>
+      </select>
+    </div>
+    <div class="row">
+      <button class="btn" id="playLocal">Play local</button>
+      <button class="btn secondary" id="goOnline">Play online</button>
+    </div>
+  </div>
+  ${renderLocalStats()}
+  `;
+}
+
+function renderLocalStats(){
+  const st = loadLocalStats();
+  const sum = statSummary(st);
+  if(sum.n===0) return '';
+  return `<div class="card">
+    <div class="hud"><span>Your stats</span><span></span></div>
+    <table><tr><td>Solves</td><td><b>${sum.n}</b></td></tr>
+    <tr><td>Avg time</td><td><b>${sum.mean.toFixed(1)}s</b></td></tr>
+    <tr><td>Std dev</td><td><b>${sum.sd.toFixed(1)}s</b></td></tr>
+    <tr><td>Best (last 20)</td><td><b>${Math.min(...st.recent).toFixed(1)}s</b></td></tr>
+    </table></div>`;
+}
+
+function loadLocalStats(){
+  try{ const raw = localStorage.getItem('zip_local_stats'); if(raw) return JSON.parse(raw); }catch(e){}
+  return newStat();
+}
+function saveLocalStats(st){
+  try{ localStorage.setItem('zip_local_stats', JSON.stringify(st)); }catch(e){}
+}
+
+function renderLobby(){
+  return `
+  <div class="card">
+    <h3 style="margin:0 0 12px;font-size:16px;font-weight:500">Play online</h3>
+    <div class="row" style="margin-bottom:10px">
+      <input type="text" id="nameInput" placeholder="Your name" value="${state.playerName}" style="width:140px">
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn" id="createRoom">Create room</button>
+    </div>
+    <div class="row">
+      <input type="text" id="roomInput" placeholder="Room code" style="width:100px;text-transform:uppercase">
+      <button class="btn secondary" id="joinRoom">Join</button>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn secondary" id="backMenu">Back</button>
+    </div>
+  </div>`;
+}
+
+function renderGame(online){
+  const N = state.puzzle.N;
+  const cellSize = Math.min(60, Math.floor(480/N));
+  const svgSize = cellSize*N;
+  let svg = `<svg width="${svgSize}" height="${svgSize}" style="touch-action:none;cursor:pointer;background:#fafafa;border-radius:8px">`;
+  // grid lines
+  for(let i=0;i<=N;i++){
+    svg += `<line x1="0" y1="${i*cellSize}" x2="${svgSize}" y2="${i*cellSize}" stroke="#ddd"/>`;
+    svg += `<line x1="${i*cellSize}" y1="0" x2="${i*cellSize}" y2="${svgSize}" stroke="#ddd"/>`;
+  }
+  // drawn path
+  if(state.path.length>1){
+    let d = '';
+    state.path.forEach((idx,i)=>{
+      const [r,c] = cellRC(idx,N);
+      const x = c*cellSize+cellSize/2, y = r*cellSize+cellSize/2;
+      d += (i===0?'M':'L')+x+' '+y+' ';
+    });
+    svg += `<path d="${d}" stroke="#1a1a1a" stroke-width="${cellSize*0.28}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>`;
+  }
+  // cells: numbers
+  for(let i=0;i<N*N;i++){
+    const [r,c] = cellRC(i,N);
+    const x = c*cellSize+cellSize/2, y = r*cellSize+cellSize/2;
+    if(state.puzzle.numbers[i]){
+      const filled = state.path.includes(i);
+      svg += `<circle cx="${x}" cy="${y}" r="${cellSize*0.32}" fill="${filled?'#1a1a1a':'#fff'}" stroke="#1a1a1a" stroke-width="2"/>`;
+      svg += `<text x="${x}" y="${y+5}" text-anchor="middle" font-size="${cellSize*0.32}" fill="${filled?'#fff':'#1a1a1a'}" font-weight="600">${state.puzzle.numbers[i]}</text>`;
+    }
+    svg += `<rect data-cell="${i}" x="${c*cellSize}" y="${r*cellSize}" width="${cellSize}" height="${cellSize}" fill="transparent"/>`;
+  }
+  svg += `</svg>`;
+
+  const timeStr = state.elapsed.toFixed(1)+'s';
+  let extra = '';
+  if(online){
+    extra = renderLeaderboard();
+  }
+
+  return `
+  <div class="card">
+    <div class="hud">
+      <span>${online? 'Room '+state.room : 'Local'}</span>
+      <span>Time: <b>${timeStr}</b></span>
+    </div>
+    <div class="grid-wrap" id="gridWrap">${svg}</div>
+    <div class="row">
+      <button class="btn secondary" id="resetPath">Reset path</button>
+      <button class="btn secondary" id="newPuzzle">New puzzle</button>
+      <button class="btn secondary" id="backMenu2">Menu</button>
+    </div>
+    ${state.finished? `<p style="color:#1a6e2c;font-weight:500;margin-top:10px">Solved in ${timeStr}</p>` : ''}
+  </div>
+  ${extra}
+  `;
+}
+
+function renderLeaderboard(){
+  const room = state.roomData;
+  if(!room) return '';
+  const players = Object.entries(room.players||{});
+  players.sort((a,b)=>{
+    const at=a[1].finishedAt, bt=b[1].finishedAt;
+    if(at&&bt) return at-bt;
+    if(at) return -1;
+    if(bt) return 1;
+    return 0;
+  });
+  const rows = players.map(([id,p])=>{
+    const done = !!p.finishedAt;
+    return `<tr>
+      <td>${p.name}${id===state.playerId?' (you)':''}</td>
+      <td>${done? '<span class="tag done">done '+p.time.toFixed(1)+'s</span>' : '<span class="tag">'+(p.progress||0)+'/'+(state.puzzle.N*state.puzzle.N)+'</span>'}</td>
+      <td class="small">avg ${p.statMean? p.statMean.toFixed(1)+'s':'-'}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="card">
+    <div class="hud"><span>Live ranking</span><span class="small">${players.length} players</span></div>
+    <table>${rows}</table>
+  </div>`;
+}
+
+// ---------- Handlers ----------
+function attachHandlers(){
+  const el = id => document.getElementById(id);
+  if(el('playLocal')) el('playLocal').onclick = ()=>{
+    state.size = parseInt(el('sizeSel').value);
+    startLocal();
+  };
+  if(el('goOnline')) el('goOnline').onclick = ()=>{ state.screen='online-lobby'; render(); };
+  if(el('backMenu')) el('backMenu').onclick = ()=>{ state.screen='menu'; render(); };
+  if(el('backMenu2')) el('backMenu2').onclick = ()=>{
+    stopTimer(); stopPolling(); state.screen='menu'; render();
+  };
+  if(el('createRoom')) el('createRoom').onclick = createRoom;
+  if(el('joinRoom')) el('joinRoom').onclick = joinRoom;
+  if(el('resetPath')) el('resetPath').onclick = ()=>{ state.path=[]; state.finished=false; render(); };
+  if(el('newPuzzle')) el('newPuzzle').onclick = ()=>{
+    if(state.screen==='online-play'){ return; } // puzzle is shared in online mode
+    startLocal();
+  };
+  const wrap = el('gridWrap');
+  if(wrap){
+    const svg = wrap.querySelector('svg');
+    let dragging = false;
+    function pick(e){
+      const target = e.target.closest('[data-cell]');
+      if(!target) return null;
+      return parseInt(target.getAttribute('data-cell'));
+    }
+    function tryAdd(cellIdx){
+      if(cellIdx==null || state.finished) return;
+      const N = state.puzzle.N;
+      if(state.path.length===0){
+        state.path.push(cellIdx);
+      } else {
+        const last = state.path[state.path.length-1];
+        if(cellIdx===last) return;
+        // backtrack if clicking the second-to-last cell
+        if(state.path.length>1 && cellIdx===state.path[state.path.length-2]){
+          state.path.pop();
+          render(); return;
+        }
+        if(state.path.includes(cellIdx)) return;
+        if(!adjacent(last, cellIdx, N)) return;
+        state.path.push(cellIdx);
+      }
+      checkSolved();
+      render();
+    }
+    svg.addEventListener('pointerdown', e=>{ dragging=true; tryAdd(pick(e)); });
+    svg.addEventListener('pointermove', e=>{ if(dragging) tryAdd(pick(e)); });
+    window.addEventListener('pointerup', ()=>{ dragging=false; }, {once:false});
+  }
+}
+
+function checkSolved(){
+  const N = state.puzzle.N;
+  const total = N*N;
+  if(state.path.length!==total) { updateOnlineProgress(); return; }
+  // verify numbers are in increasing order along path
+  const nums = state.puzzle.numbers;
+  let seen = [];
+  state.path.forEach(idx=>{ if(nums[idx]) seen.push(nums[idx]); });
+  const expected = Object.keys(nums).length;
+  let ok = seen.length===expected;
+  for(let i=1;i<seen.length && ok;i++){ if(seen[i]<seen[i-1]) ok=false; }
+  if(ok){
+    state.finished = true;
+    stopTimer();
+    const st = loadLocalStats();
+    updateStat(st, state.elapsed);
+    saveLocalStats(st);
+    if(state.screen==='online-play') finishOnline();
+  } else {
+    updateOnlineProgress();
+  }
+}
+
+function startLocal(){
+  state.puzzle = genPuzzle(state.size, Date.now()&0xffffffff);
+  state.path = [];
+  state.finished = false;
+  state.elapsed = 0;
+  state.screen = 'local';
+  startTimer();
+  render();
+}
+
+function startTimer(){
+  stopTimer();
+  state.startTime = performance.now();
+  state.timerId = setInterval(()=>{
+    state.elapsed = (performance.now()-state.startTime)/1000;
+    const hudTime = document.querySelector('.hud b');
+    if(hudTime) hudTime.textContent = state.elapsed.toFixed(1)+'s';
+  }, 100);
+}
+function stopTimer(){ if(state.timerId){ clearInterval(state.timerId); state.timerId=null; } }
+
+// ---------- Online (shared artifact storage) ----------
+function roomCode(){
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let c=''; for(let i=0;i<5;i++) c+=chars[Math.floor(Math.random()*chars.length)];
+  return c;
+}
+
+async function createRoom(){
+  const nameInput = document.getElementById('nameInput');
+  state.playerName = (nameInput.value||'Player').trim().slice(0,20);
+  const code = roomCode();
+  const puzzle = genPuzzle(state.size, Date.now()&0xffffffff);
+  const roomData = { code, puzzle, players:{}, createdAt: Date.now() };
+  try{
+    await window.storage.set('room:'+code, JSON.stringify(roomData), true);
+    await joinRoomByCode(code);
+  }catch(e){
+    alert('Could not create room. Try again.');
+  }
+}
+
+async function joinRoom(){
+  const nameInput = document.getElementById('nameInput');
+  const roomInput = document.getElementById('roomInput');
+  state.playerName = (nameInput.value||'Player').trim().slice(0,20);
+  const code = (roomInput.value||'').trim().toUpperCase();
+  if(!code) return;
+  await joinRoomByCode(code);
+}
+
+async function joinRoomByCode(code){
+  try{
+    const res = await window.storage.get('room:'+code, true);
+    if(!res){ alert('Room not found'); return; }
+    const roomData = JSON.parse(res.value);
+    state.room = code;
+    state.puzzle = roomData.puzzle;
+    state.playerId = 'p_'+Math.random().toString(36).slice(2,9);
+    const st = loadLocalStats();
+    const sum = statSummary(st);
+    roomData.players[state.playerId] = { name: state.playerName, progress:0, finishedAt:null, time:0, statMean: sum.n?sum.mean:null };
+    await window.storage.set('room:'+code, JSON.stringify(roomData), true);
+    state.roomData = roomData;
+    state.path = [];
+    state.finished = false;
+    state.elapsed = 0;
+    state.screen = 'online-play';
+    startTimer();
+    startPolling();
+    render();
+  }catch(e){
+    alert('Could not join room.');
+  }
+}
+
+let progressThrottle = 0;
+async function updateOnlineProgress(){
+  if(state.screen!=='online-play') return;
+  const now = Date.now();
+  if(now-progressThrottle<800) return;
+  progressThrottle = now;
+  try{
+    const res = await window.storage.get('room:'+state.room, true);
+    if(!res) return;
+    const roomData = JSON.parse(res.value);
+    if(roomData.players[state.playerId]){
+      roomData.players[state.playerId].progress = state.path.length;
+      await window.storage.set('room:'+state.room, JSON.stringify(roomData), true);
+    }
+  }catch(e){}
+}
+
+async function finishOnline(){
+  try{
+    const res = await window.storage.get('room:'+state.room, true);
+    if(!res) return;
+    const roomData = JSON.parse(res.value);
+    const p = roomData.players[state.playerId];
+    if(p && !p.finishedAt){
+      p.finishedAt = Date.now();
+      p.time = state.elapsed;
+      p.progress = state.path.length;
+    }
+    await window.storage.set('room:'+state.room, JSON.stringify(roomData), true);
+    state.roomData = roomData;
+  }catch(e){}
+}
+
+function startPolling(){
+  stopPolling();
+  state.pollId = setInterval(async ()=>{
+    if(state.screen!=='online-play') return;
+    try{
+      const res = await window.storage.get('room:'+state.room, true);
+      if(res){
+        state.roomData = JSON.parse(res.value);
+        const lb = document.querySelector('#app .card:last-child');
+        render();
+      }
+    }catch(e){}
+  }, 1500);
+}
+function stopPolling(){ if(state.pollId){ clearInterval(state.pollId); state.pollId=null; } }
+
+render();
+})();
+</script>
