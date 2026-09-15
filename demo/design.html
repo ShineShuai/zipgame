@@ -363,6 +363,11 @@
       <button id="clearAll" class="wide">Reset board</button>
     </div>
 
+    <div class="field">
+      <label for="nodeLimit">Search limit (nodes)</label>
+      <input id="nodeLimit" type="number" min="1000" step="1000" value="300000">
+    </div>
+
     <button id="solveBtn" class="primary wide">Solve</button>
     <div id="status" class="status"></div>
   </aside>
@@ -412,7 +417,7 @@
 
   /* ======================= State ======================= */
   const SOL_COLORS  = ['#ffa62b', '#38bdf8'];
-  const NODE_LIMIT  = 300000;
+  const DEFAULT_NODE_LIMIT = 300000;
   const TEMPLATE_C  = '#8b93b8';
   const PLAY_C      = '#5b7cfa';
 
@@ -1315,9 +1320,10 @@
     return adj;
   }
 
-  function solvePuzzle(limit) {
+  function solvePuzzle(limit, nodeLimit) {
     const total = N * N;
     const adj = buildAdjacency();
+    nodeLimit = nodeLimit > 0 ? nodeLimit : DEFAULT_NODE_LIMIT;
 
     let K = 0;
     for (let i = 0; i < total; i++) if (numAt[i] > K) K = numAt[i];
@@ -1328,6 +1334,11 @@
     const start = posOfNum[1];
     const end   = posOfNum[K];
 
+    // precompute row/col for O(1) Manhattan distance (no divmod in hot path)
+    const rowOf = new Int32Array(total);
+    const colOf = new Int32Array(total);
+    for (let i = 0; i < total; i++) { rowOf[i] = (i / N) | 0; colOf[i] = i % N; }
+
     const visited = new Uint8Array(total);
     const seen    = new Int32Array(total);
     const stack   = new Int32Array(total);
@@ -1335,6 +1346,19 @@
     const sols    = [];
     let stamp = 0, nodes = 0, aborted = false;
 
+    // free-neighbor count under current wall/visited state (cur excluded from "visited")
+    function freeDegree(u, cur) {
+      const lst = adj[u];
+      let free = 0;
+      for (let i = 0; i < lst.length; i++) {
+        if (walls.has(lst[i][1])) continue;
+        const v = lst[i][0];
+        if (!visited[v] || v === cur) free++;
+      }
+      return free;
+    }
+
+    // full flood-fill: remaining unvisited region must stay single connected blob
     function connectivityOk(cur) {
       stamp++;
       let sp = 0;
@@ -1356,16 +1380,15 @@
       return cnt === total - path.length;
     }
 
-    function noDeadEnds(cur) {
-      for (let u = 0; u < total; u++) {
+    // cheap local dead-end check: only cells adjacent to `cur` can have changed
+    // degree this step (their neighbor `cur` just got visited). O(degree) not O(total).
+    function noLocalDeadEnds(cur) {
+      const lst = adj[cur];
+      for (let i = 0; i < lst.length; i++) {
+        if (walls.has(lst[i][1])) continue;
+        const u = lst[i][0];
         if (visited[u]) continue;
-        const lst = adj[u];
-        let free = 0;
-        for (let i = 0; i < lst.length; i++) {
-          if (walls.has(lst[i][1])) continue;
-          const v = lst[i][0];
-          if (!visited[v] || v === cur) free++;
-        }
+        const free = freeDegree(u, cur);
         if (free === 0) return false;
         if (free === 1 && u !== end) return false;
       }
@@ -1374,7 +1397,7 @@
 
     function dfs(cur, expected) {
       if (aborted) return;
-      if (++nodes > NODE_LIMIT) { aborted = true; return; }
+      if (++nodes > nodeLimit) { aborted = true; return; }
 
       visited[cur] = 1;
       path.push(cur);
@@ -1382,16 +1405,40 @@
       if (path.length === total) {
         if (expected > K && cur === end) sols.push(path.slice());
       } else if (expected <= K) {
-        if (connectivityOk(cur) && noDeadEnds(cur)) {
+        // cheapest prune first: local degree check (O(degree), no flood-fill)
+        if (noLocalDeadEnds(cur) && connectivityOk(cur)) {
           const lst = adj[cur];
+          const remaining = total - path.length; // cells left to fill after this one
+
+          // build candidate list with Warnsdorff key (onward free-degree),
+          // pruning via Manhattan-distance-to-next-checkpoint bound first
+          const cands = [];
           for (let i = 0; i < lst.length; i++) {
-            if (aborted || sols.length >= limit) break;
             const v = lst[i][0];
             if (visited[v]) continue;
             if (walls.has(lst[i][1])) continue;
             const m = numAt[v];
-            if (m) { if (m === expected) dfs(v, expected + 1); }
-            else   { dfs(v, expected); }
+            if (m && m !== expected) continue; // wrong checkpoint, skip
+
+            // Manhattan bound: if expected checkpoint's target cell is farther
+            // than cells left, this branch can never reach it in time
+            if (expected <= K) {
+              const tgt = posOfNum[expected];
+              if (tgt >= 0) {
+                const dist = Math.abs(rowOf[v] - rowOf[tgt]) + Math.abs(colOf[v] - colOf[tgt]);
+                if (dist > remaining) continue;
+              }
+            }
+            cands.push([v, freeDegree(v, cur)]);
+          }
+          // Warnsdorff: visit lowest-onward-degree cell first (tightest cells first)
+          cands.sort((a, b) => a[1] - b[1]);
+
+          for (let i = 0; i < cands.length; i++) {
+            if (aborted || sols.length >= limit) break;
+            const v = cands[i][0];
+            const m = numAt[v];
+            dfs(v, m ? expected + 1 : expected);
           }
         }
       }
@@ -1412,7 +1459,11 @@
 
     previewPath = null; previewVisible = true;
 
-    const res = solvePuzzle(2);
+    const nodeLimitEl = document.getElementById('nodeLimit');
+    let nodeLimit = parseInt(nodeLimitEl.value, 10);
+    if (!Number.isFinite(nodeLimit) || nodeLimit < 1000) nodeLimit = DEFAULT_NODE_LIMIT;
+
+    const res = solvePuzzle(2, nodeLimit);
     solutions = res.solutions;
     solVisible = solutions.map(() => true);
     lastAborted = res.aborted;
