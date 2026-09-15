@@ -1,0 +1,1483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zip Puzzle Designer</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(circle at 20% 0%, #1a1f36, #0b0e18 60%);
+    color: #e7e9f3;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 28px 20px 60px;
+  }
+  .app {
+    display: flex;
+    gap: 22px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  /* ---------- Panels ---------- */
+  .panel {
+    width: 296px;
+    background: #151a2c;
+    border: 1px solid #232a44;
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 20px 50px rgba(0,0,0,.45);
+  }
+  .panel.side-right {
+    width: 196px;
+  }
+  .panel h1 {
+    font-size: 17px;
+    margin: 0 0 16px;
+    letter-spacing: .3px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel h1 .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: linear-gradient(135deg,#ffa62b,#38bdf8);
+    box-shadow: 0 0 12px rgba(255,166,43,.7);
+  }
+  .field { margin-bottom: 14px; }
+  .field > label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    color: #8b93b8;
+    margin-bottom: 6px;
+  }
+  select, input[type=number] {
+    width: 100%;
+    padding: 8px 10px;
+    background: #0e1220;
+    color: #e7e9f3;
+    border: 1px solid #2a3252;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+  }
+  select:focus, input:focus { outline: 2px solid #5b7cfa55; border-color: #5b7cfa; }
+  button {
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    border-radius: 8px;
+    border: 1px solid #2a3252;
+    background: #1d2440;
+    color: #dfe3f5;
+    padding: 8px 12px;
+    transition: background .15s, filter .15s, border-color .15s;
+  }
+  button:hover { background: #26304f; }
+  button.primary {
+    background: linear-gradient(135deg,#5b7cfa,#8a5bfa);
+    border-color: transparent;
+    font-weight: 600;
+    color: #fff;
+    padding: 11px 12px;
+    font-size: 14px;
+  }
+  button.primary:hover { filter: brightness(1.12); }
+  button.playbtn {
+    background: linear-gradient(135deg,#1f7a5a,#2fae7d);
+    border-color: transparent;
+    font-weight: 600;
+    color: #fff;
+    padding: 11px 12px;
+    font-size: 14px;
+  }
+  button.playbtn:hover { filter: brightness(1.12); }
+  button.playbtn.on { background: linear-gradient(135deg,#b3344f,#e0526f); }
+  .segmented { display: flex; gap: 6px; }
+  .seg { flex: 1; }
+  .seg.active {
+    background: #3b4a80;
+    border-color: #5b7cfa;
+    color: #fff;
+    box-shadow: 0 0 0 1px #5b7cfa55 inset;
+  }
+  .row { display: flex; gap: 6px; }
+  .row input { flex: 1; min-width: 0; }
+  .wide { width: 100%; margin-bottom: 8px; }
+  .wide:last-child { margin-bottom: 0; }
+  .divider { height: 1px; background: #232a44; margin: 16px 0; }
+  .hint {
+    font-size: 12px;
+    line-height: 1.5;
+    color: #8b93b8;
+    background: #0e1220;
+    border: 1px solid #202742;
+    border-radius: 8px;
+    padding: 9px 11px;
+    margin-bottom: 14px;
+  }
+  .validity {
+    font-size: 12px;
+    line-height: 1.45;
+    padding: 8px 11px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    border: 1px solid #202742;
+    background: #0e1220;
+    color: #8b93b8;
+  }
+  .validity.bad { background: rgba(255,77,109,.1); color: #ff8fa3; border-color: rgba(255,77,109,.35); }
+  .validity.good { background: rgba(61,220,151,.1); color: #6ff0b4; border-color: rgba(61,220,151,.3); }
+  .status {
+    margin-top: 12px;
+    font-size: 13px;
+    line-height: 1.45;
+    padding: 10px 12px;
+    border-radius: 10px;
+    display: none;
+  }
+  .status.show { display: block; }
+  .status.ok    { background: rgba(61,220,151,.12); color: #6ff0b4; border: 1px solid rgba(61,220,151,.3); }
+  .status.warn  { background: rgba(255,183,3,.12);  color: #ffd166; border: 1px solid rgba(255,183,3,.3); }
+  .status.error { background: rgba(255,77,109,.12); color: #ff8fa3; border: 1px solid rgba(255,77,109,.3); }
+  .playinfo {
+    margin-top: 10px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    padding: 9px 11px;
+    border-radius: 8px;
+    background: rgba(91,124,250,.12);
+    color: #a9bcff;
+    border: 1px solid rgba(91,124,250,.3);
+  }
+  .side-right .hint {
+    font-size: 11.5px;
+    margin-top: 14px;
+    margin-bottom: 0;
+  }
+
+  /* ---------- Board ---------- */
+  .stage { display: flex; flex-direction: column; gap: 14px; align-items: center; }
+  .board {
+    position: relative;
+    background: #0d1120;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.55), 0 0 0 1px #232a44;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  .cell {
+    position: absolute;
+    background: #161c30;
+    border: 1px solid #232a44;
+    box-sizing: border-box;
+  }
+  .board:not(.wallmode):not(.playmode) .cell.editable { cursor: pointer; }
+  .board:not(.wallmode):not(.playmode) .cell.editable:hover { background: #1c2440; }
+  .cell.selected { background: #22305c; box-shadow: inset 0 0 0 2px #5b7cfa; }
+
+  .wallhit {
+    position: absolute;
+    border-radius: 6px;
+    pointer-events: none;
+    transition: background .12s;
+  }
+  .board.wallmode:not(.playmode) .wallhit { pointer-events: auto; cursor: pointer; }
+  .board.wallmode:not(.playmode) .wallhit:hover { outline: 2px solid rgba(120,140,220,.55); outline-offset: 0; }
+  .wallhit.on { background: #7d88c9; box-shadow: 0 0 10px rgba(125,136,201,.55); }
+
+  .pathlayer { position: absolute; left: 0; top: 0; pointer-events: none; }
+
+  .numlayer { position: absolute; inset: 0; pointer-events: none; }
+  .badge {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .badge-inner {
+    width: 64%; height: 64%;
+    border-radius: 50%;
+    background: #0e1326;
+    border: 2px solid #3a4468;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: #e7e9f3;
+    box-shadow: 0 2px 10px rgba(0,0,0,.5);
+  }
+  .badge-inner.start { border-color: #3ddc97; color: #8ff5c9; box-shadow: 0 0 12px rgba(61,220,151,.35); }
+  .badge-inner.end   { border-color: #ff6b8a; color: #ffb3c2; box-shadow: 0 0 12px rgba(255,107,138,.35); }
+  .badge-inner.pending { border-color: #5b7cfa; color: #a9bcff; font-style: italic; }
+  .badge-inner.visited { opacity: .55; }
+
+  .board.playmode { cursor: crosshair; }
+  .board.playmode .cell, .board.playmode .wallhit { pointer-events: none; }
+  .board.playmode .cell.editable:hover { background: #161c30; }
+
+  /* ---------- Legend ---------- */
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; min-height: 4px; }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 15px;
+    border-radius: 999px;
+    background: #151a2c;
+    border: 1px solid #2a3252;
+    color: #dfe3f5;
+    font-size: 13px;
+    cursor: pointer;
+    transition: opacity .15s, background .15s;
+  }
+  .legend-item:hover { background: #1d2440; }
+  .legend-item .swatch { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+  .legend-item.off { opacity: .35; }
+
+  /* ---------- Modal ---------- */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 8, 15, .75);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 20px;
+  }
+  .modal-backdrop.show { display: flex; }
+  .modal {
+    width: 100%;
+    max-width: 540px;
+    background: #151a2c;
+    border: 1px solid #2a3252;
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: 0 30px 80px rgba(0,0,0,.6);
+  }
+  .modal h2 { margin: 0 0 12px; font-size: 16px; font-weight: 600; }
+  .modal textarea {
+    width: 100%;
+    min-height: 260px;
+    background: #0e1220;
+    color: #e7e9f3;
+    border: 1px solid #2a3252;
+    border-radius: 10px;
+    padding: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.55;
+    resize: vertical;
+  }
+  .modal textarea:focus { outline: 2px solid #5b7cfa55; border-color: #5b7cfa; }
+  .modal-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 14px;
+  }
+  .modal-msg {
+    font-size: 12px;
+    margin-top: 8px;
+    color: #ff8fa3;
+    min-height: 16px;
+  }
+  .modal-msg.ok { color: #6ff0b4; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ==================== DESIGN PANEL (left) ==================== -->
+  <aside class="panel">
+    <h1><span class="dot"></span>Zip Puzzle Designer</h1>
+
+    <div class="field">
+      <label for="sizeSel">Grid size</label>
+      <select id="sizeSel">
+        <option value="5">5 × 5</option>
+        <option value="6">6 × 6</option>
+        <option value="7" selected>7 × 7</option>
+        <option value="8">8 × 8</option>
+        <option value="9">9 × 9</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Tool</label>
+      <div class="segmented">
+        <button id="modeNumber" class="seg active">Numbers</button>
+        <button id="modeWall" class="seg">Walls</button>
+      </div>
+    </div>
+
+    <div class="hint" id="hint"></div>
+    <div class="validity" id="validity"></div>
+
+    <div class="field">
+      <label>Set number for selected cell</label>
+      <div class="row">
+        <input id="numInput" type="number" min="1" placeholder="#">
+        <button id="applyNum">Set</button>
+        <button id="clearNum">Clear</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="field">
+      <label for="cpCount">Max checkpoints</label>
+      <input id="cpCount" type="number" min="2" value="5">
+    </div>
+
+    <div class="field">
+      <button id="randScatter" class="wide">🎲 Random checkpoints</button>
+      <button id="randPath" class="wide">🛤️ Random path puzzle</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="field">
+      <button id="clearWalls" class="wide">Clear all walls</button>
+      <button id="clearAll" class="wide">Reset board</button>
+    </div>
+
+    <button id="solveBtn" class="primary wide">Solve</button>
+    <div id="status" class="status"></div>
+  </aside>
+
+  <!-- ==================== BOARD ==================== -->
+  <main class="stage">
+    <div id="board" class="board"></div>
+    <div id="legend" class="legend"></div>
+  </main>
+
+  <!-- ==================== PLAY / DATA PANEL (right) ==================== -->
+  <aside class="panel side-right">
+    <h1><span class="dot"></span>Play &amp; Data</h1>
+
+    <button id="playBtn" class="playbtn wide">▶ Play</button>
+    <div id="playInfo" class="playinfo" style="display:none"></div>
+
+    <div class="divider"></div>
+
+    <button id="exportBtn" class="wide">📤 Export</button>
+    <button id="importBtn" class="wide">📥 Import</button>
+
+    <div class="hint">
+      Export copies a plain-text description to the clipboard.
+      Import replaces the board from such text.
+    </div>
+  </aside>
+
+</div>
+
+<!-- ==================== MODAL ==================== -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal">
+    <h2 id="modalTitle">Export Puzzle</h2>
+    <textarea id="modalText" spellcheck="false"></textarea>
+    <div class="modal-msg" id="modalMsg"></div>
+    <div class="modal-actions">
+      <button id="modalCancel">Close</button>
+      <button id="modalOk" class="primary">OK</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  /* ======================= State ======================= */
+  const SOL_COLORS  = ['#ffa62b', '#38bdf8'];
+  const NODE_LIMIT  = 300000;
+  const TEMPLATE_C  = '#8b93b8';
+  const PLAY_C      = '#5b7cfa';
+
+  let N = 7;
+  let cellSize = 54;
+  let numAt = new Array(N * N).fill(0);
+  let walls = new Set();
+  let mode = 'number';
+  let selected = -1;
+  let buffer = '';
+
+  let solutions = [];
+  let solVisible = [];
+  let lastAborted = false;
+
+  let previewPath = null;
+  let previewVisible = true;
+
+  let playMode = false;
+  let playPath = [];
+  let drawing = false;
+
+  let playPolyline = null;
+  let playHeadDot = null;
+
+  /* ======================= DOM ======================= */
+  const boardEl    = document.getElementById('board');
+  const legendEl   = document.getElementById('legend');
+  const statusEl   = document.getElementById('status');
+  const validityEl = document.getElementById('validity');
+  const hintEl     = document.getElementById('hint');
+  const playInfoEl = document.getElementById('playInfo');
+  const sizeSel    = document.getElementById('sizeSel');
+  const numInput   = document.getElementById('numInput');
+  const cpCount    = document.getElementById('cpCount');
+  const playBtn    = document.getElementById('playBtn');
+
+  const modalBackdrop = document.getElementById('modalBackdrop');
+  const modalTitle    = document.getElementById('modalTitle');
+  const modalText     = document.getElementById('modalText');
+  const modalMsg      = document.getElementById('modalMsg');
+  const modalOk       = document.getElementById('modalOk');
+  const modalCancel   = document.getElementById('modalCancel');
+
+  /* ======================= Helpers ======================= */
+  const rowOf = idx => (idx / N) | 0;
+  const colOf = idx => idx % N;
+
+  function shuffleArr(a) {
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = (Math.random() * (i + 1)) | 0;
+      const t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+
+  function gridNeighbors(idx) {
+    const r = (idx / N) | 0, c = idx % N;
+    const out = [];
+    if (r > 0)     out.push(idx - N);
+    if (r < N - 1) out.push(idx + N);
+    if (c > 0)     out.push(idx - 1);
+    if (c < N - 1) out.push(idx + 1);
+    return out;
+  }
+
+  function edgeKey(a, b) {
+    const ra = (a / N) | 0, ca = a % N;
+    const rb = (b / N) | 0, cb = b % N;
+    if (ra === rb) return `V,${ra},${Math.min(ca, cb)}`;
+    return `H,${Math.min(ra, rb)},${ca}`;
+  }
+
+  function isAdjacent(a, b) {
+    return Math.abs(rowOf(a) - rowOf(b)) + Math.abs(colOf(a) - colOf(b)) === 1;
+  }
+
+  function setStatus(msg, type) {
+    if (!msg) { statusEl.className = 'status'; statusEl.textContent = ''; return; }
+    statusEl.className = 'status show ' + (type || '');
+    statusEl.textContent = msg;
+  }
+
+  function maxCheckpoint() {
+    let m = 0;
+    for (let i = 0; i < numAt.length; i++) if (numAt[i] > m) m = numAt[i];
+    return m;
+  }
+
+  function clearSolutions() {
+    solutions = []; solVisible = []; lastAborted = false;
+    renderLegend(); setStatus('');
+  }
+
+  function clearPreview() {
+    if (!previewPath) return;
+    previewPath = null; previewVisible = true;
+    renderLegend();
+  }
+
+  /* ======================= Validation ======================= */
+  function validatePuzzle() {
+    const nums = [];
+    for (let i = 0; i < N * N; i++) if (numAt[i]) nums.push(numAt[i]);
+
+    if (nums.length === 0)
+      return { ok: false, msg: 'No checkpoints yet — place at least a cell with number 1.' };
+
+    const set = new Set(nums);
+    if (set.size !== nums.length)
+      return { ok: false, msg: 'Invalid: duplicate checkpoint numbers.' };
+
+    if (!set.has(1))
+      return { ok: false, msg: 'Invalid: missing checkpoint 1 — numbering must start at 1.' };
+
+    const max = Math.max(...nums);
+    for (let k = 1; k <= max; k++) {
+      if (!set.has(k))
+        return { ok: false, msg: `Invalid: gap in checkpoints — number ${k} is missing.` };
+    }
+    return { ok: true, max };
+  }
+
+  function updateValidity() {
+    const v = validatePuzzle();
+    if (v.ok) {
+      validityEl.className = 'validity good';
+      validityEl.textContent = `Checkpoints 1…${v.max} — valid ✓`;
+    } else {
+      validityEl.className = 'validity bad';
+      validityEl.textContent = v.msg;
+    }
+  }
+
+  /* ======================= Legend ======================= */
+  function renderLegend() {
+    legendEl.innerHTML = '';
+
+    if (previewPath) {
+      const btn = document.createElement('button');
+      btn.className = 'legend-item' + (previewVisible ? '' : ' off');
+      btn.innerHTML = `<span class="swatch" style="background:${TEMPLATE_C}"></span> Template path`;
+      btn.addEventListener('click', () => {
+        previewVisible = !previewVisible;
+        renderLegend(); render();
+      });
+      legendEl.appendChild(btn);
+    }
+
+    solutions.forEach((_, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'legend-item' + (solVisible[i] ? '' : ' off');
+      btn.innerHTML = `<span class="swatch" style="background:${SOL_COLORS[i]}"></span> Solution ${i + 1}`;
+      btn.addEventListener('click', () => {
+        solVisible[i] = !solVisible[i];
+        renderLegend(); render();
+      });
+      legendEl.appendChild(btn);
+    });
+  }
+
+  /* ======================= Rendering ======================= */
+  function render() {
+    cellSize = N <= 5 ? 66 : N <= 7 ? 54 : 46;
+    const size = N * cellSize;
+
+    boardEl.style.width  = size + 'px';
+    boardEl.style.height = size + 'px';
+    boardEl.classList.toggle('wallmode', mode === 'wall' && !playMode);
+    boardEl.classList.toggle('playmode', playMode);
+    boardEl.innerHTML = '';
+    playPolyline = null;
+    playHeadDot = null;
+
+    /* cells */
+    for (let idx = 0; idx < N * N; idx++) {
+      const r = rowOf(idx), c = colOf(idx);
+      const d = document.createElement('div');
+      d.className = 'cell editable';
+      d.dataset.idx = idx;
+      d.style.left   = (c * cellSize) + 'px';
+      d.style.top    = (r * cellSize) + 'px';
+      d.style.width  = cellSize + 'px';
+      d.style.height = cellSize + 'px';
+      if (idx === selected && !playMode) d.classList.add('selected');
+      boardEl.appendChild(d);
+    }
+
+    /* wall hit areas */
+    const HT    = Math.max(10, Math.round(cellSize * 0.26));
+    const INSET = Math.round(cellSize * 0.16);
+
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N - 1; c++) {
+        const edge = `V,${r},${c}`;
+        const d = document.createElement('div');
+        d.className = 'wallhit v' + (walls.has(edge) ? ' on' : '');
+        d.dataset.edge = edge;
+        d.style.left   = ((c + 1) * cellSize - HT / 2) + 'px';
+        d.style.top    = (r * cellSize + INSET) + 'px';
+        d.style.width  = HT + 'px';
+        d.style.height = (cellSize - 2 * INSET) + 'px';
+        boardEl.appendChild(d);
+      }
+    }
+    for (let r = 0; r < N - 1; r++) {
+      for (let c = 0; c < N; c++) {
+        const edge = `H,${r},${c}`;
+        const d = document.createElement('div');
+        d.className = 'wallhit h' + (walls.has(edge) ? ' on' : '');
+        d.dataset.edge = edge;
+        d.style.left   = (c * cellSize + INSET) + 'px';
+        d.style.top    = ((r + 1) * cellSize - HT / 2) + 'px';
+        d.style.width  = (cellSize - 2 * INSET) + 'px';
+        d.style.height = HT + 'px';
+        boardEl.appendChild(d);
+      }
+    }
+
+    /* SVG layer */
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('class', 'pathlayer');
+    svg.setAttribute('viewBox', `0 0 ${N} ${N}`);
+    svg.style.width  = size + 'px';
+    svg.style.height = size + 'px';
+
+    const toPoints = arr => arr.map(idx => `${colOf(idx) + 0.5},${rowOf(idx) + 0.5}`).join(' ');
+
+    if (previewPath && previewVisible && !playMode) {
+      const pl = document.createElementNS(svgNS, 'polyline');
+      pl.setAttribute('points', toPoints(previewPath));
+      pl.setAttribute('fill', 'none');
+      pl.setAttribute('stroke', TEMPLATE_C);
+      pl.setAttribute('stroke-width', '0.2');
+      pl.setAttribute('stroke-dasharray', '0.28 0.22');
+      pl.setAttribute('stroke-linecap', 'round');
+      pl.setAttribute('stroke-linejoin', 'round');
+      pl.setAttribute('opacity', '0.65');
+      svg.appendChild(pl);
+    }
+
+    solutions.forEach((sol, i) => {
+      if (!solVisible[i]) return;
+      const pl = document.createElementNS(svgNS, 'polyline');
+      pl.setAttribute('points', toPoints(sol));
+      pl.setAttribute('fill', 'none');
+      pl.setAttribute('stroke', SOL_COLORS[i]);
+      pl.setAttribute('stroke-width', '0.24');
+      pl.setAttribute('stroke-linecap', 'round');
+      pl.setAttribute('stroke-linejoin', 'round');
+      pl.setAttribute('opacity', '0.92');
+      if (i === 1) pl.setAttribute('stroke-dasharray', '0.34 0.24');
+      svg.appendChild(pl);
+    });
+
+    if (playMode) {
+      playPolyline = document.createElementNS(svgNS, 'polyline');
+      playPolyline.setAttribute('fill', 'none');
+      playPolyline.setAttribute('stroke', PLAY_C);
+      playPolyline.setAttribute('stroke-width', '0.3');
+      playPolyline.setAttribute('stroke-linecap', 'round');
+      playPolyline.setAttribute('stroke-linejoin', 'round');
+      playPolyline.setAttribute('opacity', '0.95');
+      svg.appendChild(playPolyline);
+
+      playHeadDot = document.createElementNS(svgNS, 'circle');
+      playHeadDot.setAttribute('r', '0.16');
+      playHeadDot.setAttribute('fill', '#c3d0ff');
+      playHeadDot.setAttribute('stroke', PLAY_C);
+      playHeadDot.setAttribute('stroke-width', '0.06');
+      svg.appendChild(playHeadDot);
+    }
+
+    boardEl.appendChild(svg);
+
+    /* number badges */
+    const layer = document.createElement('div');
+    layer.className = 'numlayer';
+    const maxNum = maxCheckpoint();
+    const visitedSet = playMode ? new Set(playPath) : null;
+
+    for (let idx = 0; idx < N * N; idx++) {
+      const num = numAt[idx];
+      const isPending = (!playMode && idx === selected && buffer !== '');
+      if (!num && !isPending) continue;
+
+      const r = rowOf(idx), c = colOf(idx);
+      const wrap = document.createElement('div');
+      wrap.className = 'badge';
+      wrap.style.left   = (c * cellSize) + 'px';
+      wrap.style.top    = (r * cellSize) + 'px';
+      wrap.style.width  = cellSize + 'px';
+      wrap.style.height = cellSize + 'px';
+
+      const inner = document.createElement('div');
+      inner.className = 'badge-inner' + (isPending ? ' pending' : '');
+      inner.style.fontSize = Math.max(11, Math.round(cellSize * 0.3)) + 'px';
+      inner.textContent = isPending ? buffer : num;
+      if (num === 1) inner.classList.add('start');
+      if (num && num === maxNum) inner.classList.add('end');
+      if (visitedSet && visitedSet.has(idx)) inner.classList.add('visited');
+
+      wrap.appendChild(inner);
+      layer.appendChild(wrap);
+    }
+    boardEl.appendChild(layer);
+
+    if (playMode) updatePlayVisual();
+    updateValidity();
+  }
+
+  /* ======================= Play visuals ======================= */
+  function updatePlayVisual() {
+    if (!playPolyline) return;
+    const pts = playPath.map(idx => `${colOf(idx) + 0.5},${rowOf(idx) + 0.5}`).join(' ');
+    playPolyline.setAttribute('points', pts);
+    playPolyline.style.display = playPath.length > 1 ? '' : 'none';
+    playPolyline.setAttribute('stroke', isPlayComplete() ? '#3ddc97' : PLAY_C);
+
+    if (playHeadDot) {
+      if (playPath.length) {
+        const h = playPath[playPath.length - 1];
+        playHeadDot.setAttribute('cx', colOf(h) + 0.5);
+        playHeadDot.setAttribute('cy', rowOf(h) + 0.5);
+        playHeadDot.setAttribute('fill', isPlayComplete() ? '#8ff5c9' : '#c3d0ff');
+        playHeadDot.style.display = '';
+      } else {
+        playHeadDot.style.display = 'none';
+      }
+    }
+    updatePlayInfo();
+  }
+
+  function isPlayComplete() { return playMode && playPath.length === N * N; }
+
+  function nextExpected(arr) {
+    let m = 0;
+    for (const c of arr) if (numAt[c] > m) m = numAt[c];
+    return m + 1;
+  }
+
+  function updatePlayInfo() {
+    if (!playMode) return;
+    const total = N * N;
+    const K = maxCheckpoint();
+
+    if (playPath.length === 0) {
+      playInfoEl.textContent = `Drag from checkpoint 1 to start. 0 / ${total} cells.`;
+      return;
+    }
+    if (playPath.length === total) {
+      playInfoEl.textContent = `🎉 Solved! Every cell visited exactly once.`;
+      return;
+    }
+    const exp = nextExpected(playPath);
+    const last = playPath[playPath.length - 1];
+    let extra = '';
+    if (K > 1 && numAt[last] === K) {
+      extra = ' — final checkpoint reached but board not full.';
+    }
+    playInfoEl.textContent =
+      `${playPath.length} / ${total} cells · next checkpoint: ${exp <= K ? '#' + exp : '—'}${extra}`;
+  }
+
+  /* ======================= Editing interaction ======================= */
+  function setMode(m) {
+    mode = m;
+    document.getElementById('modeNumber').classList.toggle('active', m === 'number');
+    document.getElementById('modeWall').classList.toggle('active', m === 'wall');
+    updateHint();
+    render();
+  }
+
+  function updateHint() {
+    if (playMode) {
+      hintEl.textContent = 'Drag from checkpoint 1 through every cell. Move back over the path to undo.';
+      return;
+    }
+    hintEl.textContent = (mode === 'number')
+      ? 'Click a cell, then type a number (Enter to confirm · Backspace to erase).'
+      : 'Click the gaps between cells to add or remove blocking walls.';
+  }
+
+  boardEl.addEventListener('click', (e) => {
+    if (playMode) return;
+
+    const wallEl = e.target.closest('.wallhit');
+    if (wallEl && mode === 'wall') {
+      const edge = wallEl.dataset.edge;
+      if (walls.has(edge)) walls.delete(edge); else walls.add(edge);
+      clearSolutions(); clearPreview();
+      render();
+      return;
+    }
+    const cellEl = e.target.closest('.cell');
+    if (cellEl && mode === 'number') {
+      selected = +cellEl.dataset.idx;
+      buffer = '';
+      numInput.value = numAt[selected] || '';
+      render();
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (modalBackdrop.classList.contains('show')) return;
+    if (playMode || mode !== 'number' || selected < 0) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+
+    if (/^[0-9]$/.test(e.key)) {
+      e.preventDefault();
+      buffer = (buffer + e.key).slice(0, 3);
+      render();
+    } else if (e.key === 'Backspace') {
+      e.preventDefault();
+      if (buffer) buffer = buffer.slice(0, -1);
+      else if (numAt[selected]) { numAt[selected] = 0; clearSolutions(); }
+      render();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      commitBuffer();
+    } else if (e.key === 'Escape') {
+      buffer = ''; render();
+    } else if (e.key === 'Delete') {
+      e.preventDefault();
+      buffer = ''; numAt[selected] = 0;
+      clearSolutions(); render();
+    }
+  });
+
+  function commitBuffer() {
+    if (selected < 0) return;
+    if (buffer === '') { render(); return; }
+    const v = parseInt(buffer, 10);
+    if (!v || v < 1 || v > N * N) { buffer = ''; render(); return; }
+    for (let i = 0; i < numAt.length; i++) if (numAt[i] === v) numAt[i] = 0;
+    numAt[selected] = v;
+    buffer = '';
+    clearSolutions(); clearPreview();
+    render();
+  }
+
+  /* ======================= Random generators ======================= */
+  function generateHamiltonianPath() {
+    const total = N * N;
+
+    const path = [];
+    for (let r = 0; r < N; r++) {
+      if (r % 2 === 0) for (let c = 0; c < N; c++) path.push(r * N + c);
+      else             for (let c = N - 1; c >= 0; c--) path.push(r * N + c);
+    }
+
+    const pos = new Int32Array(total);
+    for (let i = 0; i < total; i++) pos[path[i]] = i;
+
+    function reverseSeg(a, b) {
+      while (a < b) {
+        const t = path[a]; path[a] = path[b]; path[b] = t;
+        pos[path[a]] = a; pos[path[b]] = b;
+        a++; b--;
+      }
+    }
+
+    const iters = total * 24;
+    for (let it = 0; it < iters; it++) {
+      if (Math.random() < 0.5) {
+        const tail = path[total - 1];
+        const cands = [];
+        for (const v of gridNeighbors(tail)) if (pos[v] < total - 2) cands.push(v);
+        if (!cands.length) continue;
+        const v = cands[(Math.random() * cands.length) | 0];
+        reverseSeg(pos[v] + 1, total - 1);
+      } else {
+        const head = path[0];
+        const cands = [];
+        for (const v of gridNeighbors(head)) if (pos[v] > 1) cands.push(v);
+        if (!cands.length) continue;
+        const v = cands[(Math.random() * cands.length) | 0];
+        reverseSeg(0, pos[v] - 1);
+      }
+    }
+    return path;
+  }
+
+  function bfsDistance(src, dst) {
+    if (src === dst) return 0;
+    const total = N * N;
+    const seen = new Uint8Array(total);
+    let frontier = [src];
+    seen[src] = 1;
+    let d = 0;
+    while (frontier.length) {
+      d++;
+      const next = [];
+      for (const u of frontier) {
+        for (const v of gridNeighbors(u)) {
+          if (seen[v]) continue;
+          if (walls.has(edgeKey(u, v))) continue;
+          if (v === dst) return d;
+          seen[v] = 1;
+          next.push(v);
+        }
+      }
+      frontier = next;
+    }
+    return Infinity;
+  }
+
+  function randomScatter(K) {
+    const total = N * N;
+    K = Math.max(2, Math.min(K, total));
+    const cells = shuffleArr([...Array(total).keys()]).slice(0, K);
+
+    const remaining = cells.slice(1);
+    const order = [cells[0]];
+    let cur = cells[0];
+    while (remaining.length) {
+      let bi = 0, bd = Infinity;
+      for (let i = 0; i < remaining.length; i++) {
+        const d = bfsDistance(cur, remaining[i]);
+        if (d < bd) { bd = d; bi = i; }
+      }
+      cur = remaining[bi];
+      order.push(cur);
+      remaining.splice(bi, 1);
+    }
+
+    numAt = new Array(total).fill(0);
+    order.forEach((cell, i) => { numAt[cell] = i + 1; });
+    walls = new Set();
+    previewPath = null; previewVisible = true;
+  }
+
+  function randomPathPuzzle(K) {
+    const total = N * N;
+    K = Math.max(2, Math.min(K, total));
+
+    const path = generateHamiltonianPath();
+
+    const interior = [];
+    for (let i = 1; i < total - 1; i++) interior.push(i);
+    shuffleArr(interior);
+    const chosen = interior.slice(0, K - 2).sort((a, b) => a - b);
+
+    const stops = [0, ...chosen, total - 1];
+    numAt = new Array(total).fill(0);
+    stops.forEach((p, i) => { numAt[path[p]] = i + 1; });
+
+    walls = new Set();
+    previewPath = path;
+    previewVisible = true;
+  }
+
+  /* ======================= Import / Export ======================= */
+  function exportPuzzle() {
+    const lines = [];
+    lines.push('# Zip Puzzle — plain text format');
+    lines.push('# size N');
+    lines.push('# checkpoints r,c=n ...   (0-based row/col)');
+    lines.push('# walls T,r,c ...        (T = H or V; H spans (r,c)-(r+1,c); V spans (r,c)-(r,c+1))');
+    lines.push(`size ${N}`);
+
+    const cps = [];
+    for (let i = 0; i < N * N; i++) {
+      if (numAt[i]) cps.push(`${rowOf(i)},${colOf(i)}=${numAt[i]}`);
+    }
+    lines.push(cps.length ? `checkpoints ${cps.join(' ')}` : 'checkpoints');
+
+    const ws = [...walls];
+    lines.push(ws.length ? `walls ${ws.join(' ')}` : 'walls');
+
+    return lines.join('\n');
+  }
+
+  function importPuzzle(text) {
+    const lines = text.split(/\r?\n/);
+    let newN = null;
+    const newCps = [];
+    const newWalls = [];
+
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#')) continue;
+      const parts = line.split(/\s+/);
+      const kw = parts[0].toLowerCase();
+
+      if (kw === 'size') {
+        const n = parseInt(parts[1], 10);
+        if (isNaN(n) || n < 2 || n > 15) throw new Error(`Invalid size: "${parts[1]}"`);
+        newN = n;
+      } else if (kw === 'checkpoints' || kw === 'cp') {
+        for (let i = 1; i < parts.length; i++) {
+          const m = parts[i].match(/^(\d+),(\d+)=(\d+)$/);
+          if (!m) throw new Error(`Invalid checkpoint: "${parts[i]}"`);
+          newCps.push({ r: +m[1], c: +m[2], n: +m[3] });
+        }
+      } else if (kw === 'walls') {
+        for (let i = 1; i < parts.length; i++) {
+          const m = parts[i].match(/^([HV]),(\d+),(\d+)$/i);
+          if (!m) throw new Error(`Invalid wall: "${parts[i]}"`);
+          newWalls.push(`${m[1].toUpperCase()},${+m[2]},${+m[3]}`);
+        }
+      } else {
+        throw new Error(`Unknown line: "${line}"`);
+      }
+    }
+
+    if (newN === null) throw new Error('Missing "size" line.');
+
+    for (const cp of newCps) {
+      if (cp.r < 0 || cp.r >= newN || cp.c < 0 || cp.c >= newN)
+        throw new Error(`Checkpoint out of range: ${cp.r},${cp.c}`);
+      if (cp.n < 1 || cp.n > newN * newN)
+        throw new Error(`Checkpoint number out of range: ${cp.n}`);
+    }
+    for (const w of newWalls) {
+      const [t, r, c] = w.split(',');
+      const rr = +r, cc = +c;
+      if (rr < 0 || rr >= newN || cc < 0 || cc >= newN)
+        throw new Error(`Wall out of range: ${w}`);
+      if (t === 'V' && cc >= newN - 1) throw new Error(`Vertical wall out of range: ${w}`);
+      if (t === 'H' && rr >= newN - 1) throw new Error(`Horizontal wall out of range: ${w}`);
+    }
+
+    return { N: newN, checkpoints: newCps, walls: new Set(newWalls) };
+  }
+
+  function applyImported(data) {
+    if (playMode) exitPlay();
+
+    N = data.N;
+    numAt = new Array(N * N).fill(0);
+    for (const cp of data.checkpoints) {
+      numAt[cp.r * N + cp.c] = cp.n;
+    }
+    walls = new Set(data.walls);
+
+    selected = -1;
+    buffer = '';
+    solutions = []; solVisible = []; lastAborted = false;
+    previewPath = null; previewVisible = true;
+    playPath = []; drawing = false;
+
+    // make sure select has an option for this size
+    if (![...sizeSel.options].some(o => +o.value === N)) {
+      const opt = document.createElement('option');
+      opt.value = N;
+      opt.textContent = `${N} × ${N}`;
+      sizeSel.appendChild(opt);
+    }
+    sizeSel.value = String(N);
+
+    numInput.max = N * N;
+    numInput.value = '';
+    cpCount.max = N * N;
+    if (parseInt(cpCount.value, 10) > N * N) cpCount.value = N * N;
+
+    renderLegend();
+    setStatus('');
+    updateHint();
+    render();
+  }
+
+  /* ======================= Modal ======================= */
+  let modalMode = 'export';
+
+  function openModal(mode) {
+    modalMode = mode;
+    modalMsg.textContent = '';
+    modalMsg.className = 'modal-msg';
+
+    if (mode === 'export') {
+      modalTitle.textContent = 'Export Puzzle';
+      modalText.value = exportPuzzle();
+      modalText.placeholder = '';
+      modalOk.textContent = 'Copy to clipboard';
+    } else {
+      modalTitle.textContent = 'Import Puzzle';
+      modalText.value = '';
+      modalText.placeholder =
+        '# Zip Puzzle\nsize 7\ncheckpoints 0,0=1 2,3=2 4,1=3 6,6=4\nwalls H,0,1 V,3,3 H,5,5';
+      modalOk.textContent = 'Import';
+    }
+    modalBackdrop.classList.add('show');
+    setTimeout(() => modalText.focus(), 30);
+  }
+
+  function closeModal() {
+    modalBackdrop.classList.remove('show');
+  }
+
+  modalCancel.addEventListener('click', closeModal);
+  modalBackdrop.addEventListener('click', (e) => {
+    if (e.target === modalBackdrop) closeModal();
+  });
+
+  modalOk.addEventListener('click', async () => {
+    if (modalMode === 'export') {
+      try {
+        await navigator.clipboard.writeText(modalText.value);
+        modalMsg.textContent = 'Copied to clipboard ✓';
+        modalMsg.className = 'modal-msg ok';
+      } catch (err) {
+        modalText.select();
+        try { document.execCommand('copy'); } catch (e) {}
+        modalMsg.textContent = 'Selected — press Ctrl/Cmd+C to copy.';
+        modalMsg.className = 'modal-msg ok';
+      }
+    } else {
+      try {
+        const data = importPuzzle(modalText.value);
+        applyImported(data);
+        modalMsg.textContent = 'Puzzle imported ✓';
+        modalMsg.className = 'modal-msg ok';
+        setTimeout(closeModal, 400);
+      } catch (err) {
+        modalMsg.textContent = err.message;
+        modalMsg.className = 'modal-msg';
+      }
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modalBackdrop.classList.contains('show')) {
+      closeModal();
+    }
+  });
+
+  /* ======================= Panel bindings ======================= */
+  document.getElementById('modeNumber').addEventListener('click', () => setMode('number'));
+  document.getElementById('modeWall').addEventListener('click', () => setMode('wall'));
+
+  sizeSel.addEventListener('change', () => resetBoard(+sizeSel.value));
+
+  document.getElementById('applyNum').addEventListener('click', () => {
+    if (playMode) { setStatus('Stop play mode to edit the puzzle.', 'warn'); return; }
+    if (selected < 0) { setStatus('Select a cell on the board first.', 'warn'); return; }
+    const v = parseInt(numInput.value, 10);
+    if (!v || v < 1 || v > N * N) { setStatus(`Enter a number between 1 and ${N * N}.`, 'warn'); return; }
+    for (let i = 0; i < numAt.length; i++) if (numAt[i] === v) numAt[i] = 0;
+    numAt[selected] = v;
+    buffer = '';
+    clearSolutions(); clearPreview();
+    render();
+  });
+
+  document.getElementById('clearNum').addEventListener('click', () => {
+    if (playMode) { setStatus('Stop play mode to edit the puzzle.', 'warn'); return; }
+    if (selected < 0) { setStatus('Select a cell on the board first.', 'warn'); return; }
+    numAt[selected] = 0;
+    buffer = '';
+    numInput.value = '';
+    clearSolutions(); clearPreview();
+    render();
+  });
+
+  document.getElementById('clearWalls').addEventListener('click', () => {
+    walls.clear();
+    clearSolutions(); clearPreview();
+    render();
+  });
+
+  document.getElementById('clearAll').addEventListener('click', () => resetBoard(N));
+
+  document.getElementById('solveBtn').addEventListener('click', doSolve);
+
+  document.getElementById('randScatter').addEventListener('click', () => {
+    if (playMode) exitPlay();
+    const K = parseInt(cpCount.value, 10) || 5;
+    randomScatter(K);
+    selected = -1; buffer = '';
+    clearSolutions();
+    render();
+    setStatus(`Scattered ${Math.min(K, N * N)} random checkpoints. Walls cleared.`, 'ok');
+  });
+
+  document.getElementById('randPath').addEventListener('click', () => {
+    if (playMode) exitPlay();
+    const K = parseInt(cpCount.value, 10) || 5;
+    randomPathPuzzle(K);
+    selected = -1; buffer = '';
+    clearSolutions();
+    render();
+    renderLegend();
+    setStatus('Generated a random Hamiltonian path with checkpoints along it. The template is shown dashed.', 'ok');
+  });
+
+  playBtn.addEventListener('click', () => {
+    if (playMode) exitPlay(); else enterPlay();
+  });
+
+  document.getElementById('exportBtn').addEventListener('click', () => openModal('export'));
+  document.getElementById('importBtn').addEventListener('click', () => openModal('import'));
+
+  /* ======================= Reset ======================= */
+  function resetBoard(newN) {
+    N = newN;
+    numAt = new Array(N * N).fill(0);
+    walls = new Set();
+    selected = -1;
+    buffer = '';
+    solutions = []; solVisible = [];
+    lastAborted = false;
+    previewPath = null; previewVisible = true;
+    playPath = [];
+    drawing = false;
+    if (playMode) exitPlay();
+    numInput.max = N * N;
+    numInput.value = '';
+    cpCount.max = N * N;
+    if (parseInt(cpCount.value, 10) > N * N) cpCount.value = N * N;
+    renderLegend();
+    setStatus('');
+    updateHint();
+    render();
+  }
+
+  /* ======================= Solver ======================= */
+  function buildAdjacency() {
+    const adj = [];
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        const idx = r * N + c;
+        const list = [];
+        if (c > 0)     list.push([idx - 1, `V,${r},${c - 1}`]);
+        if (c < N - 1) list.push([idx + 1, `V,${r},${c}`]);
+        if (r > 0)     list.push([idx - N, `H,${r - 1},${c}`]);
+        if (r < N - 1) list.push([idx + N, `H,${r},${c}`]);
+        adj.push(list);
+      }
+    }
+    return adj;
+  }
+
+  function solvePuzzle(limit) {
+    const total = N * N;
+    const adj = buildAdjacency();
+
+    let K = 0;
+    for (let i = 0; i < total; i++) if (numAt[i] > K) K = numAt[i];
+
+    const posOfNum = new Array(K + 1).fill(-1);
+    for (let i = 0; i < total; i++) if (numAt[i]) posOfNum[numAt[i]] = i;
+
+    const start = posOfNum[1];
+    const end   = posOfNum[K];
+
+    const visited = new Uint8Array(total);
+    const seen    = new Int32Array(total);
+    const stack   = new Int32Array(total);
+    const path    = [];
+    const sols    = [];
+    let stamp = 0, nodes = 0, aborted = false;
+
+    function connectivityOk(cur) {
+      stamp++;
+      let sp = 0;
+      stack[sp++] = cur;
+      seen[cur] = stamp;
+      let cnt = 0;
+      while (sp > 0) {
+        const u = stack[--sp];
+        const lst = adj[u];
+        for (let i = 0; i < lst.length; i++) {
+          const v = lst[i][0];
+          if (visited[v] || seen[v] === stamp) continue;
+          if (walls.has(lst[i][1])) continue;
+          seen[v] = stamp;
+          cnt++;
+          stack[sp++] = v;
+        }
+      }
+      return cnt === total - path.length;
+    }
+
+    function noDeadEnds(cur) {
+      for (let u = 0; u < total; u++) {
+        if (visited[u]) continue;
+        const lst = adj[u];
+        let free = 0;
+        for (let i = 0; i < lst.length; i++) {
+          if (walls.has(lst[i][1])) continue;
+          const v = lst[i][0];
+          if (!visited[v] || v === cur) free++;
+        }
+        if (free === 0) return false;
+        if (free === 1 && u !== end) return false;
+      }
+      return true;
+    }
+
+    function dfs(cur, expected) {
+      if (aborted) return;
+      if (++nodes > NODE_LIMIT) { aborted = true; return; }
+
+      visited[cur] = 1;
+      path.push(cur);
+
+      if (path.length === total) {
+        if (expected > K && cur === end) sols.push(path.slice());
+      } else if (expected <= K) {
+        if (connectivityOk(cur) && noDeadEnds(cur)) {
+          const lst = adj[cur];
+          for (let i = 0; i < lst.length; i++) {
+            if (aborted || sols.length >= limit) break;
+            const v = lst[i][0];
+            if (visited[v]) continue;
+            if (walls.has(lst[i][1])) continue;
+            const m = numAt[v];
+            if (m) { if (m === expected) dfs(v, expected + 1); }
+            else   { dfs(v, expected); }
+          }
+        }
+      }
+
+      visited[cur] = 0;
+      path.pop();
+    }
+
+    if (start >= 0) dfs(start, 2);
+    return { solutions: sols, aborted, nodes };
+  }
+
+  function doSolve() {
+    if (playMode) exitPlay();
+
+    const v = validatePuzzle();
+    if (!v.ok) { clearSolutions(); setStatus(v.msg, 'error'); return; }
+
+    previewPath = null; previewVisible = true;
+
+    const res = solvePuzzle(2);
+    solutions = res.solutions;
+    solVisible = solutions.map(() => true);
+    lastAborted = res.aborted;
+
+    render();
+    renderLegend();
+
+    if (solutions.length >= 2) {
+      setStatus('Multiple solutions — this puzzle is NOT unique. Showing 2 (click the legend chips to toggle).', 'warn');
+    } else if (solutions.length === 1) {
+      setStatus(res.aborted
+        ? 'Found 1 solution so far, but the search limit was reached — it may not be unique.'
+        : 'Unique solution found ✓', res.aborted ? 'warn' : 'ok');
+    } else {
+      setStatus(res.aborted
+        ? 'Search limit reached without finding a solution — the puzzle may be unsolvable.'
+        : 'No solution exists for this puzzle.', res.aborted ? 'warn' : 'error');
+    }
+  }
+
+  /* ======================= Play mode ======================= */
+  function enterPlay() {
+    const v = validatePuzzle();
+    if (!v.ok) { setStatus('Fix the puzzle before playing: ' + v.msg, 'error'); return; }
+
+    playMode = true;
+    playPath = [];
+    drawing = false;
+    solutions = []; solVisible = [];
+    previewPath = null; previewVisible = true;
+    selected = -1; buffer = '';
+
+    playBtn.classList.add('on');
+    playBtn.textContent = '■ Stop playing';
+    playInfoEl.style.display = '';
+    setStatus('');
+    updateHint();
+    render();
+    renderLegend();
+    updatePlayInfo();
+  }
+
+  function exitPlay() {
+    playMode = false;
+    playPath = [];
+    drawing = false;
+    playBtn.classList.remove('on');
+    playBtn.textContent = '▶ Play';
+    playInfoEl.style.display = 'none';
+    updateHint();
+    render();
+  }
+
+  function cellFromEvent(e) {
+    const rect = boardEl.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const c = Math.floor(x / cellSize);
+    const r = Math.floor(y / cellSize);
+    if (r < 0 || r >= N || c < 0 || c >= N) return -1;
+    return r * N + c;
+  }
+
+  boardEl.addEventListener('pointerdown', (e) => {
+    if (!playMode) return;
+    const idx = cellFromEvent(e);
+    if (idx < 0) return;
+    e.preventDefault();
+
+    if (playPath.length === 0) {
+      if (numAt[idx] !== 1) {
+        playInfoEl.textContent = 'Start at checkpoint 1.';
+        return;
+      }
+      playPath = [idx];
+    } else {
+      const i = playPath.indexOf(idx);
+      if (i >= 0) playPath = playPath.slice(0, i + 1);
+      else return;
+    }
+
+    drawing = true;
+    updatePlayVisual();
+  });
+
+  window.addEventListener('pointermove', (e) => {
+    if (!playMode || !drawing) return;
+    const idx = cellFromEvent(e);
+    if (idx < 0) return;
+
+    const last = playPath[playPath.length - 1];
+    if (idx === last) return;
+
+    const existing = playPath.indexOf(idx);
+    if (existing >= 0) {
+      if (existing < playPath.length - 1) {
+        playPath = playPath.slice(0, existing + 1);
+        updatePlayVisual();
+      }
+      return;
+    }
+
+    if (!isAdjacent(last, idx)) return;
+    if (walls.has(edgeKey(last, idx))) return;
+
+    const K = maxCheckpoint();
+    if (K > 1 && numAt[last] === K) return;
+
+    const m = numAt[idx];
+    if (m > 0) {
+      const exp = nextExpected(playPath);
+      if (m !== exp) return;
+    }
+
+    playPath.push(idx);
+    updatePlayVisual();
+  });
+
+  window.addEventListener('pointerup', () => { drawing = false; });
+  window.addEventListener('pointercancel', () => { drawing = false; });
+
+  /* ======================= Boot ======================= */
+  function seedExample() {
+    N = 7;
+    numAt = new Array(N * N).fill(0);
+    const put = (r, c, n) => { numAt[r * N + c] = n; };
+    put(0, 0, 1);
+    put(2, 3, 2);
+    put(4, 1, 3);
+    put(6, 6, 4);
+    walls = new Set(['H,0,1', 'V,3,3', 'H,5,5']);
+  }
+
+  sizeSel.value = String(N);
+  seedExample();
+  numInput.max = N * N;
+  cpCount.max = N * N;
+  cpCount.value = 4;
+  setMode('number');
+  render();
+  renderLegend();
+})();
+</script>
+</body>
+</html>
