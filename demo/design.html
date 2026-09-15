@@ -34,9 +34,7 @@
     padding: 18px;
     box-shadow: 0 20px 50px rgba(0,0,0,.45);
   }
-  .panel.side-right {
-    width: 196px;
-  }
+  .panel.side-right { width: 196px; }
   .panel h1 {
     font-size: 17px;
     margin: 0 0 16px;
@@ -185,6 +183,9 @@
   .board:not(.wallmode):not(.playmode) .cell.editable { cursor: pointer; }
   .board:not(.wallmode):not(.playmode) .cell.editable:hover { background: #1c2440; }
   .cell.selected { background: #22305c; box-shadow: inset 0 0 0 2px #5b7cfa; }
+  .cell.has-number:not(.selected) { cursor: grab; }
+  .cell.has-number:active { cursor: grabbing; }
+  .cell.drop-target { box-shadow: inset 0 0 0 2px #38bdf8; background: #1a2a44; }
 
   .wallhit {
     position: absolute;
@@ -221,10 +222,28 @@
   .badge-inner.end   { border-color: #ff6b8a; color: #ffb3c2; box-shadow: 0 0 12px rgba(255,107,138,.35); }
   .badge-inner.pending { border-color: #5b7cfa; color: #a9bcff; font-style: italic; }
   .badge-inner.visited { opacity: .55; }
+  .badge-inner.dragging { opacity: .25; }
 
   .board.playmode { cursor: crosshair; }
   .board.playmode .cell, .board.playmode .wallhit { pointer-events: none; }
   .board.playmode .cell.editable:hover { background: #161c30; }
+
+  /* ---------- Drag ghost ---------- */
+  .drag-ghost {
+    position: fixed;
+    border-radius: 50%;
+    background: #0e1326;
+    border: 2px solid #5b7cfa;
+    color: #a9bcff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    pointer-events: none;
+    z-index: 200;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 6px 20px rgba(91,124,250,.6);
+  }
 
   /* ---------- Legend ---------- */
   .legend { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; min-height: 4px; }
@@ -325,15 +344,6 @@
     <div class="hint" id="hint"></div>
     <div class="validity" id="validity"></div>
 
-    <div class="field">
-      <label>Set number for selected cell</label>
-      <div class="row">
-        <input id="numInput" type="number" min="1" placeholder="#">
-        <button id="applyNum">Set</button>
-        <button id="clearNum">Clear</button>
-      </div>
-    </div>
-
     <div class="divider"></div>
 
     <div class="field">
@@ -428,6 +438,11 @@
   let playPolyline = null;
   let playHeadDot = null;
 
+  /* number drag state */
+  let numDrag = null;         // { srcIdx, startX, startY, dragging }
+  let dragGhost = null;
+  let suppressNextClick = false;
+
   /* ======================= DOM ======================= */
   const boardEl    = document.getElementById('board');
   const legendEl   = document.getElementById('legend');
@@ -436,7 +451,6 @@
   const hintEl     = document.getElementById('hint');
   const playInfoEl = document.getElementById('playInfo');
   const sizeSel    = document.getElementById('sizeSel');
-  const numInput   = document.getElementById('numInput');
   const cpCount    = document.getElementById('cpCount');
   const playBtn    = document.getElementById('playBtn');
 
@@ -582,6 +596,7 @@
       const r = rowOf(idx), c = colOf(idx);
       const d = document.createElement('div');
       d.className = 'cell editable';
+      if (numAt[idx]) d.classList.add('has-number');
       d.dataset.idx = idx;
       d.style.left   = (c * cellSize) + 'px';
       d.style.top    = (r * cellSize) + 'px';
@@ -684,6 +699,7 @@
     layer.className = 'numlayer';
     const maxNum = maxCheckpoint();
     const visitedSet = playMode ? new Set(playPath) : null;
+    const draggingSrc = numDrag && numDrag.dragging ? numDrag.srcIdx : -1;
 
     for (let idx = 0; idx < N * N; idx++) {
       const num = numAt[idx];
@@ -705,6 +721,7 @@
       if (num === 1) inner.classList.add('start');
       if (num && num === maxNum) inner.classList.add('end');
       if (visitedSet && visitedSet.has(idx)) inner.classList.add('visited');
+      if (idx === draggingSrc) inner.classList.add('dragging');
 
       wrap.appendChild(inner);
       layer.appendChild(wrap);
@@ -783,12 +800,14 @@
       return;
     }
     hintEl.textContent = (mode === 'number')
-      ? 'Click a cell, then type a number (Enter to confirm · Backspace to erase).'
+      ? 'Click a cell then type a number (Enter to confirm · Esc to cancel). Drag a numbered cell to move it to an empty cell. Press Delete or Backspace to clear the selected cell.'
       : 'Click the gaps between cells to add or remove blocking walls.';
   }
 
+  /* ---- click handling ---- */
   boardEl.addEventListener('click', (e) => {
     if (playMode) return;
+    if (suppressNextClick) { suppressNextClick = false; return; }
 
     const wallEl = e.target.closest('.wallhit');
     if (wallEl && mode === 'wall') {
@@ -802,11 +821,11 @@
     if (cellEl && mode === 'number') {
       selected = +cellEl.dataset.idx;
       buffer = '';
-      numInput.value = numAt[selected] || '';
       render();
     }
   });
 
+  /* ---- keyboard editing ---- */
   document.addEventListener('keydown', (e) => {
     if (modalBackdrop.classList.contains('show')) return;
     if (playMode || mode !== 'number' || selected < 0) return;
@@ -845,6 +864,91 @@
     clearSolutions(); clearPreview();
     render();
   }
+
+  /* ======================= Number dragging ======================= */
+  function startDragGhost(srcIdx, x, y) {
+    endDragGhost();
+    dragGhost = document.createElement('div');
+    dragGhost.className = 'drag-ghost';
+    dragGhost.textContent = numAt[srcIdx];
+    const s = Math.round(cellSize * 0.66);
+    dragGhost.style.width  = s + 'px';
+    dragGhost.style.height = s + 'px';
+    dragGhost.style.fontSize = Math.max(12, Math.round(cellSize * 0.32)) + 'px';
+    dragGhost.style.left = x + 'px';
+    dragGhost.style.top  = y + 'px';
+    document.body.appendChild(dragGhost);
+  }
+  function moveDragGhost(x, y) {
+    if (!dragGhost) return;
+    dragGhost.style.left = x + 'px';
+    dragGhost.style.top  = y + 'px';
+  }
+  function endDragGhost() {
+    if (dragGhost) { dragGhost.remove(); dragGhost = null; }
+  }
+
+  boardEl.addEventListener('pointerdown', (e) => {
+    if (playMode) return;
+    if (mode !== 'number') return;
+    const cellEl = e.target.closest('.cell');
+    if (!cellEl) return;
+    const idx = +cellEl.dataset.idx;
+    if (!numAt[idx]) return;
+
+    numDrag = { srcIdx: idx, startX: e.clientX, startY: e.clientY, dragging: false };
+  });
+
+  window.addEventListener('pointermove', (e) => {
+    if (!numDrag) return;
+    if (!numDrag.dragging) {
+      const dx = e.clientX - numDrag.startX;
+      const dy = e.clientY - numDrag.startY;
+      if (dx * dx + dy * dy > 25) {
+        numDrag.dragging = true;
+        startDragGhost(numDrag.srcIdx, e.clientX, e.clientY);
+        render();   // dim the source badge
+      }
+    }
+    if (numDrag.dragging) {
+      moveDragGhost(e.clientX, e.clientY);
+      const idx = cellFromEvent(e);
+      document.querySelectorAll('.cell.drop-target').forEach(el => el.classList.remove('drop-target'));
+      if (idx >= 0 && idx !== numDrag.srcIdx && !numAt[idx]) {
+        const el = boardEl.querySelector(`.cell[data-idx="${idx}"]`);
+        if (el) el.classList.add('drop-target');
+      }
+    }
+  });
+
+  window.addEventListener('pointerup', (e) => {
+    if (!numDrag) return;
+    document.querySelectorAll('.cell.drop-target').forEach(el => el.classList.remove('drop-target'));
+
+    if (numDrag.dragging) {
+      endDragGhost();
+      const idx = cellFromEvent(e);
+      if (idx >= 0 && idx !== numDrag.srcIdx && !numAt[idx]) {
+        numAt[idx] = numAt[numDrag.srcIdx];
+        numAt[numDrag.srcIdx] = 0;
+        selected = idx;
+        buffer = '';
+        clearSolutions(); clearPreview();
+      }
+      suppressNextClick = true;
+      setTimeout(() => { suppressNextClick = false; }, 120);
+      numDrag = null;
+      render();
+      return;
+    }
+    numDrag = null;
+  });
+
+  window.addEventListener('pointercancel', () => {
+    endDragGhost();
+    document.querySelectorAll('.cell.drop-target').forEach(el => el.classList.remove('drop-target'));
+    numDrag = null;
+  });
 
   /* ======================= Random generators ======================= */
   function generateHamiltonianPath() {
@@ -1047,7 +1151,6 @@
     previewPath = null; previewVisible = true;
     playPath = []; drawing = false;
 
-    // make sure select has an option for this size
     if (![...sizeSel.options].some(o => +o.value === N)) {
       const opt = document.createElement('option');
       opt.value = N;
@@ -1056,8 +1159,6 @@
     }
     sizeSel.value = String(N);
 
-    numInput.max = N * N;
-    numInput.value = '';
     cpCount.max = N * N;
     if (parseInt(cpCount.value, 10) > N * N) cpCount.value = N * N;
 
@@ -1138,28 +1239,6 @@
 
   sizeSel.addEventListener('change', () => resetBoard(+sizeSel.value));
 
-  document.getElementById('applyNum').addEventListener('click', () => {
-    if (playMode) { setStatus('Stop play mode to edit the puzzle.', 'warn'); return; }
-    if (selected < 0) { setStatus('Select a cell on the board first.', 'warn'); return; }
-    const v = parseInt(numInput.value, 10);
-    if (!v || v < 1 || v > N * N) { setStatus(`Enter a number between 1 and ${N * N}.`, 'warn'); return; }
-    for (let i = 0; i < numAt.length; i++) if (numAt[i] === v) numAt[i] = 0;
-    numAt[selected] = v;
-    buffer = '';
-    clearSolutions(); clearPreview();
-    render();
-  });
-
-  document.getElementById('clearNum').addEventListener('click', () => {
-    if (playMode) { setStatus('Stop play mode to edit the puzzle.', 'warn'); return; }
-    if (selected < 0) { setStatus('Select a cell on the board first.', 'warn'); return; }
-    numAt[selected] = 0;
-    buffer = '';
-    numInput.value = '';
-    clearSolutions(); clearPreview();
-    render();
-  });
-
   document.getElementById('clearWalls').addEventListener('click', () => {
     walls.clear();
     clearSolutions(); clearPreview();
@@ -1211,8 +1290,6 @@
     playPath = [];
     drawing = false;
     if (playMode) exitPlay();
-    numInput.max = N * N;
-    numInput.value = '';
     cpCount.max = N * N;
     if (parseInt(cpCount.value, 10) > N * N) cpCount.value = N * N;
     renderLegend();
@@ -1367,6 +1444,8 @@
     solutions = []; solVisible = [];
     previewPath = null; previewVisible = true;
     selected = -1; buffer = '';
+    endDragGhost();
+    numDrag = null;
 
     playBtn.classList.add('on');
     playBtn.textContent = '■ Stop playing';
@@ -1471,7 +1550,6 @@
 
   sizeSel.value = String(N);
   seedExample();
-  numInput.max = N * N;
   cpCount.max = N * N;
   cpCount.value = 4;
   setMode('number');
