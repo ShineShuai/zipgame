@@ -1,73 +1,340 @@
-<div id="app"></div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Zip</title>
 <style>
-#app{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:640px;margin:0 auto;color:#1a1a1a}
-.card{background:#fff;border:1px solid #e2e2e2;border-radius:12px;padding:20px;margin-bottom:14px}
-.btn{background:#1a1a1a;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:14px;cursor:pointer;font-weight:500}
-.btn:hover{background:#333}
-.btn.secondary{background:#fff;color:#1a1a1a;border:1px solid #ccc}
-.btn.secondary:hover{background:#f5f5f5}
-.btn:disabled{opacity:.4;cursor:default}
-.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-input[type=text]{border:1px solid #ccc;border-radius:8px;padding:8px 10px;font-size:14px}
-.grid-wrap{display:flex;justify-content:center;margin:16px 0}
-.hud{display:flex;justify-content:space-between;font-size:14px;color:#555;margin-bottom:10px}
-.hud b{color:#1a1a1a;font-variant-numeric:tabular-nums}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #eee}
-th{color:#777;font-weight:500}
-.tag{font-size:11px;padding:2px 7px;border-radius:20px;background:#eef;color:#334}
-.tag.done{background:#e3f5e6;color:#1a6e2c}
-.small{font-size:12px;color:#888}
+  html,body{margin:0;padding:0;background:#fff}
+  #app{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:640px;margin:0 auto;color:#1a1a1a;padding:16px}
+  .card{background:#fff;border:1px solid #e2e2e2;border-radius:12px;padding:20px;margin-bottom:14px}
+  .btn{background:#1a1a1a;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:14px;cursor:pointer;font-weight:500}
+  .btn:hover{background:#333}
+  .btn.secondary{background:#fff;color:#1a1a1a;border:1px solid #ccc}
+  .btn.secondary:hover{background:#f5f5f5}
+  .btn:disabled{opacity:.4;cursor:default}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  input[type=text]{border:1px solid #ccc;border-radius:8px;padding:8px 10px;font-size:14px}
+  select{border:1px solid #ccc;border-radius:8px;padding:8px 10px;font-size:14px}
+  .grid-wrap{display:flex;justify-content:center;margin:16px 0;user-select:none;-webkit-user-select:none}
+  .hud{display:flex;justify-content:space-between;font-size:14px;color:#555;margin-bottom:10px}
+  .hud b{color:#1a1a1a;font-variant-numeric:tabular-nums}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #eee}
+  th{color:#777;font-weight:500}
+  .tag{font-size:11px;padding:2px 7px;border-radius:20px;background:#eef;color:#334}
+  .tag.done{background:#e3f5e6;color:#1a6e2c}
+  .small{font-size:12px;color:#888}
+  svg{touch-action:none;cursor:pointer;background:#fafafa;border-radius:8px;display:block}
 </style>
+</head>
+<body>
+<div id="app"></div>
 <script>
 (function(){
 
-// ---------- Hamiltonian-path grid generator ----------
-function genPuzzle(size, seed){
-  let s = seed >>> 0;
-  function rnd(){ s = (s*1664525+1013904223)>>>0; return s/4294967296; }
-  const N = size;
+// ---------- Hamiltonian-path grid generator (randomized Warnsdorff + wall-based uniqueness) ----------
+const DIRS4 = [[0,1],[0,-1],[1,0],[-1,0]];
+
+function edgeKey(a,b){ return a<b ? a+'_'+b : b+'_'+a; }
+
+// ---------- Daily deterministic puzzle sequence ----------
+// Every UTC day has a fixed, ordered sequence of puzzles per grid size N:
+// the seed for "puzzle #k of the day" is derived purely from (UTC date, N, k),
+// so the same day always produces the same puzzles in the same order for
+// everyone, independent of client clock/timezone quirks (we use UTC fields).
+function utcDayNumber(){
+  const now = new Date();
+  return Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) / 86400000);
+}
+// Simple deterministic hash combining day/N/index into a 32-bit seed.
+function dailySeed(dayNum, N, index){
+  let h = 0x811c9dc5 >>> 0; // FNV-1a offset basis
+  [dayNum, N, index].forEach(v=>{
+    h ^= v >>> 0;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  });
+  return h >>> 0;
+}
+
+// Randomized Warnsdorff's rule: at each step, move to the unvisited neighbor
+// with the fewest onward options (ties broken randomly). O(N^2) per attempt,
+// no recursive backtracking, succeeds almost always in one pass.
+function warnsdorffPath(N, rnd){
   const cells = N*N;
   function idx(r,c){return r*N+c;}
-  const dirs = [[0,1],[0,-1],[1,0],[-1,0]];
-
-  // build a random Hamiltonian path via randomized DFS with backtracking
-  let path;
-  for(let attempt=0; attempt<50; attempt++){
-    const visited = new Array(cells).fill(false);
-    const order = [];
-    const startR = Math.floor(rnd()*N), startC = Math.floor(rnd()*N);
-    function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
-    function dfs(r,c){
-      visited[idx(r,c)]=true;
-      order.push(idx(r,c));
-      if(order.length===cells) return true;
-      const nd = shuffle(dirs.slice());
-      for(const [dr,dc] of nd){
-        const nr=r+dr, nc=c+dc;
-        if(nr>=0&&nr<N&&nc>=0&&nc<N&&!visited[idx(nr,nc)]){
-          if(dfs(nr,nc)) return true;
-        }
-      }
-      // backtrack
-      visited[idx(r,c)]=false;
-      order.pop();
-      return false;
+  function onwardDegree(r,c,visited){
+    let cnt=0;
+    for(const [dr,dc] of DIRS4){
+      const nr=r+dr, nc=c+dc;
+      if(nr>=0&&nr<N&&nc>=0&&nc<N&&!visited[idx(nr,nc)]) cnt++;
     }
-    if(dfs(startR,startC)){ path = order; break; }
+    return cnt;
   }
-  if(!path) return genPuzzle(size, seed+1); // retry with new seed on failure
+  const visited = new Array(cells).fill(false);
+  const order = [];
+  let r = Math.floor(rnd()*N), c = Math.floor(rnd()*N);
+  visited[idx(r,c)] = true;
+  order.push(idx(r,c));
+  for(let step=1; step<cells; step++){
+    const cands = [];
+    for(const [dr,dc] of DIRS4){
+      const nr=r+dr, nc=c+dc;
+      if(nr>=0&&nr<N&&nc>=0&&nc<N&&!visited[idx(nr,nc)]){
+        cands.push([nr,nc,onwardDegree(nr,nc,visited)]);
+      }
+    }
+    if(cands.length===0) return null; // dead end
+    cands.sort((a,b)=>a[2]-b[2]);
+    const minDeg = cands[0][2];
+    const best = cands.filter(x=>x[2]===minDeg);
+    const [nr,nc] = best[Math.floor(rnd()*best.length)];
+    r=nr; c=nc;
+    visited[idx(r,c)] = true;
+    order.push(idx(r,c));
+  }
+  return order;
+}
 
-  // place K checkpoint numbers along the path (start, end, evenly spaced interior)
-  const K = Math.min(Math.max(4, Math.floor(N)), 8);
+// Count Hamiltonian paths that (a) exist entirely within `open` edges (grid edges
+// minus walls) and (b) visit numbered checkpoints in increasing order, starting
+// at the cell numbered 1 and ending at the cell numbered max. Stops early once
+// `cap` solutions are found (we only ever need to know if count > 1).
+function countSolutions(N, numbers, open, cap, nodeCap){
+  const cells = N*N;
+  function idx(r,c){return r*N+c;}
+  // Reusable scratch buffer for neighbor lookups — avoids allocating a new
+  // array on every DFS node visited (this was the main GC pressure source,
+  // since dfs() can visit hundreds of thousands of nodes per call). Indexed
+  // by recursion depth since a naive single shared buffer would be clobbered
+  // by the recursive call before the parent finishes iterating it.
+  const nbrBuf = new Int32Array(cells*4);
+  function neighborsInto(i, depth){
+    const r = Math.floor(i/N), c = i%N;
+    const base = depth*4;
+    let n = 0;
+    for(const [dr,dc] of DIRS4){
+      const nr=r+dr, nc=c+dc;
+      if(nr>=0&&nr<N&&nc>=0&&nc<N){
+        const j = idx(nr,nc);
+        if(open.has(edgeKey(i,j))) nbrBuf[base+n++] = j;
+      }
+    }
+    return n; // number of valid neighbors written into nbrBuf[base..base+n)
+  }
+  const numCells = Object.keys(numbers).map(Number);
+  const startCell = numCells.find(i=>numbers[i]===1);
+  const maxNum = Math.max(...numCells.map(i=>numbers[i]));
+  const endCell = numCells.find(i=>numbers[i]===maxNum);
+
+  let found = 0;
+  const visited = new Array(cells).fill(false);
+  let nodes = 0;
+  const NODE_CAP = nodeCap || 200000; // bail out (treat as "too many/uncertain") on pathological cases
+  function dfs(cell, count, nextNeeded, depth){
+    nodes++;
+    if(nodes>NODE_CAP || found>=cap) return;
+    visited[cell] = true;
+    let needed = nextNeeded;
+    if(numbers[cell] !== undefined){
+      if(numbers[cell] !== needed){ visited[cell]=false; return; }
+      needed++;
+    }
+    if(count === cells){
+      if(cell === endCell && needed === maxNum+1) found++;
+      visited[cell] = false;
+      return;
+    }
+    const n = neighborsInto(cell, depth);
+    const base = depth*4;
+    for(let k=0;k<n;k++){
+      const nb = nbrBuf[base+k];
+      if(!visited[nb]){
+        dfs(nb, count+1, needed, depth+1);
+        if(found>=cap || nodes>NODE_CAP) break;
+      }
+    }
+    visited[cell] = false;
+  }
+  dfs(startCell, 1, 1, 0);
+  return { count: found, exceeded: nodes>NODE_CAP };
+}
+
+// Grid edges depend only on N, not on the random path — cache per N instead
+// of rebuilding this Set on every tryGeneratePuzzle call (was a steady
+// allocation source across repeated attempts/generations).
+const allEdgesCache = {};
+function allEdgesFor(N){
+  if(allEdgesCache[N]) return allEdgesCache[N];
+  function idx(r,c){return r*N+c;}
+  const allEdges = new Set();
+  for(let r=0;r<N;r++) for(let c=0;c<N;c++){
+    const i = idx(r,c);
+    if(c+1<N) allEdges.add(edgeKey(i, idx(r,c+1)));
+    if(r+1<N) allEdges.add(edgeKey(i, idx(r+1,c)));
+  }
+  allEdgesCache[N] = allEdges;
+  return allEdges;
+}
+
+// Try one (path, wall-order) combination for a FIXED K. Returns null if it
+// can't be made unique within nodeCap search cost; otherwise a valid puzzle.
+// wallBudget caps how many walls we're willing to add before giving up on
+// this attempt (bounds worst-case cost: wallBudget * nodeCap DFS nodes).
+function tryGeneratePuzzle(N, K, rnd, nodeCap, wallBudget){
+  const cells = N*N;
+  function idx(r,c){return r*N+c;}
+
+  const path = warnsdorffPath(N, rnd);
+  if(!path) return null;
+
   const checkpointIdx = [];
   for(let i=0;i<K;i++){
     checkpointIdx.push(Math.round(i*(cells-1)/(K-1)));
   }
-  const numbers = {}; // cellIndex -> number label
+  const numbers = {};
   checkpointIdx.forEach((pos,i)=>{ numbers[path[pos]] = i+1; });
 
-  return { N, path, numbers, seed };
+  const allEdges = allEdgesFor(N);
+  const pathEdges = new Set();
+  for(let i=1;i<path.length;i++) pathEdges.add(edgeKey(path[i-1], path[i]));
+  const wallable = [...allEdges].filter(e=>!pathEdges.has(e));
+  for(let i=wallable.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [wallable[i],wallable[j]]=[wallable[j],wallable[i]]; }
+
+  const maxWalls = Math.min(wallBudget==null ? wallable.length : wallBudget, wallable.length);
+  const walls = new Set();
+  let open = new Set(allEdges);
+  let { count, exceeded } = countSolutions(N, numbers, open, 2, nodeCap);
+  let wi = 0;
+  while((count > 1 || exceeded) && wi < wallable.length && walls.size < maxWalls){
+    const e = wallable[wi++];
+    walls.add(e);
+    open.delete(e);
+    const res = countSolutions(N, numbers, open, 2, nodeCap);
+    count = res.count; exceeded = res.exceeded;
+  }
+  if(count !== 1 || exceeded) return null;
+
+  return { N, path, numbers, walls: [...walls] };
+}
+
+// Async puzzle generation with progress reporting: runs attempts in small
+// batches (yielding to the event loop between batches so the UI can repaint
+// a progress indicator), and keeps searching for the full time budget even
+// after finding a valid puzzle, since walls only ever improve or tie.
+// onProgress(fraction) is called with 0..1 as the budget is consumed.
+async function genPuzzleAsync(size, seed, timeBudgetMs, onProgress, retryDepth){
+  retryDepth = retryDepth || 0;
+  const N = size;
+  const cells = N*N;
+  // Fixed per-N budgets as specified; other sizes fall back to a scaled default.
+  const DEFAULT_BUDGETS = { 5: 500, 7: 1000, 9: 1600, 11: 3000, 16: 4000 };
+  timeBudgetMs = timeBudgetMs || DEFAULT_BUDGETS[N] || Math.min(4000, Math.max(300, 12*cells));
+
+  let s = seed >>> 0;
+  function rnd(){ s = (s*1664525+1013904223)>>>0; return s/4294967296; }
+  const nodeCap = Math.max(30000, 200*cells); // per-attempt search budget; keeps individual attempts fast
+
+  // Pick K once, up front, uniformly from [N, cells/4] — then spend the whole
+  // time budget searching only within that K for the minimum-wall puzzle,
+  // rather than letting the search drift toward whichever K needs less work.
+  const Kmin = Math.max(4, N);
+  const Kmax = Math.max(Kmin+1, Math.round(cells/4));
+  const K = Kmin + Math.floor(rnd()*(Kmax-Kmin+1));
+
+  const startTime = Date.now();
+  const deadline = startTime + timeBudgetMs;
+  let best = null;
+
+  outer:
+  while(Date.now() < deadline){
+    // Run a small batch of attempts per event-loop turn, then yield so the
+    // progress UI can repaint. Batch size keeps overhead low without
+    // blocking the main thread for the whole budget in one go.
+    const batchDeadline = Math.min(deadline, Date.now() + 60);
+    while(Date.now() < batchDeadline && Date.now() < deadline){
+      const attempt = tryGeneratePuzzle(N, K, rnd, nodeCap, cells);
+      if(attempt && (!best || attempt.walls.length < best.walls.length)){
+        best = attempt;
+        if(best.walls.length === 0) break outer; // can't do better than zero walls
+      }
+    }
+    if(onProgress){
+      const frac = Math.min(1, (Date.now()-startTime)/timeBudgetMs);
+      onProgress(frac, best ? best.walls.length : null, K);
+    }
+    await new Promise(r=>setTimeout(r,0)); // yield to event loop / UI repaint
+  }
+
+  // Guarantee: if nothing valid was found within the time budget (unlucky
+  // seed/grid/K combo), fall back to a MORE GENEROUS but still BOUNDED search
+  // at the SAME K — bounded so a single fallback attempt can never hang the
+  // page, no matter how unlucky the seed/K combination is. Yields partway
+  // through so the tab stays responsive even in the worst case.
+  if(!best){
+    const fallbackNodeCap = Math.min(2000000, Math.max(300000, 20*nodeCap));
+    for(let fb=0; fb<4 && !best; fb++){
+      best = tryGeneratePuzzle(N, K, rnd, fallbackNodeCap, cells);
+      if(!best) await new Promise(r=>setTimeout(r,0)); // yield between fallback tries
+    }
+  }
+  if(!best){
+    // Still nothing after bounded fallback attempts: reseed with a fresh
+    // path/K rather than retrying this same (likely pathological) K forever.
+    // Capped depth guarantees this can never recurse indefinitely.
+    if(retryDepth >= 5){
+      // Last resort: K = Kmax (densest allowed), which empirically needs
+      // few/no walls and resolves almost instantly — guarantees termination.
+      const denseAttempt = tryGeneratePuzzle(N, Kmax, rnd, Math.max(300000,20*nodeCap), cells);
+      if(denseAttempt) return withWallSet({ ...denseAttempt, seed });
+    }
+    return genPuzzleAsync(size, seed+1, timeBudgetMs, onProgress, retryDepth+1);
+  }
+
+  if(onProgress) onProgress(1, best.walls.length, K);
+  return withWallSet({ ...best, seed });
+}
+
+// Synchronous wrapper kept for any caller that can't await (none currently,
+// but useful for quick console testing) — runs the whole budget in one go.
+function genPuzzle(size, seed, timeBudgetMs){
+  const N = size;
+  const cells = N*N;
+  const DEFAULT_BUDGETS = { 5: 500, 7: 1000, 9: 1600, 11: 3000, 16: 4000 };
+  timeBudgetMs = timeBudgetMs || DEFAULT_BUDGETS[N] || Math.min(4000, Math.max(300, 12*cells));
+
+  let s = seed >>> 0;
+  function rnd(){ s = (s*1664525+1013904223)>>>0; return s/4294967296; }
+  const nodeCap = Math.max(30000, 200*cells);
+
+  const Kmin = Math.max(4, N);
+  const Kmax = Math.max(Kmin+1, Math.round(cells/4));
+  const K = Kmin + Math.floor(rnd()*(Kmax-Kmin+1));
+
+  const deadline = Date.now() + timeBudgetMs;
+  let best = null;
+  while(Date.now() < deadline){
+    const attempt = tryGeneratePuzzle(N, K, rnd, nodeCap, cells);
+    if(attempt && (!best || attempt.walls.length < best.walls.length)) best = attempt;
+  }
+  if(!best){
+    const fallbackNodeCap = Math.min(2000000, Math.max(300000, 20*nodeCap));
+    for(let fb=0; fb<4 && !best; fb++){
+      best = tryGeneratePuzzle(N, K, rnd, fallbackNodeCap, cells);
+    }
+  }
+  if(!best) return genPuzzle(size, seed+1, timeBudgetMs);
+  return withWallSet({ ...best, seed });
+}
+
+// Attach a non-enumerable, non-serialized Set for O(1) wall lookups.
+// (walls array stays the source of truth for JSON storage/online sync)
+function withWallSet(puzzle){
+  Object.defineProperty(puzzle, 'wallSet', {
+    value: new Set(puzzle.walls||[]),
+    enumerable: false
+  });
+  return puzzle;
 }
 
 // ---------- Stats: Welford online mean/variance ----------
@@ -88,10 +355,108 @@ function statSummary(st){
   return {n:st.n, mean:st.mean, sd:Math.sqrt(variance)};
 }
 
+// ---------- Storage adapter ----------
+// Two backends implementing the same async interface:
+//   get(key, shared) -> {value: string} | null
+//   set(key, value, shared) -> void
+// Selection is by capability probe at boot, with localStorage as fallback.
+// Rationale: `window.storage` is a custom API injected only inside Claude
+// artifacts (and only after the artifact is published); `localStorage` is the
+// standard browser API but is blocked inside the Claude sandbox. Neither is
+// universal, and either can silently misbehave (Claude storage can hang if the
+// host channel is dead or the (key, shared) signature is wrong; localStorage
+// can throw SecurityError in a sandboxed iframe with cookies blocked). So we
+// probe both with a real write/read round-trip guarded by a timeout, and fall
+// back to an in-memory backend if neither works. This keeps the game running
+// (degraded: no persistence) instead of freezing at "0% — searching…".
+
+function makeClaudeStorage(){
+  return {
+    name: 'claude',
+    shared: true,               // supports cross-client shared keys
+    get: (key, shared) => window.storage.get(key, !!shared),
+    set: (key, val, shared) => window.storage.set(key, val, !!shared),
+  };
+}
+
+function makeLocalStorageBackend(){
+  return {
+    name: 'localStorage',
+    shared: false,              // no cross-client sharing
+    async get(key){
+      try{
+        const v = localStorage.getItem(key);
+        return v == null ? null : { value: v };
+      }catch(e){ return null; } // SecurityError / disabled storage
+    },
+    async set(key, val){
+      try{ localStorage.setItem(key, val); }catch(e){}
+    },
+  };
+}
+
+// A no-op backend so the game always runs even if neither exists.
+function makeMemoryBackend(){
+  const mem = new Map();
+  return {
+    name: 'memory',
+    shared: false,
+    async get(key){ return mem.has(key) ? { value: mem.get(key) } : null; },
+    async set(key, val){ mem.set(key, val); },
+  };
+}
+
+async function pickStorage(){
+  // 1. Prefer Claude's shared storage if it's really usable.
+  if (window.storage && typeof window.storage.get === 'function'
+                       && typeof window.storage.set === 'function'){
+    const ok = await probe(makeClaudeStorage());
+    if (ok) return makeClaudeStorage();
+  }
+  // 2. Fall back to localStorage if it works.
+  if (typeof localStorage !== 'undefined'){
+    const ok = await probe(makeLocalStorageBackend());
+    if (ok) return makeLocalStorageBackend();
+  }
+  // 3. Last resort: in-memory (no persistence, but never hangs).
+  return makeMemoryBackend();
+}
+
+// Probe = do a real write/read round-trip with a timeout.
+// A backend that "exists" but never settles is treated as unusable.
+async function probe(backend, timeoutMs){
+  timeoutMs = timeoutMs || 1500;
+  const key = '__probe__' + Math.random();
+  const timeout = new Promise(r => setTimeout(() => r('timeout'), timeoutMs));
+  try{
+    const result = await Promise.race([
+      (async () => {
+        await backend.set(key, 'ok', false);
+        const got = await backend.get(key, false);
+        return got && got.value === 'ok' ? 'ok' : 'bad';
+      })(),
+      timeout,
+    ]);
+    return result === 'ok';
+  }catch(e){
+    return false;
+  }
+}
+
+// The single object the rest of the app uses. Hydrated at boot.
+let storage = null;
+
+// Convenience wrappers so call sites stay readable and never touch
+// window.storage / localStorage directly.
+async function sGet(key, shared){ return storage ? storage.get(key, shared) : null; }
+async function sSet(key, val, shared){ return storage ? storage.set(key, val, shared) : undefined; }
+// True only if the active backend supports cross-client shared keys.
+function storageIsShared(){ return !!(storage && storage.shared); }
+
 // ---------- App state ----------
 let state = {
-  screen: 'menu', // menu | local | online-lobby | online-play
-  size: 6,
+  screen: 'menu', // menu | generating | local | online-lobby | online-play
+  size: 5,
   puzzle: null,
   path: [],       // player's drawn path (array of cell idx)
   startTime: null,
@@ -102,65 +467,187 @@ let state = {
   playerId: null,
   playerName: '',
   pollId: null,
+  roomData: null,
+  genProgress: { frac: 0, walls: null, K: null, nextScreen: 'local' },
 };
 
 function cellRC(i,N){ return [Math.floor(i/N), i%N]; }
-function adjacent(a,b,N){
+function startCellOf(puzzle){
+  return Object.keys(puzzle.numbers).map(Number).find(i=>puzzle.numbers[i]===1);
+}
+function gridAdjacent(a,b,N){
   const [r1,c1]=cellRC(a,N), [r2,c2]=cellRC(b,N);
   return Math.abs(r1-r2)+Math.abs(c1-c2)===1;
 }
+// Adjacent AND not separated by a wall for the current puzzle.
+function adjacent(a,b,N){
+  if(!gridAdjacent(a,b,N)) return false;
+  const walls = state.puzzle && state.puzzle.wallSet;
+  if(walls && walls.has(edgeKey(a,b))) return false;
+  return true;
+}
 
+// ---------- Rendering ----------
 function render(){
   const app = document.getElementById('app');
   if(state.screen==='menu') app.innerHTML = renderMenu();
+  else if(state.screen==='generating') app.innerHTML = renderGenerating();
   else if(state.screen==='local') app.innerHTML = renderGame(false);
   else if(state.screen==='online-lobby') app.innerHTML = renderLobby();
   else if(state.screen==='online-play') app.innerHTML = renderGame(true);
   attachHandlers();
 }
 
+function renderGenerating(){
+  const gp = state.genProgress;
+  const pct = Math.round(gp.frac*100);
+  const wallsStr = gp.walls==null ? 'searching…' : gp.walls+' wall'+(gp.walls===1?'':'s')+' so far';
+  return `
+  <div class="card">
+    <h3 style="margin:0 0 4px;font-size:18px;font-weight:500">Generating puzzle…</h3>
+    <p class="small" style="margin:0 0 16px">${state.size}x${state.size} grid — looking for the cleanest layout.</p>
+    <div style="background:#eee;border-radius:8px;height:10px;overflow:hidden;margin-bottom:10px">
+      <div style="background:#1a1a1a;height:100%;width:${pct}%;transition:width .1s linear"></div>
+    </div>
+    <p class="small" style="margin:0">${pct}% — ${wallsStr}</p>
+  </div>`;
+}
+
 function renderMenu(){
+  // Online mode requires shared storage; if the active backend is per-user
+  // (localStorage/memory) we hide the button rather than offer a broken feature.
+  const onlineBtn = storageIsShared()
+    ? `<button class="btn secondary" id="goOnline">Play online</button>`
+    : `<button class="btn secondary" disabled title="Requires shared storage">Play online</button>`;
   return `
   <div class="card">
     <h3 style="margin:0 0 4px;font-size:18px;font-weight:500">Zip</h3>
-    <p class="small" style="margin:0 0 16px">Connect the numbers in order through every cell. No revisits, no crossings.</p>
+    <p class="small" style="margin:0 0 16px">Connect the numbers in order through every cell. No revisits, no crossings. Drag with mouse or finger to draw.</p>
     <div class="row" style="margin-bottom:12px">
       <label class="small">Grid size</label>
       <select id="sizeSel">
-        <option value="5">5x5</option>
-        <option value="6" selected>6x6</option>
+        <option value="5" selected>5x5</option>
         <option value="7">7x7</option>
-        <option value="8">8x8</option>
+        <option value="9">9x9</option>
+        <option value="11">11x11</option>
+        <option value="16">16x16</option>
       </select>
     </div>
     <div class="row">
       <button class="btn" id="playLocal">Play local</button>
-      <button class="btn secondary" id="goOnline">Play online</button>
+      ${onlineBtn}
     </div>
+    <p class="small" style="margin:12px 0 0">Storage: ${storage? storage.name : 'initializing…'}${storageIsShared()? '' : ' (local only)'}</p>
   </div>
   ${renderLocalStats()}
   `;
 }
 
+// Menu: one row per grid size that has at least one solve recorded.
 function renderLocalStats(){
-  const st = loadLocalStats();
-  const sum = statSummary(st);
-  if(sum.n===0) return '';
+  const rows = GRID_SIZES.map(N=>{
+    const st = loadLocalStats(N);
+    const sum = statSummary(st);
+    if(sum.n===0) return null;
+    const best = st.recent.length ? Math.min(...st.recent) : 0;
+    return `<tr>
+      <td>${N}x${N}</td>
+      <td><b>${sum.n}</b></td>
+      <td><b>${sum.mean.toFixed(1)}s</b></td>
+      <td><b>${sum.sd.toFixed(1)}s</b></td>
+      <td><b>${best.toFixed(1)}s</b></td>
+    </tr>`;
+  }).filter(Boolean);
+  if(rows.length===0) return '';
   return `<div class="card">
     <div class="hud"><span>Your stats</span><span></span></div>
-    <table><tr><td>Solves</td><td><b>${sum.n}</b></td></tr>
-    <tr><td>Avg time</td><td><b>${sum.mean.toFixed(1)}s</b></td></tr>
-    <tr><td>Std dev</td><td><b>${sum.sd.toFixed(1)}s</b></td></tr>
-    <tr><td>Best (last 20)</td><td><b>${Math.min(...st.recent).toFixed(1)}s</b></td></tr>
+    <table>
+      <tr><th>Grid</th><th>Solves</th><th>Avg</th><th>Std dev</th><th>Best (last 20)</th></tr>
+      ${rows.join('')}
     </table></div>`;
 }
 
-function loadLocalStats(){
-  try{ const raw = localStorage.getItem('zip_local_stats'); if(raw) return JSON.parse(raw); }catch(e){}
-  return newStat();
+// In-game: compact single-size stats for whichever puzzle is being played.
+function renderCurrentSizeStats(N){
+  const sum = statSummary(loadLocalStats(N));
+  if(sum.n===0) return '';
+  const best = loadLocalStats(N).recent.length ? Math.min(...loadLocalStats(N).recent) : 0;
+  return `<div class="card">
+    <div class="hud"><span>Your stats — ${N}x${N}</span><span></span></div>
+    <table><tr><td>Solves</td><td><b>${sum.n}</b></td></tr>
+    <tr><td>Avg time</td><td><b>${sum.mean.toFixed(1)}s</b></td></tr>
+    <tr><td>Std dev</td><td><b>${sum.sd.toFixed(1)}s</b></td></tr>
+    <tr><td>Best (last 20)</td><td><b>${best.toFixed(1)}s</b></td></tr>
+    </table></div>`;
 }
-function saveLocalStats(st){
-  try{ localStorage.setItem('zip_local_stats', JSON.stringify(st)); }catch(e){}
+
+// Stats are kept separately per grid size N, since solve times aren't
+// comparable across sizes. Cached in-memory per N; hydrated from storage
+// at boot, written through on update.
+const GRID_SIZES = [5,7,9,11,16];
+let localStatsCache = {}; // N -> stat object
+function statKey(N){ return 'zip_local_stats_'+N; }
+function loadLocalStats(N){
+  return localStatsCache[N] || newStat();
+}
+// Sync hydration into the in-memory cache (the underlying storage call is
+// awaited because the adapter is async, but this function itself is async
+// only to keep a single code path for both backends).
+async function hydrateLocalStats(){
+  await Promise.all(GRID_SIZES.map(async N=>{
+    try{
+      const res = await sGet(statKey(N));
+      localStatsCache[N] = res ? JSON.parse(res.value) : newStat();
+    }catch(e){
+      localStatsCache[N] = newStat();
+    }
+  }));
+}
+async function saveLocalStats(N, st){
+  localStatsCache[N] = st;
+  try{ await sSet(statKey(N), JSON.stringify(st)); }catch(e){}
+}
+
+// Per-N "which puzzle of today's sequence are we all on" pointer. This is
+// SHARED storage (when the backend supports it): the puzzle at position k of
+// the day is dailySeed(today, N, k), a pure function of (day, N, k) — so any
+// two clients requesting position k always compute the identical puzzle. The
+// counter itself is shared so that "New puzzle" advances the sequence for
+// everyone, keeping every client's puzzle-count in lockstep, rather than
+// each client silently drifting onto a different position (the earlier bug:
+// the pointer was private per-client, so index N meant a different puzzle
+// per person after the first "New puzzle" click).
+//
+// On a per-user backend (localStorage/memory) the "shared" flag is ignored,
+// so the sequence advances only for this user. The puzzle at a given index
+// is still deterministic and identical across users who happen to be at the
+// same index; they just won't stay in lockstep.
+function dailyIndexKey(N){ return 'zip_daily_index_'+N; }
+async function readDailyIndex(N){
+  const today = utcDayNumber();
+  try{
+    const res = await sGet(dailyIndexKey(N), true);
+    const parsed = res ? JSON.parse(res.value) : null;
+    if(parsed && parsed.day===today) return parsed.index;
+  }catch(e){}
+  return 0; // no entry yet, or stale day: sequence starts fresh at position 0
+}
+// Returns the seed for today's puzzle at the CURRENT shared position (does
+// not advance it) — used when just opening/joining, not starting a new one.
+async function currentDailySeed(N){
+  const index = await readDailyIndex(N);
+  return dailySeed(utcDayNumber(), N, index);
+}
+// Advances the shared position by one and returns the seed for that new
+// position. On a shared backend every client calling this on the same day
+// converges on the same sequence of positions; on a per-user backend only
+// this client advances.
+async function advanceDailySeed(N){
+  const today = utcDayNumber();
+  const index = await readDailyIndex(N);
+  const nextIndex = index + 1;
+  try{ await sSet(dailyIndexKey(N), JSON.stringify({day: today, index: nextIndex}), true); }catch(e){}
+  return dailySeed(today, N, nextIndex);
 }
 
 function renderLobby(){
@@ -193,40 +680,55 @@ function renderGame(online){
     svg += `<line x1="0" y1="${i*cellSize}" x2="${svgSize}" y2="${i*cellSize}" stroke="#ddd"/>`;
     svg += `<line x1="${i*cellSize}" y1="0" x2="${i*cellSize}" y2="${svgSize}" stroke="#ddd"/>`;
   }
+  // walls: thick bars drawn on the shared border of the two cells they block
+  (state.puzzle.walls||[]).forEach(key=>{
+    const [a,b] = key.split('_').map(Number);
+    const [r1,c1] = cellRC(a,N), [r2,c2] = cellRC(b,N);
+    if(r1===r2){ // vertical wall between horizontally adjacent cells
+      const cc = Math.max(c1,c2);
+      const x = cc*cellSize, y0 = r1*cellSize, y1 = y0+cellSize;
+      svg += `<line x1="${x}" y1="${y0}" x2="${x}" y2="${y1}" stroke="#1a1a1a" stroke-width="4" stroke-linecap="round"/>`;
+    } else { // horizontal wall between vertically adjacent cells
+      const rr = Math.max(r1,r2);
+      const y = rr*cellSize, x0 = c1*cellSize, x1 = x0+cellSize;
+      svg += `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="#1a1a1a" stroke-width="4" stroke-linecap="round"/>`;
+    }
+  });
   // drawn path
+  // Path element (always present so redrawLive can find it)
+  let d = '';
   if(state.path.length>1){
-    let d = '';
     state.path.forEach((idx,i)=>{
       const [r,c] = cellRC(idx,N);
       const x = c*cellSize+cellSize/2, y = r*cellSize+cellSize/2;
       d += (i===0?'M':'L')+x+' '+y+' ';
     });
-    svg += `<path d="${d}" stroke="#1a1a1a" stroke-width="${cellSize*0.28}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>`;
   }
-  // cells: numbers
+  svg += `<path data-role="path" d="${d}" stroke="#1a1a1a" stroke-width="${cellSize*0.28}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>`;
+
+  // Numbers + hit rects
   for(let i=0;i<N*N;i++){
     const [r,c] = cellRC(i,N);
     const x = c*cellSize+cellSize/2, y = r*cellSize+cellSize/2;
     if(state.puzzle.numbers[i]){
       const filled = state.path.includes(i);
+      svg += `<g data-num-cell="${i}">`;
       svg += `<circle cx="${x}" cy="${y}" r="${cellSize*0.32}" fill="${filled?'#1a1a1a':'#fff'}" stroke="#1a1a1a" stroke-width="2"/>`;
       svg += `<text x="${x}" y="${y+5}" text-anchor="middle" font-size="${cellSize*0.32}" fill="${filled?'#fff':'#1a1a1a'}" font-weight="600">${state.puzzle.numbers[i]}</text>`;
+      svg += `</g>`;
     }
     svg += `<rect data-cell="${i}" x="${c*cellSize}" y="${r*cellSize}" width="${cellSize}" height="${cellSize}" fill="transparent"/>`;
   }
   svg += `</svg>`;
 
   const timeStr = state.elapsed.toFixed(1)+'s';
-  let extra = '';
-  if(online){
-    extra = renderLeaderboard();
-  }
+  let extra = (online ? renderLeaderboard() : '') + renderCurrentSizeStats(N);
 
   return `
   <div class="card">
     <div class="hud">
       <span>${online? 'Room '+state.room : 'Local'}</span>
-      <span>Time: <b>${timeStr}</b></span>
+      <span>Time: <b id="hudTime">${timeStr}</b></span>
     </div>
     <div class="grid-wrap" id="gridWrap">${svg}</div>
     <div class="row">
@@ -251,11 +753,12 @@ function renderLeaderboard(){
     if(bt) return 1;
     return 0;
   });
+  const total = state.puzzle.N*state.puzzle.N;
   const rows = players.map(([id,p])=>{
     const done = !!p.finishedAt;
     return `<tr>
       <td>${p.name}${id===state.playerId?' (you)':''}</td>
-      <td>${done? '<span class="tag done">done '+p.time.toFixed(1)+'s</span>' : '<span class="tag">'+(p.progress||0)+'/'+(state.puzzle.N*state.puzzle.N)+'</span>'}</td>
+      <td>${done? '<span class="tag done">done '+p.time.toFixed(1)+'s</span>' : '<span class="tag">'+(p.progress||0)+'/'+total+'</span>'}</td>
       <td class="small">avg ${p.statMean? p.statMean.toFixed(1)+'s':'-'}</td>
     </tr>`;
   }).join('');
@@ -270,9 +773,15 @@ function attachHandlers(){
   const el = id => document.getElementById(id);
   if(el('playLocal')) el('playLocal').onclick = ()=>{
     state.size = parseInt(el('sizeSel').value);
-    startLocal();
+    startLocal(false); // open today's current puzzle in the shared sequence
   };
-  if(el('goOnline')) el('goOnline').onclick = ()=>{ state.screen='online-lobby'; render(); };
+  if(el('goOnline')) el('goOnline').onclick = ()=>{
+    if(!storageIsShared()){
+      alert('Online mode requires shared storage (available inside Claude artifacts).');
+      return;
+    }
+    state.screen='online-lobby'; render();
+  };
   if(el('backMenu')) el('backMenu').onclick = ()=>{ state.screen='menu'; render(); };
   if(el('backMenu2')) el('backMenu2').onclick = ()=>{
     stopTimer(); stopPolling(); state.screen='menu'; render();
@@ -282,88 +791,259 @@ function attachHandlers(){
   if(el('resetPath')) el('resetPath').onclick = ()=>{ state.path=[]; state.finished=false; render(); };
   if(el('newPuzzle')) el('newPuzzle').onclick = ()=>{
     if(state.screen==='online-play'){ return; } // puzzle is shared in online mode
-    startLocal();
+    startLocal(true); // advance everyone to the next puzzle in today's sequence
   };
+
   const wrap = el('gridWrap');
-  if(wrap){
-    const svg = wrap.querySelector('svg');
-    let dragging = false;
-    function pick(e){
-      const target = e.target.closest('[data-cell]');
-      if(!target) return null;
-      return parseInt(target.getAttribute('data-cell'));
-    }
-    function tryAdd(cellIdx){
-      if(cellIdx==null || state.finished) return;
-      const N = state.puzzle.N;
-      if(state.path.length===0){
-        state.path.push(cellIdx);
-      } else {
-        const last = state.path[state.path.length-1];
-        if(cellIdx===last) return;
-        // backtrack if clicking the second-to-last cell
-        if(state.path.length>1 && cellIdx===state.path[state.path.length-2]){
-          state.path.pop();
-          render(); return;
-        }
-        if(state.path.includes(cellIdx)) return;
-        if(!adjacent(last, cellIdx, N)) return;
-        state.path.push(cellIdx);
-      }
-      checkSolved();
-      render();
-    }
-    svg.addEventListener('pointerdown', e=>{ dragging=true; tryAdd(pick(e)); });
-    svg.addEventListener('pointermove', e=>{ if(dragging) tryAdd(pick(e)); });
-    window.addEventListener('pointerup', ()=>{ dragging=false; }, {once:false});
-  }
+  if(wrap) setupGridInput(wrap);
 }
 
+// ---------- Drag input (the fixed version) ----------
+function setupGridInput(wrap){
+  const svg = wrap.querySelector('svg');
+  if(!svg) return;
+
+  const N = state.puzzle.N;
+  const cellSize = Math.min(60, Math.floor(480/N));
+
+  let dragging = false;
+  let lastPoint = null;
+
+  function cellFromPoint(clientX, clientY){
+    const rect = svg.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    if(x < 0 || y < 0 || x >= rect.width || y >= rect.height) return null;
+    const c = Math.floor(x / cellSize);
+    const r = Math.floor(y / cellSize);
+    if(r < 0 || r >= N || c < 0 || c >= N) return null;
+    return r*N + c;
+  }
+
+  function walkTo(newCell){
+    if(newCell == null) return;
+    if(state.finished) return;
+
+    const len = state.path.length;
+
+    // Backtrack one step
+    if(len > 1 && newCell === state.path[len-2]){
+      state.path.pop();
+      redrawLive();
+      return;
+    }
+
+    if(state.path.includes(newCell)) return;
+
+    if(len === 0){
+      const startCell = startCellOf(state.puzzle);
+      if(newCell !== startCell) return; // must begin at checkpoint 1
+      state.path.push(newCell);
+      redrawLive();
+      return;
+    }
+
+    const last = state.path[len-1];
+    if(newCell === last) return;
+    if(!adjacent(last, newCell, N)){
+      // Not reachable from current path end: treat as "start over" from this
+      // cell instead of silently ignoring the tap (avoids feeling stuck).
+      if(newCell === startCellOf(state.puzzle)){
+        state.path = [newCell];
+        redrawLive();
+      }
+      return;
+    }
+
+    state.path.push(newCell);
+    redrawLive();
+    checkSolvedDuringDrag();
+    updateOnlineProgress();
+  }
+
+  function redrawLive(){
+    const pathEl = svg.querySelector('path[data-role="path"]');
+    if(pathEl){
+      let d = '';
+      state.path.forEach((idx, i)=>{
+        const [r,c] = cellRC(idx, N);
+        const x = c*cellSize + cellSize/2;
+        const y = r*cellSize + cellSize/2;
+        d += (i===0?'M':'L') + x + ' ' + y + ' ';
+      });
+      pathEl.setAttribute('d', d);
+    }
+    svg.querySelectorAll('[data-num-cell]').forEach(node=>{
+      const idx = parseInt(node.getAttribute('data-num-cell'));
+      const filled = state.path.includes(idx);
+      const circle = node.querySelector('circle');
+      const text = node.querySelector('text');
+      if(circle) circle.setAttribute('fill', filled ? '#1a1a1a' : '#fff');
+      if(text) text.setAttribute('fill', filled ? '#fff' : '#1a1a1a');
+    });
+  }
+
+  function checkSolvedDuringDrag(){
+    const total = N*N;
+    if(state.path.length !== total) return;
+    const nums = state.puzzle.numbers;
+    const numCells = Object.keys(nums).map(Number);
+    const startCell = startCellOf(state.puzzle);
+    const maxNum = Math.max(...numCells.map(i=>nums[i]));
+    const endCell = numCells.find(i=>nums[i]===maxNum);
+
+    // The path must begin at checkpoint 1 and finish on the highest
+    // checkpoint — this matches the rule the generator's uniqueness search
+    // (countSolutions) enforces, otherwise a path that hits the last number
+    // early and then wanders through the remaining empty cells would be
+    // accepted even though it isn't the intended solution.
+    if(state.path[0] !== startCell) return;
+    if(state.path[state.path.length-1] !== endCell) return;
+
+    const seen = [];
+    state.path.forEach(i=>{ if(nums[i]) seen.push(nums[i]); });
+    let ok = seen.length === Object.keys(nums).length;
+    for(let i=1; i<seen.length && ok; i++){
+      if(seen[i] < seen[i-1]) ok = false;
+    }
+    if(ok){
+      state.finished = true;
+      stopTimer();
+      const st = loadLocalStats(N);
+      updateStat(st, state.elapsed);
+      saveLocalStats(N, st);
+      if(state.screen === 'online-play') finishOnline();
+    }
+  }
+
+  function handleMove(clientX, clientY){
+    if(lastPoint){
+      const dx = clientX - lastPoint.x;
+      const dy = clientY - lastPoint.y;
+      const dist = Math.hypot(dx, dy);
+      const step = Math.max(2, cellSize / 2);
+      const steps = Math.max(1, Math.ceil(dist / step));
+      for(let i=1; i<=steps; i++){
+        const px = lastPoint.x + dx * (i/steps);
+        const py = lastPoint.y + dy * (i/steps);
+        const cell = cellFromPoint(px, py);
+        if(cell != null) walkTo(cell);
+      }
+    } else {
+      const cell = cellFromPoint(clientX, clientY);
+      if(cell != null) walkTo(cell);
+    }
+    lastPoint = {x: clientX, y: clientY};
+  }
+
+  function onDown(e){
+    e.preventDefault();
+    dragging = true;
+    lastPoint = null;
+    try { svg.setPointerCapture(e.pointerId); } catch(_) {}
+    handleMove(e.clientX, e.clientY);
+  }
+
+  function onMove(e){
+    if(!dragging) return;
+    e.preventDefault();
+    handleMove(e.clientX, e.clientY);
+  }
+
+  function onUp(e){
+    if(!dragging) return;
+    dragging = false;
+    lastPoint = null;
+    try { svg.releasePointerCapture(e.pointerId); } catch(_) {}
+    // Full render now that drag is over
+    render();
+  }
+
+  svg.addEventListener('pointerdown', onDown);
+  svg.addEventListener('pointermove', onMove);
+  svg.addEventListener('pointerup', onUp);
+  svg.addEventListener('pointercancel', onUp);
+}
+
+// ---------- Solve check (used outside drag) ----------
 function checkSolved(){
   const N = state.puzzle.N;
   const total = N*N;
   if(state.path.length!==total) { updateOnlineProgress(); return; }
-  // verify numbers are in increasing order along path
   const nums = state.puzzle.numbers;
-  let seen = [];
+  const numCells = Object.keys(nums).map(Number);
+  const startCell = startCellOf(state.puzzle);
+  const maxNum = Math.max(...numCells.map(i=>nums[i]));
+  const endCell = numCells.find(i=>nums[i]===maxNum);
+
+  // Same start/end rule as checkSolvedDuringDrag (and the generator's
+  // uniqueness search): begin at checkpoint 1, finish on the highest one.
+  if(state.path[0]!==startCell || state.path[state.path.length-1]!==endCell){
+    updateOnlineProgress();
+    return;
+  }
+
+  const seen = [];
   state.path.forEach(idx=>{ if(nums[idx]) seen.push(nums[idx]); });
-  const expected = Object.keys(nums).length;
-  let ok = seen.length===expected;
+  let ok = seen.length===Object.keys(nums).length;
   for(let i=1;i<seen.length && ok;i++){ if(seen[i]<seen[i-1]) ok=false; }
   if(ok){
     state.finished = true;
     stopTimer();
-    const st = loadLocalStats();
+    const st = loadLocalStats(N);
     updateStat(st, state.elapsed);
-    saveLocalStats(st);
+    saveLocalStats(N, st);
     if(state.screen==='online-play') finishOnline();
   } else {
     updateOnlineProgress();
   }
 }
 
-function startLocal(){
-  state.puzzle = genPuzzle(state.size, Date.now()&0xffffffff);
-  state.path = [];
-  state.finished = false;
-  state.elapsed = 0;
-  state.screen = 'local';
-  startTimer();
+// ---------- Local game ----------
+// advance=false: open today's puzzle at the current shared sequence position.
+// advance=true ("New puzzle"): move the shared position forward one and play that.
+async function startLocal(advance){
+  state.screen = 'generating';
+  state.genProgress = { frac: 0, walls: null, K: null, nextScreen: 'local' };
   render();
+  try{
+    const seed = advance ? await advanceDailySeed(state.size) : await currentDailySeed(state.size);
+    const puzzle = await genPuzzleAsync(state.size, seed, null, (frac, walls, K)=>{
+      state.genProgress = { frac, walls, K, nextScreen: 'local' };
+      if(state.screen==='generating') render();
+    });
+    state.puzzle = puzzle;
+    state.path = [];
+    state.finished = false;
+    state.elapsed = 0;
+    state.screen = 'local';
+    startTimer();
+    render();
+  }catch(e){
+    // Never leave the user stranded on the generating screen: surface the
+    // error and return to the menu so they can try again.
+    console.error('startLocal failed:', e);
+    state.screen = 'menu';
+    render();
+    alert('Could not generate a puzzle. Please try again.');
+  }
 }
 
 function startTimer(){
   stopTimer();
-  state.startTime = performance.now();
+  state.startTime = performance.now() - state.elapsed*1000;
   state.timerId = setInterval(()=>{
     state.elapsed = (performance.now()-state.startTime)/1000;
-    const hudTime = document.querySelector('.hud b');
-    if(hudTime) hudTime.textContent = state.elapsed.toFixed(1)+'s';
+    const el = document.getElementById('hudTime');
+    if(el) el.textContent = state.elapsed.toFixed(1)+'s';
   }, 100);
 }
 function stopTimer(){ if(state.timerId){ clearInterval(state.timerId); state.timerId=null; } }
 
 // ---------- Online (shared artifact storage) ----------
+// NOTE: online mode only works when the active storage backend supports
+// shared keys (i.e. the Claude backend). On localStorage/memory the UI hides
+// the online entry points, and these functions guard defensively.
 function roomCode(){
   const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let c=''; for(let i=0;i<5;i++) c+=chars[Math.floor(Math.random()*chars.length)];
@@ -371,20 +1051,32 @@ function roomCode(){
 }
 
 async function createRoom(){
+  if(!storageIsShared()){ alert('Online mode requires shared storage.'); return; }
   const nameInput = document.getElementById('nameInput');
   state.playerName = (nameInput.value||'Player').trim().slice(0,20);
   const code = roomCode();
-  const puzzle = genPuzzle(state.size, Date.now()&0xffffffff);
-  const roomData = { code, puzzle, players:{}, createdAt: Date.now() };
+  state.screen = 'generating';
+  state.genProgress = { frac: 0, walls: null, K: null, nextScreen: 'online-lobby' };
+  render();
   try{
-    await window.storage.set('room:'+code, JSON.stringify(roomData), true);
+    const seed = await currentDailySeed(state.size);
+    const puzzle = await genPuzzleAsync(state.size, seed, null, (frac, walls, K)=>{
+      state.genProgress = { frac, walls, K, nextScreen: 'online-lobby' };
+      if(state.screen==='generating') render();
+    });
+    const roomData = { code, puzzle, players:{}, createdAt: Date.now() };
+    await sSet('room:'+code, JSON.stringify(roomData), true);
     await joinRoomByCode(code);
   }catch(e){
+    console.error('createRoom failed:', e);
+    state.screen = 'online-lobby';
+    render();
     alert('Could not create room. Try again.');
   }
 }
 
 async function joinRoom(){
+  if(!storageIsShared()){ alert('Online mode requires shared storage.'); return; }
   const nameInput = document.getElementById('nameInput');
   const roomInput = document.getElementById('roomInput');
   state.playerName = (nameInput.value||'Player').trim().slice(0,20);
@@ -395,16 +1087,16 @@ async function joinRoom(){
 
 async function joinRoomByCode(code){
   try{
-    const res = await window.storage.get('room:'+code, true);
+    const res = await sGet('room:'+code, true);
     if(!res){ alert('Room not found'); return; }
     const roomData = JSON.parse(res.value);
     state.room = code;
-    state.puzzle = roomData.puzzle;
+    state.puzzle = withWallSet(roomData.puzzle);
     state.playerId = 'p_'+Math.random().toString(36).slice(2,9);
-    const st = loadLocalStats();
+    const st = loadLocalStats(roomData.puzzle.N);
     const sum = statSummary(st);
     roomData.players[state.playerId] = { name: state.playerName, progress:0, finishedAt:null, time:0, statMean: sum.n?sum.mean:null };
-    await window.storage.set('room:'+code, JSON.stringify(roomData), true);
+    await sSet('room:'+code, JSON.stringify(roomData), true);
     state.roomData = roomData;
     state.path = [];
     state.finished = false;
@@ -414,6 +1106,7 @@ async function joinRoomByCode(code){
     startPolling();
     render();
   }catch(e){
+    console.error('joinRoomByCode failed:', e);
     alert('Could not join room.');
   }
 }
@@ -421,23 +1114,25 @@ async function joinRoomByCode(code){
 let progressThrottle = 0;
 async function updateOnlineProgress(){
   if(state.screen!=='online-play') return;
+  if(!storageIsShared()) return;
   const now = Date.now();
   if(now-progressThrottle<800) return;
   progressThrottle = now;
   try{
-    const res = await window.storage.get('room:'+state.room, true);
+    const res = await sGet('room:'+state.room, true);
     if(!res) return;
     const roomData = JSON.parse(res.value);
     if(roomData.players[state.playerId]){
       roomData.players[state.playerId].progress = state.path.length;
-      await window.storage.set('room:'+state.room, JSON.stringify(roomData), true);
+      await sSet('room:'+state.room, JSON.stringify(roomData), true);
     }
   }catch(e){}
 }
 
 async function finishOnline(){
+  if(!storageIsShared()) return;
   try{
-    const res = await window.storage.get('room:'+state.room, true);
+    const res = await sGet('room:'+state.room, true);
     if(!res) return;
     const roomData = JSON.parse(res.value);
     const p = roomData.players[state.playerId];
@@ -446,27 +1141,74 @@ async function finishOnline(){
       p.time = state.elapsed;
       p.progress = state.path.length;
     }
-    await window.storage.set('room:'+state.room, JSON.stringify(roomData), true);
+    await sSet('room:'+state.room, JSON.stringify(roomData), true);
     state.roomData = roomData;
   }catch(e){}
 }
 
 function startPolling(){
   stopPolling();
+  if(!storageIsShared()) return;
   state.pollId = setInterval(async ()=>{
     if(state.screen!=='online-play') return;
     try{
-      const res = await window.storage.get('room:'+state.room, true);
+      const res = await sGet('room:'+state.room, true);
       if(res){
         state.roomData = JSON.parse(res.value);
-        const lb = document.querySelector('#app .card:last-child');
-        render();
+        // Only full-render if not currently dragging
+        const wrap = document.getElementById('gridWrap');
+        if(wrap && wrap.querySelector('svg')){
+          // refresh just the leaderboard + hud to avoid killing a drag
+          const cards = document.querySelectorAll('#app .card');
+          const last = cards[cards.length-1];
+          if(last && last.querySelector('table')){
+            const players = Object.entries(state.roomData.players||{});
+            players.sort((a,b)=>{
+              const at=a[1].finishedAt, bt=b[1].finishedAt;
+              if(at&&bt) return at-bt;
+              if(at) return -1;
+              if(bt) return 1;
+              return 0;
+            });
+            const total = state.puzzle.N*state.puzzle.N;
+            last.querySelector('table').innerHTML = players.map(([id,p])=>{
+              const done = !!p.finishedAt;
+              return `<tr>
+                <td>${p.name}${id===state.playerId?' (you)':''}</td>
+                <td>${done? '<span class="tag done">done '+p.time.toFixed(1)+'s</span>' : '<span class="tag">'+(p.progress||0)+'/'+total+'</span>'}</td>
+                <td class="small">avg ${p.statMean? p.statMean.toFixed(1)+'s':'-'}</td>
+              </tr>`;
+            }).join('');
+          }
+        }
       }
     }catch(e){}
   }, 1500);
 }
 function stopPolling(){ if(state.pollId){ clearInterval(state.pollId); state.pollId=null; } }
 
-render();
+// ---------- Boot ----------
+// Pick a storage backend first (this can involve a probe with a timeout, so
+// it must complete before we try to hydrate stats or render). The whole boot
+// is wrapped so that a catastrophic failure still renders the menu instead of
+// leaving a blank page.
+(async function boot(){
+  try{
+    storage = await pickStorage();
+    console.log('storage backend:', storage.name, storageIsShared() ? '(shared)' : '(local only)');
+  }catch(e){
+    console.warn('storage selection failed, using memory backend:', e);
+    storage = makeMemoryBackend();
+  }
+  try{
+    await hydrateLocalStats();
+  }catch(e){
+    console.warn('stats hydration failed:', e);
+  }
+  render();
+})();
+
 })();
 </script>
+</body>
+</html>
