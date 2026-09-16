@@ -443,6 +443,65 @@ function withWallSet(puzzle){
   return puzzle;
 }
 
+// ---------- Game of Day: load a puzzle from plain-text data ----------
+// Format:
+//   size N
+//   checkpoints r,c=n ...   (0-based)
+//   walls T,r,c ...         (T=H spans (r,c)-(r+1,c); T=V spans (r,c)-(r,c+1))
+function parseGameOfDay(text){
+  const lines = text.split('\n').map(l=>l.trim()).filter(l=>l && !l.startsWith('#'));
+  let N=null, numbers={}, walls=[];
+  for(const line of lines){
+    const [key, ...rest] = line.split(/\s+/);
+    const body = rest.join(' ');
+    if(key==='size'){
+      N = parseInt(body, 10);
+    } else if(key==='checkpoints'){
+      body.split(/\s+/).filter(Boolean).forEach(tok=>{
+        const m = tok.match(/^(\d+),(\d+)=(\d+)$/);
+        if(!m) throw new Error('bad checkpoint token: '+tok);
+        numbers[parseInt(m[1],10)*N + parseInt(m[2],10)] = parseInt(m[3],10);
+      });
+    } else if(key==='walls'){
+      body.split(/\s+/).filter(Boolean).forEach(tok=>{
+        const m = tok.match(/^([HV]),(\d+),(\d+)$/);
+        if(!m) throw new Error('bad wall token: '+tok);
+        const T=m[1], r=parseInt(m[2],10), c=parseInt(m[3],10);
+        const a = r*N+c;
+        const b = T==='V' ? (r*N+c+1) : ((r+1)*N+c);
+        walls.push(edgeKey(a,b));
+      });
+    }
+  }
+  if(!N) throw new Error('missing size');
+  if(!Object.keys(numbers).length) throw new Error('missing checkpoints');
+  return withWallSet({ N, numbers, walls, seed:null, gotd:true });
+}
+
+function utcDateString(){
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth()+1).padStart(2,'0');
+  const d = String(now.getUTCDate()).padStart(2,'0');
+  return ''+y+m+d;
+}
+
+// Returns a parsed puzzle, or null if today's file doesn't exist / is invalid.
+async function fetchGameOfDay(){
+  const dateStr = utcDateString();
+  try{
+    const res = await fetch('GameOfDay/'+dateStr+'.txt', {cache:'no-store'});
+    if(!res.ok) return null;
+    const text = await res.text();
+    const puzzle = parseGameOfDay(text);
+    puzzle.gotdDate = dateStr;
+    return puzzle;
+  }catch(e){
+    console.warn('fetchGameOfDay failed:', e);
+    return null;
+  }
+}
+
 // ---------- Stats: Welford online mean/variance ----------
 function newStat(){ return {n:0, mean:0, M2:0, recent:[]}; }
 function updateStat(st, x){
@@ -575,6 +634,9 @@ let state = {
   pollId: null,
   roomData: null,
   genProgress: { frac: 0, walls: null, K: null, nextScreen: 'local' },
+  isGotd: false,
+  gotdPuzzleDate: null,
+  gotdHint: null,
 };
 
 function cellRC(i,N){ return [Math.floor(i/N), i%N]; }
@@ -641,8 +703,10 @@ function renderMenu(){
     </div>
     <div class="row">
       <button class="btn" id="playLocal">Play local</button>
+      <button class="btn secondary" id="playGotd">Game of Day</button>
       ${onlineBtn}
     </div>
+    ${state.gotdHint? `<p class="small" style="margin:10px 0 0;color:#a33">${state.gotdHint}</p>` : ''}
     <p class="small" style="margin:12px 0 0">Storage: ${storage? storage.name : 'initializing…'}${storageIsShared()? '' : ' (local only)'}</p>
   </div>
   ${renderLocalStats()}
@@ -650,25 +714,32 @@ function renderMenu(){
 }
 
 // Menu: one row per grid size that has at least one solve recorded.
+function gotdCellText(N){
+  const g = gotdBestCache[N];
+  return g ? g.time.toFixed(1)+'s' : '-';
+}
+
 function renderLocalStats(){
   const rows = GRID_SIZES.map(N=>{
     const st = loadLocalStats(N);
     const sum = statSummary(st);
-    if(sum.n===0) return null;
+    const g = gotdBestCache[N];
+    if(sum.n===0 && !g) return null;
     const best = st.recent.length ? Math.min(...st.recent) : 0;
     return `<tr>
       <td>${N}x${N}</td>
-      <td><b>${sum.n}</b></td>
-      <td><b>${sum.mean.toFixed(1)}s</b></td>
-      <td><b>${sum.sd.toFixed(1)}s</b></td>
-      <td><b>${best.toFixed(1)}s</b></td>
+      <td><b>${sum.n||0}</b></td>
+      <td><b>${sum.n? sum.mean.toFixed(1)+'s':'-'}</b></td>
+      <td><b>${sum.n? sum.sd.toFixed(1)+'s':'-'}</b></td>
+      <td><b>${sum.n? best.toFixed(1)+'s':'-'}</b></td>
+      <td><b>${gotdCellText(N)}</b></td>
     </tr>`;
   }).filter(Boolean);
   if(rows.length===0) return '';
   return `<div class="card">
     <div class="hud"><span>Your stats</span><span></span></div>
     <table>
-      <tr><th>Grid</th><th>Solves</th><th>Avg</th><th>Std dev</th><th>Best (last 20)</th></tr>
+      <tr><th>Grid</th><th>Solves</th><th>Avg</th><th>Std dev</th><th>Best (last 20)</th><th>Game of Day</th></tr>
       ${rows.join('')}
     </table></div>`;
 }
@@ -676,14 +747,16 @@ function renderLocalStats(){
 // In-game: compact single-size stats for whichever puzzle is being played.
 function renderCurrentSizeStats(N){
   const sum = statSummary(loadLocalStats(N));
-  if(sum.n===0) return '';
+  const g = gotdBestCache[N];
+  if(sum.n===0 && !g) return '';
   const best = loadLocalStats(N).recent.length ? Math.min(...loadLocalStats(N).recent) : 0;
   return `<div class="card">
     <div class="hud"><span>Your stats — ${N}x${N}</span><span></span></div>
-    <table><tr><td>Solves</td><td><b>${sum.n}</b></td></tr>
+    <table>${sum.n?`<tr><td>Solves</td><td><b>${sum.n}</b></td></tr>
     <tr><td>Avg time</td><td><b>${sum.mean.toFixed(1)}s</b></td></tr>
     <tr><td>Std dev</td><td><b>${sum.sd.toFixed(1)}s</b></td></tr>
-    <tr><td>Best (last 20)</td><td><b>${best.toFixed(1)}s</b></td></tr>
+    <tr><td>Best (last 20)</td><td><b>${best.toFixed(1)}s</b></td></tr>`:''}
+    <tr><td>Game of Day</td><td><b>${gotdCellText(N)}</b></td></tr>
     </table></div>`;
 }
 
@@ -708,10 +781,32 @@ async function hydrateLocalStats(){
       localStatsCache[N] = newStat();
     }
   }));
+  await Promise.all(GRID_SIZES.map(N=>loadGotdBest(N)));
 }
 async function saveLocalStats(N, st){
   localStatsCache[N] = st;
   try{ await sSet(statKey(N), JSON.stringify(st)); }catch(e){}
+}
+
+// Game-of-Day best time per grid size N: {date, time} — one slot per N,
+// overwritten whenever a GOTD solve on that N beats (or has no) prior best.
+// Not mixed into the regular per-N Welford stats (different puzzle source).
+function gotdKey(N){ return 'zip_gotd_best_'+N; }
+let gotdBestCache = {}; // N -> {date, time} | null
+async function loadGotdBest(N){
+  if(gotdBestCache[N] !== undefined) return gotdBestCache[N];
+  try{
+    const res = await sGet(gotdKey(N));
+    gotdBestCache[N] = res ? JSON.parse(res.value) : null;
+  }catch(e){ gotdBestCache[N] = null; }
+  return gotdBestCache[N];
+}
+async function recordGotdResult(N, dateStr, time){
+  const prev = await loadGotdBest(N);
+  if(prev && prev.date===dateStr && prev.time<=time) return; // keep existing best for today
+  const next = { date: dateStr, time };
+  gotdBestCache[N] = next;
+  try{ await sSet(gotdKey(N), JSON.stringify(next)); }catch(e){}
 }
 
 // Per-N "which puzzle of today's sequence are we all on" pointer. This is
@@ -833,13 +928,13 @@ function renderGame(online){
   return `
   <div class="card">
     <div class="hud">
-      <span>${online? 'Room '+state.room : 'Local'}</span>
+      <span>${online? 'Room '+state.room : (state.isGotd? 'Game of Day '+state.gotdPuzzleDate : 'Local')}</span>
       <span>Time: <b id="hudTime">${timeStr}</b></span>
     </div>
     <div class="grid-wrap" id="gridWrap">${svg}</div>
     <div class="row">
       <button class="btn secondary" id="resetPath">Reset path</button>
-      <button class="btn secondary" id="newPuzzle">New puzzle</button>
+      ${state.isGotd? '' : '<button class="btn secondary" id="newPuzzle">New puzzle</button>'}
       <button class="btn secondary" id="backMenu2">Menu</button>
     </div>
     ${state.finished? `<p style="color:#1a6e2c;font-weight:500;margin-top:10px">Solved in ${timeStr}</p>` : ''}
@@ -881,6 +976,7 @@ function attachHandlers(){
     state.size = parseInt(el('sizeSel').value);
     startLocal(false); // open today's current puzzle in the shared sequence
   };
+  if(el('playGotd')) el('playGotd').onclick = startGameOfDay;
   if(el('goOnline')) el('goOnline').onclick = ()=>{
     if(!storageIsShared()){
       alert('Online mode requires shared storage (available inside Claude artifacts).');
@@ -897,6 +993,7 @@ function attachHandlers(){
   if(el('resetPath')) el('resetPath').onclick = ()=>{ state.path=[]; state.finished=false; render(); };
   if(el('newPuzzle')) el('newPuzzle').onclick = ()=>{
     if(state.screen==='online-play'){ return; } // puzzle is shared in online mode
+    if(state.isGotd){ return; } // one Game-of-Day puzzle per day, nothing to advance to
     startLocal(true); // advance everyone to the next puzzle in today's sequence
   };
 
@@ -1015,9 +1112,13 @@ function setupGridInput(wrap){
     if(ok){
       state.finished = true;
       stopTimer();
-      const st = loadLocalStats(N);
-      updateStat(st, state.elapsed);
-      saveLocalStats(N, st);
+      if(state.isGotd){
+        recordGotdResult(N, state.gotdPuzzleDate, state.elapsed);
+      } else {
+        const st = loadLocalStats(N);
+        updateStat(st, state.elapsed);
+        saveLocalStats(N, st);
+      }
       if(state.screen === 'online-play') finishOnline();
     }
   }
@@ -1096,9 +1197,13 @@ function checkSolved(){
   if(ok){
     state.finished = true;
     stopTimer();
-    const st = loadLocalStats(N);
-    updateStat(st, state.elapsed);
-    saveLocalStats(N, st);
+    if(state.isGotd){
+      recordGotdResult(N, state.gotdPuzzleDate, state.elapsed);
+    } else {
+      const st = loadLocalStats(N);
+      updateStat(st, state.elapsed);
+      saveLocalStats(N, st);
+    }
     if(state.screen==='online-play') finishOnline();
   } else {
     updateOnlineProgress();
@@ -1119,6 +1224,8 @@ async function startLocal(advance){
       if(state.screen==='generating') render();
     });
     state.puzzle = puzzle;
+    state.isGotd = false;
+    state.gotdPuzzleDate = null;
     state.path = [];
     state.finished = false;
     state.elapsed = 0;
@@ -1133,6 +1240,26 @@ async function startLocal(advance){
     render();
     alert('Could not generate a puzzle. Please try again.');
   }
+}
+
+async function startGameOfDay(){
+  const puzzle = await fetchGameOfDay();
+  if(!puzzle){
+    state.gotdHint = 'No game of day today.';
+    render();
+    return;
+  }
+  state.gotdHint = null;
+  state.size = puzzle.N;
+  state.puzzle = puzzle;
+  state.isGotd = true;
+  state.gotdPuzzleDate = puzzle.gotdDate;
+  state.path = [];
+  state.finished = false;
+  state.elapsed = 0;
+  state.screen = 'local';
+  startTimer();
+  render();
 }
 
 function startTimer(){
@@ -1199,6 +1326,8 @@ async function joinRoomByCode(code){
     state.room = code;
     state.puzzle = withWallSet(roomData.puzzle);
     state.playerId = 'p_'+Math.random().toString(36).slice(2,9);
+    state.isGotd = false;
+    state.gotdPuzzleDate = null;
     const st = loadLocalStats(roomData.puzzle.N);
     const sum = statSummary(st);
     roomData.players[state.playerId] = { name: state.playerName, progress:0, finishedAt:null, time:0, statMean: sum.n?sum.mean:null };
