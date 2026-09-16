@@ -682,11 +682,16 @@ function renderGenerating(){
 }
 
 function renderMenu(){
+  refreshGotdAttemptIfStale();
   // Online mode requires shared storage; if the active backend is per-user
   // (localStorage/memory) we hide the button rather than offer a broken feature.
   const onlineBtn = storageIsShared()
     ? `<button class="btn secondary" id="goOnline">Play online</button>`
     : `<button class="btn secondary" disabled title="Requires shared storage">Play online</button>`;
+  const gotdPlayed = !!gotdAttemptCache;
+  const gotdBtn = gotdPlayed
+    ? `<button class="btn secondary" disabled title="One Game of Day per day">Game of Day</button>`
+    : `<button class="btn secondary" id="playGotd">Game of Day</button>`;
   return `
   <div class="card">
     <h3 style="margin:0 0 4px;font-size:18px;font-weight:500">Zip</h3>
@@ -703,9 +708,10 @@ function renderMenu(){
     </div>
     <div class="row">
       <button class="btn" id="playLocal">Play local</button>
-      <button class="btn secondary" id="playGotd">Game of Day</button>
+      ${gotdBtn}
       ${onlineBtn}
     </div>
+    ${gotdPlayed? `<p class="small" style="margin:10px 0 0">${gotdAttemptCache.solved? `Today's Game of Day: solved in ${gotdAttemptCache.time.toFixed(1)}s.` : `Today's Game of Day already attempted.`}</p>` : ''}
     ${state.gotdHint? `<p class="small" style="margin:10px 0 0;color:#a33">${state.gotdHint}</p>` : ''}
     <p class="small" style="margin:12px 0 0">Storage: ${storage? storage.name : 'initializing…'}${storageIsShared()? '' : ' (local only)'}</p>
   </div>
@@ -803,10 +809,45 @@ async function loadGotdBest(N){
 }
 async function recordGotdResult(N, dateStr, time){
   const prev = await loadGotdBest(N);
-  if(prev && prev.date===dateStr && prev.time<=time) return; // keep existing best for today
-  const next = { date: dateStr, time };
-  gotdBestCache[N] = next;
-  try{ await sSet(gotdKey(N), JSON.stringify(next)); }catch(e){}
+  if(!prev || prev.date!==dateStr || prev.time>time){
+    const next = { date: dateStr, time };
+    gotdBestCache[N] = next;
+    try{ await sSet(gotdKey(N), JSON.stringify(next)); }catch(e){}
+  }
+  await saveGotdAttempt(dateStr, { solved:true, time });
+}
+
+// Play-once gate: one Game-of-Day attempt per UTC date, independent of size.
+// {date, N, solved, time|null} — set the moment the puzzle is opened (so
+// abandoning mid-solve still counts as today's attempt), refined with the
+// solve time if finished. Cached in-memory (hydrated at boot for today's
+// date only) so the menu can render its locked/unlocked state synchronously.
+function gotdAttemptKey(dateStr){ return 'zip_gotd_attempt_'+dateStr; }
+let gotdAttemptCache = null; // {solved, time} | null — always for gotdAttemptCacheDate
+let gotdAttemptCacheDate = null;
+async function loadGotdAttempt(dateStr){
+  try{
+    const res = await sGet(gotdAttemptKey(dateStr));
+    return res ? JSON.parse(res.value) : null;
+  }catch(e){ return null; }
+}
+async function saveGotdAttempt(dateStr, attempt){
+  gotdAttemptCache = attempt;
+  gotdAttemptCacheDate = dateStr;
+  try{ await sSet(gotdAttemptKey(dateStr), JSON.stringify(attempt)); }catch(e){}
+}
+async function hydrateGotdAttempt(){
+  const dateStr = utcDateString();
+  gotdAttemptCache = await loadGotdAttempt(dateStr);
+  gotdAttemptCacheDate = dateStr;
+}
+// Called from renderMenu: if the cache is for a stale (pre-rollover) UTC
+// date, re-hydrate in the background and re-render once fresh, so a tab
+// left open across midnight unlocks today's attempt without a reload.
+function refreshGotdAttemptIfStale(){
+  const today = utcDateString();
+  if(gotdAttemptCacheDate === today) return;
+  hydrateGotdAttempt().then(()=>{ if(state.screen==='menu') render(); });
 }
 
 // Per-N "which puzzle of today's sequence are we all on" pointer. This is
@@ -1243,6 +1284,17 @@ async function startLocal(advance){
 }
 
 async function startGameOfDay(){
+  const dateStr = utcDateString();
+  if(gotdAttemptCacheDate !== dateStr){
+    await hydrateGotdAttempt();
+  }
+  if(gotdAttemptCache){
+    state.gotdHint = gotdAttemptCache.solved
+      ? `Already played today's Game of Day — solved in ${gotdAttemptCache.time.toFixed(1)}s.`
+      : `Already played today's Game of Day.`;
+    render();
+    return;
+  }
   const puzzle = await fetchGameOfDay();
   if(!puzzle){
     state.gotdHint = 'No game of day today.';
@@ -1258,6 +1310,9 @@ async function startGameOfDay(){
   state.finished = false;
   state.elapsed = 0;
   state.screen = 'local';
+  // Lock the attempt in immediately (before it's solved) so abandoning
+  // mid-puzzle — reload, back to menu — still consumes today's one try.
+  await saveGotdAttempt(dateStr, { solved:false, time:null });
   startTimer();
   render();
 }
@@ -1437,6 +1492,7 @@ function stopPolling(){ if(state.pollId){ clearInterval(state.pollId); state.pol
   }
   try{
     await hydrateLocalStats();
+    await hydrateGotdAttempt();
   }catch(e){
     console.warn('stats hydration failed:', e);
   }
