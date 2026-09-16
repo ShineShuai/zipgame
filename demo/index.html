@@ -127,10 +127,81 @@ function countSolutions(N, numbers, open, cap, nodeCap){
   const maxNum = Math.max(...numCells.map(i=>numbers[i]));
   const endCell = numCells.find(i=>numbers[i]===maxNum);
 
+  // cell -> row/col for O(1) Manhattan distance in the reachability bound
+  const rowOf = new Int32Array(cells), colOf = new Int32Array(cells);
+  for(let i=0;i<cells;i++){ rowOf[i]=Math.floor(i/N); colOf[i]=i%N; }
+  // number -> cell index, for the Manhattan bound to the next checkpoint
+  const posOfNum = new Int32Array(maxNum+1).fill(-1);
+  numCells.forEach(i=>{ posOfNum[numbers[i]] = i; });
+
   let found = 0;
   const visited = new Array(cells).fill(false);
   let nodes = 0;
   const NODE_CAP = nodeCap || 200000; // bail out (treat as "too many/uncertain") on pathological cases
+
+  // scratch flood-fill stack/stamp buffers, reused across calls to avoid
+  // per-node allocation (same rationale as nbrBuf above)
+  const seen = new Int32Array(cells);
+  const stack = new Int32Array(cells);
+  let stamp = 0;
+
+  // full flood-fill: remaining unvisited region must stay single connected
+  // blob of exactly the size still needed (catches splits the local check
+  // below can't see, e.g. two degree-2 cells fencing off a pocket)
+  function connectivityOk(cur, remaining){
+    stamp++;
+    let sp = 0;
+    stack[sp++] = cur;
+    seen[cur] = stamp;
+    let cnt = 0;
+    while(sp > 0){
+      const u = stack[--sp];
+      const r = rowOf[u], c = colOf[u];
+      for(const [dr,dc] of DIRS4){
+        const nr=r+dr, nc=c+dc;
+        if(nr<0||nr>=N||nc<0||nc>=N) continue;
+        const v = idx(nr,nc);
+        if(visited[v] || seen[v]===stamp) continue;
+        if(!open.has(edgeKey(u,v))) continue;
+        seen[v] = stamp;
+        cnt++;
+        stack[sp++] = v;
+      }
+    }
+    return cnt === remaining;
+  }
+
+  // cheap local dead-end check: only cells adjacent to `cur` can have changed
+  // degree this step (cur just got visited), so only rescan those — O(degree)
+  // instead of rescanning the whole board every node.
+  function noLocalDeadEnds(cur, depth){
+    const n = neighborsInto(cur, depth);
+    const base = depth*4;
+    for(let k=0;k<n;k++){
+      const u = nbrBuf[base+k];
+      if(visited[u]) continue;
+      // free degree of u: count cur itself as still "free" even though
+      // visited[cur] is already true — cur is u's neighbor we just arrived
+      // from, and excluding it here would undercount (cur isn't a trap for
+      // u, it's u's connection back to the live path). Without this
+      // exemption every cell adjacent to the just-visited cell looks like
+      // it lost a degree it never actually needed.
+      const ur = rowOf[u], uc = colOf[u];
+      let free = 0;
+      for(const [dr,dc] of DIRS4){
+        const nr=ur+dr, nc=uc+dc;
+        if(nr<0||nr>=N||nc<0||nc>=N) continue;
+        const v = idx(nr,nc);
+        if(!open.has(edgeKey(u,v))) continue;
+        if(visited[v] && v!==cur) continue;
+        free++;
+      }
+      if(free===0) return false;
+      if(free===1 && u!==endCell) return false;
+    }
+    return true;
+  }
+
   function dfs(cell, count, nextNeeded, depth){
     nodes++;
     if(nodes>NODE_CAP || found>=cap) return;
@@ -145,14 +216,49 @@ function countSolutions(N, numbers, open, cap, nodeCap){
       visited[cell] = false;
       return;
     }
+
+    // cheapest prune first: local degree check (O(degree), no flood-fill)
+    if(!noLocalDeadEnds(cell, depth)){ visited[cell]=false; return; }
+    const remaining = cells - count; // cells still needing a visit
+    if(!connectivityOk(cell, remaining)){ visited[cell]=false; return; }
+
     const n = neighborsInto(cell, depth);
     const base = depth*4;
+    // Manhattan bound + Warnsdorff ordering over surviving candidates
+    const stepsLeft = remaining; // moves available before the board is full
+    const cands = []; // [cellIdx, onwardDegree]
     for(let k=0;k<n;k++){
       const nb = nbrBuf[base+k];
-      if(!visited[nb]){
-        dfs(nb, count+1, needed, depth+1);
-        if(found>=cap || nodes>NODE_CAP) break;
+      if(visited[nb]) continue;
+      const m = numbers[nb];
+      if(m !== undefined && m !== needed) continue; // wrong checkpoint
+      // Manhattan bound: next required checkpoint must be reachable within
+      // the cells remaining, else this branch can never complete
+      if(needed <= maxNum){
+        const tgt = posOfNum[needed];
+        if(tgt >= 0){
+          const dist = Math.abs(rowOf[nb]-rowOf[tgt]) + Math.abs(colOf[nb]-colOf[tgt]);
+          if(dist > stepsLeft) continue;
+        }
       }
+      // onward free-degree of nb for Warnsdorff ordering
+      const nbr = rowOf[nb], nbc = colOf[nb];
+      let deg = 0;
+      for(const [dr,dc] of DIRS4){
+        const nr=nbr+dr, nc=nbc+dc;
+        if(nr<0||nr>=N||nc<0||nc>=N) continue;
+        const v = idx(nr,nc);
+        if(visited[v]) continue;
+        if(!open.has(edgeKey(nb,v))) continue;
+        deg++;
+      }
+      cands.push([nb, deg]);
+    }
+    cands.sort((a,b)=>a[1]-b[1]); // visit most-constrained cell first
+
+    for(let k=0;k<cands.length;k++){
+      dfs(cands[k][0], count+1, needed, depth+1);
+      if(found>=cap || nodes>NODE_CAP) break;
     }
     visited[cell] = false;
   }
