@@ -38,6 +38,11 @@
 <script>
 (function(){
 
+// ---------- Version + hidden "v" reveal ----------
+// Hold the "v" key to reveal the version number badge and the hint button;
+// release it (or blur the window) and both hide again.
+const GAME_VERSION = '0.0.0';
+
 // ---------- Hamiltonian-path grid generator (randomized Warnsdorff + wall-based uniqueness) ----------
 const DIRS4 = [[0,1],[0,-1],[1,0],[-1,0]];
 
@@ -888,11 +893,48 @@ let state = {
   isGotd: false,
   gotdPuzzleDate: null,
   gotdHint: null,
+  hintsUsed: 0,
+  hintCell: null,      // cell idx circled as the correct move, or null
+  hintWrongCell: null, // cell idx marked red as the first wrong move, or null
+  showDev: false,      // true while the hidden "v" key is held down
 };
 
 function cellRC(i,N){ return [Math.floor(i/N), i%N]; }
 function startCellOf(puzzle){
   return Object.keys(puzzle.numbers).map(Number).find(i=>puzzle.numbers[i]===1);
+}
+
+// ---------- Hints ----------
+// Cap = grid size N, unless there are fewer checkpoints than that, in which
+// case cap = #checkpoints. puzzle.path is the unique solution (generation
+// guarantees count===1), so it's a reliable answer key — no re-solving.
+function maxHints(puzzle){
+  const numCheckpoints = Object.keys(puzzle.numbers).length;
+  return Math.min(puzzle.N, numCheckpoints);
+}
+
+// Returns { correctCell, wrongCell } where:
+//   - on track: correctCell = the next move to make, wrongCell = null
+//   - diverged: correctCell = what should have been played at the first
+//     wrong step, wrongCell = the player's actual (wrong) cell at that step
+//   - already solved / path >= solution length with no divergence: both null
+function computeHint(puzzle, path){
+  const solution = puzzle.path;
+  // First divergence between the player's path and the solution: compares
+  // position-by-position since solution[i] is the only legal cell at step i
+  // (uniqueness of the generated puzzle guarantees this). If the player's
+  // path matches the solution exactly so far, this loop simply doesn't find
+  // a mismatch and i ends at path.length — "on track" case.
+  let i = 0;
+  while(i < path.length && i < solution.length && path[i] === solution[i]) i++;
+  if(i < path.length){
+    // Player deviated at step i: solution[i] is what it should have been;
+    // path[i] is the wrong cell actually played there.
+    return { correctCell: solution[i], wrongCell: path[i] };
+  }
+  // On track (path is a correct prefix of solution): hint the next move.
+  if(i < solution.length) return { correctCell: solution[i], wrongCell: null };
+  return { correctCell: null, wrongCell: null }; // path already equals the full solution
 }
 function gridAdjacent(a,b,N){
   const [r1,c1]=cellRC(a,N), [r2,c2]=cellRC(b,N);
@@ -906,15 +948,63 @@ function adjacent(a,b,N){
   return true;
 }
 
+// ---------- Hidden "v" reveal ----------
+// Version badge lives in the DOM on every screen (render() appends it), and
+// the hint button is always rendered but hidden via inline style. Both are
+// toggled directly here rather than through a full render(), so holding "v"
+// never interrupts an in-progress drag (a re-render would replace the SVG
+// and drop pointer capture mid-stroke).
+function setDevReveal(on){
+  on = !!on;
+  if(state.showDev === on) return;
+  state.showDev = on;
+  const badge = document.getElementById('versionBadge');
+  if(badge) badge.style.display = on ? 'block' : 'none';
+  const hintBtn = document.getElementById('hintBtn');
+  if(hintBtn) hintBtn.style.display = on ? '' : 'none';
+}
+
+function isTypingTarget(t){
+  if(!t || !t.tagName) return false;
+  const tag = t.tagName.toLowerCase();
+  return tag==='input' || tag==='textarea' || tag==='select' || t.isContentEditable;
+}
+
+function installDevRevealKey(){
+  window.addEventListener('keydown', e=>{
+    if(e.key !== 'v' && e.key !== 'V') return;
+    if(e.ctrlKey || e.metaKey || e.altKey) return;
+    if(isTypingTarget(e.target)) return; // don't hijack typing in room/name fields
+    setDevReveal(true);
+  });
+  window.addEventListener('keyup', e=>{
+    if(e.key !== 'v' && e.key !== 'V') return;
+    setDevReveal(false);
+  });
+  // If focus leaves (alt-tab, devtools, tab switch) while "v" is held, the
+  // keyup never arrives — hide on blur/visibility change so the reveal can't
+  // get stuck on.
+  window.addEventListener('blur', ()=>setDevReveal(false));
+  document.addEventListener('visibilitychange', ()=>{ if(document.hidden) setDevReveal(false); });
+}
+
 // ---------- Rendering ----------
 function render(){
   const app = document.getElementById('app');
-  if(state.screen==='menu') app.innerHTML = renderMenu();
-  else if(state.screen==='generating') app.innerHTML = renderGenerating();
-  else if(state.screen==='local') app.innerHTML = renderGame(false);
-  else if(state.screen==='online-lobby') app.innerHTML = renderLobby();
-  else if(state.screen==='online-play') app.innerHTML = renderGame(true);
+  let html = '';
+  if(state.screen==='menu') html = renderMenu();
+  else if(state.screen==='generating') html = renderGenerating();
+  else if(state.screen==='local') html = renderGame(false);
+  else if(state.screen==='online-lobby') html = renderLobby();
+  else if(state.screen==='online-play') html = renderGame(true);
+  app.innerHTML = html + renderVersionBadge();
   attachHandlers();
+}
+
+// Floating version badge — present on every screen, shown only while "v" is
+// held. Re-created by render() with the correct visibility from state.showDev.
+function renderVersionBadge(){
+  return `<div id="versionBadge" class="small" style="position:fixed;right:10px;bottom:10px;z-index:20;background:#fff;border:1px solid #e2e2e2;border-radius:8px;padding:4px 8px;font-size:11px;color:#666;display:${state.showDev?'block':'none'}">Zip v${GAME_VERSION}</div>`;
 }
 
 function renderGenerating(){
@@ -1212,6 +1302,25 @@ function renderGame(online){
     }
     svg += `<rect data-cell="${i}" x="${c*cellSize}" y="${r*cellSize}" width="${cellSize}" height="${cellSize}" fill="transparent"/>`;
   }
+  // Hint markers: drawn last so they sit above the path/checkpoint circles
+  // regardless of what's underneath.
+  //  - wrongCell (if any): a filled red X/mark over the first wrong move
+  //    already in the player's path.
+  //  - correctCell: a pulsing ring over the move they should make/have made.
+  if(state.hintWrongCell != null){
+    const [wr,wc] = cellRC(state.hintWrongCell,N);
+    const wx = wc*cellSize+cellSize/2, wy = wr*cellSize+cellSize/2;
+    const s = cellSize*0.22;
+    svg += `<g data-role="hint-wrong" stroke="#d1352b" stroke-width="5" stroke-linecap="round">`;
+    svg += `<line x1="${wx-s}" y1="${wy-s}" x2="${wx+s}" y2="${wy+s}"/>`;
+    svg += `<line x1="${wx-s}" y1="${wy+s}" x2="${wx+s}" y2="${wy-s}"/>`;
+    svg += `</g>`;
+  }
+  if(state.hintCell != null){
+    const [hr,hc] = cellRC(state.hintCell,N);
+    const hx = hc*cellSize+cellSize/2, hy = hr*cellSize+cellSize/2;
+    svg += `<circle data-role="hint" cx="${hx}" cy="${hy}" r="${cellSize*0.4}" fill="none" stroke="#e0a000" stroke-width="4" stroke-dasharray="6 4"><animate attributeName="r" values="${cellSize*0.36};${cellSize*0.44};${cellSize*0.36}" dur="1s" repeatCount="indefinite"/></circle>`;
+  }
   svg += `</svg>`;
 
   const timeStr = state.elapsed.toFixed(1)+'s';
@@ -1225,9 +1334,10 @@ function renderGame(online){
     </div>
     <div class="grid-wrap" id="gridWrap">${svg}</div>
     <div class="row">
-      <button class="btn secondary" id="resetPath">Reset path</button>
-      ${state.isGotd? '' : '<button class="btn secondary" id="newPuzzle">New puzzle</button>'}
       <button class="btn secondary" id="backMenu2">Menu</button>
+      ${state.isGotd? '' : '<button class="btn secondary" id="newPuzzle">New puzzle</button>'}
+      <button class="btn secondary" id="resetPath">Reset path</button>
+      <button class="btn secondary" id="hintBtn" style="${state.showDev?'':'display:none'}" ${state.finished || state.hintsUsed>=maxHints(state.puzzle) ? 'disabled' : ''}>Hint (${state.hintsUsed}/${maxHints(state.puzzle)})</button>
     </div>
     ${state.finished? `<p style="color:#1a6e2c;font-weight:500;margin-top:10px">Solved in ${timeStr}</p>` : ''}
   </div>
@@ -1282,7 +1392,18 @@ function attachHandlers(){
   };
   if(el('createRoom')) el('createRoom').onclick = createRoom;
   if(el('joinRoom')) el('joinRoom').onclick = joinRoom;
-  if(el('resetPath')) el('resetPath').onclick = ()=>{ state.path=[]; state.finished=false; render(); };
+  if(el('resetPath')) el('resetPath').onclick = ()=>{ state.path=[]; state.finished=false; state.hintCell=null; state.hintWrongCell=null; render(); };
+  if(el('hintBtn')) el('hintBtn').onclick = ()=>{
+    if(state.finished) return;
+    const cap = maxHints(state.puzzle);
+    if(state.hintsUsed >= cap) return;
+    const { correctCell, wrongCell } = computeHint(state.puzzle, state.path);
+    if(correctCell == null) return; // nothing to hint (path already correct/complete)
+    state.hintsUsed++;
+    state.hintCell = correctCell;
+    state.hintWrongCell = wrongCell;
+    render();
+  };
   if(el('newPuzzle')) el('newPuzzle').onclick = ()=>{
     if(state.screen==='online-play'){ return; } // puzzle is shared in online mode
     if(state.isGotd){ return; } // one Game-of-Day puzzle per day, nothing to advance to
@@ -1305,8 +1426,8 @@ function setupGridInput(wrap){
   let lastPoint = null;
 
   // Screen px -> logical-unit scale, cached and refreshed on resize (not
-  // per-move) since getBoundingClientRect() forces layout and this is on
-  // the pointermove hot path.
+  // per-move) since getBoundingClientRect() forces layout and this is on the
+  // pointermove hot path.
   let screenCellSize = cellSize;
   function refreshScale(){
     const rect = svg.getBoundingClientRect();
@@ -1363,6 +1484,16 @@ function setupGridInput(wrap){
   }
   resyncPathCache();
 
+  function clearHintMarker(){
+    if(state.hintCell == null && state.hintWrongCell == null) return;
+    state.hintCell = null;
+    state.hintWrongCell = null;
+    const node = svg.querySelector('[data-role="hint"]');
+    if(node) node.remove();
+    const wrongNode = svg.querySelector('[data-role="hint-wrong"]');
+    if(wrongNode) wrongNode.remove();
+  }
+
   function pushCell(idx){
     state.path.push(idx);
     pathSet.add(idx);
@@ -1370,6 +1501,7 @@ function setupGridInput(wrap){
     pathD += (pathD===''?'M':'L') + p.x + ' ' + p.y + ' ';
     setPathD();
     setCellFill(idx, true);
+    clearHintMarker();
   }
   function popCell(){
     const idx = state.path.pop();
@@ -1377,11 +1509,13 @@ function setupGridInput(wrap){
     resyncPathCache(); // truncating `d` losslessly needs the rebuilt string; pops are rare (backtrack) so O(n) here is fine
     setPathD();
     setCellFill(idx, false);
+    clearHintMarker();
   }
   function resetCell(idx){
     state.path = [idx];
     resyncPathCache();
     setPathD();
+    clearHintMarker();
   }
 
   function walkTo(newCell){
@@ -1568,6 +1702,9 @@ async function startLocal(advance){
     state.path = [];
     state.finished = false;
     state.elapsed = 0;
+    state.hintsUsed = 0;
+    state.hintCell = null;
+    state.hintWrongCell = null;
     state.screen = 'local';
     startTimer();
     render();
@@ -1607,6 +1744,9 @@ async function startGameOfDay(){
   state.path = [];
   state.finished = false;
   state.elapsed = 0;
+  state.hintsUsed = 0;
+  state.hintCell = null;
+  state.hintWrongCell = null;
   state.screen = 'local';
   // Lock the attempt in immediately (before it's solved) so abandoning
   // mid-puzzle — reload, back to menu — still consumes today's one try.
@@ -1690,6 +1830,9 @@ async function joinRoomByCode(code){
     state.path = [];
     state.finished = false;
     state.elapsed = 0;
+    state.hintsUsed = 0;
+    state.hintCell = null;
+    state.hintWrongCell = null;
     state.screen = 'online-play';
     startTimer();
     startPolling();
@@ -1795,6 +1938,7 @@ function stopPolling(){ if(state.pollId){ clearInterval(state.pollId); state.pol
   }catch(e){
     console.warn('stats hydration failed:', e);
   }
+  installDevRevealKey();
   render();
 })();
 
