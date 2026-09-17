@@ -16,7 +16,12 @@
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   input[type=text]{border:1px solid #ccc;border-radius:8px;padding:8px 10px;font-size:14px}
   select{border:1px solid #ccc;border-radius:8px;padding:8px 10px;font-size:14px}
-  .grid-wrap{display:flex;justify-content:center;margin:16px 0;user-select:none;-webkit-user-select:none}
+  .grid-wrap{display:flex;justify-content:center;margin:16px 0;user-select:none;-webkit-user-select:none;width:100%}
+  .grid-wrap svg{max-width:100%}
+  @media (max-width:480px){
+    #app{padding:8px}
+    .card{padding:12px}
+  }
   .hud{display:flex;justify-content:space-between;font-size:14px;color:#555;margin-bottom:10px}
   .hud b{color:#1a1a1a;font-variant-numeric:tabular-nums}
   table{width:100%;border-collapse:collapse;font-size:13px}
@@ -1160,9 +1165,9 @@ function renderLobby(){
 
 function renderGame(online){
   const N = state.puzzle.N;
-  const cellSize = Math.min(60, Math.floor(480/N));
+  const cellSize = 60; // fixed logical unit; on-screen size comes from viewBox scaling, not this
   const svgSize = cellSize*N;
-  let svg = `<svg width="${svgSize}" height="${svgSize}" style="touch-action:none;cursor:pointer;background:#fafafa;border-radius:8px">`;
+  let svg = `<svg viewBox="0 0 ${svgSize} ${svgSize}" class="zip-svg" style="touch-action:none;cursor:pointer;background:#fafafa;border-radius:8px;width:100%;height:auto;max-width:${Math.min(480,svgSize)}px;display:block;margin:0 auto">`;
   // grid lines
   for(let i=0;i<=N;i++){
     svg += `<line x1="0" y1="${i*cellSize}" x2="${svgSize}" y2="${i*cellSize}" stroke="#ddd"/>`;
@@ -1294,20 +1299,89 @@ function setupGridInput(wrap){
   if(!svg) return;
 
   const N = state.puzzle.N;
-  const cellSize = Math.min(60, Math.floor(480/N));
+  const cellSize = 60; // logical units (matches viewBox); screen px derived per-call below
 
   let dragging = false;
   let lastPoint = null;
+
+  // Screen px -> logical-unit scale, cached and refreshed on resize (not
+  // per-move) since getBoundingClientRect() forces layout and this is on
+  // the pointermove hot path.
+  let screenCellSize = cellSize;
+  function refreshScale(){
+    const rect = svg.getBoundingClientRect();
+    if(rect.width > 0) screenCellSize = rect.width / N;
+  }
+  refreshScale();
+  window.addEventListener('resize', refreshScale);
 
   function cellFromPoint(clientX, clientY){
     const rect = svg.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
     if(x < 0 || y < 0 || x >= rect.width || y >= rect.height) return null;
-    const c = Math.floor(x / cellSize);
-    const r = Math.floor(y / cellSize);
+    const c = Math.floor(x / screenCellSize);
+    const r = Math.floor(y / screenCellSize);
     if(r < 0 || r >= N || c < 0 || c >= N) return null;
     return r*N + c;
+  }
+
+  // Path element's `d` attribute is maintained incrementally (append on
+  // push, truncate on pop) instead of rebuilt from scratch each call, and
+  // only the one or two cells whose fill state actually changed get a DOM
+  // write, instead of scanning every numbered cell. Together this makes a
+  // drag step O(1) DOM work instead of O(path length + numbered cells).
+  let pathD = '';
+  const pathSet = new Set(); // mirrors state.path contents for O(1) membership
+
+  function pointFor(idx){
+    const [r,c] = cellRC(idx, N);
+    return { x: c*cellSize + cellSize/2, y: r*cellSize + cellSize/2 };
+  }
+  function setCellFill(idx, filled){
+    const node = svg.querySelector(`[data-num-cell="${idx}"]`);
+    if(!node) return;
+    const circle = node.querySelector('circle');
+    const text = node.querySelector('text');
+    if(circle) circle.setAttribute('fill', filled ? '#1a1a1a' : '#fff');
+    if(text) text.setAttribute('fill', filled ? '#fff' : '#1a1a1a');
+  }
+  function setPathD(){
+    const pathEl = svg.querySelector('path[data-role="path"]');
+    if(pathEl) pathEl.setAttribute('d', pathD);
+  }
+  // Called once after any full state.path replacement (reset, new puzzle,
+  // jump-to-start) to resync the incremental caches with reality.
+  function resyncPathCache(){
+    pathSet.clear();
+    pathD = '';
+    state.path.forEach((idx,i)=>{
+      pathSet.add(idx);
+      const p = pointFor(idx);
+      pathD += (i===0?'M':'L') + p.x + ' ' + p.y + ' ';
+    });
+  }
+  resyncPathCache();
+
+  function pushCell(idx){
+    state.path.push(idx);
+    pathSet.add(idx);
+    const p = pointFor(idx);
+    pathD += (pathD===''?'M':'L') + p.x + ' ' + p.y + ' ';
+    setPathD();
+    setCellFill(idx, true);
+  }
+  function popCell(){
+    const idx = state.path.pop();
+    pathSet.delete(idx);
+    resyncPathCache(); // truncating `d` losslessly needs the rebuilt string; pops are rare (backtrack) so O(n) here is fine
+    setPathD();
+    setCellFill(idx, false);
+  }
+  function resetCell(idx){
+    state.path = [idx];
+    resyncPathCache();
+    setPathD();
   }
 
   function walkTo(newCell){
@@ -1318,18 +1392,16 @@ function setupGridInput(wrap){
 
     // Backtrack one step
     if(len > 1 && newCell === state.path[len-2]){
-      state.path.pop();
-      redrawLive();
+      popCell();
       return;
     }
 
-    if(state.path.includes(newCell)) return;
+    if(pathSet.has(newCell)) return;
 
     if(len === 0){
       const startCell = startCellOf(state.puzzle);
       if(newCell !== startCell) return; // must begin at checkpoint 1
-      state.path.push(newCell);
-      redrawLive();
+      pushCell(newCell);
       return;
     }
 
@@ -1339,38 +1411,14 @@ function setupGridInput(wrap){
       // Not reachable from current path end: treat as "start over" from this
       // cell instead of silently ignoring the tap (avoids feeling stuck).
       if(newCell === startCellOf(state.puzzle)){
-        state.path = [newCell];
-        redrawLive();
+        resetCell(newCell);
       }
       return;
     }
 
-    state.path.push(newCell);
-    redrawLive();
+    pushCell(newCell);
     checkSolvedDuringDrag();
     updateOnlineProgress();
-  }
-
-  function redrawLive(){
-    const pathEl = svg.querySelector('path[data-role="path"]');
-    if(pathEl){
-      let d = '';
-      state.path.forEach((idx, i)=>{
-        const [r,c] = cellRC(idx, N);
-        const x = c*cellSize + cellSize/2;
-        const y = r*cellSize + cellSize/2;
-        d += (i===0?'M':'L') + x + ' ' + y + ' ';
-      });
-      pathEl.setAttribute('d', d);
-    }
-    svg.querySelectorAll('[data-num-cell]').forEach(node=>{
-      const idx = parseInt(node.getAttribute('data-num-cell'));
-      const filled = state.path.includes(idx);
-      const circle = node.querySelector('circle');
-      const text = node.querySelector('text');
-      if(circle) circle.setAttribute('fill', filled ? '#1a1a1a' : '#fff');
-      if(text) text.setAttribute('fill', filled ? '#fff' : '#1a1a1a');
-    });
   }
 
   function checkSolvedDuringDrag(){
@@ -1415,7 +1463,7 @@ function setupGridInput(wrap){
       const dx = clientX - lastPoint.x;
       const dy = clientY - lastPoint.y;
       const dist = Math.hypot(dx, dy);
-      const step = Math.max(2, cellSize / 2);
+      const step = Math.max(2, screenCellSize / 2);
       const steps = Math.max(1, Math.ceil(dist / step));
       for(let i=1; i<=steps; i++){
         const px = lastPoint.x + dx * (i/steps);
