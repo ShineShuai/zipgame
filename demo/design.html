@@ -353,7 +353,8 @@
 
     <div class="field">
       <button id="randScatter" class="wide">🎲 Random checkpoints</button>
-      <button id="randPath" class="wide">🛤️ Random path puzzle</button>
+      <button id="randPath" class="wide">🛤️ Random path</button>
+      <button id="randPathUnique" class="wide">🛤️✓ Random path puzzle (unique)</button>
     </div>
 
     <div class="divider"></div>
@@ -432,6 +433,7 @@
   let solutions = [];
   let solVisible = [];
   let lastAborted = false;
+  let lastSolveNodes = 0;
 
   let previewPath = null;
   let previewVisible = true;
@@ -512,7 +514,7 @@
   }
 
   function clearSolutions() {
-    solutions = []; solVisible = []; lastAborted = false;
+    solutions = []; solVisible = []; lastAborted = false; lastSolveNodes = 0;
     renderLegend(); setStatus('');
   }
 
@@ -574,7 +576,8 @@
     solutions.forEach((_, i) => {
       const btn = document.createElement('button');
       btn.className = 'legend-item' + (solVisible[i] ? '' : ' off');
-      btn.innerHTML = `<span class="swatch" style="background:${SOL_COLORS[i]}"></span> Solution ${i + 1}`;
+      const diffTag = solutions.length ? ` — ${lastSolveNodes.toLocaleString()} node${lastSolveNodes === 1 ? '' : 's'}${lastAborted ? ' (capped)' : ''}` : '';
+      btn.innerHTML = `<span class="swatch" style="background:${SOL_COLORS[i]}"></span> Solution ${i + 1}${diffTag}`;
       btn.addEventListener('click', () => {
         solVisible[i] = !solVisible[i];
         renderLegend(); render();
@@ -1066,6 +1069,70 @@
     previewVisible = true;
   }
 
+  // Same as randomPathPuzzle, but additionally walls off edges until the
+  // puzzle has exactly one solution (index.html's generator approach: solve,
+  // and each time it isn't unique, wall an edge that's in one found solution
+  // but not the other — never an edge the anchor path itself uses, so a
+  // valid solution never gets destroyed). Kept as a separate, opt-in path
+  // since the plain generator above should stay wall-free by default.
+  function randomPathPuzzleUnique(K) {
+    const total = N * N;
+    K = Math.max(2, Math.min(K, total));
+
+    const path = generateHamiltonianPath();
+
+    const interior = [];
+    for (let i = 1; i < total - 1; i++) interior.push(i);
+    shuffleArr(interior);
+    const chosen = interior.slice(0, K - 2).sort((a, b) => a - b);
+
+    const stops = [0, ...chosen, total - 1];
+    numAt = new Array(total).fill(0);
+    stops.forEach((p, i) => { numAt[path[p]] = i + 1; });
+
+    walls = new Set();
+    const pathEdges = new Set();
+    for (let i = 1; i < path.length; i++) pathEdges.add(edgeKey(path[i - 1], path[i]));
+
+    const allEdges = [];
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        const i = r * N + c;
+        if (c < N - 1) allEdges.push(edgeKey(i, i + 1));
+        if (r < N - 1) allEdges.push(edgeKey(i, i + N));
+      }
+    }
+    const genericPool = shuffleArr(allEdges.filter(e => !pathEdges.has(e)));
+    let gwi = 0;
+
+    const GEN_NODE_LIMIT = 50000;
+    const MAX_WALLS = genericPool.length;
+    let res = solvePuzzle(2, GEN_NODE_LIMIT);
+
+    while ((res.solutions.length > 1 || res.aborted) && walls.size < MAX_WALLS) {
+      let wall = null;
+      if (res.aborted) {
+        while (gwi < genericPool.length && walls.has(genericPool[gwi])) gwi++;
+        if (gwi < genericPool.length) wall = genericPool[gwi++];
+      } else {
+        const [a, b] = res.solutions;
+        const edgesA = new Set(); for (let i = 1; i < a.length; i++) edgesA.add(edgeKey(a[i - 1], a[i]));
+        const edgesB = new Set(); for (let i = 1; i < b.length; i++) edgesB.add(edgeKey(b[i - 1], b[i]));
+        let diff = [...edgesA].filter(e => !edgesB.has(e) && !pathEdges.has(e));
+        if (!diff.length) diff = [...edgesB].filter(e => !edgesA.has(e) && !pathEdges.has(e));
+        if (diff.length) wall = diff[(Math.random() * diff.length) | 0];
+      }
+      if (wall === null) break;
+      walls.add(wall);
+      res = solvePuzzle(2, GEN_NODE_LIMIT);
+    }
+
+    previewPath = path;
+    previewVisible = true;
+
+    return { unique: res.solutions.length === 1 && !res.aborted, nodes: res.nodes, aborted: res.aborted, wallsAdded: walls.size };
+  }
+
   /* ======================= Import / Export ======================= */
   function exportPuzzle() {
     const lines = [];
@@ -1272,7 +1339,22 @@
     clearSolutions();
     render();
     renderLegend();
-    setStatus('Generated a random Hamiltonian path with checkpoints along it. The template is shown dashed.', 'ok');
+    setStatus('Generated a random Hamiltonian path with checkpoints along it, no walls. The template is shown dashed — click Solve to check it, then add walls manually if it\'s not unique.', 'ok');
+  });
+
+  document.getElementById('randPathUnique').addEventListener('click', () => {
+    if (playMode) exitPlay();
+    const K = parseInt(cpCount.value, 10) || 5;
+    const genRes = randomPathPuzzleUnique(K);
+    selected = -1; buffer = '';
+    clearSolutions();
+    render();
+    renderLegend();
+    if (genRes.unique) {
+      setStatus(`Generated a unique puzzle (${genRes.wallsAdded} wall${genRes.wallsAdded === 1 ? '' : 's'} added, ${genRes.nodes.toLocaleString()} nodes to confirm). The template is shown dashed.`, 'ok');
+    } else {
+      setStatus(`Generated a Hamiltonian path, but couldn't reach a unique solution within the generator's search budget (still has multiple solutions or the check was inconclusive). Try again or click Solve to inspect it.`, 'warn');
+    }
   });
 
   playBtn.addEventListener('click', () => {
@@ -1291,6 +1373,7 @@
     buffer = '';
     solutions = []; solVisible = [];
     lastAborted = false;
+    lastSolveNodes = 0;
     previewPath = null; previewVisible = true;
     playPath = [];
     drawing = false;
@@ -1304,31 +1387,40 @@
   }
 
   /* ======================= Solver ======================= */
-  function buildAdjacency() {
-    const adj = [];
+  // DIRS4[d] <-> bit d of openMask: 0=left,1=right,2=up,3=down (matches the
+  // -1/+1/-N/+N neighbor offsets below). openMask is built ONCE per solve
+  // from the `walls` Set (bit set = that direction is open, i.e. NOT a wall)
+  // so the recursive hot path never touches walls.has()/edgeKey() again —
+  // a string-Set lookup measured ~30x slower than a bitmask test and was
+  // the dominant per-node cost here, same bottleneck as the puzzle generator.
+  function buildOpenMask(total) {
+    const openMask = new Uint8Array(total);
     for (let r = 0; r < N; r++) {
       for (let c = 0; c < N; c++) {
         const idx = r * N + c;
-        const list = [];
-        if (c > 0)     list.push([idx - 1, `V,${r},${c - 1}`]);
-        if (c < N - 1) list.push([idx + 1, `V,${r},${c}`]);
-        if (r > 0)     list.push([idx - N, `H,${r - 1},${c}`]);
-        if (r < N - 1) list.push([idx + N, `H,${r},${c}`]);
-        adj.push(list);
+        let m = 0;
+        if (c > 0     && !walls.has(`V,${r},${c - 1}`)) m |= 1;
+        if (c < N - 1 && !walls.has(`V,${r},${c}`))     m |= 2;
+        if (r > 0     && !walls.has(`H,${r - 1},${c}`)) m |= 4;
+        if (r < N - 1 && !walls.has(`H,${r},${c}`))     m |= 8;
+        openMask[idx] = m;
       }
     }
-    return adj;
+    return openMask;
   }
+  // Offsets matching the bit layout above, and reusable across calls.
+  const OM_DR = [0, 0, -1, 1];
+  const OM_DC = [-1, 1, 0, 0];
 
   function solvePuzzle(limit, nodeLimit) {
     const total = N * N;
-    const adj = buildAdjacency();
     nodeLimit = nodeLimit > 0 ? nodeLimit : DEFAULT_NODE_LIMIT;
+    const openMask = buildOpenMask(total);
 
     let K = 0;
     for (let i = 0; i < total; i++) if (numAt[i] > K) K = numAt[i];
 
-    const posOfNum = new Array(K + 1).fill(-1);
+    const posOfNum = new Int32Array(K + 1).fill(-1);
     for (let i = 0; i < total; i++) if (numAt[i]) posOfNum[numAt[i]] = i;
 
     const start = posOfNum[1];
@@ -1342,17 +1434,38 @@
     const visited = new Uint8Array(total);
     const seen    = new Int32Array(total);
     const stack   = new Int32Array(total);
-    const path    = [];
-    const sols    = [];
+    // depth-indexed scratch neighbor buffer (max 4 neighbors/cell) — avoids
+    // allocating a fresh array on every DFS node, which was the main GC
+    // pressure source at large node counts. Indexed by recursion depth so a
+    // parent's buffer slice survives the recursive call into its child.
+    const nbrBuf = new Int32Array(total * 4);
+    const path   = [];
+    const sols   = [];
     let stamp = 0, nodes = 0, aborted = false;
 
-    // free-neighbor count under current wall/visited state (cur excluded from "visited")
+    // writes open, unvisited neighbors of `cell` into nbrBuf at this depth;
+    // returns how many were written
+    function neighborsInto(cell, depth) {
+      const base = depth * 4;
+      let n = 0;
+      for (let d = 0; d < 4; d++) {
+        if (!(openMask[cell] & (1 << d))) continue;
+        const nr = rowOf[cell] + OM_DR[d], nc = colOf[cell] + OM_DC[d];
+        if (nr < 0 || nr >= N || nc < 0 || nc >= N) continue;
+        nbrBuf[base + n++] = nr * N + nc;
+      }
+      return n;
+    }
+
+    // free-neighbor count of u under current visited state (cur exempted:
+    // it's u's live connection back to the path, not a trap for u)
     function freeDegree(u, cur) {
-      const lst = adj[u];
       let free = 0;
-      for (let i = 0; i < lst.length; i++) {
-        if (walls.has(lst[i][1])) continue;
-        const v = lst[i][0];
+      for (let d = 0; d < 4; d++) {
+        if (!(openMask[u] & (1 << d))) continue;
+        const nr = rowOf[u] + OM_DR[d], nc = colOf[u] + OM_DC[d];
+        if (nr < 0 || nr >= N || nc < 0 || nc >= N) continue;
+        const v = nr * N + nc;
         if (!visited[v] || v === cur) free++;
       }
       return free;
@@ -1367,11 +1480,12 @@
       let cnt = 0;
       while (sp > 0) {
         const u = stack[--sp];
-        const lst = adj[u];
-        for (let i = 0; i < lst.length; i++) {
-          const v = lst[i][0];
+        for (let d = 0; d < 4; d++) {
+          if (!(openMask[u] & (1 << d))) continue;
+          const nr = rowOf[u] + OM_DR[d], nc = colOf[u] + OM_DC[d];
+          if (nr < 0 || nr >= N || nc < 0 || nc >= N) continue;
+          const v = nr * N + nc;
           if (visited[v] || seen[v] === stamp) continue;
-          if (walls.has(lst[i][1])) continue;
           seen[v] = stamp;
           cnt++;
           stack[sp++] = v;
@@ -1382,11 +1496,11 @@
 
     // cheap local dead-end check: only cells adjacent to `cur` can have changed
     // degree this step (their neighbor `cur` just got visited). O(degree) not O(total).
-    function noLocalDeadEnds(cur) {
-      const lst = adj[cur];
-      for (let i = 0; i < lst.length; i++) {
-        if (walls.has(lst[i][1])) continue;
-        const u = lst[i][0];
+    function noLocalDeadEnds(cur, depth) {
+      const n = neighborsInto(cur, depth);
+      const base = depth * 4;
+      for (let i = 0; i < n; i++) {
+        const u = nbrBuf[base + i];
         if (visited[u]) continue;
         const free = freeDegree(u, cur);
         if (free === 0) return false;
@@ -1395,7 +1509,7 @@
       return true;
     }
 
-    function dfs(cur, expected) {
+    function dfs(cur, expected, depth) {
       if (aborted) return;
       if (++nodes > nodeLimit) { aborted = true; return; }
 
@@ -1406,17 +1520,17 @@
         if (expected > K && cur === end) sols.push(path.slice());
       } else if (expected <= K) {
         // cheapest prune first: local degree check (O(degree), no flood-fill)
-        if (noLocalDeadEnds(cur) && connectivityOk(cur)) {
-          const lst = adj[cur];
+        if (noLocalDeadEnds(cur, depth) && connectivityOk(cur)) {
           const remaining = total - path.length; // cells left to fill after this one
+          const n = neighborsInto(cur, depth);
+          const base = depth * 4;
 
           // build candidate list with Warnsdorff key (onward free-degree),
           // pruning via Manhattan-distance-to-next-checkpoint bound first
           const cands = [];
-          for (let i = 0; i < lst.length; i++) {
-            const v = lst[i][0];
+          for (let i = 0; i < n; i++) {
+            const v = nbrBuf[base + i];
             if (visited[v]) continue;
-            if (walls.has(lst[i][1])) continue;
             const m = numAt[v];
             if (m && m !== expected) continue; // wrong checkpoint, skip
 
@@ -1438,7 +1552,7 @@
             if (aborted || sols.length >= limit) break;
             const v = cands[i][0];
             const m = numAt[v];
-            dfs(v, m ? expected + 1 : expected);
+            dfs(v, m ? expected + 1 : expected, depth + 1);
           }
         }
       }
@@ -1447,7 +1561,7 @@
       path.pop();
     }
 
-    if (start >= 0) dfs(start, 2);
+    if (start >= 0) dfs(start, 2, 0);
     return { solutions: sols, aborted, nodes };
   }
 
@@ -1467,6 +1581,7 @@
     solutions = res.solutions;
     solVisible = solutions.map(() => true);
     lastAborted = res.aborted;
+    lastSolveNodes = res.nodes;
 
     render();
     renderLegend();
