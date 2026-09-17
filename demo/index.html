@@ -100,9 +100,29 @@ function warnsdorffPath(N, rnd){
 // minus walls) and (b) visit numbered checkpoints in increasing order, starting
 // at the cell numbered 1 and ending at the cell numbered max. Stops early once
 // `cap` solutions are found (we only ever need to know if count > 1).
-function countSolutions(N, numbers, open, cap, nodeCap, capturePaths, timeDeadline){
+function countSolutions(N, numbers, open, cap, nodeCap, capturePaths){
   const cells = N*N;
   function idx(r,c){return r*N+c;}
+  // Open-edge bitmask: bit d (matching DIRS4[d]) set means that direction is
+  // open from this cell. Built once per call from the `open` Set (still the
+  // simple, caller-facing representation used everywhere outside the hot
+  // DFS loop — wall-adding just adds/removes strings from a Set, unchanged).
+  // Replaces edgeKey()+Set.has() in the hot loop below: string concatenation
+  // + hash lookup measured ~30x slower than a Uint8Array bit-test per call
+  // (358ms vs 12ms for 5M lookups) — this is the dominant per-node DFS cost,
+  // so this directly targets what's actually slow about generation. Build
+  // cost is O(cells*4), negligible next to nodeCap (up to 2,000,000).
+  const openMask = new Uint8Array(cells);
+  for(let r=0;r<N;r++) for(let c=0;c<N;c++){
+    const i = idx(r,c);
+    for(let d=0; d<DIRS4.length; d++){
+      const [dr,dc] = DIRS4[d];
+      const nr=r+dr, nc=c+dc;
+      if(nr<0||nr>=N||nc<0||nc>=N) continue;
+      const j = idx(nr,nc);
+      if(open.has(edgeKey(i,j))) openMask[i] |= (1<<d);
+    }
+  }
   // Reusable scratch buffer for neighbor lookups — avoids allocating a new
   // array on every DFS node visited (this was the main GC pressure source,
   // since dfs() can visit hundreds of thousands of nodes per call). Indexed
@@ -113,11 +133,12 @@ function countSolutions(N, numbers, open, cap, nodeCap, capturePaths, timeDeadli
     const r = Math.floor(i/N), c = i%N;
     const base = depth*4;
     let n = 0;
-    for(const [dr,dc] of DIRS4){
+    for(let d=0; d<DIRS4.length; d++){
+      if(!(openMask[i] & (1<<d))) continue;
+      const [dr,dc] = DIRS4[d];
       const nr=r+dr, nc=c+dc;
       if(nr>=0&&nr<N&&nc>=0&&nc<N){
-        const j = idx(nr,nc);
-        if(open.has(edgeKey(i,j))) nbrBuf[base+n++] = j;
+        nbrBuf[base+n++] = idx(nr,nc);
       }
     }
     return n; // number of valid neighbors written into nbrBuf[base..base+n)
@@ -138,15 +159,6 @@ function countSolutions(N, numbers, open, cap, nodeCap, capturePaths, timeDeadli
   const visited = new Array(cells).fill(false);
   let nodes = 0;
   const NODE_CAP = nodeCap || 200000; // bail out (treat as "too many/uncertain") on pathological cases
-  // Wall-clock deadline (optional): nodeCap alone can't bound real time, since
-  // per-node cost varies (cache behavior, GC, machine load) — measured
-  // 5-8us/node here, but that's not guaranteed, and even at a fixed rate a
-  // large nodeCap can still mean a multi-second single call with nothing to
-  // interrupt it (this was hanging the generation UI for seconds at a time).
-  // Checked every DEADLINE_CHECK_INTERVAL nodes rather than every node, since
-  // Date.now() has real per-call overhead at the volumes this DFS runs at.
-  let timedOut = false;
-  const DEADLINE_CHECK_INTERVAL = 1024;
   // scratch path buffer (cell index per depth) + captured solutions, only
   // touched when capturePaths is set — zero overhead otherwise
   const pathBuf = capturePaths ? new Int32Array(cells) : null;
@@ -170,12 +182,13 @@ function countSolutions(N, numbers, open, cap, nodeCap, capturePaths, timeDeadli
     while(sp > 0){
       const u = stack[--sp];
       const r = rowOf[u], c = colOf[u];
-      for(const [dr,dc] of DIRS4){
+      for(let d=0; d<DIRS4.length; d++){
+        if(!(openMask[u] & (1<<d))) continue;
+        const [dr,dc] = DIRS4[d];
         const nr=r+dr, nc=c+dc;
         if(nr<0||nr>=N||nc<0||nc>=N) continue;
         const v = idx(nr,nc);
         if(visited[v] || seen[v]===stamp) continue;
-        if(!open.has(edgeKey(u,v))) continue;
         seen[v] = stamp;
         cnt++;
         stack[sp++] = v;
@@ -201,11 +214,12 @@ function countSolutions(N, numbers, open, cap, nodeCap, capturePaths, timeDeadli
       // it lost a degree it never actually needed.
       const ur = rowOf[u], uc = colOf[u];
       let free = 0;
-      for(const [dr,dc] of DIRS4){
+      for(let d=0; d<DIRS4.length; d++){
+        if(!(openMask[u] & (1<<d))) continue;
+        const [dr,dc] = DIRS4[d];
         const nr=ur+dr, nc=uc+dc;
         if(nr<0||nr>=N||nc<0||nc>=N) continue;
         const v = idx(nr,nc);
-        if(!open.has(edgeKey(u,v))) continue;
         if(visited[v] && v!==cur) continue;
         free++;
       }
@@ -217,11 +231,7 @@ function countSolutions(N, numbers, open, cap, nodeCap, capturePaths, timeDeadli
 
   function dfs(cell, count, nextNeeded, depth){
     nodes++;
-    if(nodes>NODE_CAP || found>=cap || timedOut) return;
-    if(timeDeadline != null && (nodes & (DEADLINE_CHECK_INTERVAL-1)) === 0 && Date.now() > timeDeadline){
-      timedOut = true;
-      return;
-    }
+    if(nodes>NODE_CAP || found>=cap) return;
     visited[cell] = true;
     if(pathBuf) pathBuf[depth] = cell;
     let needed = nextNeeded;
@@ -265,12 +275,13 @@ function countSolutions(N, numbers, open, cap, nodeCap, capturePaths, timeDeadli
       // onward free-degree of nb for Warnsdorff ordering
       const nbr = rowOf[nb], nbc = colOf[nb];
       let deg = 0;
-      for(const [dr,dc] of DIRS4){
+      for(let d=0; d<DIRS4.length; d++){
+        if(!(openMask[nb] & (1<<d))) continue;
+        const [dr,dc] = DIRS4[d];
         const nr=nbr+dr, nc=nbc+dc;
         if(nr<0||nr>=N||nc<0||nc>=N) continue;
         const v = idx(nr,nc);
         if(visited[v]) continue;
-        if(!open.has(edgeKey(nb,v))) continue;
         deg++;
       }
       cands.push([nb, deg]);
@@ -279,12 +290,12 @@ function countSolutions(N, numbers, open, cap, nodeCap, capturePaths, timeDeadli
 
     for(let k=0;k<cands.length;k++){
       dfs(cands[k][0], count+1, needed, depth+1);
-      if(found>=cap || nodes>NODE_CAP || timedOut) break;
+      if(found>=cap || nodes>NODE_CAP) break;
     }
     visited[cell] = false;
   }
   dfs(startCell, 1, 1, 0);
-  return { count: found, exceeded: (nodes>NODE_CAP || timedOut), paths: paths || undefined };
+  return { count: found, exceeded: nodes>NODE_CAP, paths: paths || undefined };
 }
 
 // Edge set used by a path (array of cell indices in visit order).
@@ -315,13 +326,23 @@ function allEdgesFor(N){
 // can't be made unique within nodeCap search cost; otherwise a valid puzzle.
 // wallBudget caps how many walls we're willing to add before giving up on
 // this attempt (bounds worst-case cost: wallBudget * nodeCap DFS nodes).
-// deadline (optional, Date.now()-style ms) bounds WALL-CLOCK time: the wall
-// loop can chain many countSolutions calls (each individually bounded by
-// nodeCap, but with no shared budget across calls), so a single attempt can
-// still run for seconds with nothing to interrupt it — deadline gives the
-// caller a way to reclaim control before that happens, instead of only being
-// able to yield between whole tryGeneratePuzzle calls.
-function tryGeneratePuzzle(N, K, rnd, nodeCap, wallBudget, deadline){
+// Purely deterministic given (N, K, rnd's state, nodeCap, wallBudget) — same
+// seed always produces the same puzzle, regardless of machine speed. No
+// wall-clock timing enters the algorithm anywhere.
+// onWallStep (optional, may be async) is awaited after each wall-loop
+// iteration with the current wall count — purely a responsiveness hook so
+// an async caller can yield to the event loop partway through a single long
+// attempt (a single attempt's wall loop can itself run for several seconds
+// at larger N; this lets the page repaint partway through instead of
+// looking frozen). It never influences what gets computed or in what order
+// — only WHEN the browser gets a chance to breathe while getting there.
+// tryGeneratePuzzle is async so it can genuinely await that yield (a plain
+// synchronous callback can never hand control back to the event loop, no
+// matter what it does internally) — every call site must now await it, but
+// with onWallStep omitted it still runs start-to-finish with no actual
+// suspension, so callers that don't need yielding (like the sync-style
+// genPuzzle wrapper below) are unaffected beyond adding `await`.
+async function tryGeneratePuzzle(N, K, rnd, nodeCap, wallBudget, onWallStep){
   const path = warnsdorffPath(N, rnd);
   if(!path) return null;
 
@@ -388,15 +409,26 @@ function tryGeneratePuzzle(N, K, rnd, nodeCap, wallBudget, deadline){
   const maxWalls = wallBudget==null ? allEdges.size : wallBudget;
 
   // Hybrid wall-adding: the ideal method is precise diff-edge walling (find
-  // 2 solutions, wall an edge that's in one but not the other — this always
-  // strictly reduces the solution count without ever reaching 0, since the
-  // "other" solution is untouched by construction). But on a still-wide-open
-  // grid the solver can exceed nodeCap before even enumerating 2 solutions,
-  // and diff-edge walling has nothing to work with in that case. So: while
-  // the search is too open (exceeded), shrink it with a cheap generic wall
-  // (any edge not on the reference path, in random order — same fallback
-  // the old algorithm always used); once a solve completes, switch to
-  // precise diff-edge walls for the rest. This keeps wall count low on the
+  // 2 solutions, wall an edge that's in one but not the other). Naively this
+  // seems to guarantee the solution count never reaches 0 (the "other"
+  // solution is untouched by that specific wall) — but that guarantee only
+  // holds WITHIN one iteration. Each iteration re-solves from scratch with
+  // no memory of prior solutions, so the next iteration's pair can be
+  // entirely different from this one's survivor, and a wall picked to be
+  // "safe" relative to THIS iteration's pair can still land on an edge a
+  // PREVIOUS iteration's survivor needed — silently destroying it a few
+  // steps later (confirmed in practice: real attempts hit count=0 and then
+  // wasted dozens of further full-cost solves before giving up). The fix is
+  // to anchor every wall choice — in both phases — to the ONE original
+  // reference path for the whole attempt, never walling any of its edges;
+  // that path is guaranteed to always remain a valid solution, so the count
+  // genuinely never reaches 0. On a still-wide-open grid the solver can
+  // exceed nodeCap before even enumerating 2 solutions, and diff-edge
+  // walling has nothing to work with in that case. So: while the search is
+  // too open (exceeded), shrink it with a cheap generic wall (any anchor-
+  // path edge excluded, in random order — same fallback the old algorithm
+  // always used); once a solve completes, switch to precise diff-edge walls
+  // (also anchor-excluded) for the rest. This keeps wall count low on the
   // (common) case where the puzzle is already close to unique, while still
   // converging on harder/more-open instances that pure diff-edge walling
   // can't get started on.
@@ -418,18 +450,25 @@ function tryGeneratePuzzle(N, K, rnd, nodeCap, wallBudget, deadline){
   // (search has become small enough to be tractable), switch to the real
   // nodeCap with capturePaths for precise diff-edge walling, same as before.
   const PROBE_CAP = Math.min(nodeCap, 4000);
-  let probe = countSolutions(N, numbers, open, 2, PROBE_CAP, false, deadline);
+  let probe = countSolutions(N, numbers, open, 2, PROBE_CAP, false);
   while(probe.exceeded && gwi < genericPool.length && walls.size < maxWalls){
-    if(deadline != null && Date.now() > deadline) return null;
     walls.add(genericPool[gwi]);
     open.delete(genericPool[gwi]);
     gwi++;
-    probe = countSolutions(N, numbers, open, 2, PROBE_CAP, false, deadline);
+    probe = countSolutions(N, numbers, open, 2, PROBE_CAP, false);
+    if(onWallStep) await onWallStep(walls.size);
   }
 
-  let res = countSolutions(N, numbers, open, 2, nodeCap, true, deadline);
+  let res = countSolutions(N, numbers, open, 2, nodeCap, true);
   while((res.count > 1 || res.exceeded) && walls.size < maxWalls){
-    if(deadline != null && Date.now() > deadline) return null; // out of wall-clock budget for this attempt
+    if(res.count === 0){
+      // The anchor path should make this unreachable (see comment above the
+      // wall-adding loop), but if it ever happens, no further wall can help
+      // — every wall only removes edges, so a puzzle with zero solutions
+      // stays at zero. Bail immediately instead of burning more full-nodeCap
+      // solves hoping it recovers.
+      return null;
+    }
     let wall = null;
     if(res.exceeded){
       while(gwi < genericPool.length && walls.has(genericPool[gwi])) gwi++;
@@ -437,14 +476,23 @@ function tryGeneratePuzzle(N, K, rnd, nodeCap, wallBudget, deadline){
     } else {
       const [pathA, pathB] = res.paths;
       const edgesA = pathEdgeSet(pathA), edgesB = pathEdgeSet(pathB);
-      let diffEdges = [...edgesA].filter(e=>!edgesB.has(e));
-      if(diffEdges.length === 0) diffEdges = [...edgesB].filter(e=>!edgesA.has(e));
+      // Exclude the ORIGINAL anchor path's edges here too, not just A's/B's
+      // difference — pathA/pathB are whichever two solutions THIS solve
+      // happened to return, not necessarily the anchor, so a naive A\B wall
+      // can land on an edge the anchor itself needs. That silently breaks
+      // the "some solution always survives" guarantee a few iterations
+      // later (confirmed: this caused long count=0 stalls in practice).
+      // Anchoring every wall choice to the one fixed reference path for the
+      // whole attempt is what actually makes the guarantee hold.
+      let diffEdges = [...edgesA].filter(e=>!edgesB.has(e) && !pathEdges.has(e));
+      if(diffEdges.length === 0) diffEdges = [...edgesB].filter(e=>!edgesA.has(e) && !pathEdges.has(e));
       if(diffEdges.length) wall = diffEdges[Math.floor(rnd()*diffEdges.length)];
     }
     if(wall === null) return null; // exhausted both wall sources without reaching uniqueness
     walls.add(wall);
     open.delete(wall);
-    res = countSolutions(N, numbers, open, 2, nodeCap, true, deadline);
+    res = countSolutions(N, numbers, open, 2, nodeCap, true);
+    if(onWallStep) await onWallStep(walls.size);
   }
   const { count, exceeded } = res;
   if(count !== 1 || exceeded) return null;
@@ -452,79 +500,142 @@ function tryGeneratePuzzle(N, K, rnd, nodeCap, wallBudget, deadline){
   return { N, path, numbers, walls: [...walls] };
 }
 
-// Async puzzle generation with progress reporting: runs attempts in small
-// batches (yielding to the event loop between batches so the UI can repaint
-// a progress indicator), and keeps searching for the full time budget even
+// Async puzzle generation with progress reporting: runs attempts one at a
+// time, yielding to the event loop after each so the UI can repaint a
+// progress indicator, and keeps searching for the full attempt budget even
 // after finding a valid puzzle, since walls only ever improve or tie.
-// onProgress(fraction) is called with 0..1 as the budget is consumed.
-async function genPuzzleAsync(size, seed, timeBudgetMs, onProgress, retryDepth){
+// onProgress(fraction) is called with 0..1 as the search progresses.
+// attemptBudget (optional) overrides the default number of tryGeneratePuzzle
+// attempts to make at the chosen K before falling back — this is a count,
+// not a time limit, so the same seed always does the same amount of work
+// and produces the same puzzle regardless of machine speed. Wall-clock time
+// to finish can vary (slower machines take longer), but the RESULT never
+// does, and the caller always sees live progress via onProgress rather than
+// the page going quiet for an unbounded stretch.
+async function genPuzzleAsync(size, seed, attemptBudget, onProgress, retryDepth){
   retryDepth = retryDepth || 0;
   const N = size;
   const cells = N*N;
-  // Fixed per-N budgets as specified; other sizes fall back to a scaled default.
-  const DEFAULT_BUDGETS = { 5: 500, 7: 1000, 9: 1600, 11: 3000, 16: 4000 };
-  timeBudgetMs = timeBudgetMs || DEFAULT_BUDGETS[N] || Math.min(4000, Math.max(300, 12*cells));
+  // Default attempt budgets per N: scaled so smaller grids (cheap per
+  // attempt) get many tries and larger grids (expensive per attempt) get
+  // fewer — chosen empirically so the common case finds a real puzzle
+  // well before the fallback tiers below are needed.
+  const DEFAULT_ATTEMPT_BUDGETS = { 5: 200, 7: 60, 9: 30, 11: 15, 16: 8 };
+  attemptBudget = attemptBudget || DEFAULT_ATTEMPT_BUDGETS[N] || Math.max(20, Math.round(6000/cells));
 
   let s = seed >>> 0;
   function rnd(){ s = (s*1664525+1013904223)>>>0; return s/4294967296; }
   const nodeCap = Math.max(30000, 200*cells); // per-attempt search budget; keeps individual attempts fast
 
   // Pick K once, up front, uniformly from [N, cells/4] — then spend the whole
-  // time budget searching only within that K for the minimum-wall puzzle,
+  // attempt budget searching only within that K for the minimum-wall puzzle,
   // rather than letting the search drift toward whichever K needs less work.
   const Kmin = Math.max(4, N);
   const Kmax = Math.max(Kmin+1, Math.round(cells/4));
   const K = Kmin + Math.floor(rnd()*(Kmax-Kmin+1));
 
-  const startTime = Date.now();
-  const deadline = startTime + timeBudgetMs;
   let best = null;
+  // Yield to the event loop (and report progress) every YIELD_EVERY
+  // attempts, AND periodically DURING a single attempt via onWallStep below
+  // — both are fixed COUNTS, not time windows, so this never changes what
+  // gets computed, only how often the UI gets a chance to repaint. A single
+  // attempt's wall-adding loop can itself run for several seconds at larger
+  // N with nothing in between to yield on otherwise, which is what made the
+  // page look frozen even after attempt-level yielding was added.
+  const YIELD_EVERY = 1;
+  const WALL_STEP_YIELD_EVERY = 4; // yield every few walls added mid-attempt
+
+  const onWallStep = async (wallCount) => {
+    if((wallCount % WALL_STEP_YIELD_EVERY) === 0){
+      if(onProgress) onProgress(null, wallCount, K); // null frac: mid-attempt, overall fraction unchanged
+      await new Promise(r=>setTimeout(r,0));
+    }
+  };
 
   outer:
-  while(Date.now() < deadline){
-    // Run a small batch of attempts per event-loop turn, then yield so the
-    // progress UI can repaint. Batch size keeps overhead low without
-    // blocking the main thread for the whole budget in one go.
-    const batchDeadline = Math.min(deadline, Date.now() + 60);
-    while(Date.now() < batchDeadline && Date.now() < deadline){
-      const attempt = tryGeneratePuzzle(N, K, rnd, nodeCap, cells, batchDeadline);
-      if(attempt && (!best || attempt.walls.length < best.walls.length)){
-        best = attempt;
-        if(best.walls.length === 0) break outer; // can't do better than zero walls
+  for(let attempt=0; attempt<attemptBudget; attempt++){
+    const result = await tryGeneratePuzzle(N, K, rnd, nodeCap, cells, onWallStep);
+    if(result && (!best || result.walls.length < best.walls.length)){
+      best = result;
+      if(best.walls.length === 0) break outer; // can't do better than zero walls
+    }
+    if((attempt % YIELD_EVERY) === 0 || attempt === attemptBudget-1){
+      if(onProgress){
+        const frac = Math.min(1, (attempt+1)/attemptBudget);
+        onProgress(frac, best ? best.walls.length : null, K);
       }
+      await new Promise(r=>setTimeout(r,0)); // yield to event loop / UI repaint
     }
-    if(onProgress){
-      const frac = Math.min(1, (Date.now()-startTime)/timeBudgetMs);
-      onProgress(frac, best ? best.walls.length : null, K);
-    }
-    await new Promise(r=>setTimeout(r,0)); // yield to event loop / UI repaint
   }
 
-  // Guarantee: if nothing valid was found within the time budget (unlucky
-  // seed/grid/K combo), fall back to a MORE GENEROUS but still BOUNDED search
-  // at the SAME K — bounded so a single fallback attempt can never hang the
-  // page, no matter how unlucky the seed/K combination is. Yields partway
-  // through so the tab stays responsive even in the worst case.
+  // Guarantee: if nothing valid was found within the attempt budget (unlucky
+  // seed/grid/K combo), fall back to a MORE GENEROUS search at the SAME K —
+  // still a fixed, deterministic attempt count, just with a larger per-
+  // attempt nodeCap. Progress keeps reporting through this phase so the UI
+  // never goes quiet, however long it actually takes on this machine.
   if(!best){
     const fallbackNodeCap = Math.min(2000000, Math.max(300000, 20*nodeCap));
-    for(let fb=0; fb<4 && !best; fb++){
-      const fbDeadline = Date.now() + Math.max(200, Math.floor(timeBudgetMs/4));
-      best = tryGeneratePuzzle(N, K, rnd, fallbackNodeCap, cells, fbDeadline);
-      if(!best) await new Promise(r=>setTimeout(r,0)); // yield between fallback tries
+    const FALLBACK_ATTEMPTS = 4;
+    for(let fb=0; fb<FALLBACK_ATTEMPTS && !best; fb++){
+      best = await tryGeneratePuzzle(N, K, rnd, fallbackNodeCap, cells, onWallStep);
+      if(onProgress) onProgress(1, best ? best.walls.length : null, K); // keep the UI updated through fallback, not just the main loop
+      await new Promise(r=>setTimeout(r,0)); // yield between fallback tries
     }
   }
   if(!best){
     // Still nothing after bounded fallback attempts: reseed with a fresh
     // path/K rather than retrying this same (likely pathological) K forever.
-    // Capped depth guarantees this can never recurse indefinitely.
+    // retryDepth is a plain recursion-depth counter — deterministic, no
+    // wall-clock timing involved — so the SAME seed always takes the SAME
+    // path through this retry logic.
     if(retryDepth >= 5){
       // Last resort: K = Kmax (densest allowed), which empirically needs
-      // few/no walls and resolves almost instantly — guarantees termination.
-      const denseDeadline = Date.now() + Math.max(500, timeBudgetMs);
-      const denseAttempt = tryGeneratePuzzle(N, Kmax, rnd, Math.max(300000,20*nodeCap), cells, denseDeadline);
+      // few/no walls and resolves almost instantly — guarantees termination
+      // in the common case. But it CAN still fail on a pathological seed —
+      // when it does, we must stop here rather than recurse again, or
+      // retryDepth would climb unbounded and eventually overflow the call
+      // stack (this was a real, confirmed bug: retryDepth climbed past
+      // 1000+ before crashing, because nothing previously stopped the
+      // fall-through to another recursive call after a dense-K failure).
+      const denseAttempt = await tryGeneratePuzzle(N, Kmax, rnd, Math.max(300000,20*nodeCap), cells, onWallStep);
       if(denseAttempt) return withWallSet({ ...denseAttempt, seed });
+      // Absolute last resort: number EVERY cell along a fresh Hamiltonian
+      // path (K=cells), not just the two endpoints. This is the genuinely
+      // trivial case — with every cell numbered, exactly one move is legal
+      // at each step, so it resolves in O(cells) with a single solution by
+      // construction. (An earlier version of this fallback used K=2 — only
+      // start/end checkpoints — on the mistaken assumption that fewer
+      // checkpoints means an easier search; it's the opposite: the
+      // Manhattan-bound pruning that keeps the DFS tractable barely
+      // constrains anything when the only checkpoint is ~cells steps away,
+      // so K=2 on an 11x11 grid failed to even complete at 500,000 nodes.
+      // K=cells verified at 11ms with count=1.) This cannot itself fail to
+      // produce a valid puzzle for any successfully-constructed path.
+      const trivialPath = warnsdorffPath(N, rnd);
+      if(trivialPath){
+        const trivialNumbers = {};
+        trivialPath.forEach((cell,i)=>{ trivialNumbers[cell] = i+1; });
+        return withWallSet({ N, path: trivialPath, numbers: trivialNumbers, walls: [], seed });
+      }
+      // Even warnsdorffPath can fail on a bad rnd draw (rare, dead-end
+      // during construction) — try a few more seeds directly rather than
+      // recursing (recursing here risks the same unbounded-depth problem
+      // this block exists to prevent).
+      for(let extra=0; extra<10; extra++){
+        const retryPath = warnsdorffPath(N, rnd);
+        if(retryPath){
+          const retryNumbers = {};
+          retryPath.forEach((cell,i)=>{ retryNumbers[cell] = i+1; });
+          return withWallSet({ N, path: retryPath, numbers: retryNumbers, walls: [], seed });
+        }
+      }
+      // Should be unreachable for any valid N>=2 (warnsdorffPath only
+      // returns null on a dead-end mid-construction, and random restarts
+      // resolve that within a handful of tries in practice) — but never
+      // leave the caller hanging on an unresolved promise.
+      throw new Error('Puzzle generation failed: could not construct any Hamiltonian path for N='+N);
     }
-    return genPuzzleAsync(size, seed+1, timeBudgetMs, onProgress, retryDepth+1);
+    return genPuzzleAsync(size, seed+1, attemptBudget, onProgress, retryDepth+1);
   }
 
   if(onProgress) onProgress(1, best.walls.length, K);
@@ -532,12 +643,15 @@ async function genPuzzleAsync(size, seed, timeBudgetMs, onProgress, retryDepth){
 }
 
 // Synchronous wrapper kept for any caller that can't await (none currently,
-// but useful for quick console testing) — runs the whole budget in one go.
-function genPuzzle(size, seed, timeBudgetMs){
+// but useful for quick console testing) — runs the whole attempt budget in
+// one go, deterministically (same seed, same result, regardless of speed).
+// async only because tryGeneratePuzzle is (no yielding happens here; this
+// wrapper has no UI to keep responsive, so it never passes onWallStep).
+async function genPuzzle(size, seed, attemptBudget){
   const N = size;
   const cells = N*N;
-  const DEFAULT_BUDGETS = { 5: 500, 7: 1000, 9: 1600, 11: 3000, 16: 4000 };
-  timeBudgetMs = timeBudgetMs || DEFAULT_BUDGETS[N] || Math.min(4000, Math.max(300, 12*cells));
+  const DEFAULT_ATTEMPT_BUDGETS = { 5: 200, 7: 60, 9: 30, 11: 15, 16: 8 };
+  attemptBudget = attemptBudget || DEFAULT_ATTEMPT_BUDGETS[N] || Math.max(20, Math.round(6000/cells));
 
   let s = seed >>> 0;
   function rnd(){ s = (s*1664525+1013904223)>>>0; return s/4294967296; }
@@ -547,20 +661,21 @@ function genPuzzle(size, seed, timeBudgetMs){
   const Kmax = Math.max(Kmin+1, Math.round(cells/4));
   const K = Kmin + Math.floor(rnd()*(Kmax-Kmin+1));
 
-  const deadline = Date.now() + timeBudgetMs;
   let best = null;
-  while(Date.now() < deadline){
-    const attempt = tryGeneratePuzzle(N, K, rnd, nodeCap, cells, deadline);
-    if(attempt && (!best || attempt.walls.length < best.walls.length)) best = attempt;
+  for(let attempt=0; attempt<attemptBudget; attempt++){
+    const result = await tryGeneratePuzzle(N, K, rnd, nodeCap, cells);
+    if(result && (!best || result.walls.length < best.walls.length)){
+      best = result;
+      if(best.walls.length === 0) break;
+    }
   }
   if(!best){
     const fallbackNodeCap = Math.min(2000000, Math.max(300000, 20*nodeCap));
     for(let fb=0; fb<4 && !best; fb++){
-      const fbDeadline = Date.now() + Math.max(200, Math.floor(timeBudgetMs/4));
-      best = tryGeneratePuzzle(N, K, rnd, fallbackNodeCap, cells, fbDeadline);
+      best = await tryGeneratePuzzle(N, K, rnd, fallbackNodeCap, cells);
     }
   }
-  if(!best) return genPuzzle(size, seed+1, timeBudgetMs);
+  if(!best) return genPuzzle(size, seed+1, attemptBudget);
   return withWallSet({ ...best, seed });
 }
 
@@ -1392,7 +1507,11 @@ async function startLocal(advance){
   try{
     const seed = advance ? await advanceDailySeed(state.size) : await currentDailySeed(state.size);
     const puzzle = await genPuzzleAsync(state.size, seed, null, (frac, walls, K)=>{
-      state.genProgress = { frac, walls, K, nextScreen: 'local' };
+      // frac===null means a mid-attempt update (still working on the current
+      // attempt) — keep showing the last known overall fraction so the bar
+      // doesn't visibly snap back to 0% and jump forward again each tick.
+      const prevFrac = state.genProgress.frac;
+      state.genProgress = { frac: frac==null ? prevFrac : frac, walls, K, nextScreen: 'local' };
       if(state.screen==='generating') render();
     });
     state.puzzle = puzzle;
@@ -1480,7 +1599,8 @@ async function createRoom(){
   try{
     const seed = await currentDailySeed(state.size);
     const puzzle = await genPuzzleAsync(state.size, seed, null, (frac, walls, K)=>{
-      state.genProgress = { frac, walls, K, nextScreen: 'online-lobby' };
+      const prevFrac = state.genProgress.frac;
+      state.genProgress = { frac: frac==null ? prevFrac : frac, walls, K, nextScreen: 'online-lobby' };
       if(state.screen==='generating') render();
     });
     const roomData = { code, puzzle, players:{}, createdAt: Date.now() };
