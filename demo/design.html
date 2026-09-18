@@ -360,6 +360,18 @@
     <div class="divider"></div>
 
     <div class="field">
+      <label for="wallCount">Max walls</label>
+      <input id="wallCount" type="number" min="0" value="5">
+    </div>
+
+    <div class="field">
+      <button id="randWalls" class="wide">🧱 Random walls <span id="wallCapTag"></span></button>
+      <button id="minimizeWalls" class="wide">✂️ Minimize walls</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="field">
       <button id="clearWalls" class="wide">Clear all walls</button>
       <button id="clearAll" class="wide">Reset board</button>
     </div>
@@ -459,6 +471,8 @@
   const playInfoEl = document.getElementById('playInfo');
   const sizeSel    = document.getElementById('sizeSel');
   const cpCount    = document.getElementById('cpCount');
+  const wallCount  = document.getElementById('wallCount');
+  const wallCapTag = document.getElementById('wallCapTag');
   const playBtn    = document.getElementById('playBtn');
 
   const modalBackdrop = document.getElementById('modalBackdrop');
@@ -495,6 +509,46 @@
     const rb = (b / N) | 0, cb = b % N;
     if (ra === rb) return `V,${ra},${Math.min(ca, cb)}`;
     return `H,${Math.min(ra, rb)},${ca}`;
+  }
+
+  // All interior grid edges (every V/H wall slot on the current N×N board).
+  function allEdgeKeys() {
+    const out = [];
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        const i = r * N + c;
+        if (c < N - 1) out.push(edgeKey(i, i + 1));
+        if (r < N - 1) out.push(edgeKey(i, i + N));
+      }
+    }
+    return out;
+  }
+
+  // Edges usable as walls right now: every grid edge except the ones the
+  // anchor path (previewPath, if one exists) walks along — walling a path
+  // edge would break the puzzle's own intended solution. With no anchor
+  // path this is just every edge on the board.
+  function wallableEdgeKeys() {
+    const all = allEdgeKeys();
+    if (!previewPath || previewPath.length < 2) return all;
+    const pathEdges = new Set();
+    for (let i = 1; i < previewPath.length; i++) pathEdges.add(edgeKey(previewPath[i - 1], previewPath[i]));
+    return all.filter(e => !pathEdges.has(e));
+  }
+
+  // Max walls that could ever be added without touching the anchor path
+  // (or the whole board's edges, with no anchor path) minus ones already
+  // placed — this is what the "Random walls" button label and cap show.
+  function maxPossibleWalls() {
+    return wallableEdgeKeys().filter(e => !walls.has(e)).length + walls.size;
+  }
+
+  function updateWallCapTag() {
+    if (!wallCapTag) return;
+    const cap = maxPossibleWalls();
+    wallCapTag.textContent = `(max ${cap})`;
+    wallCount.max = cap;
+    if (parseInt(wallCount.value, 10) > cap) wallCount.value = cap;
   }
 
   function isAdjacent(a, b) {
@@ -823,6 +877,7 @@
       if (walls.has(edge)) walls.delete(edge); else walls.add(edge);
       clearSolutions(); clearPreview();
       render();
+      updateWallCapTag();
       return;
     }
     const cellEl = e.target.closest('.cell');
@@ -1069,6 +1124,51 @@
     previewVisible = true;
   }
 
+  // Adds up to `count` random walls, drawn from every grid edge that isn't
+  // already a wall and isn't on the anchor path (previewPath) if one exists
+  // — same eligibility index.html uses for its "generic pool" walls, just
+  // without the solve-and-diff step, since this is a manual/unconstrained
+  // add rather than a uniqueness search. Returns how many were actually
+  // added (may be fewer than requested if the eligible pool runs out).
+  function randomWalls(count) {
+    const pool = shuffleArr(wallableEdgeKeys().filter(e => !walls.has(e)));
+    const n = Math.max(0, Math.min(count, pool.length));
+    for (let i = 0; i < n; i++) walls.add(pool[i]);
+    return n;
+  }
+
+  // Greedy wall-set reduction: for each current wall (in random order), try
+  // removing it and re-solving. If the puzzle is still uniquely solvable
+  // without it, the removal sticks; otherwise the wall goes back. Repeating
+  // this for every wall once yields a set where every remaining wall is
+  // individually necessary for uniqueness — a minimal set, though not
+  // necessarily the smallest possible one (that would require checking
+  // every subset, not just single-wall removals; greedy reduction is the
+  // standard/expected notion of "minimal" here and is what's tractable).
+  // Requires the puzzle to already be uniquely solvable — returns null
+  // (nothing changed) if it isn't, since "necessary" is undefined otherwise.
+  function minimizeWalls(nodeLimit) {
+    const before = solvePuzzle(2, nodeLimit);
+    if (before.aborted || before.solutions.length !== 1) {
+      return { ok: false, startedUnique: false, before, removed: 0, kept: walls.size };
+    }
+
+    const order = shuffleArr([...walls]);
+    let removed = 0;
+    for (const w of order) {
+      if (!walls.has(w)) continue; // already gone via an earlier iteration (shouldn't happen, but safe)
+      walls.delete(w);
+      const res = solvePuzzle(2, nodeLimit);
+      if (!res.aborted && res.solutions.length === 1) {
+        removed++; // wall was unnecessary — keep it removed
+      } else {
+        walls.add(w); // still needed — put it back
+      }
+    }
+
+    return { ok: true, startedUnique: true, before, removed, kept: walls.size };
+  }
+
   // Same as randomPathPuzzle, but additionally walls off edges until the
   // puzzle has exactly one solution (index.html's generator approach: solve,
   // and each time it isn't unique, wall an edge that's in one found solution
@@ -1238,6 +1338,7 @@
     setStatus('');
     updateHint();
     render();
+    updateWallCapTag();
   }
 
   /* ======================= Modal ======================= */
@@ -1315,6 +1416,7 @@
     walls.clear();
     clearSolutions(); clearPreview();
     render();
+    updateWallCapTag();
   });
 
   document.getElementById('clearAll').addEventListener('click', () => resetBoard(N));
@@ -1328,6 +1430,7 @@
     selected = -1; buffer = '';
     clearSolutions();
     render();
+    updateWallCapTag();
     setStatus(`Scattered ${Math.min(K, N * N)} random checkpoints. Walls cleared.`, 'ok');
   });
 
@@ -1339,6 +1442,7 @@
     clearSolutions();
     render();
     renderLegend();
+    updateWallCapTag();
     setStatus('Generated a random Hamiltonian path with checkpoints along it, no walls. The template is shown dashed — click Solve to check it, then add walls manually if it\'s not unique.', 'ok');
   });
 
@@ -1350,10 +1454,63 @@
     clearSolutions();
     render();
     renderLegend();
+    updateWallCapTag();
     if (genRes.unique) {
       setStatus(`Generated a unique puzzle (${genRes.wallsAdded} wall${genRes.wallsAdded === 1 ? '' : 's'} added, ${genRes.nodes.toLocaleString()} nodes to confirm). The template is shown dashed.`, 'ok');
     } else {
       setStatus(`Generated a Hamiltonian path, but couldn't reach a unique solution within the generator's search budget (still has multiple solutions or the check was inconclusive). Try again or click Solve to inspect it.`, 'warn');
+    }
+  });
+
+  document.getElementById('randWalls').addEventListener('click', () => {
+    if (playMode) exitPlay();
+    const requested = parseInt(wallCount.value, 10) || 0;
+    const added = randomWalls(requested);
+    clearSolutions();
+    render();
+    updateWallCapTag();
+    if (added < requested) {
+      setStatus(`Added ${added} wall${added === 1 ? '' : 's'} — that's every eligible edge left (none of the anchor path's edges are ever walled).`, 'warn');
+    } else {
+      setStatus(`Added ${added} random wall${added === 1 ? '' : 's'}.`, 'ok');
+    }
+  });
+
+  document.getElementById('minimizeWalls').addEventListener('click', () => {
+    if (playMode) exitPlay();
+    const v = validatePuzzle();
+    if (!v.ok) { clearSolutions(); setStatus('Fix the puzzle before minimizing: ' + v.msg, 'error'); return; }
+
+    const nodeLimitEl = document.getElementById('nodeLimit');
+    let nodeLimit = parseInt(nodeLimitEl.value, 10);
+    if (!Number.isFinite(nodeLimit) || nodeLimit < 1000) nodeLimit = DEFAULT_NODE_LIMIT;
+
+    const before = walls.size;
+    const result = minimizeWalls(nodeLimit);
+
+    solutions = []; solVisible = []; lastAborted = false; lastSolveNodes = 0;
+    // Minimizing only ever removes walls (never adds or touches checkpoints),
+    // and no wall is ever placed on the anchor path in the first place, so
+    // the anchor stays valid throughout — keep it, just hidden while the
+    // "before/after" state is fresh, same as doSolve.
+    previewVisible = false;
+    render();
+    renderLegend();
+    updateWallCapTag();
+
+    if (!result.startedUnique) {
+      const b = result.before;
+      const reason = b.aborted
+        ? 'the search limit was reached before confirming it'
+        : b.solutions.length === 0 ? 'it has no solution' : 'it has multiple solutions';
+      setStatus(`Can't minimize — the puzzle isn't uniquely solvable as-is (${reason}). Solve first to check, add walls to disambiguate, or raise the search limit.`, 'error');
+      return;
+    }
+
+    if (result.removed === 0) {
+      setStatus(`All ${before} wall${before === 1 ? '' : 's'} are already necessary — none could be removed without losing uniqueness.`, 'ok');
+    } else {
+      setStatus(`Removed ${result.removed} unnecessary wall${result.removed === 1 ? '' : 's'} — ${result.kept} remaining wall${result.kept === 1 ? '' : 's'} are each individually necessary for a unique solution.`, 'ok');
     }
   });
 
@@ -1384,6 +1541,7 @@
     setStatus('');
     updateHint();
     render();
+    updateWallCapTag();
   }
 
   /* ======================= Solver ======================= */
@@ -1571,7 +1729,12 @@
     const v = validatePuzzle();
     if (!v.ok) { clearSolutions(); setStatus(v.msg, 'error'); return; }
 
-    previewPath = null; previewVisible = true;
+    // Solving doesn't change the checkpoints, so the anchor path (if any) is
+    // still valid and stays protected for Random walls — just hide its
+    // dashed rendering so it doesn't visually clash with the solution
+    // path(s) about to be drawn. The user can still toggle it back on via
+    // the "Template path" legend chip.
+    previewVisible = false;
 
     const nodeLimitEl = document.getElementById('nodeLimit');
     let nodeLimit = parseInt(nodeLimitEl.value, 10);
@@ -1585,6 +1748,7 @@
 
     render();
     renderLegend();
+    updateWallCapTag();
 
     if (solutions.length >= 2) {
       setStatus('Multiple solutions — this puzzle is NOT unique. Showing 2 (click the legend chips to toggle).', 'warn');
@@ -1608,7 +1772,11 @@
     playPath = [];
     drawing = false;
     solutions = []; solVisible = [];
-    previewPath = null; previewVisible = true;
+    // Entering play mode doesn't change the checkpoints either, and the
+    // render path already hides the anchor preview while playMode is true
+    // (see the `!playMode` guard in render()), so there's nothing to hide
+    // here — just don't destroy the anchor, so Random walls stays safe
+    // after playing and exiting.
     selected = -1; buffer = '';
     endDragGhost();
     numDrag = null;
@@ -1721,6 +1889,7 @@
   setMode('number');
   render();
   renderLegend();
+  updateWallCapTag();
 })();
 </script>
 </body>
