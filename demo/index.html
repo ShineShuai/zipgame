@@ -352,7 +352,7 @@ function allEdgesFor(N){
 // with onWallStep omitted it still runs start-to-finish with no actual
 // suspension, so callers that don't need yielding (like the sync-style
 // genPuzzle wrapper below) are unaffected beyond adding `await`.
-async function tryGeneratePuzzle(N, K, rnd, nodeCap, wallBudget, onWallStep){
+async function tryGeneratePuzzle(N, K, rnd, nodeCap, wallBudget, onWallStep, seedFraction){
   const path = warnsdorffPath(N, rnd);
   if(!path) return null;
 
@@ -449,29 +449,39 @@ async function tryGeneratePuzzle(N, K, rnd, nodeCap, wallBudget, onWallStep){
   const walls = new Set();
   let open = new Set(allEdges);
 
-  // Deterministic upfront seeding: place a fixed fraction of genericPool's
+  // Deterministic upfront seeding: place a fraction of genericPool's
   // ALREADY-shuffled edges as walls before the adaptive probe loop even
   // starts, instead of letting that loop discover — one cheap probe at a
   // time — that a wide-open board needs dozens of walls anyway. Measured
   // (design.html, same solver core, N=9, K=4-7, no walls initially): seeding
   // ~40-50% of genericPool upfront cuts total solver nodes by 80%+ and wall-
   // clock by a similar margin versus growing the wall set one edge at a
-  // time from empty, with NO cost to final puzzle quality — a single
-  // minimize-style pass after reaching uniqueness converges to about the
-  // same final wall count regardless of how many walls were seeded
-  // upfront (that pass isn't implemented here yet; genPuzzleAsync still
-  // returns whatever the diff-edge loop below converges to, same as before
-  // this change — the win here is purely in how fast it GETS there).
-  // This draws NO new rnd() calls: genericPool was already shuffled from
-  // `rnd` above, so taking a prefix of it is itself a deterministic,
-  // rnd-derived choice, and every call site already passes the whole
-  // wall-loop's random decisions through this one `rnd` stream — seeding
-  // from a prefix of an already-`rnd`-shuffled array keeps the same-seed-
-  // same-puzzle guarantee (Game of Day included) intact with no extra
-  // bookkeeping. gwi starts past the seeded prefix so the probe/diff-edge
-  // loops below never reconsider an already-placed wall.
-  const SEED_FRACTION = 0.4;
-  const seedCount = Math.min(Math.floor(genericPool.length * SEED_FRACTION), maxWalls);
+  // time from empty, with NO cost to final puzzle quality — minimizeWalls
+  // (below, in genPuzzleAsync) converges to about the same final wall count
+  // regardless of how many walls were seeded upfront — the win here is
+  // purely in how fast it GETS there.
+  // seedFraction is 0 UNLESS the caller opts in (see genPuzzleAsync): on
+  // small/easy boards (e.g. N=5), a single unseeded attempt often needs
+  // ZERO walls, and genPuzzleAsync's own attempt loop already breaks early
+  // on that — seeding there unconditionally would have pre-walled the
+  // board on every attempt, making that lucky zero-wall outcome
+  // unreachable (confirmed: measured average final walls at N=5 going from
+  // 0.3 to 2.3 when this was always on). Only boards/K combos where the
+  // FIRST unseeded attempt already needs many walls actually benefit from
+  // seeding subsequent attempts — genPuzzleAsync decides this adaptively
+  // per call rather than via a fixed N cutoff, since the real driver is
+  // per-attempt difficulty, not board size alone.
+  // This draws NO new rnd() calls when seedFraction>0: genericPool was
+  // already shuffled from `rnd` above, so taking a prefix of it is itself a
+  // deterministic, rnd-derived choice, and every call site already passes
+  // the whole wall-loop's random decisions through this one `rnd` stream —
+  // seeding from a prefix of an already-`rnd`-shuffled array keeps the
+  // same-seed-same-puzzle guarantee (Game of Day included) intact with no
+  // extra bookkeeping. gwi starts past the seeded prefix so the probe/
+  // diff-edge loops below never reconsider an already-placed wall.
+  const seedCount = seedFraction > 0
+    ? Math.min(Math.floor(genericPool.length * seedFraction), genericPool.length, maxWalls)
+    : 0;
   for(let i=0;i<seedCount;i++){
     walls.add(genericPool[i]);
     open.delete(genericPool[i]);
@@ -543,6 +553,59 @@ async function tryGeneratePuzzle(N, K, rnd, nodeCap, wallBudget, onWallStep){
   return { N, path, numbers, walls: [...walls] };
 }
 
+// End-of-generation minimize pass: some of the walls a successful attempt
+// added along the way may no longer be necessary — the diff-edge loop in
+// tryGeneratePuzzle always walls off an edge that kills the SPECIFIC second
+// solution seen at that step, but a later wall can independently eliminate
+// the same ambiguity, making an earlier one redundant. Applied ONCE, only
+// to the attempt that's actually kept as `best` (genPuzzleAsync tries up to
+// attemptBudget candidates and discards all but the fewest-walls one — this
+// must run after that selection, not inside tryGeneratePuzzle itself, or
+// every discarded attempt pays this cost for nothing: confirmed in testing,
+// running it per-attempt made total generation ~4x SLOWER despite shrinking
+// each individual attempt's wall count, because attemptBudget can be 30+).
+// Removes each current wall (in a fixed, rnd-derived order — same shuffle
+// pattern used elsewhere in this file — so the SAME seed always tries
+// removals in the SAME order and reaches the SAME final wall set) one at a
+// time: if the puzzle is still uniquely solvable without it, the removal
+// sticks; otherwise it goes back. One pass is enough — a second pass over
+// what's left almost never finds anything further (confirmed against
+// design.html's ported solver on equivalent puzzles) — so it isn't worth
+// the extra nodeCap-sized solves. The path's own edges are never among the
+// candidates (they were never walled to begin with), so this can only ever
+// shrink the wall set, never break solvability.
+// checkCap is intentionally a CHEAP budget, not the generous fallbackNodeCap
+// callers pass to tryGeneratePuzzle — a removal check that exceeds a small
+// cap is treated conservatively as "keep the wall" rather than paying a
+// much larger budget to find out for certain the removal is safe. This
+// trades a small amount of extra conservatism (occasionally keeping a wall
+// that a very expensive check might have shown was actually removable) for
+// a large, predictable speed win: measured checks against fallbackNodeCap
+// (up to 2,000,000) ranged from single-digit ms up to 1.3+ SECONDS each,
+// dozens of times per generation — the whole point of this pass (making
+// generation faster) was being undone by using too generous a budget here.
+async function minimizeWalls(puzzle, rnd, checkCap, onWallStep){
+  const { N, path, numbers, walls: wallArr } = puzzle;
+  const allEdges = allEdgesFor(N);
+  const walls = new Set(wallArr);
+  const open = new Set([...allEdges].filter(e=>!walls.has(e)));
+
+  const removalOrder = [...walls];
+  for(let i=removalOrder.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [removalOrder[i],removalOrder[j]]=[removalOrder[j],removalOrder[i]]; }
+  for(const w of removalOrder){
+    walls.delete(w);
+    open.add(w);
+    const check = countSolutions(N, numbers, open, 2, checkCap, false);
+    if(check.count !== 1 || check.exceeded){
+      walls.add(w);
+      open.delete(w);
+    }
+    if(onWallStep) await onWallStep(walls.size);
+  }
+
+  return { N, path, numbers, walls: [...walls] };
+}
+
 // Async puzzle generation with progress reporting: runs attempts one at a
 // time, yielding to the event loop after each so the UI can repaint a
 // progress indicator, and keeps searching for the full attempt budget even
@@ -569,6 +632,11 @@ async function genPuzzleAsync(size, seed, attemptBudget, onProgress, retryDepth)
   let s = seed >>> 0;
   function rnd(){ s = (s*1664525+1013904223)>>>0; return s/4294967296; }
   const nodeCap = Math.max(30000, 200*cells); // per-attempt search budget; keeps individual attempts fast
+  // Always >= nodeCap by construction, so it's always a safe (if sometimes
+  // more generous than strictly needed) budget to minimize with below,
+  // regardless of whether `best` ends up coming from the main loop or the
+  // fallback tier further down.
+  const fallbackNodeCap = Math.min(2000000, Math.max(300000, 20*nodeCap));
 
   // Pick K once, up front, uniformly from [N, cells/4] — then spend the whole
   // attempt budget searching only within that K for the minimum-wall puzzle,
@@ -595,12 +663,54 @@ async function genPuzzleAsync(size, seed, attemptBudget, onProgress, retryDepth)
     }
   };
 
+  // Adaptive seeding decision: attempt 0 always runs UNSEEDED (seedFraction
+  // undefined/0 inside tryGeneratePuzzle), the same as before this whole
+  // optimization — that's what preserves the valuable "get lucky, find a
+  // path needing zero or very few walls" outcome on easy boards (N=5 was
+  // measured going from avg 0.3 final walls to 2.3 when seeding was always
+  // on, because pre-walling every attempt made a zero-wall result
+  // unreachable). Once that first non-null attempt tells us how hard THIS
+  // N/K/seed combination actually is — via its wall count relative to how
+  // many non-anchor edges even exist on this board (genericPoolLen) — only
+  // THEN decide whether the remaining attempts in this call should seed.
+  // A path/K combo that fails outright (tryGeneratePuzzle returns null,
+  // common and harmless — see its own early-return comments) tells us
+  // nothing about difficulty, so it doesn't count toward this decision;
+  // keep trying unseeded until a real result comes back or the budget
+  // runs out. This is self-calibrating per call — no fixed N cutoff — and
+  // still fully deterministic: the decision is a pure function of the
+  // first real result, which is itself deterministic for a given seed.
+  // Deciding from a SINGLE non-null attempt (not an average of several) is
+  // deliberate: on larger boards (e.g. N=11) each unseeded attempt already
+  // costs 700-1300ms, and attemptBudget itself is small (15 at N=11) — so
+  // spending multiple attempts just to decide, hoping to smooth out
+  // per-attempt noise, cost MORE than the noise itself (measured: 3-sample
+  // averaging made N=11 ~2x SLOWER than no seeding at all, since a large
+  // chunk of the already-small attempt budget went to deciding instead of
+  // actually searching). One sample is noisier per-call, but correct on
+  // average across many calls, and — critically — cheap to be wrong about:
+  // if it wrongly turns seeding on for an easy case, subsequent seeded
+  // attempts are still bounded by the same attemptBudget and minimizeWalls
+  // cleans up any extra walls afterward; if it wrongly leaves seeding off
+  // for a hard case, the adaptive probe loop INSIDE tryGeneratePuzzle still
+  // catches it (that mechanism predates and is independent of this).
+  const genericPoolLen = allEdgesFor(N).size - (cells - 1);
+  const HARD_WALL_FRACTION = 0.15; // >=15% of non-anchor edges needed -> treat as a hard case
+  const SEED_FRACTION = 0.4;
+  let seedFraction = 0;
+  let decided = false;
   outer:
   for(let attempt=0; attempt<attemptBudget; attempt++){
-    const result = await tryGeneratePuzzle(N, K, rnd, nodeCap, cells, onWallStep);
-    if(result && (!best || result.walls.length < best.walls.length)){
-      best = result;
-      if(best.walls.length === 0) break outer; // can't do better than zero walls
+    const result = await tryGeneratePuzzle(N, K, rnd, nodeCap, cells, onWallStep, seedFraction);
+    if(result){
+      if(!decided){
+        decided = true;
+        if(result.walls.length >= genericPoolLen * HARD_WALL_FRACTION) seedFraction = SEED_FRACTION;
+      }
+      if(!best || result.walls.length < best.walls.length){
+        best = result;
+        if(best.walls.length === 0) break outer; // can't do better than zero walls
+      }
     }
     if((attempt % YIELD_EVERY) === 0 || attempt === attemptBudget-1){
       if(onProgress){
@@ -617,10 +727,12 @@ async function genPuzzleAsync(size, seed, attemptBudget, onProgress, retryDepth)
   // attempt nodeCap. Progress keeps reporting through this phase so the UI
   // never goes quiet, however long it actually takes on this machine.
   if(!best){
-    const fallbackNodeCap = Math.min(2000000, Math.max(300000, 20*nodeCap));
     const FALLBACK_ATTEMPTS = 4;
     for(let fb=0; fb<FALLBACK_ATTEMPTS && !best; fb++){
-      best = await tryGeneratePuzzle(N, K, rnd, fallbackNodeCap, cells, onWallStep);
+      // Main loop found NOTHING across the whole attemptBudget — that's
+      // itself strong evidence this N/K/seed combo is hard, so seed here
+      // unconditionally rather than re-deciding.
+      best = await tryGeneratePuzzle(N, K, rnd, fallbackNodeCap, cells, onWallStep, SEED_FRACTION);
       if(onProgress) onProgress(1, best ? best.walls.length : null, K); // keep the UI updated through fallback, not just the main loop
       await new Promise(r=>setTimeout(r,0)); // yield between fallback tries
     }
@@ -641,7 +753,12 @@ async function genPuzzleAsync(size, seed, attemptBudget, onProgress, retryDepth)
       // 1000+ before crashing, because nothing previously stopped the
       // fall-through to another recursive call after a dense-K failure).
       const denseAttempt = await tryGeneratePuzzle(N, Kmax, rnd, Math.max(300000,20*nodeCap), cells, onWallStep);
-      if(denseAttempt) return withWallSet({ ...denseAttempt, seed });
+      if(denseAttempt){
+        const finalAttempt = denseAttempt.walls.length > 0
+          ? await minimizeWalls(denseAttempt, rnd, nodeCap, onWallStep)
+          : denseAttempt;
+        return withWallSet({ ...finalAttempt, seed });
+      }
       // Absolute last resort: number EVERY cell along a fresh Hamiltonian
       // path (K=cells), not just the two endpoints. This is the genuinely
       // trivial case — with every cell numbered, exactly one move is legal
@@ -682,6 +799,26 @@ async function genPuzzleAsync(size, seed, attemptBudget, onProgress, retryDepth)
   }
 
   if(onProgress) onProgress(1, best.walls.length, K);
+  // Minimize exactly HERE, once, on the single attempt that's actually
+  // being kept — not inside tryGeneratePuzzle, where it would run on every
+  // discarded attempt too (see the comment on minimizeWalls for why that
+  // matters). best.walls.length===0 already short-circuited via `break
+  // outer` above, so this only ever does real work when there's something
+  // to remove. Uses HALF of nodeCap, not the full amount — see
+  // minimizeWalls's own comment for why: minimize's total cost is
+  // (wall count × per-check cost), and both factors grow with N — a large
+  // board (e.g. N=11) can need 50+ walls AND cost more per node than a
+  // smaller one, so even the already-cheap nodeCap adds up (measured: 3.4s
+  // just for minimize at N=11, more than the entire rest of generation
+  // combined). Halving it recovers most of the wall-count benefit
+  // (measured: 45 vs 44 final walls, same ballpark) at roughly half the
+  // cost — quartering it or lower loses most of the benefit for little
+  // further savings, so half is the better point on that curve.
+  const minimizeCheckCap = Math.max(1000, Math.floor(nodeCap / 2));
+  if(best.walls.length > 0){
+    best = await minimizeWalls(best, rnd, minimizeCheckCap, onWallStep);
+    if(onProgress) onProgress(1, best.walls.length, K);
+  }
   return withWallSet({ ...best, seed });
 }
 
@@ -705,20 +842,30 @@ async function genPuzzle(size, seed, attemptBudget){
   const K = Kmin + Math.floor(rnd()*(Kmax-Kmin+1));
 
   let best = null;
+  let genPuzzleSeedFraction = 0;
+  let genPuzzleDecided = false;
+  const genericPoolLen = allEdgesFor(N).size - (cells - 1);
   for(let attempt=0; attempt<attemptBudget; attempt++){
-    const result = await tryGeneratePuzzle(N, K, rnd, nodeCap, cells);
-    if(result && (!best || result.walls.length < best.walls.length)){
-      best = result;
-      if(best.walls.length === 0) break;
+    const result = await tryGeneratePuzzle(N, K, rnd, nodeCap, cells, null, genPuzzleSeedFraction);
+    if(result){
+      if(!genPuzzleDecided){
+        genPuzzleDecided = true;
+        if(result.walls.length >= genericPoolLen * 0.15) genPuzzleSeedFraction = 0.4;
+      }
+      if(!best || result.walls.length < best.walls.length){
+        best = result;
+        if(best.walls.length === 0) break;
+      }
     }
   }
+  const fallbackNodeCap = Math.min(2000000, Math.max(300000, 20*nodeCap));
   if(!best){
-    const fallbackNodeCap = Math.min(2000000, Math.max(300000, 20*nodeCap));
     for(let fb=0; fb<4 && !best; fb++){
-      best = await tryGeneratePuzzle(N, K, rnd, fallbackNodeCap, cells);
+      best = await tryGeneratePuzzle(N, K, rnd, fallbackNodeCap, cells, null, 0.4);
     }
   }
   if(!best) return genPuzzle(size, seed+1, attemptBudget);
+  if(best.walls.length > 0) best = await minimizeWalls(best, rnd, Math.max(1000, Math.floor(nodeCap/2)));
   return withWallSet({ ...best, seed });
 }
 
