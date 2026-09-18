@@ -31,17 +31,43 @@
   .tag.done{background:#e3f5e6;color:#1a6e2c}
   .small{font-size:12px;color:#888}
   svg{touch-action:none;cursor:pointer;background:#fafafa;border-radius:8px;display:block}
+  /* Modal, matching design.html's layout: box-sizing:border-box on the whole
+     modal subtree is what keeps the width:100% textarea inside its padded
+     parent. design.html gets this from its global `* { box-sizing: border-box }`
+     reset; index.html has no such reset (adding it globally would touch the
+     rest of the app's layout), so it's scoped to the modal only. */
+  .modal-backdrop, .modal-backdrop *{box-sizing:border-box}
+  .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
+  .modal-backdrop.show{display:flex}
+  .modal{width:100%;max-width:540px;background:#fff;border:1px solid #e2e2e2;border-radius:12px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+  .modal h2{margin:0 0 12px;font-size:16px;font-weight:500}
+  .modal textarea{width:100%;min-height:240px;background:#fafafa;color:#1a1a1a;border:1px solid #ccc;border-radius:8px;padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.55;resize:vertical;display:block}
+  .modal textarea:focus{outline:2px solid #1a1a1a33;border-color:#1a1a1a}
+  .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+  .modal-msg{font-size:12px;margin-top:8px;color:#a33;min-height:16px}
+  .modal-msg.ok{color:#1a6e2c}
 </style>
 </head>
 <body>
 <div id="app"></div>
+<div class="modal-backdrop" id="exportModal">
+  <div class="modal">
+    <h2>Export Puzzle</h2>
+    <textarea id="exportText" spellcheck="false" readonly></textarea>
+    <div class="modal-msg" id="exportMsg"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" id="exportClose">Close</button>
+      <button class="btn" id="exportCopy">Copy to clipboard</button>
+    </div>
+  </div>
+</div>
 <script>
 (function(){
 
 // ---------- Version + hidden "v" reveal ----------
 // Hold the "v" key to reveal the version number badge and the hint button;
 // release it (or blur the window) and both hide again.
-const GAME_VERSION = '0.0.1';
+const GAME_VERSION = '0.0.2';
 
 // ---------- Hamiltonian-path grid generator (randomized Warnsdorff + wall-based uniqueness) ----------
 const DIRS4 = [[0,1],[0,-1],[1,0],[-1,0]];
@@ -1142,6 +1168,15 @@ function setDevReveal(on){
   if(badge) badge.style.display = on ? 'block' : 'none';
   const hintBtn = document.getElementById('hintBtn');
   if(hintBtn) hintBtn.style.display = on ? '' : 'none';
+  // Export button, revealed alongside the version badge and the hint button.
+  // Uses VISIBILITY (not display) so the button keeps occupying its place in
+  // the HUD row whether or not it's currently shown — otherwise the row would
+  // grow taller the moment the button appears (its padding makes it taller
+  // than the 14px HUD text) and push the board down, then snap it back up on
+  // release. With visibility, the space is reserved permanently and the board
+  // never moves.
+  const exportBtn = document.getElementById('exportBtn');
+  if(exportBtn) exportBtn.style.visibility = on ? 'visible' : 'hidden';
 }
 
 function isTypingTarget(t){
@@ -1433,6 +1468,42 @@ function renderLobby(){
   </div>`;
 }
 
+// Export the current puzzle as plain text, matching design.html's format so
+// puzzles round-trip cleanly between the designer and the game.
+// This game stores walls internally as "a_b" edge keys (cell-index pairs);
+// design.html's format uses "T,r,c" (T=H/V, anchor cell's row/col) — the
+// conversion below is the exact inverse of parseGameOfDay's, so a puzzle
+// exported here can be pasted straight into design.html's Import dialog,
+// and vice versa.
+function exportPuzzleText(){
+  const puzzle = state.puzzle;
+  const N = puzzle.N;
+  const lines = [];
+  lines.push('# Zip Puzzle — plain text format');
+  lines.push('# size N');
+  lines.push('# checkpoints r,c=n ...   (0-based row/col)');
+  lines.push('# walls T,r,c ...        (T = H or V; H spans (r,c)-(r+1,c); V spans (r,c)-(r,c+1))');
+  lines.push('size ' + N);
+
+  const cps = [];
+  Object.keys(puzzle.numbers).map(Number).sort((a,b)=>a-b).forEach(i=>{
+    cps.push(Math.floor(i/N) + ',' + (i%N) + '=' + puzzle.numbers[i]);
+  });
+  lines.push(cps.length ? 'checkpoints ' + cps.join(' ') : 'checkpoints');
+
+  const ws = [];
+  (puzzle.walls || []).forEach(key=>{
+    const [a, b] = key.split('_').map(Number);
+    const r1 = Math.floor(a/N), c1 = a%N;
+    const r2 = Math.floor(b/N), c2 = b%N;
+    if(r1 === r2) ws.push('V,' + r1 + ',' + Math.min(c1, c2));
+    else          ws.push('H,' + Math.min(r1, r2) + ',' + c1);
+  });
+  lines.push(ws.length ? 'walls ' + ws.join(' ') : 'walls');
+
+  return lines.join('\n');
+}
+
 function renderGame(online){
   const N = state.puzzle.N;
   const cellSize = 60; // fixed logical unit; on-screen size comes from viewBox scaling, not this
@@ -1509,7 +1580,7 @@ function renderGame(online){
   return `
   <div class="card">
     <div class="hud">
-      <span>${online? 'Room '+state.room : (state.isGotd? 'Game of Day '+state.gotdPuzzleDate : 'Local')}</span>
+      <span>${online? 'Room '+state.room : (state.isGotd? 'Game of Day '+state.gotdPuzzleDate : 'Local')}<button class="btn secondary" id="exportBtn" style="margin-left:16px;padding:3px 10px;font-size:12px;line-height:1;vertical-align:middle;visibility:${state.showDev?'visible':'hidden'}">Export</button></span>
       <span>Time: <b id="hudTime">${timeStr}</b></span>
     </div>
     <div class="grid-wrap" id="gridWrap">${svg}</div>
@@ -1551,6 +1622,56 @@ function renderLeaderboard(){
   </div>`;
 }
 
+// ---------- Export modal ----------
+// Same UX as design.html's Export Puzzle modal: show the puzzle text in a
+// textarea plus a "Copy to clipboard" button, with an inline status line —
+// rather than a bare alert(), which can't be selected/copied and blocks the
+// page. The modal lives OUTSIDE #app (a static element in <body>) so
+// render()'s app.innerHTML replacement never wipes it.
+function openExportModal(){
+  const modal = document.getElementById('exportModal');
+  const ta = document.getElementById('exportText');
+  const msg = document.getElementById('exportMsg');
+  if(!modal || !ta) return;
+  ta.value = exportPuzzleText();
+  if(msg){ msg.textContent = ''; msg.className = 'modal-msg'; }
+  modal.classList.add('show');
+  setTimeout(()=>ta.focus(), 30);
+}
+function closeExportModal(){
+  const modal = document.getElementById('exportModal');
+  if(modal) modal.classList.remove('show');
+}
+// Attached once at boot, NOT from attachHandlers() — the modal element is
+// static and persists across renders, so wiring these on every render would
+// stack duplicate listeners (Escape would then fire closeExportModal many
+// times over, harmless here, but the copy handler would double-fire).
+function installExportModal(){
+  const modal = document.getElementById('exportModal');
+  if(!modal) return;
+  const ta = document.getElementById('exportText');
+  const msg = document.getElementById('exportMsg');
+  const copyBtn = document.getElementById('exportCopy');
+  const closeBtn = document.getElementById('exportClose');
+  if(closeBtn) closeBtn.onclick = closeExportModal;
+  modal.addEventListener('click', e=>{ if(e.target === modal) closeExportModal(); });
+  document.addEventListener('keydown', e=>{
+    if(e.key === 'Escape' && modal.classList.contains('show')) closeExportModal();
+  });
+  if(copyBtn) copyBtn.onclick = async ()=>{
+    try{
+      await navigator.clipboard.writeText(ta.value);
+      if(msg){ msg.textContent = 'Copied to clipboard ✓'; msg.className = 'modal-msg ok'; }
+    }catch(err){
+      // Clipboard API can be blocked (permissions, insecure context) —
+      // fall back to selecting the text so the user can Ctrl/Cmd+C it.
+      ta.select();
+      try{ document.execCommand('copy'); }catch(e){}
+      if(msg){ msg.textContent = 'Selected — press Ctrl/Cmd+C to copy.'; msg.className = 'modal-msg ok'; }
+    }
+  };
+}
+
 // ---------- Handlers ----------
 function attachHandlers(){
   const el = id => document.getElementById(id);
@@ -1589,6 +1710,7 @@ function attachHandlers(){
     if(state.isGotd){ return; } // one Game-of-Day puzzle per day, nothing to advance to
     startLocal(true); // advance everyone to the next puzzle in today's sequence
   };
+  if(el('exportBtn')) el('exportBtn').onclick = openExportModal;
 
   const wrap = el('gridWrap');
   if(wrap) setupGridInput(wrap);
@@ -2118,6 +2240,7 @@ function stopPolling(){ if(state.pollId){ clearInterval(state.pollId); state.pol
   }catch(e){
     console.warn('stats hydration failed:', e);
   }
+  installExportModal();
   installDevRevealKey();
   render();
 })();
