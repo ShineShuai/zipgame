@@ -1,0 +1,20 @@
+name: Unique puzzles
+
+on:
+  push:
+    paths:
+      - 'demo/GameOfDay/**'
+  pull_request:
+    paths:
+      - 'demo/GameOfDay/**'
+  workflow_dispatch:        # lets you run it manually from the Actions tab
+
+jobs:
+  uniqueness:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify all puzzles are distinct
+        run: python3 demo/GameOfDay/check_unique_puzzles.py demo/GameOfDay/
