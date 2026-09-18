@@ -1,12 +1,13 @@
 repos:
   - repo: local
     hooks:
-      - id: bump-game-version
+      - id: bump-demo-version
         name: Bump GAME_VERSION in demo/index.html
-        entry: demo/bump_game_version.sh
+        entry: demo/bump_demo_version.sh
         language: script
         files: ^demo/index\.html$
         pass_filenames: false
+        verbose: true
 
       - id: unique-puzzles
         name: Check puzzle uniqueness in demo/GameOfDay/
