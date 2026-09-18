@@ -57,6 +57,14 @@
     color: #8b93b8;
     margin-bottom: 6px;
   }
+  .field-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .field-row > label { margin-bottom: 0; flex: 1; }
+  .field-row > select, .field-row > input[type=number] { width: 108px; flex: none; }
   select, input[type=number] {
     width: 100%;
     padding: 8px 10px;
@@ -101,6 +109,7 @@
   button.playbtn.on { background: linear-gradient(135deg,#b3344f,#e0526f); }
   .segmented { display: flex; gap: 6px; }
   .seg { flex: 1; }
+  .seg-count { opacity: .65; font-size: 11px; }
   .seg.active {
     background: #3b4a80;
     border-color: #5b7cfa;
@@ -108,7 +117,7 @@
     box-shadow: 0 0 0 1px #5b7cfa55 inset;
   }
   .row { display: flex; gap: 6px; }
-  .row input { flex: 1; min-width: 0; }
+  .row input, .row button { flex: 1; min-width: 0; }
   .wide { width: 100%; margin-bottom: 8px; }
   .wide:last-child { margin-bottom: 0; }
   .divider { height: 1px; background: #232a44; margin: 16px 0; }
@@ -146,6 +155,7 @@
   .status.ok    { background: rgba(61,220,151,.12); color: #6ff0b4; border: 1px solid rgba(61,220,151,.3); }
   .status.warn  { background: rgba(255,183,3,.12);  color: #ffd166; border: 1px solid rgba(255,183,3,.3); }
   .status.error { background: rgba(255,77,109,.12); color: #ff8fa3; border: 1px solid rgba(255,77,109,.3); }
+  .status-below { margin-top: 22px; width: 100%; max-width: var(--board-size, 100%); min-width: 0; text-align: center; white-space: normal; word-wrap: break-word; overflow-wrap: break-word; }
   .playinfo {
     margin-top: 10px;
     font-size: 12.5px;
@@ -163,7 +173,7 @@
   }
 
   /* ---------- Board ---------- */
-  .stage { display: flex; flex-direction: column; gap: 14px; align-items: center; }
+  .stage { display: flex; flex-direction: column; gap: 14px; align-items: center; width: var(--board-size, auto); }
   .board {
     position: relative;
     background: #0d1120;
@@ -322,7 +332,7 @@
   <aside class="panel">
     <h1><span class="dot"></span>Zip Puzzle Designer</h1>
 
-    <div class="field">
+    <div class="field field-row">
       <label for="sizeSel">Grid size</label>
       <select id="sizeSel">
         <option value="5">5 × 5</option>
@@ -337,7 +347,7 @@
       <label>Tool</label>
       <div class="segmented">
         <button id="modeNumber" class="seg active">Numbers</button>
-        <button id="modeWall" class="seg">Walls</button>
+        <button id="modeWall" class="seg">Walls <span id="wallModeTag" class="seg-count"></span></button>
       </div>
     </div>
 
@@ -346,7 +356,7 @@
 
     <div class="divider"></div>
 
-    <div class="field">
+    <div class="field field-row">
       <label for="cpCount">Max checkpoints</label>
       <input id="cpCount" type="number" min="2" value="5">
     </div>
@@ -359,14 +369,14 @@
 
     <div class="divider"></div>
 
-    <div class="field">
+    <div class="field field-row">
       <label for="wallCount">Max walls</label>
       <input id="wallCount" type="number" min="0" value="5">
     </div>
 
-    <div class="field">
-      <button id="randWalls" class="wide">🧱 Random walls <span id="wallCapTag"></span></button>
-      <button id="minimizeWalls" class="wide">✂️ Minimize walls</button>
+    <div class="field row">
+      <button id="randWalls">🧱 Random <span id="wallCapTag"></span></button>
+      <button id="minimizeWalls">✂️ Minimize</button>
     </div>
 
     <div class="divider"></div>
@@ -382,13 +392,13 @@
     </div>
 
     <button id="solveBtn" class="primary wide">Solve</button>
-    <div id="status" class="status"></div>
   </aside>
 
   <!-- ==================== BOARD ==================== -->
   <main class="stage">
     <div id="board" class="board"></div>
     <div id="legend" class="legend"></div>
+    <div id="status" class="status status-below"></div>
   </main>
 
   <!-- ==================== PLAY / DATA PANEL (right) ==================== -->
@@ -464,6 +474,7 @@
 
   /* ======================= DOM ======================= */
   const boardEl    = document.getElementById('board');
+  const stageEl    = document.querySelector('.stage');
   const legendEl   = document.getElementById('legend');
   const statusEl   = document.getElementById('status');
   const validityEl = document.getElementById('validity');
@@ -473,6 +484,7 @@
   const cpCount    = document.getElementById('cpCount');
   const wallCount  = document.getElementById('wallCount');
   const wallCapTag = document.getElementById('wallCapTag');
+  const wallModeTag = document.getElementById('wallModeTag');
   const playBtn    = document.getElementById('playBtn');
 
   const modalBackdrop = document.getElementById('modalBackdrop');
@@ -647,8 +659,10 @@
 
     boardEl.style.width  = size + 'px';
     boardEl.style.height = size + 'px';
+    stageEl.style.setProperty('--board-size', size + 'px');
     boardEl.classList.toggle('wallmode', mode === 'wall' && !playMode);
     boardEl.classList.toggle('playmode', playMode);
+    if (wallModeTag) wallModeTag.textContent = walls.size ? `(${walls.size})` : '';
     boardEl.innerHTML = '';
     playPolyline = null;
     playHeadDot = null;
