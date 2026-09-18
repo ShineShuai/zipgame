@@ -1175,6 +1175,33 @@
   // but not the other — never an edge the anchor path itself uses, so a
   // valid solution never gets destroyed). Kept as a separate, opt-in path
   // since the plain generator above should stay wall-free by default.
+  //
+  // Two further optimizations ported from index.html's generator, both
+  // measured there before porting (design.html has no determinism
+  // requirement to preserve, so both use Math.random() directly rather
+  // than a seeded stream):
+  //
+  // 1. Adaptive upfront seeding — before growing the wall set one edge at a
+  //    time from empty, place a chunk of genericPool's (already-shuffled)
+  //    edges as walls up front, but ONLY when a real signal says this
+  //    board/checkpoint combo is hard: run the diff-edge loop unseeded
+  //    for its first real result, and only if THAT already needed a large
+  //    fraction of genericPool does the rest of the loop seed. A single
+  //    early sample (not an average of several) is deliberate — index.html
+  //    tried averaging and it cost more in wasted unseeded attempts than
+  //    the extra decision accuracy was worth, especially on larger boards
+  //    where individual attempts aren't free.
+  // 2. End-of-generation minimize pass — once uniqueness is reached, try
+  //    removing each wall once (fresh re-solve after each); this is the
+  //    exact same logic as the standalone minimizeWalls() above, just run
+  //    automatically here rather than requiring a separate button click.
+  //    Uses HALF of GEN_NODE_LIMIT for the removal checks, not the full
+  //    amount — index.html found minimize's own cost (wall count × per-
+  //    check cost, both growing with board size) can rival or exceed the
+  //    rest of generation combined at large N if given the full budget;
+  //    halving it recovers nearly all the wall-count benefit for roughly
+  //    half the cost, and quartering or lower loses most of the benefit
+  //    for little further savings.
   function randomPathPuzzleUnique(K) {
     const total = N * N;
     K = Math.max(2, Math.min(K, total));
@@ -1207,7 +1234,26 @@
 
     const GEN_NODE_LIMIT = 50000;
     const MAX_WALLS = genericPool.length;
+    const HARD_WALL_FRACTION = 0.15; // >=15% of non-anchor edges needed on the first real attempt -> treat as hard
+    const SEED_FRACTION = 0.4;
+
     let res = solvePuzzle(2, GEN_NODE_LIMIT);
+    let seedApplied = false;
+
+    // Decide from THIS first result (whether or not it's already unique):
+    // if the search already needed a lot of walls just to get here — or
+    // flatly couldn't finish — pre-seed the rest of the search rather than
+    // continuing to add one edge at a time from a wide-open board.
+    if (!seedApplied && (res.aborted || walls.size >= genericPool.length * HARD_WALL_FRACTION)) {
+      seedApplied = true;
+      const seedCount = Math.min(Math.floor(genericPool.length * SEED_FRACTION), genericPool.length - walls.size);
+      for (let i = 0; i < seedCount; i++) {
+        while (gwi < genericPool.length && walls.has(genericPool[gwi])) gwi++;
+        if (gwi >= genericPool.length) break;
+        walls.add(genericPool[gwi++]);
+      }
+      if (seedCount > 0) res = solvePuzzle(2, GEN_NODE_LIMIT);
+    }
 
     while ((res.solutions.length > 1 || res.aborted) && walls.size < MAX_WALLS) {
       let wall = null;
@@ -1227,10 +1273,54 @@
       res = solvePuzzle(2, GEN_NODE_LIMIT);
     }
 
+    // Auto-minimize once uniqueness is reached — same logic as the
+    // standalone Minimize walls button, run automatically here.
+    let minimizeInfo = null;
+    if (!res.aborted && res.solutions.length === 1 && walls.size > 0) {
+      // Unlike index.html (where halving the check budget was the right
+      // call at larger boards), design.html's boards top out at 9×9 in the
+      // UI — measured directly: GEN_NODE_LIMIT itself already finds most
+      // removable walls, and 2x finds meaningfully more (removals stayed
+      // similar to slightly better across repeated trials) while total
+      // minimize cost stays in the 3-6s range at N=9, still reasonable for
+      // an on-demand generation click. Diminishing returns set in past
+      // this — even a much larger budget (1,000,000) still leaves some
+      // walls removable in the hardest cases (sparse checkpoints), so this
+      // is a deliberate stopping point, not a claim of full minimality.
+      // IMPORTANT: the refresh solve below (after the removal loop) MUST
+      // use this same cap, not a smaller one — a removal confirmed safe
+      // here can otherwise come back as a false "not unique" from hitting
+      // a smaller cap on the very next check (this was a real bug: every
+      // trial reported unique:false at 2x until the refresh call below was
+      // fixed to match).
+      const minimizeCheckCap = GEN_NODE_LIMIT * 2;
+      const before = walls.size;
+      const order = shuffleArr([...walls]);
+      let removed = 0;
+      for (const w of order) {
+        if (!walls.has(w)) continue;
+        walls.delete(w);
+        const check = solvePuzzle(2, minimizeCheckCap);
+        if (!check.aborted && check.solutions.length === 1) {
+          removed++;
+        } else {
+          walls.add(w);
+        }
+      }
+      minimizeInfo = { removed, before, after: walls.size };
+      res = solvePuzzle(2, minimizeCheckCap); // refresh res to reflect the minimized wall set — MUST use the same (or larger) budget minimize itself checked removals against, or a wall confirmed safe there can be wrongly reported as "not unique" here just for hitting a smaller cap
+    }
+
     previewPath = path;
     previewVisible = true;
 
-    return { unique: res.solutions.length === 1 && !res.aborted, nodes: res.nodes, aborted: res.aborted, wallsAdded: walls.size };
+    return {
+      unique: res.solutions.length === 1 && !res.aborted,
+      nodes: res.nodes,
+      aborted: res.aborted,
+      wallsAdded: walls.size,
+      minimizeInfo
+    };
   }
 
   /* ======================= Import / Export ======================= */
@@ -1456,7 +1546,9 @@
     renderLegend();
     updateWallCapTag();
     if (genRes.unique) {
-      setStatus(`Generated a unique puzzle (${genRes.wallsAdded} wall${genRes.wallsAdded === 1 ? '' : 's'} added, ${genRes.nodes.toLocaleString()} nodes to confirm). The template is shown dashed.`, 'ok');
+      const min = genRes.minimizeInfo;
+      const minTag = min && min.removed > 0 ? ` (${min.removed} unnecessary removed, ${min.before}→${min.after})` : '';
+      setStatus(`Generated a unique puzzle (${genRes.wallsAdded} wall${genRes.wallsAdded === 1 ? '' : 's'}${minTag}, ${genRes.nodes.toLocaleString()} nodes to confirm). The template is shown dashed.`, 'ok');
     } else {
       setStatus(`Generated a Hamiltonian path, but couldn't reach a unique solution within the generator's search budget (still has multiple solutions or the check was inconclusive). Try again or click Solve to inspect it.`, 'warn');
     }
