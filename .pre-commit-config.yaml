@@ -1,0 +1,16 @@
+repos:
+  - repo: local
+    hooks:
+      - id: bump-game-version
+        name: Bump GAME_VERSION in demo/index.html
+        entry: demo/bump_game_version.sh
+        language: script
+        files: ^demo/index\.html$
+        pass_filenames: false
+
+      - id: unique-puzzles
+        name: Check puzzle uniqueness in demo/GameOfDay/
+        entry: python3 demo/GameOfDay/check_unique_puzzles.py
+        language: system
+        files: ^demo/GameOfDay/
+        pass_filenames: false
