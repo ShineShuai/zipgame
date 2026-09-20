@@ -2,10 +2,20 @@ repos:
   - repo: local
     hooks:
       - id: bump-demo-version
-        name: Bump GAME_VERSION in demo/index.html
-        entry: demo/bump_demo_version.sh
+        name: Bump demo GAME_VERSION
+        entry: auto_bump_version.sh
         language: script
-        files: ^demo/index\.html$
+        args: [demo, demo/index.html, GAME_VERSION]
+        files: ^demo/
+        pass_filenames: false
+        verbose: true
+
+      - id: bump-webapp-version
+        name: Bump webapp VERSION
+        entry: auto_bump_version.sh
+        language: script
+        args: [webapp, webapp/src/apps/play/main.js, VERSION]
+        files: ^webapp/
         pass_filenames: false
         verbose: true
 
