@@ -1,0 +1,7 @@
+# Zip Puzzle — plain text format
+# size N
+# checkpoints r,c=n ...   (0-based row/col)
+# walls T,r,c ...        (T = H or V; H spans (r,c)-(r+1,c); V spans (r,c)-(r,c+1))
+size 7
+checkpoints 0,4=10 0,6=11 2,0=9 4,0=4 4,1=2 4,3=5 5,0=3 5,5=6 6,2=1 6,4=7 6,5=8
+walls H,3,4 H,5,2 H,2,4

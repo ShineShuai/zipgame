@@ -6,7 +6,7 @@ repos:
         entry: auto_bump_version.sh
         language: script
         args: [demo, demo/index.html, GAME_VERSION]
-        files: ^demo/
+        files: ^demo/index\.html$
         pass_filenames: false
         verbose: true
 
