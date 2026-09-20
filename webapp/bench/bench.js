@@ -30,7 +30,7 @@ for (const [n, K, wf] of [[7, 6, .3], [7, 6, .6], [9, 6, .3], [9, 8, .5], [11, 8
   }
   log(`                                    ${String(n).padStart(2)} ${String(K).padStart(2)} ${String(wf * 100).padStart(4)}   ${String(nb).padStart(8)} ${mb.toFixed(0).padStart(5)} ${(nb / mb).toFixed(0).padStart(5)}   | ${String(np).padStart(8)} ${mp.toFixed(0).padStart(5)}   | ${String(nq).padStart(8)} ${mq.toFixed(0).padStart(5)}  ${(100 * (nq / nb - 1)).toFixed(1).padStart(6)}%  ${same}/${cmp}`);
 }
-log('\nGENERATOR (seeded)   n  seed |  v1 (prop:false): ms walls K |  v2 (default): ms walls K | speedup  walls');
+log('\nGENERATOR (seeded)   n  seed |  prop off: ms walls K |  default (ALGO_VERSION 4): ms walls K | speedup  walls');
 const wc = p => { let w = 0; for (const v of p.walls) w += (v & 1) + ((v >> 1) & 1); return w; };
 for (const [n, seeds] of [[5, [1, 2, 3]], [7, [1, 2, 3]], [9, [1, 2]], [11, [1]]]) for (const seed of seeds) {
   let K1 = 0, K2 = 0; const [a, t1] = time(() => runSync(generate(n, seed, { prop: false }), e => { if (e.K) K1 = e.K; })), [b, t2] = time(() => runSync(generate(n, seed), e => { if (e.K) K2 = e.K; }));

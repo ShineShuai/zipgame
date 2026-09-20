@@ -11,7 +11,7 @@ import { cellAtPoint, pathD } from '../../view/geometry.js';
 import { bindModal, copyText } from '../../ui/modal.js';
 import { boardSvg, CELL } from './board.js';
 
-const VERSION = '0.1.0', SIZES = [5, 7, 8, 9, 10, 11, 12, 16];
+const VERSION = '0.1.1', SIZES = [5, 7, 8, 9, 10, 11, 12, 16];
 const S = { screen: 'menu', size: 7, puzzle: null, path: [], elapsed: 0, startTime: 0, timerId: null, finished: false,
   gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, gotdDate: null, gotdHint: null, hintsUsed: 0, hintCell: null, hintWrongCell: null, showDev: false };
 let storage, store, daily, modal;

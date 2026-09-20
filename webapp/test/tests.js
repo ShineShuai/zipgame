@@ -6,9 +6,10 @@ import { makeRng, dailySeed, hashStr, shuffle } from '../src/core/rng.js';
 import { newStat, updateStat, statSummary } from '../src/core/stats.js';
 import { solve } from '../src/core/solver/solve.js';
 import { isSolved, step } from '../src/core/rules.js';
-import { generate, generateUnique, randomPathPuzzle } from '../src/core/gen/generate.js';
+import { generate, generateUnique, randomPathPuzzle, pickK } from '../src/core/gen/generate.js';
 import { scatter } from '../src/core/gen/checkpoints.js';
 import { runSync } from '../src/core/run.js';
+import { createHoldReveal } from '../src/ui/hold-reveal.js';
 import { createDaily, utcDayNumber } from '../src/features/daily.js';
 import { createStore } from '../src/features/stats-store.js';
 
@@ -19,8 +20,8 @@ const eq = (a, b, m = '') => { const A = JSON.stringify(a), B = JSON.stringify(b
 const ok = (c, m = 'assertion failed') => { if (!c) throw new Error(m); };
 
 // Golden hashes of serialize(generate(n, seed)). A change to GOLDEN means ALGO_VERSION must be bumped.
-// GOLDEN = ALGO_VERSION 3 (solver propagation on, K ~ Normal peaked at 30%). GOLDEN_V1 (pre-refactor index.html, uniform K) is no longer reproducible; v1 check below is now structural only.
-const GOLDEN = [[5,1,'6ca1f6e1'],[5,2,'3c20e8ef'],[5,3,'a5507bef'],[5,4,'6ca1f6e1'],[5,5,'d9dbc48d'],[5,6,'cfff4ede'],[7,1,'500de83d'],[7,2,'b8f32a3a'],[7,3,'aec00c26'],[9,1,'b8e87e73']];
+// GOLDEN = ALGO_VERSION 4 (solver propagation on, K ~ Normal peaked at 30%, every attempt seeded with 40% walls). GOLDEN_V1 (pre-refactor index.html, uniform K) is no longer reproducible; v1 check below is now structural only.
+const GOLDEN = [[5,1,'7791cdec'],[5,2,'32b73b83'],[5,3,'26ae880c'],[5,4,'5fb5f324'],[5,5,'d4295970'],[5,6,'dda08d49'],[7,1,'ae2c3f85'],[7,2,'c273a142'],[7,3,'dbb4b1e3'],[9,1,'dda1d6e5']];
 const GOLDEN_V1 = [[5,1,'7ad94f42'],[5,2,'660f52e3'],[5,3,'55c8844e'],[5,4,'6ca1f6e1'],[5,5,'72dddf70'],[5,6,'a4b809dd'],[7,1,'732ba004'],[7,2,'171873f0'],[7,3,'5aad5cdc'],[9,1,'442f3a1a']];
 
 const randPuzzle = (seed, n, K, wallFrac) => {
@@ -92,10 +93,48 @@ t('rules: isSolved, step (default / truncate / strictOrder)', () => {
   const S = { strictOrder: true }, q = [0, 1, 2, 5];
   eq(step(p, q, 8, S), null, 'checkpoint 3 before 2'); eq(step(p, q, 4, S), 'push'); eq(step(p, q, 7, S), 'push'); eq(step(p, q, 8, S), 'push'); eq(step(p, q, 5, S), null);
 });
-t('generate: ALGO_VERSION 3 golden puzzles; prop:false still yields unique valid puzzles', () => {
-  eq(ALGO_VERSION, 3);
-  for (const [n, seed, h] of GOLDEN) eq(hashStr(serialize(runSync(generate(n, seed)))), h, `v3 n=${n} seed=${seed}`);
+t('generate: ALGO_VERSION 4 golden puzzles; prop:false still yields unique valid puzzles', () => {
+  eq(ALGO_VERSION, 4);
+  for (const [n, seed, h] of GOLDEN) eq(hashStr(serialize(runSync(generate(n, seed)))), h, `v4 n=${n} seed=${seed}`);
   for (const [n, seed] of GOLDEN_V1) { const p = runSync(generate(n, seed, { prop: false })); eq(validate(p).ok, true, `v1 n=${n} seed=${seed}`); eq(solve(p, { limit: 2, nodeCap: 2e6 }).count, 1); }
+});
+t('pickK: deterministic, always in range, uses 2 rnd values, mode near 30% of the range', () => {
+  const Kmin = 9;
+  const Kmax = 20;
+  eq(pickK(Kmin, Kmax, makeRng(7)), pickK(Kmin, Kmax, makeRng(7)));
+
+  let draws = 0;
+  const rng = makeRng(3);
+  pickK(Kmin, Kmax, () => { draws++; return rng(); });
+  eq(draws, 2);
+
+  const rnd = makeRng(1);
+  const counts = {};
+  for (let i = 0; i < 20000; i++) {
+    const k = pickK(Kmin, Kmax, rnd);
+    ok(k >= Kmin && k <= Kmax, `k=${k} outside [${Kmin}, ${Kmax}]`);
+    counts[k] = (counts[k] || 0) + 1;
+  }
+  const mode = Number(Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0]);
+  ok(Math.abs(mode - (Kmin + 0.3 * (Kmax - Kmin))) <= 1, `mode ${mode} is not near 30% of the range`);
+  eq(pickK(5, 6, makeRng(2)) >= 5, true); // a two-value range still works
+});
+t('hold-reveal: shows while "v" is held; ignores key repeat, modifiers and text fields; hides on cancel', () => {
+  const seen = [];
+  const reveal = createHoldReveal(visible => seen.push(visible));
+  const press = (key, extra = {}) => ({ key, target: { tagName: 'BODY' }, ...extra });
+
+  reveal.keydown(press('v'));
+  reveal.keydown(press('v'));                               // key repeat reports once
+  reveal.keyup(press('v'));
+  reveal.keydown(press('V'));
+  reveal.cancel();                                          // window blur / tab hidden while held
+  reveal.cancel();                                          // repeated cancel reports once
+  reveal.keydown(press('v', { ctrlKey: true }));            // paste shortcut is not a reveal
+  reveal.keydown(press('v', { target: { tagName: 'INPUT' } }));
+  reveal.keydown(press('v', { target: { tagName: 'DIV', isContentEditable: true } }));
+  reveal.keydown(press('x'));
+  eq(seen, [true, false, true, false]);
 });
 t('generate: unique, anchor path valid, progress events, same-seed determinism', () => {
   let ev = 0, last = null; const p = runSync(generate(5, 77), e => { ev++; last = e; });

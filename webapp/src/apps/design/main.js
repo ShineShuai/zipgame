@@ -10,8 +10,10 @@ import { scatter } from '../../core/gen/checkpoints.js';
 import { cellAtPoint } from '../../view/geometry.js';
 import { runAsync } from '../../platform/run.js';
 import { bindModal, copyText } from '../../ui/modal.js';
+import { installHoldReveal } from '../../ui/hold-reveal.js';
 import { renderBoard, paintPlay, cellSizeFor, TPL_C, SOL_C } from './board.js';
 
+const VERSION = '0.1.0';
 const DEFAULT_NODE_LIMIT = 300000, rnd = Math.random, $ = id => document.getElementById(id);
 const boardEl = $('board'), stageEl = document.querySelector('.stage'), plural = (k, w) => `${k} ${w}${k === 1 ? '' : 's'}`;
 let P = makePuzzle(7), mode = 'number', selected = -1, buffer = '', solutions = [], solVisible = [], lastAborted = false, lastNodes = 0;
@@ -260,6 +262,30 @@ $('randWalls').onclick = () => {
   setStatus(k < want ? `Added ${plural(k, 'wall')} — that's every eligible edge left (none of the anchor path's edges are ever walled).` : `Added ${plural(k, 'random wall')}.`, k < want ? 'warn' : 'ok');
 };
 
+// ---------- hidden version badge: hold "v" ----------
+function installVersionBadge() {
+  const badge = document.createElement('div');
+  badge.id = 'versionBadge';
+  badge.textContent = `Zip Design v${VERSION}`;
+  Object.assign(badge.style, {
+    position: 'fixed',
+    right: '10px',
+    bottom: '10px',
+    zIndex: '20',
+    background: '#151a2c',
+    border: '1px solid #232a44',
+    borderRadius: '8px',
+    padding: '4px 8px',
+    fontSize: '11px',
+    color: '#8b93b8',
+    display: 'none',
+  });
+  document.body.appendChild(badge);
+  installHoldReveal(visible => {
+    badge.style.display = visible ? 'block' : 'none';
+  });
+}
+
 // ---------- boot ----------
 (function seedExample() {
   [[0, 0, 1], [2, 3, 2], [4, 1, 3], [6, 6, 4]].forEach(([r, c, v]) => { P.cp[r * 7 + c] = v; });
@@ -267,3 +293,4 @@ $('randWalls').onclick = () => {
   $('sizeSel').value = '7'; setDefaults(7);
   setMode('number'); draw(); renderLegend();
 })();
+installVersionBadge();
