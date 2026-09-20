@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zip Puzzle Designer</title>
+<link rel="stylesheet" href="css/design.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ==================== DESIGN PANEL (left) ==================== -->
+  <aside class="panel">
+    <h1><span class="dot"></span>Zip Puzzle Designer</h1>
+
+    <div class="field field-row">
+      <label for="sizeSel">Grid size</label>
+      <select id="sizeSel">
+        <option value="5">5 × 5</option>
+        <option value="6">6 × 6</option>
+        <option value="7" selected>7 × 7</option>
+        <option value="8">8 × 8</option>
+        <option value="9">9 × 9</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Tool</label>
+      <div class="segmented">
+        <button id="modeNumber" class="seg active">Numbers</button>
+        <button id="modeWall" class="seg">Walls <span id="wallModeTag" class="seg-count"></span></button>
+      </div>
+    </div>
+
+    <div class="hint" id="hint"></div>
+    <div class="validity" id="validity"></div>
+
+    <div class="divider"></div>
+
+    <div class="field field-row">
+      <label for="cpCount">Max checkpoints</label>
+      <input id="cpCount" type="number" min="2" value="7">
+    </div>
+
+    <div class="field row">
+      <button id="randScatter" title="Random checkpoint placement (walls cleared)">🎲 Placement</button>
+      <button id="randPath" title="Random Hamiltonian path with checkpoints along it, no walls">🛤️ Path</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="field field-row">
+      <label for="wallCount">Max walls <span id="wallCapTag" class="seg-count"></span></label>
+      <input id="wallCount" type="number" min="0" value="7">
+    </div>
+
+    <div class="field row">
+      <button id="randWalls" title="Add random walls (never on the template path)">🧱 Random</button>
+      <button id="minimizeWalls">✂️ Minimize</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="field">
+      <label>Unique puzzle generator</label>
+      <button id="randPathUnique" class="wide" title="Random path puzzle, unique solution, within Max checkpoints and Max walls">🛤️✓ Generate</button>
+    </div>
+    <div class="field field-row">
+      <label for="genTries">Search retries</label>
+      <input id="genTries" type="number" min="1" value="40">
+    </div>
+    <div class="field field-row">
+      <label for="genHardest" title="Use all retries to collect candidates and keep the one whose Solve needs the most search nodes">Pick max nodes</label>
+      <input id="genHardest" type="checkbox">
+    </div>
+    <div class="hint">
+      Uses Max checkpoints and Max walls above. Every retry draws a new random path and a new checkpoint placement.
+      With max nodes on, all retries are used to collect candidates and the one with the most search nodes is kept.
+      The search is heuristic, so a failed run does not prove that no puzzle exists.
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="field">
+      <button id="clearWalls" class="wide">Clear all walls</button>
+      <button id="clearAll" class="wide">Reset board</button>
+    </div>
+  </aside>
+
+  <!-- ==================== BOARD ==================== -->
+  <main class="stage">
+    <div id="board" class="board"></div>
+    <div id="legend" class="legend"></div>
+    <div id="status" class="status status-below"></div>
+  </main>
+
+  <!-- ==================== SOLVER + PLAY / DATA (right column) ==================== -->
+  <div class="side-col">
+  <aside class="panel side-right">
+    <h1><span class="dot"></span>Solver</h1>
+    <div class="field">
+      <label for="nodeLimit">Search limit (nodes)</label>
+      <input id="nodeLimit" type="number" min="1000" step="1000" value="300000">
+    </div>
+    <button id="solveBtn" class="primary wide">Solve</button>
+  </aside>
+
+  <aside class="panel side-right">
+    <h1><span class="dot"></span>Play &amp; Data</h1>
+
+    <button id="playBtn" class="playbtn wide">▶ Play</button>
+    <div id="playInfo" class="playinfo" style="display:none"></div>
+
+    <div class="divider"></div>
+
+    <button id="exportBtn" class="wide">📤 Export</button>
+    <button id="importBtn" class="wide">📥 Import</button>
+
+    <div class="hint">
+      Export copies a plain-text description to the clipboard.
+      Import replaces the board from such text.
+    </div>
+  </aside>
+  </div>
+
+</div>
+
+<!-- ==================== MODAL ==================== -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal">
+    <h2 id="modalTitle">Export Puzzle</h2>
+    <textarea id="modalText" spellcheck="false"></textarea>
+    <div class="modal-msg" id="modalMsg"></div>
+    <div class="modal-actions">
+      <button id="modalCancel">Close</button>
+      <button id="modalOk" class="primary">OK</button>
+    </div>
+  </div>
+</div>
+<script type="module" src="src/apps/design/main.js"></script>
+</body>
+</html>
