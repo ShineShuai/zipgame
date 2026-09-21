@@ -9,7 +9,7 @@ import { createDaily, fetchGameOfDay, utcDateString, utcDayNumber } from '../../
 import { maxHints, computeHint, solutionOf } from '../../features/hints.js';
 import { cellAtPoint, pathD } from '../../view/geometry.js';
 import { bindModal, copyText } from '../../ui/modal.js';
-import { boardSvg, CELL } from './board.js';
+import { boardSvg, CELL, COLORS } from './board.js';
 import { VERSION } from '../../version.js';
 
 const SIZES = PLAY_SIZES;
@@ -20,63 +20,198 @@ const $ = id => document.getElementById(id), today = () => utcDateString(new Dat
 
 // ---------- render ----------
 function render() {
-  const html = S.screen === 'menu' ? renderMenu() : S.screen === 'generating' ? renderGenerating() : renderGame();
-  $('app').innerHTML = html + `<div id="versionBadge" class="small" style="position:fixed;right:10px;bottom:10px;z-index:20;background:#fff;border:1px solid #e2e2e2;border-radius:8px;padding:4px 8px;font-size:11px;color:#666;display:${S.showDev ? 'block' : 'none'}">Zip v${VERSION}</div>`;
+  const screens = { menu: renderMenu, generating: renderGenerating, game: renderGame };
+  const screen = screens[S.screen] || renderGame;
+  $('app').innerHTML = screen() + devBadgeHtml();
   attachHandlers();
 }
+
+// Hidden unless the dev reveal is held (see setDevReveal).
+function devBadgeHtml() {
+  const display = S.showDev ? 'block' : 'none';
+  return `<div id="versionBadge" class="dev-badge" style="display:${display}">Zip v${VERSION}</div>`;
+}
+
 function renderGenerating() {
-  const g = S.gen, pct = Math.round(g.frac * 100), w = g.walls == null ? 'searching…' : g.walls + ' wall' + (g.walls === 1 ? '' : 's') + ' so far';
-  return `<div class="card"><h3 style="margin:0 0 4px;font-size:18px;font-weight:500">Generating puzzle…</h3>
-    <p class="small" style="margin:0 0 16px">${S.size}x${S.size} grid — looking for the cleanest layout.</p>
-    <div style="background:#eee;border-radius:8px;height:10px;overflow:hidden;margin-bottom:10px"><div style="background:#1a1a1a;height:100%;width:${pct}%;transition:width .1s linear"></div></div>
-    <p class="small" style="margin:0">${pct}% — ${w}</p></div>`;
+  const gen = S.gen;
+  const percent = Math.round(gen.frac * 100);
+  const walls = gen.walls == null ? 'searching…' : `${gen.walls} wall${gen.walls === 1 ? '' : 's'} so far`;
+  return `
+    <div class="center-stage">
+      <section class="card">
+        <h2 class="card-title">Generating puzzle…</h2>
+        <p class="small">${S.size}x${S.size} grid — looking for the cleanest layout.</p>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}">
+          <div style="width:${percent}%"></div>
+        </div>
+        <p class="small">${percent}% — ${walls}</p>
+      </section>
+    </div>`;
 }
+
 function refreshAttemptIfStale() {
-  if (store.attemptDate() !== today()) store.hydrateAttempt(today()).then(() => { if (S.screen === 'menu') render(); });
+  if (store.attemptDate() === today()) return;
+  store.hydrateAttempt(today()).then(() => {
+    if (S.screen === 'menu') render();
+  });
 }
-async function refreshNext() { // "next game #" per size, from the per-size daily counters
-  const next = {}; for (const n of SIZES) next[n] = (await daily.peek(n)).index;
-  if (JSON.stringify(next) !== JSON.stringify(S.nextIdx)) { S.nextIdx = next; if (S.screen === 'menu') render(); }
+
+// "next game #" per size, from the per-size daily counters
+async function refreshNext() {
+  const next = {};
+  for (const n of SIZES) next[n] = (await daily.peek(n)).index;
+  if (JSON.stringify(next) === JSON.stringify(S.nextIdx)) return;
+  S.nextIdx = next;
+  if (S.screen === 'menu') render();
 }
-const gameNo = n => S.nextIdx[n] == null ? '-' : '#' + (S.nextIdx[n] + 1);
+
+const gameNo = n => (S.nextIdx[n] == null ? '-' : '#' + (S.nextIdx[n] + 1));
+
 function renderMenu() {
-  refreshAttemptIfStale(); refreshNext();
-  const a = store.attempt();
-  const gotdBtn = a ? '<button class="btn secondary" disabled title="One Game of Day per day">Game of Day</button>' : '<button class="btn secondary" id="playGotd">Game of Day</button>';
-  return `<div class="card"><h3 style="margin:0 0 4px;font-size:18px;font-weight:500">Zip</h3>
-    <p class="small" style="margin:0 0 16px">Connect the numbers in order through every cell. No revisits, no crossings. Drag with mouse or finger to draw.</p>
-    <div class="row" style="margin-bottom:12px"><label class="small">Grid size</label><select id="sizeSel">${SIZES.map(n => `<option value="${n}"${n === S.size ? ' selected' : ''}>${n}x${n}</option>`).join('')}</select><span class="small" id="gameNo">Today's game: ${gameNo(S.size)}</span></div>
-    <div class="row"><button class="btn" id="playLocal">Play local</button>${gotdBtn}</div>
-    ${a ? `<p class="small" style="margin:10px 0 0">${a.solved ? `Today's Game of Day: solved in ${sec(a.time)}.` : "Today's Game of Day already attempted."}</p>` : ''}
-    ${S.gotdHint ? `<p class="small" style="margin:10px 0 0;color:#a33">${S.gotdHint}</p>` : ''}
-    <p class="small" style="margin:12px 0 0">Storage: ${storage.name}${storage.shared ? '' : ' (local only)'}</p></div>${menuStats()}`;
+  refreshAttemptIfStale();
+  refreshNext();
+  const attempt = store.attempt();
+  const stats = menuStats();
+  const sizeOptions = SIZES
+    .map(n => `<option value="${n}"${n === S.size ? ' selected' : ''}>${n}x${n}</option>`)
+    .join('');
+  const gotdButton = attempt
+    ? '<button class="btn secondary" disabled title="One Game of Day per day">Game of Day</button>'
+    : '<button class="btn secondary" id="playGotd">Game of Day</button>';
+  const attemptText = attempt && attempt.solved
+    ? `Today's Game of Day: solved in ${sec(attempt.time)}.`
+    : "Today's Game of Day already attempted.";
+  const attemptNote = attempt ? `<p class="note">${attemptText}</p>` : '';
+  const hintNote = S.gotdHint ? `<p class="note error">${S.gotdHint}</p>` : '';
+
+  return `
+    <div class="menu-layout${stats ? '' : ' single'}">
+      <section class="card play-card">
+        <div class="play-intro">
+          <h2 class="card-title">Start a game</h2>
+          <p class="blurb">Connect the numbers in order through every cell. No revisits, no crossings. Drag with mouse or finger to draw.</p>
+        </div>
+        <div class="play-controls">
+          <div class="field">
+            <label class="field-label" for="sizeSel">Grid size</label>
+            <select id="sizeSel">${sizeOptions}</select>
+            <span class="small" id="gameNo">Today's game: ${gameNo(S.size)}</span>
+          </div>
+          <div class="button-row">
+            <button class="btn" id="playLocal">Play local</button>
+            ${gotdButton}
+          </div>
+          ${attemptNote}
+          ${hintNote}
+          <p class="small storage-note">Storage: ${storage.name}${storage.shared ? '' : ' (local only)'}</p>
+        </div>
+      </section>
+      ${stats}
+    </div>`;
 }
-const gotdText = n => { const g = store.gotdBest(n); return g ? sec(g.time) : '-'; };
+
+const gotdText = n => {
+  const best = store.gotdBest(n);
+  return best ? sec(best.time) : '-';
+};
+
 // "today / total" cells for one size (today = current UTC day).
 function statCells(n) {
-  const T = store.total(n), D = store.today(n, dayNo()), t = statSummary(T), d = statSummary(D);
-  const f = (q, x) => q.n ? x.toFixed(1) : '-', b = st => st.recent.length ? Math.min(...st.recent).toFixed(1) : '-';
-  return { solves: `${d.n} / ${t.n}`, avg: `${f(d, d.mean)} / ${f(t, t.mean)}`, sd: `${f(d, d.sd)} / ${f(t, t.sd)}`, best: `${b(D)} / ${b(T)}` };
+  const total = store.total(n);
+  const today = store.today(n, dayNo());
+  const t = statSummary(total);
+  const d = statSummary(today);
+  const value = (summary, x) => (summary.n ? x.toFixed(1) : '-');
+  const best = stat => (stat.recent.length ? Math.min(...stat.recent).toFixed(1) : '-');
+  return {
+    solves: `${d.n} / ${t.n}`,
+    avg: `${value(d, d.mean)} / ${value(t, t.mean)}`,
+    sd: `${value(d, d.sd)} / ${value(t, t.sd)}`,
+    best: `${best(today)} / ${best(total)}`,
+  };
 }
+
+const STATS_HEAD = ['Grid', 'Next game', 'Solves', 'Avg', 'Std dev', 'Best (last 20)', 'Game of Day'];
+
+// One row per size that has anything to show. On narrow screens each row becomes a small card, so the
+// cells carry their column name in data-label.
 function menuStats() {
   const rows = SIZES.map(n => {
-    if (!store.total(n).n && !store.gotdBest(n) && !S.nextIdx[n]) return '';
+    const hasData = store.total(n).n || store.gotdBest(n) || S.nextIdx[n];
+    if (!hasData) return '';
     const c = statCells(n);
-    return `<tr><td>${n}x${n}</td><td><b>${gameNo(n)}</b></td><td><b>${c.solves}</b></td><td><b>${c.avg}</b></td><td><b>${c.sd}</b></td><td><b>${c.best}</b></td><td><b>${gotdText(n)}</b></td></tr>`;
+    const values = [`${n}x${n}`, gameNo(n), c.solves, c.avg, c.sd, c.best, gotdText(n)];
+    const cells = values.map((value, i) => {
+      const shown = i === 0 ? value : `<b>${value}</b>`;
+      return `<td data-label="${STATS_HEAD[i]}">${shown}</td>`;
+    });
+    return `<tr>${cells.join('')}</tr>`;
   }).join('');
-  return rows ? `<div class="card"><div class="hud"><span>Your stats — today / total (UTC day, seconds)</span><span></span></div><div style="overflow-x:auto"><table><tr><th>Grid</th><th>Next game</th><th>Solves</th><th>Avg</th><th>Std dev</th><th>Best (last 20)</th><th>Game of Day</th></tr>${rows}</table></div></div>` : '';
+  if (!rows) return '';
+
+  const head = STATS_HEAD.map(name => `<th>${name}</th>`).join('');
+  return `
+    <section class="card">
+      <h2 class="card-title">Your stats</h2>
+      <p class="small">Today / total (UTC day, seconds)</p>
+      <div class="table-scroll">
+        <table class="responsive"><tr class="head-row">${head}</tr>${rows}</table>
+      </div>
+    </section>`;
 }
+
 function sizeStats(n) {
   if (!store.total(n).n && !store.gotdBest(n)) return '';
-  const c = statCells(n), row = (k, v) => `<tr><td>${k}</td><td><b>${v}</b></td></tr>`;
-  return `<div class="card"><div class="hud"><span>Your stats — ${n}x${n} · today / total</span><span></span></div><table>${row('Solves', c.solves)}${row('Avg time (s)', c.avg)}${row('Std dev (s)', c.sd)}${row('Best (last 20, s)', c.best)}${row('Game of Day', gotdText(n))}</table></div>`;
+  const c = statCells(n);
+  const row = (label, value) => `<tr><td>${label}</td><td><b>${value}</b></td></tr>`;
+  return `
+    <section class="card">
+      <h2 class="card-title">Your stats — ${n}x${n}</h2>
+      <p class="small">Today / total</p>
+      <table>
+        ${row('Solves', c.solves)}
+        ${row('Avg time (s)', c.avg)}
+        ${row('Std dev (s)', c.sd)}
+        ${row('Best (last 20, s)', c.best)}
+        ${row('Game of Day', gotdText(n))}
+      </table>
+    </section>`;
 }
+
 function renderGame() {
-  const p = S.puzzle, t = sec(S.elapsed), cap = maxHints(p);
-  return `<div class="card"><div class="hud"><span>${S.isGotd ? 'Game of Day ' + S.gotdDate : `Local ${p.n}x${p.n} · game #${S.gameIndex + 1} today<span id="seedTag" class="small" style="margin-left:8px;display:${S.showDev ? 'inline' : 'none'}">seed ${S.seed}</span>`}<button class="btn secondary" id="exportBtn" style="margin-left:16px;padding:3px 10px;font-size:12px;line-height:1;vertical-align:middle;visibility:${S.showDev ? 'visible' : 'hidden'}">Export</button></span><span>Time: <b id="hudTime">${t}</b></span></div>
-    <div class="grid-wrap" id="gridWrap">${boardSvg(S)}</div>
-    <div class="row"><button class="btn secondary" id="backMenu2">Menu</button>${S.isGotd ? '' : '<button class="btn secondary" id="newPuzzle">New puzzle</button>'}<button class="btn secondary" id="resetPath">Reset path</button><button class="btn secondary" id="hintBtn" style="${S.showDev ? '' : 'display:none'}" ${S.finished || S.hintsUsed >= cap ? 'disabled' : ''}>Hint (${S.hintsUsed}/${cap})</button></div>
-    ${S.finished ? `<p style="color:#1a6e2c;font-weight:500;margin-top:10px">Solved in ${t}</p>` : ''}</div>${sizeStats(p.n)}`;
+  const p = S.puzzle;
+  const time = sec(S.elapsed);
+  const cap = maxHints(p);
+  const seedTag = `<span id="seedTag" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}">seed ${S.seed}</span>`;
+  const title = S.isGotd ? `Game of Day ${S.gotdDate}` : `Local ${p.n}x${p.n} · game #${S.gameIndex + 1} today${seedTag}`;
+  const newPuzzleButton = S.isGotd ? '' : '<button class="btn secondary" id="newPuzzle">New puzzle</button>';
+  const hiddenUnlessDev = S.showDev ? '' : 'display:none';
+  const hintDisabled = S.finished || S.hintsUsed >= cap ? 'disabled' : '';
+  const solved = S.finished ? `<p class="solved">Solved in ${time}</p>` : '';
+
+  return `
+    <div class="game-layout">
+      <section class="card board-card">
+        <div class="hud">
+          <div class="hud-title">${title}</div>
+          <div class="hud-time">Time: <b id="hudTime">${time}</b></div>
+        </div>
+        <div class="grid-wrap" id="gridWrap">${boardSvg(S)}</div>
+      </section>
+      <div class="side">
+        <section class="card">
+          <div class="button-row">
+            <button class="btn secondary" id="backMenu2">Menu</button>
+            ${newPuzzleButton}
+            <button class="btn secondary" id="resetPath">Reset path</button>
+            <button class="btn secondary" id="hintBtn" style="${hiddenUnlessDev}" ${hintDisabled}>Hint (${S.hintsUsed}/${cap})</button>
+            <button class="btn secondary" id="exportBtn" style="${hiddenUnlessDev}">Export</button>
+          </div>
+          ${solved}
+        </section>
+        ${sizeStats(p.n)}
+      </div>
+    </div>`;
 }
 
 // ---------- handlers ----------
@@ -102,7 +237,12 @@ function setupGridInput(svg) {
   const p = S.puzzle, n = p.n, pathEl = svg.querySelector('[data-role="path"]');
   let dragging = false, last = null, rect = svg.getBoundingClientRect();
   const setD = () => pathEl.setAttribute('d', S.path.length > 1 ? pathD(n, S.path, CELL) : '');
-  const fill = (i, f) => { const g = svg.querySelector(`[data-num-cell="${i}"]`); if (!g) return; g.querySelector('circle').setAttribute('fill', f ? '#1a1a1a' : '#fff'); g.querySelector('text').setAttribute('fill', f ? '#fff' : '#1a1a1a'); };
+  const fill = (i, visited) => {
+    const badge = svg.querySelector(`[data-num-cell="${i}"]`);
+    if (!badge) return;
+    badge.querySelector('circle').setAttribute('fill', visited ? COLORS.number : COLORS.numberFill);
+    badge.querySelector('text').setAttribute('fill', visited ? COLORS.numberVisitedText : COLORS.number);
+  };
   const clearHint = () => { if (S.hintCell == null && S.hintWrongCell == null) return; S.hintCell = S.hintWrongCell = null; svg.querySelectorAll('[data-role="hint"],[data-role="hint-wrong"]').forEach(e => e.remove()); };
   const syncFills = () => { const on = new Set(S.path); svg.querySelectorAll('[data-num-cell]').forEach(g => fill(+g.dataset.numCell, on.has(+g.dataset.numCell))); };
   function walkTo(cell) {
@@ -168,7 +308,7 @@ function setDevReveal(on) {
   if (S.showDev === on) return; S.showDev = on;
   const b = $('versionBadge'); if (b) b.style.display = on ? 'block' : 'none';
   const h = $('hintBtn'); if (h) h.style.display = on ? '' : 'none';
-  const x = $('exportBtn'); if (x) x.style.visibility = on ? 'visible' : 'hidden';
+  const x = $('exportBtn'); if (x) x.style.display = on ? '' : 'none';
   const t = $('seedTag'); if (t) t.style.display = on ? 'inline' : 'none';
 }
 function installDevReveal() {

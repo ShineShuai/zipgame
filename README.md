@@ -41,8 +41,25 @@ npm run bench     # solver and generator benchmark (about 2 minutes)
 npm run golden    # print fresh golden hashes, see "Determinism"
 ```
 
+### Docker
+
+Without Node installed, the repository root has a `Dockerfile` that runs the same commands in a
+throwaway container. Run these from the repository root:
+
+```sh
+docker build -t zip-webapp .
+docker run --rm zip-webapp                  # checks + unit tests (the default)
+docker run --rm zip-webapp npm run bench    # benchmark
+docker build --build-arg NODE_VERSION=20 -t zip-webapp:node20 .   # another Node version
+```
+
+The build context is the whole repository, so the home page is checked too. `.dockerignore` keeps
+`.git` and other clutter out of the image.
+
 ## Play app
 
+- **Phones, tablets and computers.** One layout that adapts: a single column on a phone, and on a wide
+  screen the board sits beside its buttons and stats. Its look matches the home page.
 - **Grid sizes** 5, 7, 8, 9, 10, 11, 12 and 16.
 - **Play local** starts today's next puzzle for the chosen size. Puzzles are deterministic: game *k* of
   size *n* on a UTC day is `generate(n, dailySeed(day, n, k - 1))`, so everyone gets the same puzzles in
@@ -165,10 +182,11 @@ Puzzles must not change for a given seed, or players would see different "same" 
 ```
 README.md                    this file
 index.html                   home page for players (English / 中文)
+Dockerfile, .dockerignore    run checks, tests and benchmark in a container
 .github/workflows/webapp-ci.yml   CI for webapp/
 webapp/
   index.html, design.html    the two pages
-  css/                       play.css, design.css
+  css/                       play.css (matches the home page), design.css
   src/
     version.js               the one app version, shared by both apps
     core/                    pure logic, no DOM: model, edges, format, rules, rng, stats, run
