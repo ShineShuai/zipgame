@@ -4,9 +4,11 @@ A browser puzzle game, a puzzle designer, and the generator and solver behind th
 [`webapp/`](webapp/) as plain ES modules: no build step, no runtime dependencies.
 [`index.html`](index.html) is the project's home page for players, in English and 中文, with a link to play.
 
-<!-- Once the repo URL is known:
-![CI](https://github.com/<owner>/<repo>/actions/workflows/webapp-ci.yml/badge.svg)
--->
+Inspired by [Zip on LinkedIn Games](https://www.linkedin.com/games/zip/). Built entirely with Claude
+Free Sonnet 5 as the AI coding assistant: no libraries, all static, just standard web technology and a
+lot of algorithms and maths.
+
+![CI](https://github.com/ShineShuai/zipgame/actions/workflows/webapp-ci.yml/badge.svg)
 
 **The puzzle.** A grid has numbered checkpoints and some walls. Draw one path that starts on `1`,
 reaches the checkpoints in ascending order, ends on the highest number, and passes through **every
@@ -299,3 +301,7 @@ ever change the solutions found. Timings depend on the runner, so treat them as 
 
 `webapp/src/version.js` holds the app version for both pages. `ALGO_VERSION` is separate: it versions
 the generator's output and only changes under the rules in [Determinism](#determinism).
+
+## License
+
+[MIT](https://opensource.org/license/mit) · © 2026 Shine.
