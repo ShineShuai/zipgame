@@ -38,13 +38,19 @@ else
     */) prefix="$WATCH_DIR" ;;
     *)  prefix="$WATCH_DIR/" ;;
   esac
-  if ! git diff --cached --name-only | grep -q "^${prefix}"; then
+  # Escape regex metacharacters so a directory name like "my.dir" doesn't
+  # over-match ("myXdir"). Only . [ * ^ $ ( ) + ? { | need escaping to stay
+  # within POSIX BRE, which is all we rely on here.
+  escaped_prefix=$(printf '%s' "$prefix" | sed 's/[.[\*^$()+?{|]/\\&/g')
+  if ! git diff --cached --name-only | grep -q "^${escaped_prefix}"; then
     exit 0
   fi
 fi
 
 # --- 2. Read the current version ---------------------------------------------
-current_line=$(grep -m1 "$VAR_NAME" "$TARGET_FILE" || true)
+# This matches const VERSION = '…', export const VERSION = '…', and GAME_VERSION = '…',
+# but not import { VERSION } from '…' or // VERSION bumped by hook.
+current_line=$(grep -m1 -E "(^|[[:space:]])${VAR_NAME}[[:space:]]*=" "$TARGET_FILE" || true)
 
 if [ -z "$current_line" ]; then
   echo "[auto-bump] Could not find $VAR_NAME in $TARGET_FILE" >&2
@@ -62,8 +68,9 @@ fi
 # --- 3. Compute next version --------------------------------------------------
 case "$current_version" in
   *[!0-9.]*|.*|*..*|*.)
-    echo "[auto-bump] $VAR_NAME '$current_version' is not simple major.minor.patch; skipping bump." >&2
-    exit 0
+    echo "[auto-bump] $VAR_NAME in $TARGET_FILE has value '$current_version'," >&2
+    echo "[auto-bump] which is not simple major.minor.patch. Aborting." >&2
+    exit 1
     ;;
 esac
 

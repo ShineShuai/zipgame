@@ -14,7 +14,7 @@ repos:
         name: Bump webapp VERSION
         entry: auto_bump_version.sh
         language: script
-        args: [webapp, webapp/src/apps/play/main.js, VERSION]
+        args: [webapp, webapp/src/version.js, VERSION]
         files: ^webapp/
         pass_filenames: false
         verbose: true
