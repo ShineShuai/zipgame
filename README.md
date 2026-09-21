@@ -159,6 +159,59 @@ phones are slower):
 To add a grid size, add it to `CANDIDATES`, add a golden case for it in `webapp/test/golden.js`, and
 run the tests.
 
+## Complexity
+
+Zip is easy to state and easy to play, but the questions the code above actually answers sit in
+several different complexity classes. This section names them precisely; see
+[`index.html`](index.html) for the player-facing version of the same ideas.
+
+- **P** — solvable in polynomial time. Checking a candidate line against the rules
+  (`webapp/src/core/rules.js`) is `O(cells)`: one pass confirms the start, the ascending checkpoints,
+  full coverage, and no crossed wall. Building *some* solvable puzzle is P too, since step 2 of
+  generation plants a Hamiltonian path first and only hides it behind numbers afterwards — the answer
+  exists by construction.
+- **NP** — a yes-answer has a polynomial-size certificate that a polynomial-time verifier can check. *Does
+  a solution exist?* is in NP: the certificate is the path itself, and it is exactly the same
+  linear-time check as above. Solving is the hard direction; it is what `solve.js` spends its search
+  budget on.
+- **co-NP** — the mirror of NP: a no-answer, not a yes-answer, has the short certificate. *Is the
+  solution unique?* is a co-NP-flavored question in its "no" direction: a second, different path is a
+  polynomial-size certificate that uniqueness fails. There is no known equally short certificate for
+  the "yes, it's unique" direction — you cannot rule out every other path without something like a
+  full search.
+- **NP-complete** — Zip's underlying reachability problem is a checkpoint-ordered Hamiltonian path on a
+  grid graph with holes (the walls). Unconstrained grid Hamiltonian path is a classic NP-complete
+  problem, and numbers merely add ordering constraints on top of it, so *does a solution exist?* is
+  (at least) NP-hard, and since it is also in NP, it is NP-complete. No polynomial algorithm is known,
+  which is exactly why `solve.js` is DFS with pruning rather than a closed-form check, and why large
+  boards (16×16) take noticeably longer per puzzle than small ones (see the timing table above).
+- **NP-hard** — some of the generator's questions have no known short certificate at all, which puts
+  them at NP-hard or above rather than in NP. *What is the fewest walls that still force a unique
+  solution?* is one: minimality is a property of the *whole* wall set (no removable wall exists), not
+  a single path, so there is nothing polynomial-size to hand a verifier as proof. The generator does
+  not attempt this optimum; step 3 (`minimize`) only reaches a *locally* irreducible set — one pass of
+  single-wall removals in random order — and step 4 keeps the best of `CANDIDATES[n]` such attempts.
+  "Fewest walls, guaranteed" is not on the menu; "few walls, empirically" is.
+- **D^P** (Difference Polynomial time, the class of problems expressible as one NP answer minus one
+  co-NP answer) — *is this puzzle solvable **and** uniquely so?* is the natural conjunction: "a
+  solution exists" (NP) and "no second solution exists" (co-NP). This is precisely what the generator
+  tests at every step: after each candidate wall, it asks the solver whether more than one solution
+  remains, stopping the search the instant a second one turns up (`solve.js` never enumerates beyond
+  two). There is no shortcut to that conjunction; it is asked freshly after every edit, which is the
+  main cost driver in generation.
+- **Dynamic programming** — a different axis from the classes above: a technique, not a hardness
+  class, and one this codebase does not use for solving. A DP over broken profiles (sweep the grid,
+  keep only how the frontier's path segments connect) can solve Hamiltonian-path-style problems in
+  time exponential in the *narrower* grid dimension rather than in cell count, which beats plain
+  backtracking on long, thin boards but degrades quickly as both dimensions grow — worse than DFS with
+  pruning on the roughly-square boards Zip actually uses (5×5 up to 16×16). That is why `solve.js` is
+  backtracking with dead-end, connectivity, and forced-edge pruning instead.
+
+None of this is specific to Zip: the same shape of question — solvable, uniquely solvable, minimally
+so — recurs across constraint puzzles (Sudoku, Numberlink/Flow Free, Slitherlink), and the generator's
+"propose, then ask the solver to break it" loop is the standard way to build a uniquely-solvable
+instance of any of them without a direct construction.
+
 ## Determinism
 
 Puzzles must not change for a given seed, or players would see different "same" daily puzzles.
@@ -180,25 +233,49 @@ Puzzles must not change for a given seed, or players would see different "same" 
 ## Repository layout
 
 ```
-README.md                    this file
-index.html                   home page for players (English / 中文)
-Dockerfile, .dockerignore    run checks, tests and benchmark in a container
-.github/workflows/webapp-ci.yml   CI for webapp/
-webapp/
-  index.html, design.html    the two pages
-  css/                       play.css (matches the home page), design.css
-  src/
-    version.js               the one app version, shared by both apps
-    core/                    pure logic, no DOM: model, edges, format, rules, rng, stats, run
-      solver/solve.js        Hamiltonian-path search
-      gen/                   hampath, checkpoints, walls, generate
-    features/                daily counters, hints, stats store
-    platform/                storage port, async runner (time-sliced generation)
-    view/                    SVG geometry shared by both apps
-    ui/                      modal dialog
-    apps/play, apps/design/  browser entry points (main.js) and boards
-  test/                      tests.js (Node and browser), golden.js, check.js
-  bench/                     bench.js (Node and browser)
+.
+├── README.md                       this file
+├── index.html                      home page for players (English / 中文)
+├── Dockerfile, .dockerignore       run checks, tests and benchmark in a container
+├── .github/
+│   └── workflows/
+│       └── webapp-ci.yml           CI for webapp/
+└── webapp/
+    ├── index.html                  play app
+    ├── design.html                 puzzle designer
+    ├── css/
+    │   ├── play.css                matches the home page
+    │   └── design.css
+    ├── src/
+    │   ├── version.js              the one app version, shared by both apps
+    │   ├── core/                   pure logic, no DOM
+    │   │   ├── model.js            grid, seeds, ALGO_VERSION
+    │   │   ├── edges.js
+    │   │   ├── format.js           the puzzle text format
+    │   │   ├── rules.js            path/coverage/wall checks
+    │   │   ├── rng.js
+    │   │   ├── stats.js
+    │   │   ├── run.js
+    │   │   ├── solver/
+    │   │   │   └── solve.js        Hamiltonian-path search
+    │   │   └── gen/
+    │   │       ├── hampath.js
+    │   │       ├── checkpoints.js
+    │   │       ├── walls.js
+    │   │       └── generate.js
+    │   ├── features/                daily counters, hints, stats store
+    │   ├── platform/                storage port, async runner (time-sliced generation)
+    │   ├── view/                    SVG geometry shared by both apps
+    │   ├── ui/                      modal dialog
+    │   └── apps/
+    │       ├── play/                browser entry point (main.js) and board
+    │       └── design/               browser entry point (main.js) and board
+    ├── test/
+    │   ├── tests.js                 Node and browser
+    │   ├── golden.js
+    │   └── check.js
+    └── bench/
+        └── bench.js                 Node and browser
 ```
 
 `webapp/src/core` never touches the DOM, which is why the tests can run it in Node.

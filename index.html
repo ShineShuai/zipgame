@@ -180,12 +180,20 @@
   .rule .icon { background: var(--blue); color: #fff; font-weight: 800; font-size: 1.5rem; }
   .cards > .rule:nth-child(2) .icon { background: var(--orange); }
   .cards > .rule:nth-child(3) .icon { background: var(--green); }
+  .cards > .rule:nth-child(4) .icon { background: var(--pink); }
+  .card p strong, .lead strong { color: var(--heading); }
 
   .callout {
     margin-top: 28px; padding: 18px 22px; border-radius: var(--radius);
     background: var(--green-soft); border: 1px solid #b9ecd0; color: #17583b; font-weight: 600;
   }
   .subhead { margin: 56px 0 20px; }
+
+  /* ---------- origin ---------- */
+  .tags { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+  .tags .eyebrow { margin: 0; }
+  .panel p + p { margin-top: 12px; }
+  .cards > .panel > h3 { font-size: 1.25rem; margin-bottom: 14px; }
 
   .band { background: #fff; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 
@@ -224,6 +232,10 @@
   footer { padding: 32px 0 44px; text-align: center; color: var(--muted); font-size: 0.95rem; }
 
   /* ---------- small screens ---------- */
+  /* five English links do not fit next to the language switch and Play between 901px and 1080px */
+  @media (max-width: 1080px) {
+    html[data-lang="en"] .nav a[href="#maths"] { display: none; }
+  }
   @media (max-width: 960px) {
     .cards, .cards.four { grid-template-columns: repeat(2, 1fr); }
   }
@@ -280,6 +292,7 @@
       <a href="#platforms"><span lang="en">Platforms</span><span lang="zh">支持平台</span></a>
       <a href="#game"><span lang="en">The game</span><span lang="zh">游戏功能</span></a>
       <a href="#how-it-works"><span lang="en">How it works</span><span lang="zh">幕后原理</span></a>
+      <a href="#maths"><span lang="en">The maths</span><span lang="zh">理论</span></a>
     </nav>
     <div class="topbar-actions">
       <div class="lang-toggle" role="group" aria-label="Language / 语言">
@@ -303,8 +316,8 @@
           <span lang="zh">按顺序连接数字，<br><span class="accent">走遍每一个格子。</span></span>
         </h1>
         <p class="lead">
-          <span lang="en">Zip is a calm puzzle game. Draw one continuous line from 1 to the last number, visit every square, and never cross a wall. There is nothing to install: just open it and play.</span>
-          <span lang="zh">Zip 是一款轻松的益智小游戏：画一条连续的线，从 1 出发，依次经过所有数字，走遍每个格子，并且不能穿过墙。无需安装，打开就能玩。</span>
+          <span lang="en">Zip is a calm puzzle game. Draw one continuous line: start at 1, follow the numbers in order, fill every square, and finish at the highest number. Never cross a wall. There is nothing to install: just open it and play.</span>
+          <span lang="zh">Zip 是一款轻松的益智小游戏：画一条连续的线，从 1 出发，按顺序经过各个数字，填满每一个格子，并在最大的数字上结束，途中不能穿过墙。无需安装，打开就能玩。</span>
         </p>
         <div class="hero-buttons">
           <a class="button primary" href="webapp/index.html">▶ <span lang="en">Play now</span><span lang="zh">立即开始</span></a>
@@ -344,8 +357,8 @@
           </figure>
         </div>
         <p class="showcase-note">
-          <span lang="en">A 5×5 puzzle. Start at 1, follow the numbers, fill every square.</span>
-          <span lang="zh">一道 5×5 的题目：从 1 出发，按数字顺序前进，填满每个格子。</span>
+          <span lang="en">1 → 2 → 3 … fill every square, end at the highest.</span>
+          <span lang="zh">1 → 2 → 3 …，填满每个格子，在最大数字处结束。</span>
         </p>
       </div>
     </div>
@@ -357,12 +370,12 @@
       <div class="section-head">
         <h2><span lang="en">What is Zip?</span><span lang="zh">Zip 是什么？</span></h2>
         <p class="lead">
-          <span lang="en">Zip is a path puzzle. Each board has a few numbered squares and some walls. Your job is to draw a single line across the board, following three simple rules.</span>
-          <span lang="zh">Zip 是一款路线谜题。每块棋盘上有几个带数字的格子和一些墙，你要按三条简单的规则，画出一条贯穿棋盘的线。</span>
+          <span lang="en">Zip is a path puzzle inspired by <a href="https://www.linkedin.com/games/zip/" target="_blank" rel="noopener noreferrer">the Zip game on LinkedIn</a>. Each board has a few numbered squares and possibly some walls. Your job is to draw a single line across the board, following four simple rules.</span>
+          <span lang="zh">Zip 是一款路线谜题，灵感来自 <a href="https://www.linkedin.com/games/zip/" target="_blank" rel="noopener noreferrer">LinkedIn 上的 Zip 游戏</a>。每块棋盘上有几个带数字的格子，有时还有一些墙。你要按四条简单的规则，画出一条贯穿棋盘的线。</span>
         </p>
       </div>
 
-      <div class="cards">
+      <div class="cards four">
         <div class="card rule">
           <div class="icon" aria-hidden="true">1</div>
           <h3><span lang="en">Start at 1</span><span lang="zh">从 1 出发</span></h3>
@@ -371,18 +384,23 @@
         <div class="card rule">
           <div class="icon" aria-hidden="true">2</div>
           <h3><span lang="en">Follow the numbers</span><span lang="zh">按数字顺序</span></h3>
-          <p><span lang="en">Pass through 2, 3, 4… in order and finish on the highest number.</span><span lang="zh">依次经过 2、3、4……最后停在最大的数字上。</span></p>
+          <p><span lang="en">Pass through 2, 3, 4… in that order, never skipping or swapping one.</span><span lang="zh">依次经过 2、3、4……不能跳过或颠倒。</span></p>
         </div>
         <div class="card rule">
           <div class="icon" aria-hidden="true">3</div>
           <h3><span lang="en">Fill every square</span><span lang="zh">填满所有格子</span></h3>
-          <p><span lang="en">Your line must visit every square exactly once, and it cannot cross a wall.</span><span lang="zh">线必须恰好经过每个格子一次，并且不能穿过墙。</span></p>
+          <p><span lang="en">Your line must visit every square exactly once and cannot cross a wall.</span><span lang="zh">线必须恰好经过每个格子一次，并且不能穿过墙。</span></p>
+        </div>
+        <div class="card rule">
+          <div class="icon" aria-hidden="true">4</div>
+          <h3><span lang="en">End at the top</span><span lang="zh">在最大数字处结束</span></h3>
+          <p><span lang="en">Your line ends on the highest number, and only once every square is filled.</span><span lang="zh">线止于最大的数字，且此时已填满所有格子。</span></p>
         </div>
       </div>
 
       <p class="callout">
-        <span lang="en">Every puzzle has exactly one correct solution, so the answer is always there to be worked out.</span>
-        <span lang="zh">每道题都恰好只有一个正确答案，所以答案一定可以推理出来。</span>
+        <span lang="en">Every puzzle has exactly one correct solution.</span>
+        <span lang="zh">每道题都恰好只有一个正确答案。</span>
       </p>
 
       <h3 class="subhead"><span lang="en">What is in the project</span><span lang="zh">项目包含什么</span></h3>
@@ -395,12 +413,26 @@
         <div class="card">
           <div class="icon" aria-hidden="true">🧩</div>
           <h3><span lang="en">The puzzle maker</span><span lang="zh">出题程序</span></h3>
-          <p><span lang="en">A generator that creates fresh puzzles automatically and makes sure each one has exactly one solution.</span><span lang="zh">自动生成全新谜题的程序，并确保每道题都恰好只有一个解。</span></p>
+          <p><span lang="en">A generator that creates fresh puzzles and makes sure each has exactly one solution.</span><span lang="zh">自动生成全新谜题的程序，并确保每道题都恰好只有一个解。</span></p>
         </div>
         <div class="card">
           <div class="icon" aria-hidden="true">🔍</div>
           <h3><span lang="en">The solver</span><span lang="zh">解题程序</span></h3>
           <p><span lang="en">A program that solves puzzles like a very patient player, and checks that only one answer exists.</span><span lang="zh">像一位极有耐心的玩家那样解题的程序，用来确认答案是唯一的。</span></p>
+        </div>
+      </div>
+
+      <h3 class="subhead"><span lang="en">The build</span><span lang="zh">制作方式</span></h3>
+      <div class="panel">
+        <p>
+          <span lang="en">This version was built entirely with Claude Free Sonnet 5 as the AI coding assistant. No libraries, all static: just standard web technology and a lot of algorithms and maths.</span>
+          <span lang="zh">本版本完全由 AI 编程助手 Claude Free Sonnet 5 打造。没有任何库，全部是静态文件：只用标准的网页技术，外加大量的算法和数学。</span>
+        </p>
+        <div class="tags">
+          <span class="eyebrow"><span lang="en">🤖 AI coding</span><span lang="zh">🤖 AI 编程</span></span>
+          <span class="eyebrow"><span lang="en">📦 No libraries</span><span lang="zh">📦 零依赖库</span></span>
+          <span class="eyebrow"><span lang="en">📄 Static files</span><span lang="zh">📄 静态文件</span></span>
+          <span class="eyebrow"><span lang="en">🧮 Algorithms and maths</span><span lang="zh">🧮 算法与数学</span></span>
         </div>
       </div>
     </div>
@@ -427,12 +459,12 @@
         <div class="card">
           <div class="icon" aria-hidden="true">🌐</div>
           <h3><span lang="en">Nothing to install</span><span lang="zh">无需安装</span></h3>
-          <p><span lang="en">Open the page in a modern browser, for example Chrome, Edge, Firefox or Safari.</span><span lang="zh">在较新的浏览器（如 Chrome、Edge、Firefox、Safari）中打开页面即可。</span></p>
+          <p><span lang="en">Just open the page in Chrome, Edge, Firefox or Safari.</span><span lang="zh">在 Chrome、Edge、Safari 等浏览器中打开。</span></p>
         </div>
         <div class="card">
           <div class="icon" aria-hidden="true">💾</div>
           <h3><span lang="en">Kept on your device</span><span lang="zh">保存在你的设备上</span></h3>
-          <p><span lang="en">Your statistics stay in your own browser. There is no account to create.</span><span lang="zh">你的统计数据保存在自己的浏览器里，无需注册账号。</span></p>
+          <p><span lang="en">Statistics stay in your browser. No account needed.</span><span lang="zh">统计数据保存在自己的浏览器里，无需注册账号。</span></p>
         </div>
       </div>
     </div>
@@ -447,34 +479,19 @@
       </div>
       <div class="cards">
         <div class="card">
-          <div class="icon" aria-hidden="true">📐</div>
-          <h3><span lang="en">Eight board sizes</span><span lang="zh">八种棋盘尺寸</span></h3>
-          <p><span lang="en">From a quick 5×5 to a big 16×16: boards 5, 7, 8, 9, 10, 11, 12 and 16 squares wide.</span><span lang="zh">从速战速决的 5×5 到挑战十足的 16×16：边长分别为 5、7、8、9、10、11、12 和 16 格。</span></p>
-        </div>
-        <div class="card">
           <div class="icon" aria-hidden="true">📅</div>
           <h3><span lang="en">New puzzles every day</span><span lang="zh">每天都有新题</span></h3>
-          <p><span lang="en">Everyone gets the same puzzles in the same order each day, so you can compare notes with friends. Finished one? Tap “New puzzle” for the next.</span><span lang="zh">每天所有人拿到的题目和顺序都相同，可以和朋友交流心得。做完一题，点击“New puzzle”继续下一题。</span></p>
+          <p><span lang="en">Everyone gets the same puzzles each day, so you can compare notes with friends.</span><span lang="zh">每天所有人拿到的题目和顺序都相同，可以和朋友交流心得。</span></p>
         </div>
         <div class="card">
           <div class="icon" aria-hidden="true">⭐</div>
           <h3><span lang="en">Game of the Day</span><span lang="zh">每日挑战</span></h3>
-          <p><span lang="en">One featured puzzle a day, and you get a single attempt at it.</span><span lang="zh">每天一道特别推荐的题目，只有一次挑战机会。</span></p>
+          <p><span lang="en">One featured puzzle a day, and you get a single attempt at it. Make it count.</span><span lang="zh">每天一道特别推荐的题目，只有一次挑战机会。</span></p>
         </div>
         <div class="card">
           <div class="icon" aria-hidden="true">📊</div>
           <h3><span lang="en">Your statistics</span><span lang="zh">个人统计</span></h3>
           <p><span lang="en">See how many puzzles you have solved and how fast, for each board size, today and all time.</span><span lang="zh">按棋盘尺寸查看你解出的题数和用时，包括今日和历史累计。</span></p>
-        </div>
-        <div class="card">
-          <div class="icon" aria-hidden="true">✍️</div>
-          <h3><span lang="en">Simple controls</span><span lang="zh">操作简单</span></h3>
-          <p><span lang="en">Just drag to draw your path, with a mouse or a finger.</span><span lang="zh">用鼠标或手指拖动，就能画出你的路线。</span></p>
-        </div>
-        <div class="card">
-          <div class="icon" aria-hidden="true">✅</div>
-          <h3><span lang="en">One right answer</span><span lang="zh">唯一的答案</span></h3>
-          <p><span lang="en">Every puzzle has exactly one solution, so there is always a clear way to finish.</span><span lang="zh">每道题都只有一个解，总能找到明确的通关办法。</span></p>
         </div>
       </div>
     </div>
@@ -578,6 +595,93 @@
     </div>
   </section>
 
+  <!-- ===== The maths ===== -->
+  <section id="maths" class="band">
+    <div class="container">
+      <div class="section-head">
+        <h2><span lang="en">Sounds simple, it is not 😅</span><span lang="zh">听起来很简单，其实不然 😅</span></h2>
+        <p class="lead">
+          <span lang="en">Zip is easy to learn but surprisingly hard for a computer. Computer scientists sort problems into families by how hard they are. Here is the maths behind it, told through Zip. The families describe what happens as boards grow without limit; for the board sizes in the game, a computer copes fine.</span>
+          <span lang="zh">Zip 很容易上手，对电脑来说却出乎意料地难。计算机科学家按难度把问题分成不同的“家族”。下面用 Zip 来认识背后的数学。这些家族描述的是棋盘无限变大时的情形；对游戏里的棋盘尺寸，电脑完全应付得来。</span>
+        </p>
+      </div>
+
+      <div class="cards">
+        <div class="panel">
+          <h3><span lang="en">⚡ P: quick to solve</span><span lang="zh">⚡ P 类：解得快</span></h3>
+          <p>
+            <span lang="en">A problem is in <strong>P</strong> if a computer solves it quickly, even as it grows. Sorting names: twice as many, about twice the work.</span>
+            <span lang="zh">如果电脑能很快解决某个问题，且问题变大后依然很快，它就属于 <strong>P</strong> 类。给名字排序：多一倍的名字，大约多一倍的活。</span>
+          </p>
+          <p>
+            <span lang="en"><strong>In Zip:</strong> is my line correct? Walk along it and check the rules. Making a solvable puzzle is quick too.</span>
+            <span lang="zh"><strong>在 Zip 里：</strong>我画的线对吗？沿线走一遍对照规则即可。出一道有解的题也很快。</span>
+          </p>
+        </div>
+        <div class="panel">
+          <h3><span lang="en">✔️ NP: quick to check</span><span lang="zh">✔️ NP 类：验证得快</span></h3>
+          <p>
+            <span lang="en">A problem is in <strong>NP</strong> if a given answer is quick to check, though finding it may not be. Jigsaw: a glance to check, hours to build.</span>
+            <span lang="zh">如果一个给定的答案能很快核对，这个问题就属于 <strong>NP</strong> 类，尽管找出答案未必很快。拼图：一眼就能验收，拼起来要几小时。</span>
+          </p>
+          <p>
+            <span lang="en"><strong>In Zip:</strong> does this puzzle have a solution? The drawn line proves it, and anyone can check it in seconds.</span>
+            <span lang="zh"><strong>在 Zip 里：</strong>这道题有解吗？如果有，画出的那条线就是证明，谁都能在几秒内核对。</span>
+          </p>
+        </div>
+        <div class="panel">
+          <h3><span lang="en">🔄 co-NP: mirror of NP</span><span lang="zh">🔄 co-NP 类：NP 的镜像</span></h3>
+          <p>
+            <span lang="en">A problem is in <strong>co-NP</strong> if a “no” is quick to prove but a “yes” is not. “No typos here”: one typo refutes it; a full read proves it.</span>
+            <span lang="zh">如果“否”容易证明而“是”不容易，这个问题就属于 <strong>co-NP</strong> 类。“这里没有错字”：找出一个错字就能推翻，要证明它成立得逐字通读。</span>
+          </p>
+          <p>
+            <span lang="en"><strong>In Zip:</strong> is this the only solution? A second line proves “no” in seconds; “yes” means ruling out every other line.</span>
+            <span lang="zh"><strong>在 Zip 里：</strong>这是唯一的解吗？再画一条线几秒就能证明“不是”；要证明“是”，得排除所有其他的线。</span>
+          </p>
+        </div>
+        <div class="panel">
+          <h3><span lang="en">🏔️ NP-complete: hardest</span><span lang="zh">🏔️ NP 完全：最难的</span></h3>
+          <p>
+            <span lang="en">A problem is <strong>NP-complete</strong> if it is among the hardest in NP: a fast method for it solves all of NP. Like a master key.</span>
+            <span lang="zh">如果一个问题属于 NP 中最难的那一档，就称为 <strong>NP 完全</strong>问题：有了它的快速解法，NP 里所有问题都能快速解决。像一把万能钥匙。</span>
+          </p>
+          <p>
+            <span lang="en"><strong>In Zip:</strong> solving a puzzle. Close to the Hamiltonian path problem (visit every point once), NP-complete on grids, so Zip is expected to be too.</span>
+            <span lang="zh"><strong>在 Zip 里：</strong>解题。它与哈密顿路径问题（每个点恰好经过一次）相近，后者在网格上是 NP 完全的，所以 Zip 预计也是。</span>
+          </p>
+        </div>
+        <div class="panel">
+          <h3><span lang="en">🚧 NP-hard: or harder</span><span lang="zh">🚧 NP 难：也许更难</span></h3>
+          <p>
+            <span lang="en">A problem is <strong>NP-hard</strong> if it is at least as hard as all of NP, yet its answer may be hard to check, like proving a route is shortest.</span>
+            <span lang="zh">如果一个问题至少和 NP 中所有问题一样难，就称为 <strong>NP 难</strong>问题，它的答案甚至也可能难以核对，比如证明某条路线最短。</span>
+          </p>
+          <p>
+            <span lang="en"><strong>In Zip:</strong> what is the fewest walls that leave exactly one solution? Proving a count is the minimum is hard.</span>
+            <span lang="zh"><strong>在 Zip 里：</strong>最少要几堵墙才能恰好只有一个解？要证明某个数量已是最少并不容易。</span>
+          </p>
+        </div>
+        <div class="panel">
+          <h3><span lang="en">⚖️ DP: exactly one</span><span lang="zh">⚖️ DP 类：恰好一个</span></h3>
+          <p>
+            <span lang="en"><strong>DP</strong> (Difference Polynomial time) combines both: an NP part and a co-NP part. A detective: one suspect fits, nobody else.</span>
+            <span lang="zh"><strong>DP</strong>（差多项式时间）把两者合在一起：一部分是 NP，一部分是 co-NP。侦探断案：只有一个嫌疑人吻合，其他人都不吻合。</span>
+          </p>
+          <p>
+            <span lang="en"><strong>In Zip:</strong> does this puzzle have exactly one solution? That is what makes it fair: a solution (NP), and no other (co-NP).</span>
+            <span lang="zh"><strong>在 Zip 里：</strong>这道题恰好只有一个解吗？这是公平的前提：有解（NP），且没有别的解（co-NP）。</span>
+          </p>
+        </div>
+      </div>
+
+      <p class="callout">
+        <span lang="en"><strong>Why the puzzle maker draws the answer first:</strong> making a solvable puzzle is easy, so it plants a route and hides it behind numbers. Making a puzzle with exactly one solution is the hard part, so it keeps asking the solver “is there another route?” and adds walls until the answer is no.</span>
+        <span lang="zh"><strong>为什么出题程序先画答案：</strong>做一道有解的题很容易，所以它先埋下一条路线，再用数字藏起来。做一道恰好只有一个解的题才是难点，所以它不断问解题程序“还有别的路线吗？”，并不停加墙，直到答案变成“没有”。</span>
+      </p>
+    </div>
+  </section>
+
   <!-- ===== Call to action ===== -->
   <section class="cta">
     <div class="container">
@@ -592,8 +696,8 @@
 
 <footer>
   <div class="container">
-    <span lang="en">Zip · This page will grow along with the project.</span>
-    <span lang="zh">Zip · 本页面会随着项目一同更新。</span>
+    <span lang="en">Zip · © 2026 Shine · <a href="https://opensource.org/license/mit" target="_blank" rel="noopener noreferrer">MIT License</a></span>
+    <span lang="zh">Zip · © 2026 Shine · <a href="https://opensource.org/license/mit" target="_blank" rel="noopener noreferrer">MIT 许可证</a></span>
   </div>
 </footer>
 </body>
