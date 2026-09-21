@@ -5,11 +5,20 @@ import { gapCheckpoints, randomCheckpoints } from './checkpoints.js';
 import { makeUnique, minimizeWalls } from './walls.js';
 import { solve } from '../solver/solve.js';
 
-// Attempts per grid size. Every attempt is seeded with random walls and only the best one (fewest walls
-// before minimizing) gets minimized, so extra attempts mostly add cost: cheap grids keep a generous
-// budget, mid sizes get a few, and 16x16 keeps 8 (fewer measurably left more walls at the same time).
-export const ATTEMPTS = { 5: 20, 7: 20, 9: 6, 11: 5, 16: 8 };
-const attemptsFor = n => ATTEMPTS[n] || Math.max(5, Math.round(600 / (n * n)));
+// Candidate puzzles built per play grid size. A candidate is a fresh random path with fresh
+// checkpoints, walled until unique. Every candidate is then minimized and the one left with the
+// fewest walls wins. Minimizing is the expensive part, so this count is the quality/time knob:
+// time grows roughly with the count, the wall count shrinks. More attempts alone would not help,
+// because the wall count before minimizing predicts the final count only weakly.
+// The keys are the grid sizes the play app offers.
+export const CANDIDATES = { 5: 32, 7: 20, 8: 16, 9: 16, 10: 8, 11: 6, 12: 4, 16: 3 };
+export const PLAY_SIZES = Object.keys(CANDIDATES).map(Number);
+const candidatesFor = n => CANDIDATES[n] || 2;
+// Most attempts spent per candidate. Failed attempts (Warnsdorff dead ends) are cheap and 30-60% of
+// attempts succeed, so this only guards against an unlucky seed.
+const ATTEMPTS_PER_CANDIDATE = 12;
+// Share of the progress bar for building candidates; the rest is minimizing them.
+const BUILD_SHARE = 0.1;
 // With solver propagation each node is far more effective, so the seeded node caps shrink.
 export const PROP_CAP_X = 0.3;
 // Every attempt starts by pre-walling this share of the free edges at random. That makes uniqueness
@@ -60,42 +69,48 @@ function numberEveryCell(n, path, seed) {
   return p;
 }
 
+const fewestWalls = candidates => (
+  candidates.length ? Math.min(...candidates.map(c => c.order.length)) : null
+);
+
 // Deterministic puzzle for (n, seed): same seed => same puzzle (ALGO_VERSION 4: solver propagation on,
-// every attempt seeded with SEED_FRACTION random walls).
+// candidates seeded with SEED_FRACTION random walls, best of several minimized candidates).
 // o.prop === false reproduces the shape of the ALGO_VERSION 1 search (solver propagation off).
-// Events: { frac|null, walls, K }.
+// o.candidates overrides CANDIDATES[n].
+// Events: { frac|null, walls, K }. `walls` never increases: it is the fewest walls found so far.
 export function* generate(n, seed, o = {}) {
   const depth = o.retryDepth || 0;
   const cells = n * n;
   const prop = o.prop !== false;
-  const budget = o.attemptBudget || attemptsFor(n);
+  const wanted = o.candidates || candidatesFor(n);
   const rnd = makeRng(seed);
   const nodeCap = Math.round(Math.max(30000, 200 * cells) * (prop ? PROP_CAP_X : 1));
   const fallbackCap = Math.min(2000000, Math.max(300000, 20 * nodeCap));
+  const checkCap = Math.max(1000, Math.floor(nodeCap / 2));
   const Kmin = Math.max(4, n);
   const Kmax = Math.max(Kmin + 1, Math.round(cells / 4));
   const K = pickK(Kmin, Kmax, rnd);
 
-  let best = null;
-  for (let attempt = 0; attempt < budget; attempt++) {
-    const found = yield* tryGenerate(n, K, rnd, nodeCap, cells, SEED_FRACTION, { prop });
-    if (found) {
-      if (!best || found.order.length < best.order.length) {
-        best = found;
-        if (best.order.length === 0) break;
-      }
-    }
-    yield { frac: Math.min(1, (attempt + 1) / budget), walls: best ? best.order.length : null, K };
+  // 1. Build candidates.
+  const candidates = [];
+  const maxAttempts = wanted * ATTEMPTS_PER_CANDIDATE;
+  for (let attempt = 0; attempt < maxAttempts && candidates.length < wanted; attempt++) {
+    // The attempt's own wall counts jump around, so report the fewest found so far instead.
+    const attemptEvents = tryGenerate(n, K, rnd, nodeCap, cells, SEED_FRACTION, { prop });
+    const found = yield* tag(attemptEvents, { walls: fewestWalls(candidates) });
+    if (found) candidates.push(found);
+    yield { frac: (BUILD_SHARE * candidates.length) / wanted, walls: fewestWalls(candidates), K };
+  }
+  for (let fallback = 0; fallback < 4 && candidates.length === 0; fallback++) {
+    const attemptEvents = tryGenerate(n, K, rnd, fallbackCap, cells, SEED_FRACTION, { prop });
+    const found = yield* tag(attemptEvents, { walls: fewestWalls(candidates) });
+    if (found) candidates.push(found);
+    yield { frac: BUILD_SHARE, walls: fewestWalls(candidates), K };
   }
 
-  for (let fallback = 0; fallback < 4 && !best; fallback++) {
-    best = yield* tryGenerate(n, K, rnd, fallbackCap, cells, SEED_FRACTION, { prop });
-    yield { frac: 1, walls: best ? best.order.length : null, K };
-  }
-
-  if (!best) {
+  if (candidates.length === 0) {
     if (depth < 5) {
-      return yield* generate(n, seed + 1, { ...o, attemptBudget: budget, retryDepth: depth + 1 });
+      return yield* generate(n, seed + 1, { ...o, retryDepth: depth + 1 });
     }
     // Last resorts, bounded (no unbounded recursion): densest K, then "number every cell".
     const denseCap = Math.max(300000, 20 * nodeCap);
@@ -113,16 +128,37 @@ export function* generate(n, seed, o = {}) {
     throw new Error('Puzzle generation failed: could not construct a Hamiltonian path for N=' + n);
   }
 
-  let kept = best.order.length;
-  yield { frac: 1, walls: kept, K };
-  if (kept > 0) {
-    const checkCap = Math.max(1000, Math.floor(nodeCap / 2));
-    kept = (yield* minimizeWalls(best, best.order, rnd, checkCap, K, prop)).kept;
-    yield { frac: 1, walls: kept, K };
+  // 2. Minimize every candidate; keep the one with the fewest walls (the earliest on a tie).
+  let shown = fewestWalls(candidates); // the wall count reported to the UI; it only goes down
+
+  function* minimizeCandidate(candidate, index) {
+    const total = candidate.order.length;
+    const events = minimizeWalls(candidate, candidate.order, rnd, checkCap, K, prop);
+    let tested = 0;
+    for (let step = events.next(); ; step = events.next()) {
+      if (step.done) return step.value;
+      tested++;
+      shown = Math.min(shown, step.value.walls);
+      const progress = (index + tested / total) / candidates.length;
+      yield { frac: BUILD_SHARE + (1 - BUILD_SHARE) * progress, walls: shown, K };
+    }
   }
-  delete best.order;
-  best.seed = seed;
-  return best;
+
+  let winner = null;
+  let winnerWalls = Infinity;
+  for (let i = 0; i < candidates.length && winnerWalls > 0; i++) {
+    const candidate = candidates[i];
+    let kept = candidate.order.length;
+    if (kept > 0) kept = (yield* minimizeCandidate(candidate, i)).kept;
+    if (kept < winnerWalls) {
+      winner = candidate;
+      winnerWalls = kept;
+    }
+  }
+  yield { frac: 1, walls: winnerWalls, K };
+  delete winner.order;
+  winner.seed = seed;
+  return winner;
 }
 
 // ---- Designer helpers (random, unseeded by design: caller supplies rnd) ----

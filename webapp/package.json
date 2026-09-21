@@ -1,1 +1,14 @@
-{"type":"module"}
+{
+  "name": "zip-puzzle",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "check": "node test/check.js",
+    "test": "node test/tests.js",
+    "bench": "node bench/bench.js",
+    "golden": "node test/print-golden.js"
+  }
+}

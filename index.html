@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zip – connect the numbers, fill every square</title>
+<meta name="description" content="Zip is a path puzzle you play in your web browser. Connect the numbers in order and fill every square.">
+
+<!--
+  HOW TO EDIT THIS PAGE
+  Every piece of text is written twice, side by side, once per language:
+      <p><span lang="en">English text</span><span lang="zh">中文文本</span></p>
+  To add a section, copy an existing <section> and keep both languages in every element.
+  The language buttons and the small script below need no changes.
+  `npm run check` (inside webapp/) fails if the two languages get out of step.
+-->
+
+<script>
+  // Picks the language before the page is drawn (saved choice first, then the browser language).
+  (function () {
+    var root = document.documentElement;
+    var titles = {
+      en: 'Zip \u2013 connect the numbers, fill every square',
+      zh: 'Zip \u2013 \u6309\u987a\u5e8f\u8fde\u63a5\u6570\u5b57\uff0c\u8d70\u904d\u6bcf\u4e2a\u683c\u5b50'
+    };
+
+    function setLanguage(language) {
+      root.setAttribute('data-lang', language);
+      root.setAttribute('lang', language === 'zh' ? 'zh-Hans' : 'en');
+      document.title = titles[language];
+      var buttons = document.querySelectorAll('[data-set-lang]');
+      for (var i = 0; i < buttons.length; i++) {
+        var active = buttons[i].getAttribute('data-set-lang') === language;
+        buttons[i].setAttribute('aria-pressed', active ? 'true' : 'false');
+      }
+      try { localStorage.setItem('zip-home-language', language); } catch (e) { /* storage may be blocked */ }
+    }
+
+    var saved = null;
+    try { saved = localStorage.getItem('zip-home-language'); } catch (e) { /* storage may be blocked */ }
+    var browserIsChinese = (navigator.language || '').toLowerCase().indexOf('zh') === 0;
+    setLanguage(saved === 'en' || saved === 'zh' ? saved : (browserIsChinese ? 'zh' : 'en'));
+
+    document.addEventListener('click', function (event) {
+      var button = event.target.closest ? event.target.closest('[data-set-lang]') : null;
+      if (button) setLanguage(button.getAttribute('data-set-lang'));
+    });
+    document.addEventListener('DOMContentLoaded', function () {
+      setLanguage(root.getAttribute('data-lang')); // the buttons exist now: mark the active one
+    });
+  })();
+</script>
+
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f6f9ff;
+    --surface: #ffffff;
+    --text: #2a3350;
+    --heading: #16203c;
+    --muted: #5a6685;
+    --line: #e3e9fa;
+    --blue: #3b68ee;
+    --blue-soft: #e8eeff;
+    --orange: #ff9f1c;
+    --orange-soft: #fff3dc;
+    --green: #1fae6b;
+    --green-soft: #dff7ea;
+    --pink: #ff5d8f;
+    --pink-soft: #ffe5ee;
+    --shadow: 0 8px 28px rgba(59, 104, 238, 0.10);
+    --radius: 20px;
+  }
+
+  /* One language at a time. Both are always in the page, so it still reads without scripts. */
+  html[data-lang="en"] [lang="zh"],
+  html[data-lang="zh"] [lang="en"] { display: none !important; }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+  body {
+    margin: 0;
+    color: var(--text);
+    background: linear-gradient(180deg, #eaf0ff 0, #f8faff 520px, #ffffff 100%);
+    font-family: "Segoe UI", system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+                 "Noto Sans SC", "Noto Sans CJK SC", sans-serif;
+    font-size: 17px;
+    line-height: 1.7;
+  }
+  html[data-lang="zh"] body { line-height: 1.85; letter-spacing: 0.02em; }
+
+  h1, h2, h3, h4 { color: var(--heading); line-height: 1.25; margin: 0; }
+  p { margin: 0; }
+  a { color: var(--blue); }
+  :focus-visible { outline: 3px solid var(--orange); outline-offset: 3px; border-radius: 6px; }
+
+  .container { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+
+  /* ---------- top bar ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  .topbar-inner { display: flex; align-items: center; gap: 20px; min-height: 64px; }
+  .brand { display: flex; align-items: center; gap: 10px; color: var(--heading); font-weight: 800; font-size: 1.35rem; text-decoration: none; }
+  .logo { width: 34px; height: 34px; }
+  .nav { display: flex; gap: 6px; margin-left: 12px; flex: 1 1 auto; }
+  .nav a { color: var(--muted); text-decoration: none; font-weight: 600; padding: 8px 12px; border-radius: 999px; white-space: nowrap; }
+  .nav a:hover { background: var(--blue-soft); color: var(--blue); }
+  .topbar-actions { display: flex; align-items: center; gap: 12px; margin-left: auto; flex: none; }
+
+  .lang-toggle { display: inline-block; white-space: nowrap; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: #fff; }
+  .lang-toggle button {
+    display: inline-block; width: auto; min-width: 0; height: auto; margin: 0;
+    -webkit-appearance: none; appearance: none; line-height: 1.5;
+    border: 0; background: transparent; color: var(--muted); cursor: pointer;
+    font: inherit; font-size: 0.92rem; font-weight: 700; padding: 5px 14px; border-radius: 999px; white-space: nowrap;
+  }
+  .lang-toggle button[aria-pressed="true"] { background: var(--blue); color: #fff; }
+
+  /* ---------- buttons ---------- */
+  .button {
+    display: inline-block; text-align: center; white-space: nowrap;
+    padding: 14px 28px; border-radius: 999px; border: 2px solid var(--blue);
+    color: var(--blue); background: #fff; font-weight: 800; font-size: 1.05rem; text-decoration: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .button:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(59, 104, 238, 0.22); }
+  .button.primary { background: var(--blue); color: #fff; }
+  .button.small { padding: 8px 18px; font-size: 0.95rem; }
+
+  /* ---------- sections ---------- */
+  section { padding: 72px 0; scroll-margin-top: 64px; }
+  .section-head { max-width: 720px; margin-bottom: 36px; }
+  .eyebrow { display: inline-block; margin-bottom: 14px; padding: 5px 14px; border-radius: 999px; background: var(--orange-soft); color: #9a5b00; font-weight: 700; font-size: 0.9rem; }
+  h2 { font-size: 2.2rem; margin-bottom: 14px; }
+  h3 { font-size: 1.25rem; }
+  .lead { font-size: 1.15rem; color: var(--muted); }
+
+  /* ---------- hero ---------- */
+  .hero { padding: 64px 0 56px; }
+  .hero-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 48px; align-items: center; }
+  h1 { font-size: 3.7rem; letter-spacing: -0.01em; margin-bottom: 20px; }
+  h1 .accent { color: var(--blue); }
+  .hero .lead { max-width: 34em; margin-bottom: 30px; }
+  .hero-buttons { display: flex; flex-wrap: wrap; gap: 14px; }
+
+  .showcase {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 28px;
+    padding: 22px; box-shadow: var(--shadow);
+  }
+  .showcase-boards { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: center; }
+  .showcase-arrow { font-size: 1.8rem; color: var(--orange); font-weight: 800; }
+  .showcase figure { margin: 0; text-align: center; }
+  .showcase figcaption { margin-top: 8px; font-weight: 700; color: var(--muted); font-size: 0.95rem; }
+  .showcase-note { margin-top: 16px; text-align: center; color: var(--muted); font-size: 0.95rem; }
+
+  .example-board { display: block; width: 100%; height: auto; }
+
+  /* ---------- cards ---------- */
+  .cards { display: grid; gap: 20px; grid-template-columns: repeat(3, 1fr); }
+  .cards.four { grid-template-columns: repeat(4, 1fr); }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 26px 24px; box-shadow: var(--shadow);
+  }
+  .card h3 { margin: 16px 0 8px; }
+  .card p { color: var(--muted); }
+  .icon {
+    display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 16px;
+    font-size: 1.6rem; background: var(--blue-soft);
+  }
+  .cards > .card:nth-child(4n+2) .icon { background: var(--orange-soft); }
+  .cards > .card:nth-child(4n+3) .icon { background: var(--green-soft); }
+  .cards > .card:nth-child(4n+4) .icon { background: var(--pink-soft); }
+  .rule .icon { background: var(--blue); color: #fff; font-weight: 800; font-size: 1.5rem; }
+  .cards > .rule:nth-child(2) .icon { background: var(--orange); }
+  .cards > .rule:nth-child(3) .icon { background: var(--green); }
+
+  .callout {
+    margin-top: 28px; padding: 18px 22px; border-radius: var(--radius);
+    background: var(--green-soft); border: 1px solid #b9ecd0; color: #17583b; font-weight: 600;
+  }
+  .subhead { margin: 56px 0 20px; }
+
+  .band { background: #fff; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+
+  /* ---------- how it works ---------- */
+  .two-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 28px; box-shadow: var(--shadow); }
+  .panel > h3 { font-size: 1.4rem; margin-bottom: 22px; }
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 22px; }
+  .steps li { display: flex; gap: 16px; align-items: flex-start; }
+  .steps li > div { flex: 1; min-width: 0; }
+  .step-number {
+    display: flex; align-items: center; justify-content: center; flex: none; width: 40px; height: 40px; border-radius: 50%;
+    background: var(--blue); color: #fff; font-weight: 800;
+  }
+  .steps li:nth-child(5n+2) .step-number { background: var(--orange); }
+  .steps li:nth-child(5n+3) .step-number { background: var(--green); }
+  .steps li:nth-child(5n+4) .step-number { background: var(--pink); }
+  .steps li:nth-child(5n+5) .step-number { background: #7a5cf5; }
+  .steps h4 { font-size: 1.08rem; margin-bottom: 4px; }
+  .steps p { color: var(--muted); }
+  .note {
+    margin-top: 26px; padding: 16px 18px; border-radius: 14px;
+    background: var(--orange-soft); border-left: 6px solid var(--orange); color: #6b4200;
+  }
+  .note strong { color: #4d3000; }
+
+  /* ---------- call to action and footer ---------- */
+  .cta { text-align: center; }
+  .cta-box {
+    padding: 56px 24px; border-radius: 32px; color: #fff;
+    background: linear-gradient(135deg, #3b68ee 0%, #6f8dff 100%); box-shadow: var(--shadow);
+  }
+  .cta-box h2 { color: #fff; }
+  .cta-box p { margin: 0 auto 28px; max-width: 32em; color: #e8eeff; font-size: 1.1rem; }
+  .cta-box .button { background: #fff; color: var(--blue); border-color: #fff; }
+  footer { padding: 32px 0 44px; text-align: center; color: var(--muted); font-size: 0.95rem; }
+
+  /* ---------- small screens ---------- */
+  @media (max-width: 960px) {
+    .cards, .cards.four { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 900px) {
+    h1 { font-size: 3rem; }
+    h2 { font-size: 1.9rem; }
+    .nav { display: none; }
+    .hero-grid, .two-columns { grid-template-columns: 1fr; }
+    section { padding: 56px 0; }
+  }
+  @media (max-width: 600px) {
+    .cards, .cards.four { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 520px) {
+    body { font-size: 16px; }
+    h1 { font-size: 2.4rem; }
+    h2 { font-size: 1.65rem; }
+    .topbar-inner { gap: 10px; }
+    .brand { font-size: 1.15rem; }
+    .topbar .button.small { display: none; }
+    .showcase-boards { grid-template-columns: 1fr; }
+    .showcase-arrow { transform: rotate(90deg); justify-self: center; }
+    .showcase-boards figure { max-width: 260px; margin: 0 auto; }
+  }
+</style>
+</head>
+
+<body>
+<header class="topbar">
+  <div class="container topbar-inner">
+    <a class="brand" href="#top" aria-label="Zip">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="9" fill="#3b68ee"/>
+        <path d="M7 9h14v7H11v7h14" fill="none" stroke="#ffb020" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Zip
+    </a>
+    <nav class="nav" aria-label="Sections">
+      <a href="#about"><span lang="en">Overview</span><span lang="zh">概览</span></a>
+      <a href="#platforms"><span lang="en">Platforms</span><span lang="zh">支持平台</span></a>
+      <a href="#game"><span lang="en">The game</span><span lang="zh">游戏功能</span></a>
+      <a href="#how-it-works"><span lang="en">How it works</span><span lang="zh">幕后原理</span></a>
+    </nav>
+    <div class="topbar-actions">
+      <div class="lang-toggle" role="group" aria-label="Language / 语言">
+        <button type="button" data-set-lang="en" aria-pressed="true">English</button>
+        <button type="button" data-set-lang="zh" aria-pressed="false">中文</button>
+      </div>
+      <a class="button primary small" href="webapp/index.html">▶ <span lang="en">Play</span><span lang="zh">开始游戏</span></a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ===== Hero ===== -->
+  <section class="hero">
+    <div class="container hero-grid">
+      <div>
+        <span class="eyebrow"><span lang="en">A path puzzle for your browser</span><span lang="zh">浏览器里的路线益智游戏</span></span>
+        <h1>
+          <span lang="en">Connect the numbers.<br><span class="accent">Fill every square.</span></span>
+          <span lang="zh">按顺序连接数字，<br><span class="accent">走遍每一个格子。</span></span>
+        </h1>
+        <p class="lead">
+          <span lang="en">Zip is a calm puzzle game. Draw one continuous line from 1 to the last number, visit every square, and never cross a wall. There is nothing to install: just open it and play.</span>
+          <span lang="zh">Zip 是一款轻松的益智小游戏：画一条连续的线，从 1 出发，依次经过所有数字，走遍每个格子，并且不能穿过墙。无需安装，打开就能玩。</span>
+        </p>
+        <div class="hero-buttons">
+          <a class="button primary" href="webapp/index.html">▶ <span lang="en">Play now</span><span lang="zh">立即开始</span></a>
+          <a class="button" href="#how-it-works"><span lang="en">How it works</span><span lang="zh">了解原理</span></a>
+        </div>
+      </div>
+
+      <!-- The two boards are a real puzzle from the generator (5x5, seed 54) and its unique solution, drawn as inline SVG. -->
+      <div class="showcase">
+        <div class="showcase-boards">
+          <figure>
+            <svg class="example-board" viewBox="0 0 292 292" aria-hidden="true">
+  <g transform="translate(6 6)">
+    <rect x="0" y="0" width="280" height="280" rx="12" fill="#ffffff" stroke="#c9d6fb" stroke-width="2"/>
+    <g stroke="#e3e9fa" stroke-width="1.5"><line x1="56" y1="0" x2="56" y2="280"/><line x1="0" y1="56" x2="280" y2="56"/><line x1="112" y1="0" x2="112" y2="280"/><line x1="0" y1="112" x2="280" y2="112"/><line x1="168" y1="0" x2="168" y2="280"/><line x1="0" y1="168" x2="280" y2="168"/><line x1="224" y1="0" x2="224" y2="280"/><line x1="0" y1="224" x2="280" y2="224"/></g>
+    
+    <g stroke="#26324f" stroke-width="7" stroke-linecap="round"><line x1="168" y1="112" x2="224" y2="112"/><line x1="224" y1="168" x2="280" y2="168"/></g>
+    <g fill="#3b68ee"><circle cx="140" cy="28" r="18"/><circle cx="28" cy="84" r="18"/><circle cx="252" cy="84" r="18"/><circle cx="84" cy="196" r="18"/><circle cx="196" cy="196" r="18"/></g>
+    <g fill="#ffffff" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="19" font-weight="700" text-anchor="middle"><text x="140" y="28" dy=".35em">3</text><text x="28" y="84" dy=".35em">4</text><text x="252" y="84" dy=".35em">2</text><text x="84" y="196" dy=".35em">5</text><text x="196" y="196" dy=".35em">1</text></g>
+  </g>
+</svg>
+            <figcaption><span lang="en">The puzzle</span><span lang="zh">题目</span></figcaption>
+          </figure>
+          <div class="showcase-arrow" aria-hidden="true">→</div>
+          <figure>
+            <svg class="example-board" viewBox="0 0 292 292" aria-hidden="true">
+  <g transform="translate(6 6)">
+    <rect x="0" y="0" width="280" height="280" rx="12" fill="#ffffff" stroke="#c9d6fb" stroke-width="2"/>
+    <g stroke="#e3e9fa" stroke-width="1.5"><line x1="56" y1="0" x2="56" y2="280"/><line x1="0" y1="56" x2="280" y2="56"/><line x1="112" y1="0" x2="112" y2="280"/><line x1="0" y1="112" x2="280" y2="112"/><line x1="168" y1="0" x2="168" y2="280"/><line x1="0" y1="168" x2="280" y2="168"/><line x1="224" y1="0" x2="224" y2="280"/><line x1="0" y1="224" x2="280" y2="224"/></g>
+    <polyline points="196.0,196.0 252.0,196.0 252.0,252.0 196.0,252.0 140.0,252.0 140.0,196.0 140.0,140.0 196.0,140.0 252.0,140.0 252.0,84.0 252.0,28.0 196.0,28.0 196.0,84.0 140.0,84.0 140.0,28.0 84.0,28.0 28.0,28.0 28.0,84.0 84.0,84.0 84.0,140.0 28.0,140.0 28.0,196.0 28.0,252.0 84.0,252.0 84.0,196.0" fill="none" stroke="#ffb020" stroke-width="15" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>
+    <g stroke="#26324f" stroke-width="7" stroke-linecap="round"><line x1="168" y1="112" x2="224" y2="112"/><line x1="224" y1="168" x2="280" y2="168"/></g>
+    <g fill="#3b68ee"><circle cx="140" cy="28" r="18"/><circle cx="28" cy="84" r="18"/><circle cx="252" cy="84" r="18"/><circle cx="84" cy="196" r="18"/><circle cx="196" cy="196" r="18"/></g>
+    <g fill="#ffffff" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="19" font-weight="700" text-anchor="middle"><text x="140" y="28" dy=".35em">3</text><text x="28" y="84" dy=".35em">4</text><text x="252" y="84" dy=".35em">2</text><text x="84" y="196" dy=".35em">5</text><text x="196" y="196" dy=".35em">1</text></g>
+  </g>
+</svg>
+            <figcaption><span lang="en">The solution</span><span lang="zh">解答</span></figcaption>
+          </figure>
+        </div>
+        <p class="showcase-note">
+          <span lang="en">A 5×5 puzzle. Start at 1, follow the numbers, fill every square.</span>
+          <span lang="zh">一道 5×5 的题目：从 1 出发，按数字顺序前进，填满每个格子。</span>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== What is Zip ===== -->
+  <section id="about" class="band">
+    <div class="container">
+      <div class="section-head">
+        <h2><span lang="en">What is Zip?</span><span lang="zh">Zip 是什么？</span></h2>
+        <p class="lead">
+          <span lang="en">Zip is a path puzzle. Each board has a few numbered squares and some walls. Your job is to draw a single line across the board, following three simple rules.</span>
+          <span lang="zh">Zip 是一款路线谜题。每块棋盘上有几个带数字的格子和一些墙，你要按三条简单的规则，画出一条贯穿棋盘的线。</span>
+        </p>
+      </div>
+
+      <div class="cards">
+        <div class="card rule">
+          <div class="icon" aria-hidden="true">1</div>
+          <h3><span lang="en">Start at 1</span><span lang="zh">从 1 出发</span></h3>
+          <p><span lang="en">Put your finger or mouse on the square numbered 1 and start drawing.</span><span lang="zh">把手指或鼠标放在数字 1 的格子上，开始画线。</span></p>
+        </div>
+        <div class="card rule">
+          <div class="icon" aria-hidden="true">2</div>
+          <h3><span lang="en">Follow the numbers</span><span lang="zh">按数字顺序</span></h3>
+          <p><span lang="en">Pass through 2, 3, 4… in order and finish on the highest number.</span><span lang="zh">依次经过 2、3、4……最后停在最大的数字上。</span></p>
+        </div>
+        <div class="card rule">
+          <div class="icon" aria-hidden="true">3</div>
+          <h3><span lang="en">Fill every square</span><span lang="zh">填满所有格子</span></h3>
+          <p><span lang="en">Your line must visit every square exactly once, and it cannot cross a wall.</span><span lang="zh">线必须恰好经过每个格子一次，并且不能穿过墙。</span></p>
+        </div>
+      </div>
+
+      <p class="callout">
+        <span lang="en">Every puzzle has exactly one correct solution, so the answer is always there to be worked out.</span>
+        <span lang="zh">每道题都恰好只有一个正确答案，所以答案一定可以推理出来。</span>
+      </p>
+
+      <h3 class="subhead"><span lang="en">What is in the project</span><span lang="zh">项目包含什么</span></h3>
+      <div class="cards">
+        <div class="card">
+          <div class="icon" aria-hidden="true">🎮</div>
+          <h3><span lang="en">The game</span><span lang="zh">游戏</span></h3>
+          <p><span lang="en">A puzzle game you play in your web browser, with eight board sizes and new puzzles every day.</span><span lang="zh">在网页浏览器里玩的益智游戏，提供八种棋盘尺寸，每天都有新题目。</span></p>
+        </div>
+        <div class="card">
+          <div class="icon" aria-hidden="true">🧩</div>
+          <h3><span lang="en">The puzzle maker</span><span lang="zh">出题程序</span></h3>
+          <p><span lang="en">A generator that creates fresh puzzles automatically and makes sure each one has exactly one solution.</span><span lang="zh">自动生成全新谜题的程序，并确保每道题都恰好只有一个解。</span></p>
+        </div>
+        <div class="card">
+          <div class="icon" aria-hidden="true">🔍</div>
+          <h3><span lang="en">The solver</span><span lang="zh">解题程序</span></h3>
+          <p><span lang="en">A program that solves puzzles like a very patient player, and checks that only one answer exists.</span><span lang="zh">像一位极有耐心的玩家那样解题的程序，用来确认答案是唯一的。</span></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Platforms ===== -->
+  <section id="platforms">
+    <div class="container">
+      <div class="section-head">
+        <h2><span lang="en">Where you can play</span><span lang="zh">在哪里玩</span></h2>
+        <p class="lead"><span lang="en">Zip runs in your web browser, so it works wherever you have one.</span><span lang="zh">Zip 在网页浏览器里运行，只要有浏览器就能玩。</span></p>
+      </div>
+      <div class="cards four">
+        <div class="card">
+          <div class="icon" aria-hidden="true">💻</div>
+          <h3><span lang="en">Computers</span><span lang="zh">电脑</span></h3>
+          <p><span lang="en">Click and drag with your mouse to draw your path.</span><span lang="zh">用鼠标点击并拖动来画出路线。</span></p>
+        </div>
+        <div class="card">
+          <div class="icon" aria-hidden="true">📱</div>
+          <h3><span lang="en">Phones and tablets</span><span lang="zh">手机和平板</span></h3>
+          <p><span lang="en">Draw with your finger. The game is made for touch screens too.</span><span lang="zh">用手指画线，游戏同样为触摸屏设计。</span></p>
+        </div>
+        <div class="card">
+          <div class="icon" aria-hidden="true">🌐</div>
+          <h3><span lang="en">Nothing to install</span><span lang="zh">无需安装</span></h3>
+          <p><span lang="en">Open the page in a modern browser, for example Chrome, Edge, Firefox or Safari.</span><span lang="zh">在较新的浏览器（如 Chrome、Edge、Firefox、Safari）中打开页面即可。</span></p>
+        </div>
+        <div class="card">
+          <div class="icon" aria-hidden="true">💾</div>
+          <h3><span lang="en">Kept on your device</span><span lang="zh">保存在你的设备上</span></h3>
+          <p><span lang="en">Your statistics stay in your own browser. There is no account to create.</span><span lang="zh">你的统计数据保存在自己的浏览器里，无需注册账号。</span></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== The game ===== -->
+  <section id="game" class="band">
+    <div class="container">
+      <div class="section-head">
+        <h2><span lang="en">Inside the game</span><span lang="zh">游戏功能一览</span></h2>
+        <p class="lead"><span lang="en">Pick a size, draw your line, and see how quickly you can solve it.</span><span lang="zh">选一个尺寸，画出你的路线，看看你能多快解出来。</span></p>
+      </div>
+      <div class="cards">
+        <div class="card">
+          <div class="icon" aria-hidden="true">📐</div>
+          <h3><span lang="en">Eight board sizes</span><span lang="zh">八种棋盘尺寸</span></h3>
+          <p><span lang="en">From a quick 5×5 to a big 16×16: boards 5, 7, 8, 9, 10, 11, 12 and 16 squares wide.</span><span lang="zh">从速战速决的 5×5 到挑战十足的 16×16：边长分别为 5、7、8、9、10、11、12 和 16 格。</span></p>
+        </div>
+        <div class="card">
+          <div class="icon" aria-hidden="true">📅</div>
+          <h3><span lang="en">New puzzles every day</span><span lang="zh">每天都有新题</span></h3>
+          <p><span lang="en">Everyone gets the same puzzles in the same order each day, so you can compare notes with friends. Finished one? Tap “New puzzle” for the next.</span><span lang="zh">每天所有人拿到的题目和顺序都相同，可以和朋友交流心得。做完一题，点击“New puzzle”继续下一题。</span></p>
+        </div>
+        <div class="card">
+          <div class="icon" aria-hidden="true">⭐</div>
+          <h3><span lang="en">Game of the Day</span><span lang="zh">每日挑战</span></h3>
+          <p><span lang="en">One featured puzzle a day, and you get a single attempt at it.</span><span lang="zh">每天一道特别推荐的题目，只有一次挑战机会。</span></p>
+        </div>
+        <div class="card">
+          <div class="icon" aria-hidden="true">📊</div>
+          <h3><span lang="en">Your statistics</span><span lang="zh">个人统计</span></h3>
+          <p><span lang="en">See how many puzzles you have solved and how fast, for each board size, today and all time.</span><span lang="zh">按棋盘尺寸查看你解出的题数和用时，包括今日和历史累计。</span></p>
+        </div>
+        <div class="card">
+          <div class="icon" aria-hidden="true">✍️</div>
+          <h3><span lang="en">Simple controls</span><span lang="zh">操作简单</span></h3>
+          <p><span lang="en">Just drag to draw your path, with a mouse or a finger.</span><span lang="zh">用鼠标或手指拖动，就能画出你的路线。</span></p>
+        </div>
+        <div class="card">
+          <div class="icon" aria-hidden="true">✅</div>
+          <h3><span lang="en">One right answer</span><span lang="zh">唯一的答案</span></h3>
+          <p><span lang="en">Every puzzle has exactly one solution, so there is always a clear way to finish.</span><span lang="zh">每道题都只有一个解，总能找到明确的通关办法。</span></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== How it works ===== -->
+  <section id="how-it-works">
+    <div class="container">
+      <div class="section-head">
+        <h2><span lang="en">How it works</span><span lang="zh">幕后原理</span></h2>
+        <p class="lead"><span lang="en">A quick look at the ideas behind Zip, with no code.</span><span lang="zh">不涉及代码，简单看看 Zip 背后的思路。</span></p>
+      </div>
+
+      <div class="two-columns">
+        <div class="panel">
+          <h3><span lang="en">How a puzzle is made</span><span lang="zh">题目是怎么做出来的</span></h3>
+          <ol class="steps">
+            <li>
+              <span class="step-number" aria-hidden="true">1</span>
+              <div>
+                <h4><span lang="en">Draw a secret route</span><span lang="zh">先画一条秘密路线</span></h4>
+                <p><span lang="en">The computer first draws a random winding route that visits every square once. This is the answer to the puzzle.</span><span lang="zh">程序先随机画出一条蜿蜒的路线，恰好经过每个格子一次。这就是这道题的答案。</span></p>
+              </div>
+            </li>
+            <li>
+              <span class="step-number" aria-hidden="true">2</span>
+              <div>
+                <h4><span lang="en">Place the numbers</span><span lang="zh">标上数字</span></h4>
+                <p><span lang="en">It drops numbers 1, 2, 3… along the route, spaced out so the puzzle feels balanced.</span><span lang="zh">沿着路线依次标上 1、2、3……，并让数字分布均匀，使题目看起来平衡。</span></p>
+              </div>
+            </li>
+            <li>
+              <span class="step-number" aria-hidden="true">3</span>
+              <div>
+                <h4><span lang="en">Add walls until one answer is left</span><span lang="zh">加墙，直到只剩一个答案</span></h4>
+                <p><span lang="en">It scatters a few walls, then asks the solver: is there another route that also works? If so, a wall is placed in that other route’s way. This repeats until only the secret route remains.</span><span lang="zh">它先随机放上一些墙，再问解题程序：还有别的路线也行得通吗？如果有，就在那条路线上加一堵墙。如此反复，直到只剩下那条秘密路线。</span></p>
+              </div>
+            </li>
+            <li>
+              <span class="step-number" aria-hidden="true">4</span>
+              <div>
+                <h4><span lang="en">Tidy up</span><span lang="zh">精简整理</span></h4>
+                <p><span lang="en">Next it tries taking each wall away again and keeps only the walls that are really needed.</span><span lang="zh">接着逐一尝试拿掉每堵墙，只保留真正必要的墙。</span></p>
+              </div>
+            </li>
+            <li>
+              <span class="step-number" aria-hidden="true">5</span>
+              <div>
+                <h4><span lang="en">Keep the neatest one</span><span lang="zh">择优保留</span></h4>
+                <p><span lang="en">Several versions are made this way, and the one with the fewest walls wins.</span><span lang="zh">按这个流程做出好几个版本，墙最少的那个胜出。</span></p>
+              </div>
+            </li>
+          </ol>
+          <p class="note">
+            <span lang="en"><strong>Same seed, same puzzle.</strong> Every puzzle starts from a seed number, like a recipe number. The same seed always makes the same puzzle, which is why everyone sees the same puzzles on the same day.</span>
+            <span lang="zh"><strong>同一个种子，同一道题。</strong>每道题都从一个种子编号开始，就像菜谱编号。相同的种子总会做出相同的题目，所以同一天里每个人看到的题目都一样。</span>
+          </p>
+        </div>
+
+        <div class="panel">
+          <h3><span lang="en">How a puzzle is solved</span><span lang="zh">题目是怎么解出来的</span></h3>
+          <ol class="steps">
+            <li>
+              <span class="step-number" aria-hidden="true">1</span>
+              <div>
+                <h4><span lang="en">Explore, like in a maze</span><span lang="zh">像走迷宫一样探索</span></h4>
+                <p><span lang="en">The solver starts at 1 and moves one square at a time, always following the numbers in order.</span><span lang="zh">解题程序从 1 出发，每次走一格，并始终按数字顺序前进。</span></p>
+              </div>
+            </li>
+            <li>
+              <span class="step-number" aria-hidden="true">2</span>
+              <div>
+                <h4><span lang="en">Step back at dead ends</span><span lang="zh">死路就退回</span></h4>
+                <p><span lang="en">When it gets stuck, it goes back a few steps and tries another way. This is called backtracking.</span><span lang="zh">走进死胡同，就退回几步换一条路再试，这叫“回溯”。</span></p>
+              </div>
+            </li>
+            <li>
+              <span class="step-number" aria-hidden="true">3</span>
+              <div>
+                <h4><span lang="en">Spot hopeless routes early</span><span lang="zh">及早放弃走不通的路</span></h4>
+                <p><span lang="en">It quickly notices when a square has been cut off or trapped, or when the remaining squares can no longer all be reached, and drops that route right away.</span><span lang="zh">一旦发现某个格子被孤立、被困住，或者剩下的格子已经无法全部走到，就立刻放弃这条路线。</span></p>
+              </div>
+            </li>
+            <li>
+              <span class="step-number" aria-hidden="true">4</span>
+              <div>
+                <h4><span lang="en">Use forced moves</span><span lang="zh">利用必然的走法</span></h4>
+                <p><span lang="en">If a square has only two open sides, the line has to use both. The solver applies deductions like this automatically, just as a skilled player would.</span><span lang="zh">如果某个格子只剩两条通路，线就必须同时经过这两条。解题程序会像高手一样自动运用这类推理。</span></p>
+              </div>
+            </li>
+            <li>
+              <span class="step-number" aria-hidden="true">5</span>
+              <div>
+                <h4><span lang="en">Count the answers</span><span lang="zh">数一数答案</span></h4>
+                <p><span lang="en">It stops as soon as it finds a second solution. Exactly one answer means the puzzle is fair. Two means the puzzle maker needs to add another wall.</span><span lang="zh">一旦找到第二个解就停止。恰好一个答案，说明题目公平；找到两个，出题程序就要再加一堵墙。</span></p>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Call to action ===== -->
+  <section class="cta">
+    <div class="container">
+      <div class="cta-box">
+        <h2><span lang="en">Ready to play?</span><span lang="zh">准备好了吗？</span></h2>
+        <p><span lang="en">Pick a board size and draw your first line. It only takes a minute to learn.</span><span lang="zh">选一个棋盘尺寸，画下你的第一条线。一分钟就能学会。</span></p>
+        <a class="button" href="webapp/index.html">▶ <span lang="en">Play now</span><span lang="zh">立即开始</span></a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="container">
+    <span lang="en">Zip · This page will grow along with the project.</span>
+    <span lang="zh">Zip · 本页面会随着项目一同更新。</span>
+  </div>
+</footer>
+</body>
+</html>

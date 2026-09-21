@@ -1,0 +1,86 @@
+name: Webapp CI
+
+# The web app lives in webapp/. Checks and unit tests run on every push and pull request that touches
+# it, or this workflow. The benchmark is slower and its timings depend on the
+# runner, so it only runs on the default branch and on demand (Actions tab -> Webapp CI -> Run workflow).
+on:
+  push:
+    paths:
+      - 'webapp/**'
+      - '.github/workflows/webapp-ci.yml'
+  pull_request:
+    paths:
+      - 'webapp/**'
+      - '.github/workflows/webapp-ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# Every `run` step below executes inside webapp/.
+defaults:
+  run:
+    working-directory: webapp
+
+jobs:
+  test:
+    name: Tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # Every file parses, every import and html reference resolves. The app entry points
+      # need a browser, so the unit tests never load them.
+      - name: Syntax and import check
+        run: npm run check
+
+      # Includes the golden puzzles: a changed hash means the generator output changed
+      # and ALGO_VERSION has to be bumped (see README).
+      - name: Unit tests
+        run: npm test
+
+  bench:
+    name: Benchmark
+    if: github.ref_name == github.event.repository.default_branch || github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Fails if the solver's pruning options ever change the solutions found.
+      - name: Run benchmark
+        run: npm run bench | tee bench-output.txt
+
+      - name: Show results in the job summary
+        if: always()
+        run: |
+          {
+            echo '### Benchmark'
+            echo '```'
+            cat bench-output.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-output
+          path: webapp/bench-output.txt

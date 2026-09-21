@@ -6,12 +6,13 @@ import { makeRng, dailySeed, hashStr, shuffle } from '../src/core/rng.js';
 import { newStat, updateStat, statSummary } from '../src/core/stats.js';
 import { solve } from '../src/core/solver/solve.js';
 import { isSolved, step } from '../src/core/rules.js';
-import { generate, generateUnique, randomPathPuzzle, pickK } from '../src/core/gen/generate.js';
+import { generate, generateUnique, randomPathPuzzle, pickK, PLAY_SIZES } from '../src/core/gen/generate.js';
 import { scatter } from '../src/core/gen/checkpoints.js';
 import { runSync } from '../src/core/run.js';
 import { createHoldReveal } from '../src/ui/hold-reveal.js';
 import { createDaily, utcDayNumber } from '../src/features/daily.js';
 import { createStore } from '../src/features/stats-store.js';
+import { GOLDEN } from './golden.js';
 
 // ---- mini harness ----
 const out = []; let pass = 0, fail = 0;
@@ -19,10 +20,8 @@ const t = (name, fn) => { const t0 = Date.now(); try { fn(); pass++; out.push(`o
 const eq = (a, b, m = '') => { const A = JSON.stringify(a), B = JSON.stringify(b); if (A !== B) throw new Error(`${m} expected ${B} got ${A}`); };
 const ok = (c, m = 'assertion failed') => { if (!c) throw new Error(m); };
 
-// Golden hashes of serialize(generate(n, seed)). A change to GOLDEN means ALGO_VERSION must be bumped.
-// GOLDEN = ALGO_VERSION 4 (solver propagation on, K ~ Normal peaked at 30%, every attempt seeded with 40% walls). GOLDEN_V1 (pre-refactor index.html, uniform K) is no longer reproducible; v1 check below is now structural only.
-const GOLDEN = [[5,1,'7791cdec'],[5,2,'32b73b83'],[5,3,'26ae880c'],[5,4,'5fb5f324'],[5,5,'d4295970'],[5,6,'dda08d49'],[7,1,'ae2c3f85'],[7,2,'c273a142'],[7,3,'dbb4b1e3'],[9,1,'dda1d6e5']];
-const GOLDEN_V1 = [[5,1,'7ad94f42'],[5,2,'660f52e3'],[5,3,'55c8844e'],[5,4,'6ca1f6e1'],[5,5,'72dddf70'],[5,6,'a4b809dd'],[7,1,'732ba004'],[7,2,'171873f0'],[7,3,'5aad5cdc'],[9,1,'442f3a1a']];
+// (size, seed) cases for the prop:false (v1-style) search: only checked structurally, since its output is not pinned any more.
+const V1_CASES = [[5, 1], [5, 2], [5, 3], [5, 4], [5, 5], [5, 6], [7, 1], [7, 2], [7, 3], [9, 1]];
 
 const randPuzzle = (seed, n, K, wallFrac) => {
   const rnd = makeRng(seed), p = makePuzzle(n), T = n * n, cells = shuffle([...Array(T).keys()], rnd).slice(0, K);
@@ -93,10 +92,50 @@ t('rules: isSolved, step (default / truncate / strictOrder)', () => {
   const S = { strictOrder: true }, q = [0, 1, 2, 5];
   eq(step(p, q, 8, S), null, 'checkpoint 3 before 2'); eq(step(p, q, 4, S), 'push'); eq(step(p, q, 7, S), 'push'); eq(step(p, q, 8, S), 'push'); eq(step(p, q, 5, S), null);
 });
-t('generate: ALGO_VERSION 4 golden puzzles; prop:false still yields unique valid puzzles', () => {
+t('generate: ALGO_VERSION 4 golden puzzles cover every play size below 16 and are valid and unique', () => {
   eq(ALGO_VERSION, 4);
-  for (const [n, seed, h] of GOLDEN) eq(hashStr(serialize(runSync(generate(n, seed)))), h, `v4 n=${n} seed=${seed}`);
-  for (const [n, seed] of GOLDEN_V1) { const p = runSync(generate(n, seed, { prop: false })); eq(validate(p).ok, true, `v1 n=${n} seed=${seed}`); eq(solve(p, { limit: 2, nodeCap: 2e6 }).count, 1); }
+  for (const n of PLAY_SIZES.filter(size => size < 16)) {
+    ok(GOLDEN.some(([size]) => size === n), `no golden puzzle for play size ${n}`);
+  }
+  for (const [n, seed, hash] of GOLDEN) {
+    const p = runSync(generate(n, seed));
+    eq(hashStr(serialize(p)), hash, `v4 n=${n} seed=${seed}`);
+    eq(validate(p).ok, true, `valid n=${n} seed=${seed}`);
+    eq(isSolved(p, p.path), true, `anchor path n=${n} seed=${seed}`);
+    eq(solve(p, { limit: 2, nodeCap: 5e6, prop: true }).count, 1, `unique n=${n} seed=${seed}`);
+  }
+});
+t('generate: prop:false (v1-style search) still yields unique valid puzzles', () => {
+  for (const [n, seed] of V1_CASES) {
+    const p = runSync(generate(n, seed, { prop: false }));
+    eq(validate(p).ok, true, `v1 n=${n} seed=${seed}`);
+    eq(solve(p, { limit: 2, nodeCap: 2e6 }).count, 1, `v1 unique n=${n} seed=${seed}`);
+  }
+});
+t('generate: progress events only move forward (frac up, walls down) and end at 1', () => {
+  const events = [];
+  runSync(generate(7, 5), e => events.push(e));
+  ok(events.length > 0, 'no events');
+  let frac = 0;
+  let walls = Infinity;
+  for (const e of events) {
+    if (e.frac != null) {
+      ok(e.frac >= frac, `frac went back from ${frac} to ${e.frac}`);
+      frac = e.frac;
+    }
+    if (e.walls != null) {
+      ok(e.walls <= walls, `walls went up from ${walls} to ${e.walls}`);
+      walls = e.walls;
+    }
+  }
+  eq(frac, 1);
+});
+t('generate: more candidates never give a puzzle with more walls than the first candidate alone', () => {
+  for (const seed of [1, 2, 3, 4, 5]) {
+    const one = wallCount(runSync(generate(7, seed, { candidates: 1 })));
+    const many = wallCount(runSync(generate(7, seed, { candidates: 6 })));
+    ok(many <= one, `seed ${seed}: ${many} walls with 6 candidates vs ${one} with 1`);
+  }
 });
 t('pickK: deterministic, always in range, uses 2 rnd values, mode near 30% of the range', () => {
   const Kmin = 9;

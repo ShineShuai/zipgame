@@ -11,9 +11,9 @@ import { cellAtPoint } from '../../view/geometry.js';
 import { runAsync } from '../../platform/run.js';
 import { bindModal, copyText } from '../../ui/modal.js';
 import { installHoldReveal } from '../../ui/hold-reveal.js';
+import { VERSION } from '../../version.js';
 import { renderBoard, paintPlay, cellSizeFor, TPL_C, SOL_C } from './board.js';
 
-const VERSION = '0.1.0';
 const DEFAULT_NODE_LIMIT = 300000, rnd = Math.random, $ = id => document.getElementById(id);
 const boardEl = $('board'), stageEl = document.querySelector('.stage'), plural = (k, w) => `${k} ${w}${k === 1 ? '' : 's'}`;
 let P = makePuzzle(7), mode = 'number', selected = -1, buffer = '', solutions = [], solVisible = [], lastAborted = false, lastNodes = 0;
