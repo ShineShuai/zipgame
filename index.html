@@ -232,10 +232,6 @@
   footer { padding: 32px 0 44px; text-align: center; color: var(--muted); font-size: 0.95rem; }
 
   /* ---------- small screens ---------- */
-  /* five English links do not fit next to the language switch and Play between 901px and 1080px */
-  @media (max-width: 1080px) {
-    html[data-lang="en"] .nav a[href="#maths"] { display: none; }
-  }
   @media (max-width: 960px) {
     .cards, .cards.four { grid-template-columns: repeat(2, 1fr); }
   }
@@ -289,10 +285,10 @@
     </a>
     <nav class="nav" aria-label="Sections">
       <a href="#about"><span lang="en">Overview</span><span lang="zh">概览</span></a>
-      <a href="#platforms"><span lang="en">Platforms</span><span lang="zh">支持平台</span></a>
-      <a href="#game"><span lang="en">The game</span><span lang="zh">游戏功能</span></a>
-      <a href="#how-it-works"><span lang="en">How it works</span><span lang="zh">幕后原理</span></a>
-      <a href="#maths"><span lang="en">The maths</span><span lang="zh">理论</span></a>
+      <a href="#platforms"><span lang="en">Platforms</span><span lang="zh">平台</span></a>
+      <a href="#game"><span lang="en">Game</span><span lang="zh">功能</span></a>
+      <a href="#how-it-works"><span lang="en">Logic</span><span lang="zh">原理</span></a>
+      <a href="#maths"><span lang="en">Maths</span><span lang="zh">理论</span></a>
     </nav>
     <div class="topbar-actions">
       <div class="lang-toggle" role="group" aria-label="Language / 语言">
@@ -501,7 +497,7 @@
   <section id="how-it-works">
     <div class="container">
       <div class="section-head">
-        <h2><span lang="en">How it works</span><span lang="zh">幕后原理</span></h2>
+        <h2><span lang="en">How it works</span><span lang="zh">程序原理</span></h2>
         <p class="lead"><span lang="en">A quick look at the ideas behind Zip, with no code.</span><span lang="zh">不涉及代码，简单看看 Zip 背后的思路。</span></p>
       </div>
 
