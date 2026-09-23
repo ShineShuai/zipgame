@@ -1,10 +1,5 @@
 import { maxNumber, startCell, endCell } from '../model.js';
-import { hasWall } from '../edges.js';
-
-// Direction order R,L,D,U is part of the seeded-generation contract (tie-breaks).
-// Do not change without bumping ALGO_VERSION.
-const DR = [0, 0, 1, -1];
-const DC = [1, -1, 0, 0];
+import { buildNeighbors, makeConnOk, makeNoDeadEnd } from './prune.js';
 
 // Number of set bits in a 4-bit direction mask.
 const POPCOUNT = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
@@ -38,23 +33,7 @@ export function solve(p, opts = {}) {
 
   // ---------- static geometry ----------
 
-  // nb[cell * 4 + d] = neighbour of cell in direction d, or -1 for a wall / the border.
-  const nb = new Int32Array(T * 4).fill(-1);
-  const row = new Int32Array(T);
-  const col = new Int32Array(T);
-  for (let i = 0; i < T; i++) {
-    const r = (i / n) | 0;
-    const c = i % n;
-    row[i] = r;
-    col[i] = c;
-    for (let d = 0; d < 4; d++) {
-      const rr = r + DR[d];
-      const cc = c + DC[d];
-      if (rr < 0 || rr >= n || cc < 0 || cc >= n) continue;
-      const j = rr * n + cc;
-      if (!hasWall(p, i, j)) nb[i * 4 + d] = j;
-    }
-  }
+  const { nb, row, col } = buildNeighbors(p);
 
   // pos[k] = cell that holds checkpoint k.
   const pos = new Int32Array(K + 1).fill(-1);
@@ -82,13 +61,10 @@ export function solve(p, opts = {}) {
   // ---------- search state ----------
 
   const vis = new Uint8Array(T);        // 1 = cell is on the current path
-  const seen = new Int32Array(T);       // flood-fill marks, compared against `stamp`
-  const stack = new Int32Array(T);      // flood-fill work stack
   const cand = new Int32Array(T * 4);   // per-depth candidate moves
   const cdeg = new Int32Array(T * 4);   // onward degree of each candidate (for ordering)
   const pathBuf = new Int32Array(T);    // current path
   const paths = opts.capture ? [] : null;
-  let stamp = 0;
   let nodes = 0;
   let found = 0;
 
@@ -289,44 +265,8 @@ export function solve(p, opts = {}) {
 
   // ---------- pruning tests used by dfs ----------
 
-  // The unvisited region must be one connected blob of the size still needed.
-  function connOk(cur, remaining) {
-    stamp++;
-    let sp = 0;
-    let cnt = 0;
-    stack[sp++] = cur;
-    seen[cur] = stamp;
-    while (sp > 0) {
-      const u = stack[--sp];
-      for (let d = 0; d < 4; d++) {
-        const v = nb[u * 4 + d];
-        if (v < 0 || vis[v] || seen[v] === stamp) continue;
-        seen[v] = stamp;
-        cnt++;
-        stack[sp++] = v;
-      }
-    }
-    return cnt === remaining;
-  }
-
-  // An unvisited cell with fewer than 2 free neighbours can only be the end.
-  // Only the neighbours of cur changed degree this step.
-  function noDeadEnd(cur) {
-    for (let d = 0; d < 4; d++) {
-      const u = nb[cur * 4 + d];
-      if (u < 0 || vis[u]) continue;
-      let free = 0;
-      for (let e = 0; e < 4; e++) {
-        const v = nb[u * 4 + e];
-        if (v < 0) continue;
-        if (vis[v] && v !== cur) continue;
-        free++;
-      }
-      if (free === 0) return false;
-      if (free === 1 && u !== end) return false;
-    }
-    return true;
-  }
+  const connOk = makeConnOk(nb, T, vis);
+  const noDeadEnd = makeNoDeadEnd(nb, vis, end);
 
   // ---------- search ----------
 

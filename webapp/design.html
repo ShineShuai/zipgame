@@ -110,6 +110,16 @@
 
     <button id="playBtn" class="playbtn wide">▶ Play</button>
     <div id="playInfo" class="playinfo" style="display:none"></div>
+    <div id="connToggles" style="display:none;margin-top:14px">
+      <div class="field field-row">
+        <label for="showConn" title="Highlight unvisited cells no longer reachable from the current cell">Show connectivity</label>
+        <input id="showConn" type="checkbox">
+      </div>
+      <div class="field field-row">
+        <label for="showDead" title="Highlight unvisited cells that are forced dead ends — only one way in or out">Show dead ends</label>
+        <input id="showDead" type="checkbox">
+      </div>
+    </div>
 
     <div class="divider"></div>
 
@@ -129,6 +139,10 @@
 <div class="modal-backdrop" id="modalBackdrop">
   <div class="modal">
     <h2 id="modalTitle">Export Puzzle</h2>
+    <div class="field field-row" id="includePathRow" style="display:none">
+      <label for="includePath" title="Add the current play-mode line as a `path` line in the exported text">Include current path <span id="includePathHint" class="seg-count"></span></label>
+      <input id="includePath" type="checkbox">
+    </div>
     <textarea id="modalText" spellcheck="false"></textarea>
     <div class="modal-msg" id="modalMsg"></div>
     <div class="modal-actions">

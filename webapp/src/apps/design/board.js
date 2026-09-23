@@ -1,6 +1,7 @@
 import { maxNumber } from '../../core/model.js';
 import { hasWallId } from '../../core/edges.js';
 import { polyPoints } from '../../view/geometry.js';
+import { boardConnectivity } from '../../core/connectivity.js';
 
 export const TPL_C = '#8b93b8', PLAY_C = '#5b7cfa', SOL_C = ['#ffa62b', '#38bdf8'];
 export const cellSizeFor = n => n <= 5 ? 66 : n <= 7 ? 54 : 46;
@@ -22,9 +23,10 @@ export function renderBoard(board, stage, V) {
   board.classList.toggle('playmode', V.playMode);
   board.innerHTML = '';
 
+  const cellEls = new Array(n * n);
   for (let i = 0; i < n * n; i++) {
     const d = box('cell editable' + (P.cp[i] ? ' has-number' : '') + (i === V.selected && !V.playMode ? ' selected' : ''), (i % n) * cs, ((i / n) | 0) * cs, cs, cs);
-    d.dataset.idx = i; board.appendChild(d);
+    d.dataset.idx = i; board.appendChild(d); cellEls[i] = d;
   }
   const HT = Math.max(10, Math.round(cs * 0.26)), INSET = Math.round(cs * 0.16);
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
@@ -58,11 +60,15 @@ export function renderBoard(board, stage, V) {
     wrap.appendChild(inner); layer.appendChild(wrap);
   }
   board.appendChild(layer);
+  refs.cells = cellEls;
   return refs;
 }
 
 // Update the play overlay in place (called on every pointer move).
-export function paintPlay(refs, n, path) {
+// showConn: highlight unvisited cells no longer reachable from the head (.conn-unreachable).
+// showDead: highlight unvisited reachable cells that are forced dead ends (.conn-dead).
+// Both read from the same boardConnectivity() pass, computed once if either is on.
+export function paintPlay(refs, n, path, P, showConn, showDead) {
   if (!refs.line) return;
   const done = path.length === n * n;
   refs.line.setAttribute('points', polyPoints(n, path)); refs.line.style.display = path.length > 1 ? '' : 'none';
@@ -72,4 +78,16 @@ export function paintPlay(refs, n, path) {
     refs.head.setAttribute('cx', (h % n) + 0.5); refs.head.setAttribute('cy', ((h / n) | 0) + 0.5);
     refs.head.setAttribute('fill', done ? '#8ff5c9' : '#c3d0ff'); refs.head.style.display = '';
   } else refs.head.style.display = 'none';
+
+  if (!refs.cells) return;
+  if ((!showConn && !showDead) || done || !path.length) {
+    for (const c of refs.cells) if (c) c.classList.remove('conn-dead', 'conn-unreachable');
+    return;
+  }
+  const { deadEnd, unreachable } = boardConnectivity(P, path);
+  for (let i = 0; i < refs.cells.length; i++) {
+    const c = refs.cells[i]; if (!c) continue;
+    c.classList.toggle('conn-dead', showDead && deadEnd.has(i));
+    c.classList.toggle('conn-unreachable', showConn && unreachable.has(i));
+  }
 }

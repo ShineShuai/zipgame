@@ -1,11 +1,13 @@
 // Runs in the browser (open test/index.html via a local server) and in Node (node test/tests.js). No dependencies.
-import { makePuzzle, validate, maxNumber, ALGO_VERSION } from '../src/core/model.js';
+import { makePuzzle, validate, maxNumber, ALGO_VERSION, endCell } from '../src/core/model.js';
 import { edgeId, edgeCells, allEdges, edgeToKey, keyToEdge, setWallId, wallCount } from '../src/core/edges.js';
 import { serialize, parse } from '../src/core/format.js';
 import { makeRng, dailySeed, hashStr, shuffle } from '../src/core/rng.js';
 import { newStat, updateStat, statSummary } from '../src/core/stats.js';
 import { solve } from '../src/core/solver/solve.js';
 import { isSolved, step } from '../src/core/rules.js';
+import { boardConnectivity } from '../src/core/connectivity.js';
+import { buildNeighbors, makeNoDeadEnd } from '../src/core/solver/prune.js';
 import { generate, generateUnique, randomPathPuzzle, pickK, PLAY_SIZES } from '../src/core/gen/generate.js';
 import { scatter } from '../src/core/gen/checkpoints.js';
 import { runSync } from '../src/core/run.js';
@@ -53,6 +55,23 @@ t('format: serialize/parse round trip, size 2..16, errors', () => {
   eq(parse('size 16').n, 16);
   for (const bad of ['size 17', 'size 1', 'walls V,0,0', 'size 3\nwalls V,0,2', 'size 3\nwalls H,2,0', 'size 3\ncheckpoints 3,0=1', 'size 3\nfoo']) { let threw = false; try { parse(bad); } catch (e) { threw = true; } ok(threw, 'should reject: ' + bad); }
 });
+t('format: path line — round trip, cell order, and rejects disconnected / walled / repeated cells', () => {
+  const p = makePuzzle(3); p.cp[0] = 1; p.cp[8] = 9;
+  const withPath = serialize(p, { path: [0, 1, 2, 5, 4, 3, 6, 7, 8] });
+  ok(withPath.includes('path 0,0 0,1 0,2 1,2 1,1 1,0 2,0 2,1 2,2'), 'path line present in expected r,c order');
+  const back = parse(withPath);
+  eq(back.path, [0, 1, 2, 5, 4, 3, 6, 7, 8]);
+  eq(serialize(back, { path: back.path }), withPath, 'round trip with path is stable');
+  eq(serialize(p).includes('path'), false, 'no path option -> no path line');
+  eq(parse(serialize(p)).path, undefined, 'no path line -> no .path field');
+
+  for (const bad of ['size 3\ncheckpoints 0,0=1\npath 0,0 2,2', 'size 3\npath 5,5']) {
+    let threw = false; try { parse(bad); } catch (e) { threw = true; } ok(threw, 'should reject: ' + bad);
+  }
+  const walled = makePuzzle(3); setWallId(walled.walls, edgeId(3, 0, 1), true);
+  let threw = false; try { parse(serialize(walled, { path: [] }) + '\npath 0,0 0,1'); } catch (e) { threw = true; } ok(threw, 'should reject path crossing a wall');
+  threw = false; try { parse('size 3\npath 0,0 0,1 0,0'); } catch (e) { threw = true; } ok(threw, 'should reject repeated cell');
+});
 t('rng: deterministic; dailySeed matches legacy values', () => {
   const a = makeRng(42), b = makeRng(42); for (let i = 0; i < 5; i++) eq(a(), b());
   eq(dailySeed(20350, 5, 0), 181660932); eq(dailySeed(20350, 9, 3), 2782780257);
@@ -91,6 +110,61 @@ t('rules: isSolved, step (default / truncate / strictOrder)', () => {
   eq(step(p, path, 0, { truncate: true }), 'trunc'); eq(path, [0]);
   const S = { strictOrder: true }, q = [0, 1, 2, 5];
   eq(step(p, q, 8, S), null, 'checkpoint 3 before 2'); eq(step(p, q, 4, S), 'push'); eq(step(p, q, 7, S), 'push'); eq(step(p, q, 8, S), 'push'); eq(step(p, q, 5, S), null);
+});
+t('connectivity: reachable/deadEnd/unreachable on open board, walled split, and forced dead end', () => {
+  // 3x3, no walls: from cell 0, every other cell is reachable and nothing is a forced dead end yet.
+  const open = makePuzzle(3); open.cp[0] = 1; open.cp[8] = 9;
+  let r = boardConnectivity(open, [0]);
+  eq(r.connOk, true);
+  eq([...r.reachable].sort((a, b) => a - b), [1, 2, 3, 4, 5, 6, 7, 8]);
+  eq(r.deadEnd.size, 0);
+  eq(r.unreachable.size, 0);
+
+  // Wall off cell 8 (end) from both its neighbours (5 and 7): the board splits, connOk must go false
+  // and the isolated end cell is correctly excluded (still "unreachable", not a dead end, since it's cut off).
+  const split = makePuzzle(3); split.cp[0] = 1; split.cp[8] = 9;
+  setWallId(split.walls, edgeId(3, 8, 7), true);
+  setWallId(split.walls, edgeId(3, 8, 5), true);
+  r = boardConnectivity(split, [0]);
+  eq(r.connOk, false);
+  eq(r.unreachable.has(8), true);
+  eq(r.reachable.has(8), false);
+
+  // Wall a middle cell (4) down to one open neighbour only: with head at 0 and 1 visited, cell 4's only
+  // free neighbour left is 5, so it's a forced dead end (must be entered last from that side).
+  const dead = makePuzzle(3); dead.cp[0] = 1; dead.cp[8] = 9;
+  setWallId(dead.walls, edgeId(3, 4, 1), true);
+  setWallId(dead.walls, edgeId(3, 4, 3), true);
+  setWallId(dead.walls, edgeId(3, 4, 7), true);
+  r = boardConnectivity(dead, [0, 1]);
+  eq(r.deadEnd.has(4), true, 'cell 4 has only neighbour 5 left, must be a forced dead end');
+
+  // The head cell itself and already-visited cells are never reported.
+  eq(r.reachable.has(0), false);
+  eq(r.reachable.has(1), false);
+});
+t('solver prune: overlay dead-end flag and solver noDeadEnd agree (random puzzles/paths)', () => {
+  // boardConnectivity's isDeadEnd and the solver's noDeadEnd both reduce to the same freeNeighbors
+  // rule (see solver/prune.js) — pin that they actually agree, not just that each looks right alone.
+  // noDeadEnd(head) is all-or-nothing over every neighbour of head, so the equivalent per-call
+  // assertion is: it fails iff at least one head-adjacent, non-end, reachable cell is flagged dead
+  // by the overlay (the free===0 branch is unreachable by adjacency symmetry — see write-up).
+  const rnd = makeRng(20260923);
+  for (let trial = 0; trial < 40; trial++) {
+    const n = 3 + (trial % 4);
+    const p = randomPathPuzzle(n, 2 + (trial % (n * n - 1)), rnd);
+    const cut = 1 + Math.floor(rnd() * (p.path.length - 1));
+    const path = p.path.slice(0, cut);
+    const head = path[path.length - 1];
+    const r = boardConnectivity(p, path);
+    const { nb, T } = buildNeighbors(p);
+    const vis = new Uint8Array(T);
+    for (const c of path) vis[c] = 1;
+    const noDeadEnd = makeNoDeadEnd(nb, vis, endCell(p));
+    let headAdjacentDead = false;
+    for (let d = 0; d < 4; d++) { const u = nb[head * 4 + d]; if (u >= 0 && r.deadEnd.has(u)) headAdjacentDead = true; }
+    eq(noDeadEnd(head), !headAdjacentDead, `trial ${trial}: noDeadEnd(head) must disagree with the overlay only never`);
+  }
 });
 t('generate: ALGO_VERSION 4 golden puzzles cover every play size below 16 and are valid and unique', () => {
   eq(ALGO_VERSION, 4);

@@ -17,7 +17,7 @@ import { renderBoard, paintPlay, cellSizeFor, TPL_C, SOL_C } from './board.js';
 const DEFAULT_NODE_LIMIT = 300000, rnd = Math.random, $ = id => document.getElementById(id);
 const boardEl = $('board'), stageEl = document.querySelector('.stage'), plural = (k, w) => `${k} ${w}${k === 1 ? '' : 's'}`;
 let P = makePuzzle(7), mode = 'number', selected = -1, buffer = '', solutions = [], solVisible = [], lastAborted = false, lastNodes = 0;
-let preview = null, previewVisible = true, playMode = false, playPath = [], drawing = false, refs = {}, numDrag = null, dragGhost = null, suppressClick = false, busy = false, modalMode = 'export';
+let preview = null, previewVisible = true, playMode = false, playPath = [], drawing = false, refs = {}, numDrag = null, dragGhost = null, suppressClick = false, busy = false, modalMode = 'export', showConn = false, showDead = false;
 const playStep = { truncate: true, strictOrder: true }, modal = bindModal($('modalBackdrop'));
 
 // ---------- helpers ----------
@@ -144,7 +144,7 @@ addEventListener('pointercancel', () => { drawing = false; endGhost(); clearDrop
 
 // ---------- play ----------
 function paintPlayNow() {
-  paintPlay(refs, P.n, playPath);
+  paintPlay(refs, P.n, playPath, P, showConn, showDead);
   const total = P.n * P.n, K = maxNumber(P), info = $('playInfo');
   if (!playPath.length) info.textContent = `Drag from checkpoint 1 to start. 0 / ${total} cells.`;
   else if (playPath.length === total) info.textContent = '🎉 Solved! Every cell visited exactly once.';
@@ -158,11 +158,13 @@ function enterPlay() {
   const v = validate(P); if (!v.ok) { setStatus('Fix the puzzle before playing: ' + v.msg, 'error'); return; }
   playMode = true; playPath = []; drawing = false; solutions = []; solVisible = []; selected = -1; buffer = ''; endGhost(); numDrag = null;
   $('playBtn').classList.add('on'); $('playBtn').textContent = '■ Stop playing'; $('playInfo').style.display = '';
+  $('connToggles').style.display = '';
   setStatus(''); updateHint(); draw(); renderLegend();
 }
 function exitPlay() {
   playMode = false; playPath = []; drawing = false;
   $('playBtn').classList.remove('on'); $('playBtn').textContent = '▶ Play'; $('playInfo').style.display = 'none';
+  $('connToggles').style.display = 'none';
   updateHint(); draw();
 }
 
@@ -200,14 +202,22 @@ async function doMinimize() {
 }
 
 // ---------- import / export / modal ----------
+function exportText() { return serialize(P, { path: $('includePath').checked ? playPath : null }); }
 function openModal(m) {
   modalMode = m; $('modalMsg').textContent = ''; $('modalMsg').className = 'modal-msg';
   $('modalTitle').textContent = m === 'export' ? 'Export Puzzle' : 'Import Puzzle';
-  $('modalText').value = m === 'export' ? serialize(P) : '';
+  const row = $('includePathRow'), box = $('includePath');
+  const hasPath = playPath.length > 1;
+  row.style.display = m === 'export' && playMode ? '' : 'none';
+  box.disabled = !hasPath;
+  if (!hasPath) box.checked = false;
+  $('includePathHint').textContent = hasPath ? '' : '(walk a path on the board first)';
+  $('modalText').value = m === 'export' ? exportText() : '';
   $('modalText').placeholder = m === 'export' ? '' : '# Zip Puzzle\nsize 7\ncheckpoints 0,0=1 2,3=2 4,1=3 6,6=4\nwalls H,0,1 V,3,3 H,5,5';
   $('modalOk').textContent = m === 'export' ? 'Copy to clipboard' : 'Import';
   modal.open(); setTimeout(() => $('modalText').focus(), 30);
 }
+$('includePath').addEventListener('change', () => { $('modalText').value = exportText(); });
 $('modalCancel').onclick = modal.close;
 $('modalOk').onclick = async () => {
   const msg = $('modalMsg');
@@ -230,6 +240,8 @@ $('clearWalls').onclick = () => { P.walls.fill(0); clearSolutions(); clearPrevie
 $('clearAll').onclick = () => resetBoard(P.n);
 $('solveBtn').onclick = doSolve;
 $('playBtn').onclick = () => (playMode ? exitPlay() : enterPlay());
+$('showConn').onclick = () => { showConn = $('showConn').checked; if (playMode) paintPlayNow(); };
+$('showDead').onclick = () => { showDead = $('showDead').checked; if (playMode) paintPlayNow(); };
 $('exportBtn').onclick = () => openModal('export'); $('importBtn').onclick = () => openModal('import');
 $('minimizeWalls').onclick = doMinimize;
 $('randScatter').onclick = () => {

@@ -115,6 +115,16 @@ walls H,1,1 H,3,1
 `checkpoints r,c=n` uses 0-based row and column. `walls T,r,c` uses `T` = `H` for a wall between
 `(r,c)` and `(r+1,c)` or `V` between `(r,c)` and `(r,c+1)`.
 
+An optional `path r,c ...` line records a specific line through the grid, in order, same `r,c`
+coordinates as above — for example the designer's Play mode exports the line walked so far:
+
+```
+path 0,0 0,1 0,2 1,2 1,1 1,0 2,0 2,1 2,2
+```
+
+It is entirely optional: puzzles without one parse exactly as before. When present, each step must be
+grid-adjacent to the last, cross no wall, and visit no cell twice, or `parse` rejects the file.
+
 ## How puzzles are generated
 
 `webapp/src/core/gen/generate.js`, `generate(n, seed)`:
@@ -132,9 +142,8 @@ walls H,1,1 H,3,1
 4. Repeat 2 and 3 until there are `CANDIDATES[n]` candidates and keep the one left with the **fewest
    walls**.
 
-The solver (`webapp/src/core/solver/solve.js`) is a depth-first Hamiltonian-path search with dead-end
-and connectivity pruning, plus forced-edge propagation (`prop`, on by default in generation). Its
-`nodeCap` bounds every search.
+Every step above calls the solver — see [Solver algorithms](#solver-algorithms) for what it actually
+does with each search.
 
 ### Tuning
 
@@ -160,6 +169,37 @@ phones are slower):
 
 To add a grid size, add it to `CANDIDATES`, add a golden case for it in `webapp/test/golden.js`, and
 run the tests.
+
+## Solver algorithms
+
+`webapp/src/core/solver/solve.js`, `solve(p, opts)`: depth-first search over Hamiltonian paths, one cell
+at a time, backtracking on failure, checkpoints required in ascending order. `nodeCap` bounds every
+search; `limit` (default 2) stops it early once that many solutions are found. Pruning cuts branches
+without changing which solutions exist; ordering just changes the order they're tried.
+
+- **Dead-end pruning** (always on) — an unvisited neighbour with 0 free neighbours is an immediate
+  fail; with exactly 1, it's only legal if it's the end cell. Strongest single prune (~780× alone on
+  hard boards).
+- **Connectivity pruning** (always on) — flood-fill from the current cell; if the reachable count
+  doesn't match the cells still needed, the board has split into unjoinable pieces. Second-strongest
+  (~127× alone).
+- **Manhattan-distance bound** — skip a move if the straight-line distance to the next checkpoint
+  already exceeds the cells remaining. Cheap, matters most at high checkpoint counts.
+- **`prune2`: wall-aware BFS bound** — precomputed shortest-path distances through every remaining
+  checkpoint in order; tighter than Manhattan, costs the BFS passes upfront.
+- **`prop`: forced-edge propagation** (on by default in generation) — every unvisited cell needs exactly
+  2 path-edges; a cell with exactly that many open edges has them all forced, and forcing propagates
+  like unit propagation in SAT. A union-find over forced edges catches a forced cycle or a forced
+  head→end chain of the wrong size immediately.
+- **Move ordering** — candidates tried most-constrained-first (fewest free neighbours), so dead branches
+  get found and pruned sooner.
+
+**Not implemented: parity pruning.** The grid is bipartite, so slack (`cells remaining − Manhattan
+distance to next checkpoint`) is always even — a candidate move with odd slack could be rejected on the
+spot. Proposed, never coded or benchmarked.
+
+Options like `prune2` and `prop` are opt-in rather than always-on because they change node counts, and
+generation's `nodeCap` values are tuned per combination (see [Determinism](#determinism)).
 
 ## Complexity
 
