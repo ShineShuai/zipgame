@@ -7,7 +7,7 @@ import { newStat, updateStat, statSummary } from '../src/core/stats.js';
 import { solve } from '../src/core/solver/solve.js';
 import { isSolved, step } from '../src/core/rules.js';
 import { boardConnectivity } from '../src/core/connectivity.js';
-import { buildNeighbors, makeNoDeadEnd } from '../src/core/solver/prune.js';
+import { buildNeighbors, makeNoDeadEnd, forcedEdges, legsCollide } from '../src/core/solver/prune.js';
 import { generate, generateUnique, randomPathPuzzle, pickK, PLAY_SIZES } from '../src/core/gen/generate.js';
 import { scatter } from '../src/core/gen/checkpoints.js';
 import { runSync } from '../src/core/run.js';
@@ -101,6 +101,219 @@ t('solver: prop == baseline (count, paths, DFS order), nodes <= baseline, matche
       ok(!a.exceeded && !b.exceeded); eq(b.count, a.count, `count ${s}`); eq(b.paths, a.paths, `paths ${s}`); ok(b.nodes <= a.nodes, `nodes ${s}`); cmp++;
     }
   } ok(cmp === 600);
+});
+t('solver: seg == baseline (count, paths, DFS order), nodes <= baseline, matches brute force', () => {
+  let cmp = 0;
+  for (const segMode of [true, 'all']) {
+    for (let s = 1; s <= 120; s++) { const n = 3 + (s % 2), p = randPuzzle(s, n, 2 + (s % 4), 0.15 * (s % 4)); eq(solve(p, { limit: 1e9, nodeCap: 1e7, seg: segMode }).count, brute(p), `brute ${segMode} ${s}`); }
+    for (let s = 1; s <= 150; s++) {
+      const n = 3 + (s % 4), p = randPuzzle(s, n, 2 + (s % 5), 0.05 * (s % 9));
+      for (const extra of [{}, { prune2: true }, { prop: true }]) for (const limit of [2, 1e9]) {
+        const a = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true }), b = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true, seg: segMode });
+        ok(!a.exceeded && !b.exceeded); eq(b.count, a.count, `count ${segMode} ${s}`); eq(b.paths, a.paths, `paths ${segMode} ${s}`); ok(b.nodes <= a.nodes, `nodes ${segMode} ${s}`); cmp++;
+      }
+    }
+  } ok(cmp === 1800);
+});
+t('solver: parity == baseline (count, paths, DFS order), nodes <= baseline, matches brute force', () => {
+  let cmp = 0;
+  for (let s = 1; s <= 120; s++) { const n = 3 + (s % 2), p = randPuzzle(s, n, 2 + (s % 4), 0.15 * (s % 4)); eq(solve(p, { limit: 1e9, nodeCap: 1e7, parity: true }).count, brute(p), `brute ${s}`); }
+  for (let s = 1; s <= 150; s++) {
+    const n = 3 + (s % 4), p = randPuzzle(s, n, 2 + (s % 5), 0.05 * (s % 9));
+    for (const extra of [{}, { prune2: true }, { prop: true }, { seg: true }, { seg: 'all' }, { prune2: true, prop: true }]) for (const limit of [2, 1e9]) {
+      const a = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true }), b = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true, parity: true });
+      ok(!a.exceeded && !b.exceeded); eq(b.count, a.count, `count ${s}`); eq(b.paths, a.paths, `paths ${s}`); ok(b.nodes <= a.nodes, `nodes ${s}`); cmp++;
+    }
+  } ok(cmp === 1800);
+});
+t('solver: order == baseline (count, paths, DFS order), nodes <= baseline, matches brute force', () => {
+  let cmp = 0;
+  for (let s = 1; s <= 120; s++) { const n = 3 + (s % 2), p = randPuzzle(s, n, 2 + (s % 4), 0.15 * (s % 4)); eq(solve(p, { limit: 1e9, nodeCap: 1e7, order: true }).count, brute(p), `brute ${s}`); }
+  for (let s = 1; s <= 150; s++) {
+    const n = 3 + (s % 4), p = randPuzzle(s, n, 2 + (s % 5), 0.05 * (s % 9));
+    for (const extra of [{}, { prune2: true }, { prop: true }, { seg: true }, { pocket: true }, { parity: true }, { prop: true, pocket: true, parity: true }]) for (const limit of [2, 1e9]) {
+      const a = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true }), b = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true, order: true });
+      ok(!a.exceeded && !b.exceeded); eq(b.count, a.count, `count ${s}`); eq(b.paths, a.paths, `paths ${s}`); ok(b.nodes <= a.nodes, `nodes ${s}`); cmp++;
+    }
+  } ok(cmp === 2100);
+});
+t('solver: order catches the reported forced-corridor-collision case (fewer nodes than baseline)', () => {
+  const n = 7, p = makePuzzle(n);
+  const rc = (r, c) => r * n + c;
+  for (const [r, c, k] of [[0, 0, 6], [0, 5, 5], [1, 5, 7], [3, 2, 4], [3, 6, 3], [5, 1, 1], [6, 5, 2]]) p.cp[rc(r, c)] = k;
+  for (const [t, r, c] of [['V', 3, 0], ['V', 3, 4], ['H', 4, 1], ['V', 5, 0], ['V', 5, 1], ['V', 6, 4]]) {
+    setWallId(p.walls, t === 'V' ? edgeId(n, rc(r, c), rc(r, c + 1)) : edgeId(n, rc(r, c), rc(r + 1, c)), true);
+  }
+  // At nodeCap 5000, plain search doesn't find the puzzle's solution before exhausting the
+  // budget; order-pruning does, on this exact instance — a direct demonstration of the collision
+  // check's benefit, not just equivalence.
+  const a = solve(p, { limit: 2, nodeCap: 5000, capture: true });
+  const b = solve(p, { limit: 2, nodeCap: 5000, capture: true, order: true });
+  ok(a.exceeded && a.count === 0, 'sanity: baseline should NOT resolve this instance within 5000 nodes');
+  ok(b.count === 1, `order should find the (unique) solution within the same budget (got count=${b.count})`);
+  // Full-budget equivalence: same solution set once both are allowed to finish.
+  const aFull = solve(p, { limit: 2, nodeCap: 2e6, capture: true });
+  const bFull = solve(p, { limit: 2, nodeCap: 2e6, capture: true, order: true });
+  ok(!aFull.exceeded && !bFull.exceeded);
+  eq(bFull.count, aFull.count); eq(bFull.paths, aFull.paths);
+  ok(bFull.nodes <= aFull.nodes, `order should not need more nodes than baseline (base=${aFull.nodes}, order=${bFull.nodes})`);
+});
+t('forcedEdges: standalone deduction sound against exhaustive completion enumeration', () => {
+  // For a given (puzzle, path-prefix, head), enumerate every valid completion by brute force.
+  // forcedEdges().infeasible must imply zero completions. Every forced cell must be entered via
+  // its forced direction in every completion that does exist (never contradicted).
+  function completions(p, prefix) {
+    const n = p.n, T = n * n, K = Math.max(...p.cp), end = p.cp.indexOf(K);
+    const vis = new Uint8Array(T);
+    for (const c of prefix) vis[c] = 1;
+    const nbr = i => { const r = (i / n) | 0, c = i % n, o = []; if (c < n - 1) o.push(i + 1); if (c > 0) o.push(i - 1); if (r < n - 1) o.push(i + n); if (r > 0) o.push(i - n); return o; };
+    const wall = (a, b) => p.walls[Math.min(a, b)] & (Math.abs(a - b) === 1 ? 1 : 2);
+    const out = [];
+    let need = 1;
+    for (const c of prefix) { if (p.cp[c]) { if (p.cp[c] !== need) return []; need++; } }
+    const head = prefix[prefix.length - 1];
+    const go = (c, k, nd, path) => {
+      let need2 = nd;
+      if (p.cp[c]) { if (p.cp[c] !== need2) return; need2++; }
+      if (k === T) { if (c === end && need2 === K + 1) out.push(path.slice()); return; }
+      for (const v of nbr(c)) {
+        if (vis[v] || wall(c, v)) continue;
+        vis[v] = 1; path.push(v);
+        go(v, k + 1, need2, path);
+        path.pop(); vis[v] = 0;
+      }
+    };
+    go(head, prefix.length, need, prefix.slice());
+    return out;
+  }
+
+  let checked = 0, forcedChecks = 0;
+  for (let s = 1; s <= 60; s++) {
+    const n = 3 + (s % 3), p = randPuzzle(s, n, 2 + (s % 4), 0.1 * (s % 5));
+    const K = Math.max(...p.cp);
+    if (K < 1) continue;
+    const sol = solve(p, { limit: 1, nodeCap: 5000, capture: true });
+    if (sol.count !== 1) continue; // only test on puzzles with a findable solution to walk prefixes of
+    const path = sol.paths[0];
+    const { nb, T } = buildNeighbors(p);
+    for (let cut = 1; cut < path.length; cut++) {
+      const prefix = path.slice(0, cut);
+      const vis = new Uint8Array(T);
+      for (const c of prefix) vis[c] = 1;
+      const head = prefix[prefix.length - 1];
+      const end = p.cp.indexOf(K);
+      const { forced, dirs, infeasible } = forcedEdges(nb, T, vis, head, end);
+      const all = completions(p, prefix);
+      checked++;
+      if (infeasible) { ok(all.length === 0, `infeasible but completions exist: seed ${s} cut ${cut}`); continue; }
+      if (all.length === 0) continue; // forcedEdges may under-detect infeasibility (that's fine, it's a sound-not-complete prune) — nothing to check
+      // Every forced direction must be an edge actually used (u adjacent to its dir-d neighbour
+      // in the path) in EVERY completion — the precise meaning of "this edge is forced".
+      const DR = [0, 0, 1, -1], DC = [1, -1, 0, 0], n = p.n;
+      for (const u of forced) {
+        for (let d = 0; d < 4; d++) {
+          if (!((dirs[u] >> d) & 1)) continue;
+          const v = nb[u * 4 + d];
+          for (const full of all) {
+            const idx = full.indexOf(u);
+            ok(idx >= 0, `forced cell ${u} missing from a completion: seed ${s} cut ${cut}`);
+            const prev = idx > 0 ? full[idx - 1] : -1;
+            const next = idx < full.length - 1 ? full[idx + 1] : -1;
+            ok(prev === v || next === v, `forced edge ${u}->${v} (dir ${d}) not used in a completion: seed ${s} cut ${cut}`);
+          }
+          forcedChecks++;
+        }
+      }
+    }
+  }
+  ok(checked > 50, `expected enough cases, got ${checked}`);
+  ok(forcedChecks > 50, `expected some forced-edge checks to actually run, got ${forcedChecks}`);
+});
+t('legsCollide: never fires on a genuine prefix of a real solution (soundness)', () => {
+  // legsCollide is a NECESSARY (not sufficient) infeasibility condition: it may miss some dead
+  // positions, but it must NEVER fire on a prefix that a real solution actually continues from.
+  // Cross-check against solve()'s own found paths (ground truth), general to any puzzle — not
+  // tied to how it was generated (that's the whole point of this check).
+  let checked = 0, firedOnRealPrefix = 0;
+  for (let s = 1; s <= 400; s++) {
+    const n = 3 + (s % 5), K = 2 + (s % 6), wf = 0.05 * (s % 10);
+    const p = randPuzzle(s, n, K, wf);
+    const sol = solve(p, { limit: 1, nodeCap: 30000, capture: true });
+    if (sol.exceeded || sol.count === 0) continue;
+    const full = sol.paths[0];
+    const KK = Math.max(...p.cp);
+    const pos = new Int32Array(KK + 1).fill(-1);
+    for (let i = 0; i < n * n; i++) if (p.cp[i]) pos[p.cp[i]] = i;
+    const { nb, T } = buildNeighbors(p);
+    for (let cut = 1; cut < full.length; cut++) {
+      const prefix = full.slice(0, cut);
+      const vis = new Uint8Array(T);
+      for (const c of prefix) vis[c] = 1;
+      const head = prefix[prefix.length - 1];
+      let need = 1;
+      for (const c of prefix) if (p.cp[c]) need = p.cp[c] + 1;
+      if (need > KK) continue;
+      const legs = [[head, pos[need]]];
+      for (let k = need; k < KK; k++) legs.push([pos[k], pos[k + 1]]);
+      checked++;
+      if (legsCollide(nb, T, vis, legs)) { firedOnRealPrefix++; ok(false, `false positive: seed ${s} cut ${cut}`); }
+    }
+  }
+  ok(checked > 100, `expected enough cases, got ${checked}`);
+  eq(firedOnRealPrefix, 0);
+});
+t('legsCollide: catches the reported forced-corridor-collision case one move before existing checks', () => {
+  // Regression test for a specific reported position: two consecutive checkpoint legs' forced
+  // corridors overlap outside their shared endpoint, making the position dead — but connOk,
+  // noDeadEnd and forced-edge propagation all still say the position looks fine at that point.
+  const n = 7, p = makePuzzle(n);
+  const rc = (r, c) => r * n + c;
+  for (const [r, c, k] of [[0, 0, 6], [0, 5, 5], [1, 5, 7], [3, 2, 4], [3, 6, 3], [5, 1, 1], [6, 5, 2]]) p.cp[rc(r, c)] = k;
+  for (const [t, r, c] of [['V', 3, 0], ['V', 3, 4], ['H', 4, 1], ['V', 5, 0], ['V', 5, 1], ['V', 6, 4]]) {
+    setWallId(p.walls, t === 'V' ? edgeId(n, rc(r, c), rc(r, c + 1)) : edgeId(n, rc(r, c), rc(r + 1, c)), true);
+  }
+  const fullPath = [[5, 1], [6, 1], [6, 0], [5, 0], [4, 0], [3, 0], [2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [3, 4], [4, 4], [4, 5]].map(([r, c]) => rc(r, c));
+  const { nb, T } = buildNeighbors(p);
+  const K = Math.max(...p.cp);
+  const pos = new Int32Array(K + 1).fill(-1);
+  for (let i = 0; i < T; i++) if (p.cp[i]) pos[p.cp[i]] = i;
+
+  const collideAt = new Array(fullPath.length + 1).fill(false);
+  const noDeadEnd0 = makeNoDeadEnd(nb, new Uint8Array(T), pos[K]);
+  for (let cut = 1; cut <= fullPath.length; cut++) {
+    const prefix = fullPath.slice(0, cut);
+    const vis = new Uint8Array(T);
+    for (const c of prefix) vis[c] = 1;
+    const head = prefix[prefix.length - 1];
+    let need = 1;
+    for (const c of prefix) if (p.cp[c]) need = p.cp[c] + 1;
+    const legs = [[head, pos[need]]];
+    for (let k = need; k < K; k++) legs.push([pos[k], pos[k + 1]]);
+    collideAt[cut] = legsCollide(nb, T, vis, legs);
+  }
+  // legsCollide must fire by cut=13 (one move before the reported dead move to (4,5) at cut=14).
+  ok(collideAt[13], 'legsCollide should already fire at cut=13 (head at (4,4))');
+  ok(collideAt[14], 'legsCollide should still fire at cut=14 (the reported position)');
+  // And the position genuinely has zero completions from cut=13 onward (exhaustive check).
+  const vis13 = new Uint8Array(T);
+  for (const c of fullPath.slice(0, 13)) vis13[c] = 1;
+  function anyCompletion(cell, k, need) {
+    if (k === T) return cell === pos[K] && need === K + 1;
+    for (let d = 0; d < 4; d++) {
+      const v = nb[cell * 4 + d];
+      if (v < 0 || vis13[v]) continue;
+      let need2 = need;
+      if (p.cp[v]) { if (p.cp[v] !== need2) continue; need2++; }
+      vis13[v] = 1;
+      const ok2 = anyCompletion(v, k + 1, need2);
+      vis13[v] = 0;
+      if (ok2) return true;
+    }
+    return false;
+  }
+  let need13 = 1;
+  for (const c of fullPath.slice(0, 13)) if (p.cp[c]) need13 = p.cp[c] + 1;
+  eq(anyCompletion(fullPath[12], 13, need13), false, 'position should genuinely be unsolvable from cut=13');
 });
 t('rules: isSolved, step (default / truncate / strictOrder)', () => {
   const p = makePuzzle(3); [0, 4, 8].forEach((c, i) => { p.cp[c] = i + 1; });

@@ -1,5 +1,5 @@
 import { maxNumber, startCell, endCell } from '../model.js';
-import { buildNeighbors, makeConnOk, makeNoDeadEnd } from './prune.js';
+import { buildNeighbors, makeConnOk, makeNoDeadEnd, makePocketOk, segBlocker, legsCollide } from './prune.js';
 
 // Number of set bits in a 4-bit direction mask.
 const POPCOUNT = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
@@ -13,9 +13,15 @@ const POPCOUNT = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
 //   capture   also return the solution paths
 //   prune2    static wall-aware distance bound to the remaining checkpoints
 //   prop      forced-edge propagation (see propagate() below)
-// prune2 and prop only prune: they never change the solutions found or their DFS order.
-// They do change how many nodes are visited, which is why they are opt-in (nodeCap-dependent
-// generation must stay reproducible for a given ALGO_VERSION).
+//   seg       per-segment must-pass-through blocker cells (see segBlocker() below);
+//             true = next segment only, 'all' = every remaining forward segment
+//   pocket    single-entrance pocket check (see makePocketOk() in prune.js)
+//   parity    bipartite slack check (see sufParity below)
+//   order     cross-leg forced-corridor collision check (see legsCollide() in prune.js);
+//             O(K^2) segBlocker calls per node, so meaningfully pricier than the others
+// prune2, prop, seg, pocket, parity and order only prune: they never change the solutions found
+// or their DFS order. They do change how many nodes are visited, which is why they are opt-in
+// (nodeCap-dependent generation must stay reproducible for a given ALGO_VERSION).
 //
 // Returns { count, exceeded, nodes, paths? }. Pure: no DOM, no timers, no randomness.
 export function solve(p, opts = {}) {
@@ -81,6 +87,26 @@ export function solve(p, opts = {}) {
     for (let k = K - 1; k >= 1; k--) {
       const d = D[k * T + pos[k + 1]];
       suf[k] = d < 0 ? 1e9 : suf[k + 1] + d;
+    }
+  }
+
+  // ---------- parity: bipartite slack check ----------
+  //
+  // sufParity[k] = parity (0 or 1) of the sum of Manhattan distances along the remaining
+  // checkpoint chain pos[k] -> pos[k+1] -> ... -> pos[K]. Static (Manhattan ignores walls),
+  // computed once. Combined with manhattan(v, pos[need]) at each candidate, gives the parity of
+  // the total remaining path length after landing on v — which must match remaining-1 (cells left
+  // to spend). A mismatch means no path length can possibly fit, regardless of feasibility
+  // elsewhere, so it's checked before the pricier BFS-distance (prune2) and dead-end/connectivity
+  // checks. See the callsite comment for why parity is additive across concatenated legs.
+  const PARITY = !!opts.parity;
+  let sufParity = null;
+  if (PARITY) {
+    sufParity = new Int32Array(K + 2);
+    for (let k = K - 1; k >= 1; k--) {
+      const a = pos[k], b = pos[k + 1];
+      const d = a >= 0 && b >= 0 ? Math.abs(row[a] - row[b]) + Math.abs(col[a] - col[b]) : 0;
+      sufParity[k] = (sufParity[k + 1] + d) & 1;
     }
   }
 
@@ -267,6 +293,19 @@ export function solve(p, opts = {}) {
 
   const connOk = makeConnOk(nb, T, vis);
   const noDeadEnd = makeNoDeadEnd(nb, vis, end);
+  const SEG = !!opts.seg;
+  const SEG_ALL = opts.seg === 'all';
+  const POCKET = !!opts.pocket;
+  // Any checkpoint cell still unvisited is, by construction, still needed (checkpoints are only
+  // ever marked visited once the DFS has actually reached them in order) — so a static "is this a
+  // checkpoint at all" mask is enough; makePocketOk's own vis[] check does the rest.
+  let pocketOk = null;
+  if (POCKET) {
+    const needCp = new Uint8Array(T);
+    for (let i = 0; i < T; i++) if (cp[i] !== 0) needCp[i] = 1;
+    pocketOk = makePocketOk(nb, T, vis, needCp);
+  }
+  const ORDER = !!opts.order;
 
   // ---------- search ----------
 
@@ -297,10 +336,34 @@ export function solve(p, opts = {}) {
     }
 
     const remaining = T - count;
-    const feasible = noDeadEnd(cell) && connOk(cell, remaining) && (!PROP || propagate(cell, count));
+    // Checked cheapest-first, short-circuiting: local degree, then flood-fill count, then forced-
+    // edge propagation, then the single-entrance pocket check, then (most expensive — O(K^2)
+    // segBlocker calls) the cross-leg forced-corridor collision check. See legsCollide() in
+    // prune.js for what it catches that none of the earlier checks do.
+    let feasible = noDeadEnd(cell) && connOk(cell, remaining) && (!PROP || propagate(cell, count)) && (!POCKET || pocketOk(cell));
+    if (feasible && ORDER && need <= K) {
+      const legs = [[cell, pos[need]]];
+      for (let k = need; k < K; k++) legs.push([pos[k], pos[k + 1]]);
+      feasible = !legsCollide(nb, T, vis, legs);
+    }
     if (!feasible) {
       leave(cell);
       return;
+    }
+
+    // seg: must-pass-through cells for forward segments. `opts.seg==='all'` checks every
+    // remaining segment (pos[j] -> pos[j+1]), j = need..K-1; opts.seg===true checks only the
+    // immediate next one. Both computed once per node.
+    let forcedUnion = null;
+    if (SEG && need >= 1 && need <= K) {
+      forcedUnion = new Set();
+      const last = SEG_ALL ? K - 1 : Math.min(need, K - 1);
+      for (let j = need; j <= last; j++) {
+        const s = pos[j], t = pos[j + 1];
+        if (s < 0 || t < 0) continue;
+        const f = segBlocker(nb, T, vis, s, t);
+        for (const c of f) if (!forcedUnion.has(c)) forcedUnion.add(c);
+      }
     }
 
     // Candidate moves, most constrained first (stable insertion sort by onward degree).
@@ -312,12 +375,25 @@ export function solve(p, opts = {}) {
       if (PROP && !((av[cell] >> d) & 1)) continue;
       const marker2 = cp[v];
       if (marker2 !== 0 && marker2 !== need) continue;
+      // v is reserved for a later segment's own path — taking it now (as part of *this*
+      // segment, since v isn't this segment's own target) would strand that segment.
+      if (forcedUnion && forcedUnion.size && v !== pos[need] && forcedUnion.has(v)) continue;
 
       if (need <= K) {
         const target = pos[need];
         if (target >= 0) {
           const manhattan = Math.abs(row[v] - row[target]) + Math.abs(col[v] - col[target]);
           if (manhattan > remaining) continue;
+          // Parity: the grid is bipartite (checkerboard colour flips every move), so any actual
+          // path length between two cells always shares parity with their Manhattan distance.
+          // That holds leg-by-leg and is additive across concatenated legs, so the TOTAL path
+          // length from v to the final checkpoint must share parity with the SUM of Manhattan
+          // distances over every remaining leg (v->pos[need], pos[need]->pos[need+1], ...,
+          // pos[K-1]->pos[K]) — not just the next leg alone. sufParity precomputes that sum's
+          // parity for legs pos[need]->...->pos[K] once per DFS node (not per candidate); adding
+          // manhattan(v,target)'s own parity gives the total. remaining-1 = cells left to spend
+          // after this move, all the way to path end — an odd mismatch means no path length fits.
+          if (PARITY && (((remaining - 1 - manhattan - sufParity[need]) & 1) !== 0)) continue;
         }
         if (D) {
           const dist = D[need * T + v];

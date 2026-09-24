@@ -19,18 +19,25 @@ function instance(seed, n, K, wallFrac) { // random path puzzle + random non-anc
 }
 const time = f => { const t = performance.now(); const r = f(); return [r, performance.now() - t]; };
 
-log('SOLVER  (limit 2, nodeCap 300000)   n  K wall%   base: nodes ms n/ms   | prune2: nodes ms | prop: nodes ms  vs base%  same-solutions');
-let equivalenceFailures = 0; // rows where prop changed the solutions or visited more nodes than the plain search
+log('SOLVER  (limit 2, nodeCap 300000)   n  K wall%   base: nodes ms n/ms   | prune2: nodes ms | prop: nodes ms  vs base%  same-solutions | seg: nodes ms  vs base%  same-solutions | prop+seg: nodes ms  vs base%  same-solutions');
+let equivalenceFailures = 0; // rows where prop/seg changed the solutions or visited more nodes than the plain search
 for (const [n, K, wf] of [[7, 6, .3], [7, 6, .6], [9, 6, .3], [9, 8, .5], [11, 8, .5]]) {
-  let nb = 0, mb = 0, np = 0, mp = 0, nq = 0, mq = 0, same = 0, cmp = 0;
+  let nb = 0, mb = 0, np = 0, mp = 0, nq = 0, mq = 0, same = 0, cmp = 0, ns = 0, ms_ = 0, sameS = 0, nr = 0, mr = 0, sameR = 0;
   for (let s = 1; s <= 5; s++) {
     const p = instance(s * 101 + n, n, K, wf); solve(p, { nodeCap: 20000 });
     const [a, ta] = time(() => solve(p, { nodeCap: 300000 })), [b, tb] = time(() => solve(p, { nodeCap: 300000, prune2: true })), [c, tc] = time(() => solve(p, { nodeCap: 300000, prop: true, capture: true }));
-    nb += a.nodes; mb += ta; np += b.nodes; mp += tb; nq += c.nodes; mq += tc;
-    if (!a.exceeded) { cmp++; const A = solve(p, { nodeCap: 300000, capture: true }); if (A.count === c.count && JSON.stringify(A.paths) === JSON.stringify(c.paths) && c.nodes <= a.nodes) same++; } // solution sets + order identical, nodes never higher
+    const [d, td] = time(() => solve(p, { nodeCap: 300000, seg: true, capture: true })), [e, te] = time(() => solve(p, { nodeCap: 300000, prop: true, seg: true, capture: true }));
+    nb += a.nodes; mb += ta; np += b.nodes; mp += tb; nq += c.nodes; mq += tc; ns += d.nodes; ms_ += td; nr += e.nodes; mr += te;
+    if (!a.exceeded) {
+      cmp++;
+      const A = solve(p, { nodeCap: 300000, capture: true });
+      if (A.count === c.count && JSON.stringify(A.paths) === JSON.stringify(c.paths) && c.nodes <= a.nodes) same++;
+      if (A.count === d.count && JSON.stringify(A.paths) === JSON.stringify(d.paths) && d.nodes <= a.nodes) sameS++;
+      if (A.count === e.count && JSON.stringify(A.paths) === JSON.stringify(e.paths) && e.nodes <= a.nodes) sameR++;
+    }
   }
-  equivalenceFailures += cmp - same;
-  log(`                                    ${String(n).padStart(2)} ${String(K).padStart(2)} ${String(wf * 100).padStart(4)}   ${String(nb).padStart(8)} ${mb.toFixed(0).padStart(5)} ${(nb / mb).toFixed(0).padStart(5)}   | ${String(np).padStart(8)} ${mp.toFixed(0).padStart(5)}   | ${String(nq).padStart(8)} ${mq.toFixed(0).padStart(5)}  ${(100 * (nq / nb - 1)).toFixed(1).padStart(6)}%  ${same}/${cmp}`);
+  equivalenceFailures += (cmp - same) + (cmp - sameS) + (cmp - sameR);
+  log(`                                    ${String(n).padStart(2)} ${String(K).padStart(2)} ${String(wf * 100).padStart(4)}   ${String(nb).padStart(8)} ${mb.toFixed(0).padStart(5)} ${(nb / mb).toFixed(0).padStart(5)}   | ${String(np).padStart(8)} ${mp.toFixed(0).padStart(5)}   | ${String(nq).padStart(8)} ${mq.toFixed(0).padStart(5)}  ${(100 * (nq / nb - 1)).toFixed(1).padStart(6)}%  ${same}/${cmp} | ${String(ns).padStart(8)} ${ms_.toFixed(0).padStart(5)}  ${(100 * (ns / nb - 1)).toFixed(1).padStart(6)}%  ${sameS}/${cmp} | ${String(nr).padStart(8)} ${mr.toFixed(0).padStart(5)}  ${(100 * (nr / nb - 1)).toFixed(1).padStart(6)}%  ${sameR}/${cmp}`);
 }
 const pad = (value, width) => String(value).padStart(width);
 const mean = values => values.reduce((sum, v) => sum + v, 0) / values.length;

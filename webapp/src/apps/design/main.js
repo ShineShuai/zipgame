@@ -17,7 +17,7 @@ import { renderBoard, paintPlay, cellSizeFor, TPL_C, SOL_C } from './board.js';
 const DEFAULT_NODE_LIMIT = 300000, rnd = Math.random, $ = id => document.getElementById(id);
 const boardEl = $('board'), stageEl = document.querySelector('.stage'), plural = (k, w) => `${k} ${w}${k === 1 ? '' : 's'}`;
 let P = makePuzzle(7), mode = 'number', selected = -1, buffer = '', solutions = [], solVisible = [], lastAborted = false, lastNodes = 0;
-let preview = null, previewVisible = true, playMode = false, playPath = [], drawing = false, refs = {}, numDrag = null, dragGhost = null, suppressClick = false, busy = false, modalMode = 'export', showConn = false, showDead = false;
+let preview = null, previewVisible = true, playMode = false, playPath = [], drawing = false, refs = {}, numDrag = null, dragGhost = null, suppressClick = false, busy = false, modalMode = 'export', showConn = false, showDead = false, showProp = false, showOrder = false;
 const playStep = { truncate: true, strictOrder: true }, modal = bindModal($('modalBackdrop'));
 
 // ---------- helpers ----------
@@ -144,7 +144,7 @@ addEventListener('pointercancel', () => { drawing = false; endGhost(); clearDrop
 
 // ---------- play ----------
 function paintPlayNow() {
-  paintPlay(refs, P.n, playPath, P, showConn, showDead);
+  paintPlay(refs, P.n, playPath, P, showConn, showDead, showProp, showOrder);
   const total = P.n * P.n, K = maxNumber(P), info = $('playInfo');
   if (!playPath.length) info.textContent = `Drag from checkpoint 1 to start. 0 / ${total} cells.`;
   else if (playPath.length === total) info.textContent = '🎉 Solved! Every cell visited exactly once.';
@@ -154,9 +154,9 @@ function paintPlayNow() {
     info.textContent = `${playPath.length} / ${total} cells · next checkpoint: ${hi + 1 <= K ? '#' + (hi + 1) : '—'}${extra}`;
   }
 }
-function enterPlay() {
+function enterPlay(seedPath) {
   const v = validate(P); if (!v.ok) { setStatus('Fix the puzzle before playing: ' + v.msg, 'error'); return; }
-  playMode = true; playPath = []; drawing = false; solutions = []; solVisible = []; selected = -1; buffer = ''; endGhost(); numDrag = null;
+  playMode = true; playPath = seedPath || []; drawing = false; solutions = []; solVisible = []; selected = -1; buffer = ''; endGhost(); numDrag = null;
   $('playBtn').classList.add('on'); $('playBtn').textContent = '■ Stop playing'; $('playInfo').style.display = '';
   $('connToggles').style.display = '';
   setStatus(''); updateHint(); draw(); renderLegend();
@@ -173,12 +173,16 @@ function doSolve() {
   if (playMode) exitPlay();
   const v = validate(P); if (!v.ok) { clearSolutions(); setStatus(v.msg, 'error'); return; }
   previewVisible = false;
-  const r = solve(P, { limit: 2, nodeCap: nodeLimit(), capture: true, prop: true });
+  const useOrder = $('useOrder').checked;
+  const t0 = performance.now();
+  const r = solve(P, { limit: 2, nodeCap: nodeLimit(), capture: true, prop: true, order: useOrder });
+  const ms = performance.now() - t0;
   solutions = r.paths; solVisible = solutions.map(() => true); lastAborted = r.exceeded; lastNodes = r.nodes;
   draw(); renderLegend(); updateWallCapTag();
-  if (r.count >= 2) setStatus('Multiple solutions — this puzzle is NOT unique. Showing 2 (click the legend chips to toggle).', 'warn');
-  else if (r.count === 1) setStatus(r.exceeded ? 'Found 1 solution so far, but the search limit was reached — it may not be unique.' : 'Unique solution found ✓', r.exceeded ? 'warn' : 'ok');
-  else setStatus(r.exceeded ? 'Search limit reached without finding a solution — the puzzle may be unsolvable.' : 'No solution exists for this puzzle.', r.exceeded ? 'warn' : 'error');
+  const nodeInfo = ` (${r.nodes.toLocaleString()} nodes${useOrder ? ', order-pruning on' : ''}, ${ms.toFixed(0)}ms)`;
+  if (r.count >= 2) setStatus('Multiple solutions — this puzzle is NOT unique. Showing 2 (click the legend chips to toggle).' + nodeInfo, 'warn');
+  else if (r.count === 1) setStatus((r.exceeded ? 'Found 1 solution so far, but the search limit was reached — it may not be unique.' : 'Unique solution found ✓') + nodeInfo, r.exceeded ? 'warn' : 'ok');
+  else setStatus((r.exceeded ? 'Search limit reached without finding a solution — the puzzle may be unsolvable.' : 'No solution exists for this puzzle.') + nodeInfo, r.exceeded ? 'warn' : 'error');
 }
 const int_ = (id, def, min) => { const v = parseInt($(id).value, 10); return Number.isFinite(v) && v >= min ? v : def; };
 const K_ = () => parseInt($('cpCount').value, 10) || P.n, W_ = () => { const v = parseInt($('wallCount').value, 10); return Number.isFinite(v) && v >= 0 ? v : P.n; };
@@ -203,6 +207,16 @@ async function doMinimize() {
 
 // ---------- import / export / modal ----------
 function exportText() { return serialize(P, { path: $('includePath').checked ? playPath : null }); }
+// Cheap detection of a `path` line without surfacing parse errors — used only to enable/disable
+// the "also load path" checkbox live as the import text is edited/pasted.
+function textHasPathLine(text) { return /^\s*path\s+\S/mi.test(text); }
+function updateImportPathRow() {
+  if (modalMode !== 'import') return;
+  const has = textHasPathLine($('modalText').value);
+  $('importPath').disabled = !has;
+  if (!has) $('importPath').checked = false;
+  $('importPathHint').textContent = has ? '' : '(paste text with a "path" line first)';
+}
 function openModal(m) {
   modalMode = m; $('modalMsg').textContent = ''; $('modalMsg').className = 'modal-msg';
   $('modalTitle').textContent = m === 'export' ? 'Export Puzzle' : 'Import Puzzle';
@@ -215,21 +229,26 @@ function openModal(m) {
   $('modalText').value = m === 'export' ? exportText() : '';
   $('modalText').placeholder = m === 'export' ? '' : '# Zip Puzzle\nsize 7\ncheckpoints 0,0=1 2,3=2 4,1=3 6,6=4\nwalls H,0,1 V,3,3 H,5,5';
   $('modalOk').textContent = m === 'export' ? 'Copy to clipboard' : 'Import';
+  $('importPathRow').style.display = m === 'import' ? '' : 'none';
+  if (m === 'import') updateImportPathRow();
   modal.open(); setTimeout(() => $('modalText').focus(), 30);
 }
 $('includePath').addEventListener('change', () => { $('modalText').value = exportText(); });
+$('modalText').addEventListener('input', updateImportPathRow);
 $('modalCancel').onclick = modal.close;
 $('modalOk').onclick = async () => {
   const msg = $('modalMsg');
   if (modalMode === 'export') return copyText($('modalText'), msg);
   try {
     const q = parse($('modalText').value);
+    const loadPath = $('importPath').checked && q.path ? q.path.slice() : null;
     if (playMode) exitPlay();
-    adopt(q); preview = null; playPath = []; drawing = false;
+    adopt(q); preview = loadPath ? null : (q.path || null); previewVisible = true; playPath = []; drawing = false;
     const sel = $('sizeSel');
     if (![...sel.options].some(o => +o.value === P.n)) { const o = document.createElement('option'); o.value = P.n; o.textContent = `${P.n} × ${P.n}`; sel.appendChild(o); }
     sel.value = String(P.n); setDefaults(P.n);
     refresh(); updateHint(); msg.textContent = 'Puzzle imported ✓'; msg.className = 'modal-msg ok'; setTimeout(modal.close, 400);
+    if (loadPath) enterPlay(loadPath);
   } catch (err) { msg.textContent = err.message; msg.className = 'modal-msg'; }
 };
 
@@ -242,6 +261,8 @@ $('solveBtn').onclick = doSolve;
 $('playBtn').onclick = () => (playMode ? exitPlay() : enterPlay());
 $('showConn').onclick = () => { showConn = $('showConn').checked; if (playMode) paintPlayNow(); };
 $('showDead').onclick = () => { showDead = $('showDead').checked; if (playMode) paintPlayNow(); };
+$('showProp').onclick = () => { showProp = $('showProp').checked; if (playMode) paintPlayNow(); };
+$('showOrder').onclick = () => { showOrder = $('showOrder').checked; if (playMode) paintPlayNow(); };
 $('exportBtn').onclick = () => openModal('export'); $('importBtn').onclick = () => openModal('import');
 $('minimizeWalls').onclick = doMinimize;
 $('randScatter').onclick = () => {

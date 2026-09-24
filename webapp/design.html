@@ -102,6 +102,10 @@
       <label for="nodeLimit">Search limit (nodes)</label>
       <input id="nodeLimit" type="number" min="1000" step="1000" value="300000">
     </div>
+    <div class="field field-row">
+      <label for="useOrder" title="Also run the cross-leg forced-corridor collision check (legsCollide) during Solve — catches some dead branches connectivity/dead-ends/forced-edges miss, at the cost of O(checkpoints^2) extra work per search node. For comparing against the default search, not a default itself.">Order-conflict pruning</label>
+      <input id="useOrder" type="checkbox">
+    </div>
     <button id="solveBtn" class="primary wide">Solve</button>
   </aside>
 
@@ -111,13 +115,22 @@
     <button id="playBtn" class="playbtn wide">▶ Play</button>
     <div id="playInfo" class="playinfo" style="display:none"></div>
     <div id="connToggles" style="display:none;margin-top:14px">
+      <div class="cat-label">Highlights</div>
       <div class="field field-row">
-        <label for="showConn" title="Highlight unvisited cells no longer reachable from the current cell">Show connectivity</label>
+        <label for="showConn" title="Highlight unvisited cells no longer reachable from the current cell">Connectivity</label>
         <input id="showConn" type="checkbox">
       </div>
       <div class="field field-row">
-        <label for="showDead" title="Highlight unvisited cells that are forced dead ends — only one way in or out">Show dead ends</label>
+        <label for="showDead" title="Highlight unvisited cells that are forced dead ends — only one way in or out">Dead ends</label>
         <input id="showDead" type="checkbox">
+      </div>
+      <div class="field field-row">
+        <label for="showProp" title="Highlight cells and edges the solver's forced-edge deduction has already pinned down">Forced edges</label>
+        <input id="showProp" type="checkbox">
+      </div>
+      <div class="field field-row">
+        <label for="showOrder" title="Flag when the current path already makes it impossible to reach the remaining checkpoints in order, even if the board still looks open">Order conflicts</label>
+        <input id="showOrder" type="checkbox">
       </div>
     </div>
 
@@ -142,6 +155,10 @@
     <div class="field field-row" id="includePathRow" style="display:none">
       <label for="includePath" title="Add the current play-mode line as a `path` line in the exported text">Include current path <span id="includePathHint" class="seg-count"></span></label>
       <input id="includePath" type="checkbox">
+    </div>
+    <div class="field field-row" id="importPathRow" style="display:none">
+      <label for="importPath" title="Enter Play mode with the imported `path` line already walked on the board">Also load path into Play mode <span id="importPathHint" class="seg-count"></span></label>
+      <input id="importPath" type="checkbox">
     </div>
     <textarea id="modalText" spellcheck="false"></textarea>
     <div class="modal-msg" id="modalMsg"></div>
