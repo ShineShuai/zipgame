@@ -27,7 +27,7 @@ const $ = id => document.getElementById(id), today = () => utcDateString(new Dat
 function paintMuteBtn() {
   const b = $('muteBtn');
   if (!b) return;
-  b.textContent = S.muted ? '🔇 Sound off' : '🔊 Sound on';
+  b.textContent = S.muted ? '🔇 off' : '🔊 on';
   b.title = S.muted ? 'Unmute' : 'Mute';
   b.setAttribute('aria-pressed', String(S.muted));
 }
@@ -367,5 +367,11 @@ function installDevReveal() {
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));
   $('muteBtn').onclick = toggleMute;      // button lives in the shell, so wire it once
   paintMuteBtn();                         // reflect the hydrated S.muted
+  // Handle page visibility to resume audio context when user returns.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && sfx.ctx && sfx.ctx.state === 'suspended') {
+      sfx.ctx.resume().then(() => { sfx.isUnlocked = true; }).catch(() => {});
+    }
+  });
   installDevReveal(); render();
 })();
