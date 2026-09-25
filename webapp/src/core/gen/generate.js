@@ -38,6 +38,8 @@ export function pickK(Kmin, Kmax, rnd) {
 
 // One attempt: path -> checkpoints -> walls until unique. Returns the puzzle (with .path and .order) or null.
 // o.path: 'warnsdorff' | 'backbite';  o.cps: 'gap' | 'random';  o.prop: solver propagation.
+// o.legCollide: leg-collision pruning (see solve.js); o.counts: optional call-count accumulator,
+// passed straight through to makeUnique.
 export function* tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, o = {}) {
   const findPath = o.path === 'backbite' ? backbite : warnsdorff;
   const path = findPath(n, rnd);
@@ -51,7 +53,7 @@ export function* tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, o = {
     p.cp[path[q]] = i + 1;
   });
 
-  const order = yield* makeUnique(p, path, rnd, { nodeCap, wallBudget, seedFraction, K, prop: o.prop });
+  const order = yield* makeUnique(p, path, rnd, { nodeCap, wallBudget, seedFraction, K, prop: o.prop, legCollide: o.legCollide, counts: o.counts });
   if (!order) return null;
   p.path = path;
   p.order = order;
@@ -207,44 +209,54 @@ function* tag(gen, extra) {
 //   Solve). Ties keep the earliest.
 // The search is heuristic, not exhaustive: unique: false means "no attempt got there", not "none exists".
 // o.prop (default true): solver propagation (same solutions, far fewer nodes).
+// o.legCollide (default false): leg-collision pruning (see legsCollide() in solver/prune.js) —
+//   applied to every internal solve() call this makes (the makeUnique probe/search loop,
+//   minimizeWalls' per-wall checks, and the hardest-candidate node count), not just the final
+//   check, so the counts breakdown below reflects its real cost across a full generation run.
 // Random by design (caller supplies rnd), so none of this touches generate().
 // Events: { frac, walls, K, attempt, of, found }.
-// Returns { puzzle, unique, walls, removed, attempts, found, nodes? }; on failure walls = 0.
+// Returns { puzzle, unique, walls, removed, attempts, found, nodes?, counts }; on failure walls = 0.
+// counts = { makeUnique, minimizeWalls, other, total } — solve() call counts by phase, for
+// comparing legCollide on vs off at the same rnd seed (see design app's Solver panel).
 export function* generateUnique(n, K, rnd, o = {}) {
   K = Math.max(2, Math.min(K, n * n));
   const maxWalls = o.maxWalls == null ? null : Math.max(0, Math.floor(o.maxWalls));
   const unbounded = maxWalls == null;
   const nodeCap = o.nodeCap || 50000;
   const prop = o.prop ?? true;
+  const legCollide = o.legCollide ?? false;
   const tries = o.tries || (unbounded ? 3 : CAPPED_TRIES);
   const wallBudget = unbounded ? null : Math.ceil(maxWalls * 2.5);
   const seedFraction = designSeedFraction(n, maxWalls);
+  const counts = { makeUnique: 0, minimizeWalls: 0, other: 0 };
+  const withTotal = () => ({ ...counts, total: counts.makeUnique + counts.minimizeWalls + counts.other });
 
   let best = null;
   let found = 0;
   for (let attempt = 0; attempt < tries; attempt++) {
     const extra = { attempt: attempt + 1, of: tries };
-    const gen = tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, { path: 'backbite', cps: 'gap', prop });
+    const gen = tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, { path: 'backbite', cps: 'gap', prop, legCollide, counts });
     const p = yield* tag(gen, extra);
     if (p) {
       const before = p.order.length;
       let removed = 0;
       if (before) {
-        const minimized = yield* tag(minimizeWalls(p, p.order, rnd, nodeCap * 2, K, prop), extra);
+        const minimized = yield* tag(minimizeWalls(p, p.order, rnd, nodeCap * 2, K, prop, legCollide, counts), extra);
         removed = minimized.removed;
       }
       if (unbounded || before - removed <= maxWalls) {
         delete p.order;
         found++;
         const candidate = { puzzle: p, unique: true, walls: before - removed, removed, attempts: attempt + 1 };
-        if (!o.hardest) return { ...candidate, found };
+        if (!o.hardest) return { ...candidate, found, counts: withTotal() };
         // Difficulty metric: solver nodes for the uniqueness proof.
-        candidate.nodes = solve(p, { limit: 2, nodeCap: nodeCap * 2, prop }).nodes;
+        counts.other++;
+        candidate.nodes = solve(p, { limit: 2, nodeCap: nodeCap * 2, prop, legCollide }).nodes;
         if (!best || candidate.nodes > best.nodes) best = candidate;
       }
     }
     yield { frac: (attempt + 1) / tries, walls: best ? best.walls : null, K, found, ...extra };
   }
-  if (best) return { ...best, found };
-  return { puzzle: randomPathPuzzle(n, K, rnd), unique: false, walls: 0, removed: 0, attempts: tries, found: 0 };
+  if (best) return { ...best, found, counts: withTotal() };
+  return { puzzle: randomPathPuzzle(n, K, rnd), unique: false, walls: 0, removed: 0, attempts: tries, found: 0, counts: withTotal() };
 }

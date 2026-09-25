@@ -73,6 +73,10 @@
       <label for="genHardest" title="Use all retries to collect candidates and keep the one whose Solve needs the most search nodes">Pick max nodes</label>
       <input id="genHardest" type="checkbox">
     </div>
+    <div class="field field-row">
+      <label for="genCompareLegCollide" title="Run generation twice at the same random seed, once without and once with leg-collision pruning, and report total time and solve() call counts for both">Compare leg-collision pruning</label>
+      <input id="genCompareLegCollide" type="checkbox">
+    </div>
     <div class="hint">
       Uses Max checkpoints and Max walls above. Every retry draws a new random path and a new checkpoint placement.
       With max nodes on, all retries are used to collect candidates and the one with the most search nodes is kept.
@@ -103,8 +107,8 @@
       <input id="nodeLimit" type="number" min="1000" step="1000" value="300000">
     </div>
     <div class="field field-row">
-      <label for="useOrder" title="Also run the cross-leg forced-corridor collision check (legsCollide) during Solve — catches some dead branches connectivity/dead-ends/forced-edges miss, at the cost of O(checkpoints^2) extra work per search node. For comparing against the default search, not a default itself.">Order-conflict pruning</label>
-      <input id="useOrder" type="checkbox">
+      <label for="useLegCollide" title="Also run the leg-collision check (legsCollide) during Solve — catches some dead branches connectivity/dead-ends/forced-edges miss, at the cost of O(checkpoints^2) extra work per search node. For comparing against the default search, not a default itself.">Leg-collision pruning</label>
+      <input id="useLegCollide" type="checkbox">
     </div>
     <button id="solveBtn" class="primary wide">Solve</button>
   </aside>
@@ -129,8 +133,8 @@
         <input id="showProp" type="checkbox">
       </div>
       <div class="field field-row">
-        <label for="showOrder" title="Flag when the current path already makes it impossible to reach the remaining checkpoints in order, even if the board still looks open">Order conflicts</label>
-        <input id="showOrder" type="checkbox">
+        <label for="showLegCollide" title="Flag when two remaining checkpoint-to-checkpoint legs are already forced to need the same cell, making the position unsolvable even if the board still looks open">Leg collisions</label>
+        <input id="showLegCollide" type="checkbox">
       </div>
     </div>
 

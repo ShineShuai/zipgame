@@ -1,7 +1,7 @@
 import { maxNumber } from '../../core/model.js';
 import { hasWallId } from '../../core/edges.js';
 import { polyPoints } from '../../view/geometry.js';
-import { boardConnectivity, boardPropagation, boardLegOrder } from '../../core/connectivity.js';
+import { boardConnectivity, boardPropagation, boardLegCollide } from '../../core/connectivity.js';
 
 export const TPL_C = '#8b93b8', PLAY_C = '#5b7cfa', SOL_C = ['#ffa62b', '#38bdf8'];
 export const cellSizeFor = n => n <= 5 ? 66 : n <= 7 ? 54 : 46;
@@ -71,7 +71,7 @@ export function renderBoard(board, stage, V) {
 // showProp: draw forced-edge deduction — pinned connections (.conn-forced cells + short highlighted
 // segments for each forced edge) and flag when the deduction alone already proves the position stuck.
 // Each reads from its own pass (boardConnectivity / boardPropagation) computed once if enabled.
-export function paintPlay(refs, n, path, P, showConn, showDead, showProp, showOrder) {
+export function paintPlay(refs, n, path, P, showConn, showDead, showProp, showLegCollide) {
   if (!refs.line) return;
   const done = path.length === n * n;
   refs.line.setAttribute('points', polyPoints(n, path)); refs.line.style.display = path.length > 1 ? '' : 'none';
@@ -84,20 +84,20 @@ export function paintPlay(refs, n, path, P, showConn, showDead, showProp, showOr
 
   if (refs.propLayer) refs.propLayer.innerHTML = '';
   if (!refs.cells) return;
-  if ((!showConn && !showDead && !showProp && !showOrder) || done || !path.length) {
-    for (const c of refs.cells) if (c) c.classList.remove('conn-dead', 'conn-unreachable', 'conn-forced', 'conn-stuck', 'conn-order-stuck');
+  if ((!showConn && !showDead && !showProp && !showLegCollide) || done || !path.length) {
+    for (const c of refs.cells) if (c) c.classList.remove('conn-dead', 'conn-unreachable', 'conn-forced', 'conn-stuck', 'conn-leg-stuck');
     return;
   }
   const { deadEnd, unreachable } = (showConn || showDead) ? boardConnectivity(P, path) : { deadEnd: new Set(), unreachable: new Set() };
   const { dirs, infeasible } = showProp ? boardPropagation(P, path) : { dirs: null, infeasible: false };
-  const { infeasible: orderInfeasible } = showOrder ? boardLegOrder(P, path) : { infeasible: false };
+  const { infeasible: legInfeasible } = showLegCollide ? boardLegCollide(P, path) : { infeasible: false };
   for (let i = 0; i < refs.cells.length; i++) {
     const c = refs.cells[i]; if (!c) continue;
     c.classList.toggle('conn-dead', showDead && deadEnd.has(i));
     c.classList.toggle('conn-unreachable', showConn && unreachable.has(i));
     c.classList.toggle('conn-forced', showProp && dirs && dirs[i] !== 0);
     c.classList.toggle('conn-stuck', showProp && infeasible && i === path[path.length - 1]);
-    c.classList.toggle('conn-order-stuck', showOrder && orderInfeasible && i === path[path.length - 1]);
+    c.classList.toggle('conn-leg-stuck', showLegCollide && legInfeasible && i === path[path.length - 1]);
   }
   if (showProp && dirs && refs.propLayer) {
     for (let i = 0; i < n * n; i++) {

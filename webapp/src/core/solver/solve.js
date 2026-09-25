@@ -17,11 +17,12 @@ const POPCOUNT = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
 //             true = next segment only, 'all' = every remaining forward segment
 //   pocket    single-entrance pocket check (see makePocketOk() in prune.js)
 //   parity    bipartite slack check (see sufParity below)
-//   order     cross-leg forced-corridor collision check (see legsCollide() in prune.js);
-//             O(K^2) segBlocker calls per node, so meaningfully pricier than the others
-// prune2, prop, seg, pocket, parity and order only prune: they never change the solutions found
-// or their DFS order. They do change how many nodes are visited, which is why they are opt-in
-// (nodeCap-dependent generation must stay reproducible for a given ALGO_VERSION).
+//   legCollide cross-leg collision check — two checkpoint-to-checkpoint legs forced to need the
+//             same cell (see legsCollide() in prune.js); O(K^2) segBlocker calls per node, so
+//             meaningfully pricier than the others; checked last for that reason
+// prune2, prop, seg, pocket, parity and legCollide only prune: they never change the solutions
+// found or their DFS order. They do change how many nodes are visited, which is why they are
+// opt-in (nodeCap-dependent generation must stay reproducible for a given ALGO_VERSION).
 //
 // Returns { count, exceeded, nodes, paths? }. Pure: no DOM, no timers, no randomness.
 export function solve(p, opts = {}) {
@@ -305,7 +306,7 @@ export function solve(p, opts = {}) {
     for (let i = 0; i < T; i++) if (cp[i] !== 0) needCp[i] = 1;
     pocketOk = makePocketOk(nb, T, vis, needCp);
   }
-  const ORDER = !!opts.order;
+  const LEG_COLLIDE = !!opts.legCollide;
 
   // ---------- search ----------
 
@@ -341,7 +342,7 @@ export function solve(p, opts = {}) {
     // segBlocker calls) the cross-leg forced-corridor collision check. See legsCollide() in
     // prune.js for what it catches that none of the earlier checks do.
     let feasible = noDeadEnd(cell) && connOk(cell, remaining) && (!PROP || propagate(cell, count)) && (!POCKET || pocketOk(cell));
-    if (feasible && ORDER && need <= K) {
+    if (feasible && LEG_COLLIDE && need <= K) {
       const legs = [[cell, pos[need]]];
       for (let k = need; k < K; k++) legs.push([pos[k], pos[k + 1]]);
       feasible = !legsCollide(nb, T, vis, legs);

@@ -126,18 +126,18 @@ t('solver: parity == baseline (count, paths, DFS order), nodes <= baseline, matc
     }
   } ok(cmp === 1800);
 });
-t('solver: order == baseline (count, paths, DFS order), nodes <= baseline, matches brute force', () => {
+t('solver: legCollide == baseline (count, paths, DFS order), nodes <= baseline, matches brute force', () => {
   let cmp = 0;
-  for (let s = 1; s <= 120; s++) { const n = 3 + (s % 2), p = randPuzzle(s, n, 2 + (s % 4), 0.15 * (s % 4)); eq(solve(p, { limit: 1e9, nodeCap: 1e7, order: true }).count, brute(p), `brute ${s}`); }
+  for (let s = 1; s <= 120; s++) { const n = 3 + (s % 2), p = randPuzzle(s, n, 2 + (s % 4), 0.15 * (s % 4)); eq(solve(p, { limit: 1e9, nodeCap: 1e7, legCollide: true }).count, brute(p), `brute ${s}`); }
   for (let s = 1; s <= 150; s++) {
     const n = 3 + (s % 4), p = randPuzzle(s, n, 2 + (s % 5), 0.05 * (s % 9));
     for (const extra of [{}, { prune2: true }, { prop: true }, { seg: true }, { pocket: true }, { parity: true }, { prop: true, pocket: true, parity: true }]) for (const limit of [2, 1e9]) {
-      const a = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true }), b = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true, order: true });
+      const a = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true }), b = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true, legCollide: true });
       ok(!a.exceeded && !b.exceeded); eq(b.count, a.count, `count ${s}`); eq(b.paths, a.paths, `paths ${s}`); ok(b.nodes <= a.nodes, `nodes ${s}`); cmp++;
     }
   } ok(cmp === 2100);
 });
-t('solver: order catches the reported forced-corridor-collision case (fewer nodes than baseline)', () => {
+t('solver: legCollide catches the reported forced-corridor-collision case (fewer nodes than baseline)', () => {
   const n = 7, p = makePuzzle(n);
   const rc = (r, c) => r * n + c;
   for (const [r, c, k] of [[0, 0, 6], [0, 5, 5], [1, 5, 7], [3, 2, 4], [3, 6, 3], [5, 1, 1], [6, 5, 2]]) p.cp[rc(r, c)] = k;
@@ -145,18 +145,18 @@ t('solver: order catches the reported forced-corridor-collision case (fewer node
     setWallId(p.walls, t === 'V' ? edgeId(n, rc(r, c), rc(r, c + 1)) : edgeId(n, rc(r, c), rc(r + 1, c)), true);
   }
   // At nodeCap 5000, plain search doesn't find the puzzle's solution before exhausting the
-  // budget; order-pruning does, on this exact instance — a direct demonstration of the collision
-  // check's benefit, not just equivalence.
+  // budget; legCollide-pruning does, on this exact instance — a direct demonstration of the
+  // collision check's benefit, not just equivalence.
   const a = solve(p, { limit: 2, nodeCap: 5000, capture: true });
-  const b = solve(p, { limit: 2, nodeCap: 5000, capture: true, order: true });
+  const b = solve(p, { limit: 2, nodeCap: 5000, capture: true, legCollide: true });
   ok(a.exceeded && a.count === 0, 'sanity: baseline should NOT resolve this instance within 5000 nodes');
-  ok(b.count === 1, `order should find the (unique) solution within the same budget (got count=${b.count})`);
+  ok(b.count === 1, `legCollide should find the (unique) solution within the same budget (got count=${b.count})`);
   // Full-budget equivalence: same solution set once both are allowed to finish.
   const aFull = solve(p, { limit: 2, nodeCap: 2e6, capture: true });
-  const bFull = solve(p, { limit: 2, nodeCap: 2e6, capture: true, order: true });
+  const bFull = solve(p, { limit: 2, nodeCap: 2e6, capture: true, legCollide: true });
   ok(!aFull.exceeded && !bFull.exceeded);
   eq(bFull.count, aFull.count); eq(bFull.paths, aFull.paths);
-  ok(bFull.nodes <= aFull.nodes, `order should not need more nodes than baseline (base=${aFull.nodes}, order=${bFull.nodes})`);
+  ok(bFull.nodes <= aFull.nodes, `legCollide should not need more nodes than baseline (base=${aFull.nodes}, legCollide=${bFull.nodes})`);
 });
 t('forcedEdges: standalone deduction sound against exhaustive completion enumeration', () => {
   // For a given (puzzle, path-prefix, head), enumerate every valid completion by brute force.

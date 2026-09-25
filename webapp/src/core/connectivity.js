@@ -59,22 +59,24 @@ export function boardPropagation(p, path) {
   return forcedEdges(nb, T, vis, head, end);
 }
 
-// Live checkpoint-order contradiction check, for the design app's play-mode overlay.
+// Live leg-collision check, for the design app's play-mode overlay.
 //
 // Drives legsCollide() from solver/prune.js: for the remaining journey head -> next checkpoint ->
 // next -> ... -> end, each hop's forced must-pass-through cells (segBlocker) must not collide with
 // another hop's — a Hamiltonian path visits every cell once, so two different hops both requiring
 // the same cell (other than the one checkpoint they share) is a proof the position is already
 // unsolvable, even when connOk/dead-ends/forced-edge propagation all still say the position looks
-// fine. See legsCollide()'s own comment for the full soundness argument — general to any puzzle,
-// not tied to how it was generated. Pure, no DOM.
+// fine. This is not a checkpoint-order check (the order is fixed and never in question) — it is
+// purely about two legs' required cells physically colliding. See legsCollide()'s own comment for
+// the full soundness argument — general to any puzzle, not tied to how it was generated. Pure, no
+// DOM.
 //
 // Returns { infeasible: boolean } — true means the current position, however open it still looks
 // by every other check, cannot be completed. Cost is O(K^2) segBlocker calls (K = remaining
 // checkpoints), each proportional to the size of the free region — fine for a one-shot UI check on
 // pointer move, not something to run unconditionally per solver node (see prune.js for that
 // tradeoff if it's ever wired into solve()).
-export function boardLegOrder(p, path) {
+export function boardLegCollide(p, path) {
   const { nb, T } = buildNeighbors(p);
   const vis = new Uint8Array(T);
   for (const c of path) vis[c] = 1;

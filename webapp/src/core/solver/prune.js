@@ -314,9 +314,12 @@ export function segBlocker(nb, T, vis, s, t) {
   return forced;
 }
 
-// General checkpoint-order contradiction check: does the current position already force two
-// DIFFERENT, non-adjacent legs of the remaining journey to both need the same cell — which is
-// impossible, since a Hamiltonian path visits every cell once?
+// Leg collision check: does the current position already force two DIFFERENT legs of the
+// remaining journey — checkpoint-to-checkpoint hops, each taken in the fixed, already-correct
+// visiting order — to both need the same physical cell? That's impossible, since a Hamiltonian
+// path visits every cell once. This is not about checkpoint ORDER (the order is never in
+// question here, only whether two legs' required cells physically overlap) — "leg collision" is
+// the accurate name; avoid calling it an order or sequencing check.
 //
 // For each pair of remaining legs (legs[i], legs[i+1], ..., a leg is one (s, t) checkpoint-to-
 // checkpoint hop, with the first leg starting at the live head), segBlocker(s, t) gives the cells
