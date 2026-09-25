@@ -12,11 +12,12 @@
   <div class="app-bar-inner">
     <a class="brand" href="../index.html" aria-label="Zip home">
       <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
-        <rect width="32" height="32" rx="9" fill="#3b68ee"/>
-        <path d="M7 9h14v7H11v7h14" fill="none" stroke="#ffb020" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+        <use href="../assets/images/zip.svg" />
       </svg>
       <span>Zip</span>
     </a>
+    <button class="btn secondary mute-btn" id="muteBtn" type="button"
+            aria-pressed="false" title="Mute">🔊 Sound on</button>
   </div>
 </header>
 <div id="app"></div>

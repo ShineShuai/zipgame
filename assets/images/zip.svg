@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- Main Background Container -->
+  <rect width="48" height="48" rx="2" fill="#ffffff"/>
+
+  <!-- Soft Blue 3x3 Grid (Starting at 0,0) -->
+  <g stroke="#e3e9fa" stroke-width="1" stroke-linecap="round">
+    <!-- Outer Grid Border (0,0 to 48,48) -->
+    <rect x="0.5" y="0.5" width="47" height="47" fill="none" rx="1.5"/>
+    
+    <!-- Vertical Inner Lines -->
+    <line x1="16" y1="0" x2="16" y2="48" />
+    <line x1="32" y1="0" x2="32" y2="48" />
+    
+    <!-- Horizontal Inner Lines -->
+    <line x1="0" y1="16" x2="48" y2="16" />
+    <line x1="0" y1="32" x2="48" y2="32" />
+  </g>
+  
+  <!-- Foreground Orange Path and Blue Indicator Nodes (Shifted -8px) -->
+  <path d="M8 8h32v16H8v16h32" fill="none" stroke="#FFB020" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="8" cy="8" r="6" fill="#3B68EE"/>
+  <circle cx="40" cy="40" r="6" fill="#3B68EE"/>
+  
+  <!-- Centered Numbers (Shifted -8px) -->
+  <g fill="#ffffff" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="10" font-weight="bold" text-anchor="middle">
+    <text x="8" y="11.5">1</text>
+    <text x="40" y="43.5">2</text>
+  </g>
+</svg>

@@ -66,6 +66,12 @@ b { color: var(--heading); font-variant-numeric: tabular-nums; }
   text-decoration: none;
 }
 .logo { width: 32px; height: 32px; }
+.mute-btn {
+  margin-left: auto;        /* pins the button to the right edge of .app-bar-inner */
+  min-height: 38px;
+  padding: 6px 16px;
+  font-size: 0.9rem;
+}
 
 /* ---------- page ---------- */
 
@@ -289,6 +295,7 @@ tr:last-child td { border-bottom: 0; }
 @media (max-width: 640px) {
   #app { padding: 16px 14px 40px; }
   .app-bar-inner { padding: 0 14px; min-height: 54px; }
+  .mute-btn { min-height: 34px; padding: 4px 12px; font-size: 0.82rem; }
   .card { padding: 18px 16px; margin-bottom: 16px; }
   .board-card { padding: 14px 12px; }
   .grid-wrap { padding: 6px; border-radius: 18px; margin-top: 12px; }
