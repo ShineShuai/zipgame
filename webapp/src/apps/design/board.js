@@ -1,6 +1,6 @@
 import { maxNumber } from '../../core/model.js';
 import { hasWallId } from '../../core/edges.js';
-import { polyPoints } from '../../view/geometry.js';
+import { polyPoints, wallSegments, cellCenter } from '../../view/geometry.js';
 import { boardConnectivity, boardPropagation, boardLegCollide } from '../../core/connectivity.js';
 
 export const TPL_C = '#8b93b8', PLAY_C = '#5b7cfa', SOL_C = ['#ffa62b', '#38bdf8'];
@@ -116,4 +116,27 @@ function seg(x1, y1, x2, y2) {
   const e = document.createElementNS(NS, 'line');
   for (const [k, v] of Object.entries({ x1, y1, x2, y2, stroke: '#ffd23f', 'stroke-width': 0.1, 'stroke-linecap': 'round', opacity: 0.85 })) e.setAttribute(k, v);
   return e;
+}
+
+// Small static SVG snapshot of a puzzle (grid + walls + checkpoint dots + optional solved path),
+// for showing two generation/solve outcomes side by side. Not interactive, no DOM board underneath —
+// pure markup string so it can drop straight into an innerHTML'd panel (see renderCompare()).
+// p: { n, cp, walls }. path: optional array of cell indices (a found solution) to draw as a line.
+export function miniPreviewSvg(p, path, color) {
+  const n = p.n, PAD = 0.06;
+  const lines = wallSegments(p).map(([x1, y1, x2, y2]) =>
+    `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#5b6489" stroke-width="0.08" stroke-linecap="round"/>`).join('');
+  const dots = [];
+  for (let i = 0; i < n * n; i++) {
+    if (!p.cp[i]) continue;
+    const [cx, cy] = cellCenter(n, i);
+    const isEnd = p.cp[i] === maxNumber(p);
+    dots.push(`<circle cx="${cx}" cy="${cy}" r="0.16" fill="${p.cp[i] === 1 ? '#3ddc97' : isEnd ? '#ffa62b' : '#232a44'}" stroke="#8b93b8" stroke-width="0.03"/>`);
+  }
+  const pathLine = path && path.length > 1
+    ? `<polyline points="${polyPoints(n, path)}" fill="none" stroke="${color}" stroke-width="0.09" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>` : '';
+  return `<svg viewBox="${-PAD} ${-PAD} ${n + 2 * PAD} ${n + 2 * PAD}" class="mini-preview">
+    <rect x="0" y="0" width="${n}" height="${n}" fill="none" stroke="#232a44" stroke-width="0.05"/>
+    ${pathLine}${lines}${dots.join('')}
+  </svg>`;
 }

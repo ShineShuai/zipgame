@@ -10,6 +10,8 @@ import { boardConnectivity } from '../src/core/connectivity.js';
 import { buildNeighbors, makeNoDeadEnd, forcedEdges, legsCollide } from '../src/core/solver/prune.js';
 import { generate, generateUnique, randomPathPuzzle, pickK, PLAY_SIZES } from '../src/core/gen/generate.js';
 import { scatter } from '../src/core/gen/checkpoints.js';
+import { encodeFlags, decodeFlags, flagsToHex, hexToFlags, DEFAULT_FLAGS_INT, DEFAULT_GEN_FLAGS } from '../src/core/gen/flags.js';
+import { minimizeWalls } from '../src/core/gen/walls.js';
 import { runSync } from '../src/core/run.js';
 import { createHoldReveal } from '../src/ui/hold-reveal.js';
 import { createDaily, utcDayNumber } from '../src/features/daily.js';
@@ -500,6 +502,55 @@ t('generateUnique hardest: uses every try, keeps the max-node candidate, bounds 
     eq(solve(h.puzzle, { limit: 2, nodeCap: 2e6 }).count, 1);
   }
   const none = runSync(generateUnique(6, 2, makeRng(1), { maxWalls: 0, tries: 2, hardest: true })); eq([none.unique, none.found, wallCount(none.puzzle)], [false, 0, 0]);
+});
+
+t('flags: encode/decode round trip (all-off, all-on, seg tri-state, path/cps, per-phase divergence)', () => {
+  const off = { prop: false, legCollide: false, pocket: false, parity: false, prune2: false, seg: false };
+  eq(decodeFlags(encodeFlags({ score: off, path: 'warnsdorff', cps: 'gap' })), { build: off, minimize: off, score: off, path: 'warnsdorff', cps: 'gap' });
+  const on = { prop: true, legCollide: true, pocket: true, parity: true, prune2: true, seg: 'all' };
+  eq(decodeFlags(encodeFlags({ score: on, path: 'backbite', cps: 'random' })), { build: on, minimize: on, score: on, path: 'backbite', cps: 'random' });
+  for (const seg of [false, true, 'all']) eq(decodeFlags(encodeFlags({ score: { seg } })).score.seg, seg);
+  // per-phase divergence: each phase keeps its own byte independently
+  const build = { prop: true, legCollide: false, pocket: false, parity: false, prune2: false, seg: false };
+  const minimize = { prop: false, legCollide: true, pocket: false, parity: false, prune2: false, seg: true };
+  const score = { prop: true, legCollide: true, pocket: true, parity: false, prune2: true, seg: 'all' };
+  const v = encodeFlags({ build, minimize, score, path: 'backbite', cps: 'gap' });
+  eq(decodeFlags(v), { build, minimize, score, path: 'backbite', cps: 'gap' });
+  // single-phase encode (only `score` given, as the plain Solve button would) mirrors into build/minimize too
+  eq(decodeFlags(encodeFlags({ build: on })), { build: on, minimize: on, score: on, path: 'warnsdorff', cps: 'gap' });
+  // hex round trip, both cases, plus bare-hex and decimal input
+  eq(hexToFlags(flagsToHex(v)), v); eq(flagsToHex(0), '0x0');
+  eq(hexToFlags('0X' + v.toString(16).toUpperCase()), v);
+  eq(hexToFlags('ff'), 0xff); eq(hexToFlags('123'), 123); // no a-f digit and no 0x prefix -> read as decimal
+  eq(hexToFlags('not-hex'), null); eq(hexToFlags(''), null); eq(hexToFlags('  '), null);
+  // default constant matches generate()/generateUnique()'s actual defaults (prop on, rest off, backbite/gap)
+  eq(decodeFlags(DEFAULT_FLAGS_INT), { build: DEFAULT_GEN_FLAGS, minimize: DEFAULT_GEN_FLAGS, score: DEFAULT_GEN_FLAGS, path: 'backbite', cps: 'gap' });
+});
+
+t('generateUnique: o.flags with per-phase divergence actually reaches each phase\'s solve() calls, and o.flags overrides o.prop/o.legCollide', () => {
+  // build=legCollide off, minimize=legCollide on: force it by giving minimize a tiny nodeCap that
+  // only survives with legCollide's extra pruning, and confirm the run still succeeds end-to-end.
+  const flags = { build: { prop: true, legCollide: false, seg: false, pocket: false, parity: false, prune2: false },
+                   minimize: { prop: true, legCollide: true, seg: false, pocket: false, parity: false, prune2: false },
+                   score: { prop: true, legCollide: true, seg: false, pocket: false, parity: false, prune2: false },
+                   path: 'backbite', cps: 'gap' };
+  const r = runSync(generateUnique(6, 6, makeRng(9), { maxWalls: 6, flags, prop: false /* must be ignored: flags wins */ }));
+  eq(r.unique, true); eq(solve(r.puzzle, { limit: 2, nodeCap: 2e6 }).count, 1);
+  // o.flags absent still behaves exactly like plain o.prop/o.legCollide (no regression path)
+  const withProp = runSync(generateUnique(6, 6, makeRng(9), { maxWalls: 6, prop: true, legCollide: false }));
+  const withoutFlags = runSync(generateUnique(6, 6, makeRng(9), { maxWalls: 6 }));
+  eq(serialize(withProp.puzzle), serialize(withoutFlags.puzzle));
+});
+
+t('minimizeWalls: options-object form matches the legacy boolean-5th-arg form exactly (back-compat)', () => {
+  const rnd1 = makeRng(4), a = randomPathPuzzle(6, 6, rnd1);
+  for (let i = 0; i < 8; i++) setWallId(a.walls, i, true);
+  const orderA = [...Array(8).keys()];
+  const b = { n: a.n, cp: a.cp.slice(), walls: a.walls.slice() };
+  const rndA = makeRng(1), rndB = makeRng(1);
+  const legacy = runSync(minimizeWalls(a, orderA, rndA, 5000, maxNumber(a), true));
+  const opts = runSync(minimizeWalls(b, orderA, rndB, 5000, maxNumber(b), { prop: true }));
+  eq(legacy, opts); eq(serialize(a), serialize(b));
 });
 
 // ---- per-size daily counters & today/total stats (fake storage + fake clock) ----

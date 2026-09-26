@@ -38,8 +38,9 @@ export function pickK(Kmin, Kmax, rnd) {
 
 // One attempt: path -> checkpoints -> walls until unique. Returns the puzzle (with .path and .order) or null.
 // o.path: 'warnsdorff' | 'backbite';  o.cps: 'gap' | 'random';  o.prop: solver propagation.
-// o.legCollide: leg-collision pruning (see solve.js); o.counts: optional call-count accumulator,
-// passed straight through to makeUnique.
+// o.legCollide: leg-collision pruning (see solve.js); o.flags: optional full build-phase solve()
+// opts (see gen/flags.js), overrides o.prop/o.legCollide when given, passed straight through to
+// makeUnique; o.counts: optional call-count accumulator, passed straight through to makeUnique.
 export function* tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, o = {}) {
   const findPath = o.path === 'backbite' ? backbite : warnsdorff;
   const path = findPath(n, rnd);
@@ -53,7 +54,7 @@ export function* tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, o = {
     p.cp[path[q]] = i + 1;
   });
 
-  const order = yield* makeUnique(p, path, rnd, { nodeCap, wallBudget, seedFraction, K, prop: o.prop, legCollide: o.legCollide, counts: o.counts });
+  const order = yield* makeUnique(p, path, rnd, { nodeCap, wallBudget, seedFraction, K, prop: o.prop, legCollide: o.legCollide, flags: o.flags, counts: o.counts });
   if (!order) return null;
   p.path = path;
   p.order = order;
@@ -213,6 +214,11 @@ function* tag(gen, extra) {
 //   applied to every internal solve() call this makes (the makeUnique probe/search loop,
 //   minimizeWalls' per-wall checks, and the hardest-candidate node count), not just the final
 //   check, so the counts breakdown below reflects its real cost across a full generation run.
+// o.flags: optional result of decodeFlags() (see gen/flags.js) — { build, minimize, score, path,
+//   cps } — lets each of the 3 solve() phases (build/minimize/score) use a different set of
+//   solver prunes, and path/cps override the hardcoded 'backbite'/'gap' below. When given, it
+//   overrides o.prop/o.legCollide entirely (each phase byte already carries its own prop/legCollide
+//   bits); when absent, behaviour is exactly o.prop/o.legCollide applied to every phase, as before.
 // Random by design (caller supplies rnd), so none of this touches generate().
 // Events: { frac, walls, K, attempt, of, found }.
 // Returns { puzzle, unique, walls, removed, attempts, found, nodes?, counts }; on failure walls = 0.
@@ -225,6 +231,12 @@ export function* generateUnique(n, K, rnd, o = {}) {
   const nodeCap = o.nodeCap || 50000;
   const prop = o.prop ?? true;
   const legCollide = o.legCollide ?? false;
+  const f = o.flags || null;
+  const buildFlags = f ? f.build : { prop, legCollide };
+  const minimizeFlags = f ? f.minimize : { prop, legCollide };
+  const scoreFlags = f ? f.score : { prop, legCollide };
+  const pathAlgo = f ? f.path : 'backbite';
+  const cpsAlgo = f ? f.cps : 'gap';
   const tries = o.tries || (unbounded ? 3 : CAPPED_TRIES);
   const wallBudget = unbounded ? null : Math.ceil(maxWalls * 2.5);
   const seedFraction = designSeedFraction(n, maxWalls);
@@ -235,13 +247,13 @@ export function* generateUnique(n, K, rnd, o = {}) {
   let found = 0;
   for (let attempt = 0; attempt < tries; attempt++) {
     const extra = { attempt: attempt + 1, of: tries };
-    const gen = tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, { path: 'backbite', cps: 'gap', prop, legCollide, counts });
+    const gen = tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, { path: pathAlgo, cps: cpsAlgo, flags: buildFlags, counts });
     const p = yield* tag(gen, extra);
     if (p) {
       const before = p.order.length;
       let removed = 0;
       if (before) {
-        const minimized = yield* tag(minimizeWalls(p, p.order, rnd, nodeCap * 2, K, prop, legCollide, counts), extra);
+        const minimized = yield* tag(minimizeWalls(p, p.order, rnd, nodeCap * 2, K, { flags: minimizeFlags, counts }), extra);
         removed = minimized.removed;
       }
       if (unbounded || before - removed <= maxWalls) {
@@ -251,7 +263,7 @@ export function* generateUnique(n, K, rnd, o = {}) {
         if (!o.hardest) return { ...candidate, found, counts: withTotal() };
         // Difficulty metric: solver nodes for the uniqueness proof.
         counts.other++;
-        candidate.nodes = solve(p, { limit: 2, nodeCap: nodeCap * 2, prop, legCollide }).nodes;
+        candidate.nodes = solve(p, { limit: 2, nodeCap: nodeCap * 2, ...scoreFlags }).nodes;
         if (!best || candidate.nodes > best.nodes) best = candidate;
       }
     }

@@ -15,13 +15,17 @@ function edgeMarks(n, path) {
 // Add walls to p (checkpoints set, no walls) until it has exactly one solution.
 // `path` is the anchor solution: none of its edges is ever walled.
 // cfg: { nodeCap, wallBudget (null = all edges), seedFraction, K, prop (solver propagation),
-//        legCollide (leg-collision pruning), counts (optional call-count accumulator) }
+//        legCollide (leg-collision pruning), counts (optional call-count accumulator),
+//        flags (optional full solve() opts object — pocket/parity/prune2/seg — overrides
+//        prop/legCollide above when given; see gen/flags.js. Absent = same as before: only
+//        prop/legCollide reach solve()) }
 // counts, when passed, is mutated in place: counts.makeUnique is incremented once per solve()
 // call made here (the probe loop and the main search loop both count against it).
 // Returns the wall insertion order (array of edge ids), or null if no unique puzzle was reached.
 export function* makeUnique(p, path, rnd, cfg) {
   const n = p.n;
-  const { nodeCap, seedFraction, K, prop, legCollide, counts } = cfg;
+  const { nodeCap, seedFraction, K, prop, legCollide, counts, flags } = cfg;
+  const solveOpts = flags ? { ...flags } : { prop, legCollide };
   const all = allEdges(n);
   const maxWalls = cfg.wallBudget == null ? all.length : cfg.wallBudget;
   const anchor = edgeMarks(n, path);
@@ -35,7 +39,7 @@ export function* makeUnique(p, path, rnd, cfg) {
   };
   const search = (cap, capture) => {
     if (counts) counts.makeUnique++;
-    return solve(p, { limit: 2, nodeCap: cap, capture, prop, legCollide });
+    return solve(p, { limit: 2, nodeCap: cap, capture, ...solveOpts });
   };
   const progress = () => ({ frac: null, walls: order.length, K });
 
@@ -88,15 +92,22 @@ export function* makeUnique(p, path, rnd, cfg) {
 }
 
 // Remove every wall (random order, once) whose removal keeps the solution unique.
-// Mutates p.walls. counts, when passed, has counts.minimizeWalls incremented once per solve()
-// call made here. Returns { removed, kept }.
-export function* minimizeWalls(p, order, rnd, checkCap, K, prop, legCollide, counts) {
+// Mutates p.walls. Returns { removed, kept }.
+// opts: { prop, legCollide, flags (optional full solve() opts — see makeUnique above; overrides
+//        prop/legCollide when given), counts (optional call-count accumulator: counts.minimizeWalls
+//        is incremented once per solve() call made here) }
+// Back-compat: a bare boolean 6th positional arg (the old `prop`) is still accepted, so any code
+// still calling minimizeWalls(p, order, rnd, checkCap, K, true) keeps working unchanged.
+export function* minimizeWalls(p, order, rnd, checkCap, K, opts = {}) {
+  if (typeof opts === 'boolean') opts = { prop: opts };
+  const { prop, legCollide, counts, flags } = opts;
+  const solveOpts = flags ? { ...flags } : { prop, legCollide };
   const list = shuffle([...order], rnd);
   let kept = list.length;
   for (const wall of list) {
     setWallId(p.walls, wall, false);
     if (counts) counts.minimizeWalls++;
-    const check = solve(p, { limit: 2, nodeCap: checkCap, prop, legCollide });
+    const check = solve(p, { limit: 2, nodeCap: checkCap, ...solveOpts });
     if (check.count === 1 && !check.exceeded) {
       kept--;
     } else {

@@ -4,7 +4,7 @@ import { serialize, parse } from '../../core/format.js';
 import { shuffle, makeRng } from '../../core/rng.js';
 import { solve } from '../../core/solver/solve.js';
 import { step } from '../../core/rules.js';
-import { randomPathPuzzle, generateUnique, CAPPED_TRIES } from '../../core/gen/generate.js';
+import { randomPathPuzzle, generateUnique, generate, CAPPED_TRIES } from '../../core/gen/generate.js';
 import { minimizeWalls } from '../../core/gen/walls.js';
 import { scatter } from '../../core/gen/checkpoints.js';
 import { cellAtPoint } from '../../view/geometry.js';
@@ -13,12 +13,58 @@ import { bindModal, copyText } from '../../ui/modal.js';
 import { installHoldReveal } from '../../ui/hold-reveal.js';
 import { VERSION } from '../../version.js';
 import { renderBoard, paintPlay, cellSizeFor, TPL_C, SOL_C } from './board.js';
+import { mountFlagsPanel } from './flags-panel.js';
+import { runCompare } from './compare.js';
+import { renderCompareHtml } from './compare-view.js';
+import { DEFAULT_FLAGS_INT, PLAY_FLAGS_INT, decodeFlags, flagsToHex } from '../../core/gen/flags.js';
 
-const DEFAULT_NODE_LIMIT = 300000, rnd = Math.random, $ = id => document.getElementById(id);
+const DEFAULT_NODE_LIMIT = 300000, $ = id => document.getElementById(id);
+// Non-reproducible designer tools (scatter/random-path/random-walls/minimize) keep using plain
+// Math.random, same as before — only the Generate button (randPathUnique) is seed-reproducible.
+const rnd = Math.random;
 const boardEl = $('board'), stageEl = document.querySelector('.stage'), plural = (k, w) => `${k} ${w}${k === 1 ? '' : 's'}`;
 let P = makePuzzle(7), mode = 'number', selected = -1, buffer = '', solutions = [], solVisible = [], lastAborted = false, lastNodes = 0;
 let preview = null, previewVisible = true, playMode = false, playPath = [], drawing = false, refs = {}, numDrag = null, dragGhost = null, suppressClick = false, busy = false, modalMode = 'export', showConn = false, showDead = false, showProp = false, showLegCollide = false;
 const playStep = { truncate: true, strictOrder: true }, modal = bindModal($('modalBackdrop'));
+
+// ---------- seed + algorithm flags (above the board) ----------
+const compareMode = () => $('compareToggle').checked;
+// Random mode (default): the field is disabled and shows whatever seed the last run actually used
+// (so it can be copied for reproduction), but a fresh seed is drawn every time currentSeed() is
+// called (i.e. every Generate/Solve/Reproduce click). Fixed mode: the field is editable and that
+// exact value is used every time, unchanged, until the user edits it again.
+let seedMode = 'random';
+function setSeedMode(mode) {
+  seedMode = mode;
+  const inp = $('seedInput'), btn = $('seedMode');
+  inp.disabled = mode === 'random';
+  inp.placeholder = mode === 'random' ? 'random' : '';
+  btn.textContent = mode === 'random' ? '🎲 Random' : '📌 Fixed';
+  btn.classList.toggle('seed-mode-fixed', mode === 'fixed');
+}
+$('seedMode').onclick = () => setSeedMode(seedMode === 'random' ? 'fixed' : 'random');
+setSeedMode('random');
+function currentSeed() {
+  if (seedMode === 'fixed') {
+    const v = parseInt($('seedInput').value, 10);
+    if (Number.isFinite(v) && v >= 0) return v >>> 0;
+    // Fixed mode but no valid number entered yet: fall through to drawing one, same as random
+    // mode, but leave seedMode alone — the field is still editable afterward.
+  }
+  const fresh = Math.floor(Math.random() * 0xffffffff) >>> 0;
+  $('seedInput').value = fresh; // reveal what was actually used, so it can be reproduced/copied
+  return fresh;
+}
+const flagsSingle = mountFlagsPanel($('flagsSingle'), '', DEFAULT_FLAGS_INT);
+const flagsA = mountFlagsPanel($('flagsCompare').querySelector('[data-side="A"]'), 'A', DEFAULT_FLAGS_INT);
+const flagsB = mountFlagsPanel($('flagsCompare').querySelector('[data-side="B"]'), 'B', DEFAULT_FLAGS_INT);
+$('compareToggle').onchange = () => {
+  const on = compareMode();
+  $('flagsSingle').style.display = on ? 'none' : '';
+  $('flagsCompare').style.display = on ? 'flex' : 'none';
+  $('compareResult').style.display = 'none';
+};
+$('playFlagsHex').textContent = flagsToHex(PLAY_FLAGS_INT);
 
 // ---------- helpers ----------
 const view = () => ({ P, cellSize: cellSizeFor(P.n), mode, selected, buffer, playMode, playPath, preview, previewVisible, solutions, solVisible, dragSrc: numDrag && numDrag.dragging ? numDrag.src : -1 });
@@ -173,17 +219,40 @@ function doSolve() {
   if (playMode) exitPlay();
   const v = validate(P); if (!v.ok) { clearSolutions(); setStatus(v.msg, 'error'); return; }
   previewVisible = false;
-  const useLegCollide = $('useLegCollide').checked;
-  const t0 = performance.now();
-  const r = solve(P, { limit: 2, nodeCap: nodeLimit(), capture: true, prop: true, legCollide: useLegCollide });
-  const ms = performance.now() - t0;
-  solutions = r.paths; solVisible = solutions.map(() => true); lastAborted = r.exceeded; lastNodes = r.nodes;
+  $('compareResult').style.display = 'none';
+  if (!compareMode()) {
+    const flags = decodeScoreFlags(flagsSingle.get());
+    const t0 = performance.now();
+    const r = solve(P, { limit: 2, nodeCap: nodeLimit(), capture: true, ...flags });
+    const ms = performance.now() - t0;
+    solutions = r.paths; solVisible = solutions.map(() => true); lastAborted = r.exceeded; lastNodes = r.nodes;
+    draw(); renderLegend(); updateWallCapTag();
+    const nodeInfo = ` (${r.nodes.toLocaleString()} nodes, ${ms.toFixed(0)}ms)`;
+    if (r.count >= 2) setStatus('Multiple solutions — this puzzle is NOT unique. Showing 2 (click the legend chips to toggle).' + nodeInfo, 'warn');
+    else if (r.count === 1) setStatus((r.exceeded ? 'Found 1 solution so far, but the search limit was reached — it may not be unique.' : 'Unique solution found ✓') + nodeInfo, r.exceeded ? 'warn' : 'ok');
+    else setStatus((r.exceeded ? 'Search limit reached without finding a solution — the puzzle may be unsolvable.' : 'No solution exists for this puzzle.') + nodeInfo, r.exceeded ? 'warn' : 'error');
+    return;
+  }
+  // Compare mode: solve the same board with flag-set A and flag-set B, report both.
+  const fA = decodeScoreFlags(flagsA.get()), fB = decodeScoreFlags(flagsB.get());
+  const cap = nodeLimit();
+  const t0 = performance.now(); const rA = solve(P, { limit: 2, nodeCap: cap, capture: true, ...fA }); const msA = performance.now() - t0;
+  const t1 = performance.now(); const rB = solve(P, { limit: 2, nodeCap: cap, capture: true, ...fB }); const msB = performance.now() - t1;
+  solutions = rA.paths; solVisible = solutions.map(() => true); lastAborted = rA.exceeded; lastNodes = rA.nodes;
   draw(); renderLegend(); updateWallCapTag();
-  const nodeInfo = ` (${r.nodes.toLocaleString()} nodes${useLegCollide ? ', leg-collision pruning on' : ''}, ${ms.toFixed(0)}ms)`;
-  if (r.count >= 2) setStatus('Multiple solutions — this puzzle is NOT unique. Showing 2 (click the legend chips to toggle).' + nodeInfo, 'warn');
-  else if (r.count === 1) setStatus((r.exceeded ? 'Found 1 solution so far, but the search limit was reached — it may not be unique.' : 'Unique solution found ✓') + nodeInfo, r.exceeded ? 'warn' : 'ok');
-  else setStatus((r.exceeded ? 'Search limit reached without finding a solution — the puzzle may be unsolvable.' : 'No solution exists for this puzzle.') + nodeInfo, r.exceeded ? 'warn' : 'error');
+  const fmt = r => `${r.count >= 2 ? 'multiple solutions' : r.count === 1 ? (r.exceeded ? '1 found, capped' : 'unique') : (r.exceeded ? 'capped, none found' : 'no solution')}, ${r.nodes.toLocaleString()} nodes`;
+  setStatus(`Solve comparison — A: ${msA.toFixed(0)}ms, ${fmt(rA)}. B: ${msB.toFixed(0)}ms, ${fmt(rB)}. Showing A's solution(s) on the board.`, 'ok');
+  $('compareResult').style.display = '';
+  $('compareResult').innerHTML = `<div class="compare-seed">Solve comparison (same board, no generation)</div><table class="compare-table">
+    <thead><tr><th></th><th>A</th><th>B</th></tr></thead>
+    <tbody>
+      <tr><th>Time</th><td>${msA.toFixed(0)}ms</td><td>${msB.toFixed(0)}ms</td></tr>
+      <tr><th>Result</th><td>${fmt(rA)}</td><td>${fmt(rB)}</td></tr>
+    </tbody></table>`;
 }
+// solve()'s opts shape (prop/legCollide/pocket/parity/prune2/seg) is exactly a flags.js phase
+// object already — decodeFlags(v).score is that object directly, nothing further to translate.
+function decodeScoreFlags(v) { return decodeFlags(v).score; }
 const int_ = (id, def, min) => { const v = parseInt($(id).value, 10); return Number.isFinite(v) && v >= min ? v : def; };
 const K_ = () => parseInt($('cpCount').value, 10) || P.n, W_ = () => { const v = parseInt($('wallCount').value, 10); return Number.isFinite(v) && v >= 0 ? v : P.n; };
 async function doMinimize() {
@@ -278,55 +347,63 @@ $('randPath').onclick = () => {
 $('randPathUnique').onclick = async () => {
   if (playMode) exitPlay();
   const K = Math.min(K_(), P.n * P.n), W = W_(), tries = int_('genTries', CAPPED_TRIES, 1), hardest = $('genHardest').checked;
-  const compareLegCollide = $('genCompareLegCollide').checked;
+  const seed = currentSeed(); // reads the Seed field, or picks+reveals a fresh one
   setBusy(true); setStatus('Generating…', '');
+  $('compareResult').style.display = 'none';
   try {
-    if (!compareLegCollide) {
-      const r = await runAsync(generateUnique(P.n, K, rnd, { maxWalls: W, tries, hardest }), { onEvent: e => setStatus(`Generating… retry ${e.attempt}/${e.of}${hardest ? ` · ${plural(e.found, 'candidate')}` : ''}${e.walls != null ? ` · ${plural(e.walls, 'wall')} so far` : ''}`, '') });
+    if (!compareMode()) {
+      const flags = decodeFlags(flagsSingle.get());
+      const r = await runAsync(generateUnique(P.n, K, makeRng(seed), { maxWalls: W, tries, hardest, flags }), { onEvent: e => setStatus(`Generating… retry ${e.attempt}/${e.of}${hardest ? ` · ${plural(e.found, 'candidate')}` : ''}${e.walls != null ? ` · ${plural(e.walls, 'wall')} so far` : ''}`, '') });
       adopt(r.puzzle); refresh();
       const used = `${plural(maxNumber(P), 'checkpoint')} (max ${K}), ${plural(r.walls, 'wall')} (max ${W})${r.removed ? `, ${r.removed} unnecessary removed` : ''}`;
-      if (r.unique) setStatus(hardest ? `Picked the puzzle with the most search nodes (${plural(r.nodes, 'node')}) of ${plural(r.found, 'candidate')} from ${tries} retries: ${used}. The template is shown dashed.` : `Generated a unique puzzle: ${used}; found on retry ${r.attempts}/${tries}. The template is shown dashed.`, 'ok');
-      else setStatus(`None of ${tries} retries produced a unique puzzle with ${plural(K, 'checkpoint')} and ≤ ${plural(W, 'wall')}. This does not mean none exists: the search is heuristic, not exhaustive, and each retry tests only one random path and checkpoint placement. Showing the wall-free path instead. Try again, raise Search retries, or raise Max walls / Max checkpoints (more checkpoints need fewer walls).`, 'warn');
+      if (r.unique) setStatus(hardest ? `Picked the puzzle with the most search nodes (${plural(r.nodes, 'node')}) of ${plural(r.found, 'candidate')} from ${tries} retries: ${used}. Seed ${seed}. The template is shown dashed.` : `Generated a unique puzzle: ${used}; found on retry ${r.attempts}/${tries}. Seed ${seed}. The template is shown dashed.`, 'ok');
+      else setStatus(`None of ${tries} retries produced a unique puzzle with ${plural(K, 'checkpoint')} and ≤ ${plural(W, 'wall')} (seed ${seed}). This does not mean none exists: the search is heuristic, not exhaustive, and each retry tests only one random path and checkpoint placement. Showing the wall-free path instead. Try again, raise Search retries, or raise Max walls / Max checkpoints (more checkpoints need fewer walls).`, 'warn');
       return;
     }
-    // Comparison mode: same random seed drives both runs (a fresh seed each click, so different
-    // clicks still get different puzzles), so the only difference between them is legCollide.
-    // Caveat: both runs start from an identical rnd sequence, but once a solve() outcome differs
-    // between them (legCollide accepting/rejecting a branch the baseline wouldn't), the walls
-    // placed and thus how much of the rnd sequence gets consumed can diverge too — so this is an
-    // honest same-seed comparison up to the first point they behave differently, not a guarantee
-    // that every subsequent attempt/candidate lines up between the two runs.
-    const seed = Math.floor(Math.random() * 0xffffffff) >>> 0;
-    setStatus('Generating… (baseline)', '');
-    const t0 = performance.now();
-    const off = await runAsync(generateUnique(P.n, K, makeRng(seed), { maxWalls: W, tries, hardest, legCollide: false }), { onEvent: e => setStatus(`Generating… (baseline) retry ${e.attempt}/${e.of}`, '') });
-    const msOff = performance.now() - t0;
-    setStatus('Generating… (leg-collision pruning)', '');
-    const t1 = performance.now();
-    const on = await runAsync(generateUnique(P.n, K, makeRng(seed), { maxWalls: W, tries, hardest, legCollide: true }), { onEvent: e => setStatus(`Generating… (leg-collision pruning) retry ${e.attempt}/${e.of}`, '') });
-    const msOn = performance.now() - t1;
-    // Each run can independently succeed or fail (fall through to generateUnique's own
-    // non-unique, wall-free fallback puzzle after exhausting `tries`) — report both outcomes
-    // honestly rather than assuming success, and never adopt a failed run's fallback puzzle
-    // silently as if it were a real result.
-    const fmt = r => `${r.unique ? 'unique, ' + plural(r.walls, 'wall') : 'FAILED — no unique puzzle found in ' + tries + ' retries'} (${r.counts.total.toLocaleString()} solve() calls: ${r.counts.makeUnique.toLocaleString()} in makeUnique, ${r.counts.minimizeWalls.toLocaleString()} in minimizeWalls, ${r.counts.other.toLocaleString()} other)`;
-    const summary = `Comparison at seed ${seed} — baseline: ${msOff.toFixed(0)}ms, ${fmt(off)}. Leg-collision pruning: ${msOn.toFixed(0)}ms, ${fmt(on)}.`;
-    if (off.unique && on.unique) {
-      // Both succeeded: show the leg-collision-pruning result, since that's the setting the
-      // checkbox is asking to preview, and both runs found a genuine unique puzzle.
-      adopt(on.puzzle); refresh();
-      setStatus(`${summary} Showing the leg-collision-pruning result.`, 'ok');
-    } else if (on.unique) {
-      adopt(on.puzzle); refresh();
-      setStatus(`${summary} Baseline failed to find a unique puzzle at this seed/budget; showing the leg-collision-pruning result, which did succeed.`, 'warn');
-    } else if (off.unique) {
-      adopt(off.puzzle); refresh();
-      setStatus(`${summary} Leg-collision pruning failed to find a unique puzzle at this seed/budget; showing the baseline result, which did succeed.`, 'warn');
+    // Compare mode: same seed drives both runs (see runCompare's caveat comment on how far the
+    // "same seed" guarantee actually extends once the two runs' solve() outcomes first diverge).
+    const flagsAv = flagsA.get(), flagsBv = flagsB.get();
+    const r = await runCompare({
+      n: P.n, K, maxWalls: W, tries, hardest, seed, flagsA: decodeFlags(flagsAv), flagsB: decodeFlags(flagsBv),
+      onEvent: (side, e) => setStatus(`Generating… (${side}) retry ${e.attempt}/${e.of}`, ''),
+    });
+    // Each run can independently succeed or fail (fall through to generateUnique's own non-unique,
+    // wall-free fallback puzzle after exhausting `tries`) — report both outcomes honestly rather
+    // than assuming success, and never adopt a failed run's fallback puzzle silently as if real.
+    $('compareResult').style.display = '';
+    $('compareResult').innerHTML = renderCompareHtml(r, flagsAv, flagsBv, tries);
+    const short = x => x.unique ? `unique, ${plural(x.walls, 'wall')}` : 'FAILED';
+    const summary = `Comparison at seed ${seed} — A: ${r.msA.toFixed(0)}ms, ${short(r.a)}. B: ${r.msB.toFixed(0)}ms, ${short(r.b)}.`;
+    if (r.a.unique && r.b.unique) {
+      // Both succeeded: show B (the "new" side, by convention — matches the old checkbox's
+      // behaviour of previewing the setting being compared against the baseline).
+      adopt(r.b.puzzle); refresh();
+      setStatus(`${summary} Showing B's result. See the table below for the full comparison.`, 'ok');
+    } else if (r.b.unique) {
+      adopt(r.b.puzzle); refresh();
+      setStatus(`${summary} A failed to find a unique puzzle at this seed/budget; showing B's result, which did succeed.`, 'warn');
+    } else if (r.a.unique) {
+      adopt(r.a.puzzle); refresh();
+      setStatus(`${summary} B failed to find a unique puzzle at this seed/budget; showing A's result, which did succeed.`, 'warn');
     } else {
       // Neither found a unique puzzle — do not adopt either fallback as if it were a real result.
-      // Leave the board as it was and say so plainly.
       setStatus(`${summary} Neither run found a unique puzzle within ${tries} retries and ≤ ${plural(W, 'wall')} — board left unchanged. Try again, raise Search retries, or raise Max walls / Max checkpoints.`, 'error');
     }
+  } finally { setBusy(false); }
+};
+$('reproducePlay').onclick = async () => {
+  if (playMode) exitPlay();
+  const seed = currentSeed();
+  setBusy(true); setStatus('Reproducing Play puzzle (generate())…', '');
+  $('compareResult').style.display = 'none';
+  try {
+    // generate() is the Play app's own algorithm (K-picking, multiple candidates minimized, keep
+    // cheapest) — structurally different from generateUnique() above, not just a different flags
+    // value, so this calls it directly rather than routing through the flags panel/Max
+    // checkpoints/Max walls, none of which apply here.
+    const p = await runAsync(generate(P.n, seed), { onEvent: e => setStatus(`Reproducing… ${plural(e.walls ?? 0, 'wall')} so far`, '') });
+    adopt(p); refresh();
+    setStatus(`Reproduced generate()'s puzzle for seed ${seed} at ${P.n}×${P.n} (flags always ${flagsToHex(PLAY_FLAGS_INT)} — generate() has no flags of its own yet). The template is shown dashed.`, 'ok');
   } finally { setBusy(false); }
 };
 $('randWalls').onclick = () => {

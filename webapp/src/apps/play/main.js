@@ -10,34 +10,14 @@ import { maxHints, computeHint, solutionOf } from '../../features/hints.js';
 import { cellAtPoint, pathD } from '../../view/geometry.js';
 import { bindModal, copyText } from '../../ui/modal.js';
 import { boardSvg, CELL, COLORS } from './board.js';
-import { sfx } from '../../../../assets/audio/sound.js';
 import { VERSION } from '../../version.js';
+import { PLAY_FLAGS_INT, flagsToHex } from '../../core/gen/flags.js';
 
 const SIZES = PLAY_SIZES;
 const S = { screen: 'menu', size: 7, puzzle: null, path: [], elapsed: 0, startTime: 0, timerId: null, finished: false,
-  gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, gotdDate: null,
-  gotdHint: null, hintsUsed: 0, hintCell: null, hintWrongCell: null, showDev: false,
-  muted: false};
+  gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, gotdDate: null, gotdHint: null, hintsUsed: 0, hintCell: null, hintWrongCell: null, showDev: false };
 let storage, store, daily, modal;
 const $ = id => document.getElementById(id), today = () => utcDateString(new Date()), dayNo = () => utcDayNumber(new Date()), sec = x => x.toFixed(1) + 's';
-
-// ---- mute UI ----
-// The button lives in index.html's .app-bar, outside #app, so it survives every render().
-// paintMuteBtn() just paints the existing element; toggleMute() calls it in place of render().
-function paintMuteBtn() {
-  const b = $('muteBtn');
-  if (!b) return;
-  b.textContent = S.muted ? '🔇 off' : '🔊 on';
-  b.title = S.muted ? 'Unmute' : 'Mute';
-  b.setAttribute('aria-pressed', String(S.muted));
-}
-
-async function toggleMute() {
-  S.muted = !S.muted;
-  sfx.enabled = !S.muted;
-  try { await storage.set('zip_muted', JSON.stringify(S.muted)); } catch { /* ignore */ }
-  paintMuteBtn();
-}
 
 // ---------- render ----------
 function render() {
@@ -203,7 +183,7 @@ function renderGame() {
   const p = S.puzzle;
   const time = sec(S.elapsed);
   const cap = maxHints(p);
-  const seedTag = `<span id="seedTag" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}">seed ${S.seed}</span>`;
+  const seedTag = `<span id="seedTag" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="Design app's Generate uses these same algorithm choices, but generate() here also tries several candidates and keeps the cheapest, so pasting this seed+flags there is not guaranteed to reproduce this exact puzzle">seed ${S.seed} · flags ${flagsToHex(PLAY_FLAGS_INT)}</span>`;
   const title = S.isGotd ? `Game of Day ${S.gotdDate}` : `Local ${p.n}x${p.n} · game #${S.gameIndex + 1} today${seedTag}`;
   const newPuzzleButton = S.isGotd ? '' : '<button class="btn secondary" id="newPuzzle">New puzzle</button>';
   const hiddenUnlessDev = S.showDev ? '' : 'display:none';
@@ -270,12 +250,6 @@ function setupGridInput(svg) {
     if (cell < 0 || S.finished) return;
     const prev = S.path[S.path.length - 1], kind = step(p, S.path, cell);
     if (!kind) return;
-
-    // Sound feedback per move kind
-    if (kind === 'push') sfx.forwardMove();
-    else if (kind === 'pop' || kind === 'trunc') sfx.backtrackMove();
-    else if (kind === 'reset') sfx.resetMove();
-
     if (kind === 'push') fill(cell, true); else if (kind === 'pop') fill(prev, false); else syncFills();
     setD(); clearHint();
     if (kind === 'push' && isSolved(p, S.path)) onSolved();
@@ -288,14 +262,7 @@ function setupGridInput(svg) {
     } else walkTo(cell(x, y));
     last = { x, y };
   }
-  svg.addEventListener('pointerdown', e => {
-    sfx.unlock();                       // <-- resume AudioContext on first gesture
-    e.preventDefault();
-    dragging = true; last = null;
-    rect = svg.getBoundingClientRect();
-    try { svg.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-    move(e.clientX, e.clientY);
-  });
+  svg.addEventListener('pointerdown', e => { e.preventDefault(); dragging = true; last = null; rect = svg.getBoundingClientRect(); try { svg.setPointerCapture(e.pointerId); } catch { /* ignore */ } move(e.clientX, e.clientY); });
   svg.addEventListener('pointermove', e => { if (!dragging) return; e.preventDefault(); move(e.clientX, e.clientY); });
   const up = e => { if (!dragging) return; dragging = false; last = null; try { svg.releasePointerCapture(e.pointerId); } catch { /* ignore */ } render(); };
   svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', up);
@@ -303,7 +270,6 @@ function setupGridInput(svg) {
 
 function onSolved() {
   S.finished = true; stopTimer();
-  sfx.solve();
   if (S.isGotd) store.recordGotd(S.puzzle.n, S.gotdDate, S.elapsed);
   else { const n = S.puzzle.n; store.recordSolve(n, dayNo(), S.elapsed); daily.markSolved(n, S.gameIndex).then(refreshNext); }
 }
@@ -357,21 +323,9 @@ function installDevReveal() {
 // ---------- boot ----------
 (async function boot() {
   storage = await pickStorage(); store = createStore(storage, SIZES); daily = createDaily(storage);
-  try {
-    const r = await storage.get('zip_muted');
-    if (r) { S.muted = JSON.parse(r.value); sfx.enabled = !S.muted; }
-  } catch { /* ignore */ }
   try { await store.hydrate(today()); } catch (e) { console.warn('stats hydration failed:', e); }
   try { for (const n of SIZES) S.nextIdx[n] = (await daily.peek(n)).index; } catch (e) { console.warn('daily counters failed:', e); }
   modal = bindModal($('exportModal'));
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));
-  $('muteBtn').onclick = toggleMute;      // button lives in the shell, so wire it once
-  paintMuteBtn();                         // reflect the hydrated S.muted
-  // Handle page visibility to resume audio context when user returns.
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && sfx.ctx && sfx.ctx.state === 'suspended') {
-      sfx.ctx.resume().then(() => { sfx.isUnlocked = true; }).catch(() => {});
-    }
-  });
   installDevReveal(); render();
 })();

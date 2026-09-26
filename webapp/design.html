@@ -73,14 +73,21 @@
       <label for="genHardest" title="Use all retries to collect candidates and keep the one whose Solve needs the most search nodes">Pick max nodes</label>
       <input id="genHardest" type="checkbox">
     </div>
-    <div class="field field-row">
-      <label for="genCompareLegCollide" title="Run generation twice at the same random seed, once without and once with leg-collision pruning, and report total time and solve() call counts for both">Compare leg-collision pruning</label>
-      <input id="genCompareLegCollide" type="checkbox">
-    </div>
     <div class="hint">
       Uses Max checkpoints and Max walls above. Every retry draws a new random path and a new checkpoint placement.
       With max nodes on, all retries are used to collect candidates and the one with the most search nodes is kept.
       The search is heuristic, so a failed run does not prove that no puzzle exists.
+      Algorithm flags and seed are set above the board.
+    </div>
+    <div class="divider"></div>
+    <div class="field">
+      <button id="reproducePlay" class="wide" title="Runs generate() itself, the same function the Play app uses for its daily/local puzzles — not the flags/Max checkpoints/Max walls above, which only apply to Generate. Use this to reproduce a puzzle seen in the Play app via its seed.">▶️↺ Reproduce Play puzzle</button>
+    </div>
+    <div class="hint">
+      generate() has no flags of its own to set — currently it's always equivalent to
+      <code id="playFlagsHex"></code> (path=warnsdorff, checkpoints=gap, propagation on), shown here
+      only for reference. Paste a seed from the Play app's hold-V badge above and click this to get
+      its exact puzzle; the flags panel and Max checkpoints/Max walls above don't apply to it.
     </div>
 
     <div class="divider"></div>
@@ -93,9 +100,28 @@
 
   <!-- ==================== BOARD ==================== -->
   <main class="stage">
+    <div class="flags-bar">
+      <div class="field field-row flags-seed-row">
+        <label for="seedInput" title="Random seed driving path/checkpoint/wall generation. Same seed + same flags = same puzzle.">Seed</label>
+        <div class="row" style="flex:1">
+          <input id="seedInput" type="number" min="0" step="1" placeholder="random">
+          <button id="seedMode" title="Toggle between a fixed seed you set and a fresh random seed each run">🎲 Random</button>
+        </div>
+      </div>
+      <div class="field field-row">
+        <label for="compareToggle" title="Set two algorithm flag configurations (A/B) and run Generate or Solve with both, at the same seed, to compare them">Compare A / B</label>
+        <input id="compareToggle" type="checkbox">
+      </div>
+      <div id="flagsSingle" class="flags-panel"></div>
+      <div id="flagsCompare" class="flags-compare" style="display:none">
+        <div class="flags-panel flags-panel-ab" data-side="A"></div>
+        <div class="flags-panel flags-panel-ab" data-side="B"></div>
+      </div>
+    </div>
     <div id="board" class="board"></div>
     <div id="legend" class="legend"></div>
     <div id="status" class="status status-below"></div>
+    <div id="compareResult" class="compare-result" style="display:none"></div>
   </main>
 
   <!-- ==================== SOLVER + PLAY / DATA (right column) ==================== -->
@@ -106,10 +132,7 @@
       <label for="nodeLimit">Search limit (nodes)</label>
       <input id="nodeLimit" type="number" min="1000" step="1000" value="300000">
     </div>
-    <div class="field field-row">
-      <label for="useLegCollide" title="Also run the leg-collision check (legsCollide) during Solve — catches some dead branches connectivity/dead-ends/forced-edges miss, at the cost of O(checkpoints^2) extra work per search node. For comparing against the default search, not a default itself.">Leg-collision pruning</label>
-      <input id="useLegCollide" type="checkbox">
-    </div>
+    <div class="hint">Uses the Score-phase flags set above the board (side A when comparing).</div>
     <button id="solveBtn" class="primary wide">Solve</button>
   </aside>
 
