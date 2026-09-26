@@ -16,8 +16,13 @@
       </svg>
       <span>Zip</span>
     </a>
-    <button class="btn secondary mute-btn" id="muteBtn" type="button"
-            aria-pressed="false" title="Mute">🔊 Sound on</button>
+    <button class="sound-toggle" id="soundToggle" type="button" aria-pressed="true" aria-label="Mute sound effects" title="Mute sound effects">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/>
+        <path class="sound-waves" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        <path class="sound-x" d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:none"/>
+      </svg>
+    </button>
   </div>
 </header>
 <div id="app"></div>

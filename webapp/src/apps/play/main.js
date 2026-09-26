@@ -12,6 +12,7 @@ import { bindModal, copyText } from '../../ui/modal.js';
 import { boardSvg, CELL, COLORS } from './board.js';
 import { VERSION } from '../../version.js';
 import { PLAY_FLAGS_INT, flagsToHex } from '../../core/gen/flags.js';
+import { sfxMove, sfxBack, sfxCheckpoint, sfxSolved, setSoundEnabled, isSoundEnabled } from '../../platform/sound.js';
 
 const SIZES = PLAY_SIZES;
 const S = { screen: 'menu', size: 7, puzzle: null, path: [], elapsed: 0, startTime: 0, timerId: null, finished: false,
@@ -252,7 +253,9 @@ function setupGridInput(svg) {
     if (!kind) return;
     if (kind === 'push') fill(cell, true); else if (kind === 'pop') fill(prev, false); else syncFills();
     setD(); clearHint();
-    if (kind === 'push' && isSolved(p, S.path)) onSolved();
+    if (kind === 'push' && isSolved(p, S.path)) { onSolved(); return; }
+    if (kind === 'push') { if (p.cp[cell] > 0) sfxCheckpoint(); else sfxMove(); }
+    else if (kind === 'pop' || kind === 'trunc' || kind === 'reset') sfxBack();
   }
   function move(x, y) { // interpolate so fast drags don't skip cells
     const cell = (px, py) => cellAtPoint(n, px - rect.left, py - rect.top, rect.width, rect.height);
@@ -269,7 +272,7 @@ function setupGridInput(svg) {
 }
 
 function onSolved() {
-  S.finished = true; stopTimer();
+  S.finished = true; stopTimer(); sfxSolved();
   if (S.isGotd) store.recordGotd(S.puzzle.n, S.gotdDate, S.elapsed);
   else { const n = S.puzzle.n; store.recordSolve(n, dayNo(), S.elapsed); daily.markSolved(n, S.gameIndex).then(refreshNext); }
 }
@@ -320,6 +323,27 @@ function installDevReveal() {
   document.addEventListener('visibilitychange', () => { if (document.hidden) setDevReveal(false); });
 }
 
+// ---------- sound toggle (lives in the app bar, outside #app — wired once, not by render()) ----------
+function applySoundButtonState() {
+  const b = $('soundToggle'); if (!b) return;
+  const muted = !isSoundEnabled();
+  b.classList.toggle('muted', muted);
+  b.setAttribute('aria-pressed', String(!muted));
+  b.setAttribute('aria-label', muted ? 'Unmute sound effects' : 'Mute sound effects');
+  b.title = muted ? 'Unmute sound effects' : 'Mute sound effects';
+}
+async function initSoundToggle() {
+  const saved = await storage.get('sound-muted');
+  setSoundEnabled(!(saved && saved.value === '1'));
+  applySoundButtonState();
+  $('soundToggle').onclick = () => {
+    setSoundEnabled(!isSoundEnabled());
+    applySoundButtonState();
+    storage.set('sound-muted', isSoundEnabled() ? '0' : '1');
+    if (isSoundEnabled()) sfxMove(); // quick audible confirmation it's back on
+  };
+}
+
 // ---------- boot ----------
 (async function boot() {
   storage = await pickStorage(); store = createStore(storage, SIZES); daily = createDaily(storage);
@@ -327,5 +351,5 @@ function installDevReveal() {
   try { for (const n of SIZES) S.nextIdx[n] = (await daily.peek(n)).index; } catch (e) { console.warn('daily counters failed:', e); }
   modal = bindModal($('exportModal'));
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));
-  installDevReveal(); render();
+  installDevReveal(); await initSoundToggle(); render();
 })();
