@@ -12,7 +12,7 @@ import { bindModal, copyText } from '../../ui/modal.js';
 import { boardSvg, CELL, COLORS } from './board.js';
 import { VERSION } from '../../version.js';
 import { PLAY_FLAGS_INT, flagsToHex } from '../../core/gen/flags.js';
-import { sfxMove, sfxBack, sfxCheckpoint, sfxSolved, setSoundEnabled, isSoundEnabled } from '../../platform/sound.js';
+import { sfxMove, sfxBack, sfxCheckpoint, sfxMoveAfterCheckpoint, sfxBlocked, sfxSolved, setSoundEnabled, isSoundEnabled } from '../../platform/sound.js';
 
 const SIZES = PLAY_SIZES;
 const S = { screen: 'menu', size: 7, puzzle: null, path: [], elapsed: 0, startTime: 0, timerId: null, finished: false,
@@ -238,6 +238,12 @@ function attachHandlers() {
 function setupGridInput(svg) {
   const p = S.puzzle, n = p.n, pathEl = svg.querySelector('[data-role="path"]');
   let dragging = false, last = null, rect = svg.getBoundingClientRect();
+  // Highest checkpoint number crossed anywhere along the current path (0 = none yet, since
+  // checkpoints are visited in ascending order this is just "how many crossed so far") — used to
+  // pick a distinct, rising pitch for each post-checkpoint segment's moves. Recomputed from the
+  // full path on every backtrack, since the head's own cell may not itself be a checkpoint.
+  const highestCp = path => { let hi = 0; for (const c of path) if (p.cp[c] > hi) hi = p.cp[c]; return hi; };
+  let segment = highestCp(S.path);
   const setD = () => pathEl.setAttribute('d', S.path.length > 1 ? pathD(n, S.path, CELL) : '');
   const fill = (i, visited) => {
     const badge = svg.querySelector(`[data-num-cell="${i}"]`);
@@ -250,12 +256,18 @@ function setupGridInput(svg) {
   function walkTo(cell) {
     if (cell < 0 || S.finished) return;
     const prev = S.path[S.path.length - 1], kind = step(p, S.path, cell);
-    if (!kind) return;
+    if (!kind) { if (prev != null && cell !== prev) sfxBlocked(); return; }
     if (kind === 'push') fill(cell, true); else if (kind === 'pop') fill(prev, false); else syncFills();
     setD(); clearHint();
     if (kind === 'push' && isSolved(p, S.path)) { onSolved(); return; }
-    if (kind === 'push') { if (p.cp[cell] > 0) sfxCheckpoint(); else sfxMove(); }
-    else if (kind === 'pop' || kind === 'trunc' || kind === 'reset') sfxBack();
+    if (kind === 'push') {
+      const onCp = p.cp[cell] > 0;
+      if (onCp) sfxCheckpoint(); else if (segment > 0) sfxMoveAfterCheckpoint(segment); else sfxMove();
+      if (onCp) segment = p.cp[cell];
+    } else if (kind === 'pop' || kind === 'trunc' || kind === 'reset') {
+      sfxBack();
+      segment = highestCp(S.path);
+    }
   }
   function move(x, y) { // interpolate so fast drags don't skip cells
     const cell = (px, py) => cellAtPoint(n, px - rect.left, py - rect.top, rect.width, rect.height);
