@@ -1,6 +1,6 @@
 # Zip
 
-A browser puzzle game, a puzzle designer, and the generator and solver behind them. The app lives in
+A browser puzzle game, and the generator and solver behind them. The app lives in
 [`webapp/`](webapp/) as plain ES modules: no build step, no runtime dependencies.
 [`index.html`](index.html) is the project's home page for players, in English and 中文, with a link to play.
 
@@ -27,7 +27,6 @@ python3 -m http.server 8000        # or: npx serve .
 | --- | --- |
 | `/` | Home page for players, with a Play link |
 | `/webapp/` | Play app |
-| `/webapp/design.html` | Puzzle designer |
 | `/webapp/test/` | Unit tests in the browser |
 | `/webapp/bench/` | Benchmark in the browser |
 
@@ -72,27 +71,6 @@ The build context is the whole repository, so the home page is checked too. `.do
 - Per-size **stats** (today and all time, by UTC day), kept in `localStorage` and falling back to memory
   when storage is unavailable.
 
-## Designer
-
-Build or edit a puzzle by hand, or start from something random and refine it.
-
-- **Numbers / Walls** editing modes.
-- **Random** checkpoint placement, Hamiltonian path with checkpoints, and walls. Random walls never
-  touch the template path.
-- **Generate** (with *Max checkpoints*, *Max walls* and a retry count) searches for a puzzle with a
-  unique solution inside those limits. *Pick max nodes* keeps, among the candidates it finds, the one
-  whose solve needs the most search nodes. *Compare leg-collision pruning* runs generation twice at the
-  same random seed, once without and once with the `legCollide` solver check (see
-  [Solver algorithms](#solver-algorithms)), and reports total time and solve() call counts for both.
-- **Minimize** removes every wall that is not needed for uniqueness.
-- **Solve** shows up to two solutions and tells you whether the puzzle is unique. The *search limit*
-  caps the nodes the solver may visit; *Leg-collision pruning* optionally enables the `legCollide` check
-  for that one search, to compare against the default.
-- **Play** tests the puzzle in place, with an optional *Highlights* panel (Connectivity, Dead ends,
-  Forced edges, Leg collisions) that shows live what the solver's own pruning checks would already know
-  about the current position.
-- **Export / Import** use the text format below.
-
 ## Home page
 
 `index.html` at the repository root is the front door for players: what the game is, where it runs, what
@@ -108,28 +86,6 @@ switch between them:
 
 To add a section, copy an existing one and keep both languages in every element. `npm run check`
 verifies that every link on the page resolves and that the two languages have the same number of texts.
-
-## Puzzle text format
-
-```
-# Zip Puzzle — plain text format
-size 5
-checkpoints 1,3=5 2,0=4 2,3=3 2,4=1 4,2=2
-walls H,1,1 H,3,1
-```
-
-`checkpoints r,c=n` uses 0-based row and column. `walls T,r,c` uses `T` = `H` for a wall between
-`(r,c)` and `(r+1,c)` or `V` between `(r,c)` and `(r,c+1)`.
-
-An optional `path r,c ...` line records a specific line through the grid, in order, same `r,c`
-coordinates as above — for example the designer's Play mode exports the line walked so far:
-
-```
-path 0,0 0,1 0,2 1,2 1,1 1,0 2,0 2,1 2,2
-```
-
-It is entirely optional: puzzles without one parse exactly as before. When present, each step must be
-grid-adjacent to the last, cross no wall, and visit no cell twice, or `parse` rejects the file.
 
 ## How puzzles are generated
 
@@ -192,18 +148,14 @@ generation's `nodeCap` values are tuned per combination (see [Determinism](#dete
 That is the function's own default — it says nothing about what actually happens when this codebase
 calls `solve()`. In practice:
 
-- **`prop` is on in every real call site**: the generator, `minimizeWalls`, `hints.js`, and the design
-  app's Solve and Minimize buttons all explicitly pass `prop: true`. `solve()`'s own default is off, but
-  every caller opts in, so in effect `prop` is always running here — "opt-in" describes the function's
-  default, not the current behaviour of this application.
+- **`prop` is on in every real call site**: the generator, `minimizeWalls`, and `hints.js` all explicitly
+  pass `prop: true`. `solve()`'s own default is off, but every caller opts in, so in effect `prop` is always
+  running here — "opt-in" describes the function's default, not the current behaviour of this application.
 - **`pocket`, `seg`, `parity` and `prune2` are off everywhere**: no call site in this codebase turns
   them on. They exist as tested, working options you can pass if you call `solve()` yourself, but
   nothing here does so today.
-- **`legCollide` is off by default and on only where you ask for it turn-by-turn**: the design app's
-  Solver panel has a "Leg-collision pruning" checkbox for one Solve call, and the Generate panel's
-  "Compare leg-collision pruning" checkbox runs generation once without it and once with it, at the same
-  random seed, so the two can be compared directly (see [Designer](#designer)). Nothing turns it on
-  unconditionally.
+- **`legCollide` is off by default and on only where you ask for it turn-by-turn**: used for experiments so
+  far. Nothing turns it on unconditionally.
 
 ### Order of checks
 
@@ -296,9 +248,9 @@ The pattern is consistent across every opt-in check tried: `prop`'s forced-edge 
 captures most of what the pricier geometric checks (`seg`, `pocket`, `legCollide`) can add on this
 generator's output, so stacking them on top of `prop` is rarely worth their extra per-node cost.
 `legCollide` and `seg: 'all'` remain useful as opt-in, one-off tools — comparing a specific stuck
-position (the design app's Solver panel and "Compare leg-collision pruning" toggle under Generate), or
-diagnosing a hand-built puzzle where `prop` alone genuinely doesn't resolve it — rather than as defaults
-paired with `prop`. `npm run bench` and `webapp/bench/*.js` reproduce these numbers on your machine.
+position, or diagnosing a hand-built puzzle where `prop` alone genuinely doesn't resolve it — rather
+than as defaults paired with `prop`. `npm run bench` and `webapp/bench/*.js` reproduce these numbers
+on your machine.
 
 ## Complexity
 
@@ -383,10 +335,8 @@ Puzzles must not change for a given seed, or players would see different "same" 
 │       └── webapp-ci.yml           CI for webapp/
 └── webapp/
     ├── index.html                  play app
-    ├── design.html                 puzzle designer
     ├── css/
-    │   ├── play.css                matches the home page
-    │   └── design.css
+    │   └── play.css                matches the home page
     ├── src/
     │   ├── version.js              the one app version, shared by both apps
     │   ├── core/                   pure logic, no DOM
@@ -409,8 +359,7 @@ Puzzles must not change for a given seed, or players would see different "same" 
     │   ├── view/                    SVG geometry shared by both apps
     │   ├── ui/                      modal dialog
     │   └── apps/
-    │       ├── play/                browser entry point (main.js) and board
-    │       └── design/               browser entry point (main.js) and board
+    │       └── play/                browser entry point (main.js) and board
     ├── test/
     │   ├── tests.js                 Node and browser
     │   ├── golden.js
