@@ -134,12 +134,27 @@
     </div>
     <div class="hint">Uses the Score-phase flags set above the board (side A when comparing).</div>
     <button id="solveBtn" class="primary wide">Solve</button>
+
+    <div class="divider"></div>
+
+    <div class="field">
+      <label title="Solver-derived difficulty diagnostics — see core/difficulty.js. Requires the puzzle to already be uniquely solvable.">Difficulty</label>
+      <button id="difficultyBtn" class="wide" title="Runs 4 solve() calls (reference, naive, no-legCollide, first-solution) on the current puzzle">📊 Compute diagnostics</button>
+    </div>
+    <div class="hint">
+      Grade and its raw signals — same reference solve the Play app grades with, plus 3 extra
+      diagnostic-only solves not used for the shipped grade (naive-solver gap, leg-collision
+      dependency, first-solution gap). The "regression" row is an unfitted placeholder formula, not
+      a candidate grade — see its tooltip.
+    </div>
+    <div id="difficultyResult"></div>
   </aside>
 
   <aside class="panel side-right">
     <h1><span class="dot"></span>Play &amp; Data</h1>
 
     <button id="playBtn" class="playbtn wide">▶ Play</button>
+    <div id="playTimer" class="playtimer" style="display:none"></div>
     <div id="playInfo" class="playinfo" style="display:none"></div>
     <div id="connToggles" style="display:none;margin-top:14px">
       <div class="cat-label">Highlights</div>

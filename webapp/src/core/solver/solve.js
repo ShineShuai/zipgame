@@ -20,11 +20,16 @@ const POPCOUNT = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
 //   legCollide cross-leg collision check — two checkpoint-to-checkpoint legs forced to need the
 //             same cell (see legsCollide() in prune.js); O(K^2) segBlocker calls per node, so
 //             meaningfully pricier than the others; checked last for that reason
+//   decisions count decision-nodes (dfs() calls where >=2 candidate moves survive every prune in
+//             effect) and the deepest one's depth/T fraction — see difficulty.js. Purely additive
+//             bookkeeping (a comparison + two counters), so it never changes which nodes are
+//             visited; only opt-in because unused fields cost nothing to skip, not to avoid bias.
 // prune2, prop, seg, pocket, parity and legCollide only prune: they never change the solutions
 // found or their DFS order. They do change how many nodes are visited, which is why they are
 // opt-in (nodeCap-dependent generation must stay reproducible for a given ALGO_VERSION).
 //
-// Returns { count, exceeded, nodes, paths? }. Pure: no DOM, no timers, no randomness.
+// Returns { count, exceeded, nodes, paths?, decisionNodes?, maxDecisionDepth? }. Pure: no DOM, no
+// timers, no randomness.
 export function solve(p, opts = {}) {
   const n = p.n;
   const T = n * n;
@@ -74,6 +79,12 @@ export function solve(p, opts = {}) {
   const paths = opts.capture ? [] : null;
   let nodes = 0;
   let found = 0;
+  // Difficulty instrumentation (see difficulty.js): a "decision node" is one where >=2 candidate
+  // moves survive every prune in effect for this call — a real branch/guess point, not just tree
+  // size. Zero-cost when opts.decisions is falsy (the counters are read but never written).
+  const DECISIONS = !!opts.decisions;
+  let decisionNodes = 0;
+  let maxDecisionDepth = 0;
 
   // ---------- prune2: static distances to the remaining checkpoints ----------
 
@@ -417,6 +428,12 @@ export function solve(p, opts = {}) {
       cand[base + slot] = v;
     }
 
+    if (DECISIONS && count2 >= 2) {
+      decisionNodes++;
+      const frac = depth / T; // depth fraction — comparable across grid sizes
+      if (frac > maxDecisionDepth) maxDecisionDepth = frac;
+    }
+
     for (let i = 0; i < count2; i++) {
       dfs(cand[base + i], count + 1, need, depth + 1);
       if (found >= limit || nodes > cap) break;
@@ -427,5 +444,8 @@ export function solve(p, opts = {}) {
   // ---------- run ----------
 
   dfs(start, 1, 1, 0);
-  return { count: found, exceeded: nodes > cap, nodes, paths: paths || undefined };
+  return {
+    count: found, exceeded: nodes > cap, nodes, paths: paths || undefined,
+    ...(DECISIONS ? { decisionNodes, maxDecisionDepth } : {}),
+  };
 }

@@ -3,8 +3,10 @@ html,body{height:100%;}
 body{margin:0;min-height:100vh;background:radial-gradient(circle at 20% 0%,#1a1f36,#0b0e18 60%);color:#e7e9f3;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;display:flex;justify-content:center;padding:28px 20px 60px;}
 .app{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap;justify-content:center;}
 .panel{width:296px;background:#151a2c;border:1px solid #232a44;border-radius:16px;padding:18px;box-shadow:0 20px 50px rgba(0,0,0,.45);}
-.panel.side-right{width:240px;}
-.side-col{display:flex;flex-direction:column;gap:40px;width:240px;}
+/* Widened from 240px: the difficulty diagnostics table (metric names like maxDecisionDepth /
+   overlapPerSeg, plus values) was overflowing/wrapping awkwardly at the old width. */
+.panel.side-right{width:340px;}
+.side-col{display:flex;flex-direction:column;gap:40px;width:340px;}
 .field-row > input[type=checkbox]{width:18px;height:18px;flex:none;margin:0 45px 0 0;accent-color:#5b7cfa;cursor:pointer;}
 .field-row > input[type=checkbox]:disabled{cursor:default;opacity:.4;}
 .panel h1{font-size:17px;margin:0 0 16px;letter-spacing:.3px;display:flex;align-items:center;gap:8px;}
@@ -34,7 +36,29 @@ button.playbtn.on{background:linear-gradient(135deg,#b3344f,#e0526f);}
 .divider{height:1px;background:#232a44;margin:16px 0;}
 .cat-label{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#5b6489;margin:14px 0 6px;}
 .cat-label:first-child{margin-top:0;}
-.hint{font-size:12px;line-height:1.5;color:#8b93b8;background:#0e1220;border:1px solid #202742;border-radius:8px;padding:9px 11px;margin-bottom:14px;}
+/* ---- hover-only hint popovers (src/ui/hint-popover.js) ----
+   A .hint block (or any [data-hint] element) is converted at runtime into a small icon; the
+   original text moves into a popover that only shows on hover/focus, so panels stay compact. */
+.hint-icon{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:18px;height:18px;border-radius:50%;
+  background:#232a44;color:#8b93b8;font-size:11px;font-weight:700;
+  cursor:help;position:relative;margin-bottom:14px;line-height:1;
+  border:1px solid #2f375a;
+}
+.hint-icon::before{content:"?";}
+.hint-icon:hover,.hint-icon:focus{background:#2f375a;color:#e7e9f3;outline:none;}
+.hint-popover{
+  display:none;position:absolute;z-index:40;
+  top:calc(100% + 8px);left:0;min-width:220px;max-width:280px;
+  font-size:12px;line-height:1.5;font-weight:400;
+  color:#c7cce3;background:#10142a;border:1px solid #2f375a;border-radius:8px;
+  padding:9px 11px;box-shadow:0 12px 30px rgba(0,0,0,.5);
+  white-space:normal;text-align:left;
+}
+.hint-popover.show{display:block;}
+.hint-popover.flip-up{top:auto;bottom:calc(100% + 8px);}
+.hint-popover.flip-left{left:auto;right:0;}
 .validity{font-size:12px;line-height:1.45;padding:8px 11px;border-radius:8px;margin-bottom:12px;border:1px solid #202742;background:#0e1220;color:#8b93b8;}
 .validity.bad{background:rgba(255,77,109,.1);color:#ff8fa3;border-color:rgba(255,77,109,.35);}
 .validity.good{background:rgba(61,220,151,.1);color:#6ff0b4;border-color:rgba(61,220,151,.3);}
@@ -45,7 +69,8 @@ button.playbtn.on{background:linear-gradient(135deg,#b3344f,#e0526f);}
 .status.error{background:rgba(255,77,109,.12);color:#ff8fa3;border:1px solid rgba(255,77,109,.3);}
 .status-below{margin-top:22px;width:100%;max-width:var(--board-size,100%);min-width:0;text-align:center;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;}
 .playinfo{margin-top:10px;font-size:12.5px;line-height:1.5;padding:9px 11px;border-radius:8px;background:rgba(91,124,250,.12);color:#a9bcff;border:1px solid rgba(91,124,250,.3);}
-.side-right .hint{font-size:11.5px;margin-top:14px;margin-bottom:0;}
+.playtimer{margin-top:8px;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;color:#e7e9f3;}
+.side-right .hint-icon{margin-top:14px;margin-bottom:0;}
 /* min() here, not the flags-bar/compare-result's own width: those two need more horizontal room
    than a small board (--board-size) provides, especially with two Compare-mode columns, but must
    still fit in whatever the flex-wrapped .app layout actually has left beside the side panels. */
@@ -130,6 +155,37 @@ button.playbtn.on{background:linear-gradient(135deg,#b3344f,#e0526f);}
 .compare-table td{color:#e7e9f3;font-variant-numeric:tabular-nums;}
 .compare-table .bad{color:#ff8fa3;font-weight:600;}
 .compare-previews{display:flex;gap:16px;justify-content:center;}
+
+/* ---- difficulty diagnostics panel ---- */
+.diff-panel{margin-top:10px;padding:10px 12px;border-radius:10px;font-size:12.5px;line-height:1.5;}
+.diff-panel-warn{background:#2a1f14;border:1px solid #4a3520;color:#e8c88a;}
+.diff-panel-flag{margin-top:8px;padding:8px 10px;border-radius:8px;background:#2a1f14;border:1px solid #4a3520;color:#e8c88a;font-size:12px;line-height:1.5;}
+.diff-panel-time{margin-top:8px;font-size:11px;color:#8b93b8;}
+.diff-rate{margin-top:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;color:#c7cce3;}
+.diff-rate-btn{width:26px;height:26px;border-radius:6px;border:1px solid #2f375a;background:#1a2038;color:#e7e9f3;cursor:pointer;font-size:12px;}
+.diff-rate-btn:hover{background:#2a3358;border-color:#3b68ee;}
+.diff-log-slot{margin-top:4px;}
+.diff-log-clear{margin-top:8px;font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #2f375a;background:#1a2038;color:#8b93b8;cursor:pointer;}
+.diff-log-clear:hover{color:#e7e9f3;border-color:#3b68ee;}
+.diff-flag-label{margin-right:6px;}
+.diff-panel-flag-red{background:rgba(230,70,70,.1);border-color:rgba(230,70,70,.35);color:#f2a9a9;}
+.diff-panel-flag .hint-icon,.diff-panel-time .hint-icon{margin-bottom:0;vertical-align:middle;}
+.diff-table-cmp td{text-align:right;white-space:nowrap;}
+.diff-table-cmp thead th{color:#8b93b8;font-size:11px;font-weight:500;text-align:right;}
+.diff-table-cmp thead th:first-child{text-align:left;}
+.diff-section-title{margin-top:14px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#8b93b8;}
+.diff-n{font-size:10.5px;color:#8b93b8;margin-left:4px;}
+.diff-collapse-toggle{
+  width:100%;text-align:left;display:flex;align-items:center;gap:8px;
+  background:none;border:none;padding:10px 0 6px;margin:0;
+  font-size:12.5px;font-weight:600;color:#c7cce3;cursor:pointer;
+}
+.diff-collapse-toggle:hover{color:#e7e9f3;}
+.diff-collapse-arrow{display:inline-block;width:10px;font-size:10px;color:#8b93b8;}
+.diff-table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:10px;}
+.diff-table th,.diff-table td{padding:5px 8px;text-align:left;border-bottom:1px solid #202742;}
+.diff-table th{color:#c7cce3;font-weight:500;white-space:nowrap;}
+.diff-table td{color:#e7e9f3;font-variant-numeric:tabular-nums;text-align:right;}
 .compare-preview-col{display:flex;flex-direction:column;align-items:center;gap:6px;}
 .compare-preview-label{font-size:11px;font-weight:700;color:#8b93b8;}
 .mini-preview{width:150px;height:150px;background:#0e1220;border-radius:8px;border:1px solid #232a44;}

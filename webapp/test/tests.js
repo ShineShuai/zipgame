@@ -17,6 +17,11 @@ import { createHoldReveal } from '../src/ui/hold-reveal.js';
 import { createDaily, utcDayNumber } from '../src/features/daily.js';
 import { createStore } from '../src/features/stats-store.js';
 import { GOLDEN } from './golden.js';
+import { metricsFor, referenceSolve, backtrackOverhead, naiveGap, legCollideDependent, firstSolutionGap, fullDiagnostics, gradeOf, refNodeCap, REF_FLAGS } from '../src/core/difficulty.js';
+import { calibrate, calibrateAll, calibrateMetric, generateAtDifficulty, DEFAULT_THRESHOLDS, DEFAULT_THRESHOLDS_BY_METRIC, GRADED_METRICS, QUANTILES } from '../src/core/gen/calibration.js';
+import { checkpointPositions, segmentCrossCount, segmentOverlapCount, spatialMetrics } from '../src/core/spatial.js';
+import { gradesFor, gradesFromMetrics, GRADE_ORDER } from '../src/core/grades.js';
+import { combinedScore, COMBINED_ZSCORE } from '../src/core/gen/calibration.js';
 
 // ---- mini harness ----
 const out = []; let pass = 0, fail = 0;
@@ -553,11 +558,309 @@ t('minimizeWalls: options-object form matches the legacy boolean-5th-arg form ex
   eq(legacy, opts); eq(serialize(a), serialize(b));
 });
 
+// ---- difficulty grading ----
+
+// A handful of real generated puzzles across sizes/K, reused by several tests below so each isn't
+// re-generating+re-solving from scratch.
+function sampleUniquePuzzles() {
+  const cases = [[7, 6, 11], [9, 8, 22], [11, 10, 33]]; // [n, K, seed]
+  const out = [];
+  for (const [n, K, seed] of cases) {
+    const r = runSync(generateUnique(n, K, makeRng(seed), { tries: 20 }));
+    if (r.unique) out.push(r.puzzle);
+  }
+  ok(out.length > 0, 'expected at least one unique sample puzzle to test against');
+  return out;
+}
+
+t('solve(): decisions option is additive-only — same count/exceeded/nodes/paths as without it', () => {
+  for (const p of sampleUniquePuzzles()) {
+    const cap = refNodeCap(p.n);
+    const plain = solve(p, { limit: 2, nodeCap: cap, capture: true, ...REF_FLAGS });
+    const withD = solve(p, { limit: 2, nodeCap: cap, capture: true, decisions: true, ...REF_FLAGS });
+    eq(plain.count, withD.count, 'count');
+    eq(plain.exceeded, withD.exceeded, 'exceeded');
+    eq(plain.nodes, withD.nodes, 'nodes — decision counting must not change search or pruning');
+    eq(plain.paths, withD.paths, 'paths (capture)');
+    ok(Number.isInteger(withD.decisionNodes) && withD.decisionNodes >= 0, 'decisionNodes present and sane');
+    ok(withD.maxDecisionDepth >= 0 && withD.maxDecisionDepth <= 1, 'maxDecisionDepth is a 0..1 fraction');
+  }
+});
+t('solve(): decisionNodes/maxDecisionDepth absent unless opts.decisions is truthy', () => {
+  const p = sampleUniquePuzzles()[0];
+  const r = solve(p, { limit: 2, nodeCap: refNodeCap(p.n) });
+  eq('decisionNodes' in r, false); eq('maxDecisionDepth' in r, false);
+});
+t('difficulty: metricsFor matches a direct referenceSolve + backtrackOverhead computation', () => {
+  for (const p of sampleUniquePuzzles()) {
+    const r = referenceSolve(p);
+    const m = metricsFor(p);
+    eq(m.nodes, r.nodes); eq(m.exceeded, r.exceeded); eq(m.decisionNodes, r.decisionNodes || 0);
+    eq(m.unique, r.count === 1 && !r.exceeded);
+    eq(m.B, backtrackOverhead(r, p.n));
+    ok(m.B >= -1, 'B = nodes/cells - 1 is bounded below by -1 (nodes >= 0)');
+  }
+});
+t('difficulty: naiveGap — naive (prop/parity off) never finds FEWER nodes than the reference solve', () => {
+  // Turning off prunes can only add search, never remove it (same solutions, same DFS order for a
+  // given prefix — see solve.js's own comment on prune2/prop/seg/pocket/parity/legCollide).
+  for (const p of sampleUniquePuzzles()) {
+    const cap = refNodeCap(p.n);
+    const base = metricsFor(p, cap);
+    const gap = naiveGap(p, base.nodes, cap);
+    ok(gap.naiveNodes >= base.nodes || gap.naiveExceeded, `naive should cost >= reference (got ${gap.naiveNodes} vs ${base.nodes})`);
+    eq(gap.naiveGap, gap.naiveNodes - base.nodes);
+  }
+});
+t('difficulty: legCollideDependent is false whenever legCollide was never needed to prove uniqueness', () => {
+  // Construct a small puzzle whose uniqueness is easy without any cross-leg reasoning (K close to
+  // K_full, densely numbered) — legCollide dropping out should not break its already-confirmed
+  // uniqueness.
+  const p = randomPathPuzzle(5, 24, makeRng(3)); // near K_full(5)=24 per zip-puzzle-theory memory
+  const check = solve(p, { limit: 2, nodeCap: 200000, ...REF_FLAGS });
+  if (check.count === 1 && !check.exceeded) {
+    eq(legCollideDependent(p, 200000), false);
+  }
+});
+t('difficulty: firstSolutionGap — firstNodes <= reference nodes (limit:1 can only stop earlier or equal)', () => {
+  for (const p of sampleUniquePuzzles()) {
+    const cap = refNodeCap(p.n);
+    const base = metricsFor(p, cap);
+    const first = firstSolutionGap(p, base.nodes, cap);
+    ok(first.firstNodes <= base.nodes, `first-solution search shouldn't need more nodes than the uniqueness proof (${first.firstNodes} vs ${base.nodes})`);
+    eq(first.firstGap, base.nodes - first.firstNodes);
+  }
+});
+t('difficulty: fullDiagnostics bundles all of the above consistently for one puzzle', () => {
+  const p = sampleUniquePuzzles()[0];
+  const cap = refNodeCap(p.n);
+  const base = metricsFor(p, cap);
+  const d = fullDiagnostics(p, cap);
+  eq(d.nodes, base.nodes); eq(d.decisionNodes, base.decisionNodes); eq(d.B, base.B);
+  ok(Number.isFinite(d.regression), 'regression score computed');
+  ok(typeof d.legCollideDependent === 'boolean');
+});
+t('difficulty: gradeOf is a pure step function — monotone, respects thresholds, unbounded top bucket', () => {
+  const thresholds = [10, 50, 200, 1000];
+  eq(gradeOf(0, thresholds), 0);
+  eq(gradeOf(9, thresholds), 0);
+  eq(gradeOf(10, thresholds), 1);
+  eq(gradeOf(999, thresholds), 3);
+  eq(gradeOf(1000, thresholds), 4);
+  eq(gradeOf(1e9, thresholds), 4, 'no 6th threshold => top grade is unbounded above');
+  // monotone: grade never decreases as decisionNodes increases
+  let last = -1;
+  for (const x of [0, 1, 10, 11, 49, 50, 51, 199, 200, 999, 1000, 5000]) {
+    const g = gradeOf(x, thresholds);
+    ok(g >= last, `grade decreased at x=${x}`); last = g;
+  }
+});
+t('calibration: calibrate() pools across every N in range, not per-N (thresholds shared, not per-size)', () => {
+  // Small/fast sample: this only checks the pooling contract (one shared threshold list, and the
+  // sample count matches what was actually requested), not statistical quality — see
+  // tools/calibrate.mjs for a real calibration run.
+  const { thresholds, samples, n } = calibrate([5, 6], 42, 3);
+  eq(Array.isArray(thresholds), true);
+  eq(thresholds.length, QUANTILES.length);
+  ok(n <= 6, 'at most samplesPerN * number of sizes samples');
+  ok(n > 0, 'expected at least one successful sample at N=5,6 with 3 tries each');
+  eq(samples.length, n);
+  // thresholds must be non-decreasing (they're quantile cuts over one sorted pooled array)
+  for (let i = 1; i < thresholds.length; i++) ok(thresholds[i] >= thresholds[i - 1], 'thresholds non-decreasing');
+});
+t('calibration: DEFAULT_THRESHOLDS is a non-decreasing array of the expected length', () => {
+  eq(Array.isArray(DEFAULT_THRESHOLDS), true);
+  eq(DEFAULT_THRESHOLDS.length, QUANTILES.length);
+  for (let i = 1; i < DEFAULT_THRESHOLDS.length; i++) ok(DEFAULT_THRESHOLDS[i] >= DEFAULT_THRESHOLDS[i - 1]);
+});
+t('calibration: every GRADED_METRICS entry has its own non-decreasing default thresholds of the expected length', () => {
+  for (const id of Object.keys(GRADED_METRICS)) {
+    const th = DEFAULT_THRESHOLDS_BY_METRIC[id];
+    ok(Array.isArray(th), `${id}: missing default thresholds`);
+    eq(th.length, QUANTILES.length, `${id}: threshold count`);
+    for (let i = 1; i < th.length; i++) ok(th[i] >= th[i - 1], `${id}: thresholds must be non-decreasing`);
+  }
+  eq(DEFAULT_THRESHOLDS_BY_METRIC.decisionNodes, DEFAULT_THRESHOLDS, 'decisionNodes entry must stay identical to the legacy DEFAULT_THRESHOLDS export');
+});
+t('calibration: calibrateAll shares ONE generation pass across metrics — same sample count per metric, per-metric thresholds differ', () => {
+  const res = calibrateAll([5, 6], 42, 3);
+  const ids = Object.keys(GRADED_METRICS);
+  eq(Object.keys(res).sort(), ids.slice().sort());
+  const counts = ids.map(id => res[id].n);
+  ok(counts.every(c => c === counts[0]), `every metric must be calibrated from the same puzzles (counts ${counts})`);
+  ok(counts[0] > 0, 'expected at least one usable sample at N=5,6');
+  for (const id of ids) {
+    eq(res[id].thresholds.length, QUANTILES.length);
+    for (let i = 1; i < res[id].thresholds.length; i++) ok(res[id].thresholds[i] >= res[id].thresholds[i - 1]);
+  }
+  // calibrate() (legacy single-metric alias) must agree with calibrateAll's decisionNodes entry for
+  // the same seed — same generation stream, same quantile cuts.
+  eq(calibrate([5, 6], 42, 3).thresholds, res.decisionNodes.thresholds);
+});
+t('calibration: calibrateMetric reproduces calibrateAll for the same metric/seed (single-metric path is not a different algorithm)', () => {
+  const all = calibrateAll([5, 6], 7, 3);
+  for (const id of Object.keys(GRADED_METRICS)) eq(calibrateMetric(id, [5, 6], 7, 3).thresholds, all[id].thresholds, id);
+});
+t('calibration: generateAtDifficulty finds a matching grade across an N range, or returns null (never throws)', () => {
+  const rnd = makeRng(555);
+  const result = runSync(generateAtDifficulty([7, 8, 9], 2, DEFAULT_THRESHOLDS, rnd, { tries: 25 }));
+  if (result) {
+    eq(gradeOf(result.metrics.decisionNodes, DEFAULT_THRESHOLDS), 2);
+    ok([7, 8, 9].includes(result.n), 'chosen N within the requested range');
+    eq(result.grade, 2);
+  } // else: heuristic search legitimately found nothing in 25 tries — not itself a failure
+});
+
+// ---- calibrated multi-grade computation (core/grades.js) ----
+// generateUnique at a hand-picked K can produce a puzzle whose uniqueness proof exceeds the grading
+// node cap (e.g. the N=11 sample) — gradesFor correctly returns null for those. The play app never
+// hits that case in practice (generate() only keeps puzzles that fit its own, comparable cap; 0 of 125
+// sampled play puzzles were ungraded), so tests that need an actual grade use only puzzles that fit.
+let _gradable = null; // computed once: each check is a full reference solve, and 4 tests below share it
+const gradablePuzzles = () => (_gradable ||= sampleUniquePuzzles().filter(p => !metricsFor(p).exceeded));
+t('grades: gradesFor returns one 0..5 integer grade per GRADE_ORDER metric, plus the raw value it bucketed', () => {
+  ok(gradablePuzzles().length > 0, 'expected at least one sample puzzle within the grading budget');
+  for (const p of gradablePuzzles()) {
+    const g = gradesFor(p);
+    ok(g, 'expected a grade for a puzzle whose reference solve fit the cap');
+    eq(Object.keys(g.grades), GRADE_ORDER);
+    eq(Object.keys(g.raw), GRADE_ORDER);
+    for (const id of GRADE_ORDER) {
+      ok(Number.isInteger(g.grades[id]) && g.grades[id] >= 0 && g.grades[id] <= 5, `${id}: grade ${g.grades[id]} out of 0..5`);
+      ok(Number.isFinite(g.raw[id]), `${id}: raw value must be finite`);
+    }
+  }
+});
+t('grades: each metric is bucketed with ITS OWN thresholds (same raw value gives different grades for different metrics)', () => {
+  const p = gradablePuzzles()[0];
+  const g = gradesFor(p);
+  // Feed one identical raw value through every metric's own cutpoints: they must not all agree,
+  // otherwise the thresholds were shared/reused across metrics (the bug per-metric calibration avoids).
+  const same = GRADE_ORDER.map(id => gradeOf(1, DEFAULT_THRESHOLDS_BY_METRIC[id]));
+  ok(new Set(same).size > 1, `identical raw value graded identically by every metric: ${same}`);
+  eq(gradesFromMetrics(g.metrics, g.spatial).grades, g.grades, 'gradesFromMetrics must reproduce gradesFor for the same solve results');
+});
+t('grades: gradesFor returns null (no grade) when the reference solve cannot confirm uniqueness within the cap', () => {
+  const p = gradablePuzzles()[0];
+  ok(gradesFor(p), 'sanity: gradable within the normal cap');
+  eq(gradesFor(p, 1), null, 'a 1-node cap cannot confirm uniqueness => no grade, never a made-up one');
+});
+t('grades: decisionNodes and B are size-normalized (per cell / per N), not raw counts', () => {
+  const p = gradablePuzzles()[0];
+  const g = gradesFor(p);
+  eq(g.raw.decisionNodes, g.metrics.decisionNodes / (p.n * p.n));
+  eq(g.raw.B, g.metrics.B / p.n);
+});
+t('grades: combinedScore is a pure function of the puzzle\'s own metrics (z of B/N + z of crossPerSeg)', () => {
+  const m = { B: 10, n: 5 }, s = { crossPerSeg: 0.2 };
+  const want = (10 / 5 - COMBINED_ZSCORE.BperN.mean) / COMBINED_ZSCORE.BperN.sd + (0.2 - COMBINED_ZSCORE.cross.mean) / COMBINED_ZSCORE.cross.sd;
+  ok(Math.abs(combinedScore(m, s) - want) < 1e-12);
+  eq(combinedScore(m, s), combinedScore({ ...m }, { ...s }), 'same inputs => same score, independent of any other puzzle');
+});
+t('grades: play badge grade is the decisionNodes grade and hold-V grades are B and crossPerSeg (order contract the UI relies on)', () => {
+  eq(GRADE_ORDER.slice(0, 3), ['decisionNodes', 'B', 'crossPerSeg']);
+  eq(GRADE_ORDER.length, 5, 'design app shows all five');
+});
+
+// ---- spatial (checkpoint-geometry) candidate metrics ----
+t('spatial: checkpointPositions returns [r,c] in checkpoint-number order, 1-indexed input', () => {
+  const p = makePuzzle(3);
+  p.cp[0] = 2; p.cp[8] = 1; p.cp[4] = 3; // (0,0)=2 (2,2)=1 (1,1)=3
+  eq(checkpointPositions(p), [[2, 2], [0, 0], [1, 1]]); // index 0 = checkpoint "1", etc.
+});
+t('spatial: segmentCrossCount finds an X-crossing between two non-adjacent segments, misses a non-crossing one', () => {
+  // 4 checkpoints forming an X between segments (1->2) and (3->4): definitely crosses.
+  const crossing = [[0, 0], [2, 2], [0, 2], [2, 0]];
+  eq(segmentCrossCount(crossing), 1);
+  // Same 4 points, reordered so consecutive segments don't cross (a simple loop-ish path instead).
+  const notCrossing = [[0, 0], [0, 2], [2, 2], [2, 0]];
+  eq(segmentCrossCount(notCrossing), 0);
+});
+t('spatial: segmentCrossCount and segmentOverlapCount ignore adjacent (shared-endpoint) segments', () => {
+  // 3 collinear points: segments (1->2),(2->3) share checkpoint 2 and always "touch" there — must
+  // not be counted as a cross/overlap (there's no j>=i+2 pair to even test with only 3 points).
+  const pts = [[0, 0], [0, 5], [0, 10]];
+  eq(segmentCrossCount(pts), 0);
+  eq(segmentOverlapCount(pts), 0);
+});
+t('spatial: segmentOverlapCount is >= segmentCrossCount for the same points (bbox overlap is a looser test)', () => {
+  for (const pts of [
+    [[0, 0], [2, 2], [0, 2], [2, 0]],
+    [[0, 0], [0, 5], [5, 5], [5, 0], [2, 2]],
+    [[1, 1], [4, 4], [1, 4], [4, 1], [0, 0]],
+  ]) {
+    ok(segmentOverlapCount(pts) >= segmentCrossCount(pts), `overlap (${segmentOverlapCount(pts)}) should be >= cross (${segmentCrossCount(pts)})`);
+  }
+});
+t('spatial: spatialMetrics on a real generated puzzle returns finite, non-negative, K-consistent fields', () => {
+  const p = runSync(generateUnique(8, 10, makeRng(9), { tries: 15 })).puzzle;
+  const m = spatialMetrics(p);
+  eq(m.K, 10);
+  ok(Number.isInteger(m.segmentCrossCount) && m.segmentCrossCount >= 0);
+  ok(Number.isInteger(m.segmentOverlapCount) && m.segmentOverlapCount >= 0);
+  ok(m.segmentOverlapCount >= m.segmentCrossCount);
+  ok(m.crossPerSeg >= 0 && m.overlapPerSeg >= 0);
+  eq(m.crossPerSeg, m.segmentCrossCount / (m.K - 1));
+});
+
 // ---- per-size daily counters & today/total stats (fake storage + fake clock) ----
 const fakeStorage = () => { const m = new Map(); return { async get(k) { return m.has(k) ? { value: m.get(k) } : null; }, async set(k, v) { m.set(k, v); } }; };
 const atDay = d => () => new Date(Date.UTC(2026, 8, d, 12));
 const pending = [];
 const ta = (name, fn) => pending.push([name, fn]); // async tests, run after the sync ones
+
+// ---- hint-popover (minimal fake DOM — this repo has no browser/jsdom test runner, so a small
+// hand-rolled stub sufficient to exercise attachOne()'s branches is used instead of adding a new
+// dependency; installs a fake global document/window only for this one test and restores whatever
+// was there before, so it can't leak into any other test) ----
+ta('hint-popover: attaches plain-text hints, preserves markup children, and setHintText updates in place without duplicating', async () => {
+  class FakeClassList { constructor() { this.set = new Set(); } add(c) { this.set.add(c); } contains(c) { return this.set.has(c); } toggle(c, v) { if (v) this.set.add(c); else this.set.delete(c); } }
+  class FakeEl {
+    constructor() { this.dataset = {}; this._html = ''; this._children = []; this.classList = new FakeClassList(); this._attrs = {}; this._listeners = {}; }
+    get children() { return this._children; }
+    get textContent() { return this._html.replace(/<[^>]+>/g, ''); }
+    set textContent(v) { this._html = v; this._children = []; }
+    get innerHTML() { return this._html; }
+    set innerHTML(v) { this._html = v; this._children = v ? [{ className: 'hint-popover' }] : []; }
+    appendChild(child) { this._children.push(child); if (child.className === 'hint-popover') this._pop = child; }
+    setAttribute(k, v) { this._attrs[k] = v; }
+    addEventListener() { /* not exercised by these assertions */ }
+    getBoundingClientRect() { return { bottom: 0 }; }
+    querySelector(sel) { return sel.includes('hint-popover') ? (this._pop || null) : null; }
+  }
+  const prevDoc = globalThis.document, prevWin = globalThis.window;
+  globalThis.document = { createElement: () => new FakeEl() };
+  globalThis.window = { innerHeight: 800 };
+  try {
+    const { attachHint, setHintText } = await import('../src/ui/hint-popover.js');
+
+    const plain = new FakeEl(); plain.textContent = 'Click the gaps between cells to add or remove blocking walls.';
+    attachHint(plain);
+    eq(plain.dataset.hint, 'Click the gaps between cells to add or remove blocking walls.');
+    eq(plain.dataset.hintAttached, '1');
+
+    const withCode = new FakeEl();
+    withCode.innerHTML = 'generate() has no flags of its own... <code id="x">ab12</code> more text';
+    attachHint(withCode);
+    ok(withCode._pop, 'markup-bearing hint should still get a popover');
+    eq(withCode._children.length > 0, true, 'the <code> child must survive attachment, not be flattened away');
+
+    const before = JSON.stringify(plain.dataset);
+    attachHint(plain);
+    eq(JSON.stringify(plain.dataset), before, 'attaching an already-attached hint is a no-op (idempotent)');
+
+    const dyn = new FakeEl();
+    setHintText(dyn, 'Drag from checkpoint 1...');
+    eq(dyn.dataset.hintAttached, '1', 'setHintText on a never-attached element attaches it');
+    eq(dyn._pop.textContent, 'Drag from checkpoint 1...');
+
+    setHintText(dyn, 'Click a cell then type a number...');
+    eq(dyn._pop.textContent, 'Click a cell then type a number...', 'setHintText on an attached element updates the existing popover');
+    eq(dyn._children.filter(c => c.className === 'hint-popover').length, 1, 'updating text must not create a second popover node');
+  } finally {
+    globalThis.document = prevDoc; globalThis.window = prevWin;
+  }
+});
 
 ta('daily: sequence per size is independent of what was played in other sizes', async () => {
   const A = createDaily(fakeStorage(), atDay(19)), B = createDaily(fakeStorage(), atDay(19)), seedsA = [], seedsB = [];

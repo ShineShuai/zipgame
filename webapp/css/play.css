@@ -183,6 +183,19 @@ select:focus { border-color: var(--blue); }
 .hud { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
 .hud-title { font-weight: 700; color: var(--heading); }
 .seed-tag { margin-left: 8px; font-size: 0.85rem; font-weight: 400; color: var(--muted); }
+/* Hold-V difficulty block is a flex child of .hud (not an inline tag inside the title), so it does
+   not want seed-tag's left margin; the raw numbers behind the grades are dimmer than the grades. */
+#difficultyDev { margin-left: 0; }
+#difficultyDev .dev-raw { opacity: 0.75; margin-left: 4px; }
+.difficulty-badge {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: var(--green-soft);
+  color: #1c7a4a;
+  white-space: nowrap;
+}
 .hud-time {
   padding: 4px 14px;
   border-radius: 999px;

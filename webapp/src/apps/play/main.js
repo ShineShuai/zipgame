@@ -12,11 +12,28 @@ import { bindModal, copyText } from '../../ui/modal.js';
 import { boardSvg, CELL, COLORS } from './board.js';
 import { VERSION } from '../../version.js';
 import { PLAY_FLAGS_INT, flagsToHex } from '../../core/gen/flags.js';
+import { gradesFor } from '../../core/grades.js';
 import { sfxMove, sfxBack, sfxCheckpoint, sfxMoveAfterCheckpoint, sfxBlocked, sfxSolved, setSoundEnabled, isSoundEnabled } from '../../platform/sound.js';
 
 const SIZES = PLAY_SIZES;
+const GRADE_LABEL = ['Warm-up', 'Easy', 'Medium', 'Hard', 'Expert', 'Brutal'];
 const S = { screen: 'menu', size: 7, puzzle: null, path: [], elapsed: 0, startTime: 0, timerId: null, finished: false,
-  gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, gotdDate: null, gotdHint: null, hintsUsed: 0, hintCell: null, hintWrongCell: null, showDev: false };
+  gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, gotdDate: null, gotdHint: null, hintsUsed: 0, hintCell: null, hintWrongCell: null, showDev: false, difficulty: null };
+
+// Grade a puzzle right after generation, once, before it's shown: one reference solve() plus a
+// free geometry pass yields every calibrated grade (see core/grades.js). The solve reuses
+// difficulty.js's refNodeCap (same order of magnitude as generate()'s own nodeCap), so grading never
+// risks costing more than generation itself already risked. Never throws: an uncapped-out solve
+// just means "grade unknown" — the puzzle is still perfectly playable without a grade.
+function gradePuzzle(puzzle) {
+  try {
+    const g = gradesFor(puzzle);
+    return g ? { ok: true, ...g } : { ok: false };
+  } catch (e) {
+    console.warn('difficulty grading failed:', e);
+    return { ok: false };
+  }
+}
 let storage, store, daily, modal;
 const $ = id => document.getElementById(id), today = () => utcDateString(new Date()), dayNo = () => utcDayNumber(new Date()), sec = x => x.toFixed(1) + 's';
 
@@ -180,6 +197,25 @@ function sizeStats(n) {
     </section>`;
 }
 
+// Always-visible grade badge (one word + one number, 0-5): the decisionNodes grade. Nothing is
+// rendered when the puzzle couldn't be graded, rather than a misleading placeholder number.
+function difficultyBadgeHtml() {
+  const d = S.difficulty;
+  if (!d || !d.ok) return '';
+  const g = d.grades.decisionNodes;
+  return `<span class="difficulty-badge" title="Difficulty ${g}/5 (decisionNodes) — solver-derived; hold V for the other candidate grades">${GRADE_LABEL[g]} · ${g}/5</span>`;
+}
+// Hold-V block: the two comparison grades (B and crossPerSeg, each bucketed with its own
+// calibration) followed by the raw numbers behind decisionNodes/B. Hidden by default; same
+// hold-to-reveal pattern as seedTag.
+function difficultyDevHtml() {
+  const d = S.difficulty;
+  const body = d && d.ok
+    ? `B ${d.grades.B}/5 · cross ${d.grades.crossPerSeg}/5 · <span class="dev-raw">decisionNodes ${d.raw.decisionNodes} · B ${d.raw.B.toFixed(2)} · cross/seg ${d.raw.crossPerSeg.toFixed(2)}</span>`
+    : 'ungraded (search capped)';
+  return `<span id="difficultyDev" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="B: backtrack overhead (nodes/cells - 1) from the same solve as decisionNodes. cross: how many non-adjacent checkpoint-to-checkpoint segments geometrically cross, per segment. Each is graded 0-5 with its own calibration; none is validated against human ratings. The design app shows all five grades.">${body}</span>`;
+}
+
 function renderGame() {
   const p = S.puzzle;
   const time = sec(S.elapsed);
@@ -196,6 +232,8 @@ function renderGame() {
       <section class="card board-card">
         <div class="hud">
           <div class="hud-title">${title}</div>
+          ${difficultyBadgeHtml()}
+          ${difficultyDevHtml()}
           <div class="hud-time">Time: <b id="hudTime">${time}</b></div>
         </div>
         <div class="grid-wrap" id="gridWrap">${boardSvg(S)}</div>
@@ -291,7 +329,8 @@ function onSolved() {
 
 // ---------- game flow ----------
 function beginGame(puzzle, gotdDate) {
-  Object.assign(S, { puzzle, isGotd: !!gotdDate, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null });
+  const difficulty = gradePuzzle(puzzle);
+  Object.assign(S, { puzzle, isGotd: !!gotdDate, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
   startTimer(); render();
 }
 async function startLocal(how) { // how: 'open' (Play local: current or next-if-solved) | 'skip' (New puzzle)
@@ -326,6 +365,7 @@ function setDevReveal(on) {
   const h = $('hintBtn'); if (h) h.style.display = on ? '' : 'none';
   const x = $('exportBtn'); if (x) x.style.display = on ? '' : 'none';
   const t = $('seedTag'); if (t) t.style.display = on ? 'inline' : 'none';
+  const d = $('difficultyDev'); if (d) d.style.display = on ? 'inline' : 'none';
 }
 function installDevReveal() {
   const typing = t => t && t.tagName && (/^(input|textarea|select)$/i.test(t.tagName) || t.isContentEditable);

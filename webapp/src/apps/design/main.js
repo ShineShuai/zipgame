@@ -17,6 +17,8 @@ import { mountFlagsPanel } from './flags-panel.js';
 import { runCompare } from './compare.js';
 import { renderCompareHtml } from './compare-view.js';
 import { DEFAULT_FLAGS_INT, PLAY_FLAGS_INT, decodeFlags, flagsToHex } from '../../core/gen/flags.js';
+import { mountDifficultyPanel } from './difficulty-panel.js';
+import { initHints, setHintText } from '../../ui/hint-popover.js';
 
 const DEFAULT_NODE_LIMIT = 300000, $ = id => document.getElementById(id);
 // Non-reproducible designer tools (scatter/random-path/random-walls/minimize) keep using plain
@@ -25,6 +27,8 @@ const rnd = Math.random;
 const boardEl = $('board'), stageEl = document.querySelector('.stage'), plural = (k, w) => `${k} ${w}${k === 1 ? '' : 's'}`;
 let P = makePuzzle(7), mode = 'number', selected = -1, buffer = '', solutions = [], solVisible = [], lastAborted = false, lastNodes = 0;
 let preview = null, previewVisible = true, playMode = false, playPath = [], drawing = false, refs = {}, numDrag = null, dragGhost = null, suppressClick = false, busy = false, modalMode = 'export', showConn = false, showDead = false, showProp = false, showLegCollide = false;
+let playStartTime = 0, playElapsed = 0, playTimerId = null, playFinished = false;
+const sec = x => x.toFixed(1) + 's';
 const playStep = { truncate: true, strictOrder: true }, modal = bindModal($('modalBackdrop'));
 
 // ---------- seed + algorithm flags (above the board) ----------
@@ -104,9 +108,9 @@ function renderLegend() {
   solutions.forEach((_, i) => chip(SOL_C[i], `Solution ${i + 1} — ${plural(lastNodes, 'node')}${lastAborted ? ' (capped)' : ''}`, !solVisible[i], () => { solVisible[i] = !solVisible[i]; renderLegend(); draw(); }));
 }
 function updateHint() {
-  $('hint').textContent = playMode ? 'Drag from checkpoint 1 through every cell. Move back over the path to undo.'
+  setHintText($('hint'), playMode ? 'Drag from checkpoint 1 through every cell. Move back over the path to undo.'
     : mode === 'number' ? 'Click a cell then type a number (Enter to confirm · Esc to cancel). Drag a numbered cell to move it to an empty cell. Press Delete or Backspace to clear the selected cell.'
-      : 'Click the gaps between cells to add or remove blocking walls.';
+      : 'Click the gaps between cells to add or remove blocking walls.');
 }
 function setMode(m) { mode = m; $('modeNumber').classList.toggle('active', m === 'number'); $('modeWall').classList.toggle('active', m === 'wall'); updateHint(); draw(); }
 function resetBoard(n) {
@@ -189,15 +193,31 @@ addEventListener('pointerup', e => {
 addEventListener('pointercancel', () => { drawing = false; endGhost(); clearDrop(); numDrag = null; });
 
 // ---------- play ----------
+// Timer: same convention as the Play app (performance.now()-based elapsed, 100ms tick, sec() format
+// — see play/main.js's S.startTime/S.timerId). Restarting from a rewound path (clicking back along
+// playPath) does NOT reset the clock, matching how a human solve attempt actually works — undoing a
+// few cells isn't a new attempt.
+function stopPlayTimer() { if (playTimerId) { clearInterval(playTimerId); playTimerId = null; } }
+function startPlayTimer() {
+  stopPlayTimer(); playStartTime = performance.now(); playElapsed = 0; playFinished = false;
+  const el = $('playTimer'); if (el) el.textContent = sec(0);
+  playTimerId = setInterval(() => {
+    playElapsed = (performance.now() - playStartTime) / 1000;
+    const t = $('playTimer'); if (t) t.textContent = sec(playElapsed);
+  }, 100);
+}
 function paintPlayNow() {
   paintPlay(refs, P.n, playPath, P, showConn, showDead, showProp, showLegCollide);
   const total = P.n * P.n, K = maxNumber(P), info = $('playInfo');
   if (!playPath.length) info.textContent = `Drag from checkpoint 1 to start. 0 / ${total} cells.`;
-  else if (playPath.length === total) info.textContent = '🎉 Solved! Every cell visited exactly once.';
-  else {
+  else if (playPath.length === total) {
+    info.textContent = '🎉 Solved! Every cell visited exactly once.';
+    if (!playFinished) { playFinished = true; stopPlayTimer(); const t = $('playTimer'); if (t) t.textContent = sec(playElapsed) + ' — solved'; }
+  } else {
     let hi = 0; for (const c of playPath) hi = Math.max(hi, P.cp[c]);
     const last = playPath[playPath.length - 1], extra = K > 1 && P.cp[last] === K ? ' — final checkpoint reached but board not full.' : '';
     info.textContent = `${playPath.length} / ${total} cells · next checkpoint: ${hi + 1 <= K ? '#' + (hi + 1) : '—'}${extra}`;
+    if (playFinished) { playFinished = false; startPlayTimer(); } // rewound off the finished cell: resume timing
   }
 }
 function enterPlay(seedPath) {
@@ -205,12 +225,14 @@ function enterPlay(seedPath) {
   playMode = true; playPath = seedPath || []; drawing = false; solutions = []; solVisible = []; selected = -1; buffer = ''; endGhost(); numDrag = null;
   $('playBtn').classList.add('on'); $('playBtn').textContent = '■ Stop playing'; $('playInfo').style.display = '';
   $('connToggles').style.display = '';
+  startPlayTimer(); const pt = $('playTimer'); if (pt) pt.style.display = '';
   setStatus(''); updateHint(); draw(); renderLegend();
 }
 function exitPlay() {
-  playMode = false; playPath = []; drawing = false;
+  playMode = false; playPath = []; drawing = false; stopPlayTimer();
   $('playBtn').classList.remove('on'); $('playBtn').textContent = '▶ Play'; $('playInfo').style.display = 'none';
   $('connToggles').style.display = 'none';
+  const pt = $('playTimer'); if (pt) pt.style.display = 'none';
   updateHint(); draw();
 }
 
@@ -327,6 +349,8 @@ $('sizeSel').onchange = () => { resetBoard(+$('sizeSel').value); setDefaults(P.n
 $('clearWalls').onclick = () => { P.walls.fill(0); clearSolutions(); clearPreview(); draw(); updateWallCapTag(); };
 $('clearAll').onclick = () => resetBoard(P.n);
 $('solveBtn').onclick = doSolve;
+const difficultyPanel = mountDifficultyPanel($('difficultyResult'), () => P, nodeLimit);
+$('difficultyBtn').onclick = () => { if (playMode) exitPlay(); difficultyPanel.run(); };
 $('playBtn').onclick = () => (playMode ? exitPlay() : enterPlay());
 $('showConn').onclick = () => { showConn = $('showConn').checked; if (playMode) paintPlayNow(); };
 $('showDead').onclick = () => { showDead = $('showDead').checked; if (playMode) paintPlayNow(); };
@@ -446,3 +470,4 @@ function installVersionBadge() {
   setMode('number'); draw(); renderLegend();
 })();
 installVersionBadge();
+initHints(); // convert every static .hint block on the page into a hover-only popover icon
