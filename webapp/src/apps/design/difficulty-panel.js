@@ -20,6 +20,7 @@ import { trapMetrics, trapRoute, TRAP_CFG } from '../../core/trap.js';
 import { pickStorage } from '../../platform/storage.js';
 import { serialize } from '../../core/format.js';
 import { initHints } from '../../ui/hint-popover.js';
+import { ladder, grade as ladderGrade, wideFrac, LEVELS as LADDER_LEVELS } from '../../core/ladder.js';
 
 const escAttr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 const row = (label, value, title) => `<tr${title ? ` title="${escAttr(title)}"` : ''}><th>${label}</th><td>${value}</td></tr>`;
@@ -52,12 +53,19 @@ const METRIC_DEFS = [
   // The five calibrated 0-5 grades themselves, so the rating log shows which grade correlates best.
   ...GRADE_ORDER.map(id => [`grade: ${id}`, d => d.grades[id], `Calibrated 0-5 grade from ${GRADED_METRICS[id].label}. Compare against your own rating.`]),
   ['grade: trap', d => d.trap?.ok ? d.trap.grade : undefined, 'Trap grade (the Play app badge): round(predicted), clamped to 0-5. Fit to hand ratings, not quantile-calibrated. Compare against your own rating.'],
+  // Technique-ladder grade (core/ladder.js): a third, independent approach — propagates human-style
+  // deduction rules (degree, chain, segment-slack territory, nested what-if guessing) instead of
+  // trap's per-wrong-turn refutation cost or the calibrated solver-cost metrics above. Needs no
+  // reference solve either, so it exists whenever the reference solve is capped, same as trap.
+  ['ladderHardest', d => d.ladder ? LADDER_LEVELS[d.ladder.hardest] || '—' : undefined, 'Hardest technique-ladder level reached (local < chain < territory < probe1 < probe2 < search fallback).'],
+  ['ladderWideFrac', d => d.ladder?.solved ? d.ladderWF?.frac : undefined, 'Fraction of the solved path\'s branch points that go against "always take the narrower opening" — rho=0.55 vs 43 hand ratings, the strongest single ladder.js signal found so far. See ladder.js grade() for how it feeds the grade.'],
+  ['grade: ladder', d => d.ladder ? ladderGrade(d.puzzle, d.ladder).grade : undefined, 'Technique-ladder grade (core/ladder.js): N-floor, then a probe2 (nested-guessing) gate for 4/5, then a coarse wideFrac split for 1/2 below that. See ladder.js header comments for exactly how validated each piece is — it is NOT as calibrated as the trap grade. Compare against your own rating.'],
 ];
-// Every 0-5 grade the panel compares against your rating: the calibrated ones plus the trap grade.
-const ALL_GRADES = [...GRADE_ORDER, 'trap'];
-const GRADE_LABEL = { ...Object.fromEntries(GRADE_ORDER.map(id => [id, GRADED_METRICS[id].label])), trap: 'trap (Play badge)' };
+// Every 0-5 grade the panel compares against your rating: the calibrated ones, trap, and ladder.
+const ALL_GRADES = [...GRADE_ORDER, 'trap', 'ladder'];
+const GRADE_LABEL = { ...Object.fromEntries(GRADE_ORDER.map(id => [id, GRADED_METRICS[id].label])), trap: 'trap (Play badge)', ladder: 'technique ladder' };
 // Metrics that exist even when the reference solve was capped (no solver-derived numbers, no grades).
-const SOLVER_FREE = new Set(['crossPerSeg', 'overlapPerSeg', 'trapMax', 'trapTop3', 'altFrac', 'trapPredicted', 'grade: trap']);
+const SOLVER_FREE = new Set(['crossPerSeg', 'overlapPerSeg', 'trapMax', 'trapTop3', 'altFrac', 'trapPredicted', 'grade: trap', 'ladderHardest', 'ladderWideFrac', 'grade: ladder']);
 
 const rc = (n, c) => `${(c / n) | 0},${c % n}`; // 0-based row,col — same convention as the puzzle text format
 const topTraps = t => t.steps.filter(s => s.score >= TRAP_CFG.points[2]).slice(0, 3); // steps with at least one deep trap
@@ -89,6 +97,31 @@ function trapHtml(d) {
     </table>
     <div class="diff-section-title">Worst wrong turns</div>
     <table class="diff-table"><tbody>${traps}</tbody></table>`;
+}
+
+// Technique-ladder section: its grade, the honest-limits note grade() returns, hardest level
+// reached, and the per-level work breakdown — a structurally different result shape from trap's
+// (edges/passes per propagation level vs trap's per-wrong-turn refutation cost), rendered
+// separately for that reason, not because it means something different to the user.
+function ladderHtml(d) {
+  const r = d.ladder;
+  if (!r) return '';
+  if (r.error) return `<div class="diff-panel-flag">Technique ladder: ${r.error}.</div>`;
+  const g = ladderGrade(d.puzzle, r);
+  const rows = [];
+  for (let l = 1; l <= 6; l++) if (r.edges[l] || r.passes[l]) rows.push(row(`${l} ${LADDER_LEVELS[l]}`, `${r.edges[l]} edges, ${r.passes[l]} passes`));
+  const capWarn = r.exceeded ? `<div class="diff-panel-flag diff-panel-flag-red">⚠ work cap exceeded — no grade</div>` : '';
+  return `
+    <div class="diff-section-title">${hinted('Technique ladder (candidate)', 'A third, independent grader: propagates human-style deduction rules (degree, chain, segment-slack territory, then nested what-if guessing) instead of trap\'s per-wrong-turn refutation cost or the calibrated solver-cost metrics above. See its grade\'s own note below for exactly how validated that number is — treat it as a second opinion, not a replacement for trap.')}</div>
+    <table class="diff-table"><tbody>
+      ${row('ladder grade', `<b>${g.grade} / 5</b>`, g.note)}
+      ${row('hardest level reached', LADDER_LEVELS[r.hardest] || '—')}
+      ${row('probe trials', r.probeTrials)}
+      ${row('search fallback nodes', r.search.nodes)}
+    </tbody></table>
+    ${capWarn}
+    <div class="diff-panel-time">${g.note}</div>
+    ${rows.length ? `<table class="diff-table diff-table-cmp"><thead><tr><th>level</th><th>work</th></tr></thead><tbody>${rows.join('')}</tbody></table>` : ''}`;
 }
 
 // Renders the full breakdown as an HTML string for a results panel; `d` is fullDiagnostics()'s
@@ -270,15 +303,26 @@ export function mountDifficultyPanel(resultEl, getPuzzle, getNodeCap, onShowPath
       d.raw = g.raw; d.grades = g.grades;
     }
     const ms = performance.now() - t0;
+    d.puzzle = p; // grade: ladder's extractor needs the puzzle itself, not just the solve result
     // Trap grade: its own set of capped solves, independent of whether the reference solve finished.
     const t1 = performance.now();
     d.trap = trapMetrics(p);
     const trapMs = performance.now() - t1;
     lastRoutes = d.trap.ok ? topTraps(d.trap).map(s => trapRoute(d.trap.path, s)) : [];
 
-    // A capped reference solve has no solver metrics/grades to log, but the trap and spatial ones still exist.
+    // Technique-ladder grade: its own independent solve, also unaffected by whether the reference
+    // solve above was capped. Cheap — single-digit ms typical, well under 300ms worst case observed
+    // at N=11 (see areas/zip-difficulty-grading.md) — so it runs on every click alongside the others.
+    const t2 = performance.now();
+    d.ladder = ladder(p);
+    d.ladderWF = d.ladder.solved && d.ladder.path ? wideFrac(p, d.ladder.path) : null;
+    const ladderMs = performance.now() - t2;
+
+    // A capped reference solve has no solver metrics/grades to log, but the trap/ladder/spatial ones
+    // still exist as long as AT LEAST ONE of trap or ladder actually solved the puzzle (each is an
+    // independent solve, so one can succeed while the other is capped or errors).
     lastMetrics = d.exceeded
-      ? (d.trap.ok ? Object.fromEntries(METRIC_DEFS.filter(([id]) => SOLVER_FREE.has(id)).map(([id, get]) => [id, get(d)])) : null)
+      ? ((d.trap.ok || d.ladder.solved) ? Object.fromEntries(METRIC_DEFS.filter(([id]) => SOLVER_FREE.has(id)).map(([id, get]) => [id, get(d)])) : null)
       : Object.fromEntries(METRIC_DEFS.map(([id, get]) => [id, get(d)]));
     lastPuzzleKey = serialize(p);
 
@@ -290,7 +334,7 @@ export function mountDifficultyPanel(resultEl, getPuzzle, getNodeCap, onShowPath
     resultEl.innerHTML = `
       <button type="button" class="diff-collapse-toggle"><span class="diff-collapse-arrow">▾</span> Diagnostics</button>
       <div class="diff-body">
-        ${diagnosticsHtml(d)}<div class="diff-panel-time">${ms.toFixed(0)}ms, 4 solve() calls + spatial (free) · trap grade ${trapMs.toFixed(0)}ms${d.trap.ok ? `, ${d.trap.alternatives} capped solves` : ''}</div>
+        ${diagnosticsHtml(d)}${ladderHtml(d)}<div class="diff-panel-time">${ms.toFixed(0)}ms, 4 solve() calls + spatial (free) · trap grade ${trapMs.toFixed(0)}ms${d.trap.ok ? `, ${d.trap.alternatives} capped solves` : ''} · ladder grade ${ladderMs.toFixed(0)}ms</div>
         ${rateHtml}<div class="diff-cmp-slot"></div><div class="diff-log-slot"></div>
       </div>`;
     initHints(resultEl);
