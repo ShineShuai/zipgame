@@ -11,7 +11,7 @@ import { solve } from '../solver/solve.js';
 // time grows roughly with the count, the wall count shrinks. More attempts alone would not help,
 // because the wall count before minimizing predicts the final count only weakly.
 // The keys are the grid sizes the play app offers.
-export const CANDIDATES = { 5: 32, 7: 20, 8: 16, 9: 16, 10: 8, 11: 6, 12: 4, 16: 3 };
+export const CANDIDATES = { 5: 32, 6: 32, 7: 20, 8: 16, 9: 16, 10: 8, 11: 6, 12: 4, 16: 3 };
 export const PLAY_SIZES = Object.keys(CANDIDATES).map(Number);
 const candidatesFor = n => CANDIDATES[n] || 2;
 // Most attempts spent per candidate. Failed attempts (Warnsdorff dead ends) are cheap and 30-60% of
