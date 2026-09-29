@@ -12,9 +12,11 @@
 import { metricsFor, gradeOf, refNodeCap } from './difficulty.js';
 import { spatialMetrics } from './spatial.js';
 import { GRADED_METRICS, DEFAULT_THRESHOLDS_BY_METRIC } from './gen/calibration.js';
+import { trapMetrics } from './trap.js';
 
-// Order the grades are shown in. The first is the one the play app always displays; the next two
-// are revealed by hold-V; the design app shows all of them.
+// Order the calibrated (solver/geometry) grades are shown in. The play app's badge is the TRAP grade
+// (core/trap.js), so the first three here — the old badge decisionNodes, then B and crossPerSeg — are
+// what hold-V reveals; the design app shows all of them plus the trap grade.
 export const GRADE_ORDER = ['decisionNodes', 'B', 'crossPerSeg', 'overlapPerSeg', 'combined'];
 
 // Returns null when the reference solve could not confirm uniqueness within budget (no grades then),
@@ -34,4 +36,13 @@ export function gradesFromMetrics(metrics, spatial, thresholdsById = DEFAULT_THR
     grades[id] = gradeOf(raw[id], thresholdsById[id]);
   }
   return { metrics, spatial, raw, grades };
+}
+
+// What the play app grades a puzzle with: { trap, legacy }.
+//   trap   = trapMetrics() — the main (badge) grade. It needs only a solution path (the generator's own),
+//            so it exists even when the reference solve below is capped. { ok:false } if none is found.
+//   legacy = gradesFor() — the previous calibrated grades (decisionNodes, B, crossPerSeg, ...), kept for
+//            hold-V exactly as before; null when the reference solve is capped.
+export function playGradesFor(puzzle) {
+  return { trap: trapMetrics(puzzle), legacy: gradesFor(puzzle) };
 }

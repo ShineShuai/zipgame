@@ -20,6 +20,10 @@ const POPCOUNT = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
 //   legCollide cross-leg collision check — two checkpoint-to-checkpoint legs forced to need the
 //             same cell (see legsCollide() in prune.js); O(K^2) segBlocker calls per node, so
 //             meaningfully pricier than the others; checked last for that reason
+//   forced    array of cells: a path prefix (forced[0] must be the start cell) the search must follow before
+//             branching. Used by core/trap.js to ask "is this wrong turn refuted, and how expensively?".
+//             nodeCap then counts only nodes BELOW the prefix (the prefix itself is forced.length-1
+//             nodes), so a late prefix is not penalised; result.subNodes is that count.
 //   decisions count decision-nodes (dfs() calls where >=2 candidate moves survive every prune in
 //             effect) and the deepest one's depth/T fraction — see difficulty.js. Purely additive
 //             bookkeeping (a comparison + two counters), so it never changes which nodes are
@@ -28,7 +32,7 @@ const POPCOUNT = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
 // found or their DFS order. They do change how many nodes are visited, which is why they are
 // opt-in (nodeCap-dependent generation must stay reproducible for a given ALGO_VERSION).
 //
-// Returns { count, exceeded, nodes, paths?, decisionNodes?, maxDecisionDepth? }. Pure: no DOM, no
+// Returns { count, exceeded, nodes, subNodes, paths?, decisionNodes?, maxDecisionDepth? }. Pure: no DOM, no
 // timers, no randomness.
 export function solve(p, opts = {}) {
   const n = p.n;
@@ -78,6 +82,9 @@ export function solve(p, opts = {}) {
   const pathBuf = new Int32Array(T);    // current path
   const paths = opts.capture ? [] : null;
   let nodes = 0;
+  // forced prefix (opts.forced): the prefix's own nodes do not count against the cap (see header).
+  const forced = opts.forced || null;
+  const prefix = forced ? forced.length - 1 : 0;
   let found = 0;
   // Difficulty instrumentation (see difficulty.js): a "decision node" is one where >=2 candidate
   // moves survive every prune in effect for this call — a real branch/guess point, not just tree
@@ -323,7 +330,7 @@ export function solve(p, opts = {}) {
 
   function dfs(cell, count, needed, depth) {
     nodes++;
-    if (nodes > cap || found >= limit) return;
+    if (nodes - prefix > cap || found >= limit) return;
     enter(cell);
     pathBuf[depth] = cell;
 
@@ -384,6 +391,7 @@ export function solve(p, opts = {}) {
     for (let d = 0; d < 4; d++) {
       const v = nb[cell * 4 + d];
       if (v < 0 || vis[v]) continue;
+      if (forced && depth < prefix && v !== forced[depth + 1]) continue;
       if (PROP && !((av[cell] >> d) & 1)) continue;
       const marker2 = cp[v];
       if (marker2 !== 0 && marker2 !== need) continue;
@@ -436,7 +444,7 @@ export function solve(p, opts = {}) {
 
     for (let i = 0; i < count2; i++) {
       dfs(cand[base + i], count + 1, need, depth + 1);
-      if (found >= limit || nodes > cap) break;
+      if (found >= limit || nodes - prefix > cap) break;
     }
     leave(cell);
   }
@@ -445,7 +453,7 @@ export function solve(p, opts = {}) {
 
   dfs(start, 1, 1, 0);
   return {
-    count: found, exceeded: nodes > cap, nodes, paths: paths || undefined,
+    count: found, exceeded: nodes - prefix > cap, nodes, subNodes: Math.max(0, nodes - prefix), paths: paths || undefined,
     ...(DECISIONS ? { decisionNodes, maxDecisionDepth } : {}),
   };
 }

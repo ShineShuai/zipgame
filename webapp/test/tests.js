@@ -20,8 +20,9 @@ import { GOLDEN } from './golden.js';
 import { metricsFor, referenceSolve, backtrackOverhead, naiveGap, legCollideDependent, firstSolutionGap, fullDiagnostics, gradeOf, refNodeCap, REF_FLAGS } from '../src/core/difficulty.js';
 import { calibrate, calibrateAll, calibrateMetric, generateAtDifficulty, DEFAULT_THRESHOLDS, DEFAULT_THRESHOLDS_BY_METRIC, GRADED_METRICS, QUANTILES } from '../src/core/gen/calibration.js';
 import { checkpointPositions, segmentCrossCount, segmentOverlapCount, spatialMetrics } from '../src/core/spatial.js';
-import { gradesFor, gradesFromMetrics, GRADE_ORDER } from '../src/core/grades.js';
+import { gradesFor, gradesFromMetrics, playGradesFor, GRADE_ORDER } from '../src/core/grades.js';
 import { combinedScore, COMBINED_ZSCORE } from '../src/core/gen/calibration.js';
+import { solutionPath, trapProfile, trapMetrics, trapGradeOf, trapPredict, TRAP_CFG } from '../src/core/trap.js';
 
 // ---- mini harness ----
 const out = []; let pass = 0, fail = 0;
@@ -573,6 +574,8 @@ function sampleUniquePuzzles() {
   return out;
 }
 
+let sampleCache = null; const cachedSamples = () => sampleCache ??= sampleUniquePuzzles(); // generate once, share across tests
+
 t('solve(): decisions option is additive-only — same count/exceeded/nodes/paths as without it', () => {
   for (const p of sampleUniquePuzzles()) {
     const cap = refNodeCap(p.n);
@@ -757,9 +760,21 @@ t('grades: combinedScore is a pure function of the puzzle\'s own metrics (z of B
   ok(Math.abs(combinedScore(m, s) - want) < 1e-12);
   eq(combinedScore(m, s), combinedScore({ ...m }, { ...s }), 'same inputs => same score, independent of any other puzzle');
 });
-t('grades: play badge grade is the decisionNodes grade and hold-V grades are B and crossPerSeg (order contract the UI relies on)', () => {
+t('grades: hold-V still reveals the previous badge grade (decisionNodes) then B and crossPerSeg — order contract the UI relies on', () => {
   eq(GRADE_ORDER.slice(0, 3), ['decisionNodes', 'B', 'crossPerSeg']);
   eq(GRADE_ORDER.length, 5, 'design app shows all five');
+});
+t('grades: playGradesFor = trap grade (badge) + unchanged legacy grades (hold-V)', () => {
+  const p = cachedSamples()[0], pg = playGradesFor(p);
+  ok(pg.trap.ok && Number.isInteger(pg.trap.grade) && pg.trap.grade >= 0 && pg.trap.grade <= 5, 'trap grade 0..5');
+  eq(pg.trap.grade, trapMetrics(p).grade, 'badge grade is the trap grade');
+  eq(pg.legacy.grades, gradesFor(p).grades, 'legacy grades are exactly what gradesFor gave before');
+  eq(playGradesFor(p, undefined).trap.predicted, pg.trap.predicted, 'deterministic');
+});
+t('grades: trap grade exists even when the reference solve is capped (legacy grades then null)', () => {
+  const p = cachedSamples()[0];
+  eq(gradesFor(p, 1), null, 'sanity: 1-node cap cannot confirm uniqueness');
+  ok(trapMetrics(p).ok, 'trap grade needs only a solution path');
 });
 
 // ---- spatial (checkpoint-geometry) candidate metrics ----
@@ -860,6 +875,44 @@ ta('hint-popover: attaches plain-text hints, preserves markup children, and setH
   } finally {
     globalThis.document = prevDoc; globalThis.window = prevWin;
   }
+});
+
+// ---- trap grade (core/trap.js) + solve()'s `forced` prefix option ----
+t('solve(): forced prefix of just the start cell changes nothing (count/nodes/paths identical)', () => {
+  for (const p of cachedSamples()) {
+    const plain = solve(p, { limit: 2, nodeCap: refNodeCap(p.n), capture: true, ...REF_FLAGS });
+    const f = solve(p, { limit: 2, nodeCap: refNodeCap(p.n), capture: true, forced: [p.cp.indexOf(1)], ...REF_FLAGS });
+    eq(f.count, plain.count); eq(f.nodes, plain.nodes); eq(f.paths, plain.paths); eq(f.subNodes, plain.nodes);
+  }
+});
+t('solve(): forced prefix along the solution still finds it; a forced wrong turn finds nothing', () => {
+  for (const p of cachedSamples()) {
+    const path = solutionPath(p), k = Math.max(2, path.length >> 1);
+    const on = solve(p, { limit: 2, nodeCap: refNodeCap(p.n), capture: true, forced: path.slice(0, k + 1), ...REF_FLAGS });
+    eq(on.count, 1); eq(on.paths[0], path); eq(on.nodes - on.subNodes, k, 'prefix nodes are not charged to the cap');
+    const prof = trapProfile(p, path);
+    ok(prof.length > 0, 'a real puzzle has wrong turns');
+    for (const w of prof) { const off = solve(p, { limit: 1, nodeCap: TRAP_CFG.cap, forced: path.slice(0, w.i + 1).concat(w.cell), ...REF_FLAGS }); eq(off.count, 0, `wrong turn at step ${w.i} must be refuted on a unique puzzle`); }
+    eq(prof.nonUnique, false);
+  }
+});
+t('trap: metrics are deterministic, in range, and consistent with the profile', () => {
+  for (const p of cachedSamples()) {
+    const a = trapMetrics(p), b = trapMetrics(p);
+    ok(a.ok, 'solvable'); eq(a.trapMax, b.trapMax); eq(a.trapTop3, b.trapTop3); eq(a.altFrac, b.altFrac); eq(a.grade, b.grade);
+    ok(a.altFrac >= 0 && a.altFrac <= 1, 'altFrac is a fraction of steps');
+    ok(a.trapTop3 >= a.trapMax, 'top-3 sum includes the max');
+    ok(Number.isInteger(a.grade) && a.grade >= 0 && a.grade <= 5, 'grade 0..5');
+    eq(a.steps[0].score, a.trapMax); ok(a.steps.every((s, i) => i === 0 || a.steps[i - 1].score >= s.score), 'steps sorted worst first');
+    eq(trapMetrics(p, TRAP_CFG, a.path).trapMax, a.trapMax, 'passing the path in skips the solve but gives the same answer');
+  }
+});
+t('trap: no solution -> { ok:false } instead of a made-up grade; grade clamps to 0..5', () => {
+  const p = makePuzzle(4); p.cp[0] = 1; p.cp[15] = 2; p.cp[5] = 3; // 1 -> 2 -> 3 order cannot be a Hamiltonian path here
+  const r = trapMetrics(p);
+  ok(!r.ok && typeof r.reason === 'string', 'unsolvable puzzle reports why');
+  eq([-3, 0.4, 0.5, 2.49, 5.4, 9].map(trapGradeOf), [0, 0, 1, 2, 5, 5]);
+  eq(trapPredict({ trapMax: 0, trapTop3: 0, altFrac: 0 }, { features: ['trapMax'], mean: { trapMax: 0 }, sd: { trapMax: 2 }, w: { trapMax: 1 }, b: 1 }), 1);
 });
 
 ta('daily: sequence per size is independent of what was played in other sizes', async () => {

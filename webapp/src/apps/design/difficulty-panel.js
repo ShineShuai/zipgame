@@ -16,6 +16,7 @@ import { GRADED_METRICS, DEFAULT_THRESHOLDS_BY_METRIC } from '../../core/gen/cal
 import { gradesFromMetrics, GRADE_ORDER } from '../../core/grades.js';
 import { validate } from '../../core/model.js';
 import { spatialMetrics } from '../../core/spatial.js';
+import { trapMetrics, trapRoute, TRAP_CFG } from '../../core/trap.js';
 import { pickStorage } from '../../platform/storage.js';
 import { serialize } from '../../core/format.js';
 import { initHints } from '../../ui/hint-popover.js';
@@ -43,9 +44,52 @@ const METRIC_DEFS = [
   ['decisionNodes/cell', d => d.raw.decisionNodes, 'decisionNodes divided by cell count — the value the decisionNodes grade is bucketed from.'],
   ['B/N', d => d.raw.B, 'B divided by grid size N — the value the B grade is bucketed from.'],
   ['combined score', d => d.raw.combined, 'z(B/N) + z(crossPerSeg) — the value the combined grade is bucketed from. Picked after looking at the rated sample, so optimistic.'],
+  // Trap grade (core/trap.js): needs no reference-solve result, so it also exists for puzzles the reference solve capped on.
+  ['trapMax', d => d.trap?.ok ? d.trap.trapMax : undefined, `Score of the single worst step of the solution: sum over its wrong moves of 0 (refuted within ${TRAP_CFG.obvious} nodes) / 1 (within ${TRAP_CFG.shallow}) / 3 (deeper) / 5 (survives ${TRAP_CFG.cap} nodes).`],
+  ['trapTop3', d => d.trap?.ok ? d.trap.trapTop3 : undefined, 'Sum of the three worst steps\' scores.'],
+  ['altFrac', d => d.trap?.ok ? d.trap.altFrac : undefined, 'Fraction of solution steps that have any legal wrong move. Low = long forced corridors, which humans find easy (rho -0.54 vs your ratings on 48 puzzles).'],
+  ['trapPredicted', d => d.trap?.ok ? d.trap.predicted : undefined, 'Ridge model over trapMax, trapTop3, altFrac on your 0-5 scale; the trap grade is this rounded.'],
   // The five calibrated 0-5 grades themselves, so the rating log shows which grade correlates best.
   ...GRADE_ORDER.map(id => [`grade: ${id}`, d => d.grades[id], `Calibrated 0-5 grade from ${GRADED_METRICS[id].label}. Compare against your own rating.`]),
+  ['grade: trap', d => d.trap?.ok ? d.trap.grade : undefined, 'Trap grade (the Play app badge): round(predicted), clamped to 0-5. Fit to hand ratings, not quantile-calibrated. Compare against your own rating.'],
 ];
+// Every 0-5 grade the panel compares against your rating: the calibrated ones plus the trap grade.
+const ALL_GRADES = [...GRADE_ORDER, 'trap'];
+const GRADE_LABEL = { ...Object.fromEntries(GRADE_ORDER.map(id => [id, GRADED_METRICS[id].label])), trap: 'trap (Play badge)' };
+// Metrics that exist even when the reference solve was capped (no solver-derived numbers, no grades).
+const SOLVER_FREE = new Set(['crossPerSeg', 'overlapPerSeg', 'trapMax', 'trapTop3', 'altFrac', 'trapPredicted', 'grade: trap']);
+
+const rc = (n, c) => `${(c / n) | 0},${c % n}`; // 0-based row,col — same convention as the puzzle text format
+const topTraps = t => t.steps.filter(s => s.score >= TRAP_CFG.points[2]).slice(0, 3); // steps with at least one deep trap
+
+// Trap section: the grade, its inputs, and the worst wrong turns (each can be drawn on the board).
+function trapHtml(d) {
+  const t = d.trap;
+  if (!t.ok) return `<div class="diff-panel-flag">Trap grade unavailable: ${t.reason}.</div>`;
+  const notUnique = t.nonUnique ? `<div class="diff-panel-flag">${hinted('⚠ Not unique', 'Some wrong turn leads to a second full solution, so this puzzle has more than one answer. Trap scores are measured against the first solution found and ignore those alternatives.')}</div>` : '';
+  const top = topTraps(t);
+  const traps = top.length
+    ? top.map((s, k) => {
+      const w = s.worst;
+      return `<tr title="Solution step ${s.i + 1} is at ${rc(d.n, t.path[s.i])}. Going to ${rc(d.n, w.cell)} instead is wrong; ${w.capped ? `the solver could not refute it within ${TRAP_CFG.cap} nodes` : `the solver needed ${w.sub} nodes to refute it`}. All wrong moves at this step add up to ${s.score} points.">
+        <th>step ${s.i + 1} · ${rc(d.n, t.path[s.i])} → ${rc(d.n, w.cell)}</th><td>${w.capped ? `${TRAP_CFG.cap}+ nodes` : `${w.sub} nodes`} · ${s.score} pts <button type="button" class="diff-trap-show" data-k="${k}" title="Draw the solution up to this step plus the wrong move (shown as the dashed path)">show</button></td></tr>`;
+    }).join('')
+    : '<tr><th colspan="2">no deep traps</th></tr>';
+  return `${notUnique}
+    <div class="diff-section-title">Trap grade (candidate)</div>
+    <table class="diff-table">
+      <tbody>
+        ${row('trap grade (Play badge)', `<b>${t.grade} / 5</b>`, `Play app badge. Predicted ${t.predicted.toFixed(2)} on your 0-5 scale (ridge over trapMax, trapTop3, altFrac; fit to 54 hand ratings), rounded.`)}
+        ${row('predicted', t.predicted.toFixed(2), 'Model output before rounding.')}
+        ${row('trapMax', t.trapMax, METRIC_DEFS.find(m => m[0] === 'trapMax')[2])}
+        ${row('trapTop3', t.trapTop3, METRIC_DEFS.find(m => m[0] === 'trapTop3')[2])}
+        ${row('altFrac', t.altFrac.toFixed(3), METRIC_DEFS.find(m => m[0] === 'altFrac')[2])}
+        ${row('wrong moves tested', t.alternatives, 'Legal wrong moves along the solution, each refuted by its own capped solve.')}
+      </tbody>
+    </table>
+    <div class="diff-section-title">Worst wrong turns</div>
+    <table class="diff-table"><tbody>${traps}</tbody></table>`;
+}
 
 // Renders the full breakdown as an HTML string for a results panel; `d` is fullDiagnostics()'s
 // return value merged with spatialMetrics()'s, `thresholds` the pooled calibration in use (so the
@@ -55,8 +99,9 @@ export function diagnosticsHtml(d) {
     return `<div class="diff-panel diff-panel-warn">
       Search capped before uniqueness was confirmed at this node limit — no grade. Raise Search
       limit (nodes) above and re-run, or accept this puzzle may be right at/beyond the grading
-      budget (which is itself a signal: grade 5-and-up territory).
-    </div>`;
+      budget (which is itself a signal: grade 5-and-up territory). The trap grade below does not
+      depend on that solve.
+    </div>${trapHtml(d)}`;
   }
   const legWarn = d.legCollideDependent
     ? `<div class="diff-panel-flag">${hinted('⚠ Leg-collision dependent', 'Uniqueness depends on the leg-collision check — a non-local inference humans rarely make proactively, so this puzzle is likely harder for a person than the grades suggest.')}</div>`
@@ -66,13 +111,14 @@ export function diagnosticsHtml(d) {
     : '';
   const gradeRows = GRADE_ORDER.map((id, i) => {
     const th = DEFAULT_THRESHOLDS_BY_METRIC[id];
-    const where = i === 0 ? 'Play app badge' : i < 3 ? 'Play app, hold V' : 'Design app only';
+    const where = i < 3 ? 'Play app, hold V (decisionNodes was the badge before the trap grade)' : 'Design app only';
     return row(GRADED_METRICS[id].label, `${d.grades[id]} / 5`,
       `${where}. Raw value ${fmt(d.raw[id])}, bucketed with its own calibrated cutpoints [${th.join(', ')}].`);
   }).join('');
   const rows = METRIC_DEFS.filter(([id]) => !id.startsWith('grade:')).map(([id, get, title]) => row(id, fmt(get(d)), title)).join('');
   return `
-    <div class="diff-panel-flag diff-panel-flag-red">${hinted('⚠ Grades are unvalidated', 'No grade here has validated against your hand ratings yet: best r is about 0.3 to 0.4 on 25 rated puzzles, which is not distinguishable from noise. Use them to compare candidate gradings against your own rating; do not trust any single one.')}</div>
+    <div class="diff-panel-flag diff-panel-flag-red">${hinted('⚠ Grades are unvalidated', 'On 54 hand-rated puzzles the solver-based grades correlate about 0.2 to 0.4 with your ratings. The trap grade (the Play app badge) was fit to those same 54 (leave-one-out rho about 0.65, mean abs error 0.66 grades), with its features picked on that sample, so that number is optimistic. It rarely outputs 0, 4 or 5. Rate puzzles below to test it on new ones.')}</div>
+    ${trapHtml(d)}
     <div class="diff-section-title">Grades (each calibrated on its own)</div>
     <table class="diff-table"><tbody>${gradeRows}</tbody></table>
     <div class="diff-section-title">Raw metrics</div>
@@ -139,7 +185,7 @@ function correlationHtml(entries) {
 // decisionNodes/cell cannot be "off by 2"). Entries logged before the grades existed are skipped for
 // the aggregate columns (shown via the row's n).
 function ratedComparisonHtml(entries, thisKey, thisMetrics, human) {
-  const rows = GRADE_ORDER.map(id => {
+  const rows = ALL_GRADES.filter(id => Number.isFinite(thisMetrics[`grade: ${id}`])).map(id => {
     const field = `grade: ${id}`;
     const cur = thisMetrics[field];
     const err = cur - human;
@@ -151,8 +197,8 @@ function ratedComparisonHtml(entries, thisKey, thisMetrics, human) {
       if (have.length >= 3) r = pearson(have.map(e => e.metrics[field]), have.map(e => e.human));
     }
     const sgn = x => (x > 0 ? '+' : '') + x.toFixed(x % 1 ? 2 : 0);
-    return `<tr title="${escAttr(`${GRADED_METRICS[id].label}: this puzzle got ${cur}, you rated it ${human} (error ${sgn(err)}). Over ${have.length} rated puzzles: mean signed error ${bias == null ? '—' : sgn(bias)} (positive = the grade runs harder than you), mean absolute error ${mae == null ? '—' : mae.toFixed(2)}, Pearson r ${r == null ? '—' : r.toFixed(3)}.`)}">
-      <th>${GRADED_METRICS[id].label}</th><td>${cur} vs ${human}<span class="diff-n"> (${sgn(err)})</span></td>
+    return `<tr title="${escAttr(`${GRADE_LABEL[id]}: this puzzle got ${cur}, you rated it ${human} (error ${sgn(err)}). Over ${have.length} rated puzzles: mean signed error ${bias == null ? '—' : sgn(bias)} (positive = the grade runs harder than you), mean absolute error ${mae == null ? '—' : mae.toFixed(2)}, Pearson r ${r == null ? '—' : r.toFixed(3)}.`)}">
+      <th>${GRADE_LABEL[id]}</th><td>${cur} vs ${human}<span class="diff-n"> (${sgn(err)})</span></td>
       <td>${bias == null ? '—' : sgn(bias)}</td><td>${mae == null ? '—' : mae.toFixed(2)}</td><td>${r == null ? '—' : r.toFixed(2)}</td></tr>`;
   }).join('');
   return `
@@ -172,8 +218,8 @@ function ratedComparisonHtml(entries, thisKey, thisMetrics, human) {
 // last computed result — collapsing never clears lastMetrics/lastPuzzleKey, so rating still works
 // while collapsed, and re-running Compute diagnostics always expands again so a fresh result is
 // never hidden from the user who just asked for it.
-export function mountDifficultyPanel(resultEl, getPuzzle, getNodeCap) {
-  let lastMetrics = null, lastPuzzleKey = null, collapsed = false;
+export function mountDifficultyPanel(resultEl, getPuzzle, getNodeCap, onShowPath) {
+  let lastMetrics = null, lastPuzzleKey = null, collapsed = false, lastRoutes = [];
 
   function applyCollapsed() {
     const body = resultEl.querySelector('.diff-body');
@@ -217,17 +263,26 @@ export function mountDifficultyPanel(resultEl, getPuzzle, getNodeCap) {
     const t0 = performance.now();
     const d = fullDiagnostics(p, cap);
     Object.assign(d, spatialMetrics(p));
+    d.n = p.n;
     if (!d.exceeded) {
       // Reuse the reference-solve fields fullDiagnostics already produced — no extra solve.
       const g = gradesFromMetrics({ ...d, n: p.n }, d);
       d.raw = g.raw; d.grades = g.grades;
     }
     const ms = performance.now() - t0;
+    // Trap grade: its own set of capped solves, independent of whether the reference solve finished.
+    const t1 = performance.now();
+    d.trap = trapMetrics(p);
+    const trapMs = performance.now() - t1;
+    lastRoutes = d.trap.ok ? topTraps(d.trap).map(s => trapRoute(d.trap.path, s)) : [];
 
-    lastMetrics = d.exceeded ? null : Object.fromEntries(METRIC_DEFS.map(([id, get]) => [id, get(d)]));
+    // A capped reference solve has no solver metrics/grades to log, but the trap and spatial ones still exist.
+    lastMetrics = d.exceeded
+      ? (d.trap.ok ? Object.fromEntries(METRIC_DEFS.filter(([id]) => SOLVER_FREE.has(id)).map(([id, get]) => [id, get(d)])) : null)
+      : Object.fromEntries(METRIC_DEFS.map(([id, get]) => [id, get(d)]));
     lastPuzzleKey = serialize(p);
 
-    const rateHtml = d.exceeded ? '' : `
+    const rateHtml = !lastMetrics ? '' : `
       <div class="diff-rate">
         <span>Your rating for this puzzle:</span>
         ${[0, 1, 2, 3, 4, 5].map(g => `<button class="diff-rate-btn" data-grade="${g}">${g}</button>`).join('')}
@@ -235,12 +290,13 @@ export function mountDifficultyPanel(resultEl, getPuzzle, getNodeCap) {
     resultEl.innerHTML = `
       <button type="button" class="diff-collapse-toggle"><span class="diff-collapse-arrow">▾</span> Diagnostics</button>
       <div class="diff-body">
-        ${diagnosticsHtml(d)}<div class="diff-panel-time">${ms.toFixed(0)}ms, 4 solve() calls + spatial (free)</div>
+        ${diagnosticsHtml(d)}<div class="diff-panel-time">${ms.toFixed(0)}ms, 4 solve() calls + spatial (free) · trap grade ${trapMs.toFixed(0)}ms${d.trap.ok ? `, ${d.trap.alternatives} capped solves` : ''}</div>
         ${rateHtml}<div class="diff-cmp-slot"></div><div class="diff-log-slot"></div>
       </div>`;
     initHints(resultEl);
     resultEl.querySelector('.diff-collapse-toggle').onclick = () => { collapsed = !collapsed; applyCollapsed(); };
     resultEl.querySelectorAll('.diff-rate-btn').forEach(b => b.onclick = () => rate(+b.dataset.grade));
+    resultEl.querySelectorAll('.diff-trap-show').forEach(b => b.onclick = () => onShowPath && onShowPath(lastRoutes[+b.dataset.k]));
     applyCollapsed();
     renderLog();
   }

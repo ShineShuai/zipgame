@@ -349,7 +349,12 @@ $('sizeSel').onchange = () => { resetBoard(+$('sizeSel').value); setDefaults(P.n
 $('clearWalls').onclick = () => { P.walls.fill(0); clearSolutions(); clearPreview(); draw(); updateWallCapTag(); };
 $('clearAll').onclick = () => resetBoard(P.n);
 $('solveBtn').onclick = doSolve;
-const difficultyPanel = mountDifficultyPanel($('difficultyResult'), () => P, nodeLimit);
+// onShowPath: the difficulty panel's trap rows draw "solution up to a step + the wrong move" as the dashed (template) path.
+const difficultyPanel = mountDifficultyPanel($('difficultyResult'), () => P, nodeLimit, cells => {
+  if (!cells) return;
+  if (playMode) exitPlay();
+  preview = cells; previewVisible = true; renderLegend(); draw();
+});
 $('difficultyBtn').onclick = () => { if (playMode) exitPlay(); difficultyPanel.run(); };
 $('playBtn').onclick = () => (playMode ? exitPlay() : enterPlay());
 $('showConn').onclick = () => { showConn = $('showConn').checked; if (playMode) paintPlayNow(); };

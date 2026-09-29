@@ -139,13 +139,17 @@
 
     <div class="field">
       <label title="Solver-derived difficulty diagnostics — see core/difficulty.js. Requires the puzzle to already be uniquely solvable.">Difficulty</label>
-      <button id="difficultyBtn" class="wide" title="Runs 4 solve() calls (reference, naive, no-legCollide, first-solution) on the current puzzle">📊 Compute diagnostics</button>
+      <button id="difficultyBtn" class="wide" title="Runs 4 solve() calls (reference, naive, no-legCollide, first-solution) plus the trap grade (one capped solve per wrong turn on the solution) on the current puzzle">📊 Compute diagnostics</button>
     </div>
     <div class="hint">
-      Grade and its raw signals — same reference solve the Play app grades with, plus 3 extra
-      diagnostic-only solves not used for the shipped grade (naive-solver gap, leg-collision
-      dependency, first-solution gap). The "regression" row is an unfitted placeholder formula, not
-      a candidate grade — see its tooltip.
+      Trap grade (top of the panel) is now the Play app's badge grade: it finds the solution, then for
+      every wrong turn along it measures how many solver nodes are needed to refute it, and maps the
+      worst steps to 0-5 with weights fit to hand ratings. It needs no grade-quota search and still
+      works when the reference solve is capped. "show" draws a trap on the board. Below it: the
+      calibrated solver/spatial grades (decisionNodes was the Play badge before; it and B and cross
+      are still shown in Play on hold-V), the same reference solve, and 3 diagnostic-only solves
+      (naive-solver gap, leg-collision dependency, first-solution gap). The "regression" row is an
+      unfitted placeholder, not a candidate grade.
     </div>
     <div id="difficultyResult"></div>
   </aside>

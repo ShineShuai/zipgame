@@ -12,7 +12,7 @@ import { bindModal, copyText } from '../../ui/modal.js';
 import { boardSvg, CELL, COLORS } from './board.js';
 import { VERSION } from '../../version.js';
 import { PLAY_FLAGS_INT, flagsToHex } from '../../core/gen/flags.js';
-import { gradesFor } from '../../core/grades.js';
+import { playGradesFor } from '../../core/grades.js';
 import { sfxMove, sfxBack, sfxCheckpoint, sfxMoveAfterCheckpoint, sfxBlocked, sfxSolved, setSoundEnabled, isSoundEnabled } from '../../platform/sound.js';
 
 const SIZES = PLAY_SIZES;
@@ -20,18 +20,19 @@ const GRADE_LABEL = ['Warm-up', 'Easy', 'Medium', 'Hard', 'Expert', 'Brutal'];
 const S = { screen: 'menu', size: 7, puzzle: null, path: [], elapsed: 0, startTime: 0, timerId: null, finished: false,
   gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, gotdDate: null, gotdHint: null, hintsUsed: 0, hintCell: null, hintWrongCell: null, showDev: false, difficulty: null };
 
-// Grade a puzzle right after generation, once, before it's shown: one reference solve() plus a
-// free geometry pass yields every calibrated grade (see core/grades.js). The solve reuses
-// difficulty.js's refNodeCap (same order of magnitude as generate()'s own nodeCap), so grading never
-// risks costing more than generation itself already risked. Never throws: an uncapped-out solve
-// just means "grade unknown" — the puzzle is still perfectly playable without a grade.
+// Grade a puzzle right after generation, once, before it's shown (see core/grades.js playGradesFor):
+//   trap   - the main grade (badge): one capped solve per wrong turn along the solution, ~2-200 ms at
+//            play sizes; needs no reference solve, so it exists even for puzzles the reference solve caps on.
+//   legacy - the previous calibrated grades (decisionNodes, B, crossPerSeg), one reference solve() plus a
+//            free geometry pass; shown only on hold-V. null when that solve was capped (then hold-V says so).
+// Never throws: a failed grade just means "grade unknown" — the puzzle is still perfectly playable.
 function gradePuzzle(puzzle) {
   try {
-    const g = gradesFor(puzzle);
-    return g ? { ok: true, ...g } : { ok: false };
+    const { trap, legacy } = playGradesFor(puzzle);
+    return { ok: trap.ok, trap: trap.ok ? trap : null, legacy };
   } catch (e) {
     console.warn('difficulty grading failed:', e);
-    return { ok: false };
+    return { ok: false, trap: null, legacy: null };
   }
 }
 let storage, store, daily, modal;
@@ -197,23 +198,25 @@ function sizeStats(n) {
     </section>`;
 }
 
-// Always-visible grade badge (one word + one number, 0-5): the decisionNodes grade. Nothing is
+// Always-visible grade badge (one word + one number, 0-5): the trap grade (core/trap.js). Nothing is
 // rendered when the puzzle couldn't be graded, rather than a misleading placeholder number.
 function difficultyBadgeHtml() {
   const d = S.difficulty;
   if (!d || !d.ok) return '';
-  const g = d.grades.decisionNodes;
-  return `<span class="difficulty-badge" title="Difficulty ${g}/5 (decisionNodes) — solver-derived; hold V for the other candidate grades">${GRADE_LABEL[g]} · ${g}/5</span>`;
+  const g = d.trap.grade;
+  return `<span class="difficulty-badge" title="Difficulty ${g}/5 (trap grade) — how hard the worst wrong turn on the solution is to refute; hold V for the other candidate grades">${GRADE_LABEL[g]} · ${g}/5</span>`;
 }
-// Hold-V block: the two comparison grades (B and crossPerSeg, each bucketed with its own
-// calibration) followed by the raw numbers behind decisionNodes/B. Hidden by default; same
-// hold-to-reveal pattern as seedTag.
+// Hold-V block: the trap grade's raw inputs, then the previous grades as before — decisionNodes (the old
+// badge), B and crossPerSeg, each bucketed with its own calibration — and the raw numbers behind them.
+// Hidden by default; same hold-to-reveal pattern as seedTag.
 function difficultyDevHtml() {
-  const d = S.difficulty;
-  const body = d && d.ok
-    ? `B ${d.grades.B}/5 · cross ${d.grades.crossPerSeg}/5 · <span class="dev-raw">decisionNodes ${d.raw.decisionNodes} · B ${d.raw.B.toFixed(2)} · cross/seg ${d.raw.crossPerSeg.toFixed(2)}</span>`
-    : 'ungraded (search capped)';
-  return `<span id="difficultyDev" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="B: backtrack overhead (nodes/cells - 1) from the same solve as decisionNodes. cross: how many non-adjacent checkpoint-to-checkpoint segments geometrically cross, per segment. Each is graded 0-5 with its own calibration; none is validated against human ratings. The design app shows all five grades.">${body}</span>`;
+  const d = S.difficulty, t = d && d.trap, g = d && d.legacy;
+  const trapPart = t ? `trap ${t.predicted.toFixed(2)} <span class="dev-raw">max ${t.trapMax} · top3 ${t.trapTop3} · alt ${t.altFrac.toFixed(2)}</span> · ` : '';
+  const legacyPart = g
+    ? `decisionNodes ${g.grades.decisionNodes}/5 · B ${g.grades.B}/5 · cross ${g.grades.crossPerSeg}/5 · <span class="dev-raw">decisionNodes ${g.raw.decisionNodes} · B ${g.raw.B.toFixed(2)} · cross/seg ${g.raw.crossPerSeg.toFixed(2)}</span>`
+    : 'old grades: ungraded (search capped)';
+  const body = t || g ? trapPart + legacyPart : 'ungraded';
+  return `<span id="difficultyDev" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="trap: the badge grade before rounding, with its inputs (worst step's trap score, top-3 steps' sum, fraction of steps that have any wrong move). decisionNodes: the previous badge grade (solver branch points per cell). B: backtrack overhead (nodes/cells - 1) from the same solve. cross: how many non-adjacent checkpoint-to-checkpoint segments geometrically cross, per segment. Each old grade is graded 0-5 with its own calibration; the trap grade is fit to hand ratings. The design app shows all of them.">${body}</span>`;
 }
 
 function renderGame() {
