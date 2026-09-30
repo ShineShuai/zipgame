@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Zip stats</title>
+<link rel="stylesheet" href="css/stats.css">
+</head>
+<body>
+<main class="wrap">
+  <header class="bar">
+    <h1>Zip · Game of Day stats</h1>
+    <label>Range <select id="range"><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option></select></label>
+    <label>Source <select id="source"></select></label>
+  </header>
+  <section id="status" class="chips"></section>
+  <section id="kpis" class="kpis"></section>
+  <section><h2>Solves per day <small>(by backend, click a day)</small></h2><div id="solves" class="chart"></div></section>
+  <section><h2>Solve time per day <small>(p10&ndash;p90 band, log scale)</small></h2><div id="times" class="chart"></div><p id="timesLegend" class="legend"></p></section>
+  <section><h2 id="dayTitle">Day</h2><div id="hist" class="chart"></div><div id="best"></div></section>
+  <section><h2>Difficulty vs median solve time</h2><p id="scatterNote" class="note"></p><div id="scatter" class="chart"></div><p id="scatterLegend" class="legend"></p></section>
+  <section><h2>Anomalies</h2><div id="flags"></div></section>
+</main>
+<script type="module" src="src/apps/stats/main.js"></script>
+</body>
+</html>

@@ -1,15 +1,18 @@
 import { binOf, summarize, MIN_MS, MAX_MS } from '../core/hist.js';
 
-// Backend adapters: turn { d: YYYYMMDD, t: ms, b: bin } into a fetch request. Both reply { n, sum, below, cnt, best }.
+// Backend adapters: request() turns { d: YYYYMMDD, t: ms, b: bin } into a fetch request (both reply { n, sum, below, cnt, best });
+// read() turns { from, to } (YYYYMMDD, <= 90 days) into the stats page's fetch request (both reply { days: [{ d, n, sum, bins, best }] }).
 // Cloudflare sends text/plain so the browser skips the CORS preflight (one request instead of two); the Worker parses JSON anyway.
 const trim = u => u.replace(/\/+$/, '');
 export const cloudflareBackend = ({ url }) => ({
   name: 'cloudflare',
   request: ({ d, t, b }) => ({ url: trim(url) + '/gotd', init: { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify({ d, t, b }) } }),
+  read: ({ from, to }) => ({ url: `${trim(url)}/stats?from=${from}&to=${to}`, init: { method: 'GET' } }), // simple request: no preflight
 });
 export const supabaseBackend = ({ url, key }) => ({
   name: 'supabase',
   request: ({ d, t, b }) => ({ url: trim(url) + '/rest/v1/rpc/submit_gotd', init: { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: key }, body: JSON.stringify({ p_day: d, p_ms: t, p_bin: b }) } }),
+  read: ({ from, to }) => ({ url: trim(url) + '/rest/v1/rpc/read_gotd', init: { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: key }, body: JSON.stringify({ p_from: from, p_to: to }) } }),
 });
 
 const FACTORIES = { cloudflare: cloudflareBackend, supabase: supabaseBackend };

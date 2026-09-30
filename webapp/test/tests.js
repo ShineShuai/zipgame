@@ -19,6 +19,9 @@ import { HINT_PENALTY_S, penalizedTime } from '../src/features/hints.js';
 import { createStore } from '../src/features/stats-store.js';
 import { NB, TOP_K, binOf, summarize, statsLine } from '../src/core/hist.js';
 import { createLeaderboard, backendsFromConfig, cloudflareBackend, supabaseBackend } from '../src/platform/leaderboard.js';
+import { parseDays, mergeDays, quantile, binLo, binHi, dayStats, flagsOf, median, spearman, dayList } from '../src/core/stats-merge.js';
+import { fetchStats } from '../src/platform/stats-client.js';
+import { barsSvg, linesSvg, histSvg, scatterSvg, linTicks, timeTicks, fmtSec } from '../src/apps/stats/charts.js';
 import { GOLDEN } from './golden.js';
 import { metricsFor, referenceSolve, backtrackOverhead, naiveGap, legCollideDependent, firstSolutionGap, fullDiagnostics, gradeOf, refNodeCap, REF_FLAGS } from '../src/core/difficulty.js';
 import { calibrate, calibrateAll, calibrateMetric, generateAtDifficulty, DEFAULT_THRESHOLDS, DEFAULT_THRESHOLDS_BY_METRIC, GRADED_METRICS, QUANTILES } from '../src/core/gen/calibration.js';
@@ -1002,6 +1005,88 @@ ta('leaderboard: 400/422 = rejected without failover; all down = failed; out-of-
   let n = 0; eq((await both(async () => { n++; return reply(500, {}); }).submit('20260929', 30)).status, 'failed'); eq(n, 2);
   n = 0; eq((await both(hang).submit('20260929', 30)).status, 'failed');
   for (const sec of [0.4, 3601, NaN]) { let sent = 0; eq((await both(async () => { sent++; return reply(200, GOOD); }).submit('20260929', sec)).status, 'skipped'); eq(sent, 0); }
+});
+// ---- Stats page: reply parsing, exact cross-backend merge, percentiles from bins, anomaly flags, charts ----
+const dayOf = (d, times) => { const bins = new Array(NB).fill(0); for (const x of times) bins[binOf(x)]++; return { d, n: times.length, sum: times.reduce((a, x) => a + x, 0), bins, best: [...times].sort((a, b) => a - b).slice(0, TOP_K) }; };
+const wire = day => ({ d: day.d, n: day.n, sum: day.sum, bins: day.bins.flatMap((c, k) => (c ? [[k, c]] : [])), best: day.best });
+const lognormal = (rnd, count) => Array.from({ length: count }, () => Math.round(1000 * Math.exp(rnd() * Math.log(2000))));
+t('stats: parseDays makes dense bins and rejects malformed replies', () => {
+  const good = { d: 20260929, n: 3, sum: 90000, bins: [[3, 2], [10, 1]], best: [50000, 10000, 30000] };
+  const [d] = parseDays({ days: [good] }); eq([d.bins.length, d.bins[3], d.bins[10], d.bins[4], d.best], [NB, 2, 1, 0, [10000, 30000, 50000]]);
+  eq(parseDays({ days: [] }), []);
+  for (const bad of [null, {}, { days: 'x' }, { days: [null] }, { days: [{ ...good, n: 0 }] }, { days: [{ ...good, d: 1.5 }] }, { days: [{ ...good, sum: -1 }] }, { days: [{ ...good, bins: [[80, 1]] }] },
+    { days: [{ ...good, bins: [[-1, 1]] }] }, { days: [{ ...good, bins: [[3, 0]] }] }, { days: [{ ...good, bins: [3] }] }, { days: [{ ...good, best: new Array(TOP_K + 1).fill(1) }] }, { days: [{ ...good, best: ['x'] }] }]) eq(parseDays(bad), null, JSON.stringify(bad));
+});
+t('stats: mergeDays over a random split equals the day built from all times (n, sum, bins, best)', () => {
+  let seed = 5; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32, a = [], b = [], all = [];
+  for (const x of lognormal(rnd, 300)) { (rnd() < 0.4 ? a : b).push(x); all.push(x); }
+  eq(mergeDays([[dayOf(1, a)], [dayOf(1, b)]]), [dayOf(1, all)]);
+  const solo = dayOf(2, a), m = mergeDays([[solo, dayOf(1, b)], []]); eq(m.map(x => x.d), [1, 2]); eq(m[1], solo); ok(m[1] !== solo && m[1].bins !== solo.bins, 'inputs are not aliased');
+});
+t('stats: quantile interpolates inside the bin; bin 0 starts at MIN_MS, the last bin ends at MAX_MS; <= 10 % off the exact sample quantile', () => {
+  const one = new Array(NB).fill(0); one[10] = 4;
+  eq([quantile(one, 0), quantile(one, 1)].map(Math.round), [Math.round(binLo(10)), Math.round(binHi(10))]);
+  ok(Math.abs(quantile(one, 0.5) - Math.sqrt(binLo(10) * binHi(10))) < 1e-6, 'geometric midpoint');
+  const lo = new Array(NB).fill(0), hi = new Array(NB).fill(0); lo[0] = 1; hi[NB - 1] = 1;
+  eq([quantile(lo, 0), quantile(hi, 1)], [500, 3600000]); eq(quantile(new Array(NB).fill(0), 0.5), null);
+  ok(binHi(3) === binLo(4) && binHi(0) === binLo(1), 'bins tile the axis');
+  let seed = 11; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32, times = lognormal(rnd, 2000), sorted = [...times].sort((x, y) => x - y), day = dayOf(1, times);
+  for (const q of [0.1, 0.5, 0.9]) { const exact = sorted[Math.ceil(q * times.length) - 1], est = quantile(day.bins, q); ok(Math.abs(est / exact - 1) < 0.1, `q${q}: ${est} vs ${exact}`); }
+});
+t('stats: dayStats mean is exact, top-10 mean only when n > 10, percentiles ordered', () => {
+  const few = dayStats(dayOf(1, [10000, 20000, 60000])); eq([few.mean, few.top, few.fastest], [30, null, 10]);
+  const many = dayStats(dayOf(1, Array.from({ length: 12 }, (_, i) => (i + 1) * 5000))); eq([many.mean, many.top, many.fastest], [32.5, 27.5, 5]);
+  ok(many.p10 <= many.p50 && many.p50 <= many.p90, 'ordered');
+});
+t('stats: flagsOf invariants and heuristics', () => {
+  const clean = dayOf(1, Array.from({ length: 60 }, (_, i) => 20000 + i * 700)); // 20..61 s
+  eq(flagsOf(clean, 60), { invariant: [], heuristic: [] });
+  eq(flagsOf({ ...clean, n: clean.n + 1 }).invariant, ['sum(bins) != n']);
+  eq(flagsOf({ ...clean, best: clean.best.slice(1) }).invariant, ['best count']);
+  eq(flagsOf({ ...clean, best: [clean.best[0] * 3, ...clean.best.slice(1)] }).invariant, ['fastest not in lowest bin']);
+  eq(flagsOf({ ...clean, sum: 1 }).invariant, ['sum out of range']);
+  const bots = dayOf(1, [...Array(30).fill(600), ...Array(70).fill(60000)]); eq(flagsOf(bots, 100).heuristic, ['fastest < median/4', 'bin 0 > 20 %']);
+  eq(flagsOf({ ...clean, best: [1000, ...clean.best.slice(1)], bins: clean.bins.map((c, k) => (k === 0 ? 1 : c)) }).heuristic, ['fastest < median/4']);
+  eq(flagsOf(clean, 10).heuristic, ['n > 5x median']); eq(median([3, 1, 2]), 2); eq(median([4, 1, 2, 3]), 2.5); eq(median([]), 0);
+});
+t('stats: spearman', () => {
+  eq([spearman([1, 2, 3, 4], [10, 20, 30, 40]), spearman([1, 2, 3, 4], [4, 3, 2, 1])], [1, -1]);
+  ok(Math.abs(spearman([1, 2, 3, 4, 5], [2, 1, 4, 3, 5]) - 0.8) < 1e-12, 'textbook value');
+  ok(Math.abs(spearman([1, 1, 2, 3], [1, 2, 3, 4]) - 0.9486832980505138) < 1e-9, 'ties share the mean rank');
+  eq([spearman([1, 2], [1, 2]), spearman([1, 1, 1], [1, 2, 3])], [null, null]);
+});
+t('stats: dayList is oldest first and crosses month and year boundaries', () => {
+  eq(dayList(3, new Date('2026-09-30T10:00:00Z')), [20260928, 20260929, 20260930]); eq(dayList(3, new Date('2026-03-01T00:00:00Z')), [20260227, 20260228, 20260301]);
+  eq(dayList(2, new Date('2026-01-01T23:59:59Z')), [20251231, 20260101]); eq(dayList(90, new Date('2026-09-30T00:00:00Z')).length, 90);
+});
+t('stats: backend read() request shapes', () => {
+  const cf = cloudflareBackend(CF).read({ from: 20260901, to: 20260930 }), sb = supabaseBackend(SB).read({ from: 20260901, to: 20260930 });
+  eq(cf, { url: 'https://w.example/stats?from=20260901&to=20260930', init: { method: 'GET' } });
+  eq([sb.url, sb.init.method, sb.init.headers, JSON.parse(sb.init.body)], ['https://s.example/rest/v1/rpc/read_gotd', 'POST', { 'Content-Type': 'application/json', apikey: 'anon-key' }, { p_from: 20260901, p_to: 20260930 }]);
+});
+ta('stats: fetchStats reads all backends in parallel and reports per-backend status', async () => {
+  const day = { d: 20260929, n: 2, sum: 30000, bins: [[16, 1], [17, 1]], best: [10000, 20000] }, backends = [cloudflareBackend(CF), supabaseBackend(SB)], urls = [];
+  const run = f => fetchStats(backends, { from: 20260929, to: 20260929 }, { fetchFn: (u, i) => { urls.push(u); return f(u, i); }, timeoutMs: 20 });
+  let r = await run(async () => reply(200, { days: [day] }));
+  eq(r.map(x => [x.name, x.status, x.days.length, x.days[0].n]), [['cloudflare', 'ok', 1, 2], ['supabase', 'ok', 1, 2]]); eq(urls.length, 2);
+  r = await run(async u => (u.includes('w.example') ? reply(503, {}) : reply(200, { days: [] })));
+  eq(r.map(x => [x.name, x.status, x.error, x.days.length]), [['cloudflare', 'failed', 'HTTP 503', 0], ['supabase', 'ok', undefined, 0]]);
+  r = await run(async u => reply(200, u.includes('w.example') ? { days: [{ ...day, n: 0 }] } : { days: [day] }));
+  eq(r.map(x => [x.status, x.error]), [['failed', 'malformed reply'], ['ok', undefined]]);
+  r = await run(hang); eq(r.map(x => [x.status, x.error]), [['failed', 'timeout / network'], ['failed', 'timeout / network']]);
+  r = await run(async () => { throw new TypeError('network'); }); eq(r.map(x => x.status), ['failed', 'failed']);
+});
+t('stats charts: valid markup, clickable days, no NaN, empty states', () => {
+  const days = [20260928, 20260929, 20260930], bad = svg => /NaN|undefined|Infinity/.test(svg);
+  const bars = barsSvg(days, [{ name: 'a', cls: 'c-supabase', values: [3, 0, 5] }, { name: 'b', cls: 'c-cloudflare', values: [1, 2, 0] }], 20260929);
+  eq([(bars.match(/data-d="/g) || []).length, bars.includes('hit sel" data-d="20260929"'), bad(bars)], [3, true, false]);
+  const lines = linesSvg(days, [{ cls: 'l-mean', values: [30, 25, 40] }, { cls: 'l-top', values: [null, null, 20] }], { lo: [10, 9, 12], hi: [80, 90, 70] }, null);
+  eq([(lines.match(/<path/g) || []).length, bad(lines), (lines.match(/<circle/g) || []).length], [2, false, 4]);
+  const bins = new Array(NB).fill(0); bins[10] = 5; bins[20] = 9; bins[25] = 2;
+  const hist = histSvg(bins, [{ label: 'p50', ms: 5000, cls: 'm-p50' }]); eq([(hist.match(/class="bar0"/g) || []).length, bad(hist), hist.includes('class="mark m-p50"')], [3, false, true]);
+  const sc = scatterSvg([{ x: 1.2, y: 30, n: 12, cls: 'c0', label: 'a' }, { x: 7, y: 90, n: 400, cls: 'c1', label: 'b' }]); eq([(sc.match(/<circle/g) || []).length, bad(sc)], [2, false]);
+  for (const html of [barsSvg([], [], null), linesSvg([], [], { lo: [], hi: [] }, null), histSvg(new Array(NB).fill(0), []), scatterSvg([])]) ok(html.includes('class="empty"'), 'empty state');
+  eq([linTicks(7), linTicks(0), timeTicks(3, 700), timeTicks(41, 43), fmtSec(4.26), fmtSec(45.4), fmtSec(90)], [[0, 2, 4, 6, 8], [0], [5, 10, 20, 30, 60, 120, 300, 600], [41, 43], '4.3s', '45s', '1.5m']);
 });
 ta('stats-store: pending GOTD attempt is sent:false; saving stats persists and survives hydrate', async () => {
   const st = fakeStorage(), S = createStore(st, [5]); await S.hydrate('20260929');

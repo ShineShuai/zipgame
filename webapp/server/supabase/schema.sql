@@ -50,3 +50,30 @@ end $$;
 
 revoke all on function submit_gotd(int, int, int) from public;
 grant execute on function submit_gotd(int, int, int) to anon;
+
+-- Read-only stats for the stats page (aggregates only, public by design). Range <= 90 days, inclusive.
+-- Reply: { days: [{ d, n, sum, bins: [[bin, n], ...], best: [ms, ...] }] } ordered by day; same shape as the Worker's GET /stats.
+create or replace function read_gotd(p_from int, p_to int) returns json
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_from date; v_to date;
+begin
+  begin
+    v_from := to_date(p_from::text, 'YYYYMMDD'); v_to := to_date(p_to::text, 'YYYYMMDD');
+  exception when others then
+    raise exception 'invalid' using errcode = '22023';
+  end;
+  if v_from is null or v_to is null or to_char(v_from, 'YYYYMMDD')::int <> p_from or to_char(v_to, 'YYYYMMDD')::int <> p_to or v_to < v_from or v_to - v_from > 89 then
+    raise exception 'invalid' using errcode = '22023';
+  end if;
+  return json_build_object('days', coalesce((
+    select json_agg(json_build_object(
+      'd', d.day, 'n', d.n, 'sum', d.sum_ms,
+      'bins', (select coalesce(json_agg(json_build_array(b.bin, b.n) order by b.bin), '[]'::json) from gotd_bin b where b.day = d.day),
+      'best', (select coalesce(json_agg(x.ms order by x.ms), '[]'::json) from (select ms from gotd_best where day = d.day order by ms limit 10) x)
+    ) order by d.day)
+    from gotd_day d where d.day between p_from and p_to), '[]'::json));
+end $$;
+
+revoke all on function read_gotd(int, int) from public;
+grant execute on function read_gotd(int, int) to anon;

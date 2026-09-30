@@ -2,7 +2,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import worker, { submit, validate } from './worker.js';
+import worker, { submit, validate, validateRange, read } from './worker.js';
 import { binOf, summarize, TOP_K } from '../../src/core/hist.js';
 
 const schema = readFileSync(new URL('./schema.sql', import.meta.url), 'utf8');
@@ -73,6 +73,36 @@ await test('http handler: routing, validation, CORS, size guard, db error', asyn
   assert.equal((await call('POST', '/gotd', JSON.stringify({ d: today, t: 10, b: 0 }))).status, 400);
   assert.equal((await call('POST', '/gotd', 'x'.repeat(300), { 'content-length': '300' })).status, 400);
   assert.equal((await worker.fetch(new Request('https://w.example/gotd', { method: 'POST', body: JSON.stringify({ d: today, t: 5000, b: 1 }) }), { DB: { prepare() { throw new Error('x'); } } })).status, 500);
+});
+
+await test('validateRange: real dates, ordered, <= 90 days inclusive', () => {
+  assert.deepEqual(validateRange(20260702, 20260929), { from: 20260702, to: 20260929 }); // exactly 90 days
+  assert.deepEqual(validateRange(20260929, 20260929), { from: 20260929, to: 20260929 });
+  for (const [a, b] of [[20260701, 20260929], [20260929, 20260928], [20260231, 20260301], [20261301, 20261302], [0, 20260929], [NaN, 20260929], [20260929, 1.5], [null, null], ['20260929', '20260929']]) assert.equal(validateRange(a, b), null, `${a}..${b}`);
+});
+
+await test('GET /stats: days, bins and best equal a brute-force model; empty days omitted; CORS + cache headers', async () => {
+  const env = { DB: fakeD1(), ALLOWED_ORIGIN: 'https://u.github.io' }, model = new Map(); let seed = 99;
+  const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+  for (let i = 0; i < 150; i++) {
+    const d = [20260927, 20260929, 20260930][i % 3], t = Math.round(1000 * Math.exp(rnd() * Math.log(2000)));
+    await submit(env.DB, { d, t, b: binOf(t) }); model.set(d, [...(model.get(d) || []), t]);
+  }
+  const get = q => worker.fetch(new Request('https://w.example/stats?' + q), env);
+  let r = await get('from=20260928&to=20260930');
+  assert.equal(r.status, 200); assert.equal(r.headers.get('access-control-allow-origin'), 'https://u.github.io'); assert.match(r.headers.get('cache-control'), /max-age=120/);
+  const { days } = await r.json();
+  assert.deepEqual(days.map(x => x.d), [20260929, 20260930]);
+  for (const x of days) {
+    const ts = model.get(x.d), counts = new Map(); for (const t of ts) counts.set(binOf(t), (counts.get(binOf(t)) || 0) + 1);
+    assert.equal(x.n, ts.length); assert.equal(x.sum, ts.reduce((a, t) => a + t, 0));
+    assert.deepEqual(x.bins, [...counts].sort((a, b) => a[0] - b[0])); assert.deepEqual(x.best, [...ts].sort((a, b) => a - b).slice(0, TOP_K));
+  }
+  assert.deepEqual(await (await get('from=20260901&to=20260910')).json(), { days: [] });
+  assert.deepEqual(await read(env.DB, { from: 20260927, to: 20260927 }).then(x => x.days.map(d => d.n)), [50]);
+  for (const q of ['', 'from=20260929', 'from=20260930&to=20260929', 'from=20260101&to=20260929', 'from=x&to=y', 'from=&to=']) assert.equal((await get(q)).status, 400, q);
+  assert.equal((await worker.fetch(new Request('https://w.example/stats?from=20260929&to=20260929'), { DB: { prepare() { throw new Error('x'); } } })).status, 500);
+  assert.equal((await worker.fetch(new Request('https://w.example/stats?from=20260929&to=20260929', { method: 'POST', body: '{}' }), env)).status, 404);
 });
 
 console.log(`${n} passed`);
