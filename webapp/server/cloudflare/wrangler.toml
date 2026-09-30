@@ -3,9 +3,9 @@ main = "worker.js"
 compatibility_date = "2026-09-01"
 
 [vars]
-ALLOWED_ORIGIN = "https://<user>.github.io"   # origin only, no repo path
+ALLOWED_ORIGIN = "https://shineshuai.github.io"   # origin only, no repo path
 
 [[d1_databases]]
 binding = "DB"
 database_name = "zip-gotd"
-database_id = "<from `wrangler d1 create zip-gotd`>"
+database_id = "433c6d55-64dc-42ad-81b2-38b0061299e1"
