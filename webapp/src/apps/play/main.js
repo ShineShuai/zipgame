@@ -6,11 +6,14 @@ import { pickStorage } from '../../platform/storage.js';
 import { runAsync } from '../../platform/run.js';
 import { createStore } from '../../features/stats-store.js';
 import { createDaily, fetchGameOfDay, utcDateString, utcDayNumber } from '../../features/daily.js';
-import { maxHints, computeHint, solutionOf } from '../../features/hints.js';
+import { maxHints, computeHint, solutionOf, penalizedTime, HINT_PENALTY_S } from '../../features/hints.js';
 import { cellAtPoint, pathD } from '../../view/geometry.js';
 import { bindModal, copyText } from '../../ui/modal.js';
 import { boardSvg, CELL, COLORS } from './board.js';
 import { VERSION } from '../../version.js';
+import { LEADERBOARD } from '../../config.js';
+import { createLeaderboard, backendsFromConfig } from '../../platform/leaderboard.js';
+import { statsLine } from '../../core/hist.js';
 import { PLAY_FLAGS_INT, flagsToHex } from '../../core/gen/flags.js';
 import { playGradesFor } from '../../core/grades.js';
 import { sfxMove, sfxBack, sfxCheckpoint, sfxMoveAfterCheckpoint, sfxBlocked, sfxSolved, setSoundEnabled, isSoundEnabled } from '../../platform/sound.js';
@@ -18,7 +21,7 @@ import { sfxMove, sfxBack, sfxCheckpoint, sfxMoveAfterCheckpoint, sfxBlocked, sf
 const SIZES = PLAY_SIZES;
 const GRADE_LABEL = ['Warm-up', 'Easy', 'Medium', 'Hard', 'Expert', 'Brutal'];
 const S = { screen: 'menu', size: 7, puzzle: null, path: [], elapsed: 0, startTime: 0, timerId: null, finished: false,
-  gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, gotdDate: null, gotdHint: null, hintsUsed: 0, hintCell: null, hintWrongCell: null, showDev: false, difficulty: null };
+  gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, gotdDate: null, gotdHint: null, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, difficulty: null };
 
 // Grade a puzzle right after generation, once, before it's shown (see core/grades.js playGradesFor):
 //   trap   - the main grade (badge): one capped solve per wrong turn along the solution, ~2-200 ms at
@@ -35,7 +38,7 @@ function gradePuzzle(puzzle) {
     return { ok: false, trap: null, legacy: null };
   }
 }
-let storage, store, daily, modal;
+let storage, store, daily, modal, lb;
 const $ = id => document.getElementById(id), today = () => utcDateString(new Date()), dayNo = () => utcDayNumber(new Date()), sec = x => x.toFixed(1) + 's';
 
 // ---------- render ----------
@@ -101,7 +104,7 @@ function renderMenu() {
   const attemptText = attempt && attempt.solved
     ? `Today's Game of Day: solved in ${sec(attempt.time)}.`
     : "Today's Game of Day already attempted.";
-  const attemptNote = attempt ? `<p class="note">${attemptText}</p>` : '';
+  const attemptNote = attempt ? `<p class="note">${attemptText}${attempt.stats ? '<br><span class="gotd-stats">' + statsLine(attempt.stats, S.showDev) + '</span>' : ''}</p>` : '';
   const hintNote = S.gotdHint ? `<p class="note error">${S.gotdHint}</p>` : '';
 
   return `
@@ -228,7 +231,9 @@ function renderGame() {
   const newPuzzleButton = S.isGotd ? '' : '<button class="btn secondary" id="newPuzzle">New puzzle</button>';
   const hiddenUnlessDev = S.showDev ? '' : 'display:none';
   const hintDisabled = S.finished || S.hintsUsed >= cap ? 'disabled' : '';
-  const solved = S.finished ? `<p class="solved">Solved in ${time}</p>` : '';
+  const gotdStats = S.isGotd && S.finished && store.attempt() && store.attempt().stats ? `<p class="note gotd-stats">${statsLine(store.attempt().stats, S.showDev)}</p>` : '';
+  const penalty = S.hintsUsed ? ` (incl. +${sec(HINT_PENALTY_S * S.hintsUsed)} for ${S.hintsUsed} hint${S.hintsUsed === 1 ? '' : 's'})` : '';
+  const solved = S.finished ? `<p class="solved">Solved in ${time}${penalty}</p>${gotdStats}` : '';
 
   return `
     <div class="game-layout">
@@ -326,14 +331,27 @@ function setupGridInput(svg) {
 
 function onSolved() {
   S.finished = true; stopTimer(); sfxSolved();
-  if (S.isGotd) store.recordGotd(S.puzzle.n, S.gotdDate, S.elapsed);
+  if (!S.penaltyApplied) { S.elapsed = penalizedTime(S.elapsed, S.hintsUsed); S.penaltyApplied = true; } // once, even if the path is reset and re-solved
+  if (S.isGotd) { const a = store.attempt(); if (!(a && a.solved)) finishGotd(S.puzzle.n, S.gotdDate, S.elapsed); } // Game of Day counts once
   else { const n = S.puzzle.n; store.recordSolve(n, dayNo(), S.elapsed); daily.markSolved(n, S.gameIndex).then(refreshNext); }
+}
+
+// Game of Day: record locally, then submit to the averages backend (stats are stored in the attempt record, so no refetch is needed).
+async function finishGotd(n, date, time) {
+  await store.recordGotd(n, date, time, lb.enabled);
+  if (lb.enabled) await shareGotd(date, time);
+}
+async function shareGotd(date, time) {
+  const r = await lb.submit(date, time);
+  if (r.status === 'failed') return; // sent stays false: retried on the next page load
+  await store.saveAttempt(date, { solved: true, time, sent: true, stats: r.summary || null });
+  if (S.screen === 'menu' || (S.screen === 'game' && S.isGotd && S.finished)) render();
 }
 
 // ---------- game flow ----------
 function beginGame(puzzle, gotdDate) {
   const difficulty = gradePuzzle(puzzle);
-  Object.assign(S, { puzzle, isGotd: !!gotdDate, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
+  Object.assign(S, { puzzle, isGotd: !!gotdDate, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
   startTimer(); render();
 }
 async function startLocal(how) { // how: 'open' (Play local: current or next-if-solved) | 'skip' (New puzzle)
@@ -369,6 +387,8 @@ function setDevReveal(on) {
   const x = $('exportBtn'); if (x) x.style.display = on ? '' : 'none';
   const t = $('seedTag'); if (t) t.style.display = on ? 'inline' : 'none';
   const d = $('difficultyDev'); if (d) d.style.display = on ? 'inline' : 'none';
+  const st = store.attempt() && store.attempt().stats;
+  if (st) document.querySelectorAll('.gotd-stats').forEach(e => { e.textContent = statsLine(st, on); });
 }
 function installDevReveal() {
   const typing = t => t && t.tagName && (/^(input|textarea|select)$/i.test(t.tagName) || t.isContentEditable);
@@ -403,6 +423,9 @@ async function initSoundToggle() {
 (async function boot() {
   storage = await pickStorage(); store = createStore(storage, SIZES); daily = createDaily(storage);
   try { await store.hydrate(today()); } catch (e) { console.warn('stats hydration failed:', e); }
+  lb = createLeaderboard(backendsFromConfig(LEADERBOARD, new URLSearchParams(location.search).get('lb')));
+  const pending = store.attempt();
+  if (lb.enabled && pending && pending.solved && pending.sent === false) shareGotd(store.attemptDate(), pending.time);
   try { for (const n of SIZES) S.nextIdx[n] = (await daily.peek(n)).index; } catch (e) { console.warn('daily counters failed:', e); }
   modal = bindModal($('exportModal'));
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));

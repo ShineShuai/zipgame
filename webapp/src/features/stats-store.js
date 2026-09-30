@@ -21,10 +21,10 @@ export function createStore(storage, sizes) {
       await Promise.all([set('zip_local_stats_' + n, total[n]), set('zip_today_stats_' + n, today[n])]);
     },
     gotdBest: n => best[n] || null,
-    async recordGotd(n, date, time) {
+    async recordGotd(n, date, time, pending = false) { // pending: also submit to the averages backend (sent:false until it answers)
       const prev = best[n];
       if (!prev || prev.date !== date || prev.time > time) { best[n] = { date, time }; await set('zip_gotd_best_' + n, best[n]); }
-      await store.saveAttempt(date, { solved: true, time });
+      await store.saveAttempt(date, pending ? { solved: true, time, sent: false } : { solved: true, time });
     },
     attempt: () => attempt, attemptDate: () => attemptDate,
     async hydrateAttempt(date) { attempt = await get('zip_gotd_attempt_' + date); attemptDate = date; },

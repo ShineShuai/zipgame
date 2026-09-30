@@ -15,3 +15,7 @@ export function computeHint(solution, path) {
   if (i < path.length) return { correctCell: solution[i], wrongCell: path[i] };
   return { correctCell: i < solution.length ? solution[i] : null, wrongCell: null };
 }
+
+// Each hint adds a fixed penalty to the solve time (local stats and Game of Day).
+export const HINT_PENALTY_S = 180;
+export const penalizedTime = (elapsed, hints) => elapsed + HINT_PENALTY_S * hints;

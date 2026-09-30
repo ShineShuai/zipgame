@@ -8,6 +8,7 @@
   "scripts": {
     "check": "node test/check.js",
     "test": "node test/tests.js",
+    "test:server": "node server/cloudflare/worker.test.mjs",
     "bench": "node bench/bench.js",
     "golden": "node test/print-golden.js"
   }

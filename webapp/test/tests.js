@@ -15,7 +15,10 @@ import { minimizeWalls } from '../src/core/gen/walls.js';
 import { runSync } from '../src/core/run.js';
 import { createHoldReveal } from '../src/ui/hold-reveal.js';
 import { createDaily, utcDayNumber } from '../src/features/daily.js';
+import { HINT_PENALTY_S, penalizedTime } from '../src/features/hints.js';
 import { createStore } from '../src/features/stats-store.js';
+import { NB, TOP_K, binOf, summarize, statsLine } from '../src/core/hist.js';
+import { createLeaderboard, backendsFromConfig, cloudflareBackend, supabaseBackend } from '../src/platform/leaderboard.js';
 import { GOLDEN } from './golden.js';
 import { metricsFor, referenceSolve, backtrackOverhead, naiveGap, legCollideDependent, firstSolutionGap, fullDiagnostics, gradeOf, refNodeCap, REF_FLAGS } from '../src/core/difficulty.js';
 import { calibrate, calibrateAll, calibrateMetric, generateAtDifficulty, DEFAULT_THRESHOLDS, DEFAULT_THRESHOLDS_BY_METRIC, GRADED_METRICS, QUANTILES } from '../src/core/gen/calibration.js';
@@ -937,6 +940,75 @@ ta('stats-store: today resets each day, total accumulates, both persist', async 
   await S.recordSolve(5, 100, 10); await S.recordSolve(5, 100, 20); await S.recordSolve(5, 101, 30);
   eq([S.today(5, 100).n, S.today(5, 101).n, S.total(5).n], [0, 1, 3]); eq(S.today(5, 101).recent, [30]);
   const S2 = createStore(st, [5]); await S2.hydrate('20260919'); eq([S2.today(5, 101).n, S2.total(5).n], [1, 3]);
+});
+
+// ---- Game-of-Day averages: histogram math, backend failover (fake fetch), attempt record ----
+t('hist: binOf edges and clamping', () => {
+  eq([binOf(1000), binOf(1099), binOf(1100), binOf(1200), binOf(500), binOf(0), binOf(-5)], [0, 0, 1, 1, 0, 0, 0]);
+  eq([binOf(2048000), binOf(3600000)], [NB - 1, NB - 1]); ok(binOf(2000000) < NB, 'in range');
+  for (let ms = 500; ms <= 3600000; ms = Math.round(ms * 1.37)) ok(binOf(ms) >= binOf(ms - 1), 'monotonic');
+});
+t('hist: summarize exact mean, percentile (mid-rank of own bin), top-10 only when n > 10', () => {
+  eq(summarize({ n: 4, sum: 100000, below: 2, cnt: 1, best: [10000, 20000, 30000, 40000] }), { n: 4, mean: 25, top: null, pct: 33 }); // beat 1 of 3 others
+  eq(summarize({ n: 1, sum: 42130, below: 0, cnt: 1, best: [42130] }), { n: 1, mean: 42.13, top: null, pct: null });
+  eq(summarize({ n: 5, sum: 50000, below: 0, cnt: 5, best: [1, 1, 1, 1, 1] }).pct, 50); // all in one bin: half of the others
+  eq(summarize({ n: 11, sum: 110000, below: 0, cnt: 1, best: [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000] }).pct, 100);
+  const s = summarize({ n: 11, sum: 110000, below: 10, cnt: 1, best: [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000] });
+  eq([s.top, s.pct, s.mean], [5.5, 0, 10]);
+  for (const bad of [null, {}, { n: 0, sum: 0, below: 0, cnt: 1, best: [] }, { n: 2, sum: 1, below: 2, cnt: 1, best: [] }, { n: 2, sum: 1, below: 0, cnt: 0, best: [] },
+    { n: 2, sum: -1, below: 0, cnt: 1, best: [] }, { n: 2, sum: 1, below: 0, cnt: 1, best: 'x' }, { n: 2, sum: 1, below: 0, cnt: 1, best: new Array(TOP_K + 1).fill(1) }, { n: 2.5, sum: 1, below: 0, cnt: 1, best: [] }]) eq(summarize(bad), null, JSON.stringify(bad));
+});
+t('hints: 180 s penalty per hint', () => { eq(HINT_PENALTY_S, 180); eq([penalizedTime(42.5, 0), penalizedTime(42.5, 1), penalizedTime(42.5, 3)], [42.5, 222.5, 582.5]); });
+t('hist: statsLine', () => {
+  eq(statsLine({ n: 812, mean: 61.34, top: 33.04, pct: 78 }), 'Everyone: 61.3s avg · Top 10: 33.0s avg · You beat 78%');
+  eq(statsLine({ n: 812, mean: 61.34, top: 33.04, pct: 78 }, true), 'Everyone: 61.3s avg (812 players) · Top 10: 33.0s avg · You beat 78%');
+  eq(statsLine({ n: 1, mean: 42.13, top: null, pct: null }), 'Everyone: 42.1s avg');
+  eq(statsLine({ n: 1, mean: 42.13, top: null, pct: null }, true), 'Everyone: 42.1s avg (1 player)');
+  eq(statsLine({ n: 2, mean: 28.5, top: null, pct: 100 }), 'Everyone: 28.5s avg · You beat 100%');
+});
+t('leaderboard: backendsFromConfig skips unconfigured, keeps order, moves ?lb= first', () => {
+  const cfg = { order: ['cloudflare', 'supabase'], cloudflare: { url: 'https://w' }, supabase: { url: 'https://s', key: 'k' } };
+  eq(backendsFromConfig(cfg).map(b => b.name), ['cloudflare', 'supabase']);
+  eq(backendsFromConfig(cfg, 'supabase').map(b => b.name), ['supabase', 'cloudflare']);
+  eq(backendsFromConfig(cfg, 'nope').map(b => b.name), ['cloudflare', 'supabase']);
+  eq(backendsFromConfig({ ...cfg, supabase: { url: 'https://s', key: '' } }).map(b => b.name), ['cloudflare']);
+  eq(backendsFromConfig({ ...cfg, cloudflare: { url: '' } }, 'cloudflare').map(b => b.name), ['supabase']);
+  eq(backendsFromConfig({ ...cfg, cloudflare: { url: '' }, supabase: { url: '' } }), []);
+  eq(createLeaderboard([]).enabled, false);
+});
+const reply = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
+const GOOD = { n: 3, sum: 90000, below: 1, cnt: 1, best: [10000, 30000, 50000] };
+const hang = (url, { signal }) => new Promise((_, rej) => signal.addEventListener('abort', () => rej(new Error('aborted'))));
+const CF = { url: 'https://w.example/' }, SB = { url: 'https://s.example', key: 'anon-key' };
+const both = f => createLeaderboard([cloudflareBackend(CF), supabaseBackend(SB)], { fetchFn: f, timeoutMs: 20 });
+ta('leaderboard: request shapes (cloudflare text/plain no preflight; supabase rpc + apikey) and summary', async () => {
+  const calls = []; const f = async (url, init) => { calls.push([url, init]); return reply(200, GOOD); };
+  const r = await both(f).submit('20260929', 42.13);
+  eq([r.status, r.backend, r.summary], ['ok', 'cloudflare', { n: 3, mean: 30, top: null, pct: 50 }]);
+  eq(calls.length, 1); eq(calls[0][0], 'https://w.example/gotd'); eq(calls[0][1].headers, { 'Content-Type': 'text/plain;charset=UTF-8' });
+  eq(JSON.parse(calls[0][1].body), { d: 20260929, t: 42130, b: binOf(42130) });
+  const g = []; await createLeaderboard([supabaseBackend(SB)], { fetchFn: async (u, i) => { g.push([u, i]); return reply(200, GOOD); } }).submit('20260929', 42.13);
+  eq(g[0][0], 'https://s.example/rest/v1/rpc/submit_gotd'); eq(g[0][1].headers, { 'Content-Type': 'application/json', apikey: 'anon-key' });
+  eq(JSON.parse(g[0][1].body), { p_day: 20260929, p_ms: 42130, p_bin: binOf(42130) });
+});
+ta('leaderboard: fails over on 5xx, 404, network error, timeout and malformed reply', async () => {
+  for (const first of [async () => reply(503, {}), async () => reply(404, {}), async () => { throw new TypeError('network'); }, hang, async () => reply(200, { n: 'x' }), async () => ({ ok: true, status: 200, json: async () => { throw new Error('bad json'); } })]) {
+    const urls = []; const r = await both((u, i) => { urls.push(u); return u.includes('w.example') ? first(u, i) : reply(200, GOOD); }).submit('20260929', 30);
+    eq([r.status, r.backend, urls.length], ['ok', 'supabase', 2]);
+  }
+});
+ta('leaderboard: 400/422 = rejected without failover; all down = failed; out-of-range time = skipped, nothing sent', async () => {
+  for (const code of [400, 422]) { let n = 0; const r = await both(async () => { n++; return reply(code, {}); }).submit('20260929', 30); eq([r.status, n], ['rejected', 1]); }
+  let n = 0; eq((await both(async () => { n++; return reply(500, {}); }).submit('20260929', 30)).status, 'failed'); eq(n, 2);
+  n = 0; eq((await both(hang).submit('20260929', 30)).status, 'failed');
+  for (const sec of [0.4, 3601, NaN]) { let sent = 0; eq((await both(async () => { sent++; return reply(200, GOOD); }).submit('20260929', sec)).status, 'skipped'); eq(sent, 0); }
+});
+ta('stats-store: pending GOTD attempt is sent:false; saving stats persists and survives hydrate', async () => {
+  const st = fakeStorage(), S = createStore(st, [5]); await S.hydrate('20260929');
+  await S.recordGotd(5, '20260929', 42.1, true); eq(S.attempt(), { solved: true, time: 42.1, sent: false });
+  await S.saveAttempt('20260929', { solved: true, time: 42.1, sent: true, stats: { n: 3, mean: 30, top: null, pct: 50 } });
+  const S2 = createStore(st, [5]); await S2.hydrate('20260929'); eq(S2.attempt(), { solved: true, time: 42.1, sent: true, stats: { n: 3, mean: 30, top: null, pct: 50 } });
+  const S3 = createStore(fakeStorage(), [5]); await S3.hydrate('20260929'); await S3.recordGotd(5, '20260929', 42.1); eq(S3.attempt(), { solved: true, time: 42.1 });
 });
 
 for (const [name, fn] of pending) { const t0 = Date.now(); try { await fn(); pass++; out.push(`ok    ${name} (${Date.now() - t0}ms)`); } catch (e) { fail++; out.push(`FAIL  ${name}: ${e.message}`); } }
