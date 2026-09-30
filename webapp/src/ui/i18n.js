@@ -1,0 +1,102 @@
+// Tiny i18n for the play app. English is the fallback; both dictionaries must have the same keys and
+// {n} placeholders (test/tests.js checks). A value is a string with {0}, {1}.. placeholders, or a function
+// of the arguments (for plurals). Dev-only texts (hold "v") are intentionally not translated.
+export const EN = {
+  'lang.switch': 'Switch to Chinese',
+  'brand.home': 'Zip home',
+  'sound.mute': 'Mute sound effects',
+  'sound.unmute': 'Unmute sound effects',
+  'grade.0': 'Warm-up', 'grade.1': 'Easy', 'grade.2': 'Medium', 'grade.3': 'Hard', 'grade.4': 'Expert', 'grade.5': 'Brutal',
+  'gen.title': 'Generating puzzle…',
+  'gen.sub': '{0}x{0} grid — looking for the cleanest layout.',
+  'gen.searching': 'searching…',
+  'gen.walls': n => `${n} wall${n === 1 ? '' : 's'} so far`,
+  'gen.progress': '{0}% — {1}',
+  'menu.title': 'Start a game',
+  'menu.blurb': 'Connect the numbers in order through every cell. No revisits, no crossings. Drag with mouse or finger to draw.',
+  'menu.size': 'Grid size',
+  'menu.today': "Today's game: {0}",
+  'menu.playLocal': 'Play local',
+  'menu.gotd': 'Game of Day',
+  'menu.gotdOnce': 'One Game of Day per day',
+  'menu.attemptSolved': "Today's Game of Day: solved in {0}.",
+  'menu.attemptDone': "Today's Game of Day already attempted.",
+  'gotd.playedSolved': "Already played today's Game of Day — solved in {0}.",
+  'gotd.played': "Already played today's Game of Day.",
+  'gotd.none': 'No game of day today.',
+  'err.generate': 'Could not generate a puzzle. Please try again.',
+  'stats.title': 'Your stats',
+  'stats.sub': 'Today / total (UTC day, seconds)',
+  'stats.titleN': 'Your stats — {0}x{0}',
+  'stats.subN': 'Today / total',
+  'stats.grid': 'Grid', 'stats.next': 'Next game', 'stats.solves': 'Solves', 'stats.avg': 'Avg', 'stats.sd': 'Std dev', 'stats.best': 'Best (last 20)',
+  'stats.avgS': 'Avg time (s)', 'stats.sdS': 'Std dev (s)', 'stats.bestS': 'Best (last 20, s)',
+  'stats.everyone': (avg, n) => `Everyone: ${avg} avg${n == null ? '' : ` (${n} player${n === 1 ? '' : 's'})`}`,
+  'stats.top': 'Top {0}: {1} avg',
+  'stats.beat': 'You beat {0}%',
+  'game.gotdTitle': 'Game of Day {0}',
+  'game.localTitle': 'Local {0}x{0} · game #{1} today',
+  'game.menu': 'Menu',
+  'game.new': 'New puzzle',
+  'game.reset': 'Reset path',
+  'game.time': 'Time: {0}',
+  'game.solved': 'Solved in {0}{1}',
+  'game.penalty': (s, n) => ` (incl. +${s} for ${n} hint${n === 1 ? '' : 's'})`,
+  'game.badgeTip': 'Difficulty {0}/5 (trap grade) — how hard the worst wrong turn on the solution is to refute; hold V for the other candidate grades',
+};
+
+export const ZH = {
+  'lang.switch': '切换为英文',
+  'brand.home': 'Zip 首页',
+  'sound.mute': '关闭音效',
+  'sound.unmute': '开启音效',
+  'grade.0': '热身', 'grade.1': '简单', 'grade.2': '中等', 'grade.3': '困难', 'grade.4': '专家', 'grade.5': '残酷',
+  'gen.title': '正在生成谜题…',
+  'gen.sub': '{0}x{0} 网格——正在寻找最整洁的布局。',
+  'gen.searching': '搜索中…',
+  'gen.walls': n => `目前 ${n} 道墙`,
+  'gen.progress': '{0}% — {1}',
+  'menu.title': '开始游戏',
+  'menu.blurb': '按顺序连接各个数字，并经过每一个格子。不能重复经过，也不能交叉。用鼠标或手指拖动来画线。',
+  'menu.size': '网格大小',
+  'menu.today': '今日游戏：{0}',
+  'menu.playLocal': '本地游戏',
+  'menu.gotd': '每日挑战',
+  'menu.gotdOnce': '每天只能玩一次每日挑战',
+  'menu.attemptSolved': '今日每日挑战：用时 {0} 完成。',
+  'menu.attemptDone': '今日每日挑战已挑战过。',
+  'gotd.playedSolved': '今天的每日挑战已玩过——用时 {0} 完成。',
+  'gotd.played': '今天的每日挑战已玩过。',
+  'gotd.none': '今天没有每日挑战。',
+  'err.generate': '无法生成谜题，请重试。',
+  'stats.title': '你的统计',
+  'stats.sub': '今日 / 总计（UTC 日，单位：秒）',
+  'stats.titleN': '你的统计 — {0}x{0}',
+  'stats.subN': '今日 / 总计',
+  'stats.grid': '网格', 'stats.next': '下一局', 'stats.solves': '完成数', 'stats.avg': '平均', 'stats.sd': '标准差', 'stats.best': '最佳（最近 20 局）',
+  'stats.avgS': '平均用时（秒）', 'stats.sdS': '标准差（秒）', 'stats.bestS': '最佳（最近 20 局，秒）',
+  'stats.everyone': (avg, n) => `所有玩家：平均 ${avg}${n == null ? '' : `（${n} 人）`}`,
+  'stats.top': '前 {0} 名：平均 {1}',
+  'stats.beat': '你超过了 {0}% 的玩家',
+  'game.gotdTitle': '每日挑战 {0}',
+  'game.localTitle': '本地 {0}x{0} · 今日第 {1} 局',
+  'game.menu': '菜单',
+  'game.new': '换一题',
+  'game.reset': '重置路径',
+  'game.time': '用时：{0}',
+  'game.solved': '完成，用时 {0}{1}',
+  'game.penalty': (s, n) => `（含 ${n} 次提示罚时 +${s}）`,
+  'game.badgeTip': '难度 {0}/5（陷阱分级）——解答路径上最糟的错误转弯有多难被排除；按住 V 查看其他候选分级',
+};
+
+const DICTS = { en: EN, zh: ZH };
+let lang = 'en';
+
+export const getLang = () => lang;
+export const setLang = l => { lang = l in DICTS ? l : 'en'; };
+
+export function t(key, ...args) {
+  const v = DICTS[lang][key] ?? EN[key];
+  if (typeof v === 'function') return v(...args);
+  return typeof v === 'string' ? v.replace(/\{(\d+)\}/g, (_, i) => args[i]) : key;
+}

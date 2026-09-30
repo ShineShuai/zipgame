@@ -18,6 +18,7 @@ import { createDaily, utcDayNumber } from '../src/features/daily.js';
 import { HINT_PENALTY_S, penalizedTime } from '../src/features/hints.js';
 import { createStore } from '../src/features/stats-store.js';
 import { NB, TOP_K, binOf, summarize, statsLine } from '../src/core/hist.js';
+import { EN, ZH, t as tr, setLang } from '../src/ui/i18n.js';
 import { createLeaderboard, backendsFromConfig, cloudflareBackend, supabaseBackend } from '../src/platform/leaderboard.js';
 import { parseDays, mergeDays, quantile, binLo, binHi, dayStats, flagsOf, median, spearman, dayList } from '../src/core/stats-merge.js';
 import { fetchStats } from '../src/platform/stats-client.js';
@@ -968,6 +969,31 @@ t('hist: statsLine', () => {
   eq(statsLine({ n: 1, mean: 42.13, top: null, pct: null }), 'Everyone: 42.1s avg');
   eq(statsLine({ n: 1, mean: 42.13, top: null, pct: null }, true), 'Everyone: 42.1s avg (1 player)');
   eq(statsLine({ n: 2, mean: 28.5, top: null, pct: 100 }), 'Everyone: 28.5s avg · You beat 100%');
+});
+t('i18n: EN and ZH have the same keys, value kinds and {n} placeholders', () => {
+  eq(Object.keys(ZH).sort(), Object.keys(EN).sort());
+  const shape = v => (typeof v === 'string' ? (v.match(/\{\d+\}/g) || []).sort().join() : typeof v);
+  for (const k of Object.keys(EN)) eq(shape(ZH[k]), shape(EN[k]), k);
+});
+t('i18n: tr() fills placeholders, plurals, language switch, unknown key/lang', () => {
+  try {
+    setLang('en');
+    eq(tr('gen.sub', 7), '7x7 grid — looking for the cleanest layout.');
+    eq([tr('gen.walls', 1), tr('gen.walls', 3)], ['1 wall so far', '3 walls so far']);
+    setLang('zh');
+    eq(tr('gen.sub', 7), '7x7 网格——正在寻找最整洁的布局。');
+    eq(tr('game.localTitle', 5, 2), '本地 5x5 · 今日第 2 局');
+    eq(tr('no.such.key'), 'no.such.key');
+    setLang('fr');
+    eq(tr('game.menu'), 'Menu');
+  } finally { setLang('en'); }
+});
+t('i18n: statsLine with the Chinese wording', () => {
+  const text = { everyone: (a, n) => tr('stats.everyone', a, n), top: (k, a) => tr('stats.top', k, a), beat: p => tr('stats.beat', p) };
+  try {
+    setLang('zh');
+    eq(statsLine({ n: 812, mean: 61.34, top: 33.04, pct: 78 }, true, text), '所有玩家：平均 61.3s（812 人） · 前 10 名：平均 33.0s · 你超过了 78% 的玩家');
+  } finally { setLang('en'); }
 });
 t('leaderboard: backendsFromConfig skips unconfigured, keeps order, moves ?lb= first', () => {
   const cfg = { order: ['cloudflare', 'supabase'], cloudflare: { url: 'https://w' }, supabase: { url: 'https://s', key: 'k' } };

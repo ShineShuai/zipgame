@@ -14,12 +14,12 @@ import { VERSION } from '../../version.js';
 import { LEADERBOARD } from '../../config.js';
 import { createLeaderboard, backendsFromConfig } from '../../platform/leaderboard.js';
 import { statsLine } from '../../core/hist.js';
+import { t, getLang, setLang } from '../../ui/i18n.js';
 import { PLAY_FLAGS_INT, flagsToHex } from '../../core/gen/flags.js';
 import { playGradesFor } from '../../core/grades.js';
 import { sfxMove, sfxBack, sfxCheckpoint, sfxMoveAfterCheckpoint, sfxBlocked, sfxSolved, setSoundEnabled, isSoundEnabled } from '../../platform/sound.js';
 
 const SIZES = PLAY_SIZES;
-const GRADE_LABEL = ['Warm-up', 'Easy', 'Medium', 'Hard', 'Expert', 'Brutal'];
 const S = { screen: 'menu', size: 7, puzzle: null, path: [], elapsed: 0, startTime: 0, timerId: null, finished: false,
   gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, gotdDate: null, gotdHint: null, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, difficulty: null };
 
@@ -40,6 +40,8 @@ function gradePuzzle(puzzle) {
 }
 let storage, store, daily, modal, lb;
 const $ = id => document.getElementById(id), today = () => utcDateString(new Date()), dayNo = () => utcDayNumber(new Date()), sec = x => x.toFixed(1) + 's';
+const statsText = { everyone: (avg, n) => t('stats.everyone', avg, n), top: (k, avg) => t('stats.top', k, avg), beat: pct => t('stats.beat', pct) };
+const statsLineT = (s, detail) => statsLine(s, detail, statsText);
 
 // ---------- render ----------
 function render() {
@@ -58,16 +60,16 @@ function devBadgeHtml() {
 function renderGenerating() {
   const gen = S.gen;
   const percent = Math.round(gen.frac * 100);
-  const walls = gen.walls == null ? 'searching…' : `${gen.walls} wall${gen.walls === 1 ? '' : 's'} so far`;
+  const walls = gen.walls == null ? t('gen.searching') : t('gen.walls', gen.walls);
   return `
     <div class="center-stage">
       <section class="card">
-        <h2 class="card-title">Generating puzzle…</h2>
-        <p class="small">${S.size}x${S.size} grid — looking for the cleanest layout.</p>
+        <h2 class="card-title">${t('gen.title')}</h2>
+        <p class="small">${t('gen.sub', S.size)}</p>
         <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}">
           <div style="width:${percent}%"></div>
         </div>
-        <p class="small">${percent}% — ${walls}</p>
+        <p class="small">${t('gen.progress', percent, walls)}</p>
       </section>
     </div>`;
 }
@@ -99,34 +101,34 @@ function renderMenu() {
     .map(n => `<option value="${n}"${n === S.size ? ' selected' : ''}>${n}x${n}</option>`)
     .join('');
   const gotdButton = attempt
-    ? '<button class="btn secondary" disabled title="One Game of Day per day">Game of Day</button>'
-    : '<button class="btn secondary" id="playGotd">Game of Day</button>';
+    ? `<button class="btn secondary" disabled title="${t('menu.gotdOnce')}">${t('menu.gotd')}</button>`
+    : `<button class="btn secondary" id="playGotd">${t('menu.gotd')}</button>`;
   const attemptText = attempt && attempt.solved
-    ? `Today's Game of Day: solved in ${sec(attempt.time)}.`
-    : "Today's Game of Day already attempted.";
-  const attemptNote = attempt ? `<p class="note">${attemptText}${attempt.stats ? '<br><span class="gotd-stats">' + statsLine(attempt.stats, S.showDev) + '</span>' : ''}</p>` : '';
-  const hintNote = S.gotdHint ? `<p class="note error">${S.gotdHint}</p>` : '';
+    ? t('menu.attemptSolved', sec(attempt.time))
+    : t('menu.attemptDone');
+  const attemptNote = attempt ? `<p class="note">${attemptText}${attempt.stats ? '<br><span class="gotd-stats">' + statsLineT(attempt.stats, S.showDev) + '</span>' : ''}</p>` : '';
+  const hintNote = S.gotdHint ? `<p class="note error">${t(...S.gotdHint)}</p>` : '';
 
   return `
     <div class="menu-layout${stats ? '' : ' single'}">
       <section class="card play-card">
         <div class="play-intro">
-          <h2 class="card-title">Start a game</h2>
-          <p class="blurb">Connect the numbers in order through every cell. No revisits, no crossings. Drag with mouse or finger to draw.</p>
+          <h2 class="card-title">${t('menu.title')}</h2>
+          <p class="blurb">${t('menu.blurb')}</p>
         </div>
         <div class="play-controls">
           <div class="field">
-            <label class="field-label" for="sizeSel">Grid size</label>
+            <label class="field-label" for="sizeSel">${t('menu.size')}</label>
             <select id="sizeSel">${sizeOptions}</select>
-            <span class="small" id="gameNo">Today's game: ${gameNo(S.size)}</span>
+            <span class="small" id="gameNo">${t('menu.today', gameNo(S.size))}</span>
           </div>
           <div class="button-row">
-            <button class="btn" id="playLocal">Play local</button>
+            <button class="btn" id="playLocal">${t('menu.playLocal')}</button>
             ${gotdButton}
           </div>
           ${attemptNote}
           ${hintNote}
-          <p class="small storage-note">Storage: ${storage.name}${storage.shared ? '' : ' (local only)'}</p>
+          <p class="small storage-note" id="storageNote" style="${S.showDev ? '' : 'display:none'}">Storage: ${storage.name}${storage.shared ? '' : ' (local only)'}</p>
         </div>
       </section>
       ${stats}
@@ -154,7 +156,7 @@ function statCells(n) {
   };
 }
 
-const STATS_HEAD = ['Grid', 'Next game', 'Solves', 'Avg', 'Std dev', 'Best (last 20)', 'Game of Day'];
+const STATS_HEAD = ['stats.grid', 'stats.next', 'stats.solves', 'stats.avg', 'stats.sd', 'stats.best', 'menu.gotd']; // i18n keys
 
 // One row per size that has anything to show. On narrow screens each row becomes a small card, so the
 // cells carry their column name in data-label.
@@ -166,17 +168,17 @@ function menuStats() {
     const values = [`${n}x${n}`, gameNo(n), c.solves, c.avg, c.sd, c.best, gotdText(n)];
     const cells = values.map((value, i) => {
       const shown = i === 0 ? value : `<b>${value}</b>`;
-      return `<td data-label="${STATS_HEAD[i]}">${shown}</td>`;
+      return `<td data-label="${t(STATS_HEAD[i])}">${shown}</td>`;
     });
     return `<tr>${cells.join('')}</tr>`;
   }).join('');
   if (!rows) return '';
 
-  const head = STATS_HEAD.map(name => `<th>${name}</th>`).join('');
+  const head = STATS_HEAD.map(key => `<th>${t(key)}</th>`).join('');
   return `
     <section class="card">
-      <h2 class="card-title">Your stats</h2>
-      <p class="small">Today / total (UTC day, seconds)</p>
+      <h2 class="card-title">${t('stats.title')}</h2>
+      <p class="small">${t('stats.sub')}</p>
       <div class="table-scroll">
         <table class="responsive"><tr class="head-row">${head}</tr>${rows}</table>
       </div>
@@ -189,14 +191,14 @@ function sizeStats(n) {
   const row = (label, value) => `<tr><td>${label}</td><td><b>${value}</b></td></tr>`;
   return `
     <section class="card">
-      <h2 class="card-title">Your stats — ${n}x${n}</h2>
-      <p class="small">Today / total</p>
+      <h2 class="card-title">${t('stats.titleN', n)}</h2>
+      <p class="small">${t('stats.subN')}</p>
       <table>
-        ${row('Solves', c.solves)}
-        ${row('Avg time (s)', c.avg)}
-        ${row('Std dev (s)', c.sd)}
-        ${row('Best (last 20, s)', c.best)}
-        ${row('Game of Day', gotdText(n))}
+        ${row(t('stats.solves'), c.solves)}
+        ${row(t('stats.avgS'), c.avg)}
+        ${row(t('stats.sdS'), c.sd)}
+        ${row(t('stats.bestS'), c.best)}
+        ${row(t('menu.gotd'), gotdText(n))}
       </table>
     </section>`;
 }
@@ -207,7 +209,7 @@ function difficultyBadgeHtml() {
   const d = S.difficulty;
   if (!d || !d.ok) return '';
   const g = d.trap.grade;
-  return `<span class="difficulty-badge" title="Difficulty ${g}/5 (trap grade) — how hard the worst wrong turn on the solution is to refute; hold V for the other candidate grades">${GRADE_LABEL[g]} · ${g}/5</span>`;
+  return `<span class="difficulty-badge" title="${t('game.badgeTip', g)}">${t('grade.' + g)} · ${g}/5</span>`;
 }
 // Hold-V block: the trap grade's raw inputs, then the previous grades as before — decisionNodes (the old
 // badge), B and crossPerSeg, each bucketed with its own calibration — and the raw numbers behind them.
@@ -227,13 +229,13 @@ function renderGame() {
   const time = sec(S.elapsed);
   const cap = maxHints(p);
   const seedTag = `<span id="seedTag" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="Design app's Generate uses these same algorithm choices, but generate() here also tries several candidates and keeps the cheapest, so pasting this seed+flags there is not guaranteed to reproduce this exact puzzle">seed ${S.seed} · flags ${flagsToHex(PLAY_FLAGS_INT)}</span>`;
-  const title = S.isGotd ? `Game of Day ${S.gotdDate}` : `Local ${p.n}x${p.n} · game #${S.gameIndex + 1} today${seedTag}`;
-  const newPuzzleButton = S.isGotd ? '' : '<button class="btn secondary" id="newPuzzle">New puzzle</button>';
+  const title = S.isGotd ? t('game.gotdTitle', S.gotdDate) : t('game.localTitle', p.n, S.gameIndex + 1) + seedTag;
+  const newPuzzleButton = S.isGotd ? '' : `<button class="btn secondary" id="newPuzzle">${t('game.new')}</button>`;
   const hiddenUnlessDev = S.showDev ? '' : 'display:none';
   const hintDisabled = S.finished || S.hintsUsed >= cap ? 'disabled' : '';
-  const gotdStats = S.isGotd && S.finished && store.attempt() && store.attempt().stats ? `<p class="note gotd-stats">${statsLine(store.attempt().stats, S.showDev)}</p>` : '';
-  const penalty = S.hintsUsed ? ` (incl. +${sec(HINT_PENALTY_S * S.hintsUsed)} for ${S.hintsUsed} hint${S.hintsUsed === 1 ? '' : 's'})` : '';
-  const solved = S.finished ? `<p class="solved">Solved in ${time}${penalty}</p>${gotdStats}` : '';
+  const gotdStats = S.isGotd && S.finished && store.attempt() && store.attempt().stats ? `<p class="note gotd-stats">${statsLineT(store.attempt().stats, S.showDev)}</p>` : '';
+  const penalty = S.hintsUsed ? t('game.penalty', sec(HINT_PENALTY_S * S.hintsUsed), S.hintsUsed) : '';
+  const solved = S.finished ? `<p class="solved">${t('game.solved', time, penalty)}</p>${gotdStats}` : '';
 
   return `
     <div class="game-layout">
@@ -242,16 +244,16 @@ function renderGame() {
           <div class="hud-title">${title}</div>
           ${difficultyBadgeHtml()}
           ${difficultyDevHtml()}
-          <div class="hud-time">Time: <b id="hudTime">${time}</b></div>
+          <div class="hud-time">${t('game.time', `<b id="hudTime">${time}</b>`)}</div>
         </div>
         <div class="grid-wrap" id="gridWrap">${boardSvg(S)}</div>
       </section>
       <div class="side">
         <section class="card">
           <div class="button-row">
-            <button class="btn secondary" id="backMenu2">Menu</button>
+            <button class="btn secondary" id="backMenu2">${t('game.menu')}</button>
             ${newPuzzleButton}
-            <button class="btn secondary" id="resetPath">Reset path</button>
+            <button class="btn secondary" id="resetPath">${t('game.reset')}</button>
             <button class="btn secondary" id="hintBtn" style="${hiddenUnlessDev}" ${hintDisabled}>Hint (${S.hintsUsed}/${cap})</button>
             <button class="btn secondary" id="exportBtn" style="${hiddenUnlessDev}">Export</button>
           </div>
@@ -266,7 +268,7 @@ function renderGame() {
 function attachHandlers() {
   const on = (id, f) => { const e = $(id); if (e) e.onclick = f; };
   on('playLocal', () => { S.size = +$('sizeSel').value; startLocal('open'); });
-  const sel = $('sizeSel'); if (sel) sel.onchange = () => { S.size = +sel.value; $('gameNo').textContent = "Today's game: " + gameNo(S.size); };
+  const sel = $('sizeSel'); if (sel) sel.onchange = () => { S.size = +sel.value; $('gameNo').textContent = t('menu.today', gameNo(S.size)); };
   on('playGotd', startGameOfDay);
   on('backMenu2', () => { stopTimer(); S.screen = 'menu'; render(); });
   on('resetPath', () => { S.path = []; S.finished = false; S.hintCell = S.hintWrongCell = null; render(); });
@@ -360,15 +362,15 @@ async function startLocal(how) { // how: 'open' (Play local: current or next-if-
     const { index, seed } = how === 'skip' ? await daily.skip(S.size) : await daily.open(S.size);
     const puzzle = await runAsync(generate(S.size, seed), { onEvent: e => { S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls, K: e.K }; if (S.screen === 'generating') render(); } });
     S.gameIndex = index; S.seed = seed; beginGame(puzzle, null);
-  } catch (e) { console.error('startLocal failed:', e); S.screen = 'menu'; render(); alert('Could not generate a puzzle. Please try again.'); }
+  } catch (e) { console.error('startLocal failed:', e); S.screen = 'menu'; render(); alert(t('err.generate')); }
 }
 async function startGameOfDay() {
   const date = today();
   if (store.attemptDate() !== date) await store.hydrateAttempt(date);
   const a = store.attempt();
-  if (a) { S.gotdHint = a.solved ? `Already played today's Game of Day — solved in ${sec(a.time)}.` : "Already played today's Game of Day."; return render(); }
+  if (a) { S.gotdHint = a.solved ? ['gotd.playedSolved', sec(a.time)] : ['gotd.played']; return render(); }
   const puzzle = await fetchGameOfDay();
-  if (!puzzle) { S.gotdHint = 'No game of day today.'; return render(); }
+  if (!puzzle) { S.gotdHint = ['gotd.none']; return render(); }
   S.size = puzzle.n;
   await store.saveAttempt(date, { solved: false, time: null }); // abandoning mid-puzzle still uses today's try
   beginGame(puzzle, puzzle.gotdDate);
@@ -385,10 +387,11 @@ function setDevReveal(on) {
   const b = $('versionBadge'); if (b) b.style.display = on ? 'block' : 'none';
   const h = $('hintBtn'); if (h) h.style.display = on ? '' : 'none';
   const x = $('exportBtn'); if (x) x.style.display = on ? '' : 'none';
-  const t = $('seedTag'); if (t) t.style.display = on ? 'inline' : 'none';
+  const sn = $('storageNote'); if (sn) sn.style.display = on ? '' : 'none';
+  const tag = $('seedTag'); if (tag) tag.style.display = on ? 'inline' : 'none';
   const d = $('difficultyDev'); if (d) d.style.display = on ? 'inline' : 'none';
   const st = store.attempt() && store.attempt().stats;
-  if (st) document.querySelectorAll('.gotd-stats').forEach(e => { e.textContent = statsLine(st, on); });
+  if (st) document.querySelectorAll('.gotd-stats').forEach(e => { e.textContent = statsLineT(st, on); });
 }
 function installDevReveal() {
   const typing = t => t && t.tagName && (/^(input|textarea|select)$/i.test(t.tagName) || t.isContentEditable);
@@ -404,8 +407,9 @@ function applySoundButtonState() {
   const muted = !isSoundEnabled();
   b.classList.toggle('muted', muted);
   b.setAttribute('aria-pressed', String(!muted));
-  b.setAttribute('aria-label', muted ? 'Unmute sound effects' : 'Mute sound effects');
-  b.title = muted ? 'Unmute sound effects' : 'Mute sound effects';
+  const label = t(muted ? 'sound.unmute' : 'sound.mute');
+  b.setAttribute('aria-label', label);
+  b.title = label;
 }
 async function initSoundToggle() {
   const saved = await storage.get('sound-muted');
@@ -419,6 +423,27 @@ async function initSoundToggle() {
   };
 }
 
+// ---------- language toggle (app bar, outside #app — wired once; a switch re-renders #app) ----------
+function applyLang() {
+  const lang = getLang(), b = $('langToggle');
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  document.querySelector('.brand').setAttribute('aria-label', t('brand.home'));
+  b.dataset.on = lang;
+  b.setAttribute('aria-label', t('lang.switch'));
+  b.title = t('lang.switch');
+  applySoundButtonState();
+}
+async function initLang() {
+  const saved = await storage.get('lang');
+  setLang(saved ? saved.value : /^zh/i.test(navigator.language || '') ? 'zh' : 'en');
+  applyLang();
+  $('langToggle').onclick = () => {
+    setLang(getLang() === 'zh' ? 'en' : 'zh');
+    storage.set('lang', getLang());
+    applyLang(); render();
+  };
+}
+
 // ---------- boot ----------
 (async function boot() {
   storage = await pickStorage(); store = createStore(storage, SIZES); daily = createDaily(storage);
@@ -429,5 +454,5 @@ async function initSoundToggle() {
   try { for (const n of SIZES) S.nextIdx[n] = (await daily.peek(n)).index; } catch (e) { console.warn('daily counters failed:', e); }
   modal = bindModal($('exportModal'));
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));
-  installDevReveal(); await initSoundToggle(); render();
+  installDevReveal(); await initSoundToggle(); await initLang(); render();
 })();

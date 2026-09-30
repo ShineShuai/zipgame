@@ -67,13 +67,35 @@ b { color: var(--heading); font-variant-numeric: tabular-nums; }
 }
 .logo { width: 32px; height: 32px; }
 
+.lang-toggle {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 40px;
+  margin-left: auto;
+  padding: 3px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.lang-toggle span { min-width: 28px; padding: 4px 6px; border-radius: 999px; text-align: center; line-height: 1.2; }
+.lang-toggle:hover { border-color: var(--blue); transform: translateY(-1px); }
+.lang-toggle[data-on="en"] span:first-child,
+.lang-toggle[data-on="zh"] span:last-child { background: var(--blue); color: #fff; }
+
 .sound-toggle {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 40px;
   height: 40px;
-  margin-left: auto;
+  margin-left: 8px;
   padding: 0;
   border: 2px solid var(--line);
   border-radius: 999px;

@@ -18,11 +18,18 @@ export function summarize(r) {
   return { n: r.n, mean: r.sum / r.n / 1000, top, pct };
 }
 
+// Wording of statsLine; the UI passes its own (translated) set. everyone(avg, n): n is null unless detail.
+export const STATS_TEXT_EN = {
+  everyone: (avg, n) => `Everyone: ${avg} avg${n == null ? '' : ` (${n} player${n === 1 ? '' : 's'})`}`,
+  top: (k, avg) => `Top ${k}: ${avg} avg`,
+  beat: pct => `You beat ${pct}%`,
+};
+
 // detail = true (hold "v") also shows the player count.
-export function statsLine(s, detail = false) {
+export function statsLine(s, detail = false, text = STATS_TEXT_EN) {
   const sec = x => x.toFixed(1) + 's';
-  const parts = [`Everyone: ${sec(s.mean)} avg${detail ? ` (${s.n} player${s.n === 1 ? '' : 's'})` : ''}`];
-  if (s.top != null) parts.push(`Top ${TOP_K}: ${sec(s.top)} avg`);
-  if (s.pct != null) parts.push(`You beat ${s.pct}%`);
+  const parts = [text.everyone(sec(s.mean), detail ? s.n : null)];
+  if (s.top != null) parts.push(text.top(TOP_K, sec(s.top)));
+  if (s.pct != null) parts.push(text.beat(s.pct));
   return parts.join(' · ');
 }
