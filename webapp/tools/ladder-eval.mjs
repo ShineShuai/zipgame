@@ -2,7 +2,8 @@
 // Evaluate the technique-ladder grader (src/core/ladder.js) against hand ratings.
 //
 // Usage:
-//   node tools/ladder-eval.mjs difficulty_rate.txt        # rating file: comment line(s) BEFORE each puzzle
+//   node tools/ladder-eval.mjs tools/ratings.json         # shared ratings JSON (preferred, and the default)
+//   node tools/ladder-eval.mjs difficulty_rate.txt        # or a rating text file: comment line(s) BEFORE each puzzle
 //   node tools/ladder-eval.mjs --gen 7,9,11 20 [seed]     # soundness + timing on generated puzzles
 //
 // Rating comments: numbers are taken from the text after removing "you graded as N", "not [word] N",
@@ -22,7 +23,11 @@ export function parseRating(text) {
   return nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
 }
 
+// One label source for every tool: tools/ratings.json ([{ key: puzzle text, human, lo, hi }]) — the same file fit-trap.mjs reads,
+// so all grades are evaluated against identical labels. A text rating file still works (parseRating below), but its
+// parser is looser than tools/parse-ratings.mjs (e.g. it ignores "close to", reads "at most 1" as 1), so prefer the JSON.
 export function loadLabeled(file) {
+  if (file.endsWith('.json')) return JSON.parse(fs.readFileSync(file, 'utf8')).map((e, k) => ({ k, human: e.human, comment: '', puzzle: parse(e.key) }));
   const items = []; let cur = null, buf = [];
   for (const raw of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
     const l = raw.trim();
@@ -70,7 +75,7 @@ if (args[0] === '--gen') {
   }
   console.log(bad ? `${bad}/${tot} FAILED` : `soundness OK on ${tot} generated puzzles`);
 } else {
-  const rows = loadLabeled(args[0] || 'difficulty_rate.txt').map(x => ({ ...x, r: ladder(x.puzzle) }));
+  const rows = loadLabeled(args[0] || new URL('./ratings.json', import.meta.url).pathname).map(x => ({ ...x, r: ladder(x.puzzle) }));
   console.log('k  N  K  human  hardest  chain terr probe1 probe2 search trials  ms   solved');
   for (const x of rows) { const f = features(x.r); console.log([x.k, x.puzzle.n, maxNumber(x.puzzle), x.human, LEVELS[f.hardest], f.chain, f.terr, f.probe1, f.probe2, f.search, f.trials, f.ms.toFixed(1), x.r.solved && (!x.r.path || isSolved(x.puzzle, x.r.path))].map(v => String(v).padEnd(6)).join(' ')); }
   const H = rows.map(x => x.human);

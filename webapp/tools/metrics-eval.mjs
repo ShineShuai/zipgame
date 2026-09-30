@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Score EVERY difficulty metric in the code base against hand ratings, then compare whole grading models with
 // leave-one-out (LOO) cross-validation, so "which is best" is answered on puzzles the model did not see.
-//   node tools/metrics-eval.mjs [tools/ratings-70.json] [--split 43] [--csv features.csv]
+//   node tools/metrics-eval.mjs [tools/ratings.json] [--split 43] [--csv features.csv]
 // ratings JSON: [{ key: puzzle text, human, lo?, hi? }] (lo/hi = the range you stated, e.g. "2 or 3" -> 2,3; used for
 // the "in range" score; without them a rating counts as the single value `human`).
 // Part 1  one row per metric: Spearman rho vs human, 95% bootstrap CI, and rho after removing puzzle size (rank residuals).
@@ -21,7 +21,7 @@ import { ladder, wideFrac, grade as ladderGrade } from '../src/core/ladder.js';
 import { maxNumber } from '../src/core/model.js';
 
 const args = process.argv.slice(2);
-const file = args.find(a => a.endsWith('.json')) || new URL('./ratings-70.json', import.meta.url).pathname;
+const file = args.find(a => a.endsWith('.json')) || new URL('./ratings.json', import.meta.url).pathname;
 const csvOut = args.includes('--csv') ? args[args.indexOf('--csv') + 1] : null;
 const SPLIT = args.includes('--split') ? +args[args.indexOf('--split') + 1] : 43;
 const R = JSON.parse(fs.readFileSync(file, 'utf8'));

@@ -1,6 +1,7 @@
+// Exploratory composites of ladder() outputs vs hand ratings. Usage: node tools/weighted.mjs [tools/ratings.json]
 import { loadLabeled, spearman, features } from './ladder-eval.mjs';
 import { ladder } from '../src/core/ladder.js';
-const rows = loadLabeled('/home/claude/w/difficulty_rate_full.txt').map(x => ({ ...x, r: ladder(x.puzzle) }));
+const rows = loadLabeled(process.argv[2] || new URL('./ratings.json', import.meta.url).pathname).map(x => ({ ...x, r: ladder(x.puzzle) }));
 const H = rows.map(x => x.human);
 // candidate composite signals, all cheap derivatives of what ladder() already returns
 const cands = {

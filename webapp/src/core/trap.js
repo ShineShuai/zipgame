@@ -18,7 +18,7 @@
 // is large (rho -0.54 vs human on the same sample).
 //
 // The grade is a small ridge model over [trapMax, trapTop3, altFrac] fitted to hand ratings (see
-// TRAP_MODEL). 54 labels, features picked on the same sample: treat it as a hypothesis to keep testing
+// TRAP_MODEL). Few labels, features picked on the same sample: treat it as a hypothesis to keep testing
 // via the design app's rating log, and refit with tools/fit-trap.mjs as ratings accumulate.
 import { solve } from './solver/solve.js';
 import { buildNeighbors } from './solver/prune.js';
@@ -27,17 +27,22 @@ import { REF_FLAGS } from './difficulty.js';
 
 export const TRAP_CFG = { cap: 1000, obvious: 3, shallow: 30, points: [0, 1, 3, 5] };
 
-// Ridge fit (lambda 10) on 54 hand-rated puzzles (tools/ratings-54.json, tools/fit-trap.mjs).
+// Ridge weights fitted to hand ratings. Do not edit by hand: `node tools/fit-trap.mjs <ratings.json> --write`
+// rewrites everything between the two marker comments (weights + `fit` = how many ratings and how well it did).
 // pred = b + sum w[k] * (x[k]-mean[k])/sd[k] is on the human 0-5 scale, so grade = clamp(round(pred), 0, 5):
-// no quantile buckets. Fitted on sizes 6-11 only; leave-one-out rho 0.65, mean abs error 0.66 grades.
-// The fit rarely leaves 0.6..3.4, so grades 0, 4 and 5 are seldom produced (few hard labels so far).
+// no quantile buckets. The ratings so far cover sizes 5-11 only. `fit.looRho` / `fit.looMae` are
+// leave-one-out figures (optimistic: the feature set was chosen on the same ratings). The fit rarely leaves
+// 0.6..3.4, so grades 0, 4 and 5 are seldom produced (few hard labels so far; 0 and 1 look alike to these features).
+// <TRAP_MODEL>
 export const TRAP_MODEL = {
   features: ['trapMax', 'trapTop3', 'altFrac'],
-  mean: { trapMax: 5.9815, trapTop3: 13.0741, altFrac: 0.5816 },
-  sd: { trapMax: 3.2914, trapTop3: 6.2148, altFrac: 0.0834 },
-  w: { trapMax: 0.2923, trapTop3: 0.2296, altFrac: -0.4116 },
-  b: 1.7222,
+  mean: { trapMax: 5.9324, trapTop3: 13.0135, altFrac: 0.5806 },
+  sd: { trapMax: 3.2522, trapTop3: 6.2526, altFrac: 0.0801 },
+  w: { trapMax: 0.1372, trapTop3: 0.4538, altFrac: -0.372 },
+  b: 1.6824,
+  fit: { n: 74, lambda: 10, looRho: 0.62, looMae: 0.74 },
 };
+// </TRAP_MODEL>
 
 export function trapPredict(m, model = TRAP_MODEL) {
   let s = model.b;

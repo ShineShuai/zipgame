@@ -18,18 +18,17 @@ import { createDaily, utcDayNumber } from '../src/features/daily.js';
 import { HINT_PENALTY_S, penalizedTime } from '../src/features/hints.js';
 import { createStore } from '../src/features/stats-store.js';
 import { NB, TOP_K, binOf, summarize, statsLine } from '../src/core/hist.js';
-import { EN, ZH, t as tr, setLang } from '../src/ui/i18n.js';
 import { createLeaderboard, backendsFromConfig, cloudflareBackend, supabaseBackend } from '../src/platform/leaderboard.js';
-import { parseDays, mergeDays, quantile, binLo, binHi, dayStats, flagsOf, median, spearman, dayList } from '../src/core/stats-merge.js';
-import { fetchStats } from '../src/platform/stats-client.js';
-import { barsSvg, linesSvg, histSvg, scatterSvg, linTicks, timeTicks, fmtSec } from '../src/apps/stats/charts.js';
 import { GOLDEN } from './golden.js';
 import { metricsFor, referenceSolve, backtrackOverhead, naiveGap, legCollideDependent, firstSolutionGap, fullDiagnostics, gradeOf, refNodeCap, REF_FLAGS } from '../src/core/difficulty.js';
 import { calibrate, calibrateAll, calibrateMetric, generateAtDifficulty, DEFAULT_THRESHOLDS, DEFAULT_THRESHOLDS_BY_METRIC, GRADED_METRICS, QUANTILES } from '../src/core/gen/calibration.js';
 import { checkpointPositions, segmentCrossCount, segmentOverlapCount, spatialMetrics } from '../src/core/spatial.js';
 import { gradesFor, gradesFromMetrics, playGradesFor, GRADE_ORDER } from '../src/core/grades.js';
 import { combinedScore, COMBINED_ZSCORE } from '../src/core/gen/calibration.js';
-import { solutionPath, trapProfile, trapMetrics, trapGradeOf, trapPredict, TRAP_CFG } from '../src/core/trap.js';
+import { solutionPath, trapProfile, trapMetrics, trapGradeOf, trapPredict, TRAP_CFG, TRAP_MODEL } from '../src/core/trap.js';
+import { mountDifficultyPanel } from '../src/apps/design/difficulty-panel.js';
+import { ratingKey, ratingFromSelection, leanOf, describeRating, toRatingsJson, parseRatingsJson, mergeRatings } from '../src/core/ratings-io.js';
+import { pickStorage } from '../src/platform/storage.js';
 
 // ---- mini harness ----
 const out = []; let pass = 0, fail = 0;
@@ -914,6 +913,66 @@ t('trap: metrics are deterministic, in range, and consistent with the profile', 
     eq(trapMetrics(p, TRAP_CFG, a.path).trapMax, a.trapMax, 'passing the path in skips the solve but gives the same answer');
   }
 });
+t('trap: TRAP_MODEL carries the fit metadata the design panel displays (tools/fit-trap.mjs --write writes it)', () => {
+  const f = TRAP_MODEL.fit;
+  ok(f && Number.isInteger(f.n) && f.n > 0 && Number.isFinite(f.looRho) && Number.isFinite(f.looMae) && Number.isFinite(f.lambda), 'fit = { n, lambda, looRho, looMae }');
+  for (const k of TRAP_MODEL.features) ok([TRAP_MODEL.mean[k], TRAP_MODEL.sd[k], TRAP_MODEL.w[k]].every(Number.isFinite) && TRAP_MODEL.sd[k] > 0, `weights for ${k}`);
+});
+// The design panel is DOM code, but its HTML building is plain string work: run the real "Compute diagnostics" path against a
+// minimal fake element. (A missing TRAP_MODEL.fit once threw here, in the browser only, because nothing rendered the panel.)
+function renderDiagnostics(p) {
+  const el = { style: {}, dataset: {}, classList: { add() {}, remove() {}, toggle() {} }, _html: '', set innerHTML(v) { this._html = v; }, get innerHTML() { return this._html; },
+    querySelectorAll: () => [], querySelector() { return { style: {}, textContent: '', innerHTML: '', set onclick(f) {}, querySelectorAll: () => [] }; } };
+  mountDifficultyPanel(el, () => p, () => undefined).run();
+  return el._html;
+}
+t('design panel: Compute diagnostics renders trap + ladder sections without NaN/undefined', () => {
+  const html = renderDiagnostics(cachedSamples()[0]);
+  ok(html.includes('Trap grade (candidate)') && html.includes('Technique ladder (candidate)'), 'both sections');
+  ok(!/NaN|undefined/.test(html), 'no NaN/undefined in the panel');
+  ok(html.includes(`fit to ${TRAP_MODEL.fit.n} hand ratings`), 'fit size comes from TRAP_MODEL.fit');
+});
+t('design panel: still renders when TRAP_MODEL has no fit metadata (older trap.js)', () => {
+  const saved = TRAP_MODEL.fit; delete TRAP_MODEL.fit;
+  try { ok(renderDiagnostics(cachedSamples()[0]).includes('Trap grade (candidate)'), 'renders'); } finally { TRAP_MODEL.fit = saved; }
+});
+// ---- ratings.json format (core/ratings-io.js): shared by the design app's export/import and tools/ ----
+t('ratings-io: a rating is one grade, a range, or a range leaning to one end; describeRating/leanOf read it back', () => {
+  eq(ratingFromSelection({ lo: 2, hi: 2 }), { human: 2, lo: 2, hi: 2 });
+  eq(ratingFromSelection({ lo: 3, hi: 2 }), { human: 2.5, lo: 2, hi: 3 }, 'order does not matter');
+  eq(ratingFromSelection({ lo: 2, hi: 3, lean: 1 }), { human: 2.75, lo: 2, hi: 3 });
+  eq(ratingFromSelection({ lo: 2, hi: 3, lean: -1 }), { human: 2.25, lo: 2, hi: 3 });
+  eq(ratingFromSelection({ lo: 4, hi: 4, lean: 1 }), { human: 4, lo: 4, hi: 4 }, 'a single grade has nothing to lean toward');
+  eq([describeRating({ human: 2, lo: 2, hi: 2 }), describeRating({ human: 2.5, lo: 2, hi: 3 }), describeRating({ human: 2.75, lo: 2, hi: 3 }), describeRating({ human: 2.25, lo: 2, hi: 3 }), describeRating({ human: 4, lo: 3, hi: 5 }), describeRating({ human: 3 })],
+    ['2', '2 or 3', '2 or 3, close to 3', '2 or 3, close to 2', '3 to 5', '3']);
+  eq([leanOf({ human: 2.75, lo: 2, hi: 3 }), leanOf({ human: 2.25, lo: 2, hi: 3 }), leanOf({ human: 2.5, lo: 2, hi: 3 }), leanOf({ human: 2, lo: 2, hi: 2 })], [1, -1, 0, 0]);
+});
+t('ratings-io: ratingKey is the comment-free puzzle text, the same for a puzzle object, serialize() output and the bare 3 lines', () => {
+  const p = cachedSamples()[0], k = ratingKey(p);
+  ok(!k.includes('#') && k.startsWith('size ') && k.split('\n').length === 3, 'size / checkpoints / walls only');
+  eq(ratingKey(serialize(p)), k); eq(ratingKey(k), k); eq(ratingKey(k + '\n\n# note\n'), k);
+});
+t('ratings-io: export -> parse round-trips (metrics are not exported), and rows are validated one by one', () => {
+  const [a, b] = cachedSamples(), ka = ratingKey(a), kb = ratingKey(b);
+  const text = toRatingsJson([{ key: ka, human: 2.75, lo: 2, hi: 3, metrics: { x: 1 } }, { key: kb, human: 1 }]);
+  ok(!text.includes('metrics') && text.endsWith('\n'), 'no metrics, trailing newline');
+  eq(parseRatingsJson(text), { ratings: [{ key: ka, human: 2.75, lo: 2, hi: 3 }, { key: kb, human: 1, lo: 1, hi: 1 }], problems: [] });
+  eq(parseRatingsJson('nope').ratings, []); ok(parseRatingsJson('nope').problems[0].includes('not valid JSON'));
+  ok(parseRatingsJson('{}').problems[0].includes('array'));
+  const bad = parseRatingsJson(JSON.stringify([{ key: ka, human: 2 }, { human: 1 }, { key: 'garbage', human: 1 }, { key: kb, human: 7 }, { key: kb, human: 2, lo: 3, hi: 2 }, { key: kb, human: 4, lo: 1, hi: 2 }, { key: serialize(b), lo: 1, hi: 2 }]));
+  eq(bad.ratings.map(r => [r.key === ka ? 'a' : 'b', r.human, r.lo, r.hi]), [['a', 2, 2, 2], ['b', 1.5, 1, 2]], 'only valid rows import; human defaults to the midpoint of lo/hi; serialize() text is normalised');
+  eq(bad.problems.length, 5, 'missing key, unparseable puzzle, human 7, lo > hi, human outside its range'); ok(bad.problems.some(s => s.startsWith('#2:')) && bad.problems.some(s => s.includes('does not parse')) && bad.problems.some(s => s.includes('outside [1, 2]')));
+  eq(parseRatingsJson(JSON.stringify([{ key: ka, human: 1 }, { key: serialize(a), human: 3 }])).ratings, [{ key: ka, human: 3, lo: 3, hi: 3 }], 'the same puzzle twice: the later one wins');
+});
+t('ratings-io: merging replaces the same puzzle, keeps the rest, and clears metrics so they get recomputed', () => {
+  const [a, b, c] = cachedSamples(); const ka = ratingKey(a), kb = ratingKey(b), kc = ratingKey(c);
+  const log = [{ key: ka, human: 2, lo: 2, hi: 2, metrics: { m: 1 } }, { key: kb, human: 1, metrics: { m: 2 } }];
+  const m = mergeRatings(log, [{ key: ka, human: 2, lo: 2, hi: 2 }, { key: kb, human: 2.5, lo: 2, hi: 3 }, { key: kc, human: 4, lo: 4, hi: 4 }]);
+  eq([m.added, m.updated, m.changed], [1, 2, 1], 'a and b existed; only b changed; c is new');
+  eq(m.entries.map(e => [e.key === ka ? 'a' : e.key === kb ? 'b' : 'c', e.human, e.metrics]), [['a', 2, null], ['b', 2.5, null], ['c', 4, null]]);
+  eq(log[0].metrics, { m: 1 }, 'the stored log is not mutated');
+  eq(mergeRatings([{ key: 'zzz', human: 0 }], []).entries.length, 1, 'entries missing from the file are kept');
+});
 t('trap: no solution -> { ok:false } instead of a made-up grade; grade clamps to 0..5', () => {
   const p = makePuzzle(4); p.cp[0] = 1; p.cp[15] = 2; p.cp[5] = 3; // 1 -> 2 -> 3 order cannot be a Hamiltonian path here
   const r = trapMetrics(p);
@@ -922,6 +981,81 @@ t('trap: no solution -> { ok:false } instead of a made-up grade; grade clamps to
   eq(trapPredict({ trapMax: 0, trapTop3: 0, altFrac: 0 }, { features: ['trapMax'], mean: { trapMax: 0 }, sd: { trapMax: 2 }, w: { trapMax: 1 }, b: 1 }), 1);
 });
 
+ta('tools/ratings.json: the repo label file parses cleanly, keys are canonical and unique, ranges contain human', async () => {
+  if (typeof process === 'undefined' || !process.versions || !process.versions.node) return; // Node-only (reads the file from disk)
+  const { readFileSync } = await import('node:fs');
+  const text = readFileSync(new URL('../tools/ratings.json', import.meta.url), 'utf8');
+  const { ratings, problems } = parseRatingsJson(text);
+  eq(problems, []); ok(ratings.length >= 74, `expected >= 74 ratings, got ${ratings.length}`);
+  eq(new Set(ratings.map(r => r.key)).size, ratings.length, 'unique puzzles');
+  eq(JSON.parse(text).map(r => r.key), ratings.map(r => r.key), 'stored keys are already canonical (export -> import -> export would not change the file)');
+  eq(toRatingsJson(ratings), text.replace(/\r\n/g, '\n'), 'the file is byte-for-byte what the app would export');
+});
+
+// A fake DOM just rich enough to drive the panel's real handlers (buttons, file input, status text); nothing is mocked in the panel itself.
+function makePanelDom() {
+  const reg = new Map(), mk = () => ({ style: {}, dataset: {}, textContent: '', innerHTML: '', onclick: null, onchange: null, files: null, value: '', classList: { toggle() {}, add() {}, remove() {} }, querySelectorAll: () => [] });
+  const sel = s => { if (!reg.has(s)) reg.set(s, mk()); return reg.get(s); };
+  const groups = new Map();
+  const all = (s, k, f) => { if (!groups.has(s)) groups.set(s, Array.from({ length: k }, (_, i) => { const e = mk(); f(e, i); return e; })); return groups.get(s); };
+  const el = { _html: '', set innerHTML(v) { this._html = v; reg.clear(); groups.clear(); }, get innerHTML() { return this._html; }, style: {},
+    querySelector: sel,
+    querySelectorAll: s => s === '.diff-rate-btn' ? all(s, 6, (e, i) => { e.dataset.grade = i; }) : s === '.diff-lean-btn' ? all(s, 2, (e, i) => { e.dataset.lean = i ? 1 : -1; }) : [] };
+  return { el, sel, grade: g => el.querySelectorAll('.diff-rate-btn')[g], lean: d => el.querySelectorAll('.diff-lean-btn')[d < 0 ? 0 : 1], text: () => sel('.diff-rate-text').textContent };
+}
+const LOG_KEY = 'zip-difficulty-rating-log-v1';
+const readLog = async () => { const s = await pickStorage(), r = await s.get(LOG_KEY); return r ? JSON.parse(r.value) : []; };
+const writeLog = async v => { const s = await pickStorage(); await s.set(LOG_KEY, JSON.stringify(v)); };
+
+ta('design panel: rating a puzzle as one grade, a range, a range leaning to one end; clicking again removes it', async () => {
+  await writeLog([]);
+  const p = cachedSamples()[0], key = ratingKey(p), dom = makePanelDom();
+  mountDifficultyPanel(dom.el, () => p, () => undefined).run();
+  await new Promise(r => setTimeout(r, 20));
+  const last = async () => (await readLog()).find(e => e.key === key);
+  await dom.grade(2).onclick();
+  let e = await last(); eq([e.human, e.lo, e.hi], [2, 2, 2]); ok(e.metrics && Number.isFinite(e.metrics['grade: trap']), 'grades are logged with the rating');
+  await dom.grade(3).onclick(); e = await last(); eq([e.human, e.lo, e.hi], [2.5, 2, 3], 'a neighbouring grade makes it "2 or 3"');
+  eq(dom.text(), 'Saved: 2 or 3 (used as 2.5)');
+  await dom.lean(1).onclick(); e = await last(); eq([e.human, e.lo, e.hi], [2.75, 2, 3]); eq(dom.text(), 'Saved: 2 or 3, close to 3 (used as 2.75)');
+  await dom.lean(1).onclick(); e = await last(); eq(e.human, 2.5, 'the lean toggles off');
+  await dom.grade(5).onclick(); e = await last(); eq([e.human, e.lo, e.hi], [5, 5, 5], 'a non-neighbour replaces the range');
+  await dom.grade(5).onclick(); eq(await last(), undefined, 'the same single grade again removes the rating'); eq(dom.text(), 'Not rated.');
+  eq((await readLog()).length, 0);
+});
+ta('design panel: Export ratings.json downloads the log in the shared format', async () => {
+  await writeLog([]);
+  const p = cachedSamples()[0], key = ratingKey(p), dom = makePanelDom();
+  const panel = mountDifficultyPanel(dom.el, () => p, () => undefined); panel.run(); await new Promise(r => setTimeout(r, 20));
+  await dom.grade(1).onclick(); await dom.grade(2).onclick(); await dom.lean(-1).onclick(); // 1 or 2, close to 1
+  const saved = { document: globalThis.document, create: URL.createObjectURL, revoke: URL.revokeObjectURL }; let blob = null, name = null;
+  globalThis.document = { createElement: () => ({ click() { name = this.download; }, remove() {} }), body: { appendChild() {} } };
+  URL.createObjectURL = b => { blob = b; return 'blob:test'; }; URL.revokeObjectURL = () => {};
+  try {
+    await dom.sel('#diffLogExport').onclick();
+    eq(name, 'ratings.json');
+    eq(JSON.parse(await blob.text()), [{ key, human: 1.25, lo: 1, hi: 2 }]);
+    ok(dom.sel('#diffLogStatus').textContent.startsWith('Exported 1 ratings'), dom.sel('#diffLogStatus').textContent);
+  } finally { globalThis.document = saved.document; URL.createObjectURL = saved.create; URL.revokeObjectURL = saved.revoke; }
+});
+ta('design panel: Import ratings.json merges, regrades with the current code, replaces same-puzzle ratings and migrates old header keys', async () => {
+  const [a, b] = cachedSamples(), ka = ratingKey(a), kb = ratingKey(b);
+  await writeLog([{ key: serialize(a), human: 4, metrics: { 'grade: trap': 99 } }, { key: 'size 5\ncheckpoints\nwalls', human: 0, metrics: null }]); // old-style key (with # comments) + an unrelated entry
+  const dom = makePanelDom();
+  mountDifficultyPanel(dom.el, () => a, () => undefined).run(); await new Promise(r => setTimeout(r, 20));
+  const file = { text: async () => JSON.stringify([{ key: ka, human: 2.75, lo: 2, hi: 3 }, { key: kb, human: 1, lo: 1, hi: 1 }, { key: 'garbage', human: 1 }]) };
+  const input = dom.sel('#diffLogFile'); input.files = [file];
+  await input.onchange();
+  const log = await readLog();
+  eq(log.length, 3, 'a replaced (not duplicated), b added, the unrelated entry kept');
+  const ea = log.find(e => e.key === ka), eb = log.find(e => e.key === kb);
+  eq([ea.human, ea.lo, ea.hi], [2.75, 2, 3], 'the file wins over the stored rating');
+  ok(Number.isFinite(ea.metrics['grade: trap']) && ea.metrics['grade: trap'] !== 99, 'stale grades are recomputed on import');
+  ok(eb.metrics && Number.isFinite(eb.metrics['grade: ladder']), 'new puzzle is graded');
+  const st = dom.sel('#diffLogStatus').textContent;
+  ok(st.startsWith('Imported 2 ratings: 1 new, 1 replaced (1 with a different rating)') && st.includes('1 note(s)'), st);
+  await writeLog([]);
+});
 ta('daily: sequence per size is independent of what was played in other sizes', async () => {
   const A = createDaily(fakeStorage(), atDay(19)), B = createDaily(fakeStorage(), atDay(19)), seedsA = [], seedsB = [];
   for (const step of [['open', 5], ['open', 7], ['skip', 5], ['skip', 7], ['skip', 5]]) { const g = await A[step[0]](step[1]); if (step[1] === 5) seedsA.push(g.seed); }
@@ -970,31 +1104,6 @@ t('hist: statsLine', () => {
   eq(statsLine({ n: 1, mean: 42.13, top: null, pct: null }, true), 'Everyone: 42.1s avg (1 player)');
   eq(statsLine({ n: 2, mean: 28.5, top: null, pct: 100 }), 'Everyone: 28.5s avg · You beat 100%');
 });
-t('i18n: EN and ZH have the same keys, value kinds and {n} placeholders', () => {
-  eq(Object.keys(ZH).sort(), Object.keys(EN).sort());
-  const shape = v => (typeof v === 'string' ? (v.match(/\{\d+\}/g) || []).sort().join() : typeof v);
-  for (const k of Object.keys(EN)) eq(shape(ZH[k]), shape(EN[k]), k);
-});
-t('i18n: tr() fills placeholders, plurals, language switch, unknown key/lang', () => {
-  try {
-    setLang('en');
-    eq(tr('gen.sub', 7), '7x7 grid — looking for the cleanest layout.');
-    eq([tr('gen.walls', 1), tr('gen.walls', 3)], ['1 wall so far', '3 walls so far']);
-    setLang('zh');
-    eq(tr('gen.sub', 7), '7x7 网格——正在寻找最整洁的布局。');
-    eq(tr('game.localTitle', 5, 2), '本地 5x5 · 今日第 2 局');
-    eq(tr('no.such.key'), 'no.such.key');
-    setLang('fr');
-    eq(tr('game.menu'), 'Menu');
-  } finally { setLang('en'); }
-});
-t('i18n: statsLine with the Chinese wording', () => {
-  const text = { everyone: (a, n) => tr('stats.everyone', a, n), top: (k, a) => tr('stats.top', k, a), beat: p => tr('stats.beat', p) };
-  try {
-    setLang('zh');
-    eq(statsLine({ n: 812, mean: 61.34, top: 33.04, pct: 78 }, true, text), '所有玩家：平均 61.3s（812 人） · 前 10 名：平均 33.0s · 你超过了 78% 的玩家');
-  } finally { setLang('en'); }
-});
 t('leaderboard: backendsFromConfig skips unconfigured, keeps order, moves ?lb= first', () => {
   const cfg = { order: ['cloudflare', 'supabase'], cloudflare: { url: 'https://w' }, supabase: { url: 'https://s', key: 'k' } };
   eq(backendsFromConfig(cfg).map(b => b.name), ['cloudflare', 'supabase']);
@@ -1031,88 +1140,6 @@ ta('leaderboard: 400/422 = rejected without failover; all down = failed; out-of-
   let n = 0; eq((await both(async () => { n++; return reply(500, {}); }).submit('20260929', 30)).status, 'failed'); eq(n, 2);
   n = 0; eq((await both(hang).submit('20260929', 30)).status, 'failed');
   for (const sec of [0.4, 3601, NaN]) { let sent = 0; eq((await both(async () => { sent++; return reply(200, GOOD); }).submit('20260929', sec)).status, 'skipped'); eq(sent, 0); }
-});
-// ---- Stats page: reply parsing, exact cross-backend merge, percentiles from bins, anomaly flags, charts ----
-const dayOf = (d, times) => { const bins = new Array(NB).fill(0); for (const x of times) bins[binOf(x)]++; return { d, n: times.length, sum: times.reduce((a, x) => a + x, 0), bins, best: [...times].sort((a, b) => a - b).slice(0, TOP_K) }; };
-const wire = day => ({ d: day.d, n: day.n, sum: day.sum, bins: day.bins.flatMap((c, k) => (c ? [[k, c]] : [])), best: day.best });
-const lognormal = (rnd, count) => Array.from({ length: count }, () => Math.round(1000 * Math.exp(rnd() * Math.log(2000))));
-t('stats: parseDays makes dense bins and rejects malformed replies', () => {
-  const good = { d: 20260929, n: 3, sum: 90000, bins: [[3, 2], [10, 1]], best: [50000, 10000, 30000] };
-  const [d] = parseDays({ days: [good] }); eq([d.bins.length, d.bins[3], d.bins[10], d.bins[4], d.best], [NB, 2, 1, 0, [10000, 30000, 50000]]);
-  eq(parseDays({ days: [] }), []);
-  for (const bad of [null, {}, { days: 'x' }, { days: [null] }, { days: [{ ...good, n: 0 }] }, { days: [{ ...good, d: 1.5 }] }, { days: [{ ...good, sum: -1 }] }, { days: [{ ...good, bins: [[80, 1]] }] },
-    { days: [{ ...good, bins: [[-1, 1]] }] }, { days: [{ ...good, bins: [[3, 0]] }] }, { days: [{ ...good, bins: [3] }] }, { days: [{ ...good, best: new Array(TOP_K + 1).fill(1) }] }, { days: [{ ...good, best: ['x'] }] }]) eq(parseDays(bad), null, JSON.stringify(bad));
-});
-t('stats: mergeDays over a random split equals the day built from all times (n, sum, bins, best)', () => {
-  let seed = 5; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32, a = [], b = [], all = [];
-  for (const x of lognormal(rnd, 300)) { (rnd() < 0.4 ? a : b).push(x); all.push(x); }
-  eq(mergeDays([[dayOf(1, a)], [dayOf(1, b)]]), [dayOf(1, all)]);
-  const solo = dayOf(2, a), m = mergeDays([[solo, dayOf(1, b)], []]); eq(m.map(x => x.d), [1, 2]); eq(m[1], solo); ok(m[1] !== solo && m[1].bins !== solo.bins, 'inputs are not aliased');
-});
-t('stats: quantile interpolates inside the bin; bin 0 starts at MIN_MS, the last bin ends at MAX_MS; <= 10 % off the exact sample quantile', () => {
-  const one = new Array(NB).fill(0); one[10] = 4;
-  eq([quantile(one, 0), quantile(one, 1)].map(Math.round), [Math.round(binLo(10)), Math.round(binHi(10))]);
-  ok(Math.abs(quantile(one, 0.5) - Math.sqrt(binLo(10) * binHi(10))) < 1e-6, 'geometric midpoint');
-  const lo = new Array(NB).fill(0), hi = new Array(NB).fill(0); lo[0] = 1; hi[NB - 1] = 1;
-  eq([quantile(lo, 0), quantile(hi, 1)], [500, 3600000]); eq(quantile(new Array(NB).fill(0), 0.5), null);
-  ok(binHi(3) === binLo(4) && binHi(0) === binLo(1), 'bins tile the axis');
-  let seed = 11; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32, times = lognormal(rnd, 2000), sorted = [...times].sort((x, y) => x - y), day = dayOf(1, times);
-  for (const q of [0.1, 0.5, 0.9]) { const exact = sorted[Math.ceil(q * times.length) - 1], est = quantile(day.bins, q); ok(Math.abs(est / exact - 1) < 0.1, `q${q}: ${est} vs ${exact}`); }
-});
-t('stats: dayStats mean is exact, top-10 mean only when n > 10, percentiles ordered', () => {
-  const few = dayStats(dayOf(1, [10000, 20000, 60000])); eq([few.mean, few.top, few.fastest], [30, null, 10]);
-  const many = dayStats(dayOf(1, Array.from({ length: 12 }, (_, i) => (i + 1) * 5000))); eq([many.mean, many.top, many.fastest], [32.5, 27.5, 5]);
-  ok(many.p10 <= many.p50 && many.p50 <= many.p90, 'ordered');
-});
-t('stats: flagsOf invariants and heuristics', () => {
-  const clean = dayOf(1, Array.from({ length: 60 }, (_, i) => 20000 + i * 700)); // 20..61 s
-  eq(flagsOf(clean, 60), { invariant: [], heuristic: [] });
-  eq(flagsOf({ ...clean, n: clean.n + 1 }).invariant, ['sum(bins) != n']);
-  eq(flagsOf({ ...clean, best: clean.best.slice(1) }).invariant, ['best count']);
-  eq(flagsOf({ ...clean, best: [clean.best[0] * 3, ...clean.best.slice(1)] }).invariant, ['fastest not in lowest bin']);
-  eq(flagsOf({ ...clean, sum: 1 }).invariant, ['sum out of range']);
-  const bots = dayOf(1, [...Array(30).fill(600), ...Array(70).fill(60000)]); eq(flagsOf(bots, 100).heuristic, ['fastest < median/4', 'bin 0 > 20 %']);
-  eq(flagsOf({ ...clean, best: [1000, ...clean.best.slice(1)], bins: clean.bins.map((c, k) => (k === 0 ? 1 : c)) }).heuristic, ['fastest < median/4']);
-  eq(flagsOf(clean, 10).heuristic, ['n > 5x median']); eq(median([3, 1, 2]), 2); eq(median([4, 1, 2, 3]), 2.5); eq(median([]), 0);
-});
-t('stats: spearman', () => {
-  eq([spearman([1, 2, 3, 4], [10, 20, 30, 40]), spearman([1, 2, 3, 4], [4, 3, 2, 1])], [1, -1]);
-  ok(Math.abs(spearman([1, 2, 3, 4, 5], [2, 1, 4, 3, 5]) - 0.8) < 1e-12, 'textbook value');
-  ok(Math.abs(spearman([1, 1, 2, 3], [1, 2, 3, 4]) - 0.9486832980505138) < 1e-9, 'ties share the mean rank');
-  eq([spearman([1, 2], [1, 2]), spearman([1, 1, 1], [1, 2, 3])], [null, null]);
-});
-t('stats: dayList is oldest first and crosses month and year boundaries', () => {
-  eq(dayList(3, new Date('2026-09-30T10:00:00Z')), [20260928, 20260929, 20260930]); eq(dayList(3, new Date('2026-03-01T00:00:00Z')), [20260227, 20260228, 20260301]);
-  eq(dayList(2, new Date('2026-01-01T23:59:59Z')), [20251231, 20260101]); eq(dayList(90, new Date('2026-09-30T00:00:00Z')).length, 90);
-});
-t('stats: backend read() request shapes', () => {
-  const cf = cloudflareBackend(CF).read({ from: 20260901, to: 20260930 }), sb = supabaseBackend(SB).read({ from: 20260901, to: 20260930 });
-  eq(cf, { url: 'https://w.example/stats?from=20260901&to=20260930', init: { method: 'GET' } });
-  eq([sb.url, sb.init.method, sb.init.headers, JSON.parse(sb.init.body)], ['https://s.example/rest/v1/rpc/read_gotd', 'POST', { 'Content-Type': 'application/json', apikey: 'anon-key' }, { p_from: 20260901, p_to: 20260930 }]);
-});
-ta('stats: fetchStats reads all backends in parallel and reports per-backend status', async () => {
-  const day = { d: 20260929, n: 2, sum: 30000, bins: [[16, 1], [17, 1]], best: [10000, 20000] }, backends = [cloudflareBackend(CF), supabaseBackend(SB)], urls = [];
-  const run = f => fetchStats(backends, { from: 20260929, to: 20260929 }, { fetchFn: (u, i) => { urls.push(u); return f(u, i); }, timeoutMs: 20 });
-  let r = await run(async () => reply(200, { days: [day] }));
-  eq(r.map(x => [x.name, x.status, x.days.length, x.days[0].n]), [['cloudflare', 'ok', 1, 2], ['supabase', 'ok', 1, 2]]); eq(urls.length, 2);
-  r = await run(async u => (u.includes('w.example') ? reply(503, {}) : reply(200, { days: [] })));
-  eq(r.map(x => [x.name, x.status, x.error, x.days.length]), [['cloudflare', 'failed', 'HTTP 503', 0], ['supabase', 'ok', undefined, 0]]);
-  r = await run(async u => reply(200, u.includes('w.example') ? { days: [{ ...day, n: 0 }] } : { days: [day] }));
-  eq(r.map(x => [x.status, x.error]), [['failed', 'malformed reply'], ['ok', undefined]]);
-  r = await run(hang); eq(r.map(x => [x.status, x.error]), [['failed', 'timeout / network'], ['failed', 'timeout / network']]);
-  r = await run(async () => { throw new TypeError('network'); }); eq(r.map(x => x.status), ['failed', 'failed']);
-});
-t('stats charts: valid markup, clickable days, no NaN, empty states', () => {
-  const days = [20260928, 20260929, 20260930], bad = svg => /NaN|undefined|Infinity/.test(svg);
-  const bars = barsSvg(days, [{ name: 'a', cls: 'c-supabase', values: [3, 0, 5] }, { name: 'b', cls: 'c-cloudflare', values: [1, 2, 0] }], 20260929);
-  eq([(bars.match(/data-d="/g) || []).length, bars.includes('hit sel" data-d="20260929"'), bad(bars)], [3, true, false]);
-  const lines = linesSvg(days, [{ cls: 'l-mean', values: [30, 25, 40] }, { cls: 'l-top', values: [null, null, 20] }], { lo: [10, 9, 12], hi: [80, 90, 70] }, null);
-  eq([(lines.match(/<path/g) || []).length, bad(lines), (lines.match(/<circle/g) || []).length], [2, false, 4]);
-  const bins = new Array(NB).fill(0); bins[10] = 5; bins[20] = 9; bins[25] = 2;
-  const hist = histSvg(bins, [{ label: 'p50', ms: 5000, cls: 'm-p50' }]); eq([(hist.match(/class="bar0"/g) || []).length, bad(hist), hist.includes('class="mark m-p50"')], [3, false, true]);
-  const sc = scatterSvg([{ x: 1.2, y: 30, n: 12, cls: 'c0', label: 'a' }, { x: 7, y: 90, n: 400, cls: 'c1', label: 'b' }]); eq([(sc.match(/<circle/g) || []).length, bad(sc)], [2, false]);
-  for (const html of [barsSvg([], [], null), linesSvg([], [], { lo: [], hi: [] }, null), histSvg(new Array(NB).fill(0), []), scatterSvg([])]) ok(html.includes('class="empty"'), 'empty state');
-  eq([linTicks(7), linTicks(0), timeTicks(3, 700), timeTicks(41, 43), fmtSec(4.26), fmtSec(45.4), fmtSec(90)], [[0, 2, 4, 6, 8], [0], [5, 10, 20, 30, 60, 120, 300, 600], [41, 43], '4.3s', '45s', '1.5m']);
 });
 ta('stats-store: pending GOTD attempt is sent:false; saving stats persists and survives hydrate', async () => {
   const st = fakeStorage(), S = createStore(st, [5]); await S.hydrate('20260929');

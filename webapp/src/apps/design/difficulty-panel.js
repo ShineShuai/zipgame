@@ -18,7 +18,8 @@ import { validate } from '../../core/model.js';
 import { spatialMetrics } from '../../core/spatial.js';
 import { trapMetrics, trapRoute, TRAP_CFG, TRAP_MODEL } from '../../core/trap.js';
 import { pickStorage } from '../../platform/storage.js';
-import { serialize } from '../../core/format.js';
+import { parse } from '../../core/format.js';
+import { ratingKey, ratingFromSelection, leanOf, describeRating, toRatingsJson, parseRatingsJson, mergeRatings } from '../../core/ratings-io.js';
 import { initHints } from '../../ui/hint-popover.js';
 import { ladder, grade as ladderGrade, wideFrac, LEVELS as LADDER_LEVELS } from '../../core/ladder.js';
 
@@ -178,7 +179,12 @@ async function loadLog() {
   const storage = await pickStorage();
   const rec = await storage.get(LOG_KEY);
   if (!rec) return [];
-  try { return JSON.parse(rec.value); } catch { return []; }
+  let entries; try { entries = JSON.parse(rec.value); } catch { return []; }
+  // Older logs keyed each puzzle by serialize(p), whose text starts with "# ..." comment lines. The shared ratings.json
+  // format (core/ratings-io.js) uses the comment-free key, so normalise here: the same puzzle then matches an imported row.
+  const byKey = new Map();
+  for (const e of entries) { let key = e.key; try { key = ratingKey(e.key); } catch { /* keep an unparseable key as it is */ } byKey.set(key, { ...e, key }); }
+  return [...byKey.values()];
 }
 async function saveLog(entries) {
   const storage = await pickStorage();
@@ -194,9 +200,20 @@ function pearson(xs, ys) {
   return denom === 0 ? null : num / denom;
 }
 
+// Export / import / clear: shown even for an empty log, because a fresh browser is exactly when you import tools/ratings.json.
+function logToolsHtml() {
+  return `<div class="diff-log-tools">
+      <button type="button" id="diffLogExport" class="diff-log-btn" title="Download every rating as ratings.json: the file tools/ and git use ({ key, human, lo, hi }; grades are not included, they are recomputed on import).">Export ratings.json</button>
+      <button type="button" id="diffLogImport" class="diff-log-btn" title="Load a ratings.json, e.g. tools/ratings.json from the repo. A puzzle already in the log gets the file's rating; every imported puzzle is regraded with the current code.">Import ratings.json</button>
+      <input type="file" id="diffLogFile" accept=".json,application/json" hidden>
+      <button type="button" id="diffLogClear" class="diff-log-clear diff-log-btn">Clear rating log</button>
+    </div>
+    <div class="diff-log-status" id="diffLogStatus" role="status"></div>`;
+}
+
 function correlationHtml(entries) {
   if (entries.length < 3) {
-    return `<div class="diff-panel-time">Rate a few more puzzles (${entries.length}/3 minimum) to see running correlations.</div>`;
+    return `<div class="diff-panel-time">Rate a few more puzzles (${entries.length}/3 minimum) to see running correlations.</div>${logToolsHtml()}`;
   }
   // Each metric is correlated over the entries that HAVE it. Entries logged before a metric existed
   // (e.g. an older browser log from before the calibrated grades were added) simply lack that field;
@@ -208,11 +225,11 @@ function correlationHtml(entries) {
     const r = pearson(pairs.map(e => e.metrics[id]), pairs.map(e => e.human));
     return r == null ? null : { id, r, n: pairs.length };
   }).filter(Boolean).sort((a, b) => Math.abs(b.r) - Math.abs(a.r));
-  const rowsHtml = lines.map(l => `<tr title="${l.n === entries.length ? `all ${l.n} logged puzzles` : `only ${l.n} of ${entries.length} logged puzzles have this metric (older log entries predate it)`}"><th>${l.id}</th><td>${l.r.toFixed(3)}${l.n === entries.length ? '' : ` <span class="diff-n">n=${l.n}</span>`}</td></tr>`).join('');
+  const rowsHtml = lines.map(l => `<tr title="${l.n === entries.length ? `all ${l.n} logged puzzles` : `only ${l.n} of ${entries.length} logged puzzles have this metric (older log entries predate it, or the puzzle could not be graded)`}"><th>${l.id}</th><td>${l.r.toFixed(3)}${l.n === entries.length ? '' : ` <span class="diff-n">n=${l.n}</span>`}</td></tr>`).join('');
   return `
-    <div class="diff-panel-time">${hinted(`Correlation with your ratings, n=${entries.length}`, 'Pearson r of each metric or grade against your 0-5 ratings, sorted by |r|. Treat anything under about 0.5 as unreliable until n is much larger. A row with its own n was computed only over the logged puzzles that have that metric.')}</div>
+    <div class="diff-panel-time">${hinted(`Correlation with your ratings, n=${entries.length}`, 'Pearson r of each metric or grade against your 0-5 ratings (for a rating with a range, its midpoint), sorted by |r|. Treat anything under about 0.5 as unreliable until n is much larger. A row with its own n was computed only over the logged puzzles that have that metric.')}</div>
     <table class="diff-table"><tbody>${rowsHtml}</tbody></table>
-    <button id="diffLogClear" class="diff-log-clear">Clear rating log</button>`;
+    ${logToolsHtml()}`;
 }
 
 // The numbers you asked for after rating: one row per calibrated grade showing
@@ -222,29 +239,77 @@ function correlationHtml(entries) {
 // 0-5 grades appear here because only those are on the same scale as your rating (a raw metric like
 // decisionNodes/cell cannot be "off by 2"). Entries logged before the grades existed are skipped for
 // the aggregate columns (shown via the row's n).
-function ratedComparisonHtml(entries, thisKey, thisMetrics, human) {
+function ratedComparisonHtml(entries, thisMetrics, entry) {
+  const lo = entry.lo ?? entry.human, hi = entry.hi ?? entry.human, said = describeRating(entry);
+  const inRange = (g, e) => g >= (e.lo ?? e.human) && g <= (e.hi ?? e.human);
   const rows = ALL_GRADES.filter(id => Number.isFinite(thisMetrics[`grade: ${id}`])).map(id => {
     const field = `grade: ${id}`;
     const cur = thisMetrics[field];
-    const err = cur - human;
+    const err = cur < lo ? cur - lo : cur > hi ? cur - hi : 0; // how far outside the range you stated (0 = inside it)
     const have = entries.filter(e => e.metrics && Number.isFinite(e.metrics[field]));
-    let bias = null, mae = null, r = null;
+    let bias = null, mae = null, hit = null, r = null;
     if (have.length) {
       bias = have.reduce((a, e) => a + (e.metrics[field] - e.human), 0) / have.length;
       mae = have.reduce((a, e) => a + Math.abs(e.metrics[field] - e.human), 0) / have.length;
+      hit = have.filter(e => inRange(e.metrics[field], e)).length / have.length;
       if (have.length >= 3) r = pearson(have.map(e => e.metrics[field]), have.map(e => e.human));
     }
     const sgn = x => (x > 0 ? '+' : '') + x.toFixed(x % 1 ? 2 : 0);
-    return `<tr title="${escAttr(`${GRADE_LABEL[id]}: this puzzle got ${cur}, you rated it ${human} (error ${sgn(err)}). Over ${have.length} rated puzzles: mean signed error ${bias == null ? '—' : sgn(bias)} (positive = the grade runs harder than you), mean absolute error ${mae == null ? '—' : mae.toFixed(2)}, Pearson r ${r == null ? '—' : r.toFixed(3)}.`)}">
-      <th>${GRADE_LABEL[id]}</th><td>${cur} vs ${human}<span class="diff-n"> (${sgn(err)})</span></td>
-      <td>${bias == null ? '—' : sgn(bias)}</td><td>${mae == null ? '—' : mae.toFixed(2)}</td><td>${r == null ? '—' : r.toFixed(2)}</td></tr>`;
+    return `<tr title="${escAttr(`${GRADE_LABEL[id]}: this puzzle got ${cur}, you rated it ${said} (${err === 0 ? 'inside your range' : `${sgn(err)} outside your range`}). Over ${have.length} rated puzzles: inside your stated range ${hit == null ? '—' : Math.round(100 * hit) + '%'}, mean signed error vs the midpoint ${bias == null ? '—' : sgn(bias)} (positive = the grade runs harder than you), mean absolute error ${mae == null ? '—' : mae.toFixed(2)}, Pearson r ${r == null ? '—' : r.toFixed(3)}.`)}">
+      <th>${GRADE_LABEL[id]}</th><td>${cur} vs ${said}<span class="diff-n"> (${err === 0 ? 'in range' : sgn(err)})</span></td>
+      <td>${hit == null ? '—' : Math.round(100 * hit) + '%'}</td><td>${bias == null ? '—' : sgn(bias)}</td><td>${mae == null ? '—' : mae.toFixed(2)}</td><td>${r == null ? '—' : r.toFixed(2)}</td></tr>`;
   }).join('');
   return `
     <div class="diff-section-title">This puzzle vs all ${entries.length} rated</div>
     <table class="diff-table diff-table-cmp">
-      <thead><tr><th></th><th title="grade vs your rating (grade - rating)">this</th><th title="mean signed error over all rated puzzles; + means the grade runs harder than you">bias</th><th title="mean absolute error over all rated puzzles">MAE</th><th title="Pearson r over all rated puzzles">r</th></tr></thead>
+      <thead><tr><th></th><th title="grade vs your rating; in range = the grade is inside the range you gave, otherwise how far outside">this</th><th title="share of rated puzzles whose grade lies inside the range you stated">in range</th><th title="mean signed error vs the midpoint of your rating over all rated puzzles; + means the grade runs harder than you">bias</th><th title="mean absolute error vs the midpoint over all rated puzzles">MAE</th><th title="Pearson r over all rated puzzles">r</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+}
+
+// Everything the panel shows and logs for one puzzle. Shared by "Compute diagnostics" and the ratings import (which regrades every
+// imported puzzle with the current code, so a refit or a new metric never leaves stale numbers in the log).
+function analyse(p, cap) {
+  const t0 = performance.now();
+  const d = fullDiagnostics(p, cap);
+  Object.assign(d, spatialMetrics(p));
+  d.n = p.n;
+  if (!d.exceeded) {
+    // Reuse the reference-solve fields fullDiagnostics already produced — no extra solve.
+    const g = gradesFromMetrics({ ...d, n: p.n }, d);
+    d.raw = g.raw; d.grades = g.grades;
+  }
+  d.ms = performance.now() - t0;
+  d.puzzle = p; // grade: ladder's extractor needs the puzzle itself, not just the solve result
+  // Trap grade: its own set of capped solves, independent of whether the reference solve above was capped.
+  const t1 = performance.now();
+  d.trap = trapMetrics(p);
+  d.trapMs = performance.now() - t1;
+  // Technique-ladder grade: its own independent solve, also unaffected by whether the reference solve was capped.
+  const t2 = performance.now();
+  d.ladder = ladder(p);
+  d.ladderWF = d.ladder.solved && d.ladder.path ? wideFrac(p, d.ladder.path) : null;
+  d.ladderMs = performance.now() - t2;
+  return d;
+}
+
+// The metrics logged with a rating. A capped reference solve has no solver metrics/grades to log, but the trap/ladder/spatial
+// ones still exist as long as AT LEAST ONE of trap or ladder actually solved the puzzle (each is an independent solve).
+function metricsOf(d) {
+  return d.exceeded
+    ? ((d.trap.ok || d.ladder.solved) ? Object.fromEntries(METRIC_DEFS.filter(([id]) => SOLVER_FREE.has(id)).map(([id, get]) => [id, get(d)])) : null)
+    : Object.fromEntries(METRIC_DEFS.map(([id, get]) => [id, get(d)]));
+}
+
+const RATE_HINT = 'Click a grade to rate this puzzle (saved at once). Unsure between two neighbouring grades? Click the second one too ("2 or 3"), then say which it is closer to. Click a selected single grade again to remove the rating. Ranges are what the in range score and ratings.json keep.';
+
+// Download text as a file (export).
+function downloadText(text, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 // Mounts the panel: a button that runs fullDiagnostics() on the current puzzle (via getPuzzle())
@@ -258,6 +323,8 @@ function ratedComparisonHtml(entries, thisKey, thisMetrics, human) {
 // never hidden from the user who just asked for it.
 export function mountDifficultyPanel(resultEl, getPuzzle, getNodeCap, onShowPath) {
   let lastMetrics = null, lastPuzzleKey = null, collapsed = false, lastRoutes = [];
+  let sel = null;       // { lo, hi, lean } rating of the current puzzle, or null = unrated
+  let logStatus = '';   // last export/import message; survives re-rendering of the log section
 
   function applyCollapsed() {
     const body = resultEl.querySelector('.diff-body');
@@ -266,26 +333,112 @@ export function mountDifficultyPanel(resultEl, getPuzzle, getNodeCap, onShowPath
     if (arrow) arrow.textContent = collapsed ? '▸' : '▾';
   }
 
+  function setStatus(msg) {
+    logStatus = msg;
+    const el = resultEl.querySelector('#diffLogStatus');
+    if (el) el.textContent = msg;
+  }
+
   async function renderLog() {
     const entries = await loadLog();
     const el = resultEl.querySelector('.diff-log-slot');
     if (el) { el.innerHTML = correlationHtml(entries); initHints(el); }
     const clearBtn = resultEl.querySelector('#diffLogClear');
-    if (clearBtn) clearBtn.onclick = async () => { await saveLog([]); renderLog(); };
+    if (clearBtn) clearBtn.onclick = async () => { await saveLog([]); sel = null; setStatus(''); paintRating(); clearComparison(); renderLog(); };
+    const exportBtn = resultEl.querySelector('#diffLogExport');
+    if (exportBtn) exportBtn.onclick = async () => {
+      const all = await loadLog();
+      if (!all.length) { setStatus('Nothing to export yet: rate a puzzle first.'); return; }
+      downloadText(toRatingsJson(all), 'ratings.json');
+      setStatus(`Exported ${all.length} ratings to ratings.json (put it at tools/ratings.json to use it in the repo).`);
+    };
+    const fileInput = resultEl.querySelector('#diffLogFile'), importBtn = resultEl.querySelector('#diffLogImport');
+    if (importBtn && fileInput) {
+      importBtn.onclick = () => fileInput.click();
+      fileInput.onchange = async () => { const f = fileInput.files && fileInput.files[0]; fileInput.value = ''; if (f) await importFile(f); };
+    }
+    setStatus(logStatus);
   }
 
-  async function rate(human) {
-    if (!lastMetrics) return;
-    const entries = await loadLog();
-    // One entry per distinct puzzle (by its serialized text) — re-rating the same puzzle updates
-    // its entry rather than double-counting it.
-    const idx = entries.findIndex(e => e.key === lastPuzzleKey);
-    const entry = { key: lastPuzzleKey, human, metrics: lastMetrics };
-    if (idx >= 0) entries[idx] = entry; else entries.push(entry);
-    await saveLog(entries);
-    const cmp = resultEl.querySelector('.diff-cmp-slot');
-    if (cmp) cmp.innerHTML = ratedComparisonHtml(entries, lastPuzzleKey, lastMetrics, human);
+  // Import a ratings.json: merge by puzzle (the file's rating wins), then regrade every imported puzzle with the current code,
+  // yielding to the browser between puzzles so the page stays responsive and shows progress.
+  async function importFile(file) {
+    let text; try { text = await file.text(); } catch (e) { setStatus(`Could not read the file: ${e.message}`); return; }
+    const { ratings, problems } = parseRatingsJson(text);
+    if (!ratings.length) { setStatus(`Nothing imported: ${problems[0] || 'the file has no ratings'}.`); return; }
+    const merged = mergeRatings(await loadLog(), ratings);
+    const byKey = new Map(merged.entries.map(e => [e.key, e])), cap = getNodeCap ? getNodeCap() : undefined;
+    let ungraded = 0;
+    for (let i = 0; i < ratings.length; i++) {
+      setStatus(`Regrading ${i + 1}/${ratings.length}…`);
+      await new Promise(r => setTimeout(r, 0));
+      const e = byKey.get(ratings[i].key);
+      try {
+        const puzzle = parse(ratings[i].key);
+        if (validate(puzzle).ok) e.metrics = metricsOf(analyse(puzzle, cap));
+      } catch (err) { /* leave metrics null */ }
+      if (!e.metrics) ungraded++;
+    }
+    await saveLog(merged.entries);
+    setStatus(`Imported ${ratings.length} ratings: ${merged.added} new, ${merged.updated} replaced (${merged.changed} with a different rating)`
+      + (ungraded ? `, ${ungraded} could not be graded (invalid or non-unique puzzle; the rating is kept)` : '')
+      + (problems.length ? `. ${problems.length} note(s): ${problems.slice(0, 3).join('; ')}${problems.length > 3 ? '; …' : ''}` : '') + '.');
+    await syncRating();
     renderLog();
+  }
+
+  // ---- your rating of the current puzzle: one grade, or two neighbouring grades ("2 or 3") plus which one it is closer to ----
+  function clearComparison() { const cmp = resultEl.querySelector('.diff-cmp-slot'); if (cmp) cmp.innerHTML = ''; }
+
+  function paintRating() {
+    resultEl.querySelectorAll('.diff-rate-btn').forEach(b => b.classList.toggle('sel', !!sel && +b.dataset.grade >= sel.lo && +b.dataset.grade <= sel.hi));
+    const leanBox = resultEl.querySelector('.diff-rate-lean'), text = resultEl.querySelector('.diff-rate-text');
+    const pair = !!sel && sel.hi - sel.lo === 1; // "closer to" only makes sense for two neighbouring grades
+    if (leanBox) leanBox.style.display = pair ? '' : 'none';
+    const lb = resultEl.querySelectorAll('.diff-lean-btn');
+    if (pair) lb.forEach(b => { const d = +b.dataset.lean; b.textContent = d < 0 ? sel.lo : sel.hi; b.classList.toggle('sel', sel.lean === d); });
+    if (text) text.textContent = sel ? (() => { const r = ratingFromSelection(sel); return `Saved: ${describeRating(r)}${r.lo === r.hi ? '' : ` (used as ${r.human})`}`; })() : 'Not rated.';
+  }
+
+  async function saveRating() {
+    if (!lastMetrics && !sel) return;
+    const entries = await loadLog();
+    const idx = entries.findIndex(e => e.key === lastPuzzleKey);
+    // One entry per distinct puzzle (by its canonical key) — re-rating the same puzzle updates its entry, never double-counts it.
+    if (!sel) { if (idx >= 0) entries.splice(idx, 1); }
+    else {
+      const entry = { key: lastPuzzleKey, ...ratingFromSelection(sel), metrics: lastMetrics };
+      if (idx >= 0) entries[idx] = entry; else entries.push(entry);
+    }
+    await saveLog(entries);
+    paintRating();
+    const cur = sel && entries.find(e => e.key === lastPuzzleKey);
+    const cmp = resultEl.querySelector('.diff-cmp-slot');
+    if (cmp) cmp.innerHTML = cur && lastMetrics ? ratedComparisonHtml(entries, lastMetrics, cur) : '';
+    renderLog();
+  }
+
+  function onGrade(g) {
+    if (!lastMetrics) return;
+    if (sel && sel.lo === sel.hi && sel.lo === g) sel = null;                                   // same single grade again: remove
+    else if (sel && sel.lo === sel.hi && Math.abs(g - sel.lo) === 1) sel = { lo: Math.min(g, sel.lo), hi: Math.max(g, sel.lo), lean: 0 }; // neighbour: "N or M"
+    else sel = { lo: g, hi: g, lean: 0 };
+    return saveRating();
+  }
+
+  function onLean(d) {
+    if (!sel || sel.hi - sel.lo !== 1) return;
+    sel = { ...sel, lean: sel.lean === d ? 0 : d };
+    return saveRating();
+  }
+
+  // After Compute diagnostics: show a rating this puzzle already has (typed earlier or imported) with its comparison table.
+  async function syncRating() {
+    const entries = await loadLog(), e = entries.find(x => x.key === lastPuzzleKey);
+    sel = e ? { lo: e.lo ?? e.human, hi: e.hi ?? e.human, lean: leanOf({ human: e.human, lo: e.lo ?? e.human, hi: e.hi ?? e.human }) } : null;
+    paintRating();
+    const cmp = resultEl.querySelector('.diff-cmp-slot');
+    if (cmp) cmp.innerHTML = e && lastMetrics ? ratedComparisonHtml(entries, lastMetrics, e) : '';
   }
 
   function run() {
@@ -297,57 +450,35 @@ export function mountDifficultyPanel(resultEl, getPuzzle, getNodeCap, onShowPath
       lastMetrics = null;
       return;
     }
-    const cap = getNodeCap ? getNodeCap() : undefined;
-    const t0 = performance.now();
-    const d = fullDiagnostics(p, cap);
-    Object.assign(d, spatialMetrics(p));
-    d.n = p.n;
-    if (!d.exceeded) {
-      // Reuse the reference-solve fields fullDiagnostics already produced — no extra solve.
-      const g = gradesFromMetrics({ ...d, n: p.n }, d);
-      d.raw = g.raw; d.grades = g.grades;
-    }
-    const ms = performance.now() - t0;
-    d.puzzle = p; // grade: ladder's extractor needs the puzzle itself, not just the solve result
-    // Trap grade: its own set of capped solves, independent of whether the reference solve finished.
-    const t1 = performance.now();
-    d.trap = trapMetrics(p);
-    const trapMs = performance.now() - t1;
+    const d = analyse(p, getNodeCap ? getNodeCap() : undefined);
     lastRoutes = d.trap.ok ? topTraps(d.trap).map(s => trapRoute(d.trap.path, s)) : [];
-
-    // Technique-ladder grade: its own independent solve, also unaffected by whether the reference
-    // solve above was capped. Cheap — single-digit ms typical, well under 300ms worst case observed
-    // at N=11 (see areas/zip-difficulty-grading.md) — so it runs on every click alongside the others.
-    const t2 = performance.now();
-    d.ladder = ladder(p);
-    d.ladderWF = d.ladder.solved && d.ladder.path ? wideFrac(p, d.ladder.path) : null;
-    const ladderMs = performance.now() - t2;
-
-    // A capped reference solve has no solver metrics/grades to log, but the trap/ladder/spatial ones
-    // still exist as long as AT LEAST ONE of trap or ladder actually solved the puzzle (each is an
-    // independent solve, so one can succeed while the other is capped or errors).
-    lastMetrics = d.exceeded
-      ? ((d.trap.ok || d.ladder.solved) ? Object.fromEntries(METRIC_DEFS.filter(([id]) => SOLVER_FREE.has(id)).map(([id, get]) => [id, get(d)])) : null)
-      : Object.fromEntries(METRIC_DEFS.map(([id, get]) => [id, get(d)]));
-    lastPuzzleKey = serialize(p);
+    lastMetrics = metricsOf(d);
+    lastPuzzleKey = ratingKey(p);
+    sel = null;
 
     const rateHtml = !lastMetrics ? '' : `
       <div class="diff-rate">
         <span>Your rating for this puzzle:</span>
-        ${[0, 1, 2, 3, 4, 5].map(g => `<button class="diff-rate-btn" data-grade="${g}">${g}</button>`).join('')}
-      </div>`;
+        ${[0, 1, 2, 3, 4, 5].map(g => `<button type="button" class="diff-rate-btn" data-grade="${g}">${g}</button>`).join('')}
+        <span data-hint="${escAttr(RATE_HINT)}"></span>
+        <span class="diff-rate-lean" style="display:none">closer to
+          <button type="button" class="diff-lean-btn" data-lean="-1"></button><button type="button" class="diff-lean-btn" data-lean="1"></button></span>
+      </div>
+      <div class="diff-rate-text">Not rated.</div>`;
     resultEl.innerHTML = `
       <button type="button" class="diff-collapse-toggle"><span class="diff-collapse-arrow">▾</span> Diagnostics</button>
       <div class="diff-body">
-        ${diagnosticsHtml(d)}${ladderHtml(d)}<div class="diff-panel-time">${ms.toFixed(0)}ms, 4 solve() calls + spatial (free) · trap grade ${trapMs.toFixed(0)}ms${d.trap.ok ? `, ${d.trap.alternatives} capped solves` : ''} · ladder grade ${ladderMs.toFixed(0)}ms</div>
+        ${diagnosticsHtml(d)}${ladderHtml(d)}<div class="diff-panel-time">${d.ms.toFixed(0)}ms, 4 solve() calls + spatial (free) · trap grade ${d.trapMs.toFixed(0)}ms${d.trap.ok ? `, ${d.trap.alternatives} capped solves` : ''} · ladder grade ${d.ladderMs.toFixed(0)}ms</div>
         ${rateHtml}<div class="diff-cmp-slot"></div><div class="diff-log-slot"></div>
       </div>`;
     initHints(resultEl);
     resultEl.querySelector('.diff-collapse-toggle').onclick = () => { collapsed = !collapsed; applyCollapsed(); };
-    resultEl.querySelectorAll('.diff-rate-btn').forEach(b => b.onclick = () => rate(+b.dataset.grade));
+    resultEl.querySelectorAll('.diff-rate-btn').forEach(b => b.onclick = () => onGrade(+b.dataset.grade));
+    resultEl.querySelectorAll('.diff-lean-btn').forEach(b => b.onclick = () => onLean(+b.dataset.lean));
     resultEl.querySelectorAll('.diff-trap-show').forEach(b => b.onclick = () => onShowPath && onShowPath(lastRoutes[+b.dataset.k]));
     applyCollapsed();
     renderLog();
+    syncRating();
   }
   return { run };
 }

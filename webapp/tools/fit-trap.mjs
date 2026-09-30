@@ -1,8 +1,7 @@
 // Fit / evaluate the trap grade against hand ratings.
-//   node tools/fit-trap.mjs ratings.json [--features trapMax,trapTop3,altFrac] [--lambda 10] [--write]
-// ratings.json: [{ "key": "<puzzle text, format.js>", "human": 0..5 }, ...] — the same shape as the design
-// app's rating log, so paste it straight from the browser console:
-//   copy(localStorage.getItem('zip-difficulty-rating-log-v1'))
+//   node tools/fit-trap.mjs [tools/ratings.json] [--features trapMax,trapTop3,altFrac] [--lambda 10] [--write]
+// ratings.json (default: tools/ratings.json): [{ "key": "<puzzle text>", "human": 0..5, "lo": .., "hi": .. }, ...] — exactly what the
+// design app's "Export ratings.json" button writes (see src/core/ratings-io.js for the format).
 // Prints leave-one-out (LOO) accuracy for the trap grade vs. the shipped grades, then the TRAP_MODEL
 // literal. With --write it replaces the <TRAP_MODEL>..</TRAP_MODEL> block in src/core/trap.js in place (weights + fit
 // metadata that the design panel displays); without it, it only prints the block. LOO is optimistic if the feature set
@@ -15,8 +14,7 @@ import { gradesFor } from '../src/core/grades.js';
 const args = process.argv.slice(2);
 const WRITE = args.includes('--write');
 const opt = (name, dflt) => { const i = args.indexOf('--' + name); return i >= 0 ? args[i + 1] : dflt; };
-const file = args.find(a => !a.startsWith('--') && a !== opt('features') && a !== opt('lambda'));
-if (!file) { console.error('usage: node tools/fit-trap.mjs ratings.json [--features a,b,c] [--lambda 3]'); process.exit(1); }
+const file = args.find(a => !a.startsWith('--') && a !== opt('features') && a !== opt('lambda')) || new URL('./ratings.json', import.meta.url).pathname;
 const features = opt('features', 'trapMax,trapTop3,altFrac').split(',');
 const lambda = +opt('lambda', 10);
 

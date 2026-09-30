@@ -193,3 +193,15 @@ button.playbtn.on{background:linear-gradient(135deg,#b3344f,#e0526f);}
 .diff-trap-show{margin-left:6px;font-size:10.5px;padding:1px 7px;border-radius:5px;border:1px solid #2f375a;background:#1a2038;color:#c7cce3;cursor:pointer;}
 .diff-trap-show:hover{background:#2a3358;border-color:#3b68ee;color:#e7e9f3;}
 .diff-table td b{font-weight:700;color:#ffb454;}
+.diff-rate-btn.sel{background:#3b68ee;border-color:#3b68ee;color:#fff;}
+.diff-rate-lean{display:inline-flex;align-items:center;gap:4px;margin-left:6px;color:#8b93b8;}
+.diff-lean-btn{min-width:22px;height:22px;border-radius:6px;border:1px solid #2f375a;background:#1a2038;color:#e7e9f3;cursor:pointer;font-size:11px;}
+.diff-lean-btn:hover{border-color:#3b68ee;}
+.diff-lean-btn.sel{background:#3b68ee;border-color:#3b68ee;color:#fff;}
+.diff-rate-text{margin-top:4px;font-size:11px;color:#8b93b8;}
+.diff-log-tools{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.diff-log-tools .diff-log-clear{margin-top:0;}
+.diff-log-btn{font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #2f375a;background:#1a2038;color:#c7cce3;cursor:pointer;}
+.diff-log-btn:hover{color:#e7e9f3;border-color:#3b68ee;}
+.diff-log-status{margin-top:6px;font-size:11px;color:#8b93b8;min-height:14px;line-height:1.4;}
+

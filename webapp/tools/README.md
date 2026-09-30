@@ -1,8 +1,11 @@
 # Difficulty tools
 
-All tools read the SAME labels: `tools/ratings-70.json` = `[{ key: puzzle text, human, lo?, hi? }]` (`human` = midpoint of the range
-you gave, `lo`/`hi` = the range itself). Do not let a tool parse the text file on its own: `ladder-eval.mjs`'s text parser reads some
-comments differently (7 of the first 70 labels differed), which made results from different tools incomparable.
+All tools read ONE label file, `tools/ratings.json` (the copy stored in git):
+`[{ "key": puzzle text, "human": 2.75, "lo": 2, "hi": 3 }, ...]` — `lo`/`hi` = the range you stated ("2 or 3"), `human` = the number a
+model is fitted to (midpoint, moved 0.25 toward the end you said it was "close to"). The format lives in `src/core/ratings-io.js`;
+the design app's **Export ratings.json / Import ratings.json** buttons (under "Correlation with your ratings") read and write exactly it.
+Do not let a tool parse the text file on its own: `ladder-eval.mjs`'s old text parser read 7 of the first 70 labels differently, which
+made results from different tools incomparable.
 
 | tool | what it does |
 |---|---|
@@ -14,10 +17,16 @@ comments differently (7 of the first 70 labels differed), which made results fro
 | `calibrate.mjs` | Recompute the quantile cut points of the legacy grades on generated puzzles (`calibration.js`). These grades are calibrated to the generator's distribution, not to human ratings. |
 
 ## After adding ratings
-1. Append the puzzles to `difficulty_rate.txt` (comment before each puzzle) or export the apps' rating log
-   (`copy(localStorage.getItem('zip-difficulty-rating-log-v1'))`).
-2. `node tools/parse-ratings.mjs difficulty_rate.txt --base tools/ratings-70.json > tools/ratings.json`
-3. `node tools/metrics-eval.mjs tools/ratings.json` — which metric/grade is best now, and is the ladder still holding on the newest puzzles?
-4. Trap grade: `node tools/fit-trap.mjs tools/ratings.json` to look, `--write` to apply, then `npm test`.
-5. Ladder grade: Part 4 of `metrics-eval` shows whether `tWf` / `tTrials` in `ladder.js` `grade()` should move; change them by hand there.
-6. Bump `src/version.js`, commit `tools/ratings.json`.
+Either route ends in `tools/ratings.json`:
+- **In the design app:** rate puzzles (a range is allowed), then **Export ratings.json** and replace `tools/ratings.json`
+  with the download. Or the other way round: **Import ratings.json** loads the repo file into a fresh browser and regrades every
+  puzzle with the current code (a rating in the file replaces the browser's rating for the same puzzle).
+- **From the text file:** append the puzzles to `difficulty_rate.txt` (comment line before each puzzle), then
+  `node tools/parse-ratings.mjs difficulty_rate.txt --base tools/ratings.json --out tools/ratings.json`
+  (`--out` may be the base file itself; never use `>` onto it, the shell truncates it before it is read).
+
+Then:
+1. `node tools/metrics-eval.mjs` — which metric/grade is best now, and is the ladder still holding on the newest puzzles?
+2. Trap grade: `node tools/fit-trap.mjs` to look, `--write` to apply, then `npm test`.
+3. Ladder grade: Part 4 of `metrics-eval` shows whether `tWf` / `tTrials` in `ladder.js` `grade()` should move; change them by hand there.
+4. Commit `tools/ratings.json` together with the change.
