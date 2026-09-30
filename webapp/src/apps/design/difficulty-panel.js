@@ -16,7 +16,7 @@ import { GRADED_METRICS, DEFAULT_THRESHOLDS_BY_METRIC } from '../../core/gen/cal
 import { gradesFromMetrics, GRADE_ORDER } from '../../core/grades.js';
 import { validate } from '../../core/model.js';
 import { spatialMetrics } from '../../core/spatial.js';
-import { trapMetrics, trapRoute, TRAP_CFG } from '../../core/trap.js';
+import { trapMetrics, trapRoute, TRAP_CFG, TRAP_MODEL } from '../../core/trap.js';
 import { pickStorage } from '../../platform/storage.js';
 import { serialize } from '../../core/format.js';
 import { initHints } from '../../ui/hint-popover.js';
@@ -48,7 +48,7 @@ const METRIC_DEFS = [
   // Trap grade (core/trap.js): needs no reference-solve result, so it also exists for puzzles the reference solve capped on.
   ['trapMax', d => d.trap?.ok ? d.trap.trapMax : undefined, `Score of the single worst step of the solution: sum over its wrong moves of 0 (refuted within ${TRAP_CFG.obvious} nodes) / 1 (within ${TRAP_CFG.shallow}) / 3 (deeper) / 5 (survives ${TRAP_CFG.cap} nodes).`],
   ['trapTop3', d => d.trap?.ok ? d.trap.trapTop3 : undefined, 'Sum of the three worst steps\' scores.'],
-  ['altFrac', d => d.trap?.ok ? d.trap.altFrac : undefined, 'Fraction of solution steps that have any legal wrong move. Low = long forced corridors, which humans find easy (rho -0.54 vs your ratings on 48 puzzles).'],
+  ['altFrac', d => d.trap?.ok ? d.trap.altFrac : undefined, 'Fraction of solution steps that have any legal wrong move. Low = long forced corridors, which humans find easy (rho -0.45 vs hand ratings on 70 puzzles).'],
   ['trapPredicted', d => d.trap?.ok ? d.trap.predicted : undefined, 'Ridge model over trapMax, trapTop3, altFrac on your 0-5 scale; the trap grade is this rounded.'],
   // The five calibrated 0-5 grades themselves, so the rating log shows which grade correlates best.
   ...GRADE_ORDER.map(id => [`grade: ${id}`, d => d.grades[id], `Calibrated 0-5 grade from ${GRADED_METRICS[id].label}. Compare against your own rating.`]),
@@ -66,6 +66,11 @@ const ALL_GRADES = [...GRADE_ORDER, 'trap', 'ladder'];
 const GRADE_LABEL = { ...Object.fromEntries(GRADE_ORDER.map(id => [id, GRADED_METRICS[id].label])), trap: 'trap (Play badge)', ladder: 'technique ladder' };
 // Metrics that exist even when the reference solve was capped (no solver-derived numbers, no grades).
 const SOLVER_FREE = new Set(['crossPerSeg', 'overlapPerSeg', 'trapMax', 'trapTop3', 'altFrac', 'trapPredicted', 'grade: trap', 'ladderHardest', 'ladderWideFrac', 'grade: ladder']);
+
+// Fit statistics are optional metadata (tools/fit-trap.mjs --write stores them next to the weights). An older trap.js
+// without them must not take the whole diagnostics panel down, so every use goes through these two strings.
+const fitN = () => TRAP_MODEL.fit ? `${TRAP_MODEL.fit.n} ` : '';
+const fitStats = () => TRAP_MODEL.fit ? ` (leave-one-out rho about ${TRAP_MODEL.fit.looRho.toFixed(2)}, mean abs error ${TRAP_MODEL.fit.looMae.toFixed(2)} grades)` : ' (fit statistics not stored: run tools/fit-trap.mjs --write)';
 
 const rc = (n, c) => `${(c / n) | 0},${c % n}`; // 0-based row,col — same convention as the puzzle text format
 const topTraps = t => t.steps.filter(s => s.score >= TRAP_CFG.points[2]).slice(0, 3); // steps with at least one deep trap
@@ -87,7 +92,7 @@ function trapHtml(d) {
     <div class="diff-section-title">Trap grade (candidate)</div>
     <table class="diff-table">
       <tbody>
-        ${row('trap grade (Play badge)', `<b>${t.grade} / 5</b>`, `Play app badge. Predicted ${t.predicted.toFixed(2)} on your 0-5 scale (ridge over trapMax, trapTop3, altFrac; fit to 54 hand ratings), rounded.`)}
+        ${row('trap grade (Play badge)', `<b>${t.grade} / 5</b>`, `Play app badge. Predicted ${t.predicted.toFixed(2)} on your 0-5 scale (ridge over trapMax, trapTop3, altFrac; fit to ${fitN()}hand ratings), rounded.`)}
         ${row('predicted', t.predicted.toFixed(2), 'Model output before rounding.')}
         ${row('trapMax', t.trapMax, METRIC_DEFS.find(m => m[0] === 'trapMax')[2])}
         ${row('trapTop3', t.trapTop3, METRIC_DEFS.find(m => m[0] === 'trapTop3')[2])}
@@ -150,7 +155,7 @@ export function diagnosticsHtml(d) {
   }).join('');
   const rows = METRIC_DEFS.filter(([id]) => !id.startsWith('grade:')).map(([id, get, title]) => row(id, fmt(get(d)), title)).join('');
   return `
-    <div class="diff-panel-flag diff-panel-flag-red">${hinted('⚠ Grades are unvalidated', 'On 54 hand-rated puzzles the solver-based grades correlate about 0.2 to 0.4 with your ratings. The trap grade (the Play app badge) was fit to those same 54 (leave-one-out rho about 0.65, mean abs error 0.66 grades), with its features picked on that sample, so that number is optimistic. It rarely outputs 0, 4 or 5. Rate puzzles below to test it on new ones.')}</div>
+    <div class="diff-panel-flag diff-panel-flag-red">${hinted('⚠ Grades are unvalidated', `The solver-based grades correlate only about 0.4 with your hand ratings. The trap grade (the Play app badge) was fit to ${fitN()}hand-rated puzzles${fitStats()}, with its features picked on that sample, so that number is optimistic. It rarely outputs 0, 4 or 5. Rate puzzles below to test it on new ones.`)}</div>
     ${trapHtml(d)}
     <div class="diff-section-title">Grades (each calibrated on its own)</div>
     <table class="diff-table"><tbody>${gradeRows}</tbody></table>
