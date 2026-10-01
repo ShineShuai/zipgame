@@ -1,13 +1,14 @@
 // Runs in the browser (open test/index.html via a local server) and in Node (node test/tests.js). No dependencies.
-import { makePuzzle, validate, maxNumber, ALGO_VERSION, endCell } from '../src/core/model.js';
+import { makePuzzle, validate, maxNumber, ALGO_VERSION, endCell, checkpointCells } from '../src/core/model.js';
 import { edgeId, edgeCells, allEdges, edgeToKey, keyToEdge, setWallId, wallCount } from '../src/core/edges.js';
 import { serialize, parse } from '../src/core/format.js';
 import { makeRng, dailySeed, hashStr, shuffle } from '../src/core/rng.js';
 import { newStat, updateStat, statSummary } from '../src/core/stats.js';
 import { solve } from '../src/core/solver/solve.js';
 import { isSolved, step } from '../src/core/rules.js';
-import { boardConnectivity } from '../src/core/connectivity.js';
-import { buildNeighbors, makeNoDeadEnd, forcedEdges, legsCollide } from '../src/core/solver/prune.js';
+import { boardConnectivity, boardLegCollide } from '../src/core/connectivity.js';
+import { arrowSegment } from '../src/view/geometry.js';
+import { buildNeighbors, makeNoDeadEnd, forcedEdges, legsCollide, legConflicts, segBlocker } from '../src/core/solver/prune.js';
 import { generate, generateUnique, randomPathPuzzle, pickK, PLAY_SIZES } from '../src/core/gen/generate.js';
 import { scatter } from '../src/core/gen/checkpoints.js';
 import { encodeFlags, decodeFlags, flagsToHex, hexToFlags, DEFAULT_FLAGS_INT, DEFAULT_GEN_FLAGS } from '../src/core/gen/flags.js';
@@ -329,6 +330,60 @@ t('legsCollide: catches the reported forced-corridor-collision case one move bef
   let need13 = 1;
   for (const c of fullPath.slice(0, 13)) if (p.cp[c]) need13 = p.cp[c] + 1;
   eq(anyCompletion(fullPath[12], 13, need13), false, 'position should genuinely be unsolvable from cut=13');
+});
+t('legConflicts / boardLegCollide: agree with legsCollide; report the colliding legs and contested cells', () => {
+  // Reported position (same puzzle as the regression test above): path cut at 13 cells, head at (4,4).
+  const n = 7, p = makePuzzle(n), rc = (r, c) => r * n + c;
+  for (const [r, c, k] of [[0, 0, 6], [0, 5, 5], [1, 5, 7], [3, 2, 4], [3, 6, 3], [5, 1, 1], [6, 5, 2]]) p.cp[rc(r, c)] = k;
+  for (const [ty, r, c] of [['V', 3, 0], ['V', 3, 4], ['H', 4, 1], ['V', 5, 0], ['V', 5, 1], ['V', 6, 4]]) {
+    setWallId(p.walls, ty === 'V' ? edgeId(n, rc(r, c), rc(r, c + 1)) : edgeId(n, rc(r, c), rc(r + 1, c)), true);
+  }
+  const path = [[5, 1], [6, 1], [6, 0], [5, 0], [4, 0], [3, 0], [2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [3, 4], [4, 4]].map(([r, c]) => rc(r, c));
+  const res = boardLegCollide(p, path);
+  eq(res.infeasible, true); ok(res.conflicts.length > 0, 'expected at least one conflict');
+  const head = path[path.length - 1], { nb, T } = buildNeighbors(p), vis = new Uint8Array(T);
+  for (const c of path) vis[c] = 1;
+  for (const { a, b, cells } of res.conflicts) {
+    ok(cells.length > 0, 'a conflict names at least one contested cell');
+    for (const leg of [a, b]) ok((leg[0] === head || p.cp[leg[0]] > 0) && p.cp[leg[1]] > 0, 'leg runs head/checkpoint -> checkpoint');
+    eq(a[1] === b[1], false, 'two distinct legs');
+    const ba = segBlocker(nb, T, vis, a[0], a[1]), bb = segBlocker(nb, T, vis, b[0], b[1]);
+    for (const c of cells) ok(ba.has(c) && bb.has(c), `cell ${c} is forced by both legs`);
+  }
+  // Open position: nothing to report.
+  const open = makePuzzle(3); open.cp[0] = 1; open.cp[4] = 2; open.cp[8] = 3;
+  eq(boardLegCollide(open, [0]), { infeasible: false, conflicts: [] });
+  // legsCollide <=> legConflicts non-empty, on random puzzles and every prefix of their solutions.
+  let checked = 0, collided = 0;
+  for (let sd = 1; sd <= 200; sd++) {
+    const nn = 4 + (sd % 4), K = 3 + (sd % 5), q = randPuzzle(sd, nn, K, 0.05 * (sd % 10));
+    const sol = solve(q, { limit: 1, nodeCap: 20000, capture: true });
+    if (sol.exceeded || sol.count === 0) continue;
+    const full = sol.paths[0], KK = Math.max(...q.cp), ps = checkpointCells(q), { nb, T } = buildNeighbors(q);
+    // walk off the solution at each cut: head moves to any free neighbour, which often creates collisions
+    for (let cut = 1; cut < full.length; cut++) for (let d = 0; d < 4; d++) {
+      const prefix = full.slice(0, cut), h = prefix[cut - 1], v = nb[h * 4 + d];
+      if (v < 0 || prefix.includes(v)) continue;
+      const pf = [...prefix, v], vis = new Uint8Array(T); for (const c of pf) vis[c] = 1;
+      let need = 1; for (const c of pf) if (q.cp[c]) need = q.cp[c] + 1;
+      if (need > KK) continue;
+      const legs = [[v, ps[need - 1]]]; for (let k = need; k < KK; k++) legs.push([ps[k - 1], ps[k]]);
+      const conf = legConflicts(nb, T, vis, legs); checked++;
+      eq(conf.length > 0, legsCollide(nb, T, vis, legs), `seed ${sd} cut ${cut}`);
+      if (conf.length) collided++;
+    }
+  }
+  ok(checked > 200 && collided > 0, `expected cases with collisions, checked ${checked} collided ${collided}`);
+});
+t('checkpointCells + arrowSegment: graph edges k -> k+1, trimmed clear of the badges, head points at k+1', () => {
+  const p = makePuzzle(4); p.cp[5] = 2; p.cp[0] = 1; p.cp[15] = 3;
+  eq(checkpointCells(p), [0, 5, 15]);
+  const { line, tip, head } = arrowSegment(4, 0, 3, 1, 0.3, 0.2, 0.1); // (0,0) -> (0,3): cell centres x 0.5 -> 3.5
+  eq(line.map(v => +v.toFixed(3)), [0.8, 0.5, 3.0, 0.5]);
+  eq(tip.map(v => +v.toFixed(3)), [3.2, 0.5]);
+  eq(head.map(v => +v.toFixed(3)), [3.2, 0.5, 3.0, 0.6, 3.0, 0.4]);
+  const d = arrowSegment(4, 0, 5, 2, 0.34); // diagonal (1,1) -> (3,3) at scale 2: tip trimmed 0.68 along the unit direction
+  eq(d.tip.map(v => +v.toFixed(3)), [2.519, 2.519]);
 });
 t('rules: isSolved, step (default / truncate / strictOrder)', () => {
   const p = makePuzzle(3); [0, 4, 8].forEach((c, i) => { p.cp[c] = i + 1; });

@@ -12,7 +12,7 @@ import { runAsync } from '../../platform/run.js';
 import { bindModal, copyText } from '../../ui/modal.js';
 import { installHoldReveal } from '../../ui/hold-reveal.js';
 import { VERSION } from '../../version.js';
-import { renderBoard, paintPlay, cellSizeFor, TPL_C, SOL_C } from './board.js';
+import { renderBoard, paintPlay, cellSizeFor, TPL_C, SOL_C, legName } from './board.js';
 import { mountFlagsPanel } from './flags-panel.js';
 import { runCompare } from './compare.js';
 import { renderCompareHtml } from './compare-view.js';
@@ -26,7 +26,7 @@ const DEFAULT_NODE_LIMIT = 300000, $ = id => document.getElementById(id);
 const rnd = Math.random;
 const boardEl = $('board'), stageEl = document.querySelector('.stage'), plural = (k, w) => `${k} ${w}${k === 1 ? '' : 's'}`;
 let P = makePuzzle(7), mode = 'number', selected = -1, buffer = '', solutions = [], solVisible = [], lastAborted = false, lastNodes = 0;
-let preview = null, previewVisible = true, playMode = false, playPath = [], drawing = false, refs = {}, numDrag = null, dragGhost = null, suppressClick = false, busy = false, modalMode = 'export', showConn = false, showDead = false, showProp = false, showLegCollide = false;
+let preview = null, previewVisible = true, playMode = false, playPath = [], drawing = false, refs = {}, numDrag = null, dragGhost = null, suppressClick = false, busy = false, modalMode = 'export', showConn = false, showDead = false, showProp = false, showLegCollide = false, showGraph = false;
 let playStartTime = 0, playElapsed = 0, playTimerId = null, playFinished = false;
 const sec = x => x.toFixed(1) + 's';
 const playStep = { truncate: true, strictOrder: true }, modal = bindModal($('modalBackdrop'));
@@ -207,7 +207,7 @@ function startPlayTimer() {
   }, 100);
 }
 function paintPlayNow() {
-  paintPlay(refs, P.n, playPath, P, showConn, showDead, showProp, showLegCollide);
+  const { legConflicts } = paintPlay(refs, P.n, playPath, P, showConn, showDead, showProp, showLegCollide, showGraph);
   const total = P.n * P.n, K = maxNumber(P), info = $('playInfo');
   if (!playPath.length) info.textContent = `Drag from checkpoint 1 to start. 0 / ${total} cells.`;
   else if (playPath.length === total) {
@@ -219,6 +219,7 @@ function paintPlayNow() {
     info.textContent = `${playPath.length} / ${total} cells · next checkpoint: ${hi + 1 <= K ? '#' + (hi + 1) : '—'}${extra}`;
     if (playFinished) { playFinished = false; startPlayTimer(); } // rewound off the finished cell: resume timing
   }
+  if (legConflicts.length) info.textContent += '\nLeg collision: ' + legConflicts.map(k => `${legName(P, k.a)} ✕ ${legName(P, k.b)} (${k.cells.length} cell${k.cells.length > 1 ? 's' : ''})`).join(', ');
 }
 function enterPlay(seedPath) {
   const v = validate(P); if (!v.ok) { setStatus('Fix the puzzle before playing: ' + v.msg, 'error'); return; }
@@ -361,6 +362,7 @@ $('showConn').onclick = () => { showConn = $('showConn').checked; if (playMode) 
 $('showDead').onclick = () => { showDead = $('showDead').checked; if (playMode) paintPlayNow(); };
 $('showProp').onclick = () => { showProp = $('showProp').checked; if (playMode) paintPlayNow(); };
 $('showLegCollide').onclick = () => { showLegCollide = $('showLegCollide').checked; if (playMode) paintPlayNow(); };
+$('showGraph').onclick = () => { showGraph = $('showGraph').checked; if (playMode) paintPlayNow(); };
 $('exportBtn').onclick = () => openModal('export'); $('importBtn').onclick = () => openModal('import');
 $('minimizeWalls').onclick = doMinimize;
 $('randScatter').onclick = () => {
