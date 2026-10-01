@@ -27,8 +27,8 @@ range 0-1), plus chatter such as `you graded as 3`, `not 4`, `instead of 3`. Any
 |---|---|
 | `parse-ratings.mjs` | `difficulty_rate.txt` -> ratings JSON. Only NEW puzzles are read; **duplicates are reported, never skipped silently** (see below); `--check-labels` lists old comments whose parsed rating differs from the JSON. |
 | `check-ratings.mjs` | Validates `ratings.json` and `pairs.json`: bad rows, exact duplicates (error), equivalent puzzles (warning, drawn as ASCII with their ratings), pairs that contradict your ratings. Exit 1 on errors. `npm test` runs it too. |
-| `metrics-eval.mjs` | **Compare everything.** Per metric Spearman rho + bootstrap CI + rho after removing size; whole grading models under leave-one-out, a chronological holdout, the ladder grade's own constants, and (Part 5) **ranking accuracy** on pairs implied by your ratings and on `pairs.json`. Start here after adding labels. |
-| `fit-trap.mjs` | Refit the trap grade's weighted ridge (`--write` rewrites the `<TRAP_MODEL>` block in `src/core/trap.js`; unsure ratings count 0.5). |
+| `metrics-eval.mjs` | **Compare everything.** Per metric Spearman rho + bootstrap CI + rho after removing size; whole grading models under leave-one-out, a chronological holdout, the ladder grade's own constants, and (Part 5) **ranking accuracy** on pairs implied by your ratings and on `pairs.json`. Start here after adding labels. `--cap N` sets the reference-solve node cap (default 1e6; the app's own 9000 hides 15 of the rated puzzles). |
+| `fit-trap.mjs` | Refit the trap grade's weighted ridge (`--write` rewrites the `<TRAP_MODEL>` block in `src/core/trap.js`; unsure ratings count 0.5). Same `--cap N`. |
 | `ladder-eval.mjs` | Ladder details per rated puzzle (hardest level, passes per level, ms) and `--gen` soundness/timing check on generated puzzles. |
 | `weighted.mjs` | Exploratory composites of ladder outputs vs the ratings. |
 | `calibrate.mjs` | Recompute the quantile cut points of the legacy grades on generated puzzles (`calibration.js`); these are calibrated to the generator, not to human ratings. |

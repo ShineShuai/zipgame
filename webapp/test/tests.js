@@ -21,7 +21,7 @@ import { createStore } from '../src/features/stats-store.js';
 import { NB, TOP_K, binOf, summarize, statsLine } from '../src/core/hist.js';
 import { createLeaderboard, backendsFromConfig, cloudflareBackend, supabaseBackend } from '../src/platform/leaderboard.js';
 import { GOLDEN } from './golden.js';
-import { metricsFor, referenceSolve, backtrackOverhead, naiveGap, legCollideDependent, firstSolutionGap, fullDiagnostics, gradeOf, refNodeCap, REF_FLAGS } from '../src/core/difficulty.js';
+import { metricsFor, referenceSolve, backtrackOverhead, gradeOf, refNodeCap, REF_FLAGS } from '../src/core/difficulty.js';
 import { calibrate, calibrateAll, calibrateMetric, generateAtDifficulty, DEFAULT_THRESHOLDS, DEFAULT_THRESHOLDS_BY_METRIC, GRADED_METRICS, QUANTILES } from '../src/core/gen/calibration.js';
 import { checkpointPositions, segmentCrossCount, segmentOverlapCount, spatialMetrics } from '../src/core/spatial.js';
 import { gradesFor, gradesFromMetrics, playGradesFor, GRADE_ORDER } from '../src/core/grades.js';
@@ -666,44 +666,13 @@ t('difficulty: metricsFor matches a direct referenceSolve + backtrackOverhead co
     ok(m.B >= -1, 'B = nodes/cells - 1 is bounded below by -1 (nodes >= 0)');
   }
 });
-t('difficulty: naiveGap — naive (prop/parity off) never finds FEWER nodes than the reference solve', () => {
-  // Turning off prunes can only add search, never remove it (same solutions, same DFS order for a
-  // given prefix — see solve.js's own comment on prune2/prop/seg/pocket/parity/legCollide).
+t('difficulty: a larger node cap only un-truncates — metrics that finished under the default cap are identical', () => {
+  // Tools raise the cap (tools/lib.mjs evalCap) so every rated puzzle gets real metrics instead of lower bounds.
   for (const p of sampleUniquePuzzles()) {
-    const cap = refNodeCap(p.n);
-    const base = metricsFor(p, cap);
-    const gap = naiveGap(p, base.nodes, cap);
-    ok(gap.naiveNodes >= base.nodes || gap.naiveExceeded, `naive should cost >= reference (got ${gap.naiveNodes} vs ${base.nodes})`);
-    eq(gap.naiveGap, gap.naiveNodes - base.nodes);
+    const cap = refNodeCap(p.n), m = metricsFor(p, cap), big = metricsFor(p, cap * 10);
+    ok(!big.exceeded || m.exceeded, 'a larger cap never turns a finished solve into a capped one');
+    if (!m.exceeded) for (const k of ['nodes', 'decisionNodes', 'maxDecisionDepth', 'B', 'unique']) eq(big[k], m[k]);
   }
-});
-t('difficulty: legCollideDependent is false whenever legCollide was never needed to prove uniqueness', () => {
-  // Construct a small puzzle whose uniqueness is easy without any cross-leg reasoning (K close to
-  // K_full, densely numbered) — legCollide dropping out should not break its already-confirmed
-  // uniqueness.
-  const p = randomPathPuzzle(5, 24, makeRng(3)); // near K_full(5)=24 per zip-puzzle-theory memory
-  const check = solve(p, { limit: 2, nodeCap: 200000, ...REF_FLAGS });
-  if (check.count === 1 && !check.exceeded) {
-    eq(legCollideDependent(p, 200000), false);
-  }
-});
-t('difficulty: firstSolutionGap — firstNodes <= reference nodes (limit:1 can only stop earlier or equal)', () => {
-  for (const p of sampleUniquePuzzles()) {
-    const cap = refNodeCap(p.n);
-    const base = metricsFor(p, cap);
-    const first = firstSolutionGap(p, base.nodes, cap);
-    ok(first.firstNodes <= base.nodes, `first-solution search shouldn't need more nodes than the uniqueness proof (${first.firstNodes} vs ${base.nodes})`);
-    eq(first.firstGap, base.nodes - first.firstNodes);
-  }
-});
-t('difficulty: fullDiagnostics bundles all of the above consistently for one puzzle', () => {
-  const p = sampleUniquePuzzles()[0];
-  const cap = refNodeCap(p.n);
-  const base = metricsFor(p, cap);
-  const d = fullDiagnostics(p, cap);
-  eq(d.nodes, base.nodes); eq(d.decisionNodes, base.decisionNodes); eq(d.B, base.B);
-  ok(Number.isFinite(d.regression), 'regression score computed');
-  ok(typeof d.legCollideDependent === 'boolean');
 });
 t('difficulty: gradeOf is a pure step function — monotone, respects thresholds, unbounded top bucket', () => {
   const thresholds = [10, 50, 200, 1000];

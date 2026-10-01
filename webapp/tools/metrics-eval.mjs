@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Score EVERY difficulty metric in the code base against hand ratings, then compare whole grading models with
 // leave-one-out (LOO) cross-validation, so "which is best" is answered on puzzles the model did not see.
-//   node tools/metrics-eval.mjs [tools/ratings.json] [--pairs tools/pairs.json] [--split 43] [--csv features.csv]
+//   node tools/metrics-eval.mjs [tools/ratings.json] [--pairs tools/pairs.json] [--split 43] [--csv features.csv] [--cap 1000000]
+// --cap = node cap of the reference solve (default 1e6; the app's own cap is far lower, see tools/lib.mjs evalCap).
 // ratings JSON: [{ key: puzzle text, human, lo?, hi? }] (lo/hi = the range you stated, e.g. "2 or 3" -> 2,3; used for
 // the "in range" score; without them a rating counts as the single value `human`).
 // Part 1  one row per metric: Spearman rho vs human, 95% bootstrap CI, and rho after removing puzzle size (rank residuals).
@@ -15,20 +16,22 @@
 // Scores: rho = Spearman; in-range = grade lies in [lo,hi]; MAE = mean |grade - human|; 0->0 = human-0 puzzles graded 0.
 import fs from 'node:fs';
 import { parse } from '../src/core/format.js';
-import { fullDiagnostics } from '../src/core/difficulty.js';
+import { metricsFor } from '../src/core/difficulty.js';
 import { spatialMetrics } from '../src/core/spatial.js';
-import { gradesFor } from '../src/core/grades.js';
+import { gradesFromMetrics } from '../src/core/grades.js';
 import { trapMetrics } from '../src/core/trap.js';
 import { ladder, wideFrac, grade as ladderGrade } from '../src/core/ladder.js';
 import { maxNumber } from '../src/core/model.js';
 import { ratingWeight, UNSURE_WEIGHT, findDuplicateGroups } from '../src/core/ratings-io.js';
 import { parsePairsJson, impliedPairs, pairAccuracy } from '../src/core/pairs-io.js';
+import { evalCap } from './lib.mjs';
 
 const args = process.argv.slice(2);
 const file = args.find(a => a.endsWith('.json')) || new URL('./ratings.json', import.meta.url).pathname;
 const csvOut = args.includes('--csv') ? args[args.indexOf('--csv') + 1] : null;
 const PAIRS_FILE = args.includes('--pairs') ? args[args.indexOf('--pairs') + 1] : new URL('./pairs.json', import.meta.url).pathname;
 const SPLIT = args.includes('--split') ? +args[args.indexOf('--split') + 1] : 43;
+const CAP = evalCap(args);
 const R = JSON.parse(fs.readFileSync(file, 'utf8'));
 const n = R.length, H = R.map(r => r.human), LO = R.map(r => r.lo ?? r.human), HI = R.map(r => r.hi ?? r.human), WGT = R.map(ratingWeight);
 const dups = findDuplicateGroups(R);
@@ -41,7 +44,7 @@ if (WGT.some(w => w < 1)) console.log(`${WGT.filter(w => w < 1).length} unsure r
 // log: count-like features are log-scaled before entering a ridge model (Spearman does not care).
 const DEFS = [
   ['n', 'struct'], ['K', 'struct'], ['walls/T', 'struct'], ['K/T', 'struct'], ['segLen', 'struct'], ['turns/T', 'struct'],
-  ['decisionNodes/cell', 'legacy', 1], ['B/N', 'legacy'], ['maxDecisionDepth', 'legacy'], ['naiveGap', 'legacy', 1], ['firstGap', 'legacy', 1], ['regression', 'legacy'], ['nodes/cell', 'legacy', 1], ['legCollide', 'legacy'],
+  ['decisionNodes/cell', 'legacy', 1], ['B/N', 'legacy'], ['maxDecisionDepth', 'legacy'], ['nodes/cell', 'legacy', 1],
   ['crossPerSeg', 'spatial'], ['overlapPerSeg', 'spatial'],
   ['grade:decisionNodes', 'grade'], ['grade:B', 'grade'], ['grade:cross', 'grade'], ['grade:combined', 'grade'],
   ['trapMax', 'trap'], ['trapTop3', 'trap'], ['trapDeep', 'trap'], ['altFrac', 'trap'], ['alts/T', 'trap'], ['trapPredicted', 'trap'], ['grade:trap', 'trap'],
@@ -50,13 +53,13 @@ const DEFS = [
 const NAMES = DEFS.map(d => d[0]), GROUP = Object.fromEntries(DEFS.map(d => [d[0], d[1]])), LOG = new Set(DEFS.filter(d => d[2]).map(d => d[0]));
 const t0 = Date.now();
 const featuresOf = r => {
-  const p = parse(r.key), T = p.n * p.n, K = maxNumber(p), d = fullDiagnostics(p), sp = spatialMetrics(p), g = gradesFor(p), tr = trapMetrics(p), L = ladder(p);
+  const p = parse(r.key), T = p.n * p.n, K = maxNumber(p), d = metricsFor(p, CAP), sp = spatialMetrics(p), g = d.exceeded ? null : gradesFromMetrics({ ...d, n: p.n }, sp), tr = trapMetrics(p), L = ladder(p);
   const walls = p.walls.reduce((a, w) => a + (w & 1) + ((w >> 1) & 1), 0);
   let turns = 0; if (tr.ok) for (let i = 2; i < tr.path.length; i++) if (tr.path[i] - tr.path[i - 1] !== tr.path[i - 1] - tr.path[i - 2]) turns++;
   const wf = L.solved && L.path ? wideFrac(p, L.path).frac : 0, lg = ladderGrade(p, L).grade;
   return {
     n: p.n, K, 'walls/T': walls / T, 'K/T': K / T, segLen: (T - 1) / Math.max(1, K - 1), 'turns/T': turns / T,
-    'decisionNodes/cell': d.decisionNodes / T, 'B/N': d.B / p.n, maxDecisionDepth: d.maxDecisionDepth, naiveGap: d.naiveGap, firstGap: d.firstGap, regression: d.regression, 'nodes/cell': d.nodes / T, legCollide: d.legCollideDependent ? 1 : 0,
+    'decisionNodes/cell': d.decisionNodes / T, 'B/N': d.B / p.n, maxDecisionDepth: d.maxDecisionDepth, 'nodes/cell': d.nodes / T,
     crossPerSeg: sp.crossPerSeg, overlapPerSeg: sp.overlapPerSeg,
     'grade:decisionNodes': g ? g.grades.decisionNodes : 5, 'grade:B': g ? g.grades.B : 5, 'grade:cross': g ? g.grades.crossPerSeg : 5, 'grade:combined': g ? g.grades.combined : 5,
     trapMax: tr.trapMax, trapTop3: tr.trapTop3, trapDeep: tr.trapDeep, altFrac: tr.altFrac, 'alts/T': tr.alternatives / T, trapPredicted: tr.predicted, 'grade:trap': tr.grade,
@@ -65,7 +68,8 @@ const featuresOf = r => {
   };
 };
 const F = R.map(featuresOf);
-console.log(`${n} rated puzzles, all metrics computed in ${((Date.now() - t0) / 1000).toFixed(1)}s (${F.filter(f => f._capped).length} hit the reference-solve cap; their solver metrics are lower bounds and their grades count as 5)`);
+console.log(`${n} rated puzzles, all metrics computed in ${((Date.now() - t0) / 1000).toFixed(1)}s (reference-solve cap ${CAP.toLocaleString('en')} nodes)`);
+if (F.some(f => f._capped)) console.log(`WARNING: ${F.filter(f => f._capped).length} puzzle(s) hit the cap: their solver metrics are lower bounds and their grades count as 5. Raise it, e.g. --cap ${CAP * 10}`);
 if (csvOut) fs.writeFileSync(csvOut, ['human', 'lo', 'hi', ...NAMES].join(',') + '\n' + F.map((f, i) => [H[i], LO[i], HI[i], ...NAMES.map(k => f[k])].join(',')).join('\n'));
 
 // ---------- stats helpers ----------
@@ -112,7 +116,7 @@ function innerLoss(keys, idx, lam) { // closed-form LOO loss (interval distance 
   return s / idx.length;
 }
 const all = [...Array(n).keys()], LAM = 10;
-const POOL = NAMES.filter(k => !k.startsWith('grade:') && k !== 'trapPredicted' && k !== 'regression' && GROUP[k] !== 'struct' || k === 'n' || k === 'K/T' || k === 'turns/T' || k === 'segLen');
+const POOL = NAMES.filter(k => !k.startsWith('grade:') && k !== 'trapPredicted' && GROUP[k] !== 'struct' || k === 'n' || k === 'K/T' || k === 'turns/T' || k === 'segLen');
 function forward(idx, maxK = 4) {
   let chosen = [], best = mean(idx.map(i => dist(mean(idx.map(j => H[j])), i)));
   for (let step = 0; step < maxK; step++) {

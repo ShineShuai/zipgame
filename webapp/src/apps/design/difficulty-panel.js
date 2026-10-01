@@ -1,17 +1,17 @@
 // Design app panel: every difficulty diagnostic at once (see core/difficulty.js for what each one
-// means and why). On-demand only (a button, not automatic on every board edit) — fullDiagnostics()
-// is 4 solve() calls, fine for one puzzle at a time in a design tool but not something to run on
-// every keystroke.
+// means and why). On-demand only (a button, not automatic on every board edit) — it runs the
+// reference solve plus the trap and ladder solves: fine for one puzzle at a time in a design tool but
+// not something to run on every keystroke.
 //
 // KNOWN LIMITATION, worth reading before trusting any number here: against a first hand-labeled
-// sample (17 puzzles, N=7-11), NONE of decisionNodes/B/maxDecisionDepth/naiveGap — nor the raw
+// sample (17 puzzles, N=7-11), NONE of decisionNodes/B/maxDecisionDepth — nor the raw
 // generation parameters (N, K, wall count) — correlated with human difficulty ratings (|r| < 0.35
 // on every one, several near zero or slightly negative). See spatial.js for the metrics built in
 // response to that finding. This panel still shows the solver-derived metrics because they're
 // cheap and may yet prove useful combined with something else, but none should be read as
 // validated. The "compare against your rating" section below exists to keep testing this honestly
 // as more puzzles get labeled, rather than asserting a fix that hasn't been checked.
-import { fullDiagnostics } from '../../core/difficulty.js';
+import { metricsFor } from '../../core/difficulty.js';
 import { GRADED_METRICS, DEFAULT_THRESHOLDS_BY_METRIC } from '../../core/gen/calibration.js';
 import { gradesFromMetrics, GRADE_ORDER } from '../../core/grades.js';
 import { validate, maxNumber } from '../../core/model.js';
@@ -38,9 +38,6 @@ const METRIC_DEFS = [
   ['decisionNodes', d => d.decisionNodes, 'Nodes where >=2 candidate moves survived every prune — real branch/guess points.'],
   ['maxDecisionDepth', d => d.maxDecisionDepth, 'Depth fraction (0-1) of the deepest decision node.'],
   ['B', d => d.B, 'nodes/cells - 1. Cheap cross-check from the same solve.'],
-  ['naiveGap', d => d.naiveGap, 'naiveNodes - nodes (propagation+parity off vs on).'],
-  ['firstGap', d => d.firstGap, 'nodes - firstNodes (prove-uniqueness cost vs find-a-solution cost).'],
-  ['regression', d => d.regression, 'Unfitted placeholder log-linear combination — shape-inspection only.'],
   ['crossPerSeg', d => d.crossPerSeg, 'Geometric checkpoint-segment crossings per segment (spatial.js).'],
   ['overlapPerSeg', d => d.overlapPerSeg, 'Checkpoint-segment bounding-box overlaps per segment (spatial.js).'],
   // The normalized values the calibrated grades are actually bucketed from (see GRADED_METRICS).
@@ -131,7 +128,7 @@ function ladderHtml(d) {
     ${rows.length ? `<table class="diff-table diff-table-cmp"><thead><tr><th>level</th><th>work</th></tr></thead><tbody>${rows.join('')}</tbody></table>` : ''}`;
 }
 
-// Renders the full breakdown as an HTML string for a results panel; `d` is fullDiagnostics()'s
+// Renders the full breakdown as an HTML string for a results panel; `d` is metricsFor()'s
 // return value merged with spatialMetrics()'s, `thresholds` the pooled calibration in use (so the
 // panel and the grade it explains always agree on the same cutpoints).
 export function diagnosticsHtml(d) {
@@ -143,12 +140,6 @@ export function diagnosticsHtml(d) {
       depend on that solve.
     </div>${trapHtml(d)}`;
   }
-  const legWarn = d.legCollideDependent
-    ? `<div class="diff-panel-flag">${hinted('⚠ Leg-collision dependent', 'Uniqueness depends on the leg-collision check — a non-local inference humans rarely make proactively, so this puzzle is likely harder for a person than the grades suggest.')}</div>`
-    : '';
-  const gapWarn = d.naiveGap > d.nodes // gap bigger than the pruned cost itself: a strong signal
-    ? `<div class="diff-panel-flag">${hinted('⚠ Large naive-solver gap', 'This puzzle looks much harder without propagation/parity than with them, so the solver-based grades may under-report the difficulty a human feels.')}</div>`
-    : '';
   const gradeRows = GRADE_ORDER.map((id, i) => {
     const th = DEFAULT_THRESHOLDS_BY_METRIC[id];
     const where = i < 3 ? 'Play app, hold V (decisionNodes was the badge before the trap grade)' : 'Design app only';
@@ -165,10 +156,8 @@ export function diagnosticsHtml(d) {
     <table class="diff-table">
       <tbody>
         ${rows}
-        ${row('legCollideDependent', d.legCollideDependent ? 'yes' : 'no', 'Does uniqueness survive with the leg-collision check off? A "yes" here flags a puzzle whose only-one-answer property depends on a non-local inference humans rarely make proactively.')}
       </tbody>
-    </table>
-    ${legWarn}${gapWarn}`;
+    </table>`;
 }
 
 // ---- rating log: lets the design app itself accumulate labeled (metric, human-rating) pairs and
@@ -313,11 +302,11 @@ function ratedComparisonHtml(entries, thisMetrics, entry) {
 // imported puzzle with the current code, so a refit or a new metric never leaves stale numbers in the log).
 function analyse(p, cap) {
   const t0 = performance.now();
-  const d = fullDiagnostics(p, cap);
+  const d = metricsFor(p, cap);
   Object.assign(d, spatialMetrics(p));
   d.n = p.n;
   if (!d.exceeded) {
-    // Reuse the reference-solve fields fullDiagnostics already produced — no extra solve.
+    // Reuse the reference-solve fields metricsFor already produced — no extra solve.
     const g = gradesFromMetrics({ ...d, n: p.n }, d);
     d.raw = g.raw; d.grades = g.grades;
   }
@@ -356,7 +345,7 @@ function downloadText(text, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-// Mounts the panel: a button that runs fullDiagnostics() on the current puzzle (via getPuzzle())
+// Mounts the panel: a button that runs the diagnostics on the current puzzle (via getPuzzle())
 // and renders into resultEl. Returns { run() } so the caller (main.js) can trigger it from its own
 // button binding, matching how doSolve/doMinimize are wired there.
 //
