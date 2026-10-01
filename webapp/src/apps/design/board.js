@@ -1,9 +1,9 @@
-import { maxNumber } from '../../core/model.js';
+import { maxNumber, checkpointCells } from '../../core/model.js';
 import { hasWallId } from '../../core/edges.js';
-import { polyPoints, wallSegments, cellCenter } from '../../view/geometry.js';
+import { polyPoints, wallSegments, cellCenter, arrowSegment } from '../../view/geometry.js';
 import { boardConnectivity, boardPropagation, boardLegCollide } from '../../core/connectivity.js';
 
-export const TPL_C = '#8b93b8', PLAY_C = '#5b7cfa', SOL_C = ['#ffa62b', '#38bdf8'];
+export const TPL_C = '#8b93b8', PLAY_C = '#5b7cfa', SOL_C = ['#ffa62b', '#38bdf8'], LEG_C = '#c754ff', GRAPH_C = '#2dd4bf';
 export const cellSizeFor = n => n <= 5 ? 66 : n <= 7 ? 54 : 46;
 const NS = 'http://www.w3.org/2000/svg';
 const box = (cls, x, y, w, h) => { const d = document.createElement('div'); d.className = cls; Object.assign(d.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' }); return d; };
@@ -42,7 +42,9 @@ export function renderBoard(board, stage, V) {
   const refs = {};
   if (V.playMode) {
     refs.line = poly('', PLAY_C, 0.3, { opacity: 0.95 }); svg.appendChild(refs.line);
-    refs.propLayer = document.createElementNS(NS, 'g'); refs.propLayer.setAttribute('class', 'proplayer'); svg.appendChild(refs.propLayer);
+    for (const [k, cls] of [['graphLayer', 'graphlayer'], ['propLayer', 'proplayer'], ['legLayer', 'leglayer']]) {
+      refs[k] = document.createElementNS(NS, 'g'); refs[k].setAttribute('class', cls); svg.appendChild(refs[k]);
+    }
     refs.head = document.createElementNS(NS, 'circle');
     for (const [k, v] of Object.entries({ r: 0.16, fill: '#c3d0ff', stroke: PLAY_C, 'stroke-width': 0.06 })) refs.head.setAttribute(k, v);
     svg.appendChild(refs.head);
@@ -70,9 +72,14 @@ export function renderBoard(board, stage, V) {
 // showDead: highlight unvisited reachable cells that are forced dead ends (.conn-dead).
 // showProp: draw forced-edge deduction — pinned connections (.conn-forced cells + short highlighted
 // segments for each forced edge) and flag when the deduction alone already proves the position stuck.
-// Each reads from its own pass (boardConnectivity / boardPropagation) computed once if enabled.
-export function paintPlay(refs, n, path, P, showConn, showDead, showProp, showLegCollide) {
-  if (!refs.line) return;
+// showLegCollide: for each colliding leg pair, draw both legs as labelled chords and mark the contested
+// cells (.conn-leg-stuck).
+// showGraph: directed checkpoint graph, an arrow k -> k+1 for every consecutive pair (path-independent).
+// Each reads from its own pass (boardConnectivity / boardPropagation / boardLegCollide) computed once if
+// enabled. Returns { legConflicts } (boardLegCollide's conflicts, [] when off) for the caller's info line.
+export function paintPlay(refs, n, path, P, showConn, showDead, showProp, showLegCollide, showGraph) {
+  const out = { legConflicts: [] };
+  if (!refs.line) return out;
   const done = path.length === n * n;
   refs.line.setAttribute('points', polyPoints(n, path)); refs.line.style.display = path.length > 1 ? '' : 'none';
   refs.line.setAttribute('stroke', done ? '#3ddc97' : PLAY_C);
@@ -82,22 +89,25 @@ export function paintPlay(refs, n, path, P, showConn, showDead, showProp, showLe
     refs.head.setAttribute('fill', done ? '#8ff5c9' : '#c3d0ff'); refs.head.style.display = '';
   } else refs.head.style.display = 'none';
 
+  if (refs.graphLayer) { refs.graphLayer.innerHTML = ''; if (showGraph) drawGraph(refs.graphLayer, P); }
   if (refs.propLayer) refs.propLayer.innerHTML = '';
-  if (!refs.cells) return;
+  if (refs.legLayer) refs.legLayer.innerHTML = '';
+  if (!refs.cells) return out;
   if ((!showConn && !showDead && !showProp && !showLegCollide) || done || !path.length) {
     for (const c of refs.cells) if (c) c.classList.remove('conn-dead', 'conn-unreachable', 'conn-forced', 'conn-stuck', 'conn-leg-stuck');
-    return;
+    return out;
   }
   const { deadEnd, unreachable } = (showConn || showDead) ? boardConnectivity(P, path) : { deadEnd: new Set(), unreachable: new Set() };
   const { dirs, infeasible } = showProp ? boardPropagation(P, path) : { dirs: null, infeasible: false };
-  const { infeasible: legInfeasible } = showLegCollide ? boardLegCollide(P, path) : { infeasible: false };
+  const conflicts = showLegCollide ? boardLegCollide(P, path).conflicts : [];
+  const contested = new Set(); for (const k of conflicts) for (const c of k.cells) contested.add(c);
   for (let i = 0; i < refs.cells.length; i++) {
     const c = refs.cells[i]; if (!c) continue;
     c.classList.toggle('conn-dead', showDead && deadEnd.has(i));
     c.classList.toggle('conn-unreachable', showConn && unreachable.has(i));
     c.classList.toggle('conn-forced', showProp && dirs && dirs[i] !== 0);
     c.classList.toggle('conn-stuck', showProp && infeasible && i === path[path.length - 1]);
-    c.classList.toggle('conn-leg-stuck', showLegCollide && legInfeasible && i === path[path.length - 1]);
+    c.classList.toggle('conn-leg-stuck', contested.has(i));
   }
   if (showProp && dirs && refs.propLayer) {
     for (let i = 0; i < n * n; i++) {
@@ -110,11 +120,43 @@ export function paintPlay(refs, n, path, P, showConn, showDead, showProp, showLe
       if (mask & 4) refs.propLayer.appendChild(seg(c0 + 0.5, r0 + 0.5, c0 + 0.5, r0 + 1.5));
     }
   }
+  if (conflicts.length && refs.legLayer) {
+    const drawn = new Set();
+    for (const { a, b } of conflicts) for (const leg of [a, b]) {
+      const key = leg.join('-'); if (drawn.has(key)) continue; drawn.add(key);
+      const [x1, y1] = cellCenter(n, leg[0]), [x2, y2] = cellCenter(n, leg[1]);
+      refs.legLayer.appendChild(seg(x1, y1, x2, y2, LEG_C, 0.1, 0.9));
+      refs.legLayer.appendChild(label((x1 + x2) / 2, (y1 + y2) / 2, legName(P, leg), '#ecd0ff'));
+    }
+  }
+  out.legConflicts = conflicts;
+  return out;
 }
 
-function seg(x1, y1, x2, y2) {
+// Leg as shown to the user: checkpoint numbers, or ● when the leg starts at the head (not on a checkpoint).
+export const legName = (P, [s, t]) => `${P.cp[s] || '●'}→${P.cp[t]}`;
+
+function drawGraph(layer, P) {
+  const cells = checkpointCells(P);
+  for (let k = 0; k + 1 < cells.length; k++) {
+    const { line, head } = arrowSegment(P.n, cells[k], cells[k + 1]);
+    layer.appendChild(seg(...line, GRAPH_C, 0.06, 0.95));
+    const tri = document.createElementNS(NS, 'polygon');
+    for (const [a, v] of Object.entries({ points: head.join(' '), fill: GRAPH_C, opacity: 0.95 })) tri.setAttribute(a, v);
+    layer.appendChild(tri);
+  }
+}
+
+function label(x, y, text, fill) {
+  const e = document.createElementNS(NS, 'text');
+  for (const [k, v] of Object.entries({ x, y, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': 0.26, 'font-weight': 700, fill, stroke: '#0d1120', 'stroke-width': 0.07, 'paint-order': 'stroke', 'stroke-linejoin': 'round' })) e.setAttribute(k, v);
+  e.textContent = text;
+  return e;
+}
+
+function seg(x1, y1, x2, y2, stroke = '#ffd23f', width = 0.1, opacity = 0.85) {
   const e = document.createElementNS(NS, 'line');
-  for (const [k, v] of Object.entries({ x1, y1, x2, y2, stroke: '#ffd23f', 'stroke-width': 0.1, 'stroke-linecap': 'round', opacity: 0.85 })) e.setAttribute(k, v);
+  for (const [k, v] of Object.entries({ x1, y1, x2, y2, stroke, 'stroke-width': width, 'stroke-linecap': 'round', opacity })) e.setAttribute(k, v);
   return e;
 }
 

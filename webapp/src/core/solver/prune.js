@@ -352,6 +352,24 @@ export function legsCollide(nb, T, vis, legs) {
   return false;
 }
 
+// Same test as legsCollide, but reports WHERE: every colliding leg pair with the forced cells they
+// both require (legs[i] / legs[j] are indices into `legs`). Not for the solver's hot loop (no early
+// exit, allocates); legsCollide(...) === (legConflicts(...).length > 0) is asserted in the tests.
+// Returns [{ i, j, cells: number[] }].
+export function legConflicts(nb, T, vis, legs) {
+  const blockers = legs.map(([s, t]) => segBlocker(nb, T, vis, s, t));
+  const out = [];
+  for (let i = 0; i < legs.length; i++) {
+    for (let j = i + 1; j < legs.length; j++) {
+      const sharedEndpoint = legs[i][1] === legs[j][0] && j === i + 1 ? legs[i][1] : -1;
+      const cells = [];
+      for (const c of blockers[i]) if (c !== sharedEndpoint && blockers[j].has(c)) cells.push(c);
+      if (cells.length) out.push({ i, j, cells });
+    }
+  }
+  return out;
+}
+
 // Number of set bits in a 4-bit direction mask. Shared with solve.js's DFS hot path.
 const POPCOUNT = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
 

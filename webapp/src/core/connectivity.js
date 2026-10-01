@@ -1,5 +1,5 @@
 import { endCell, maxNumber } from './model.js';
-import { buildNeighbors, makeReachable, isDeadEnd, forcedEdges, legsCollide } from './solver/prune.js';
+import { buildNeighbors, makeReachable, isDeadEnd, forcedEdges, legConflicts } from './solver/prune.js';
 
 // Live per-cell status from the current path head, for the design app's play-mode overlay.
 // Drives the exact same adjacency and flood-fill the solver's connOk prune uses (buildNeighbors /
@@ -71,7 +71,9 @@ export function boardPropagation(p, path) {
 // the full soundness argument — general to any puzzle, not tied to how it was generated. Pure, no
 // DOM.
 //
-// Returns { infeasible: boolean } — true means the current position, however open it still looks
+// Returns { infeasible: boolean, conflicts: [{ a: [s,t], b: [s,t], cells: number[] }] } — a/b are the two
+// colliding legs as [fromCell, toCell] (the first leg starts at the head), cells the forced cells both
+// need. infeasible === conflicts.length > 0. infeasible true means the current position, however open it still looks
 // by every other check, cannot be completed. Cost is O(K^2) segBlocker calls (K = remaining
 // checkpoints), each proportional to the size of the free region — fine for a one-shot UI check on
 // pointer move, not something to run unconditionally per solver node (see prune.js for that
@@ -81,7 +83,7 @@ export function boardLegCollide(p, path) {
   const vis = new Uint8Array(T);
   for (const c of path) vis[c] = 1;
   const head = path.length ? path[path.length - 1] : -1;
-  if (head < 0) return { infeasible: false };
+  if (head < 0) return { infeasible: false, conflicts: [] };
 
   const K = maxNumber(p);
   const pos = new Int32Array(K + 1).fill(-1);
@@ -89,9 +91,10 @@ export function boardLegCollide(p, path) {
 
   let need = 1;
   for (const c of path) if (p.cp[c]) need = p.cp[c] + 1;
-  if (need > K) return { infeasible: false }; // already on the final checkpoint or past it
+  if (need > K) return { infeasible: false, conflicts: [] }; // already on the final checkpoint or past it
 
   const legs = [[head, pos[need]]];
   for (let k = need; k < K; k++) legs.push([pos[k], pos[k + 1]]);
-  return { infeasible: legsCollide(nb, T, vis, legs) };
+  const conflicts = legConflicts(nb, T, vis, legs).map(({ i, j, cells }) => ({ a: legs[i], b: legs[j], cells }));
+  return { infeasible: conflicts.length > 0, conflicts };
 }

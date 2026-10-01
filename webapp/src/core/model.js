@@ -7,6 +7,8 @@ export const makePuzzle = n => ({ n, cp: new Uint16Array(n * n), walls: new Uint
 export const clonePuzzle = p => ({ n: p.n, cp: p.cp.slice(), walls: p.walls.slice() });
 export const maxNumber = p => { let m = 0; for (const v of p.cp) if (v > m) m = v; return m; };
 export const startCell = p => p.cp.indexOf(1);
+// Cell index of checkpoint k at [k-1], k = 1..K (assumes a valid puzzle: no gaps / duplicates).
+export const checkpointCells = p => { const o = new Array(maxNumber(p)); for (let i = 0; i < p.cp.length; i++) if (p.cp[i]) o[p.cp[i] - 1] = i; return o; };
 export const endCell = p => { const m = maxNumber(p); return m ? p.cp.indexOf(m) : -1; };
 
 export function validate(p) {
