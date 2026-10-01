@@ -27,7 +27,8 @@ import { gradesFor, gradesFromMetrics, playGradesFor, GRADE_ORDER } from '../src
 import { combinedScore, COMBINED_ZSCORE } from '../src/core/gen/calibration.js';
 import { solutionPath, trapProfile, trapMetrics, trapGradeOf, trapPredict, TRAP_CFG, TRAP_MODEL } from '../src/core/trap.js';
 import { mountDifficultyPanel } from '../src/apps/design/difficulty-panel.js';
-import { ratingKey, ratingFromSelection, leanOf, describeRating, toRatingsJson, parseRatingsJson, mergeRatings } from '../src/core/ratings-io.js';
+import { ratingKey, ratingFromSelection, leanOf, describeRating, toRatingsJson, parseRatingsJson, mergeRatings, parseRatingComment, ratingWeight, UNSURE_WEIGHT, symmetryKey, findDuplicateGroups, transformPuzzle, asciiPuzzle } from '../src/core/ratings-io.js';
+import { parsePairsJson, toPairsJson, mergePairs, pairAccuracy, impliedPairs, flipCmp, pairKeyOf } from '../src/core/pairs-io.js';
 import { pickStorage } from '../src/platform/storage.js';
 
 // ---- mini harness ----
@@ -922,7 +923,7 @@ t('trap: TRAP_MODEL carries the fit metadata the design panel displays (tools/fi
 // minimal fake element. (A missing TRAP_MODEL.fit once threw here, in the browser only, because nothing rendered the panel.)
 function renderDiagnostics(p) {
   const el = { style: {}, dataset: {}, classList: { add() {}, remove() {}, toggle() {} }, _html: '', set innerHTML(v) { this._html = v; }, get innerHTML() { return this._html; },
-    querySelectorAll: () => [], querySelector() { return { style: {}, textContent: '', innerHTML: '', set onclick(f) {}, querySelectorAll: () => [] }; } };
+    querySelectorAll: () => [], querySelector() { return { style: {}, dataset: {}, textContent: '', innerHTML: '', classList: { toggle() {}, add() {}, remove() {} }, set onclick(f) {}, querySelectorAll: () => [] }; } };
   mountDifficultyPanel(el, () => p, () => undefined).run();
   return el._html;
 }
@@ -973,6 +974,56 @@ t('ratings-io: merging replaces the same puzzle, keeps the rest, and clears metr
   eq(log[0].metrics, { m: 1 }, 'the stored log is not mutated');
   eq(mergeRatings([{ key: 'zzz', human: 0 }], []).entries.length, 1, 'entries missing from the file are kept');
 });
+t('ratings-io: comment grammar — explicit "human 2, range 2-3", the older forms, and chatter; everything else is an error', () => {
+  const g = c => { const r = parseRatingComment(c); return r.ok ? [r.human, r.lo, r.hi, r.unsure] : r.why; };
+  eq(g('human 2, range 2-3'), [2, 2, 3, false]); eq(g('human 2.5, range 2–3, unsure'), [2.5, 2, 3, true]); eq(g('range 3-5'), [4, 3, 5, false]); eq(g('human 4'), [4, 4, 4, false]);
+  eq(g('Range 1 to 2 , SURE'), [1.5, 1, 2, false], 'case, spacing, "to" and "sure" are tolerated');
+  eq(g('this is 2'), [2, 2, 2, false]); eq(g('this is 2 or 3'), [2.5, 2, 3, false]); eq(g('this is 2 or 3, close to 3'), [2.75, 2, 3, false]); eq(g('this is 1 or 2, close to 1'), [1.25, 1, 2, false]);
+  eq(g('this is at least 4'), [4, 4, 5, false]); eq(g('this is at most 1'), [0.5, 0, 1, false]);
+  eq(g('this is at least 3, close to 4 or 4.'), [4, 3, 5, false], 'the interpreted rating: human 4, range 3-5');
+  eq(g('this is at most 2, close to 1 or rather 1'), [1, 1, 1, false]); eq(g('This is close to 3, you graded as 2'), [3, 3, 3, false]);
+  eq(g('this one is also 1 or 0, not 3.'), [0.5, 0, 1, false], 'either order; "not 3" is chatter'); eq(g('It is 2, instead of 3'), [2, 2, 2, false]); eq(g('this can be 1, more than 0.'), [1, 1, 1, false]);
+  eq(g('this is 2 or 3, close to 3. you graded as 3.'), [2.75, 2, 3, false]); eq(g('this one is medium 2, not expert 4.'), [2, 2, 2, false], 'grade words are ignored');
+  for (const bad of ['', 'this is pretty hard', 'human 2, range 3-4', 'human 2, range 4-3', 'human 6', 'range 2-3, wibble', 'this is 2 or 3, close to 1', 'human 2, human 3', 'unsure']) ok(typeof g(bad) === 'string', `rejects "${bad}": ${g(bad)}`);
+});
+t('ratings-io: unsure ratings — exported only when true, validated, merged, and weighted', () => {
+  const [a, b] = cachedSamples(), ka = ratingKey(a), kb = ratingKey(b);
+  eq([ratingWeight({ unsure: true }), ratingWeight({}), ratingWeight(undefined), UNSURE_WEIGHT], [0.5, 1, 1, 0.5]);
+  const text = toRatingsJson([{ key: ka, human: 2, lo: 2, hi: 3, unsure: true }, { key: kb, human: 1 }]);
+  ok(text.includes('"unsure": true') && text.split('unsure').length === 2, 'written only for the unsure one');
+  eq(parseRatingsJson(text).ratings.map(r => !!r.unsure), [true, false]);
+  ok(parseRatingsJson(JSON.stringify([{ key: ka, human: 1, unsure: 'maybe' }])).problems[0].includes('"unsure"'));
+  const m = mergeRatings([{ key: ka, human: 2, lo: 2, hi: 3, metrics: { x: 1 } }], [{ key: ka, human: 2, lo: 2, hi: 3, unsure: true }]);
+  eq([m.updated, m.changed, m.entries[0].unsure], [1, 1, true], 'becoming unsure counts as a change');
+});
+t('ratings-io: duplicates — rotated / mirrored / reversed copies share a symmetry key; exact copies are found; different puzzles are not', () => {
+  const [a, b] = cachedSamples(), ka = ratingKey(a), kb = ratingKey(b), K = Math.max(...a.cp);
+  for (let k = 0; k < 8; k++) eq(symmetryKey(transformPuzzle(a, k, false)), symmetryKey(a), `transform ${k}`);
+  eq(symmetryKey(transformPuzzle(a, 3, true)), symmetryKey(a), 'reversed numbering');
+  ok(symmetryKey(a) !== symmetryKey(b), 'different puzzles differ');
+  const rot = transformPuzzle(a, 1, false);
+  ok(ratingKey(rot) !== ka, 'a quarter turn really changes the text'); eq(Math.max(...rot.cp), K); eq(rot.walls.reduce((s, w) => s + (w & 1) + (w >> 1 & 1), 0), a.walls.reduce((s, w) => s + (w & 1) + (w >> 1 & 1), 0), 'wall count preserved');
+  const g = findDuplicateGroups([{ key: ka }, { key: kb }, { key: serialize(a) }, { key: ratingKey(rot) }, { key: 'garbage' }]);
+  eq(g.exact, [[0, 2]], 'exact: same puzzle despite the header comments'); eq(g.equivalent, [[0, 2, 3]], 'equivalent group lists every member');
+  eq(findDuplicateGroups([{ key: ka }, { key: kb }]), { exact: [], equivalent: [] });
+  ok(asciiPuzzle(a).split('\n').length >= 2 * a.n - 1, 'ascii picture has a line per row plus wall lines');
+});
+t('pairs-io: parse / merge / orientation / accuracy', () => {
+  const [a, b, c] = cachedSamples(), ka = ratingKey(a), kb = ratingKey(b), kc = ratingKey(c);
+  const text = toPairsJson([{ a: ka, b: kb, cmp: 'harder', ma: { x: 1 } }, { a: kb, b: kc, cmp: 'same' }]);
+  ok(!text.includes('"ma"'), 'cached metrics are not exported'); const back = parsePairsJson(text);
+  eq(back.problems, []); eq(back.pairs.map(p => p.cmp), ['harder', 'same']);
+  const bad = parsePairsJson(JSON.stringify([{ a: ka, b: ka, cmp: 'harder' }, { a: ka, b: kb, cmp: 'bigger' }, { a: 'garbage', b: kb, cmp: 'same' }, { a: ka, b: kb }, { a: ka, b: kb, cmp: 'harder' }, { a: kb, b: ka, cmp: 'harder' }]));
+  eq(bad.pairs.length, 1, 'only the last valid row of the repeated pair stays'); eq([bad.pairs[0].a === kb, bad.pairs[0].cmp], [true, 'harder']);
+  ok(bad.problems.length === 5 && bad.problems.some(s => s.includes('DIFFERENT verdict')), bad.problems.join(' | '));
+  eq([flipCmp('harder'), flipCmp('easier'), flipCmp('same')], ['easier', 'harder', 'same']); eq(pairKeyOf(ka, kb), pairKeyOf(kb, ka));
+  const m = mergePairs([{ a: ka, b: kb, cmp: 'harder', ma: {} }, { a: kb, b: kc, cmp: 'same' }], [{ a: kb, b: ka, cmp: 'easier' }, { a: kc, b: ka, cmp: 'harder' }]);
+  eq([m.added, m.updated, m.changed], [1, 1, 0], 'B-vs-A "easier" is the same verdict as A-vs-B "harder"'); eq(m.pairs[0].ma, undefined, 'replaced pair loses its cached grades so they are recomputed');
+  const val = { [ka]: 1, [kb]: 3, [kc]: 3 }, v = k => val[k];
+  const acc = pairAccuracy([{ a: ka, b: kb, cmp: 'harder' }, { a: kb, b: ka, cmp: 'harder' }, { a: kb, b: kc, cmp: 'harder' }, { a: kb, b: kc, cmp: 'same' }, { a: ka, b: 'zzz', cmp: 'harder' }], v);
+  eq([acc.decided, acc.correct, acc.accuracy, acc.ties, acc.sameN, acc.sameTied, acc.skipped], [3, 1.5, 0.5, 1, 1, 1, 1], 'right, wrong, tie = half, "same" scored apart, missing value skipped');
+  eq(impliedPairs([{ key: 'p', lo: 1, hi: 2 }, { key: 'q', lo: 3, hi: 3 }, { key: 'r', lo: 2, hi: 3 }]).map(x => `${x.a}${x.cmp}${x.b}`), ['pharderq'], 'only non-overlapping ranges imply an order');
+});
 t('trap: no solution -> { ok:false } instead of a made-up grade; grade clamps to 0..5', () => {
   const p = makePuzzle(4); p.cp[0] = 1; p.cp[15] = 2; p.cp[5] = 3; // 1 -> 2 -> 3 order cannot be a Hamiltonian path here
   const r = trapMetrics(p);
@@ -995,17 +1046,32 @@ ta('tools/ratings.json: the repo label file parses cleanly, keys are canonical a
 // A fake DOM just rich enough to drive the panel's real handlers (buttons, file input, status text); nothing is mocked in the panel itself.
 function makePanelDom() {
   const reg = new Map(), mk = () => ({ style: {}, dataset: {}, textContent: '', innerHTML: '', onclick: null, onchange: null, files: null, value: '', classList: { toggle() {}, add() {}, remove() {} }, querySelectorAll: () => [] });
-  const sel = s => { if (!reg.has(s)) reg.set(s, mk()); return reg.get(s); };
+  const sel = s => {
+    if (!reg.has(s)) {
+      const e = mk();
+      if (s === '#diffDups') { // the duplicate list builds delete buttons inside its own innerHTML
+        e.dels = {};
+        e.querySelectorAll = q => q === '.diff-dup-del' ? [...e.innerHTML.matchAll(/data-key-index="(\d+)"/g)].map(m => ({ dataset: { keyIndex: m[1] }, set onclick(f) { e.dels[m[1]] = f; } })) : [];
+      }
+      reg.set(s, e);
+    }
+    return reg.get(s);
+  };
   const groups = new Map();
   const all = (s, k, f) => { if (!groups.has(s)) groups.set(s, Array.from({ length: k }, (_, i) => { const e = mk(); f(e, i); return e; })); return groups.get(s); };
   const el = { _html: '', set innerHTML(v) { this._html = v; reg.clear(); groups.clear(); }, get innerHTML() { return this._html; }, style: {},
     querySelector: sel,
-    querySelectorAll: s => s === '.diff-rate-btn' ? all(s, 6, (e, i) => { e.dataset.grade = i; }) : s === '.diff-lean-btn' ? all(s, 2, (e, i) => { e.dataset.lean = i ? 1 : -1; }) : [] };
-  return { el, sel, grade: g => el.querySelectorAll('.diff-rate-btn')[g], lean: d => el.querySelectorAll('.diff-lean-btn')[d < 0 ? 0 : 1], text: () => sel('.diff-rate-text').textContent };
+    querySelectorAll: s => s === '.diff-rate-btn' ? all(s, 6, (e, i) => { e.dataset.grade = i; }) : s === '.diff-lean-btn' ? all(s, 2, (e, i) => { e.dataset.lean = i ? 1 : -1; }) : s === '.diff-pair-btn' ? all(s, 3, (e, i) => { e.dataset.cmp = ['harder', 'same', 'easier'][i]; }) : [] };
+  return { el, sel, pair: c => el.querySelectorAll('.diff-pair-btn')[['harder', 'same', 'easier'].indexOf(c)], grade: g => el.querySelectorAll('.diff-rate-btn')[g], lean: d => el.querySelectorAll('.diff-lean-btn')[d < 0 ? 0 : 1], text: () => sel('.diff-rate-text').textContent };
 }
 const LOG_KEY = 'zip-difficulty-rating-log-v1';
 const readLog = async () => { const s = await pickStorage(), r = await s.get(LOG_KEY); return r ? JSON.parse(r.value) : []; };
 const writeLog = async v => { const s = await pickStorage(); await s.set(LOG_KEY, JSON.stringify(v)); };
+const PAIR_LOG = 'zip-difficulty-pair-log-v1', PREV_REC = 'zip-difficulty-prev-v1';
+const readJson = async (k, d) => { const s = await pickStorage(), r = await s.get(k); return r ? JSON.parse(r.value) : d; };
+const writeJson = async (k, v) => { const s = await pickStorage(); await s.set(k, JSON.stringify(v)); };
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const resetAll = async () => { await writeLog([]); await writeJson(PAIR_LOG, []); await writeJson(PREV_REC, {}); };
 
 ta('design panel: rating a puzzle as one grade, a range, a range leaning to one end; clicking again removes it', async () => {
   await writeLog([]);
@@ -1055,6 +1121,93 @@ ta('design panel: Import ratings.json merges, regrades with the current code, re
   const st = dom.sel('#diffLogStatus').textContent;
   ok(st.startsWith('Imported 2 ratings: 1 new, 1 replaced (1 with a different rating)') && st.includes('1 note(s)'), st);
   await writeLog([]);
+});
+ta('design panel: unsure flag needs a rating, keeps the rating, is exported and survives import', async () => {
+  await resetAll();
+  const p = cachedSamples()[0], key = ratingKey(p), dom = makePanelDom();
+  mountDifficultyPanel(dom.el, () => p, () => undefined).run(); await wait(20);
+  await dom.sel('.diff-unsure-btn').onclick(); eq(await readJson(LOG_KEY, []), [], 'nothing to be unsure about before a rating exists');
+  await dom.grade(2).onclick(); await dom.grade(3).onclick(); await dom.lean(1).onclick(); // 2 or 3, close to 3 = 2.75
+  await dom.sel('.diff-unsure-btn').onclick();
+  let e = (await readJson(LOG_KEY, []))[0]; eq([e.human, e.lo, e.hi, e.unsure], [2.75, 2, 3, true], 'unsure keeps human/lo/hi'); ok(dom.text().includes('unsure'), dom.text());
+  await dom.grade(2).onclick(); e = (await readJson(LOG_KEY, []))[0]; eq([e.human, e.lo, e.hi, e.unsure], [2, 2, 2, true], 'changing the grade does not change how sure you are');
+  const saved = { document: globalThis.document, create: URL.createObjectURL, revoke: URL.revokeObjectURL }; let blob = null;
+  globalThis.document = { createElement: () => ({ click() {}, remove() {} }), body: { appendChild() {} } }; URL.createObjectURL = b => (blob = b, 'blob:t'); URL.revokeObjectURL = () => {};
+  try { await dom.sel('#diffLogExport').onclick(); eq(JSON.parse(await blob.text()), [{ key, human: 2, lo: 2, hi: 2, unsure: true }]); } finally { globalThis.document = saved.document; URL.createObjectURL = saved.create; URL.revokeObjectURL = saved.revoke; }
+  await dom.sel('.diff-unsure-btn').onclick(); e = (await readJson(LOG_KEY, []))[0]; ok(!('unsure' in e), 'sure again: the field disappears');
+  await writeLog([]); const dom2 = makePanelDom(); mountDifficultyPanel(dom2.el, () => p, () => undefined).run(); await wait(20);
+  const input = dom2.sel('#diffLogFile'); input.files = [{ text: async () => JSON.stringify([{ key, human: 1.5, lo: 1, hi: 2, unsure: true }]) }]; await input.onchange();
+  e = (await readJson(LOG_KEY, []))[0]; eq([e.human, e.unsure], [1.5, true]); ok(dom2.text().includes('unsure'), 'a rating imported as unsure is shown as unsure: ' + dom2.text());
+  await resetAll();
+});
+ta('design panel: pairwise — compare with the previous puzzle, either orientation, remove, export, import', async () => {
+  await resetAll();
+  const [A, B] = cachedSamples(), kA = ratingKey(A), kB = ratingKey(B);
+  let current = A; const dom = makePanelDom(), panel = mountDifficultyPanel(dom.el, () => current, () => undefined);
+  panel.run(); await wait(30);
+  ok(dom.sel('.diff-pair-text').textContent.startsWith('No previous puzzle yet'), dom.sel('.diff-pair-text').textContent);
+  await dom.pair('harder').onclick(); eq(await readJson(PAIR_LOG, []), [], 'no previous puzzle: nothing recorded');
+  current = B; panel.run(); await wait(30);
+  ok(dom.sel('.diff-pair-text').textContent.includes('Previous puzzle:') && dom.sel('.diff-pair-text').textContent.includes('Not compared yet'), dom.sel('.diff-pair-text').textContent);
+  await dom.pair('harder').onclick();
+  let pairs = await readJson(PAIR_LOG, []); eq(pairs.length, 1); eq([pairs[0].a === kA, pairs[0].b === kB, pairs[0].cmp], [true, true, 'harder'], 'verdict is for the CURRENT puzzle (B) relative to the previous one (A)');
+  ok(pairs[0].ma && pairs[0].mb && Number.isFinite(pairs[0].mb['grade: trap']), 'both puzzles\' grades are cached for the agreement table'); ok(dom.sel('.diff-pair-text').textContent.includes('You said this one is harder'));
+  panel.run(); await wait(30); ok(dom.sel('.diff-pair-text').textContent.includes('Previous puzzle:') && dom.sel('.diff-pair-text').textContent.includes('harder'), 'recomputing B keeps A as the previous puzzle and shows the saved verdict');
+  await dom.pair('easier').onclick(); pairs = await readJson(PAIR_LOG, []); eq([pairs.length, pairs[0].cmp], [1, 'easier'], 'a new verdict replaces the old one');
+  await dom.pair('easier').onclick(); eq(await readJson(PAIR_LOG, []), [], 'same verdict again removes the pair');
+  await dom.pair('harder').onclick();               // B is harder than A, stored as a=A, b=B
+  current = A; panel.run(); await wait(30);         // now A is current and B previous: the stored pair must be read in the other orientation
+  ok(dom.sel('.diff-pair-text').textContent.includes('You said this one is easier'), 'B harder than A means A is easier than B: ' + dom.sel('.diff-pair-text').textContent);
+  await dom.pair('easier').onclick(); eq(await readJson(PAIR_LOG, []), [], 'clicking the verdict you already gave (seen from the other side) removes it');
+  await dom.pair('same').onclick(); pairs = await readJson(PAIR_LOG, []); eq(pairs.length, 1, 'the same two puzzles stay ONE pair whichever was previous'); eq([pairs[0].cmp], ['same']);
+  await dom.pair('harder').onclick(); pairs = await readJson(PAIR_LOG, []); eq(pairs.length, 1); eq([pairs[0].a === kB, pairs[0].b === kA, pairs[0].cmp], [true, true, 'harder'], 'A harder than B is stored as a=B, b=A');
+  await dom.pair('harder').onclick(); eq(await readJson(PAIR_LOG, []), [], 'repeating the verdict from this side removes the pair stored from the other side');
+  await dom.pair('harder').onclick(); pairs = await readJson(PAIR_LOG, []);
+  const saved = { document: globalThis.document, create: URL.createObjectURL, revoke: URL.revokeObjectURL }; let blob = null;
+  globalThis.document = { createElement: () => ({ click() {}, remove() {} }), body: { appendChild() {} } }; URL.createObjectURL = b => (blob = b, 'blob:t'); URL.revokeObjectURL = () => {};
+  try { await dom.sel('#diffPairExport').onclick(); eq(JSON.parse(await blob.text()), [{ a: kB, b: kA, cmp: 'harder' }], 'exported without cached grades'); } finally { globalThis.document = saved.document; URL.createObjectURL = saved.create; URL.revokeObjectURL = saved.revoke; }
+  await writeJson(PAIR_LOG, []); const dom2 = makePanelDom(); mountDifficultyPanel(dom2.el, () => A, () => undefined).run(); await wait(30);
+  const pf = dom2.sel('#diffPairFile'); pf.files = [{ text: async () => JSON.stringify([{ a: kB, b: kA, cmp: 'harder' }, { a: kA, b: kA, cmp: 'same' }]) }]; await pf.onchange();
+  pairs = await readJson(PAIR_LOG, []); eq(pairs.length, 1); ok(pairs[0].ma && pairs[0].mb, 'imported pairs are regraded'); ok(dom2.sel('#diffLogStatus').textContent.startsWith('Imported 1 pairs: 1 new') && dom2.sel('#diffLogStatus').textContent.includes('1 note(s)'), dom2.sel('#diffLogStatus').textContent);
+  await resetAll();
+});
+ta('design panel: a rotated copy of a rated puzzle is flagged while rating; Find duplicates lists the pair and deletes one rating', async () => {
+  await resetAll();
+  const A = cachedSamples()[0], R = transformPuzzle(A, 5, false); let current = A;
+  const dom = makePanelDom(), panel = mountDifficultyPanel(dom.el, () => current, () => undefined);
+  panel.run(); await wait(30); await dom.grade(2).onclick();
+  current = R; panel.run(); await wait(30);
+  ok(dom.sel('.diff-dup-note').textContent.includes('Same puzzle as one you already rated (2)'), 'note: ' + dom.sel('.diff-dup-note').textContent);
+  await dom.grade(3).onclick(); eq((await readJson(LOG_KEY, [])).length, 2, 'rating it anyway is allowed (and warned about)');
+  await dom.sel('#diffLogDups').onclick();
+  const html = dom.sel('#diffDups').innerHTML; ok(html.includes('1 duplicate group') && html.includes('diff-ascii') && (html.match(/diff-dup-del/g) || []).length === 2, html.slice(0, 200));
+  await dom.sel('#diffDups').dels[1](); const left = await readJson(LOG_KEY, []);
+  eq(left.length, 1, 'one rating deleted'); eq(left[0].human, 2, 'the other one stays'); ok(dom.sel('#diffDups').innerHTML.includes('No duplicates'), dom.sel('#diffDups').innerHTML.slice(0, 120));
+  await resetAll();
+});
+ta('tools/check-ratings.mjs passes on the committed ratings.json and pairs.json (no bad rows, no exact duplicates); equivalent puzzles would be warnings', async () => {
+  if (typeof process === 'undefined' || !process.versions || !process.versions.node) return; // Node-only
+  const { spawnSync } = await import('node:child_process');
+  const r = spawnSync(process.execPath, [new URL('../tools/check-ratings.mjs', import.meta.url).pathname, '--no-draw'], { encoding: 'utf8' });
+  eq(r.status, 0, 'check-ratings failed:\n' + r.stdout.slice(0, 1500));
+  ok(r.stdout.includes('0 error(s)'), r.stdout);
+});
+ta('tools/parse-ratings.mjs: exact duplicates with different ratings stop it (exit 1), same rating warns, equivalent puzzles warn (--strict fails), explicit comments and unsure are read', async () => {
+  if (typeof process === 'undefined' || !process.versions || !process.versions.node) return; // Node-only
+  const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path'), { spawnSync } = await import('node:child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ratings-')), [a, b] = cachedSamples(), ka = ratingKey(a), kb = ratingKey(b), rot = ratingKey(transformPuzzle(a, 5, false));
+  const tool = new URL('../tools/parse-ratings.mjs', import.meta.url).pathname, base = path.join(dir, 'base.json'), txt = path.join(dir, 'in.txt'), out = path.join(dir, 'out.json');
+  fs.writeFileSync(base, toRatingsJson([{ key: ka, human: 2, lo: 2, hi: 2 }]));
+  const run = (text, ...extra) => { fs.writeFileSync(txt, text); return spawnSync(process.execPath, [tool, txt, '--base', base, '--out', out, ...extra], { encoding: 'utf8' }); };
+  let r = run(`this is 2\n${ka}\n\nthis is 3\n${ka}\n`); eq(r.status, 1, 'same puzzle, different ratings: error'); ok(r.stderr.includes('LABELS DIFFER') && r.stderr.includes('NOTHING WRITTEN'), r.stderr.slice(0, 300));
+  r = run(`human 2\n${ka}\n\nthis is 2\n${ka}\n`); eq(r.status, 0, 'same puzzle, same rating: warning only'); ok(r.stderr.includes('same rating'), r.stderr.slice(0, 300));
+  r = run(`human 2\n${ka}\n\nhuman 3, range 2-4, unsure\n${kb}\n`); eq(r.status, 0); eq(JSON.parse(fs.readFileSync(out, 'utf8')).map(x => [x.human, x.lo, x.hi, !!x.unsure]), [[2, 2, 2, false], [3, 2, 4, true]], 'explicit comment with unsure');
+  fs.writeFileSync(base, toRatingsJson([{ key: ka, human: 2, lo: 2, hi: 2 }]));
+  r = run(`human 2\n${ka}\n\nthis is 2 or 3\n${rot}\n`); eq(r.status, 0, 'equivalent puzzle: warning'); ok(r.stderr.includes('EQUIVALENT') && r.stderr.includes('LABELS DIFFER'), r.stderr.slice(0, 400));
+  fs.writeFileSync(base, toRatingsJson([{ key: ka, human: 2, lo: 2, hi: 2 }]));
+  r = run(`human 2\n${ka}\n\nthis is 2 or 3\n${rot}\n`, '--strict'); eq(r.status, 1, '--strict fails on equivalents');
+  r = run(`human 2\n${ka}\n\nthis is pretty hard\n${kb}\n`); eq(r.status, 1, 'an unreadable comment on a NEW puzzle is an error'); ok(r.stderr.includes('not a rating comment'), r.stderr.slice(0, 300));
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 ta('daily: sequence per size is independent of what was played in other sizes', async () => {
   const A = createDaily(fakeStorage(), atDay(19)), B = createDaily(fakeStorage(), atDay(19)), seedsA = [], seedsB = [];

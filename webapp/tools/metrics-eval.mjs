@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 // Score EVERY difficulty metric in the code base against hand ratings, then compare whole grading models with
 // leave-one-out (LOO) cross-validation, so "which is best" is answered on puzzles the model did not see.
-//   node tools/metrics-eval.mjs [tools/ratings.json] [--split 43] [--csv features.csv]
+//   node tools/metrics-eval.mjs [tools/ratings.json] [--pairs tools/pairs.json] [--split 43] [--csv features.csv]
 // ratings JSON: [{ key: puzzle text, human, lo?, hi? }] (lo/hi = the range you stated, e.g. "2 or 3" -> 2,3; used for
 // the "in range" score; without them a rating counts as the single value `human`).
 // Part 1  one row per metric: Spearman rho vs human, 95% bootstrap CI, and rho after removing puzzle size (rank residuals).
 // Part 2  grading models: existing grades as shipped, and ridge models refit inside every LOO fold.
 //         "forward-select (nested)" also picks its features inside each fold, so its score includes the cost of choosing.
+// Part 5  ranking accuracy: how often each metric / grade orders two puzzles the way you did. On pairs implied by non-overlapping
+//         ratings, and on the explicit pairs in tools/pairs.json ("harder / easier / same as the previous puzzle").
 // Part 3  chronological holdout: models fit on the first --split puzzles (default 43 = the labels ladder.js was designed on),
 //         scored on the rest — the fairest test for the fixed-formula ladder grade.
 // Part 4  the ladder grade's own constants (wideFrac threshold, probe-trials cutoff, size floors): sweep + nested re-tuning.
@@ -19,13 +21,19 @@ import { gradesFor } from '../src/core/grades.js';
 import { trapMetrics } from '../src/core/trap.js';
 import { ladder, wideFrac, grade as ladderGrade } from '../src/core/ladder.js';
 import { maxNumber } from '../src/core/model.js';
+import { ratingWeight, UNSURE_WEIGHT, findDuplicateGroups } from '../src/core/ratings-io.js';
+import { parsePairsJson, impliedPairs, pairAccuracy } from '../src/core/pairs-io.js';
 
 const args = process.argv.slice(2);
 const file = args.find(a => a.endsWith('.json')) || new URL('./ratings.json', import.meta.url).pathname;
 const csvOut = args.includes('--csv') ? args[args.indexOf('--csv') + 1] : null;
+const PAIRS_FILE = args.includes('--pairs') ? args[args.indexOf('--pairs') + 1] : new URL('./pairs.json', import.meta.url).pathname;
 const SPLIT = args.includes('--split') ? +args[args.indexOf('--split') + 1] : 43;
 const R = JSON.parse(fs.readFileSync(file, 'utf8'));
-const n = R.length, H = R.map(r => r.human), LO = R.map(r => r.lo ?? r.human), HI = R.map(r => r.hi ?? r.human);
+const n = R.length, H = R.map(r => r.human), LO = R.map(r => r.lo ?? r.human), HI = R.map(r => r.hi ?? r.human), WGT = R.map(ratingWeight);
+const dups = findDuplicateGroups(R);
+if (dups.exact.length || dups.equivalent.length) console.log(`WARNING: ${dups.exact.length} exact and ${dups.equivalent.length} equivalent duplicate group(s) in the ratings: they count more than once below. Run: node tools/check-ratings.mjs`);
+if (WGT.some(w => w < 1)) console.log(`${WGT.filter(w => w < 1).length} unsure rating(s) count at weight ${UNSURE_WEIGHT} in every ridge fit below (correlations and in-range scores count each puzzle once).`);
 
 // ---------- 1. every metric, per puzzle ----------
 // group: struct = puzzle shape only, legacy = solver cost (difficulty.js), spatial = checkpoint geometry (spatial.js),
@@ -41,7 +49,7 @@ const DEFS = [
 ];
 const NAMES = DEFS.map(d => d[0]), GROUP = Object.fromEntries(DEFS.map(d => [d[0], d[1]])), LOG = new Set(DEFS.filter(d => d[2]).map(d => d[0]));
 const t0 = Date.now();
-const F = R.map(r => {
+const featuresOf = r => {
   const p = parse(r.key), T = p.n * p.n, K = maxNumber(p), d = fullDiagnostics(p), sp = spatialMetrics(p), g = gradesFor(p), tr = trapMetrics(p), L = ladder(p);
   const walls = p.walls.reduce((a, w) => a + (w & 1) + ((w >> 1) & 1), 0);
   let turns = 0; if (tr.ok) for (let i = 2; i < tr.path.length; i++) if (tr.path[i] - tr.path[i - 1] !== tr.path[i - 1] - tr.path[i - 2]) turns++;
@@ -55,7 +63,8 @@ const F = R.map(r => {
     ladHardest: L.hardest ?? 0, ladChain: L.passes?.[2] ?? 0, ladTerr: L.passes?.[3] ?? 0, ladProbe1: L.passes?.[4] ?? 0, ladProbe2: L.passes?.[5] ?? 0, ladSearch: L.search?.nodes ?? 0, ladTrials: L.probeTrials ?? 0, wideFrac: wf, 'grade:ladder': lg,
     _capped: d.exceeded ? 1 : 0, _ladBad: L.exceeded || L.contradiction ? 1 : 0, _ladSolved: L.solved && L.path ? 1 : 0,
   };
-});
+};
+const F = R.map(featuresOf);
 console.log(`${n} rated puzzles, all metrics computed in ${((Date.now() - t0) / 1000).toFixed(1)}s (${F.filter(f => f._capped).length} hit the reference-solve cap; their solver metrics are lower bounds and their grades count as 5)`);
 if (csvOut) fs.writeFileSync(csvOut, ['human', 'lo', 'hi', ...NAMES].join(',') + '\n' + F.map((f, i) => [H[i], LO[i], HI[i], ...NAMES.map(k => f[k])].join(',')).join('\n'));
 
@@ -86,10 +95,11 @@ for (const r of rows) console.log(r.k.padEnd(20), GROUP[r.k].padEnd(8), (Number.
 // ---------- Part 2: models, LOO ----------
 const feat = (k, i) => LOG.has(k) ? Math.log2(1 + F[i][k]) : F[i][k];
 function ridgeFit(keys, idx, lam) {
-  const p = keys.length + 1, mu = keys.map(k => mean(idx.map(j => feat(k, j)))), s = keys.map(k => sd(idx.map(j => feat(k, j))));
+  const p = keys.length + 1, wt = idx.map(j => WGT[j]), wsum = wt.reduce((a, v) => a + v, 0);
+  const wm = v => v.reduce((a, x, t) => a + x * wt[t], 0) / wsum, mu = keys.map(k => wm(idx.map(j => feat(k, j)))), s = keys.map((k, a) => Math.sqrt(wm(idx.map(j => (feat(k, j) - mu[a]) ** 2))) || 1);
   const row = j => [1, ...keys.map((k, a) => (feat(k, j) - mu[a]) / s[a])];
   const M = Array.from({ length: p }, (_, i) => [...Array(p).fill(0), ...Array.from({ length: p }, (_, c) => (c === i ? 1 : 0))]), b = Array(p).fill(0), R2 = idx.map(row);
-  R2.forEach((x, t) => { for (let a = 0; a < p; a++) { b[a] += x[a] * H[idx[t]]; for (let c = 0; c < p; c++) M[a][c] += x[a] * x[c]; } });
+  R2.forEach((x, t) => { for (let a = 0; a < p; a++) { b[a] += wt[t] * x[a] * H[idx[t]]; for (let c = 0; c < p; c++) M[a][c] += wt[t] * x[a] * x[c]; } });
   for (let a = 1; a < p; a++) M[a][a] += lam;
   for (let i = 0; i < p; i++) { let m = i; for (let r = i + 1; r < p; r++) if (Math.abs(M[r][i]) > Math.abs(M[m][i])) m = r; [M[i], M[m]] = [M[m], M[i]]; const dv = M[i][i]; for (let c = 0; c < 2 * p; c++) M[i][c] /= dv; for (let r = 0; r < p; r++) if (r !== i) { const f = M[r][i]; for (let c = 0; c < 2 * p; c++) M[r][c] -= f * M[i][c]; } }
   const Ainv = M.map(r => r.slice(p)), w = Ainv.map(r => r.reduce((s2, v, c) => s2 + v * b[c], 0));
@@ -98,7 +108,7 @@ function ridgeFit(keys, idx, lam) {
 const predict = (m, j) => m.row(j).reduce((s, v, c) => s + v * m.w[c], 0);
 function innerLoss(keys, idx, lam) { // closed-form LOO loss (interval distance + small MAE term), used only to choose features inside a fold
   const m = ridgeFit(keys, idx, lam); let s = 0;
-  m.R2.forEach((x, t) => { const pr = x.reduce((a, v, c) => a + v * m.w[c], 0), h = x.reduce((a, v, r) => a + v * m.Ainv[r].reduce((q, e, c) => q + e * x[c], 0), 0), loo = H[idx[t]] - (H[idx[t]] - pr) / (1 - h); s += dist(loo, idx[t]) + 0.01 * Math.abs(loo - H[idx[t]]); });
+  m.R2.forEach((x, t) => { const pr = x.reduce((a, v, c) => a + v * m.w[c], 0), h = WGT[idx[t]] * x.reduce((a, v, r) => a + v * m.Ainv[r].reduce((q, e, c) => q + e * x[c], 0), 0), loo = H[idx[t]] - (H[idx[t]] - pr) / (1 - h); s += dist(loo, idx[t]) + 0.01 * Math.abs(loo - H[idx[t]]); });
   return s / idx.length;
 }
 const all = [...Array(n).keys()], LAM = 10;
@@ -126,7 +136,7 @@ score('constant (training mean)', all.map(i => mean(all.filter(j => j !== i).map
 console.log('   (rho of a constant is undefined, shown —)');
 console.log('-- existing grades exactly as shipped (nothing refit; capped puzzles count as 5) --');
 for (const k of ['grade:decisionNodes', 'grade:B', 'grade:cross', 'grade:combined', 'grade:ladder']) score(k.replace('grade:', 'shipped ') + (k === 'grade:ladder' ? ' (fixed formula)' : ''), col(k), true);
-score('shipped trap grade (weights fit on ALL 70: optimistic)', col('trapPredicted'));
+score('shipped trap grade (weights fit on ALL ' + n + ': optimistic)', col('trapPredicted'));
 console.log('-- ridge, refit inside every fold (lambda ' + LAM + ') --');
 const SETS = {
   'trap (shipped features)': ['trapMax', 'trapTop3', 'altFrac'],
@@ -197,5 +207,30 @@ const cc = {}; chosen.forEach(gi => { const k = `tWf ${G[gi].tWf}, tTrials ${G[g
 console.log('   chosen: ' + Object.entries(cc).sort((a, b) => b[1] - a[1]).map(([k, c]) => `${k} (${c}/${n} folds)`).join('; '));
 const gate = all.filter(i => F[i].ladHardest >= 5);
 console.log(`probe2 gate: ${gate.length} puzzles need nested guessing; human ratings of those: ${gate.map(i => H[i]).join(', ')}  (mean ${mean(gate.map(i => H[i])).toFixed(2)}; ${gate.filter(i => H[i] <= 2).length} rated <= 2 = gate false positives)`);
+
+
+// ---------- Part 5: ranking accuracy ----------
+console.log('\n== Part 5: ranking accuracy (does the metric order two puzzles the way you did?) ==');
+const idxOfKey = new Map(R.map((r, i) => [r.key, i])), extraF = new Map();
+const featOf = key => idxOfKey.has(key) ? F[idxOfKey.get(key)] : (extraF.has(key) || extraF.set(key, (() => { try { return featuresOf({ key }); } catch { return null; } })()), extraF.get(key));
+const valueOfMetric = k => key => { const f = featOf(key); return f ? f[k] : undefined; };
+const valueOfPred = pred => key => (idxOfKey.has(key) ? pred[idxOfKey.get(key)] : undefined);
+const implied = impliedPairs(R);
+let explicitPairs = [];
+try { const pp = parsePairsJson(fs.readFileSync(PAIRS_FILE, 'utf8')); explicitPairs = pp.pairs; for (const p of pp.problems) console.log('  pairs.json problem: ' + p); } catch { /* no pairs file yet */ }
+const modelRows = [['ridge: trap (LOO)', results['trap (shipped features)']], ['ridge: trap + wideFrac (LOO)', results['trap + wideFrac']], ['ridge: forward-select (LOO)', looForward]];
+function rankTable(title, pairs, withModels) {
+  if (!pairs.length) { console.log(`${title}: none yet`); return; }
+  const rowsP = NAMES.map(k => ({ name: k, group: GROUP[k], ...pairAccuracy(pairs, valueOfMetric(k)) }));
+  if (withModels) for (const [name, pred] of modelRows) rowsP.push({ name, group: 'model', ...pairAccuracy(pairs, valueOfPred(pred)) });
+  const usable = rowsP.filter(r => r.decided > 0).sort((a, b) => b.accuracy - a.accuracy);
+  const same = pairs.filter(p => p.cmp === 'same').length;
+  console.log(`${title}: ${pairs.length} pairs (${pairs.length - same} decided, ${same} "same")   [50% = coin flip; below 50% = the metric runs the other way]`);
+  console.log('metric'.padEnd(24), 'group'.padEnd(8), 'accuracy', ' decided', '  ties', '  "same" pairs given equal value');
+  for (const r of usable) console.log(r.name.padEnd(24), r.group.padEnd(8), ((100 * r.accuracy).toFixed(0) + '%').padStart(8), String(r.decided).padStart(8), String(r.ties).padStart(6), r.sameN ? `${r.sameTied}/${r.sameN}`.padStart(18) : '');
+}
+rankTable('pairs implied by your ratings (non-overlapping ranges)', implied, true);
+console.log('');
+rankTable(`explicit pairs from ${PAIRS_FILE.split('/').slice(-2).join('/')}`, explicitPairs, false);
 
 console.log('\nreading guide: in-range and dist-to-range respect the range you gave; MAE compares to the midpoint. A model is only better than another if it wins by more than the noise (~+-0.10 rho, ~+-6% in-range at n=' + n + ').');
