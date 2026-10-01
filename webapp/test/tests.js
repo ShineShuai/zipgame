@@ -27,7 +27,7 @@ import { gradesFor, gradesFromMetrics, playGradesFor, GRADE_ORDER } from '../src
 import { combinedScore, COMBINED_ZSCORE } from '../src/core/gen/calibration.js';
 import { solutionPath, trapProfile, trapMetrics, trapGradeOf, trapPredict, TRAP_CFG, TRAP_MODEL } from '../src/core/trap.js';
 import { mountDifficultyPanel } from '../src/apps/design/difficulty-panel.js';
-import { ratingKey, ratingFromSelection, leanOf, describeRating, toRatingsJson, parseRatingsJson, mergeRatings, parseRatingComment, ratingWeight, UNSURE_WEIGHT, symmetryKey, findDuplicateGroups, transformPuzzle, asciiPuzzle } from '../src/core/ratings-io.js';
+import { ratingKey, ratingFromSelection, leanOf, describeRating, toRatingsJson, parseRatingsJson, mergeRatings, parseRatingComment, ratingWeight, UNSURE_WEIGHT, symmetryKey, findDuplicateGroups, transformPuzzle, asciiPuzzle, keyDifference } from '../src/core/ratings-io.js';
 import { parsePairsJson, toPairsJson, mergePairs, pairAccuracy, impliedPairs, flipCmp, pairKeyOf } from '../src/core/pairs-io.js';
 import { pickStorage } from '../src/platform/storage.js';
 
@@ -1039,8 +1039,9 @@ ta('tools/ratings.json: the repo label file parses cleanly, keys are canonical a
   const { ratings, problems } = parseRatingsJson(text);
   eq(problems, []); ok(ratings.length >= 74, `expected >= 74 ratings, got ${ratings.length}`);
   eq(new Set(ratings.map(r => r.key)).size, ratings.length, 'unique puzzles');
-  eq(JSON.parse(text).map(r => r.key), ratings.map(r => r.key), 'stored keys are already canonical (export -> import -> export would not change the file)');
-  eq(toRatingsJson(ratings), text.replace(/\r\n/g, '\n'), 'the file is byte-for-byte what the app would export');
+  const bad = JSON.parse(text).map((r, i) => [i + 1, keyDifference(r.key)]).filter(x => x[1]);
+  ok(!bad.length, `${bad.length} key(s) in tools/ratings.json are not canonical (they parse, but differ from what the app exports). ${bad.slice(0, 3).map(([i, why]) => `row #${i}: ${why}`).join(' | ')}${bad.length > 3 ? ` | ... +${bad.length - 3} more` : ''}. Fix: node tools/check-ratings.mjs --fix`);
+  ok(toRatingsJson(ratings) === text.replace(/\r\n/g, '\n'), 'tools/ratings.json is not laid out the way the app exports it (indentation / field order / trailing newline: did an editor or formatter rewrite it?). Fix: node tools/check-ratings.mjs --fix');
 });
 
 // A fake DOM just rich enough to drive the panel's real handlers (buttons, file input, status text); nothing is mocked in the panel itself.
@@ -1191,6 +1192,36 @@ ta('tools/check-ratings.mjs passes on the committed ratings.json and pairs.json 
   const r = spawnSync(process.execPath, [new URL('../tools/check-ratings.mjs', import.meta.url).pathname, '--no-draw'], { encoding: 'utf8' });
   eq(r.status, 0, 'check-ratings failed:\n' + r.stdout.slice(0, 1500));
   ok(r.stdout.includes('0 error(s)'), r.stdout);
+});
+t('ratings-io: keyDifference names why a key that parses is still not canonical', () => {
+  const p = cachedSamples()[0], k = ratingKey(p);
+  eq(keyDifference(k), '', 'canonical keys are fine'); eq(keyDifference('garbage'), '', 'an unparseable key is reported elsewhere');
+  ok(keyDifference(serialize(p)).includes('# ...'), 'header comments'); ok(keyDifference(serialize(p, { path: [0, 1] }).split('\n').filter(l => !l.startsWith('#')).join('\n')).includes('path'), 'a path line');
+  ok(keyDifference(k.replace(/\n/g, '\r\n')).includes('CRLF'), 'CRLF'); ok(keyDifference(k + '\n').includes('whitespace'), 'trailing newline');
+  ok(keyDifference(k.replace('checkpoints ', 'checkpoints   ')).includes('spacing'), 'extra spaces: ' + keyDifference(k.replace('checkpoints ', 'checkpoints   ')));
+});
+ta('tools/check-ratings.mjs: lists non-canonical keys with the reason; --fix rewrites them, keeps every rating, and refuses when rows would be lost', async () => {
+  if (typeof process === 'undefined' || !process.versions || !process.versions.node) return; // Node-only
+  const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path'), { spawnSync } = await import('node:child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'check-')), [a, b] = cachedSamples(), ka = ratingKey(a), kb = ratingKey(b), tool = new URL('../tools/check-ratings.mjs', import.meta.url).pathname, f = path.join(dir, 'r.json');
+  const run = (...x) => spawnSync(process.execPath, [tool, f, '--pairs', path.join(dir, 'none.json'), '--no-draw', ...x], { encoding: 'utf8' });
+  fs.writeFileSync(f, JSON.stringify([{ key: serialize(a), human: 2, lo: 2, hi: 2 }, { key: kb.replace(/\n/g, '\r\n'), human: 3, lo: 2, hi: 3, unsure: true }], null, 1) + '\n');
+  let r = run(); eq(r.status, 1); ok(r.stdout.includes('2 of 2 key(s) are not in canonical form') && r.stdout.includes('ratings #1: has "# ..."') && r.stdout.includes('ratings #2: has Windows (CRLF)') && r.stdout.includes('--fix'), r.stdout);
+  r = run('--fix'); eq(r.status, 0, r.stdout); const fixed = JSON.parse(fs.readFileSync(f, 'utf8'));
+  eq(fixed.map(x => [x.key, x.human, x.lo, x.hi, !!x.unsure]), [[ka, 2, 2, 2, false], [kb, 3, 2, 3, true]], 'canonical keys, every rating and the unsure flag kept, order unchanged');
+  eq(run().status, 0, 'clean afterwards');
+  fs.writeFileSync(f, JSON.stringify([{ key: ka, human: 2, lo: 2, hi: 2 }, { key: serialize(a), human: 3, lo: 3, hi: 3 }]));
+  r = run('--fix'); eq(r.status, 1); ok(r.stdout.includes('--fix refused'), r.stdout); eq(JSON.parse(fs.readFileSync(f, 'utf8')).length, 2, 'nothing was rewritten');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+ta('tools/parse-ratings.mjs: a "path ..." line after a puzzle block belongs to that block, not to the next comment', async () => {
+  if (typeof process === 'undefined' || !process.versions || !process.versions.node) return; // Node-only
+  const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path'), { spawnSync } = await import('node:child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'path-')), [a, b] = cachedSamples(), ka = ratingKey(a), kb = ratingKey(b), tool = new URL('../tools/parse-ratings.mjs', import.meta.url).pathname, txt = path.join(dir, 'in.txt'), out = path.join(dir, 'out.json');
+  fs.writeFileSync(txt, `human 2\n${serialize(a, { path: [0, 1, 2] })}\n\nhuman 3, range 2-3\n${serialize(b)}\n`);
+  const r = spawnSync(process.execPath, [tool, txt, '--out', out], { encoding: 'utf8' }); eq(r.status, 0, r.stderr);
+  eq(JSON.parse(fs.readFileSync(out, 'utf8')).map(x => [x.key, x.human, x.lo, x.hi]), [[ka, 2, 2, 2], [kb, 3, 2, 3]]);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 ta('tools/parse-ratings.mjs: exact duplicates with different ratings stop it (exit 1), same rating warns, equivalent puzzles warn (--strict fails), explicit comments and unsure are read', async () => {
   if (typeof process === 'undefined' || !process.versions || !process.versions.node) return; // Node-only

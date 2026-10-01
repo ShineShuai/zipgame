@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 // Validate the label files before using them. Exit 1 on any error; warnings (equivalent puzzles) exit 0 unless --strict.
-//   node tools/check-ratings.mjs [tools/ratings.json] [--pairs tools/pairs.json] [--strict] [--no-draw]
-// ratings.json: every row parses, ranges contain `human`, keys are canonical, NO exact duplicates, and equivalent puzzles
+//   node tools/check-ratings.mjs [tools/ratings.json] [--pairs tools/pairs.json] [--strict] [--no-draw] [--fix]
+// ratings.json: every row parses, ranges contain `human`, keys are canonical (rows that are not are listed with the reason),
+//   NO exact duplicates, and equivalent puzzles
 //   (same up to rotation / reflection / reversed numbering) are listed with their ratings so they can be corrected.
+//   --fix rewrites the file in canonical form (keys + layout), keeping the order and every rating. It refuses to run while there are
+//   invalid rows or exact duplicates, because rewriting would silently drop them.
 // pairs.json:   every row parses, both puzzles are valid, no pair compares a puzzle with itself, no contradictory repeats,
 //   and (if ratings.json is given) pairs that contradict your ratings (A rated harder than B with non-overlapping ranges,
 //   but the pair says the opposite) are listed.
 import fs from 'node:fs';
-import { parseRatingsJson, findDuplicateGroups, toRatingsJson } from '../src/core/ratings-io.js';
+import { parseRatingsJson, findDuplicateGroups, toRatingsJson, keyDifference } from '../src/core/ratings-io.js';
 import { parsePairsJson, pairKeyOf } from '../src/core/pairs-io.js';
 import { printDuplicateGroups } from './lib.mjs';
 
@@ -26,7 +29,22 @@ const { exact, equivalent } = findDuplicateGroups(items);
 const toMembers = g => g.map(i => items[i]);
 errors += exact.length; printDuplicateGroups('EXACT duplicates', exact.map(toMembers), { show, out: console.log });
 warnings += equivalent.length; printDuplicateGroups('EQUIVALENT puzzles (rotation / reflection / reversed numbering)', equivalent.map(toMembers), { show, out: console.log });
-if (!problems.length && !exact.length && toRatingsJson(ratings) !== text.replace(/\r\n/g, '\n')) { console.log('  note: the file is not in the canonical form the app exports (formatting/order of fields); re-export or rewrite it with tools/parse-ratings.mjs --out'); warnings++; }
+let rawRows = []; try { rawRows = JSON.parse(text); } catch { /* reported above */ }
+const nonCanonical = Array.isArray(rawRows) ? rawRows.map((r, i) => ({ i, why: r && typeof r.key === 'string' ? keyDifference(r.key) : '' })).filter(x => x.why) : [];
+if (nonCanonical.length) {
+  console.log(`\n${nonCanonical.length} of ${rawRows.length} key(s) are not in canonical form (they parse, but differ from what the app would export):`);
+  for (const x of nonCanonical.slice(0, 10)) console.log(`  ratings #${x.i + 1}: ${x.why}`);
+  if (nonCanonical.length > 10) console.log(`  ... and ${nonCanonical.length - 10} more`);
+  console.log('  fix: node tools/check-ratings.mjs --fix');
+  errors++;
+}
+const canonicalText = !problems.length && !exact.length ? toRatingsJson(ratings) : null;
+if (canonicalText && !nonCanonical.length && canonicalText !== text.replace(/\r\n/g, '\n')) { console.log('\nnote: the keys are fine but the file layout differs from what the app exports (indentation / field order / trailing newline: an editor or formatter rewrote it?)\n  fix: node tools/check-ratings.mjs --fix'); warnings++; }
+if (args.includes('--fix')) {
+  if (!canonicalText) { console.log('\n--fix refused: fix the problems / exact duplicates above first (rewriting would drop rows).'); process.exit(1); }
+  if (canonicalText === text) console.log('\n--fix: nothing to change.');
+  else { fs.writeFileSync(ratingsFile, canonicalText); console.log(`\n--fix: rewrote ${ratingsFile} in canonical form (${nonCanonical.length} key(s) changed, ${ratings.length} ratings kept, order unchanged).`); errors = 0; }
+}
 
 if (fs.existsSync(pairsFile)) {
   const pt = parsePairsJson(fs.readFileSync(pairsFile, 'utf8'));

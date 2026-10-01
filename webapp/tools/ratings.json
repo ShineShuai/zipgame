@@ -444,7 +444,7 @@
   "hi": 2
  },
  {
-  "key": "size 6\ncheckpoints 0,1=6 1,0=5 1,5=1 2,1=4 2,2=3 3,2=2\nwalls H,4,2 V,5,3 H,2,1",
+  "key": "size 6\ncheckpoints 0,1=6 1,0=5 1,5=1 2,1=4 2,2=3 3,2=2\nwalls H,2,1 H,4,2 V,5,3",
   "human": 1.25,
   "lo": 1,
   "hi": 2
