@@ -24,6 +24,21 @@ export function ratingKey(p) {
   return serialize(puzzle).split('\n').filter(l => !l.startsWith('#')).join('\n');
 }
 
+// Why a stored key is not in canonical form, in words ("" when it is canonical or does not parse). A key can parse fine and still
+// differ from ratingKey(key): a "# ..." header from the app's text export, a "path ..." line from play mode, CRLF line endings,
+// a trailing newline, other spacing, or walls / checkpoints written in another order (or the text format itself changed).
+export function keyDifference(key) {
+  let canon; try { canon = ratingKey(key); } catch { return ''; }
+  if (canon === key) return '';
+  if (/\r/.test(key)) return 'has Windows (CRLF) line endings inside the key';
+  const lines = key.split('\n'), want = canon.split('\n');
+  if (lines.some(l => l.trim().startsWith('#'))) return 'has "# ..." comment/header lines (the text the design app exports); the key is the 3 lines size / checkpoints / walls only';
+  if (lines.some(l => /^\s*path\b/i.test(l))) return 'has a "path ..." line (play-mode export); the key does not include the path';
+  if (key !== key.trim() || lines.some(l => l.trim() === '')) return 'has leading/trailing whitespace or blank lines';
+  const i = lines.findIndex((l, j) => l !== want[j]);
+  return i < 0 ? 'differs from the canonical text' : `line ${i + 1} is "${lines[i].slice(0, 60)}" but the canonical form is "${(want[i] ?? '').slice(0, 60)}" (different order or spacing)`;
+}
+
 // { lo, hi, lean } (lean: -1 closer to lo, 0 none, +1 closer to hi; only meaningful when lo < hi) -> { human, lo, hi }.
 export function ratingFromSelection({ lo, hi, lean = 0 }) {
   if (lo > hi) [lo, hi] = [hi, lo];

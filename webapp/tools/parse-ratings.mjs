@@ -32,13 +32,15 @@ if (opt('base')) {
 const baseByKey = new Map(base.map((r, i) => [r.key, i]));
 
 // ---- read the text file into blocks ----
-const blocks = []; let comment = [], cur = null, start = 0;
+const blocks = []; let comment = [], cur = null, start = 0, afterBlock = false;
 fs.readFileSync(file, 'utf8').split(/\r?\n/).forEach((raw, i) => {
   const l = raw.trim();
   if (!l || l.startsWith('#')) return;
   if (l.startsWith('size ')) { cur = { lines: [l], comment: comment.join(' '), line: i + 1 }; comment = []; return; }
   if (cur && l.startsWith('checkpoints')) { cur.lines.push(l); return; }
-  if (cur && l.startsWith('walls')) { cur.lines.push(l); blocks.push(cur); cur = null; return; }
+  if (cur && l.startsWith('walls')) { cur.lines.push(l); blocks.push(cur); cur = null; afterBlock = true; return; }
+  if (afterBlock && /^path\b/i.test(l)) return; // play-mode export: the solution path line belongs to the block above, not to the next comment
+  afterBlock = false;
   comment.push(l);
 });
 blocks.forEach((b, i) => { b.i = i + 1; b.where = `puzzle #${i + 1} (line ${b.line})`; try { b.key = ratingKey(b.lines.join('\n')); } catch (e) { b.key = null; b.err = e.message; } b.parsed = parseRatingComment(b.comment); });
