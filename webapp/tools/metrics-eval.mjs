@@ -14,13 +14,7 @@
 // Part 4  the ladder grade's own constants (wideFrac threshold, probe-trials cutoff, size floors): sweep + nested re-tuning.
 // Scores: rho = Spearman; in-range = grade lies in [lo,hi]; MAE = mean |grade - human|; 0->0 = human-0 puzzles graded 0.
 import fs from 'node:fs';
-import { parse } from '../src/core/format.js';
-import { fullDiagnostics } from '../src/core/difficulty.js';
-import { spatialMetrics } from '../src/core/spatial.js';
-import { gradesFor } from '../src/core/grades.js';
-import { trapMetrics } from '../src/core/trap.js';
-import { ladder, wideFrac, grade as ladderGrade } from '../src/core/ladder.js';
-import { maxNumber } from '../src/core/model.js';
+import { NAMES, GROUP, LOG, featuresOf } from './features.mjs';
 import { ratingWeight, UNSURE_WEIGHT, findDuplicateGroups } from '../src/core/ratings-io.js';
 import { parsePairsJson, impliedPairs, pairAccuracy } from '../src/core/pairs-io.js';
 
@@ -35,35 +29,8 @@ const dups = findDuplicateGroups(R);
 if (dups.exact.length || dups.equivalent.length) console.log(`WARNING: ${dups.exact.length} exact and ${dups.equivalent.length} equivalent duplicate group(s) in the ratings: they count more than once below. Run: node tools/check-ratings.mjs`);
 if (WGT.some(w => w < 1)) console.log(`${WGT.filter(w => w < 1).length} unsure rating(s) count at weight ${UNSURE_WEIGHT} in every ridge fit below (correlations and in-range scores count each puzzle once).`);
 
-// ---------- 1. every metric, per puzzle ----------
-// group: struct = puzzle shape only, legacy = solver cost (difficulty.js), spatial = checkpoint geometry (spatial.js),
-//        grade = an existing 0-5 grade as shipped, trap = core/trap.js, ladder = core/ladder.js.
-// log: count-like features are log-scaled before entering a ridge model (Spearman does not care).
-const DEFS = [
-  ['n', 'struct'], ['K', 'struct'], ['walls/T', 'struct'], ['K/T', 'struct'], ['segLen', 'struct'], ['turns/T', 'struct'],
-  ['decisionNodes/cell', 'legacy', 1], ['B/N', 'legacy'], ['maxDecisionDepth', 'legacy'], ['naiveGap', 'legacy', 1], ['firstGap', 'legacy', 1], ['regression', 'legacy'], ['nodes/cell', 'legacy', 1], ['legCollide', 'legacy'],
-  ['crossPerSeg', 'spatial'], ['overlapPerSeg', 'spatial'],
-  ['grade:decisionNodes', 'grade'], ['grade:B', 'grade'], ['grade:cross', 'grade'], ['grade:combined', 'grade'],
-  ['trapMax', 'trap'], ['trapTop3', 'trap'], ['trapDeep', 'trap'], ['altFrac', 'trap'], ['alts/T', 'trap'], ['trapPredicted', 'trap'], ['grade:trap', 'trap'],
-  ['ladHardest', 'ladder'], ['ladChain', 'ladder', 1], ['ladTerr', 'ladder', 1], ['ladProbe1', 'ladder', 1], ['ladProbe2', 'ladder', 1], ['ladSearch', 'ladder', 1], ['ladTrials', 'ladder', 1], ['wideFrac', 'ladder'], ['grade:ladder', 'ladder'],
-];
-const NAMES = DEFS.map(d => d[0]), GROUP = Object.fromEntries(DEFS.map(d => [d[0], d[1]])), LOG = new Set(DEFS.filter(d => d[2]).map(d => d[0]));
+// ---------- 1. every metric, per puzzle (the definitions live in features.mjs) ----------
 const t0 = Date.now();
-const featuresOf = r => {
-  const p = parse(r.key), T = p.n * p.n, K = maxNumber(p), d = fullDiagnostics(p), sp = spatialMetrics(p), g = gradesFor(p), tr = trapMetrics(p), L = ladder(p);
-  const walls = p.walls.reduce((a, w) => a + (w & 1) + ((w >> 1) & 1), 0);
-  let turns = 0; if (tr.ok) for (let i = 2; i < tr.path.length; i++) if (tr.path[i] - tr.path[i - 1] !== tr.path[i - 1] - tr.path[i - 2]) turns++;
-  const wf = L.solved && L.path ? wideFrac(p, L.path).frac : 0, lg = ladderGrade(p, L).grade;
-  return {
-    n: p.n, K, 'walls/T': walls / T, 'K/T': K / T, segLen: (T - 1) / Math.max(1, K - 1), 'turns/T': turns / T,
-    'decisionNodes/cell': d.decisionNodes / T, 'B/N': d.B / p.n, maxDecisionDepth: d.maxDecisionDepth, naiveGap: d.naiveGap, firstGap: d.firstGap, regression: d.regression, 'nodes/cell': d.nodes / T, legCollide: d.legCollideDependent ? 1 : 0,
-    crossPerSeg: sp.crossPerSeg, overlapPerSeg: sp.overlapPerSeg,
-    'grade:decisionNodes': g ? g.grades.decisionNodes : 5, 'grade:B': g ? g.grades.B : 5, 'grade:cross': g ? g.grades.crossPerSeg : 5, 'grade:combined': g ? g.grades.combined : 5,
-    trapMax: tr.trapMax, trapTop3: tr.trapTop3, trapDeep: tr.trapDeep, altFrac: tr.altFrac, 'alts/T': tr.alternatives / T, trapPredicted: tr.predicted, 'grade:trap': tr.grade,
-    ladHardest: L.hardest ?? 0, ladChain: L.passes?.[2] ?? 0, ladTerr: L.passes?.[3] ?? 0, ladProbe1: L.passes?.[4] ?? 0, ladProbe2: L.passes?.[5] ?? 0, ladSearch: L.search?.nodes ?? 0, ladTrials: L.probeTrials ?? 0, wideFrac: wf, 'grade:ladder': lg,
-    _capped: d.exceeded ? 1 : 0, _ladBad: L.exceeded || L.contradiction ? 1 : 0, _ladSolved: L.solved && L.path ? 1 : 0,
-  };
-};
 const F = R.map(featuresOf);
 console.log(`${n} rated puzzles, all metrics computed in ${((Date.now() - t0) / 1000).toFixed(1)}s (${F.filter(f => f._capped).length} hit the reference-solve cap; their solver metrics are lower bounds and their grades count as 5)`);
 if (csvOut) fs.writeFileSync(csvOut, ['human', 'lo', 'hi', ...NAMES].join(',') + '\n' + F.map((f, i) => [H[i], LO[i], HI[i], ...NAMES.map(k => f[k])].join(',')).join('\n'));

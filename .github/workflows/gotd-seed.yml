@@ -1,0 +1,38 @@
+# Seeds tomorrow's Game of Day with 3..8 synthetic players (webapp/tools/gotd-seed.mjs) in Cloudflare and Supabase.
+# The second run is a retry: a backend that already has the seeds answers "exists" and is left alone, one that failed the first time gets them now.
+# Needs the repository secret SEED_PLAYERS_SECRET (same value as the Worker secret; Supabase holds its hash in gotd_secret, see webapp/server/README.md).
+# GitHub pauses scheduled workflows of a repository without activity for 60 days: a push or a manual run re-enables it.
+name: gotd-seed
+on:
+  schedule:
+    - cron: '17 22 * * *'
+    - cron: '17 23 * * *'
+  workflow_dispatch:
+    inputs:
+      day: { description: 'YYYYMMDD to seed (default: tomorrow UTC; only today +-1 is accepted)', required: false }
+      dry_run: { description: 'only print the seed times', type: boolean, default: true }
+concurrency: { group: gotd-seed, cancel-in-progress: false }
+permissions: { contents: read }
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults: { run: { working-directory: webapp } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Seed
+        env: # a workflow can only hand a secret to a step through the environment; the step writes it to a file for the script
+          SEED_TOKEN: ${{ secrets.SEED_PLAYERS_SECRET }}
+          DAY: ${{ inputs.day }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=(--summary "$GITHUB_STEP_SUMMARY" --annotations)
+          [ -n "$DAY" ] && args+=(--day "$DAY")
+          if [ "$DRY_RUN" = "true" ]; then
+            args+=(--dry-run)
+          else # the script takes the secret from a file, not from the environment
+            umask 077; printf %s "$SEED_TOKEN" > "$RUNNER_TEMP/seed-token"; args+=(--token-file "$RUNNER_TEMP/seed-token")
+          fi
+          node tools/gotd-seed.mjs "${args[@]}"

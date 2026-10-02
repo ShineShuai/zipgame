@@ -4,6 +4,7 @@ compatibility_date = "2026-09-01"
 
 [vars]
 ALLOWED_ORIGIN = "https://shineshuai.github.io"   # origin only, no repo path
+# secret, not a var (authorises POST /seed): npx wrangler secret put SEED_PLAYERS_SECRET < FILE   (value read from stdin: not an argument, see server/README.md)
 
 [[d1_databases]]
 binding = "DB"
