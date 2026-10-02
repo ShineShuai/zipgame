@@ -2,7 +2,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import worker, { submit, validate, validateRange, read, validateSeed, seed } from './worker.js';
+import worker, { submit, validate, validateRange, read, validateSeed, seed, allowOrigin } from './worker.js';
 import { binOf, summarize, TOP_K, SEED_MAX } from '../../src/core/hist.js';
 
 const schema = readFileSync(new URL('./schema.sql', import.meta.url), 'utf8');
@@ -73,6 +73,31 @@ await test('http handler: routing, validation, CORS, size guard, db error', asyn
   assert.equal((await call('POST', '/gotd', JSON.stringify({ d: today, t: 10, b: 0 }))).status, 400);
   assert.equal((await call('POST', '/gotd', 'x'.repeat(300), { 'content-length': '300' })).status, 400);
   assert.equal((await worker.fetch(new Request('https://w.example/gotd', { method: 'POST', body: JSON.stringify({ d: today, t: 5000, b: 1 }) }), { DB: { prepare() { throw new Error('x'); } } })).status, 500);
+});
+
+await test('allowOrigin: echoes a listed origin, falls back to the first, * when unset', () => {
+  const list = ' https://u.github.io , http://localhost:8000,,http://127.0.0.1:8000 ';
+  assert.equal(allowOrigin(list, 'http://localhost:8000'), 'http://localhost:8000');
+  assert.equal(allowOrigin(list, 'http://127.0.0.1:8000'), 'http://127.0.0.1:8000');
+  assert.equal(allowOrigin(list, 'https://u.github.io'), 'https://u.github.io');
+  assert.equal(allowOrigin(list, 'https://evil.example'), 'https://u.github.io');
+  assert.equal(allowOrigin(list, null), 'https://u.github.io');
+  assert.equal(allowOrigin('https://u.github.io', 'http://localhost:8000'), 'https://u.github.io');
+  for (const unset of [undefined, '', ' , ']) assert.equal(allowOrigin(unset, 'http://localhost:8000'), '*');
+});
+
+await test('http handler: CORS answers each listed origin with itself, and Vary: Origin keeps caches apart', async () => {
+  const env = { DB: fakeD1(), ALLOWED_ORIGIN: 'https://u.github.io,http://localhost:8000' };
+  const stats = origin => worker.fetch(new Request('https://w.example/stats?from=20260926&to=20261002', { headers: { Origin: origin } }), env);
+  for (const [origin, expected] of [['http://localhost:8000', 'http://localhost:8000'], ['https://u.github.io', 'https://u.github.io'], ['http://localhost:9000', 'https://u.github.io']]) {
+    const r = await stats(origin);
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get('access-control-allow-origin'), expected, origin);
+    assert.equal(r.headers.get('vary'), 'Origin');
+  }
+  const preflight = await worker.fetch(new Request('https://w.example/gotd', { method: 'OPTIONS', headers: { Origin: 'http://localhost:8000' } }), env);
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get('access-control-allow-origin'), 'http://localhost:8000');
 });
 
 await test('validateRange: real dates, ordered, <= 90 days inclusive', () => {

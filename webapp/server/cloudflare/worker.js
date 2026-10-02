@@ -99,9 +99,24 @@ export async function seed(db, req) { // -> { status: 'ok', n, sum } | { status:
   }
 }
 
+// ALLOWED_ORIGIN: one origin, or several separated by commas ("https://u.github.io,http://localhost:8000"). The reply names the request's
+// own origin when it is listed and the first entry otherwise (the browser then rejects the foreign page). Unset: any origin.
+// CORS only decides which pages a browser lets read the reply; the endpoints themselves are public and POST /seed needs its token.
+export function allowOrigin(list, requestOrigin) {
+  const allowed = String(list || '').split(',').map(origin => origin.trim()).filter(Boolean);
+  if (!allowed.length) return '*';
+  return allowed.includes(requestOrigin) ? requestOrigin : allowed[0];
+}
+
 export default {
   async fetch(req, env) {
-    const cors = { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '86400', Vary: 'Origin' };
+    const cors = {
+      'Access-Control-Allow-Origin': allowOrigin(env.ALLOWED_ORIGIN, req.headers.get('Origin')),
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Max-Age': '86400',
+      Vary: 'Origin',
+    };
     const reply = (status, body, extra = {}) => new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json', ...extra } });
     if (req.method === 'OPTIONS') return reply(204);
     const { pathname, searchParams } = new URL(req.url);

@@ -7,7 +7,8 @@ Stores per-day aggregates only (day totals, ~80 histogram bins, the 10 fastest t
     cd server/cloudflare
     npx wrangler d1 create zip-gotd                       # put database_id into wrangler.toml
     npx wrangler d1 execute zip-gotd --remote --file=schema.sql
-    # set ALLOWED_ORIGIN in wrangler.toml to https://<user>.github.io
+    # set ALLOWED_ORIGIN in wrangler.toml to https://<user>.github.io; several origins are comma separated,
+    # add http://localhost:8000 to read /stats from `python3 -m http.server` (origins are exact: localhost and 127.0.0.1 differ, so does the port)
     npx wrangler deploy                                   # -> config.js cloudflare.url
 Test (also covers `GET /stats`): `npm run test:server` (real worker code on SQLite, Node >= 22.5).
 
