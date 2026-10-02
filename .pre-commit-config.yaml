@@ -15,7 +15,7 @@ repos:
         entry: auto_bump_version.sh
         language: script
         args: [webapp, webapp/src/version.js, VERSION]
-        files: ^webapp/
+        files: ^webapp/(?!bench/|test/|tools/|package\.json$)
         pass_filenames: false
         verbose: true
 
