@@ -1,35 +1,39 @@
 // Pure math for the stats page: validate and merge backend replies, percentiles from histogram bins, anomaly flags, rank correlation.
-import { NB, T0_MS, RATIO, TOP_K, MIN_MS, MAX_MS, binOf } from './hist.js';
+import { NB, T0_MS, RATIO, TOP_K, MIN_MS, MAX_MS, SEED_MAX, binOf } from './hist.js';
 import { utcDateString } from '../features/daily.js';
 
 const isInt = Number.isInteger, sum = xs => xs.reduce((a, x) => a + x, 0), byValue = (a, b) => a - b;
 
-// Backend reply { days: [{ d, n, sum, bins: [[bin, n]...], best: [ms...] }] } -> [{ d, n, sum, bins: number[NB], best }], or null if malformed.
+// Backend reply { days: [{ d, n, sum, bins: [[bin, n]...], best: [ms...], seeds?: [ms...] }] } -> [{ d, n, sum, bins: number[NB], best, seeds }], or null if malformed.
+// `seeds` = the synthetic seed players already counted in n / sum / bins (tools/gotd-seed.mjs); [] from a backend that predates them.
 export function parseDays(r) {
   if (!r || !Array.isArray(r.days)) return null;
   const out = [];
   for (const x of r.days) {
     if (!x || !isInt(x.d) || !isInt(x.n) || x.n < 1 || !isInt(x.sum) || x.sum < 0 || !Array.isArray(x.bins) ||
         !Array.isArray(x.best) || x.best.length > TOP_K || !x.best.every(v => isInt(v) && v >= 0)) return null;
+    const seeds = x.seeds === undefined ? [] : x.seeds;
+    if (!Array.isArray(seeds) || seeds.length > SEED_MAX || !seeds.every(v => isInt(v) && v >= MIN_MS && v <= MAX_MS)) return null;
     const bins = new Array(NB).fill(0);
     for (const b of x.bins) {
       if (!Array.isArray(b) || !isInt(b[0]) || b[0] < 0 || b[0] >= NB || !isInt(b[1]) || b[1] < 1) return null;
       bins[b[0]] += b[1];
     }
-    out.push({ d: x.d, n: x.n, sum: x.sum, bins, best: [...x.best].sort(byValue) });
+    out.push({ d: x.d, n: x.n, sum: x.sum, bins, best: [...x.best].sort(byValue), seeds: [...seeds].sort(byValue) });
   }
   return out;
 }
 
-// Adds up the per-backend day lists: n, sum and bins add, best = the TOP_K fastest of the union (exact, all four are mergeable).
+// Adds up the per-backend day lists: n, sum and bins add, best = the TOP_K fastest of the union, seeds concatenate (exact, all five are mergeable).
 export function mergeDays(lists) {
   const byDay = new Map();
   for (const day of lists.flat()) {
     const m = byDay.get(day.d);
-    if (!m) { byDay.set(day.d, { ...day, bins: [...day.bins], best: [...day.best] }); continue; }
+    if (!m) { byDay.set(day.d, { ...day, bins: [...day.bins], best: [...day.best], seeds: [...(day.seeds || [])] }); continue; }
     m.n += day.n; m.sum += day.sum;
     day.bins.forEach((c, k) => { m.bins[k] += c; });
     m.best = m.best.concat(day.best).sort(byValue).slice(0, TOP_K);
+    m.seeds = m.seeds.concat(day.seeds || []).sort(byValue);
   }
   return [...byDay.values()].sort((a, b) => a.d - b.d);
 }

@@ -58,8 +58,39 @@ sizes = {r.split('|')[0]: int(r.split('|')[1]) for r in psql("select 'gotd_day',
 assert sizes['gotd_day'] == 3 and sizes['gotd_best'] <= 10 * 3 and sizes['gotd_bin'] <= 80 * 3, sizes
 print('ok    row counts bounded', sizes)
 
-for t in ('gotd_day', 'gotd_bin', 'gotd_best'):
+for t in ('gotd_day', 'gotd_bin', 'gotd_best', 'gotd_seed', 'gotd_secret'):
     p = psql(f'select * from {t}', role='anon', check=False); assert p.returncode, f'anon can read {t}'
     p = psql(f'insert into {t} select * from {t} limit 0', role='anon', check=False); assert p.returncode, f'anon can write {t}'
-print('ok    anon cannot touch the tables directly, only call submit_gotd / read_gotd')
+print('ok    anon cannot touch the tables directly, only call submit_gotd / read_gotd / seed_gotd')
+
+# seed_gotd: token, validation, idempotency, and the same numbers as a brute-force model (tools/gotd-seed.mjs)
+last = lambda p: json.loads(p.stdout.strip().splitlines()[-1])
+seed = lambda tok, d, ms, bins=None: psql(f"select seed_gotd({'null' if tok is None else repr(tok)},{d},array{ms}::int[],array{[bin_of(x) for x in ms] if bins is None else bins}::int[])", role='anon', check=False)
+st = ymd(today); S = [41000, 9000, 120000, 41000, 66000]
+p = seed('tok', st, S); assert p.returncode and '42501' in p.stderr, p.stderr   # no secret row yet: closed
+psql("insert into gotd_secret values ('seed', encode(sha256(convert_to('tok','UTF8')),'hex'))")
+for tok in ('wrong', 'tok ', 'TOK', '', None):
+    p = seed(tok, st, S); assert p.returncode and '42501' in p.stderr, (tok, p.stderr)
+for a in [(st, [], []), (st, [9000] * 9, [bin_of(9000)] * 9), (st, S, [1, 2]), (st, [499], [0]), (st, [3600001], [79]), (st, [9000], [80]), (st, [9000], [-1]),
+          (ymd(today - datetime.timedelta(2)), [9000], [bin_of(9000)]), (20260231, [9000], [bin_of(9000)])]:
+    p = seed('tok', a[0], a[1], a[2]); assert p.returncode and '22023' in p.stderr, (a, p.stderr)
+p = psql(f"select seed_gotd('tok',{st},array[9000,null]::int[],array[1,1]::int[])", role='anon', check=False); assert p.returncode and '22023' in p.stderr, p.stderr
+assert psql('select count(*) from gotd_seed').stdout.strip() == '0'
+print('ok    seed_gotd: no secret / wrong token -> 42501, 10 invalid inputs -> 22023, nothing written')
+
+before = last(read(st, st))['days'][0]
+p = seed('tok', st, S); assert p.returncode == 0, p.stderr
+r = last(p); allt = times + S
+assert r == {'status': 'ok', 'n': len(allt), 'sum': sum(allt)}, r
+day = last(read(st, st))['days'][0]; cnt = {}
+for x in allt: cnt[bin_of(x)] = cnt.get(bin_of(x), 0) + 1
+assert day['n'] == len(allt) and day['sum'] == sum(allt) and day['best'] == sorted(allt)[:TOP_K] and day['bins'] == [[k, cnt[k]] for k in sorted(cnt)] and day['seeds'] == sorted(S), day
+assert last(read(ymd(today - datetime.timedelta(1)), ymd(today - datetime.timedelta(1))))['days'][0]['seeds'] == []
+print('ok    seed_gotd matches the model (n, sum, bins, best top-10 of real + seeds, seeds listed by read_gotd)')
+
+p = seed('tok', st, [1000, 2000]); assert p.returncode == 0 and last(p) == {'status': 'exists'}, p.stderr
+assert last(read(st, st))['days'][0] == day
+assert last(seed('tok', ymd(today - datetime.timedelta(1)), [20000, 30000]))['status'] == 'ok'
+assert psql('select count(*) from gotd_seed').stdout.strip() == '2'
+print('ok    seed_gotd is idempotent per day, another day still seeds')
 psql('drop database gotd_test', 'postgres')

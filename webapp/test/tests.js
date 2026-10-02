@@ -19,6 +19,8 @@ import { createDaily, utcDayNumber } from '../src/features/daily.js';
 import { HINT_PENALTY_S, penalizedTime } from '../src/features/hints.js';
 import { createStore } from '../src/features/stats-store.js';
 import { NB, TOP_K, binOf, summarize, statsLine } from '../src/core/hist.js';
+import { parseDays, mergeDays } from '../src/core/stats-merge.js';
+import { wls, fitCandidate, predictH, dedupe, isMonotone, selectEntries, fitTime, predictMs, withoutSeeds, TIME_PRIOR, invert, floorMs, needsThinking, aboveFloor, EXTRA_MIN_SKILL } from '../src/core/gotd-model.js';
 import { createLeaderboard, backendsFromConfig, cloudflareBackend, supabaseBackend } from '../src/platform/leaderboard.js';
 import { GOLDEN } from './golden.js';
 import { metricsFor, referenceSolve, backtrackOverhead, gradeOf, refNodeCap, REF_FLAGS } from '../src/core/difficulty.js';
@@ -1355,6 +1357,84 @@ ta('stats-store: pending GOTD attempt is sent:false; saving stats persists and s
   await S.saveAttempt('20260929', { solved: true, time: 42.1, sent: true, stats: { n: 3, mean: 30, top: null, pct: 50 } });
   const S2 = createStore(st, [5]); await S2.hydrate('20260929'); eq(S2.attempt(), { solved: true, time: 42.1, sent: true, stats: { n: 3, mean: 30, top: null, pct: 50 } });
   const S3 = createStore(fakeStorage(), [5]); await S3.hydrate('20260929'); await S3.recordGotd(5, '20260929', 42.1); eq(S3.attempt(), { solved: true, time: 42.1 });
+});
+
+// ---- Game-of-Day seed players (core/gotd-model.js, stats-merge seeds) ----
+const aday = (extra = {}) => ({ d: 20260929, n: 3, sum: 9000, bins: [[3, 3]], best: [2000, 3000, 4000], ...extra });
+t('stats-merge: parseDays keeps seeds (default [], sorted), rejects malformed ones; mergeDays concatenates them', () => {
+  eq(parseDays({ days: [aday()] })[0].seeds, []);
+  eq(parseDays({ days: [aday({ seeds: [3000, 2000] })] })[0].seeds, [2000, 3000]);
+  for (const bad of [[499], [3600001], [1.5], ['x'], new Array(9).fill(5000), 'x', null]) eq(parseDays({ days: [aday({ seeds: bad })] }), null, JSON.stringify(bad));
+  const a = parseDays({ days: [aday({ seeds: [3000] })] }), b = parseDays({ days: [aday({ seeds: [2000] })] }), old = [{ ...parseDays({ days: [aday()] })[0], seeds: undefined }];
+  const m = mergeDays([a, b, old])[0]; eq([m.n, m.sum, m.seeds], [9, 27000, [2000, 3000]]);
+  eq(mergeDays([a])[0].seeds, [3000]);
+});
+t('gotd-model: withoutSeeds subtracts n, sum and bins exactly; null when the seeds do not fit', () => {
+  const seeds = [41000, 9000, 41000], reals = [30000, 5000], all = [...reals, ...seeds], bins = new Array(NB).fill(0); for (const x of all) bins[binOf(x)]++;
+  const r = withoutSeeds({ d: 1, n: 5, sum: all.reduce((a, x) => a + x, 0), bins, seeds }), exp = new Array(NB).fill(0); for (const x of reals) exp[binOf(x)]++;
+  eq([r.n, r.sum, r.bins], [2, 35000, exp]); eq(withoutSeeds({ d: 1, n: 2, sum: 1, bins: new Array(NB).fill(0), seeds: [5000] }), null);
+  eq(withoutSeeds({ d: 1, n: 4, sum: 100, bins, seeds }), null); eq(withoutSeeds({ d: 1, n: 3, sum: 5, bins }).n, 3);
+});
+t('gotd-model: wls and fitCandidate (linear, log, bucket, constant, too few rows)', () => {
+  const line = wls([0, 1, 2, 3], [1, 3, 5, 7]); ok(Math.abs(line.a - 1) < 1e-9 && Math.abs(line.b - 2) < 1e-9); eq(wls([2, 2], [1, 3]), { a: 2, b: 0 });
+  const xs = Array.from({ length: 40 }, (_, i) => i / 10), ys = xs.map(x => 0.5 + 0.9 * x), ws = xs.map(() => 1);
+  const f = fitCandidate(xs, ys, ws); eq(f.model.kind, 'id'); ok(f.mae < 1e-9 && f.skill > 0.99, JSON.stringify(f.model));
+  const g = Array.from({ length: 60 }, (_, i) => i % 4), gy = g.map(v => [0.2, 1.1, 2.4, 4.9][v]), b = fitCandidate(g, gy, g.map(() => 1), { bucket: true });
+  eq(b.model.kind, 'bucket'); ok(b.mae < 1e-9); eq(predictH(b.model, 3), 4.9); eq(predictH(b.model, 9), b.model.fallback); // unseen grade -> mean
+  eq(fitCandidate(xs.map(() => 1), ys, ws), null); eq(fitCandidate(xs.slice(0, 10), ys.slice(0, 10), ws.slice(0, 10)), null);
+  eq(predictH({ kind: 'id', a: -3, b: 1 }, 1), 0); eq(predictH({ kind: 'id', a: 3, b: 1 }, 9), 5); // clamped to the 0-5 scale
+});
+t('gotd-model: dedupe drops same-family and near-identical candidates, keeps the better one', () => {
+  const ranked = ['grade:B', 'B/N', 'wideFrac', 'altFrac', 'trapMax'].map(id => ({ id })), fam = id => (id === 'grade:B' ? 'B/N' : id);
+  const r = dedupe(ranked, fam, (a, b) => ([a, b].includes('trapMax') && [a, b].includes('altFrac') ? 0.97 : 0));
+  eq([r.kept.map(c => c.id), r.dropped], [['grade:B', 'wideFrac', 'altFrac'], [{ id: 'B/N', because: 'grade:B' }, { id: 'trapMax', because: 'altFrac' }]]);
+});
+t('gotd-model: selectEntries gives 3..8 entries, trims min and max of the next 7, skips undefined, throws below 3', () => {
+  const ranked = Array.from({ length: 12 }, (_, i) => ({ id: 'c' + i })), H = [1.5, 1.0, 2.0, 0.2, 3.5, 1.7, 1.6, 4.0, 0.1, 2.2, 9, 9];
+  const sel = hs => selectEntries(ranked, id => hs[+id.slice(1)]);
+  let e = sel(H); eq(e.length, 8); eq(e.map(x => x.id).sort(), ['c0', 'c1', 'c2', 'c4', 'c5', 'c6', 'c9', 'c3'].sort()); // dropped: c8 (0.1 = min) and c7 (4.0 = max) of ranks 4..10
+  eq(e.map(x => x.h), [...e.map(x => x.h)].sort((a, b) => a - b)); eq(e.filter(x => x.role === 'top').map(x => x.id).sort(), ['c0', 'c1', 'c2']);
+  e = sel(H.map((h, i) => (i === 1 || i === 6 ? undefined : h))); eq(e.map(x => x.id).includes('c1') || e.map(x => x.id).includes('c6'), false); eq(e.filter(x => x.role === 'top').map(x => x.id).sort(), ['c0', 'c2', 'c3']);
+  for (const [defined, count] of [[3, 3], [4, 4], [5, 5], [6, 4], [7, 5], [8, 6], [9, 7], [10, 8], [11, 8], [12, 8]]) eq(sel(H.map((h, i) => (i < defined ? h : undefined))).length, count, 'defined ' + defined);
+  for (const defined of [0, 1, 2]) { let msg = ''; try { sel(H.map((h, i) => (i < defined ? h : undefined))); } catch (err) { msg = err.message; } ok(/need 3/.test(msg), 'defined ' + defined); }
+});
+t('gotd-model: isMonotone: a grade metric must not be rated lower at a higher grade', () => {
+  ok(isMonotone({ kind: 'bucket', table: { 0: 1, 1: 1, 3: 2.5, 4: 2.5 } })); ok(isMonotone({ kind: 'id', a: 0, b: 0.5 })); ok(isMonotone({ kind: 'id', a: 0, b: 0 }));
+  ok(!isMonotone({ kind: 'bucket', table: { 0: 1.21, 1: 1.45, 2: 1.41, 3: 0.8, 4: 2 } })); ok(!isMonotone({ kind: 'log', a: 3, b: -0.1 }));
+  ok(isMonotone({ kind: 'bucket', table: { 10: 2, 9: 1, 2: 0.5 } }), 'grades are ordered numerically, not as strings');
+});
+t('gotd-model: the production grade (badge) always plays, in a top place; the count stays 3..8', () => {
+  const ranked = Array.from({ length: 12 }, (_, i) => ({ id: 'c' + i })), H = [1.5, 1.0, 2.0, 0.2, 3.5, 1.7, 1.6, 4.0, 0.1, 2.2, 9, 9], hOf = id => H[+id.slice(1)];
+  let e = selectEntries(ranked, hOf, { id: 'c1', h: 1.25 }); eq(e.find(x => x.id === 'c1').h, 1.25); eq(e.find(x => x.id === 'c1').role, 'top'); eq(e.length, 8); // in the top 3 already: its own h wins
+  e = selectEntries(ranked, hOf, { id: 'c6', h: 1.55 }); eq(e.filter(x => x.role === 'top').map(x => x.id).sort(), ['c0', 'c1', 'c6']); eq(e.length, 8); eq(e.find(x => x.id === 'c2').role, 'extra'); // c2 gave up its top place, still an extra
+  eq(e.filter(x => x.id === 'c6').length, 1, 'not twice');
+  e = selectEntries(ranked, hOf, { id: 'zz', h: 3 }); eq(e.filter(x => x.role === 'top').map(x => x.id).sort(), ['c0', 'c1', 'zz']); // not ranked at all
+  e = selectEntries(ranked, id => (+id.slice(1) < 2 ? hOf(id) : undefined), { id: 'zz', h: 3 }); eq(e.map(x => x.id).sort(), ['c0', 'c1', 'zz']); // 2 defined + badge = 3 entries
+  eq(selectEntries(ranked, hOf, null).length, 8);
+});
+t('gotd-model: selectEntries leaves out candidates behind the top 3 whose skill is below the threshold; the top 3 and the badge are never cut', () => {
+  const sk = [0.3, 0.25, 0.01, 0.2, 0.09, 0.15, 0.12, 0.5], ranked = sk.map((skill, i) => ({ id: 'c' + i, skill })), H = [1.5, 1.0, 2.0, 0.2, 3.5, 1.7, 1.6, 4.0], hOf = id => H[+id.slice(1)];
+  const e = selectEntries(ranked, hOf, null, 0.1); eq(e.filter(x => x.role === 'top').map(x => x.id).sort(), ['c0', 'c1', 'c2']); // c2 has skill 0.01 and stays: top 3
+  eq(e.filter(x => x.role === 'extra').map(x => x.id).sort(), ['c5', 'c6']); // c3, c5, c6, c7 pass (c4 fails); of those 4 the lowest h (c3) and the highest h (c7) go
+  eq(selectEntries(ranked, hOf, null, 0).length, 3 + 3); // default 0: nothing is cut by skill (5 extras minus min and max)
+  const b = selectEntries(ranked, hOf, { id: 'c4', h: 3.0 }, 0.1); ok(b.some(x => x.id === 'c4' && x.role === 'top')); // a low-skill badge still plays
+  eq(selectEntries(ranked.map(c => ({ id: c.id })), hOf, null, 0.1).length, 6, 'candidates without a skill value are not cut (5 extras minus min and max)'); ok(EXTRA_MIN_SKILL > 0);
+});
+t('gotd-model: drawing floor: 0.5 s per cell, thinking needed above 6x6 or from grade 1, replays left out of the bins', () => {
+  eq([floorMs(6), floorMs(7)], [18000, 24500]); eq([needsThinking(5, 0.4), needsThinking(5, 0.5), needsThinking(6, 1.2), needsThinking(7, 0), needsThinking(16, 0)], [false, true, true, true, true]);
+  const times = [7101, 8300, 9400, 9701, 10501, 14001, 14491, 14902, 42130, 136101], bins = new Array(NB).fill(0); for (const x of times) bins[binOf(x)]++;
+  const r = aboveFloor(bins, 6); eq([r.n, r.cut], [2, 8]); eq(r.bins.reduce((a, c) => a + c, 0), 2); eq(r.bins[binOf(42130)], 1);
+  const edge = new Array(NB).fill(0); edge[binOf(18000)] = 3; edge[binOf(18000) - 1] = 2; eq(aboveFloor(edge, 6).n, 3); // the bin that contains the floor stays
+  eq(aboveFloor(bins, 3).cut, 0); // 4.5 s floor: nobody is cut
+});
+t('gotd-model: fitTime = prior without data, anchors the level with one day, recovers a known law from many days; predictMs clamps', () => {
+  const p0 = fitTime([]); eq(p0.mean.map(v => +v.toFixed(6)), TIME_PRIOR.mean.map(v => +v.toFixed(6))); eq(p0.sd.map(v => +v.toFixed(3)), TIME_PRIOR.sd);
+  eq(predictMs(p0, 7, TIME_PRIOR.refH), 60000); eq(predictMs(p0, 7, 2.5) / predictMs(p0, 7, 1.5), 2); eq(predictMs(p0, 14, 1.5) / predictMs(p0, 7, 1.5), 4); // x2 per grade, time ~ cells
+  const one = fitTime([{ n: 7, h: 1.5, y: Math.log(40000), count: 12 }]); ok(Math.abs(Math.exp(one.mean[0]) - 40000) < 5000, 'level moves to the data'); ok(Math.abs(one.mean[2] - Math.LN2) < 0.05, 'slope stays at the prior with one day');
+  let s = 11; const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32, pts = Array.from({ length: 80 }, () => { const n = 5 + Math.floor(rnd() * 7), h = rnd() * 4; return { n, h, y: Math.log(40000) + 0.9 * Math.log(n * n / 49) + 0.6 * (h - 1.5) + 0.1 * (rnd() - 0.5), count: 10 }; });
+  const m = fitTime(pts); ok(Math.abs(m.mean[1] - 0.9) < 0.1 && Math.abs(m.mean[2] - 0.6) < 0.05 && Math.abs(Math.exp(m.mean[0]) - 40000) < 3000, JSON.stringify(m.mean));
+  ok(m.sd[2] < p0.sd[2] / 3, 'posterior is tighter'); eq(predictMs({ mean: [Math.log(1), 0, 0] }, 7, 1.5), 500); eq(predictMs({ mean: [Math.log(1e9), 0, 0] }, 7, 1.5), 3600000);
+  const I = invert([[2, 1, 0], [1, 3, 1], [0, 1, 4]]), P = [[2, 1, 0], [1, 3, 1], [0, 1, 4]].map(r => I[0].map((_, j) => r.reduce((a, v, k) => a + v * I[k][j], 0))); ok(P.every((r, i) => r.every((v, j) => Math.abs(v - +(i === j)) < 1e-12)));
 });
 
 for (const [name, fn] of pending) { const t0 = Date.now(); try { await fn(); pass++; out.push(`ok    ${name} (${Date.now() - t0}ms)`); } catch (e) { fail++; out.push(`FAIL  ${name}: ${e.message}`); } }

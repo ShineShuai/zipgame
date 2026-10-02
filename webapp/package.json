@@ -10,6 +10,8 @@
     "test": "node test/tests.js",
     "test:server": "node server/cloudflare/worker.test.mjs",
     "bench": "node bench/bench.js",
-    "golden": "node test/print-golden.js"
+    "golden": "node test/print-golden.js",
+    "gotd:fit": "node tools/gotd-fit.mjs",
+    "gotd:seed": "node tools/gotd-seed.mjs --dry-run"
   }
 }
