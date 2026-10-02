@@ -20,7 +20,8 @@ import { HINT_PENALTY_S, penalizedTime } from '../src/features/hints.js';
 import { createStore } from '../src/features/stats-store.js';
 import { NB, TOP_K, binOf, summarize, statsLine } from '../src/core/hist.js';
 import { parseDays, mergeDays } from '../src/core/stats-merge.js';
-import { wls, fitCandidate, predictH, dedupe, isMonotone, selectEntries, fitTime, predictMs, withoutSeeds, TIME_PRIOR, invert, floorMs, needsThinking, aboveFloor, EXTRA_MIN_SKILL } from '../src/core/gotd-model.js';
+import { wls, fitCandidate, predictH, dedupe, isMonotone, selectEntries, pickEntries, fitTime, predictMs, withoutSeeds, TIME_PRIOR, invert, floorMs, needsThinking, aboveFloor, EXTRA_MIN_SKILL } from '../src/core/gotd-model.js';
+import { barsSvg, linesSvg, histSvg, scatterSvg } from '../src/apps/stats/charts.js';
 import { createLeaderboard, backendsFromConfig, cloudflareBackend, supabaseBackend } from '../src/platform/leaderboard.js';
 import { GOLDEN } from './golden.js';
 import { metricsFor, referenceSolve, backtrackOverhead, gradeOf, refNodeCap, REF_FLAGS } from '../src/core/difficulty.js';
@@ -1427,9 +1428,47 @@ t('gotd-model: drawing floor: 0.5 s per cell, thinking needed above 6x6 or from 
   const edge = new Array(NB).fill(0); edge[binOf(18000)] = 3; edge[binOf(18000) - 1] = 2; eq(aboveFloor(edge, 6).n, 3); // the bin that contains the floor stays
   eq(aboveFloor(bins, 3).cut, 0); // 4.5 s floor: nobody is cut
 });
+t('gotd-model: withoutSeeds also takes the seed times out of best (one entry per seed); best may end up shorter than TOP_K', () => {
+  const seeds = [9000, 41000], reals = [5000, 30000, 41000], all = [...reals, ...seeds], bins = new Array(NB).fill(0);
+  for (const x of all) bins[binOf(x)]++;
+  const day = { d: 1, n: 5, sum: all.reduce((a, x) => a + x, 0), bins, best: [...all].sort((a, b) => a - b), seeds };
+  const r = withoutSeeds(day);
+  eq(r.best, [5000, 30000, 41000]); eq(r.seeds, []); eq(day.best.length, 5, 'input untouched');
+  eq(withoutSeeds({ ...day, seeds: [], best: undefined }).best, []);
+});
+t('gotd-model: pickEntries reports the extras it cut (lowest / highest h of the puzzle, not of the skill rank) and the ones below the skill threshold', () => {
+  const skills = [0.25, 0.24, 0.16, 0.1376, 0.1199, 0.1198, 0.1027, 0.0748];
+  const ranked = ['a', 'b', 'c', 'wide', 'max', 'kt', 'alt', 'weak'].map((id, i) => ({ id, skill: skills[i] }));
+  const H = { a: 1.2, b: 2.3, c: 1.7, wide: 1.5, max: 2.6, kt: 2.19, alt: 2.09, weak: 1 };
+  const r = pickEntries(ranked, id => H[id], { id: 'b', h: 2.3 }, 0.1);
+  eq(r.played.map(x => x.id), ['a', 'c', 'alt', 'kt', 'b']);
+  eq(r.cut.map(x => [x.id, x.role]), [['wide', 'lowest'], ['max', 'highest']]);
+  eq(r.weak.map(x => x.id), ['weak']);
+  eq(selectEntries(ranked, id => H[id], { id: 'b', h: 2.3 }, 0.1), r.played);
+  eq(pickEntries(ranked.slice(0, 5), id => H[id], null, 0.1).cut, [], 'fewer than 3 extras: nothing is trimmed');
+});
+t('stats charts: tips are escaped attributes, seed players are drawn and widen the axis', () => {
+  const days = [20260930, 20261001];
+  const bars = barsSvg(days, [{ name: 'a', cls: 'c-supabase', values: [3, 5] }], 20261001, [['d1', 'x'], ['d2 "q" <b>']]);
+  eq((bars.match(/data-tip=/g) || []).length, 2); ok(bars.includes('d2 &quot;q&quot; &lt;b&gt;') && bars.includes('d1&#10;x'), bars);
+  const base = { lo: [20, 30], hi: [90, 100] }, lines = [{ name: 'median', cls: 'l-p50', values: [50, null] }];
+  const plain = linesSvg(days, lines, base, null);
+  ok(!plain.includes('class="seed"') && !plain.includes('>10m<'));
+  const withSeeds = linesSvg(days, lines, base, null, { seeds: [[{ ms: 600000, copies: 2 }], []], tips: [['t']] });
+  eq((withSeeds.match(/class="seed"/g) || []).length, 1); ok(withSeeds.includes('>10m<'), 'y axis reaches the seed'); ok(withSeeds.includes('seed player 10m ×2'));
+  ok(withSeeds.includes('09-30 · median 50s') && withSeeds.includes('data-d="20260930"'));
+  const bins = new Array(80).fill(0); bins[20] = 3; bins[25] = 1;
+  const seedBins = new Array(80).fill(0); seedBins[20] = 2;
+  const hist = histSvg(bins, [{ label: 'p50 20s', ms: 20000, cls: 'm-p50' }], seedBins);
+  eq((hist.match(/class="bar-seed"/g) || []).length, 1); eq((hist.match(/class="bar0"/g) || []).length, 2); ok(hist.includes('3 players, 2 of them seed') && hist.includes('p50 20s'));
+  eq((histSvg(bins, []).match(/bar-seed/g) || []).length, 0);
+  const sc = scatterSvg([{ x: 2, y: 60, n: 9, cls: 'c0', label: 'day "1"', seeds: [{ ms: 300000, label: 'seed 5m' }] }]);
+  eq((sc.match(/class="seed"/g) || []).length, 1); ok(sc.includes('day &quot;1&quot;') && sc.includes('>5m<'), 'scatter axis reaches the seed');
+});
 t('gotd-model: fitTime = prior without data, anchors the level with one day, recovers a known law from many days; predictMs clamps', () => {
   const p0 = fitTime([]); eq(p0.mean.map(v => +v.toFixed(6)), TIME_PRIOR.mean.map(v => +v.toFixed(6))); eq(p0.sd.map(v => +v.toFixed(3)), TIME_PRIOR.sd);
-  eq(predictMs(p0, 7, TIME_PRIOR.refH), 60000); eq(predictMs(p0, 7, 2.5) / predictMs(p0, 7, 1.5), 2); eq(predictMs(p0, 14, 1.5) / predictMs(p0, 7, 1.5), 4); // x2 per grade, time ~ cells
+  eq(predictMs(p0, 7, TIME_PRIOR.refH), 100000); eq(predictMs(p0, 7, 2), 141421); // 7x7 grade 2: 141 s
+  eq(predictMs(p0, 7, 2.5) / predictMs(p0, 7, 1.5), 2); eq(predictMs(p0, 14, 1.5) / predictMs(p0, 7, 1.5), 4); // x2 per grade, time ~ cells
   const one = fitTime([{ n: 7, h: 1.5, y: Math.log(40000), count: 12 }]); ok(Math.abs(Math.exp(one.mean[0]) - 40000) < 5000, 'level moves to the data'); ok(Math.abs(one.mean[2] - Math.LN2) < 0.05, 'slope stays at the prior with one day');
   let s = 11; const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32, pts = Array.from({ length: 80 }, () => { const n = 5 + Math.floor(rnd() * 7), h = rnd() * 4; return { n, h, y: Math.log(40000) + 0.9 * Math.log(n * n / 49) + 0.6 * (h - 1.5) + 0.1 * (rnd() - 0.5), count: 10 }; });
   const m = fitTime(pts); ok(Math.abs(m.mean[1] - 0.9) < 0.1 && Math.abs(m.mean[2] - 0.6) < 0.05 && Math.abs(Math.exp(m.mean[0]) - 40000) < 3000, JSON.stringify(m.mean));

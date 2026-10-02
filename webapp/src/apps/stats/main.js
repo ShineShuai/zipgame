@@ -3,19 +3,62 @@ import { LEADERBOARD } from '../../config.js';
 import { backendsFromConfig } from '../../platform/leaderboard.js';
 import { fetchStats } from '../../platform/stats-client.js';
 import { mergeDays, dayStats, flagsOf, median, spearman, quantile, dayList } from '../../core/stats-merge.js';
+import { withoutSeeds } from '../../core/gotd-model.js';
+import { NB, binOf } from '../../core/hist.js';
 import { parse } from '../../core/format.js';
 import { validate } from '../../core/model.js';
 import { trapMetrics } from '../../core/trap.js';
 import { barsSvg, linesSvg, histSvg, scatterSvg, fmtSec } from './charts.js';
+import { initTooltip } from './tooltip.js';
 
 const NAMES = ['supabase', 'cloudflare'], MIN_SCATTER_N = 5, PUZZLE_URL = d => `../demo/GameOfDay/${d}.txt`;
 const $ = id => document.getElementById(id);
 const dot = color => `<i style="background:var(--${color})"></i>`;
-const S = { source: 'merged', sel: null, results: [], puzzles: new Map(), run: 0 };
+const hollow = '<i class="hollow"></i>';
+const S = { source: 'merged', seeds: true, sel: null, results: [], puzzles: new Map(), run: 0 };
 const backends = backendsFromConfig(LEADERBOARD);
 
 const okResults = () => S.results.filter(r => r.status === 'ok');
-const currentDays = () => (S.source === 'merged' ? mergeDays(okResults().map(r => r.days)) : (S.results.find(r => r.name === S.source) || { days: [] }).days);
+const storedDays = () => (S.source === 'merged' ? mergeDays(okResults().map(r => r.days)) : (S.results.find(r => r.name === S.source) || { days: [] }).days);
+const isoDay = d => `${String(d).slice(0, 4)}-${String(d).slice(4, 6)}-${String(d).slice(6)}`;
+
+// The days as the charts show them: with the seed players as stored, or without them (n, sum, bins and best of the real players only).
+// A day whose seeds do not fit into its aggregate (edited by hand) stays as stored; days with no real player drop out.
+function shownDays() {
+  const days = storedDays();
+  if (S.seeds) return days;
+  return days.map(day => withoutSeeds(day) ?? day).filter(day => day.n > 0);
+}
+
+// seed times of a day with how often each time occurs: a merged day lists every seed once per backend (the seeds are written to both).
+function seedDots(day) {
+  const copies = new Map();
+  for (const ms of day.seeds) copies.set(ms, (copies.get(ms) ?? 0) + 1);
+  return [...copies].map(([ms, count]) => ({ ms, copies: count }));
+}
+const copiesText = copies => (copies > 1 ? ` ×${copies}` : '');
+
+// Marks the seed times among the fastest times (one best entry per seed).
+function bestCells(day) {
+  const pending = [...day.seeds];
+  return day.best.map(ms => {
+    const at = pending.indexOf(ms);
+    if (at >= 0) pending.splice(at, 1);
+    return { ms, seed: at >= 0 };
+  });
+}
+
+function dayTip(day, stats) {
+  const lines = [
+    `${isoDay(day.d)} · ${day.n} players`,
+    `mean ${fmtSec(stats.mean)}`,
+    `median ${fmtSec(stats.p50)}`,
+    `p10 – p90: ${fmtSec(stats.p10)} – ${fmtSec(stats.p90)}`,
+  ];
+  if (stats.top !== null) lines.push(`top-10 mean ${fmtSec(stats.top)}`);
+  if (day.seeds.length) lines.push(`seed players (${day.seeds.length}): ${day.seeds.map(ms => fmtSec(ms / 1000)).join(' ')}`);
+  return lines;
+}
 
 function renderStatus() {
   $('status').innerHTML = NAMES.map(name => {
@@ -28,30 +71,78 @@ function renderStatus() {
 
 function renderKpis(days) {
   const n = days.reduce((a, d) => a + d.n, 0), sumMs = days.reduce((a, d) => a + d.sum, 0), last = days.at(-1);
+  const seedCount = days.reduce((a, d) => a + d.seeds.length, 0);
   const failover = new Set(), seen = new Set();
   for (const d of okResults().flatMap(r => r.days.map(x => x.d))) (seen.has(d) ? failover : seen).add(d);
   const kpi = (v, label) => `<div class="kpi"><b>${v}</b><span>${label}</span></div>`;
   $('kpis').innerHTML = [kpi(n, 'solves'), kpi(days.length, 'days with data'), n ? kpi(fmtSec(sumMs / n / 1000), 'mean solve time') : '',
     days.length ? kpi(fmtSec(Math.min(...days.map(d => d.best[0] ?? Infinity)) / 1000), 'fastest solve') : '',
-    last ? kpi(`${last.n}`, `solves on ${last.d}`) : '', okResults().length > 1 ? kpi(failover.size, 'days on both backends') : ''].join('');
+    last ? kpi(`${last.n}`, `solves on ${last.d}`) : '', okResults().length > 1 ? kpi(failover.size, 'days on both backends') : '',
+    seedCount ? kpi(seedCount, 'seed players among the solves') : ''].join('');
 }
 
 function renderTrend(days) {
-  const axis = days.map(d => d.d), stats = days.map(dayStats), names = S.source === 'merged' ? okResults().map(r => r.name) : [S.source];
-  const series = names.map(name => { const byDay = new Map(S.results.find(r => r.name === name).days.map(x => [x.d, x.n])); return { name, cls: `c-${name}`, values: axis.map(d => byDay.get(d) || 0) }; });
-  $('solves').innerHTML = barsSvg(axis, series, S.sel);
-  $('times').innerHTML = linesSvg(axis, [{ cls: 'l-mean', values: stats.map(s => s.mean) }, { cls: 'l-p50', values: stats.map(s => s.p50) }, { cls: 'l-top', values: stats.map(s => s.top) }],
-    { lo: stats.map(s => s.p10), hi: stats.map(s => s.p90) }, S.sel);
-  $('timesLegend').innerHTML = `${dot('blue')}mean ${dot('green')}median ${dot('orange')}top-10 mean (n &gt; 10)` + (S.source === 'merged' ? ' · ' + names.map(n => `${dot(n === 'supabase' ? 'blue' : 'orange')}${n}`).join(' ') + ' (bars)' : '');
+  const axis = days.map(d => d.d);
+  const stats = days.map(dayStats);
+  const names = S.source === 'merged' ? okResults().map(r => r.name) : [S.source];
+  const tips = days.map((day, i) => dayTip(day, stats[i]));
+
+  // players per backend; with seeds on, the seed players are their own grey segment instead of part of the backend's count
+  const stored = new Map(names.map(name => [name, new Map(S.results.find(r => r.name === name).days.map(x => [x.d, x]))]));
+  const series = names.map(name => ({
+    name,
+    cls: `c-${name}`,
+    values: axis.map(d => {
+      const day = stored.get(name).get(d);
+      return day ? day.n - day.seeds.length : 0;
+    }),
+  }));
+  if (S.seeds) {
+    const seedsOf = d => names.reduce((total, name) => total + (stored.get(name).get(d)?.seeds.length ?? 0), 0);
+    series.push({ name: 'seed players', cls: 'c-seed', values: axis.map(seedsOf) });
+  }
+  const barTips = axis.map((d, i) => {
+    const total = series.reduce((sum, s) => sum + s.values[i], 0);
+    return [`${isoDay(d)} · ${total} players`, ...series.filter(s => s.values[i]).map(s => `${s.name}: ${s.values[i]}`)];
+  });
+  $('solves').innerHTML = barsSvg(axis, series, S.sel, barTips);
+
+  const lines = [
+    { name: 'mean', cls: 'l-mean', values: stats.map(s => s.mean) },
+    { name: 'median', cls: 'l-p50', values: stats.map(s => s.p50) },
+    { name: 'top-10 mean', cls: 'l-top', values: stats.map(s => s.top) },
+  ];
+  const band = { lo: stats.map(s => s.p10), hi: stats.map(s => s.p90) };
+  const seeds = S.seeds ? days.map(seedDots) : [];
+  $('times').innerHTML = linesSvg(axis, lines, band, S.sel, { seeds, tips });
+
+  const legend = [`${dot('blue')}mean`, `${dot('green')}median`, `${dot('orange')}top-10 mean (n &gt; 10)`];
+  if (S.seeds) legend.push(`${hollow}seed players`);
+  if (S.source === 'merged') legend.push(names.map(n => `${dot(n === 'supabase' ? 'blue' : 'orange')}${n}`).join(' ') + ' (bars)');
+  $('timesLegend').innerHTML = legend.join(' · ');
 }
 
 function renderDay(days) {
   const day = days.find(d => d.d === S.sel);
-  if (!day) { $('dayTitle').textContent = 'Day'; $('hist').innerHTML = $('best').innerHTML = ''; return; }
+  if (!day) {
+    $('dayTitle').textContent = 'Day';
+    $('hist').innerHTML = '';
+    $('best').innerHTML = '';
+    $('histLegend').innerHTML = '';
+    return;
+  }
   const s = dayStats(day);
   $('dayTitle').innerHTML = `${day.d} <small>· ${day.n} solves · mean ${fmtSec(s.mean)} · median ${fmtSec(s.p50)} · p10 ${fmtSec(s.p10)} · p90 ${fmtSec(s.p90)} (percentiles ±5 %)</small>`;
-  $('hist').innerHTML = histSvg(day.bins, [['p10', s.p10], ['p50', s.p50], ['p90', s.p90], ['mean', s.mean]].map(([label, sec]) => ({ label: `${label} ${fmtSec(sec)}`, ms: sec * 1000, cls: `m-${label}` })));
-  $('best').innerHTML = `<div class="chart"><table><tr>${day.best.map((_, i) => `<th>#${i + 1}</th>`).join('')}</tr><tr>${day.best.map(ms => `<td>${fmtSec(ms / 1000)}</td>`).join('')}</tr></table></div>`;
+  const marks = [['p10', s.p10], ['p50', s.p50], ['p90', s.p90], ['mean', s.mean]].map(([label, sec]) => ({ label: `${label} ${fmtSec(sec)}`, ms: sec * 1000, cls: `m-${label}` }));
+  const seedBins = new Array(NB).fill(0);
+  for (const ms of day.seeds) seedBins[binOf(ms)] += 1;
+  $('hist').innerHTML = histSvg(day.bins, marks, seedBins);
+  $('histLegend').innerHTML = day.seeds.length ? `${dot('blue')}real players ${dot('seed')}seed players (${day.seeds.length}, grey in the table too)` : '';
+
+  const cells = bestCells(day);
+  const heads = cells.map((_, i) => `<th>#${i + 1}</th>`).join('');
+  const times = cells.map(c => `<td${c.seed ? ' class="seed"' : ''}>${fmtSec(c.ms / 1000)}</td>`).join('');
+  $('best').innerHTML = `<div class="chart"><table><tr>${heads}</tr><tr>${times}</tr></table></div>`;
 }
 
 function renderFlags(days) {
@@ -63,24 +154,49 @@ function renderFlags(days) {
 
 function renderScatter(days) {
   const pts = days.filter(d => d.n >= MIN_SCATTER_N && S.puzzles.get(d.d)).map(d => ({ d, p: S.puzzles.get(d.d), s: dayStats(d) }));
-  const sizes = [...new Set(pts.map(x => x.p.size))].sort((a, b) => a - b), rho = list => spearman(list.map(x => x.p.predicted), list.map(x => x.s.p50));
-  const fmtRho = list => { const r = rho(list); return r === null ? 'ρ n/a' : `ρ ${r.toFixed(2)}`; };
-  $('scatter').innerHTML = scatterSvg(pts.map(x => ({ x: x.p.predicted, y: x.s.p50, n: x.d.n, cls: `c${sizes.indexOf(x.p.size) % 6}`, label: `${x.d.d} · ${x.p.size}×${x.p.size} · predicted ${x.p.predicted.toFixed(2)} · median ${fmtSec(x.s.p50)} · n=${x.d.n}` })));
-  $('scatterLegend').innerHTML = pts.length ? `all days: ${pts.length}, ${fmtRho(pts)} · ` + sizes.map((sz, i) => { const list = pts.filter(x => x.p.size === sz); return `<span><i class="c${i % 6}" style="background:var(--${['blue', 'orange', 'green', 'violet', 'teal', 'red'][i % 6]})"></i>${sz}×${sz}: ${list.length} days, ${fmtRho(list)}</span>`; }).join('') : '';
+  const sizes = [...new Set(pts.map(x => x.p.size))].sort((a, b) => a - b);
+  const rho = list => spearman(list.map(x => x.p.predicted), list.map(x => x.s.p50));
+  const fmtRho = list => {
+    const r = rho(list);
+    return r === null ? 'ρ n/a' : `ρ ${r.toFixed(2)}`;
+  };
+  const seedsOf = x => (S.seeds ? seedDots(x.d) : []).map(seed => ({
+    ms: seed.ms,
+    label: `${isoDay(x.d.d)} · seed player ${fmtSec(seed.ms / 1000)}${copiesText(seed.copies)} · shown at the day's predicted ${x.p.predicted.toFixed(2)}`,
+  }));
+  $('scatterNote').textContent = 'x = trap grade prediction (0–5, unrounded); y = median from bins (±5 %); days with ≥ 5 solves. Times include +180 s per hint used. Sizes differ: compare ρ within a size.' +
+    (S.seeds ? ' Hollow dots = the day\'s seed players (same x as the day; their own difficulty is not stored); medians include them.' : ' Seed players are left out.');
+  $('scatter').innerHTML = scatterSvg(pts.map(x => ({
+    x: x.p.predicted,
+    y: x.s.p50,
+    n: x.d.n,
+    cls: `c${sizes.indexOf(x.p.size) % 6}`,
+    label: `${x.d.d} · ${x.p.size}×${x.p.size} · predicted ${x.p.predicted.toFixed(2)} · median ${fmtSec(x.s.p50)} · n=${x.d.n}`,
+    seeds: seedsOf(x),
+  })));
+  const colors = ['blue', 'orange', 'green', 'violet', 'teal', 'red'];
+  const perSize = sizes.map((sz, i) => {
+    const list = pts.filter(x => x.p.size === sz);
+    return `<span><i class="c${i % 6}" style="background:var(--${colors[i % 6]})"></i>${sz}×${sz}: ${list.length} days, ${fmtRho(list)}</span>`;
+  });
+  $('scatterLegend').innerHTML = pts.length ? `all days: ${pts.length}, ${fmtRho(pts)} · ${perSize.join('')}` : '';
 }
 
 function render() {
   if (S.source !== 'merged' && !okResults().some(r => r.name === S.source)) S.source = 'merged'; // the chosen backend failed on this load
   renderStatus();
-  const days = currentDays();
+  const days = shownDays();
   if (!days.some(d => d.d === S.sel)) S.sel = days.at(-1)?.d ?? null;
-  renderKpis(days); renderTrend(days); renderDay(days); renderFlags(days); renderScatter(days);
+  renderKpis(days);
+  renderTrend(days);
+  renderDay(days);
+  renderFlags(storedDays()); // anomalies are about the stored data, whatever the seed toggle shows
+  renderScatter(days);
 }
 
 // Grades each day's puzzle with the trap model (same code as the play badge); one puzzle per tick so the page stays responsive.
 async function gradePuzzles(run) {
-  const todo = currentDays().map(d => d.d).filter(d => !S.puzzles.has(d));
-  $('scatterNote').textContent = 'x = trap grade prediction (0–5, unrounded); y = median from bins (±5 %); days with ≥ 5 solves. Times include +180 s per hint used. Sizes differ: compare ρ within a size.';
+  const todo = storedDays().map(d => d.d).filter(d => !S.puzzles.has(d));
   for (const [i, d] of todo.entries()) {
     if (run !== S.run) return;
     let entry = null;
@@ -91,7 +207,7 @@ async function gradePuzzles(run) {
       if (m && m.ok) entry = { size: p.n, predicted: m.predicted, grade: m.grade };
     } catch { /* missing or unparsable puzzle file: day is left out of the scatter */ }
     S.puzzles.set(d, entry);
-    if (i % 5 === 4 || i === todo.length - 1) { renderScatter(currentDays()); await new Promise(r => setTimeout(r)); }
+    if (i % 5 === 4 || i === todo.length - 1) { renderScatter(shownDays()); await new Promise(r => setTimeout(r)); }
   }
 }
 
@@ -107,6 +223,11 @@ async function load() {
 
 $('range').addEventListener('change', load);
 $('source').addEventListener('change', e => { S.source = e.target.value; render(); });
+$('seeds').addEventListener('change', e => {
+  S.seeds = e.target.checked;
+  render();
+});
+initTooltip();
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-d]');
   if (el) { S.sel = +el.dataset.d; render(); }

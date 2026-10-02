@@ -1,5 +1,5 @@
 /* Zip stats page: same palette as play.css; charts are inline SVG styled here (classes come from src/apps/stats/charts.js). */
-:root { color-scheme: light; --page: #f6f9ff; --surface: #fff; --text: #2a3350; --heading: #16203c; --muted: #5a6685; --line: #e3e9fa; --blue: #3b68ee; --orange: #ff9f1c; --green: #2fa36b; --red: #c23b3f; --violet: #8a5cf6; --teal: #12a4b6; }
+:root { color-scheme: light; --page: #f6f9ff; --surface: #fff; --text: #2a3350; --heading: #16203c; --muted: #5a6685; --line: #e3e9fa; --blue: #3b68ee; --orange: #ff9f1c; --green: #2fa36b; --red: #c23b3f; --violet: #8a5cf6; --teal: #12a4b6; --seed: #aab3cf; }
 * { box-sizing: border-box; }
 body { margin: 0; color: var(--text); background: var(--page); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
 .wrap { max-width: 900px; margin: 0 auto; padding: 16px; }
@@ -21,7 +21,7 @@ table { border-collapse: collapse; width: 100%; font-size: .9rem; } th, td { tex
 .tag { display: inline-block; border-radius: 8px; padding: 0 7px; margin: 1px 2px; font-size: .8rem; background: #fdecec; color: var(--red); } .tag.soft { background: #fff4e0; color: #a86400; }
 /* svg */
 .grid { stroke: var(--line); } .tick { fill: var(--muted); font-size: 12px; }
-.bar0, .c-supabase { fill: var(--blue); } .bar1, .c-cloudflare { fill: var(--orange); }
+.bar0, .c-supabase { fill: var(--blue); } .bar1, .c-cloudflare { fill: var(--orange); } .bar-seed, .c-seed { fill: var(--seed); }
 .hit { fill: transparent; cursor: pointer; } .hit:hover, .hit.sel { fill: rgba(59, 104, 238, .10); }
 .band { fill: rgba(59, 104, 238, .12); stroke: none; }
 .line { fill: none; stroke-width: 2; } .l-mean { stroke: var(--blue); } .l-p50 { stroke: var(--green); } .l-top { stroke: var(--orange); }
@@ -29,3 +29,15 @@ circle.l-mean { fill: var(--blue); } circle.l-p50 { fill: var(--green); } circle
 .mark { stroke-width: 2; stroke-dasharray: 5 3; } .m-p10, .m-p90 { stroke: var(--muted); } .m-p50 { stroke: var(--green); } .m-mean { stroke: var(--blue); }
 circle.c0 { fill: var(--blue); } circle.c1 { fill: var(--orange); } circle.c2 { fill: var(--green); } circle.c3 { fill: var(--violet); } circle.c4 { fill: var(--teal); } circle.c5 { fill: var(--red); }
 circle[class^="c"] { fill-opacity: .7; }
+/* seed players: hollow dots, grey bars / table cells; legend marker */
+circle.seed { fill: var(--surface); stroke: var(--muted); stroke-width: 1.5; }
+.legend i.hollow { background: none; border: 1.5px solid var(--muted); }
+td.seed { color: var(--muted); background: #eef0f7; }
+/* hover: only elements with data-tip take the pointer; the rest of a chart is click-through */
+.chart svg * { pointer-events: none; }
+.chart svg [data-tip] { pointer-events: all; }
+.chart svg .hit { pointer-events: all; }
+.pt { fill: transparent; cursor: pointer; }
+.mark-hit { stroke: transparent; stroke-width: 10; }
+.chart svg .bar0:hover, .chart svg .bar-seed:hover { opacity: .75; }
+.tip { position: fixed; z-index: 10; max-width: 280px; padding: 6px 9px; border-radius: 8px; background: var(--heading); color: #fff; font-size: .8rem; line-height: 1.35; white-space: pre-line; pointer-events: none; box-shadow: 0 2px 8px rgba(22, 32, 60, .25); }

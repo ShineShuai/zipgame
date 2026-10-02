@@ -29,7 +29,7 @@ import { validate } from '../src/core/model.js';
 import { trapMetrics } from '../src/core/trap.js';
 import { binOf } from '../src/core/hist.js';
 import { NAMES, INFO, featuresOf, needsSolver, isGrade } from './features.mjs';
-import { TIME_PRIOR, EXTRA_MIN_SKILL, selectEntries, predictH, clampH, withoutSeeds, fitTime, predictMs, floorMs, needsThinking, aboveFloor, FLOOR_S_PER_CELL } from '../src/core/gotd-model.js';
+import { TIME_PRIOR, EXTRA_MIN_SKILL, pickEntries, predictH, clampH, withoutSeeds, fitTime, predictMs, floorMs, needsThinking, aboveFloor, FLOOR_S_PER_CELL } from '../src/core/gotd-model.js';
 const BADGE = 'trapPredicted';
 
 const args = process.argv.slice(2), here = p => new URL(p, import.meta.url).pathname;
@@ -66,9 +66,16 @@ if (sha !== models.ratings.sha256) note('warning', 'gotd-models.json was fitted 
 const text = fs.readFileSync(puzzleFile(day), 'utf8'), puzzle = parse(text);
 if (!validate(puzzle).ok) die(`${puzzleFile(day)} is not a valid puzzle`);
 const f = featuresOf({ key: text });
-let entries;
 if (!Number.isFinite(f[BADGE])) note('warning', 'no trap grade for this puzzle: the production grade is not among the seed players');
-try { entries = selectEntries(models.ranked, id => (needsSolver(id) && f._capped ? undefined : predictH(byId[id].model, f[id])), Number.isFinite(f[BADGE]) ? { id: BADGE, h: clampH(f[BADGE]) } : null, EXTRA_MIN_SKILL); } catch (e) { die(`${day}: ${e.message}`); }
+const hOfCandidate = id => (needsSolver(id) && f._capped ? undefined : predictH(byId[id].model, f[id]));
+const badge = Number.isFinite(f[BADGE]) ? { id: BADGE, h: clampH(f[BADGE]) } : null;
+let picked;
+try {
+  picked = pickEntries(models.ranked, hOfCandidate, badge, EXTRA_MIN_SKILL);
+} catch (e) {
+  die(`${day}: ${e.message}`);
+}
+const entries = picked.played;
 
 // ---------- time model from the backends' past days ----------
 async function loadDays() {
@@ -97,11 +104,21 @@ console.log(`  median at 7x7, h ${TIME_PRIOR.refH}: ${(Math.exp(a) / 1000).toFix
 const timeAt = h => Math.max(predictMs(tm, puzzle.n, h), needsThinking(puzzle.n, h) ? floorMs(puzzle.n) : 0);
 console.log(`drawing floor ${(floorMs(puzzle.n) / 1000).toFixed(1)} s (${FLOOR_S_PER_CELL} s per cell): no seed player is faster when the puzzle needs thinking (larger than 6x6, or grade >= 1)`);
 const times = entries.map(e => ({ ...e, ms: timeAt(e.h) })).sort((x, y) => x.ms - y.ms);
+const cutTimes = picked.cut.map(e => ({ ...e, ms: timeAt(e.h) }));
 const ms = times.map(t => t.ms), bins = ms.map(binOf);
 console.log(`${day}: ${puzzle.n}x${puzzle.n}${f._capped ? ', reference solve capped: solver metrics skipped' : ''} -> ${times.length} seed players (h = difficulty on the 0-5 scale of the hand ratings)`);
 for (const t of times) console.log(`  ${(t.ms / 1000).toFixed(1).padStart(7)} s  h ${t.h.toFixed(2)}  ${t.role.padEnd(5)} ${t.id}${t.id === BADGE ? '  (production grade, Play badge before rounding)' : ''}`);
+if (cutTimes.length) {
+  console.log('not played: of the candidates behind the top 3 (skill >= threshold) the lowest and the highest h of THIS puzzle are dropped, whatever their skill rank:');
+  for (const t of cutTimes) {
+    console.log(`  ${(t.ms / 1000).toFixed(1).padStart(7)} s  h ${t.h.toFixed(2)}  ${t.role.padEnd(7)} ${t.id}`);
+  }
+}
+if (picked.weak.length) {
+  console.log(`not considered, skill < ${EXTRA_MIN_SKILL}: ${picked.weak.map(c => `${c.id} (${c.skill.toFixed(2)})`).join(', ')}`);
+}
 console.log('what the selected names mean (design app label in brackets):');
-for (const t of times) console.log(`  ${t.id}: ${INFO[t.id][0]}${INFO[t.id][1] ? ` [${INFO[t.id][1]}]` : ' [not shown in the design app]'}`);
+for (const t of [...times, ...cutTimes]) console.log(`  ${t.id}: ${INFO[t.id][0]}${INFO[t.id][1] ? ` [${INFO[t.id][1]}]` : ' [not shown in the design app]'}`);
 // time of a puzzle of this size at grade g = 0..5 of metric `id`. A grade:* metric first maps its own grade onto h (the mean rating of the rated puzzles
 // with that grade, see gotd-fit.mjs); `*` = no rated puzzle had that grade (interpolated); [x] = the grade this puzzle has.
 const GRADES = [0, 1, 2, 3, 4, 5], sec = ms => (ms < 1e5 ? (ms / 1000).toFixed(1) : (ms / 1000).toFixed(0));
@@ -114,7 +131,7 @@ for (const [id, row] of grid) {
   console.log(`  ${id.padEnd(14)}${row.map(c => cell(c).padStart(8)).join('')}${row.some((c, i) => i && c.ms < row[i - 1].ms) ? '  not monotone' : ''}`);
   if (isGrade(id)) console.log(`  ${'  h at grade'.padEnd(14)}${row.map(c => c.h.toFixed(2).padStart(8)).join('')}`);
 }
-if (opt('--summary')) fs.appendFileSync(opt('--summary'), `### Seeds ${day} (${puzzle.n}x${puzzle.n}${dry ? ', dry run' : ''})\n| s | h | role | candidate |\n|--:|--:|---|---|\n${times.map(t => `| ${(t.ms / 1000).toFixed(1)} | ${t.h.toFixed(2)} | ${t.role} | ${t.id} |`).join('\n')}\n\ntime (s) at grade 0..5\n\n| candidate | 0 | 1 | 2 | 3 | 4 | 5 |\n|---|--:|--:|--:|--:|--:|--:|\n${grid.map(([id, row]) => `| ${id} | ${row.map(cell).join(' | ')} |`).join('\n')}\n\ntime model from ${points.length} day(s)\n`);
+if (opt('--summary')) fs.appendFileSync(opt('--summary'), `### Seeds ${day} (${puzzle.n}x${puzzle.n}${dry ? ', dry run' : ''})\n| s | h | role | candidate |\n|--:|--:|---|---|\n${times.map(t => `| ${(t.ms / 1000).toFixed(1)} | ${t.h.toFixed(2)} | ${t.role} | ${t.id} |`).join('\n')}\n\ntime (s) at grade 0..5\n\n| candidate | 0 | 1 | 2 | 3 | 4 | 5 |\n|---|--:|--:|--:|--:|--:|--:|\n${grid.map(([id, row]) => `| ${id} | ${row.map(cell).join(' | ')} |`).join('\n')}\n\ntime model from ${points.length} day(s)\n${cutTimes.length ? `\nnot played (lowest / highest h of the extras): ${cutTimes.map(t => `${t.id} h ${t.h.toFixed(2)}`).join(', ')}\n` : ''}`);
 if (dry) { console.log('dry run: nothing sent'); process.exit(0); }
 
 // ---------- write (once per backend; "exists" = already seeded) ----------

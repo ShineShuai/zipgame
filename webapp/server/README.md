@@ -33,4 +33,5 @@ Reads every configured backend in parallel (no failover) and merges them: n, sum
 Both backends expose the same public, read-only aggregate API (<= 90 days per request):
 - Supabase: `rpc/read_gotd` (`{ p_from, p_to }`). Re-run `supabase/schema.sql`; it is idempotent.
 - Cloudflare: `GET /stats?from=YYYYMMDD&to=YYYYMMDD` (cached 120 s). Redeploy with `npx wrangler deploy`.
+The "Seed players" checkbox switches the seed players (listed in `seeds`) on and off in every chart: on = as stored, seeds drawn as hollow dots / grey bars; off = n, sum, bins and best of the real players only. Hover any point, bar or day column for its values. In the merged view each seed counts once per backend, because both backends hold them.
 Reply: `{ days: [{ d, n, sum, bins: [[bin, n]], best: [ms] }] }`. Submitted times include +180 s per hint used. Serve the page over http (`python3 -m http.server`) or github.io; the difficulty scatter fetches `../demo/GameOfDay/YYYYMMDD.txt`.

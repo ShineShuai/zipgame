@@ -71,16 +71,30 @@ export const EXTRA_MIN_SKILL = 0.1;
 // ranked = candidates best first; hOf(id) = human-scale difficulty of THIS puzzle, undefined when the metric does not exist for it.
 // The first TOP defined candidates always play; of the next EXTRA the lowest and the highest h are dropped (when there are >= 3).
 // `badge` = { id, h }: the production grade (Play badge, unrounded). It always plays: when it is not among the TOP it takes the last of
-// those places, so the count stays 3..8. Candidates behind the top places need `skill >= minSkill` (ranked[i].skill). -> [{ id, h, role: 'top' | 'extra' }]
-// ordered by h. Throws with fewer than TOP candidates.
-export function selectEntries(ranked, hOf, badge = null, minSkill = 0) {
-  const live = ranked.map(c => ({ id: c.id, skill: c.skill ?? Infinity, h: c.id === badge?.id ? badge.h : hOf(c.id) })).filter(c => Number.isFinite(c.h));
+// those places, so the count stays 3..8. Candidates behind the top places need `skill >= minSkill` (ranked[i].skill).
+// -> { played, cut, weak } (all ordered by h except `weak`, which keeps the rank order)
+//   played = [{ id, h, role: 'top' | 'extra' }]
+//   cut    = [{ id, h, role: 'lowest' | 'highest' }]  extras dropped as the lowest / highest h of THIS puzzle (not of the skill ranking)
+//   weak   = [{ id, skill }]                          candidates among the next EXTRA that are below minSkill
+// Throws with fewer than TOP candidates.
+export function pickEntries(ranked, hOf, badge = null, minSkill = 0) {
+  const live = ranked
+    .map(c => ({ id: c.id, skill: c.skill ?? Infinity, h: c.id === badge?.id ? badge.h : hOf(c.id) }))
+    .filter(c => Number.isFinite(c.h));
   let top = live.slice(0, TOP);
   if (badge && !top.some(c => c.id === badge.id)) top = [...top.slice(0, TOP - 1), { id: badge.id, h: badge.h }];
   if (top.length < TOP) throw new Error(`only ${top.length} defined candidate(s), need ${TOP}`);
-  const extra = live.filter(c => !top.some(t => t.id === c.id)).slice(0, EXTRA).filter(c => c.skill >= minSkill).sort((a, b) => a.h - b.h);
-  return [...top.map(x => ({ ...x, role: 'top' })), ...(extra.length >= 3 ? extra.slice(1, -1) : extra).map(x => ({ ...x, role: 'extra' }))].sort((a, b) => a.h - b.h);
+
+  const behind = live.filter(c => !top.some(t => t.id === c.id)).slice(0, EXTRA);
+  const weak = behind.filter(c => c.skill < minSkill).map(c => ({ id: c.id, skill: c.skill }));
+  const extra = behind.filter(c => c.skill >= minSkill).sort((a, b) => a.h - b.h);
+  const trimmed = extra.length >= 3;
+  const cut = trimmed ? [{ ...extra[0], role: 'lowest' }, { ...extra.at(-1), role: 'highest' }] : [];
+  const kept = trimmed ? extra.slice(1, -1) : extra;
+  const played = [...top.map(x => ({ ...x, role: 'top' })), ...kept.map(x => ({ ...x, role: 'extra' }))];
+  return { played: played.sort((a, b) => a.h - b.h), cut, weak };
 }
+export const selectEntries = (ranked, hOf, badge = null, minSkill = 0) => pickEntries(ranked, hOf, badge, minSkill).played;
 
 // ---------- 3. h, N -> solve time ----------
 // Drawing the path alone takes time: the fastest play seen was 7.1 s on 36 cells (0.2 s per cell, a replay). A first solve of a puzzle with a
@@ -97,11 +111,11 @@ export function aboveFloor(bins, n) {
 
 // ln(median ms) = alpha + gamma * ln(N^2 / refN^2) + c * (h - refH), fitted as a Bayesian linear regression (Gaussian prior, known noise)
 // so that a database with one or two days still gives a sane answer and the data takes over as days accumulate.
-// The prior means are guesses, not measurements: alpha = 60 s at 7x7 / h 1.5, time proportional to the cell count (gamma 1), time doubling
+// The prior means are guesses, not measurements: alpha = 100 s at 7x7 / h 1.5 (141 s at h 2, 71 s at h 1; 60 s was too fast for a first solve), time proportional to the cell count (gamma 1), time doubling
 // per grade (c = ln 2). They only matter until the backends have days with >= minReal real players; the first real day (6x6, 10 players, 8 of
 // them 7-15 s = 0.2-0.4 s per cell, close to the drawing time alone) was not used for this: too few players, probably replays.
 // Noise per observed day: tau (puzzle-to-puzzle scatter) plus the sampling error of a median of `count` players (1.25 sigma / sqrt(count)).
-export const TIME_PRIOR = { refN: 7, refH: 1.5, mean: [Math.log(60000), 1, Math.LN2], sd: [1, 0.3, 0.25], tau: 0.3, sigma: 0.6, minReal: 20 };
+export const TIME_PRIOR = { refN: 7, refH: 1.5, mean: [Math.log(100000), 1, Math.LN2], sd: [1, 0.3, 0.25], tau: 0.3, sigma: 0.6, minReal: 20 };
 const timeX = (n, h, P) => [1, Math.log((n * n) / (P.refN * P.refN)), h - P.refH];
 
 export function invert(M) { // Gauss-Jordan with partial pivoting; M is small and positive definite here
@@ -127,11 +141,23 @@ export function fitTime(points, P = TIME_PRIOR) {
 }
 export const predictMs = (model, n, h, P = TIME_PRIOR) => Math.min(MAX_MS, Math.max(MIN_MS, Math.round(Math.exp(sum(timeX(n, clampH(h), P).map((x, i) => x * model.mean[i]))))));
 
-// A backend day (parseDays shape plus `seeds`) without its seed players: { d, n, sum, bins } of the real players, or null when
+// A backend day (parseDays shape plus `seeds`) without its seed players: { d, n, sum, bins, best, seeds: [] } of the real players, or null when
 // the seeds do not fit inside the aggregate (they were not written by us, or the day was edited by hand).
+// `best` loses the seed times that were among the fastest, so it can hold fewer than TOP_K entries (the real 11th fastest is not stored).
 export function withoutSeeds(day) {
-  const seeds = day.seeds || [], bins = [...day.bins];
-  for (const ms of seeds) if (--bins[binOf(ms)] < 0) return null;
-  const n = day.n - seeds.length, total = day.sum - sum(seeds);
-  return n < 0 || total < 0 ? null : { d: day.d, n, sum: total, bins };
+  const seeds = day.seeds || [];
+  const bins = [...day.bins];
+  for (const ms of seeds) {
+    bins[binOf(ms)] -= 1;
+    if (bins[binOf(ms)] < 0) return null;
+  }
+  const n = day.n - seeds.length;
+  const total = day.sum - sum(seeds);
+  if (n < 0 || total < 0) return null;
+  const best = [...(day.best || [])];
+  for (const ms of seeds) {
+    const at = best.indexOf(ms);
+    if (at >= 0) best.splice(at, 1);
+  }
+  return { d: day.d, n, sum: total, bins, best, seeds: [] };
 }
