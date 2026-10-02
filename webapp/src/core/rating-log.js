@@ -9,7 +9,7 @@
 // correlation and the export always reflect everything rated anywhere, not just one app's session.
 import { pickStorage } from '../platform/storage.js';
 import { serialize } from './format.js';
-import { fullDiagnostics, refNodeCap } from './difficulty.js';
+import { metricsFor, refNodeCap } from './difficulty.js';
 import { spatialMetrics } from './spatial.js';
 
 const LOG_KEY = 'zip-difficulty-rating-log-v1';
@@ -23,18 +23,14 @@ export const METRIC_DEFS = [
   ['decisionNodes', d => d.decisionNodes, 'Nodes where >=2 candidate moves survived every prune — real branch/guess points.', 'solver'],
   ['maxDecisionDepth', d => d.maxDecisionDepth, 'Depth fraction (0-1) of the deepest decision node.', 'solver'],
   ['B', d => d.B, 'nodes/cells - 1. Cheap cross-check from the same solve.', 'solver'],
-  ['naiveGap', d => d.naiveGap, 'naiveNodes - nodes (propagation+parity off vs on).', 'solver'],
-  ['firstGap', d => d.firstGap, 'nodes - firstNodes (prove-uniqueness cost vs find-a-solution cost).', 'solver'],
-  ['regression', d => d.regression, 'Unfitted placeholder log-linear combination — shape-inspection only.', 'solver'],
   ['crossPerSeg', d => d.crossPerSeg, 'Geometric checkpoint-segment crossings per segment (spatial.js).', 'spatial'],
   ['overlapPerSeg', d => d.overlapPerSeg, 'Checkpoint-segment bounding-box overlaps per segment (spatial.js).', 'spatial'],
 ];
 
-// Computes every metric for a puzzle in one pass (4 solves + free spatial pass — see difficulty.js
-// for the cost breakdown). Returns null if the reference solve couldn't confirm uniqueness within
+// Computes every metric for a puzzle in one pass (1 solve + free spatial pass). Returns null if the reference solve couldn't confirm uniqueness within
 // budget (nothing to log in that case — see exceeded handling at call sites).
 export function computeMetrics(puzzle, nodeCap = refNodeCap(puzzle.n)) {
-  const d = fullDiagnostics(puzzle, nodeCap);
+  const d = metricsFor(puzzle, nodeCap);
   if (d.exceeded) return null;
   Object.assign(d, spatialMetrics(puzzle));
   return Object.fromEntries(METRIC_DEFS.map(([id, get]) => [id, get(d)]));

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Score EVERY difficulty metric in the code base against hand ratings, then compare whole grading models with
 // leave-one-out (LOO) cross-validation, so "which is best" is answered on puzzles the model did not see.
-//   node tools/metrics-eval.mjs [tools/ratings.json] [--pairs tools/pairs.json] [--split 43] [--csv features.csv]
+//   node tools/metrics-eval.mjs [tools/ratings.json] [--pairs tools/pairs.json] [--split 43] [--csv features.csv] [--cap 1000000]
+// --cap = node cap of the reference solve (default 1e6; the app's own cap is far lower, see tools/lib.mjs evalCap).
 // ratings JSON: [{ key: puzzle text, human, lo?, hi? }] (lo/hi = the range you stated, e.g. "2 or 3" -> 2,3; used for
 // the "in range" score; without them a rating counts as the single value `human`).
 // Part 1  one row per metric: Spearman rho vs human, 95% bootstrap CI, and rho after removing puzzle size (rank residuals).
@@ -17,12 +18,14 @@ import fs from 'node:fs';
 import { NAMES, GROUP, LOG, featuresOf } from './features.mjs';
 import { ratingWeight, UNSURE_WEIGHT, findDuplicateGroups } from '../src/core/ratings-io.js';
 import { parsePairsJson, impliedPairs, pairAccuracy } from '../src/core/pairs-io.js';
+import { evalCap } from './lib.mjs';
 
 const args = process.argv.slice(2);
 const file = args.find(a => a.endsWith('.json')) || new URL('./ratings.json', import.meta.url).pathname;
 const csvOut = args.includes('--csv') ? args[args.indexOf('--csv') + 1] : null;
 const PAIRS_FILE = args.includes('--pairs') ? args[args.indexOf('--pairs') + 1] : new URL('./pairs.json', import.meta.url).pathname;
 const SPLIT = args.includes('--split') ? +args[args.indexOf('--split') + 1] : 43;
+const CAP = evalCap(args);
 const R = JSON.parse(fs.readFileSync(file, 'utf8'));
 const n = R.length, H = R.map(r => r.human), LO = R.map(r => r.lo ?? r.human), HI = R.map(r => r.hi ?? r.human), WGT = R.map(ratingWeight);
 const dups = findDuplicateGroups(R);
@@ -31,8 +34,9 @@ if (WGT.some(w => w < 1)) console.log(`${WGT.filter(w => w < 1).length} unsure r
 
 // ---------- 1. every metric, per puzzle (the definitions live in features.mjs) ----------
 const t0 = Date.now();
-const F = R.map(featuresOf);
-console.log(`${n} rated puzzles, all metrics computed in ${((Date.now() - t0) / 1000).toFixed(1)}s (${F.filter(f => f._capped).length} hit the reference-solve cap; their solver metrics are lower bounds and their grades count as 5)`);
+const F = R.map(r =>featuresOf(r, CAP));
+console.log(`${n} rated puzzles, all metrics computed in ${((Date.now() - t0) / 1000).toFixed(1)}s (reference-solve cap ${CAP.toLocaleString('en')} nodes)`);
+if (F.some(f => f._capped)) console.log(`WARNING: ${F.filter(f => f._capped).length} puzzle(s) hit the cap: their solver metrics are lower bounds and their grades count as 5. Raise it, e.g. --cap ${CAP * 10}`);
 if (csvOut) fs.writeFileSync(csvOut, ['human', 'lo', 'hi', ...NAMES].join(',') + '\n' + F.map((f, i) => [H[i], LO[i], HI[i], ...NAMES.map(k => f[k])].join(',')).join('\n'));
 
 // ---------- stats helpers ----------
@@ -79,7 +83,7 @@ function innerLoss(keys, idx, lam) { // closed-form LOO loss (interval distance 
   return s / idx.length;
 }
 const all = [...Array(n).keys()], LAM = 10;
-const POOL = NAMES.filter(k => !k.startsWith('grade:') && k !== 'trapPredicted' && k !== 'regression' && GROUP[k] !== 'struct' || k === 'n' || k === 'K/T' || k === 'turns/T' || k === 'segLen');
+const POOL = NAMES.filter(k => !k.startsWith('grade:') && k !== 'trapPredicted' && GROUP[k] !== 'struct' || k === 'n' || k === 'K/T' || k === 'turns/T' || k === 'segLen');
 function forward(idx, maxK = 4) {
   let chosen = [], best = mean(idx.map(i => dist(mean(idx.map(j => H[j])), i)));
   for (let step = 0; step < maxK; step++) {
@@ -179,7 +183,11 @@ console.log(`probe2 gate: ${gate.length} puzzles need nested guessing; human rat
 // ---------- Part 5: ranking accuracy ----------
 console.log('\n== Part 5: ranking accuracy (does the metric order two puzzles the way you did?) ==');
 const idxOfKey = new Map(R.map((r, i) => [r.key, i])), extraF = new Map();
-const featOf = key => idxOfKey.has(key) ? F[idxOfKey.get(key)] : (extraF.has(key) || extraF.set(key, (() => { try { return featuresOf({ key }); } catch { return null; } })()), extraF.get(key));
+const featOf = key => idxOfKey.has(key)
+  ? F[idxOfKey.get(key)]
+  : (extraF.has(key) || extraF.set(key, (() => {
+      try { return featuresOf({ key }, CAP); } catch { return null; }
+    })()), extraF.get(key));
 const valueOfMetric = k => key => { const f = featOf(key); return f ? f[k] : undefined; };
 const valueOfPred = pred => key => (idxOfKey.has(key) ? pred[idxOfKey.get(key)] : undefined);
 const implied = impliedPairs(R);

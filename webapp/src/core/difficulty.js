@@ -12,7 +12,7 @@ import { solve } from './solver/solve.js';
 // Reference config every grading solve() uses, so grades are comparable across puzzles/N/callers.
 // Matches the prune set the project's own ablation work was run with (deg+conn dead-end/flood-fill
 // are always on in solve.js; +prop +parity here). legCollide is deliberately EXCLUDED from the
-// reference metric (see legCollideDependent below) because its O(K^2) cost profile differs enough
+// reference metric because its O(K^2) cost profile differs enough
 // from the others that folding it in would skew decisionNodes for large-K puzzles independent of
 // how hard they actually are.
 export const REF_FLAGS = { prop: true, parity: true };
@@ -53,76 +53,6 @@ export function metricsFor(puzzle, nodeCap = refNodeCap(puzzle.n)) {
     maxDecisionDepth: r.maxDecisionDepth || 0,
     B: backtrackOverhead(r, puzzle.n),
   };
-}
-
-// ---- Tier 2: extra solves, for the design app's diagnostics — not the production grade ----
-
-// naiveNodes: re-solve with the strong inferences (propagation, parity) turned off, keeping only
-// the prunes solve.js always applies (dead-end, connectivity) — a rough stand-in for "cost without
-// the solver's cleverest, least human-like tricks." naiveGap is the number that actually carries
-// information: how much did prop+parity buy on this specific puzzle. A LARGE gap flags a puzzle
-// that looks hard to a naive searcher but the strong prunes dissolve instantly — i.e. decisionNodes
-// (computed WITH those prunes) likely under-reports what a human, who doesn't get that shortcut,
-// would actually feel. A small gap means the strong prunes weren't doing much work here, so
-// decisionNodes is probably closer to the real difficulty.
-export function naiveGap(puzzle, referenceNodes, nodeCap = refNodeCap(puzzle.n)) {
-  const naive = solve(puzzle, { limit: 2, nodeCap, prop: false, parity: false });
-  return { naiveNodes: naive.nodes, naiveExceeded: naive.exceeded, naiveGap: naive.nodes - referenceNodes };
-}
-
-// legCollideDependent: does this puzzle's uniqueness actually rely on the cross-leg collision
-// check? Re-check uniqueness with legCollide off; if a second solution appears (or the search can no
-// longer confirm uniqueness within budget), the puzzle's only-one-answer property depends on a
-// non-local inference a human essentially never makes proactively — they'd discover the collision
-// by getting stuck later, not by reasoning it out. This is a FLAG to be suspicious of the numeric
-// grade, not a number to blend into it (no fitted weight exists yet to combine it with — see
-// regressionScore below).
-export function legCollideDependent(puzzle, nodeCap = refNodeCap(puzzle.n)) {
-  const without = solve(puzzle, { limit: 2, nodeCap, ...REF_FLAGS, legCollide: false });
-  return without.count !== 1 || without.exceeded;
-}
-
-// First-solution cost vs. uniqueness-proof cost (limit:1 vs limit:2 on the same flags). Separate
-// call because it needs its own solve() (limit changes DFS's stopping point, not just bookkeeping).
-// Only worth computing where a real gap is plausible: the design app surfaces it, but it hasn't
-// been validated against anything and shouldn't be assumed meaningful yet.
-export function firstSolutionGap(puzzle, referenceNodes, nodeCap = refNodeCap(puzzle.n)) {
-  const first = solve(puzzle, { limit: 1, nodeCap, ...REF_FLAGS });
-  return { firstNodes: first.nodes, firstGap: referenceNodes - first.nodes };
-}
-
-// Every diagnostic metric at once — for the design app. 4 solve() calls total (reference, naive,
-// no-legCollide, first-solution) — fine for one puzzle at a time in a design tool, NOT something to
-// run per-puzzle in a batch/generation hot path (see generateAtDifficulty, which uses metricsFor
-// alone: one call).
-export function fullDiagnostics(puzzle, nodeCap = refNodeCap(puzzle.n)) {
-  const base = metricsFor(puzzle, nodeCap);
-  const gap = naiveGap(puzzle, base.nodes, nodeCap);
-  const legDep = legCollideDependent(puzzle, nodeCap);
-  const first = firstSolutionGap(puzzle, base.nodes, nodeCap);
-  return {
-    ...base, ...gap, ...first,
-    legCollideDependent: legDep,
-    regression: regressionScore(base, gap),
-  };
-}
-
-// ---- Provisional (UNFITTED) log-linear regression ----
-//
-// Weights below are placeholders, not fit to any data — there is no human-outcome log yet to fit
-// against (see the module comment). This exists so the design app has a formula to inspect and
-// compare against decisionNodes/B while that log is being built up, NOT as a candidate production
-// grade. Once real outcomes (solve time, undo count, abandon rate) are logged per puzzle, refit
-// a/b/c/d against them before trusting this for anything beyond "does the shape look plausible."
-export const REGRESSION_WEIGHTS = { a: 1, b: 0.8, c: 2, d: 0.3 };
-
-export function regressionScore(base, gap, weights = REGRESSION_WEIGHTS) {
-  const { a, b, c, d } = weights;
-  const naiveRatio = (gap.naiveNodes + 1) / (base.nodes + 1);
-  return a
-    + b * Math.log(base.decisionNodes + 1)
-    + c * base.maxDecisionDepth
-    + d * Math.log(naiveRatio + 1);
 }
 
 // ---- Grade bucketing (0-5) ----

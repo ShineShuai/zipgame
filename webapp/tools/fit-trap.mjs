@@ -1,5 +1,5 @@
 // Fit / evaluate the trap grade against hand ratings.
-//   node tools/fit-trap.mjs [tools/ratings.json] [--features trapMax,trapTop3,altFrac] [--lambda 10] [--write]
+//   node tools/fit-trap.mjs [tools/ratings.json] [--features trapMax,trapTop3,altFrac] [--lambda 10] [--cap 1000000] [--write]
 // ratings.json (default: tools/ratings.json): [{ "key": "<puzzle text>", "human": 0..5, "lo": .., "hi": .. }, ...] — exactly what the
 // design app's "Export ratings.json" button writes (see src/core/ratings-io.js for the format).
 // Prints leave-one-out (LOO) accuracy for the trap grade vs. the shipped grades, then the TRAP_MODEL
@@ -11,18 +11,20 @@ import { parse } from '../src/core/format.js';
 import { trapMetrics, trapGradeOf } from '../src/core/trap.js';
 import { gradesFor } from '../src/core/grades.js';
 import { ratingWeight, UNSURE_WEIGHT } from '../src/core/ratings-io.js';
+import { evalCap } from './lib.mjs';
 
 const args = process.argv.slice(2);
 const WRITE = args.includes('--write');
 const opt = (name, dflt) => { const i = args.indexOf('--' + name); return i >= 0 ? args[i + 1] : dflt; };
-const file = args.find(a => !a.startsWith('--') && a !== opt('features') && a !== opt('lambda')) || new URL('./ratings.json', import.meta.url).pathname;
+const file = args.find(a => !a.startsWith('--') && a !== opt('features') && a !== opt('lambda') && a !== opt('cap')) || new URL('./ratings.json', import.meta.url).pathname;
 const features = opt('features', 'trapMax,trapTop3,altFrac').split(',');
 const lambda = +opt('lambda', 10);
+const CAP = evalCap(args);
 
 const rows = JSON.parse(fs.readFileSync(file, 'utf8')).map(e => {
   const p = parse(e.key), t = trapMetrics(p);
   if (!t.ok) return null;
-  const g = gradesFor(p);
+  const g = gradesFor(p, CAP);
   return { human: e.human, w: ratingWeight(e), t, shipped: g ? g.grades.decisionNodes : 5, combined: g ? g.grades.combined : 5 };
 }).filter(Boolean);
 const H = rows.map(r => r.human), W = rows.map(r => r.w), n = rows.length;
