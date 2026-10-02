@@ -15,7 +15,10 @@ import { encodeFlags, decodeFlags, flagsToHex, hexToFlags, DEFAULT_FLAGS_INT, DE
 import { minimizeWalls } from '../src/core/gen/walls.js';
 import { runSync } from '../src/core/run.js';
 import { createHoldReveal } from '../src/ui/hold-reveal.js';
-import { createDaily, utcDayNumber } from '../src/features/daily.js';
+import { createDaily, utcDayNumber, utcDateString, dateOfDay, fetchGameOfDayFor } from '../src/features/daily.js';
+import { createReplay, GAMES_PER_CHANCE, BACKFILL_DAYS } from '../src/features/replay.js';
+import { REPLAY_DAYS } from '../src/core/hist.js';
+import { EN, ZH } from '../src/ui/i18n.js';
 import { HINT_PENALTY_S, penalizedTime } from '../src/features/hints.js';
 import { createStore } from '../src/features/stats-store.js';
 import { NB, TOP_K, binOf, summarize, statsLine } from '../src/core/hist.js';
@@ -1474,6 +1477,81 @@ t('gotd-model: fitTime = prior without data, anchors the level with one day, rec
   const m = fitTime(pts); ok(Math.abs(m.mean[1] - 0.9) < 0.1 && Math.abs(m.mean[2] - 0.6) < 0.05 && Math.abs(Math.exp(m.mean[0]) - 40000) < 3000, JSON.stringify(m.mean));
   ok(m.sd[2] < p0.sd[2] / 3, 'posterior is tighter'); eq(predictMs({ mean: [Math.log(1), 0, 0] }, 7, 1.5), 500); eq(predictMs({ mean: [Math.log(1e9), 0, 0] }, 7, 1.5), 3600000);
   const I = invert([[2, 1, 0], [1, 3, 1], [0, 1, 4]]), P = [[2, 1, 0], [1, 3, 1], [0, 1, 4]].map(r => I[0].map((_, j) => r.reduce((a, v, k) => a + v * I[k][j], 0))); ok(P.every((r, i) => r.every((v, j) => Math.abs(v - +(i === j)) < 1e-12)));
+});
+
+// ---- Replay of missed Games of Day ----
+const gotdDay = (clock, k) => dateOfDay(utcDayNumber(clock()) - k); // the date k UTC days before the fake clock
+const setup = async (clock = atDay(19), records = {}) => { // records: days back -> attempt record
+  const st = fakeStorage(), store = createStore(st, [5]); await store.hydrate(dateOfDay(utcDayNumber(clock())));
+  for (const [k, rec] of Object.entries(records)) await store.saveAttempt(gotdDay(clock, +k), rec);
+  const R = createReplay(st, store, clock); await R.init(); return { st, store, R };
+};
+t('i18n: EN and ZH have the same keys and the same {n} placeholders', () => {
+  eq(Object.keys(EN).sort(), Object.keys(ZH).sort());
+  const ph = v => typeof v === 'string' ? (v.match(/\{\d+\}/g) || []).sort() : 'fn';
+  for (const k of Object.keys(EN)) eq(ph(ZH[k]), ph(EN[k]), k);
+  for (const k of ['replay.locked', 'replay.progress']) eq([typeof EN[k], typeof ZH[k]], ['function', 'function']);
+});
+t('daily: dateOfDay inverts utcDayNumber across month and year ends', () => {
+  for (const d of [new Date(Date.UTC(2026, 8, 30, 23, 59)), new Date(Date.UTC(2026, 0, 1)), new Date(Date.UTC(2025, 11, 31, 12)), new Date(Date.UTC(2024, 1, 29))]) eq(dateOfDay(utcDayNumber(d)), utcDateString(d));
+  eq(dateOfDay(utcDayNumber(new Date(Date.UTC(2026, 0, 1))) - 1), '20251231');
+});
+ta('daily: fetchGameOfDayFor reads that date\'s file, null when missing; only today\'s file bypasses the cache', async () => {
+  const realFetch = globalThis.fetch, calls = [];
+  const puzzle = serialize(runSync(generate(5, 1))); // a valid puzzle file
+  globalThis.fetch = async (url, init) => { calls.push([url, init]); return url.endsWith('20260918.txt') ? { ok: true, text: async () => puzzle } : { ok: false, text: async () => '' }; };
+  try {
+    const p = await fetchGameOfDayFor('20260918'); ok(p && p.n === 5 && p.gotdDate === '20260918'); eq(calls[0], ['../demo/GameOfDay/20260918.txt', undefined]);
+    eq(await fetchGameOfDayFor('20260917'), null);
+    await fetchGameOfDayFor('20260918', { fresh: true }); eq(calls[2][1], { cache: 'no-store' });
+  } finally { globalThis.fetch = realFetch; }
+});
+ta('replay: chances = floor(solved / 5) - used; toNext counts the solves still needed', async () => {
+  const { R } = await setup(); eq([R.chances(), R.toNext()], [0, GAMES_PER_CHANCE]);
+  for (let i = 1; i <= 12; i++) { await R.addSolved(); eq([R.chances(), R.toNext()], [Math.floor(i / 5), 5 - (i % 5)], 'after ' + i); }
+  eq(GAMES_PER_CHANCE, 5);
+});
+ta('replay: window = yesterday .. 14 days back (today excluded), newest first; across a year end', async () => {
+  const { R } = await setup(atDay(19)); eq(R.dates().length, REPLAY_DAYS); eq([R.dates()[0], R.dates()[13]], ['20260918', '20260905']);
+  const ny = () => new Date(Date.UTC(2026, 0, 3, 23, 59)), { R: N } = await setup(ny); eq([N.dates()[0], N.dates()[13]], ['20260102', '20251220']);
+});
+ta('replay: missed = window dates without an attempt record; an unsolved (abandoned) record is not missed', async () => {
+  const { R } = await setup(atDay(19), { 0: { solved: true, time: 30 }, 1: { solved: true, time: 20 }, 3: { solved: false, time: null }, 14: { solved: true, time: 50 }, 15: { solved: true, time: 50 } });
+  const m = await R.missed(); eq(m.length, 11, '14 window days minus the 3 that have a record (1, 3 and 14 days back)');
+  eq(['20260918', '20260916', '20260905'].map(d => m.includes(d)), [false, false, false]); eq(['20260917', '20260915', '20260906'].map(d => m.includes(d)), [true, true, true]);
+  eq(m[0], '20260917', 'newest first');
+});
+ta('replay: begin spends one chance, marks the date played, and refuses without a chance, outside the window, or twice', async () => {
+  const { R, store } = await setup();
+  eq(await R.begin('20260917'), false, 'no chance yet'); for (let i = 0; i < 10; i++) await R.addSolved(); eq(R.chances(), 2);
+  eq(await R.begin('20260919'), false, 'today is not a replay'); eq(await R.begin('20260904'), false, '15 days back is outside'); eq(R.chances(), 2);
+  eq(await R.begin('20260917'), true); eq(R.chances(), 1); eq(store.attemptOn('20260917'), { solved: false, time: null });
+  eq(await R.begin('20260917'), false, 'the same date twice'); eq(R.chances(), 1);
+  eq(await R.begin('20260905'), true); eq(R.chances(), 0); eq(await R.begin('20260906'), false, 'chances used up');
+  eq((await R.missed()).includes('20260917'), false);
+});
+ta('replay: counters persist; the first init counts the solves recorded before the feature existed, once', async () => {
+  const clock = atDay(19), st = fakeStorage(), store = createStore(st, [5]); await store.hydrate('20260919');
+  for (const [k, rec] of [[0, { solved: true, time: 9 }], [2, { solved: true, time: 9 }], [5, { solved: false, time: null }], [9, { solved: true, time: 9 }], [BACKFILL_DAYS, { solved: true, time: 9 }], [BACKFILL_DAYS + 1, { solved: true, time: 9 }]]) await store.saveAttempt(dateOfDay(utcDayNumber(clock()) - k), rec);
+  const A = createReplay(st, store, clock); await A.init(); eq([A.chances(), A.toNext()], [0, 1], '4 solves counted (the unsolved record and the one past the scan are not)');
+  await A.addSolved(); const B = createReplay(st, createStore(st, [5]), clock); await B.init(); eq([B.chances(), B.toNext()], [1, 5], 'reloaded: 5 solved, not recounted');
+  await store.saveAttempt('20260918', { solved: true, time: 9 }); const C = createReplay(st, store, clock); await C.init(); eq(C.toNext(), 5, 'a stored counter is never rebuilt from records');
+});
+ta('replay: a corrupt counter is rebuilt from the records; before init there are no chances', async () => {
+  const st = fakeStorage(), store = createStore(st, [5]); await store.hydrate('20260919'); await store.saveAttempt('20260919', { solved: true, time: 9 });
+  await st.set('zip_gotd_credit', '{"solved":-1}'); const R = createReplay(st, store, atDay(19)); eq([R.chances(), R.toNext()], [0, 5]); await R.init(); eq(R.toNext(), 4);
+});
+ta('replay: unsent = solved attempts of today and the window the backend never acknowledged', async () => {
+  const { R } = await setup(atDay(19), { 0: { solved: true, time: 30, sent: false }, 2: { solved: true, time: 41.5, sent: false }, 4: { solved: true, time: 20, sent: true }, 5: { solved: true, time: 20 }, 6: { solved: false, time: null }, 15: { solved: true, time: 7, sent: false } });
+  eq(await R.unsent(), [{ date: '20260919', time: 30 }, { date: '20260917', time: 41.5 }]);
+});
+ta('stats-store: a replay keeps today\'s record and the per-size Game-of-Day time; attemptOn reads any loaded date', async () => {
+  const st = fakeStorage(), S = createStore(st, [5]); await S.hydrate('20260929');
+  await S.recordGotd(5, '20260929', 42.1, true); eq(S.gotdBest(5), { date: '20260929', time: 42.1 });
+  await S.recordGotd(5, '20260920', 9.5, true, true);
+  eq(S.gotdBest(5), { date: '20260929', time: 42.1 }); eq(S.attempt(), { solved: true, time: 42.1, sent: false }); eq(S.attemptDate(), '20260929');
+  eq(S.attemptOn('20260920'), { solved: true, time: 9.5, sent: false });
+  const S2 = createStore(st, [5]); await S2.hydrate('20260929'); eq(S2.attemptOn('20260920'), null, 'not loaded yet'); eq(await S2.loadAttempt('20260920'), { solved: true, time: 9.5, sent: false });
 });
 
 for (const [name, fn] of pending) { const t0 = Date.now(); try { await fn(); pass++; out.push(`ok    ${name} (${Date.now() - t0}ms)`); } catch (e) { fail++; out.push(`FAIL  ${name}: ${e.message}`); } }

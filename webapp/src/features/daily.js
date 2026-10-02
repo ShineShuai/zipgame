@@ -29,10 +29,10 @@ export function createDaily(storage, now = () => new Date()) {
 }
 
 // Game of Day: GameOfDay/YYYYMMDD.txt in the shared plain-text format. Returns a puzzle or null.
-export async function fetchGameOfDay(now = () => new Date()) {
-  const date = utcDateString(now());
+// `fresh`: bypass the HTTP cache (today's file); the file of a past day never changes, so a replay may be served from the cache.
+export async function fetchGameOfDayFor(date, { fresh = false } = {}) {
   try {
-    const res = await fetch('../demo/GameOfDay/' + date + '.txt', { cache: 'no-store' });
+    const res = await fetch('../demo/GameOfDay/' + date + '.txt', fresh ? { cache: 'no-store' } : undefined);
     if (!res.ok) return null;
     const p = parse(await res.text());
     if (!validate(p).ok) return null;
@@ -40,3 +40,7 @@ export async function fetchGameOfDay(now = () => new Date()) {
     return p;
   } catch (e) { console.warn('fetchGameOfDay failed:', e); return null; }
 }
+export const fetchGameOfDay = (now = () => new Date()) => fetchGameOfDayFor(utcDateString(now()), { fresh: true });
+
+// UTC day number -> 'YYYYMMDD' (inverse of utcDayNumber for the date part).
+export const dateOfDay = day => utcDateString(new Date(day * 86400000));

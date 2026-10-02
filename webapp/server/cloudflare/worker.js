@@ -1,9 +1,9 @@
-// POST /gotd  { d: YYYYMMDD, t: ms, b: bin }  ->  { n, sum, below, cnt, best }
+// POST /gotd  { d: YYYYMMDD, t: ms, b: bin }  ->  { n, sum, below, cnt, best }   (d: today, +1, or up to REPLAY_DAYS + 1 days back: live play and replays)
 // GET  /stats?from=YYYYMMDD&to=YYYYMMDD  ->  { days: [{ d, n, sum, bins: [[bin, n]], best: [ms], seeds: [ms] }] }  (read-only aggregates, <= 90 days)
 // POST /seed  Authorization: Bearer <SEED_PLAYERS_SECRET>  { d, ms: [ms], bins: [bin] }  ->  { status: 'ok', n, sum } | 409 { status: 'exists' }
 //   adds 1..SEED_MAX synthetic players to a day, once per day (tools/gotd-seed.mjs); a repeat changes nothing
 // One D1 batch (= one transaction): 2 upserts + best-10 maintenance + reads. Constants mirror src/core/hist.js.
-import { NB, TOP_K, MIN_MS, MAX_MS, SEED_MAX } from '../../src/core/hist.js';
+import { NB, TOP_K, MIN_MS, MAX_MS, SEED_MAX, REPLAY_DAYS } from '../../src/core/hist.js';
 
 const DAY_MS = 86400000, isInt = Number.isInteger;
 const dayNumber = ymd => { // YYYYMMDD -> days since epoch, or null if not a real date
@@ -12,13 +12,16 @@ const dayNumber = ymd => { // YYYYMMDD -> days since epoch, or null if not a rea
   return c.getUTCFullYear() === y && c.getUTCMonth() === m - 1 && c.getUTCDate() === d ? ms / DAY_MS : null;
 };
 
-// Returns { d, t, b } or null. The day must be within +-1 UTC day of `now` (clock skew, late submissions).
-export function validate(body, now = Date.now()) {
+// Returns { d, t, b } or null. The day must be at most `back` UTC days before `now` and at most 1 after it (clock skew, late submissions).
+// back = 1 (default): the live Game of Day, and seeding. POST /gotd passes REPLAY_DAYS + 1: the replay of a missed day (the app offers the last
+// REPLAY_DAYS days; +1 because a replay started before UTC midnight is finished after it). Temporary: set it back to 1 to stop accepting replays.
+export function validate(body, now = Date.now(), back = 1) {
   if (!body || typeof body !== 'object') return null;
   const { d, t, b } = body;
   if (![d, t, b].every(Number.isInteger) || t < MIN_MS || t > MAX_MS || b < 0 || b >= NB) return null;
   const dn = dayNumber(d);
-  return dn !== null && Math.abs(dn - Math.floor(now / DAY_MS)) <= 1 ? { d, t, b } : null;
+  const today = Math.floor(now / DAY_MS);
+  return dn !== null && dn >= today - back && dn <= today + 1 ? { d, t, b } : null;
 }
 
 // [statement, bound values]; ?1 = day, ?2 = t (ms) or bin
@@ -121,7 +124,7 @@ export default {
     if (req.method !== 'POST' || pathname !== '/gotd') return reply(404, { error: 'not found' });
     if (Number(req.headers.get('content-length') || 0) > 256) return reply(400, { error: 'too large' });
     let body; try { body = JSON.parse(await req.text()); } catch { return reply(400, { error: 'bad json' }); }
-    const v = validate(body);
+    const v = validate(body, Date.now(), REPLAY_DAYS + 1);
     if (!v) return reply(400, { error: 'invalid' });
     try { return reply(200, await submit(env.DB, v)); } catch (e) { return reply(500, { error: 'db' }); }
   },

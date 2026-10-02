@@ -132,6 +132,9 @@ b { color: var(--heading); font-variant-numeric: tabular-nums; }
 .note { margin-top: 14px; padding: 10px 14px; border-radius: 12px; background: var(--blue-soft); color: var(--blue-dark); font-weight: 600; }
 .note.error { background: #fdecec; color: var(--red); }
 .storage-note { margin-top: 16px; }
+.replay-note { margin-top: 10px; }
+.replay-picker { margin-top: 14px; display: grid; gap: 10px; }
+.replay-picker .field-label { margin: 0; }
 .center-stage { max-width: 560px; margin: 0 auto; }
 
 /* ---------- buttons and inputs ---------- */

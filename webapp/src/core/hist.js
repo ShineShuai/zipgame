@@ -1,6 +1,6 @@
 // Game-of-Day time histogram: constants and pure math. Backends only store counts; all interpretation lives here.
 // Bin k covers [T0_MS * RATIO^k, T0_MS * RATIO^(k+1)) ms; k is clamped to 0..NB-1 (1 s .. ~2048 s, ~10 % wide).
-export const NB = 80, T0_MS = 1000, RATIO = 1.1, TOP_K = 10, MIN_MS = 500, MAX_MS = 3600000, SEED_MAX = 8; // SEED_MAX: most synthetic seed players one day can get (tools/gotd-seed.mjs)
+export const NB = 80, T0_MS = 1000, RATIO = 1.1, TOP_K = 10, MIN_MS = 500, MAX_MS = 3600000, SEED_MAX = 8, REPLAY_DAYS = 14; // SEED_MAX: most synthetic seed players one day can get (tools/gotd-seed.mjs)
 export const binOf = ms => (ms > T0_MS ? Math.min(NB - 1, Math.floor(Math.log(ms / T0_MS) / Math.log(RATIO))) : 0);
 
 const isCount = x => Number.isInteger(x) && x >= 0;

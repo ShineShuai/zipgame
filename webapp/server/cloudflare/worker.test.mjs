@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import worker, { submit, validate, validateRange, read, validateSeed, seed } from './worker.js';
-import { binOf, summarize, TOP_K, SEED_MAX } from '../../src/core/hist.js';
+import { binOf, summarize, TOP_K, SEED_MAX, REPLAY_DAYS } from '../../src/core/hist.js';
 
 const schema = readFileSync(new URL('./schema.sql', import.meta.url), 'utf8');
 const fakeD1 = () => { // prepare().bind() / batch() as a single transaction, like D1
@@ -28,6 +28,24 @@ await test('validate: accepts today +-1 day, rejects everything else', () => {
   for (const bad of [{ ...ok, d: 20260927 }, { ...ok, d: 20261001 }, { ...ok, d: 20260231 }, { ...ok, d: 20261301 }, { ...ok, t: 499 }, { ...ok, t: 3600001 },
     { ...ok, b: -1 }, { ...ok, b: 80 }, { ...ok, t: 1.5 }, { ...ok, t: '42130' }, { d: ymd }, null, 'x', []]) assert.equal(validate(bad, now), null, JSON.stringify(bad));
   assert.ok(validate({ ...ok, d: 20260101 }, Date.UTC(2025, 11, 31, 23)), 'year boundary +1 day');
+});
+
+await test('validate(back): a replay day is accepted up to back days before now; the future limit stays +1; seeding stays +-1', () => {
+  const ok = { d: ymd, t: 42130, b: 37 }, back = REPLAY_DAYS + 1, dayOf = k => Number(new Date(now + k * 86400000).toISOString().slice(0, 10).replaceAll('-', ''));
+  for (let k = -back; k <= 1; k++) assert.ok(validate({ ...ok, d: dayOf(k) }, now, back), `day ${k}`);
+  for (const k of [-back - 1, -30, 2]) assert.equal(validate({ ...ok, d: dayOf(k) }, now, back), null, `day ${k}`);
+  assert.equal(validate({ ...ok, d: dayOf(-2) }, now), null, 'default back = 1 is unchanged');
+  assert.equal(validateSeed({ d: dayOf(-2), ms: [9000], bins: [binOf(9000)] }, now), null, 'seeding never goes back');
+  const jan = Date.UTC(2026, 0, 14, 23); // 15 days back crosses the year boundary
+  assert.ok(validate({ ...ok, d: 20251230 }, jan, back)); assert.equal(validate({ ...ok, d: 20251229 }, jan, back), null);
+});
+
+await test('POST /gotd accepts a missed day of the replay window and rejects an older one', async () => {
+  const db = fakeD1(), day = k => Number(new Date(Date.now() + k * 86400000).toISOString().slice(0, 10).replaceAll('-', ''));
+  const post = d => worker.fetch(new Request('https://w.example/gotd', { method: 'POST', body: JSON.stringify({ d, t: 42130, b: binOf(42130) }) }), { DB: db });
+  for (const k of [-1, -REPLAY_DAYS, -REPLAY_DAYS - 1]) assert.equal((await post(day(k))).status, 200, `day ${k}`);
+  for (const k of [-REPLAY_DAYS - 2, 2]) assert.equal((await post(day(k))).status, 400, `day ${k}`);
+  assert.equal(db.raw.prepare('SELECT COUNT(*) c FROM day').get().c, 3);
 });
 
 await test('submit matches a brute-force model over 400 random solves (n, sum, below, cnt, best, summary)', async () => {

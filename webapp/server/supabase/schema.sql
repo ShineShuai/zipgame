@@ -32,7 +32,8 @@ begin
   exception when others then
     raise exception 'invalid' using errcode = '22023';
   end;
-  if to_char(v_date, 'YYYYMMDD')::int <> p_day or abs(v_date - v_today) > 1 then
+  -- Up to 15 days back = REPLAY_DAYS (14, src/core/hist.js) + 1, like the Worker; 1 day ahead for clock skew. Temporary: change 15 back to 1 to stop accepting replays.
+  if to_char(v_date, 'YYYYMMDD')::int <> p_day or v_date - v_today > 1 or v_today - v_date > 15 then
     raise exception 'invalid' using errcode = '22023';
   end if;
 

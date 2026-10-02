@@ -31,7 +31,10 @@ print('ok    300 random submits match the model (n, sum, below, cnt, best)')
 for d in (today - datetime.timedelta(1), today + datetime.timedelta(1)):
     assert call(ymd(d), 5000, 3).returncode == 0
 print('ok    day +-1 accepted')
-bad = [(ymd(today - datetime.timedelta(2)), 5000, 3), (ymd(today + datetime.timedelta(2)), 5000, 3), (20260231, 5000, 3), (20261301, 5000, 3),
+for k in (2, 14, 15):  # replay window (REPLAY_DAYS = 14, +1 for a replay finished after UTC midnight)
+    assert call(ymd(today - datetime.timedelta(k)), 5000, 3).returncode == 0, k
+print('ok    days 2..15 back accepted (replays)')
+bad = [(ymd(today - datetime.timedelta(16)), 5000, 3), (ymd(today + datetime.timedelta(2)), 5000, 3), (20260231, 5000, 3), (20261301, 5000, 3),
        (ymd(today), 499, 3), (ymd(today), 3600001, 3), (ymd(today), 5000, -1), (ymd(today), 5000, 80), ('null', 5000, 3), (ymd(today), 'null', 3), (ymd(today), 5000, 'null')]
 for a in bad:
     p = call(*a); assert p.returncode and '22023' in p.stderr, (a, p.stderr)
@@ -55,7 +58,7 @@ for a, b in [(ymd(lo) - 1, ymd(today)), (ymd(today), ymd(today - datetime.timede
 print('ok    read_gotd matches the model, empty range, 90-day cap, 7 invalid ranges rejected with SQLSTATE 22023')
 
 sizes = {r.split('|')[0]: int(r.split('|')[1]) for r in psql("select 'gotd_day', count(*) from gotd_day union all select 'gotd_best', count(*) from gotd_best union all select 'gotd_bin', count(*) from gotd_bin").stdout.split() if r}
-assert sizes['gotd_day'] == 3 and sizes['gotd_best'] <= 10 * 3 and sizes['gotd_bin'] <= 80 * 3, sizes
+assert sizes['gotd_day'] == 6 and sizes['gotd_best'] <= 10 * 6 and sizes['gotd_bin'] <= 80 * 6, sizes  # today, +-1, and 3 replay days
 print('ok    row counts bounded', sizes)
 
 for t in ('gotd_day', 'gotd_bin', 'gotd_best', 'gotd_seed', 'gotd_secret'):

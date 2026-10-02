@@ -5,7 +5,9 @@ import { statSummary } from '../../core/stats.js';
 import { pickStorage } from '../../platform/storage.js';
 import { runAsync } from '../../platform/run.js';
 import { createStore } from '../../features/stats-store.js';
-import { createDaily, fetchGameOfDay, utcDateString, utcDayNumber } from '../../features/daily.js';
+import { createDaily, fetchGameOfDay, fetchGameOfDayFor, utcDateString, utcDayNumber } from '../../features/daily.js';
+import { createReplay } from '../../features/replay.js';
+import { REPLAY_DAYS } from '../../core/hist.js';
 import { maxHints, computeHint, solutionOf, penalizedTime, HINT_PENALTY_S } from '../../features/hints.js';
 import { cellAtPoint, pathD } from '../../view/geometry.js';
 import { bindModal, copyText } from '../../ui/modal.js';
@@ -21,7 +23,7 @@ import { sfxMove, sfxBack, sfxCheckpoint, sfxMoveAfterCheckpoint, sfxBlocked, sf
 
 const SIZES = PLAY_SIZES;
 const S = { screen: 'menu', size: 7, puzzle: null, path: [], elapsed: 0, startTime: 0, timerId: null, finished: false,
-  gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, gotdDate: null, gotdHint: null, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, difficulty: null };
+  gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, isReplay: false, replayPick: null, gotdDate: null, gotdHint: null, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, difficulty: null };
 
 // Grade a puzzle right after generation, once, before it's shown (see core/grades.js playGradesFor):
 //   trap   - the main grade (badge): one capped solve per wrong turn along the solution, ~2-200 ms at
@@ -38,7 +40,8 @@ function gradePuzzle(puzzle) {
     return { ok: false, trap: null, legacy: null };
   }
 }
-let storage, store, daily, modal, lb;
+let storage, store, daily, replay, modal, lb;
+const replayPuzzles = new Map(); // date -> puzzle: the file of a past day never changes, so each is fetched once per page load
 const $ = id => document.getElementById(id), today = () => utcDateString(new Date()), dayNo = () => utcDayNumber(new Date()), sec = x => x.toFixed(1) + 's';
 const statsText = { everyone: (avg, n) => t('stats.everyone', avg, n), top: (k, avg) => t('stats.top', k, avg), beat: pct => t('stats.beat', pct) };
 const statsLineT = (s, detail) => statsLine(s, detail, statsText);
@@ -108,6 +111,11 @@ function renderMenu() {
     : t('menu.attemptDone');
   const attemptNote = attempt ? `<p class="note">${attemptText}${attempt.stats ? '<br><span class="gotd-stats">' + statsLineT(attempt.stats, S.showDev) + '</span>' : ''}</p>` : '';
   const hintNote = S.gotdHint ? `<p class="note error">${t(...S.gotdHint)}</p>` : '';
+  const chances = replay.chances();
+  const replayButton = chances > 0
+    ? `<button class="btn secondary" id="openReplay">${t('menu.replay', chances)}</button>`
+    : `<button class="btn secondary" disabled title="${t('replay.locked', replay.toNext())}">${t('menu.replay', 0)}</button>`;
+  const replayNote = `<p class="small replay-note">${t(chances > 0 ? 'replay.progress' : 'replay.locked', replay.toNext())}</p>`;
 
   return `
     <div class="menu-layout${stats ? '' : ' single'}">
@@ -125,7 +133,10 @@ function renderMenu() {
           <div class="button-row">
             <button class="btn" id="playLocal">${t('menu.playLocal')}</button>
             ${gotdButton}
+            ${replayButton}
           </div>
+          ${replayNote}
+          ${replayPickerHtml()}
           ${attemptNote}
           ${hintNote}
           <p class="small storage-note" id="storageNote" style="${S.showDev ? '' : 'display:none'}">Storage: ${storage.name}${storage.shared ? '' : ' (local only)'}</p>
@@ -133,6 +144,17 @@ function renderMenu() {
       </section>
       ${stats}
     </div>`;
+}
+
+const dateLabel = d => d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6);
+// The missed days to pick from (only those that have a puzzle file), newest first.
+function replayPickerHtml() {
+  const r = S.replayPick;
+  if (!r) return '';
+  const body = r.loading ? `<p class="small">${t('replay.loading')}</p>`
+    : !r.list.length ? `<p class="small">${t('replay.none', REPLAY_DAYS)}</p>`
+    : `<div class="button-row">${r.list.map(({ date, puzzle }) => `<button class="btn secondary replay-day" data-date="${date}">${dateLabel(date)} · ${puzzle.n}x${puzzle.n}</button>`).join('')}</div>`;
+  return `<div class="replay-picker"><p class="field-label">${t('replay.pick')}</p>${body}<div class="button-row"><button class="btn secondary" id="closeReplay">${t('replay.close')}</button></div></div>`;
 }
 
 const gotdText = n => {
@@ -229,11 +251,12 @@ function renderGame() {
   const time = sec(S.elapsed);
   const cap = maxHints(p);
   const seedTag = `<span id="seedTag" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="Design app's Generate uses these same algorithm choices, but generate() here also tries several candidates and keeps the cheapest, so pasting this seed+flags there is not guaranteed to reproduce this exact puzzle">seed ${S.seed} · flags ${flagsToHex(PLAY_FLAGS_INT)}</span>`;
-  const title = S.isGotd ? t('game.gotdTitle', S.gotdDate) : t('game.localTitle', p.n, S.gameIndex + 1) + seedTag;
+  const title = S.isGotd ? t(S.isReplay ? 'game.replayTitle' : 'game.gotdTitle', S.gotdDate) : t('game.localTitle', p.n, S.gameIndex + 1) + seedTag;
   const newPuzzleButton = S.isGotd ? '' : `<button class="btn secondary" id="newPuzzle">${t('game.new')}</button>`;
   const hiddenUnlessDev = S.showDev ? '' : 'display:none';
   const hintDisabled = S.finished || S.hintsUsed >= cap ? 'disabled' : '';
-  const gotdStats = S.isGotd && S.finished && store.attempt() && store.attempt().stats ? `<p class="note gotd-stats">${statsLineT(store.attempt().stats, S.showDev)}</p>` : '';
+  const gotdAttempt = S.isGotd ? store.attemptOn(S.gotdDate) : null; // today's record, or the replayed day's
+  const gotdStats = S.finished && gotdAttempt && gotdAttempt.stats ? `<p class="note gotd-stats">${statsLineT(gotdAttempt.stats, S.showDev)}</p>` : '';
   const penalty = S.hintsUsed ? t('game.penalty', sec(HINT_PENALTY_S * S.hintsUsed), S.hintsUsed) : '';
   const solved = S.finished ? `<p class="solved">${t('game.solved', time, penalty)}</p>${gotdStats}` : '';
 
@@ -270,6 +293,9 @@ function attachHandlers() {
   on('playLocal', () => { S.size = +$('sizeSel').value; startLocal('open'); });
   const sel = $('sizeSel'); if (sel) sel.onchange = () => { S.size = +sel.value; $('gameNo').textContent = t('menu.today', gameNo(S.size)); };
   on('playGotd', startGameOfDay);
+  on('openReplay', openReplay);
+  on('closeReplay', () => { S.replayPick = null; render(); });
+  document.querySelectorAll('.replay-day').forEach(b => { b.onclick = () => startReplay(b.dataset.date); });
   on('backMenu2', () => { stopTimer(); S.screen = 'menu'; render(); });
   on('resetPath', () => { S.path = []; S.finished = false; S.hintCell = S.hintWrongCell = null; render(); });
   on('newPuzzle', () => { if (!S.isGotd) startLocal('skip'); });
@@ -334,13 +360,15 @@ function setupGridInput(svg) {
 function onSolved() {
   S.finished = true; stopTimer(); sfxSolved();
   if (!S.penaltyApplied) { S.elapsed = penalizedTime(S.elapsed, S.hintsUsed); S.penaltyApplied = true; } // once, even if the path is reset and re-solved
-  if (S.isGotd) { const a = store.attempt(); if (!(a && a.solved)) finishGotd(S.puzzle.n, S.gotdDate, S.elapsed); } // Game of Day counts once
+  if (S.isGotd) { const a = store.attemptOn(S.gotdDate); if (!(a && a.solved)) finishGotd(S.puzzle.n, S.gotdDate, S.elapsed, S.isReplay); } // a Game of Day (live or replay) counts once
   else { const n = S.puzzle.n; store.recordSolve(n, dayNo(), S.elapsed); daily.markSolved(n, S.gameIndex).then(refreshNext); }
 }
 
-// Game of Day: record locally, then submit to the averages backend (stats are stored in the attempt record, so no refetch is needed).
-async function finishGotd(n, date, time) {
-  await store.recordGotd(n, date, time, lb.enabled);
+// Game of Day (live or replay): record locally, count it towards the next replay chance, then submit to the averages backend
+// (stats are stored in the attempt record, so no refetch is needed). A replay is submitted like the live game: it counts in that day's averages.
+async function finishGotd(n, date, time, isReplay) {
+  await store.recordGotd(n, date, time, lb.enabled, isReplay);
+  await replay.addSolved();
   if (lb.enabled) await shareGotd(date, time);
 }
 async function shareGotd(date, time) {
@@ -351,9 +379,9 @@ async function shareGotd(date, time) {
 }
 
 // ---------- game flow ----------
-function beginGame(puzzle, gotdDate) {
+function beginGame(puzzle, gotdDate, isReplay = false) {
   const difficulty = gradePuzzle(puzzle);
-  Object.assign(S, { puzzle, isGotd: !!gotdDate, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
+  Object.assign(S, { puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
   startTimer(); render();
 }
 async function startLocal(how) { // how: 'open' (Play local: current or next-if-solved) | 'skip' (New puzzle)
@@ -375,6 +403,23 @@ async function startGameOfDay() {
   await store.saveAttempt(date, { solved: false, time: null }); // abandoning mid-puzzle still uses today's try
   beginGame(puzzle, puzzle.gotdDate);
 }
+// Replay: the picker lists the missed days that have a puzzle file; choosing one spends a chance once its puzzle has loaded.
+async function openReplay() {
+  S.replayPick = { loading: true, list: [] }; render();
+  const dates = await replay.missed();
+  const list = (await Promise.all(dates.map(async date => {
+    if (!replayPuzzles.has(date)) { const p = await fetchGameOfDayFor(date); if (p) replayPuzzles.set(date, p); }
+    return { date, puzzle: replayPuzzles.get(date) };
+  }))).filter(x => x.puzzle);
+  if (!S.replayPick) return; // closed meanwhile
+  S.replayPick = { loading: false, list }; if (S.screen === 'menu') render();
+}
+async function startReplay(date) {
+  const puzzle = replayPuzzles.get(date);
+  if (!puzzle || !(await replay.begin(date))) { S.replayPick = null; S.gotdHint = ['replay.unavailable']; return render(); }
+  S.size = puzzle.n;
+  beginGame(puzzle, date, true);
+}
 function startTimer() {
   stopTimer(); S.startTime = performance.now() - S.elapsed * 1000;
   S.timerId = setInterval(() => { S.elapsed = (performance.now() - S.startTime) / 1000; const el = $('hudTime'); if (el) el.textContent = sec(S.elapsed); }, 100);
@@ -390,7 +435,7 @@ function setDevReveal(on) {
   const sn = $('storageNote'); if (sn) sn.style.display = on ? '' : 'none';
   const tag = $('seedTag'); if (tag) tag.style.display = on ? 'inline' : 'none';
   const d = $('difficultyDev'); if (d) d.style.display = on ? 'inline' : 'none';
-  const st = store.attempt() && store.attempt().stats;
+  const shown = S.screen === 'game' && S.isGotd ? store.attemptOn(S.gotdDate) : store.attempt(), st = shown && shown.stats;
   if (st) document.querySelectorAll('.gotd-stats').forEach(e => { e.textContent = statsLineT(st, on); });
 }
 function installDevReveal() {
@@ -449,8 +494,9 @@ async function initLang() {
   storage = await pickStorage(); store = createStore(storage, SIZES); daily = createDaily(storage);
   try { await store.hydrate(today()); } catch (e) { console.warn('stats hydration failed:', e); }
   lb = createLeaderboard(backendsFromConfig(LEADERBOARD, new URLSearchParams(location.search).get('lb')));
-  const pending = store.attempt();
-  if (lb.enabled && pending && pending.solved && pending.sent === false) shareGotd(store.attemptDate(), pending.time);
+  replay = createReplay(storage, store);
+  try { await replay.init(); } catch (e) { console.warn('replay init failed:', e); }
+  if (lb.enabled) for (const { date, time } of await replay.unsent()) shareGotd(date, time); // today's and replayed days whose submit never got an answer
   try { for (const n of SIZES) S.nextIdx[n] = (await daily.peek(n)).index; } catch (e) { console.warn('daily counters failed:', e); }
   modal = bindModal($('exportModal'));
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));
