@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Seeds one Game-of-Day with 3..8 synthetic players so the first real players already see averages and a percentile.
 //   node tools/gotd-seed.mjs --token-file FILE --print-supabase-sql      prints the one SQL statement that gives Supabase the secret's hash, then exits
-//   node tools/gotd-seed.mjs [--day YYYYMMDD] [--dry-run] [--token-file FILE] [--only cloudflare|supabase] [--stats file.json ...] [--puzzles dir] [--models file]
+//   node tools/gotd-seed.mjs [--day YYYYMMDD] [--dry-run] [--token-file FILE] [--only ID] [--stats file.json ...] [--puzzles dir] [--models file]
 //                            [--summary FILE] [--annotations]
 // Steps: the puzzle of the day gets its difficulty h (0-5, the scale of the hand ratings) from every fitted candidate (tools/gotd-models.json, written
 // by gotd-fit.mjs); the first 3 defined candidates play, of the next 7 the lowest and highest h are dropped (gotd-model.js selectEntries).
@@ -9,8 +9,9 @@
 // Behind the top 3 a candidate needs skill >= EXTRA_MIN_SKILL. No time is below the drawing floor (gotd-model.js floorMs) when the puzzle needs thinking
 // (larger than 6x6 or grade >= 1): in the calibration such plays are replays and are left out, and no seed player is faster. Each h becomes a
 // solve time with a model learned from the backends' past days (their real players only, seeds are subtracted; before there is data the
-// prior of gotd-model.js applies). Every backend gets the times once: a retry answers "exists" and changes nothing.
-//   --token-file  file holding the shared secret of both backends (surrounding whitespace is ignored); required unless --dry-run
+// prior of gotd-model.js applies). Every configured backend (src/config.js, any number) gets the times once: a retry answers "exists" and changes nothing.
+//   --token-file  file holding the shared secret of all backends (surrounding whitespace is ignored); required unless --dry-run
+//   --only      seed just this backend id of src/config.js (e.g. one that was added later)
 //   --summary   append a markdown summary to FILE (GitHub Actions: "$GITHUB_STEP_SUMMARY");  --annotations  print warnings/errors as ::warning:: / ::error::
 //   --day       default: tomorrow UTC (the backends accept day +-1; the cron runs in the evening)
 //   --stats     read this backend reply ({ days: [...] }, e.g. saved from GET /stats) instead of fetching; repeat for several backends
@@ -22,7 +23,7 @@ import crypto from 'node:crypto';
 import { LEADERBOARD } from '../src/config.js';
 import { backendsFromConfig } from '../src/platform/leaderboard.js';
 import { fetchStats } from '../src/platform/stats-client.js';
-import { parseDays, mergeDays, quantile, dayList } from '../src/core/stats-merge.js';
+import { parseDays, combineDays, quantile, dayList } from '../src/core/stats-merge.js';
 import { utcDateString } from '../src/features/daily.js';
 import { parse } from '../src/core/format.js';
 import { validate } from '../src/core/model.js';
@@ -36,6 +37,7 @@ const args = process.argv.slice(2), here = p => new URL(p, import.meta.url).path
 const opt = name => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
 const optAll = name => args.flatMap((a, i) => (a === name ? [args[i + 1]] : []));
 const dry = args.includes('--dry-run'), only = opt('--only');
+const setup = backendsFromConfig(LEADERBOARD);
 const note = (level, msg) => console.log(args.includes('--annotations') ? `::${level}::${msg}` : `${level.toUpperCase()}: ${msg}`);
 const die = msg => { note('error', msg); process.exit(1); };
 
@@ -50,6 +52,7 @@ if (args.includes('--print-supabase-sql')) { // Supabase keeps only the SHA-256 
   process.exit(0);
 }
 const token = dry ? null : readToken();
+if (only && !setup.list.some(be => be.name === only)) die(`--only ${only}: no such configured backend (${setup.list.map(be => be.name).join(', ')})`);
 
 const day = opt('--day') || utcDateString(new Date(Date.now() + 86400000));
 if (!/^\d{8}$/.test(day)) die(`bad --day ${day}`);
@@ -78,12 +81,23 @@ try {
 const entries = picked.played;
 
 // ---------- time model from the backends' past days ----------
+// The days of all backends as combineDays makes them (copies on the days replicatedFrom..replicatedTo of src/config.js, sums on the others), highest-priority backend first.
 async function loadDays() {
   const files = optAll('--stats');
-  if (files.length) return mergeDays(files.map(p => { const d = parseDays(JSON.parse(fs.readFileSync(p, 'utf8'))); if (!d) die(`${p}: malformed stats reply`); return d; }));
-  const list = dayList(45), results = await fetchStats(backendsFromConfig(LEADERBOARD), { from: list[0], to: list.at(-1) });
-  for (const r of results) console.log(`read ${r.name}: ${r.status}${r.status === 'ok' ? `, ${r.days.length} day(s)` : ` (${r.error})`}`);
-  return mergeDays(results.filter(r => r.status === 'ok').map(r => r.days));
+  if (files.length) {
+    const results = files.map(path => {
+      const days = parseDays(JSON.parse(fs.readFileSync(path, 'utf8')));
+      if (!days) die(`${path}: malformed stats reply`);
+      return { name: path, days };
+    });
+    return combineDays(results, LEADERBOARD.replicatedFrom, LEADERBOARD.replicatedTo);
+  }
+  const list = dayList(45);
+  const results = await fetchStats(setup.list, { from: list[0], to: list.at(-1) });
+  for (const r of results) {
+    console.log(`read ${r.name}: ${r.status}${r.status === 'ok' ? `, ${r.days.length} day(s)` : ` (${r.error})`}`);
+  }
+  return combineDays(results.filter(r => r.status === 'ok'), LEADERBOARD.replicatedFrom, LEADERBOARD.replicatedTo);
 }
 const points = [], skipped = [];
 for (const d of await loadDays()) {
@@ -141,7 +155,8 @@ const REQUEST = {
   supabase: ({ url, key }) => ({ url: trim(url) + '/rest/v1/rpc/seed_gotd', headers: { apikey: key }, body: { p_token: token, p_day: d, p_ms: ms, p_bin: bins } }),
 };
 async function send(name) {
-  const { url, headers, body } = REQUEST[name](LEADERBOARD[name]);
+  const entry = LEADERBOARD.backends[name];
+  const { url, headers, body } = REQUEST[entry.type](entry);
   for (let attempt = 1, why; attempt <= 3; attempt++) {
     const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 15000);
     try {
@@ -156,7 +171,7 @@ async function send(name) {
   }
 }
 let failed = 0;
-for (const name of LEADERBOARD.order.filter(n => REQUEST[n] && LEADERBOARD[n]?.url && (!only || only === n))) {
+for (const { name } of setup.list.filter(be => !only || only === be.name)) {
   const r = await send(name);
   console.log(`${name}: ${r}`);
   if (r.startsWith('failed')) { failed++; note('error', `${name} ${r}`); }

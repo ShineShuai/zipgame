@@ -1,55 +1,145 @@
 import { binOf, summarize, MIN_MS, MAX_MS } from '../core/hist.js';
 
-// Backend adapters: request() turns { d: YYYYMMDD, t: ms, b: bin } into a fetch request (both reply { n, sum, below, cnt, best });
-// read() turns { from, to } (YYYYMMDD, <= 90 days) into the stats page's fetch request (both reply { days: [{ d, n, sum, bins, best }] }).
+// Backend adapters: request() turns { d: YYYYMMDD, t: ms, b: bin } into a fetch request (all reply { n, sum, below, cnt, best });
+// read() turns { from, to } (YYYYMMDD, <= 90 days) into the stats page's fetch request (all reply { days: [{ d, n, sum, bins, best }] }).
+// A factory takes a config entry and the backend's id (default: the type name); `name` is that id.
+// Optional decode(kind, json), kind 'submit' | 'read': for a backend whose reply is not already in that shape (a database spoken to directly,
+// whose answer comes in its own envelope). It returns the reply in the shape above, { rejected: true } for an invalid-input answer that arrives
+// with HTTP 200, or throws / returns garbage for a malformed one (= failed). Without it the JSON body is the reply and 400/422 mean rejected.
 // Cloudflare sends text/plain so the browser skips the CORS preflight (one request instead of two); the Worker parses JSON anyway.
 const trim = u => u.replace(/\/+$/, '');
-export const cloudflareBackend = ({ url }) => ({
-  name: 'cloudflare',
+export const cloudflareBackend = ({ url }, id = 'cloudflare') => ({
+  name: id,
   request: ({ d, t, b }) => ({ url: trim(url) + '/gotd', init: { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify({ d, t, b }) } }),
   read: ({ from, to }) => ({ url: `${trim(url)}/stats?from=${from}&to=${to}`, init: { method: 'GET' } }), // simple request: no preflight
 });
-export const supabaseBackend = ({ url, key }) => ({
-  name: 'supabase',
+export const supabaseBackend = ({ url, key }, id = 'supabase') => ({
+  name: id,
   request: ({ d, t, b }) => ({ url: trim(url) + '/rest/v1/rpc/submit_gotd', init: { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: key }, body: JSON.stringify({ p_day: d, p_ms: t, p_bin: b }) } }),
   read: ({ from, to }) => ({ url: trim(url) + '/rest/v1/rpc/read_gotd', init: { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: key }, body: JSON.stringify({ p_from: from, p_to: to }) } }),
 });
 
 const FACTORIES = { cloudflare: cloudflareBackend, supabase: supabaseBackend };
-const configured = (name, c) => c && c.url && (name !== 'supabase' || c.key);
+const configured = entry => Boolean(entry && FACTORIES[entry.type] && entry.url && (entry.type !== 'supabase' || entry.key));
 
-// Enabled backends in failover order; `first` (optional name) is moved to the front.
+// The configured backends as { always, chain, list }:
+//   always  the always-written backend, or null (not set, unknown or not configured)
+//   chain   the backups in failover order (`always` is never part of it); `first` (optional id) is moved to the front
+//   list    always, chain, then every other configured backend: the read side (stats page, seeder) uses all of them
 export function backendsFromConfig(cfg, first) {
-  const order = cfg.order.filter(n => FACTORIES[n] && configured(n, cfg[n]));
-  if (first && order.includes(first)) order.splice(0, 0, ...order.splice(order.indexOf(first), 1));
-  return order.map(n => FACTORIES[n](cfg[n]));
+  const build = id => {
+    const entry = cfg.backends[id];
+    return configured(entry) ? FACTORIES[entry.type](entry, id) : null;
+  };
+  const always = build(cfg.always);
+  const ids = [...new Set(cfg.order || [])].filter(id => id !== cfg.always);
+  if (first && ids.includes(first)) {
+    ids.splice(ids.indexOf(first), 1);
+    ids.unshift(first);
+  }
+  const chain = ids.map(build).filter(Boolean);
+  const named = new Set([cfg.always, ...ids]);
+  const others = Object.keys(cfg.backends).filter(id => !named.has(id)).map(build).filter(Boolean);
+  return { always, chain, list: [always, ...chain, ...others].filter(Boolean) };
 }
 
-// submit(date 'YYYYMMDD', seconds) -> { status, backend?, summary? }
-//   ok       stored + summary returned
-//   rejected backend said 400/422 (invalid input): never retried, no failover
-//   skipped  time outside the accepted range, nothing sent
-//   failed   every backend timed out / errored: caller keeps the solve pending and retries later
-// Failover on timeout, network error, non-2xx (except 400/422) or a malformed reply.
-// A timeout after the server already stored the solve can double-count it on the next backend (accepted, rare).
-export function createLeaderboard(backends, { fetchFn = (...a) => fetch(...a), timeoutMs = 3000 } = {}) {
+// submit(date 'YYYYMMDD', seconds, done = []) -> { status, done, complete, backend?, summary? }
+//   done      ids of the backends that now hold the solve (pass it back to a retry: those are not written again)
+//   complete  every writer holds it: `always` (when set) and one backup (when there are backups)
+//   ok        at least one backend stored it; `backend` / `summary` come from the first of always, backups that did
+//   rejected  a backend said 400/422 (invalid input) and none stored it: never retried, no failover (a rejecting backend counts as done)
+//   skipped   time outside the accepted range or no backend, nothing sent
+//   failed    nothing stored: the caller keeps the solve pending and retries later
+// `always` and the backup chain run in parallel. The chain fails over on timeout, network error, non-2xx (except 400/422) or a malformed reply.
+// A timeout after the server already stored the solve can count it twice on that backend or on the next one (accepted, rare).
+export function createLeaderboard({ always, chain }, { fetchFn = (...a) => fetch(...a), timeoutMs = 3000 } = {}) {
+  const readOrder = [always, ...chain].filter(Boolean).map(be => be.name);
+
+  async function tryBackend(be, req) {
+    const { url, init } = be.request(req);
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
+    try {
+      const res = await fetchFn(url, { ...init, signal: ctl.signal });
+      if (res.status === 400 || res.status === 422) return { be, kind: 'rejected' };
+      if (!res.ok) return { be, kind: 'failed' };
+      const body = await res.json();
+      const reply = be.decode ? be.decode('submit', body) : body;
+      if (reply && reply.rejected) return { be, kind: 'rejected' };
+      const summary = summarize(reply);
+      return summary ? { be, kind: 'ok', summary } : { be, kind: 'failed' };
+    } catch {
+      return { be, kind: 'failed' }; // timeout / network / bad JSON
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function firstAnswer(backends, req) {
+    for (const be of backends) {
+      const answer = await tryBackend(be, req);
+      if (answer.kind !== 'failed') return answer;
+    }
+    return null;
+  }
+
   return {
-    enabled: backends.length > 0,
-    async submit(date, seconds) {
+    enabled: readOrder.length > 0,
+    readOrder, // backend ids, the one the summary is taken from first
+    async submit(date, seconds, done = []) {
       const t = Math.round(seconds * 1000);
-      if (!backends.length || !(t >= MIN_MS && t <= MAX_MS)) return { status: 'skipped' };
+      if (!readOrder.length || !(t >= MIN_MS && t <= MAX_MS)) return { status: 'skipped', done };
       const req = { d: +date, t, b: binOf(t) };
-      for (const be of backends) {
-        const { url, init } = be.request(req), ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), timeoutMs);
-        try {
-          const res = await fetchFn(url, { ...init, signal: ctl.signal });
-          if (res.status === 400 || res.status === 422) return { status: 'rejected', backend: be.name };
-          if (!res.ok) continue;
-          const summary = summarize(await res.json());
-          if (summary) return { status: 'ok', backend: be.name, summary };
-        } catch { /* timeout / network / bad JSON: try the next backend */ } finally { clearTimeout(timer); }
+      const writeAlways = Boolean(always) && !done.includes(always.name);
+      const writeChain = chain.length > 0 && !chain.some(be => done.includes(be.name));
+      if (!writeAlways && !writeChain) return { status: 'ok', done, complete: true };
+      const [fromAlways, fromChain] = await Promise.all([
+        writeAlways ? tryBackend(always, req) : null,
+        writeChain ? firstAnswer(chain, req) : null,
+      ]);
+      const answers = [fromAlways, fromChain].filter(Boolean);
+      const stored = answers.filter(a => a.kind === 'ok');
+      const settled = answers.filter(a => a.kind !== 'failed').map(a => a.be.name);
+      const nowDone = [...done, ...settled];
+      if (stored.length) {
+        const complete = (!always || nowDone.includes(always.name)) && (!chain.length || chain.some(be => nowDone.includes(be.name)));
+        return { status: 'ok', done: nowDone, complete, backend: stored[0].be.name, summary: stored[0].summary };
       }
-      return { status: 'failed' };
+      if (settled.length) return { status: 'rejected', done: nowDone, complete: true };
+      return { status: 'failed', done, complete: false };
     },
   };
+}
+
+// A backend a player can never reach (blocked) must not be retried on every page load: after MAX_ROUNDS submit rounds that stored the solve
+// somewhere but left a writer failing, the solve counts as sent.
+export const MAX_ROUNDS = 3;
+
+// The attempt record after one submit round `r` (result of submit()); `order` = lb.readOrder.
+//   sent: true = nothing left to do (complete, rejected, skipped or out of rounds); the record is then { solved, time, sent, stats } only.
+//   sent: false keeps { done, rounds, statsFrom } for the retry (replay.unsent() finds it by sent === false).
+// `stats` is the summary of the highest-priority backend that has answered so far: a retry replaces it only with an answer from a backend
+// earlier in `order`. Returns `prev` itself when nothing was stored anywhere (e.g. offline): the next page load tries again without counting a round.
+export function afterSubmit(prev, r, order) {
+  if (r.status === 'failed' && !r.done.length) return prev;
+  const rank = name => (order.includes(name) ? order.indexOf(name) : Infinity);
+  const better = Boolean(r.summary) && (!prev.stats || rank(r.backend) < rank(prev.statsFrom));
+  const stats = better ? r.summary : prev.stats || null;
+  const rounds = (prev.rounds || 0) + 1;
+  const finished = r.status === 'skipped' || r.status === 'rejected' || r.complete;
+  const sent = finished || rounds >= MAX_ROUNDS;
+  if (sent) return { solved: prev.solved, time: prev.time, sent: true, stats };
+  return { solved: prev.solved, time: prev.time, sent: false, stats, statsFrom: better ? r.backend : prev.statsFrom, done: r.done, rounds };
+}
+
+// One submit round for the solved attempt of `date` (first submit, or a retry of a record with sent === false): writes the solve to the backends
+// that do not hold it yet, saves the new record in `store`. Returns that record, or null when there was nothing to do or nothing was stored.
+export async function submitAttempt(lb, store, date) {
+  const prev = store.attemptOn(date);
+  if (!prev || !prev.solved) return null;
+  const result = await lb.submit(date, prev.time, prev.done || []);
+  const next = afterSubmit(prev, result, lb.readOrder);
+  if (next === prev) return null;
+  await store.saveAttempt(date, next);
+  return next;
 }

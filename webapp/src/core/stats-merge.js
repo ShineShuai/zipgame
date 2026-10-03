@@ -38,6 +38,30 @@ export function mergeDays(lists) {
   return [...byDay.values()].sort((a, b) => a.d - b.d);
 }
 
+// Replicated days: the UTC days (YYYYMMDD numbers) from `replicatedFrom` to `replicatedTo`, both included, on which every solve was stored in several
+// backends (config.js). Either end may be missing (undefined or null): no start = no replicated day, no end = replication still running.
+export const isReplicated = (d, replicatedFrom, replicatedTo) => d >= (replicatedFrom ?? Infinity) && d <= (replicatedTo ?? Infinity);
+
+// One list of days from several backends (the stats page, the seeder's calibration). results = [{ name, days }], highest priority first.
+// On a replicated day the backends hold copies of the same players, so nothing is added up: the copy with the most players wins (a tie goes to the
+// earlier backend), the others lack solves their writes missed. On every other day the backends hold different players (one write each, failover),
+// so they add up (mergeDays). Each day gets `src`: the names of the backends it was taken from.
+export function combineDays(results, replicatedFrom = Infinity, replicatedTo = Infinity) {
+  const rows = new Map();
+  for (const { name, days } of results) {
+    for (const day of days) {
+      if (!rows.has(day.d)) rows.set(day.d, []);
+      rows.get(day.d).push({ name, day });
+    }
+  }
+  const out = [];
+  for (const [d, list] of rows) {
+    const taken = isReplicated(d, replicatedFrom, replicatedTo) ? [list.reduce((a, b) => (b.day.n > a.day.n ? b : a))] : list;
+    out.push({ ...mergeDays(taken.map(x => [x.day]))[0], src: taken.map(x => x.name) });
+  }
+  return out.sort((a, b) => a.d - b.d);
+}
+
 // Bin k covers [binLo(k), binHi(k)) ms: log-spaced, except bin 0 (everything below 1.1 s, down to MIN_MS) and bin NB-1 (overflow, up to MAX_MS).
 export const binLo = k => (k === 0 ? MIN_MS : T0_MS * RATIO ** k);
 export const binHi = k => (k === NB - 1 ? MAX_MS : T0_MS * RATIO ** (k + 1));

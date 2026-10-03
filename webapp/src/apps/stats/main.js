@@ -1,8 +1,8 @@
-// Stats page: reads the Game-of-Day aggregates from every configured backend (in parallel), merges them and draws the charts.
+// Stats page: reads the Game-of-Day aggregates from every configured backend (in parallel), combines them (stats-merge combineDays) and draws the charts.
 import { LEADERBOARD } from '../../config.js';
 import { backendsFromConfig } from '../../platform/leaderboard.js';
 import { fetchStats } from '../../platform/stats-client.js';
-import { mergeDays, dayStats, flagsOf, median, spearman, quantile, dayList } from '../../core/stats-merge.js';
+import { combineDays, isReplicated, dayStats, flagsOf, median, spearman, quantile, dayList } from '../../core/stats-merge.js';
 import { withoutSeeds } from '../../core/gotd-model.js';
 import { NB, binOf } from '../../core/hist.js';
 import { parse } from '../../core/format.js';
@@ -11,15 +11,20 @@ import { trapMetrics } from '../../core/trap.js';
 import { barsSvg, linesSvg, histSvg, scatterSvg, fmtSec } from './charts.js';
 import { initTooltip } from './tooltip.js';
 
-const NAMES = ['supabase', 'cloudflare'], MIN_SCATTER_N = 5, PUZZLE_URL = d => `../demo/GameOfDay/${d}.txt`;
+const MIN_SCATTER_N = 5, PUZZLE_URL = d => `../demo/GameOfDay/${d}.txt`;
 const $ = id => document.getElementById(id);
 const dot = color => `<i style="background:var(--${color})"></i>`;
 const hollow = '<i class="hollow"></i>';
-const S = { source: 'merged', seeds: true, sel: null, results: [], puzzles: new Map(), run: 0 };
-const backends = backendsFromConfig(LEADERBOARD);
+const S = { source: 'combined', seeds: true, sel: null, results: [], puzzles: new Map(), run: 0 };
+const setup = backendsFromConfig(LEADERBOARD);
+const backends = setup.list;
+const COLORS = ['blue', 'orange', 'green', 'violet', 'teal', 'red'];
+const colorIndex = name => backends.findIndex(be => be.name === name) % COLORS.length; // by position in the config: a backend keeps its colour when another one fails
+const replicatedFrom = LEADERBOARD.replicatedFrom ?? Infinity;
+const replicatedTo = LEADERBOARD.replicatedTo ?? Infinity;
 
 const okResults = () => S.results.filter(r => r.status === 'ok');
-const storedDays = () => (S.source === 'merged' ? mergeDays(okResults().map(r => r.days)) : (S.results.find(r => r.name === S.source) || { days: [] }).days);
+const storedDays = () => (S.source === 'combined' ? combineDays(okResults(), replicatedFrom, replicatedTo) : (S.results.find(r => r.name === S.source) || { days: [] }).days);
 const isoDay = d => `${String(d).slice(0, 4)}-${String(d).slice(4, 6)}-${String(d).slice(6)}`;
 
 // The days as the charts show them: with the seed players as stored, or without them (n, sum, bins and best of the real players only).
@@ -30,7 +35,7 @@ function shownDays() {
   return days.map(day => withoutSeeds(day) ?? day).filter(day => day.n > 0);
 }
 
-// seed times of a day with how often each time occurs: a merged day lists every seed once per backend (the seeds are written to both).
+// seed times of a day with how often each time occurs: a day added up from several backends (not a replicated day) lists every seed once per backend (the seeds are written to all).
 function seedDots(day) {
   const copies = new Map();
   for (const ms of day.seeds) copies.set(ms, (copies.get(ms) ?? 0) + 1);
@@ -61,44 +66,60 @@ function dayTip(day, stats) {
 }
 
 function renderStatus() {
-  $('status').innerHTML = NAMES.map(name => {
+  $('status').innerHTML = Object.keys(LEADERBOARD.backends).map(name => {
+    const role = name === LEADERBOARD.always ? ' (always written)' : '';
     const r = S.results.find(x => x.name === name);
-    if (!r) return `<span class="chip off">${name}: not configured</span>`;
-    return `<span class="chip ${r.status}">${name}: ${r.status === 'ok' ? `ok · ${r.ms} ms · ${r.days.length} days` : `failed · ${r.error}`}</span>`;
+    if (!r) return `<span class="chip off">${name}${role}: not configured</span>`;
+    return `<span class="chip ${r.status}">${name}${role}: ${r.status === 'ok' ? `ok · ${r.ms} ms · ${r.days.length} days` : `failed · ${r.error}`}</span>`;
   }).join('');
-  $('source').innerHTML = ['merged', ...okResults().map(r => r.name)].map(v => `<option${v === S.source ? ' selected' : ''}>${v}</option>`).join('');
+  $('source').innerHTML = ['combined', ...okResults().map(r => r.name)].map(v => `<option${v === S.source ? ' selected' : ''}>${v}</option>`).join('');
+}
+
+// Replicated days (replicatedFrom..replicatedTo) on which the always-written backend holds fewer players than the fullest copy: some solves never reached it.
+// Days before the first one it has data for are not its gaps (it was added later: the switch to another always-written backend).
+// null when there is no always-written backend or it failed on this load.
+function daysPrimaryLags() {
+  const primary = okResults().find(r => r.name === (setup.always && setup.always.name));
+  if (!primary) return null;
+  const own = new Map(primary.days.map(day => [day.d, day.n]));
+  const firstOwn = Math.min(...own.keys());
+  return combineDays(okResults(), replicatedFrom, replicatedTo)
+    .filter(day => isReplicated(day.d, replicatedFrom, replicatedTo) && day.d >= firstOwn && (own.get(day.d) ?? 0) < day.n)
+    .length;
 }
 
 function renderKpis(days) {
   const n = days.reduce((a, d) => a + d.n, 0), sumMs = days.reduce((a, d) => a + d.sum, 0), last = days.at(-1);
   const seedCount = days.reduce((a, d) => a + d.seeds.length, 0);
-  const failover = new Set(), seen = new Set();
-  for (const d of okResults().flatMap(r => r.days.map(x => x.d))) (seen.has(d) ? failover : seen).add(d);
+  const lag = daysPrimaryLags();
   const kpi = (v, label) => `<div class="kpi"><b>${v}</b><span>${label}</span></div>`;
   $('kpis').innerHTML = [kpi(n, 'solves'), kpi(days.length, 'days with data'), n ? kpi(fmtSec(sumMs / n / 1000), 'mean solve time') : '',
     days.length ? kpi(fmtSec(Math.min(...days.map(d => d.best[0] ?? Infinity)) / 1000), 'fastest solve') : '',
-    last ? kpi(`${last.n}`, `solves on ${last.d}`) : '', okResults().length > 1 ? kpi(failover.size, 'days on both backends') : '',
+    last ? kpi(`${last.n}`, `solves on ${last.d}`) : '', lag === null ? '' : kpi(lag, `days ${setup.always.name} lacks players`),
     seedCount ? kpi(seedCount, 'seed players among the solves') : ''].join('');
 }
 
 function renderTrend(days) {
   const axis = days.map(d => d.d);
   const stats = days.map(dayStats);
-  const names = S.source === 'merged' ? okResults().map(r => r.name) : [S.source];
+  const names = S.source === 'combined' ? okResults().map(r => r.name) : [S.source];
   const tips = days.map((day, i) => dayTip(day, stats[i]));
 
-  // players per backend; with seeds on, the seed players are their own grey segment instead of part of the backend's count
+  // players per backend; a day counts for the backends it was taken from (one copy on a replicated day, the sum of all on any other).
+  // With seeds on, the seed players are their own grey segment instead of part of the backend's count.
+  const srcOf = new Map(storedDays().map(day => [day.d, day.src || [S.source]]));
+  const takenFrom = (name, d) => (srcOf.get(d) || []).includes(name);
   const stored = new Map(names.map(name => [name, new Map(S.results.find(r => r.name === name).days.map(x => [x.d, x]))]));
   const series = names.map(name => ({
     name,
-    cls: `c-${name}`,
+    cls: `bar${colorIndex(name)}`,
     values: axis.map(d => {
       const day = stored.get(name).get(d);
-      return day ? day.n - day.seeds.length : 0;
+      return day && takenFrom(name, d) ? day.n - day.seeds.length : 0;
     }),
   }));
   if (S.seeds) {
-    const seedsOf = d => names.reduce((total, name) => total + (stored.get(name).get(d)?.seeds.length ?? 0), 0);
+    const seedsOf = d => names.reduce((total, name) => total + (takenFrom(name, d) ? stored.get(name).get(d)?.seeds.length ?? 0 : 0), 0);
     series.push({ name: 'seed players', cls: 'c-seed', values: axis.map(seedsOf) });
   }
   const barTips = axis.map((d, i) => {
@@ -118,7 +139,7 @@ function renderTrend(days) {
 
   const legend = [`${dot('blue')}mean`, `${dot('green')}median`, `${dot('orange')}top-10 mean (n &gt; 10)`];
   if (S.seeds) legend.push(`${hollow}seed players`);
-  if (S.source === 'merged') legend.push(names.map(n => `${dot(n === 'supabase' ? 'blue' : 'orange')}${n}`).join(' ') + ' (bars)');
+  if (S.source === 'combined') legend.push(names.map(n => `${dot(COLORS[colorIndex(n)])}${n}`).join(' ') + ' (bars)');
   $('timesLegend').innerHTML = legend.join(' · ');
 }
 
@@ -183,7 +204,7 @@ function renderScatter(days) {
 }
 
 function render() {
-  if (S.source !== 'merged' && !okResults().some(r => r.name === S.source)) S.source = 'merged'; // the chosen backend failed on this load
+  if (S.source !== 'combined' && !okResults().some(r => r.name === S.source)) S.source = 'combined'; // the chosen backend failed on this load
   renderStatus();
   const days = shownDays();
   if (!days.some(d => d.d === S.sel)) S.sel = days.at(-1)?.d ?? null;

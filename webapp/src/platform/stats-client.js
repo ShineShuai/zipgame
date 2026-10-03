@@ -9,7 +9,8 @@ export function fetchStats(backends, range, { fetchFn = (...a) => fetch(...a), t
     try {
       const res = await fetchFn(url, { ...init, signal: ctl.signal });
       if (!res.ok) return result({ status: 'failed', error: 'HTTP ' + res.status });
-      const days = parseDays(await res.json());
+      const body = await res.json();
+      const days = parseDays(be.decode ? be.decode('read', body) : body);
       return days ? result({ status: 'ok', days }) : result({ status: 'failed', error: 'malformed reply' });
     } catch { return result({ status: 'failed', error: 'timeout / network' }); } finally { clearTimeout(timer); }
   }));

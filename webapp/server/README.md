@@ -1,39 +1,35 @@
 # Game-of-Day averages backends
 
-Stores per-day aggregates only (day totals, ~80 histogram bins, the 10 fastest times); no player data. Deploy one or both, then fill `src/config.js`
-(`order` = failover order, first entry is tried first; `?lb=supabase` in the page URL moves that backend first for one load).
+Stores per-day aggregates only (day totals, ~80 histogram bins, the 10 fastest times); no player data. Deploy any number of backends, then fill `src/config.js`:
+`backends` = id -> `{ type, url, key? }` (type `cloudflare` or `supabase`; the same type may appear several times, e.g. a second Supabase project in another region),
+`always` = the id written on every solve, `order` = the backups in failover order, `replicatedFrom` = see "Writes" below.
+`?lb=<id>` in the page URL moves that backup to the front of `order` for one load.
 
-## Cloudflare (Worker + D1)
-    cd server/cloudflare
-    npx wrangler d1 create zip-gotd                       # put database_id into wrangler.toml
-    npx wrangler d1 execute zip-gotd --remote --file=schema.sql
-    # set ALLOWED_ORIGIN in wrangler.toml to https://<user>.github.io
-    npx wrangler deploy                                   # -> config.js cloudflare.url
-Test (also covers `GET /stats`): `npm run test:server` (real worker code on SQLite, Node >= 22.5).
-
-## Supabase
-Run `supabase/schema.sql` in the SQL editor; put the project URL and the anon/publishable key into `config.js`.
-Test (also covers `read_gotd`): `PGHOST=/tmp PGPORT=5544 PGUSER=postgres python3 server/supabase/test.py` on a scratch Postgres (psql required).
-
-Accepted days: today, tomorrow (clock skew), and up to `REPLAY_DAYS + 1` days back (`src/core/hist.js`, 14 + 1 = 15 now): the play app lets a player replay a missed Game of Day of the last `REPLAY_DAYS` days, and the replay time counts in that day's averages (+1: a replay started before UTC midnight ends after it). Both backends apply the same limit (Worker `validate(body, now, back)`, Supabase `submit_gotd`); seeding stays at +-1 day. To change the window, edit `REPLAY_DAYS`, put `REPLAY_DAYS + 1` into the `v_today - v_date > …` check of `submit_gotd` (`schema.sql`; `npm run test:server` fails while the two differ), redeploy the Worker and re-run `schema.sql`. To stop accepting replays, set `back` to 1 in `POST /gotd` and that number in `submit_gotd` to 1.
-
-Failover happens on timeout (3 s), network error, non-2xx except 400/422, or a malformed reply. After a failover the two databases hold different subsets of players.
+## Writes
+Every solve goes to `always` (if set and configured) AND, in parallel, to the first backend of `order` that answers; further backups are only tried when the ones before them fail (timeout 3 s, network error, non-2xx except 400/422, malformed reply). The summary shown to the player comes from `always`, else from the backup that answered; the submit never waits for more than that. With `always` unset (or not configured) only the backup chain writes, as before.
+Why two copies: the first backup then holds (nearly) every solve, so a player who cannot reach `always` still sees the averages of everyone, not just of the players who failed over to the same backend.
+Delivery is tracked per solve in the attempt record (`done` = backends that hold it): a retry (next page load, `replay.unsent()`) writes only what is missing, and a later answer of `always` replaces a backup's summary. A backend that never answers (blocked for that player) is retried at most `MAX_ROUNDS` = 3 times, and only after the solve is stored somewhere. The databases can still differ: a solve of a player who cannot reach `always` is not in it, and a failed backup write leaves that backup one short.
+`replicatedFrom` (YYYYMMDD) = the first UTC day on which every solve is written twice; `replicatedTo` (optional) = the last such day. Set `replicatedFrom` to the first day after this config went live; it stays valid when `always` changes later (new Turso, say, with the same two writes), because the old backends keep their days. Add `replicatedTo` when the two writes stop (`always: null`, or no backup left): the days after it are then added up again. On a replicated day the backends hold copies of the same players, on every other day (one write each, failover) different ones. With `always: null` from the start leave both out: `replicatedFrom` is not tied to `always`, it says which days were stored twice, so a leftover value makes the stats page show only the fullest backend of every single-write day.
+A 400/422 answer (invalid input, e.g. a day outside the window) is never retried and never fails over; the backend counts as done.
 
 ## Seed players (cold start)
-`tools/gotd-seed.mjs` (nightly, `.github/workflows/gotd-seed.yml`) adds 3..8 synthetic players to a day on both backends; they count in `n`, `sum`, `bins` and `best` like real players, and are listed in `seeds: [ms]` of both read APIs so the stats page and the calibration can subtract them. A day is seeded once per backend: a retry answers `exists` (Worker: HTTP 409) and changes nothing. A seeding cannot be undone, so look at a dry run first (workflow input `dry_run`, or `npm run gotd:seed`).
+`tools/gotd-seed.mjs` (nightly, `.github/workflows/gotd-seed.yml`) adds 3..8 synthetic players to a day on every configured backend (`--only ID` for one); they count in `n`, `sum`, `bins` and `best` like real players, and are listed in `seeds: [ms]` of both read APIs so the stats page and the calibration can subtract them. A day is seeded once per backend: a retry answers `exists` (Worker: HTTP 409) and changes nothing. A seeding cannot be undone, so look at a dry run first (workflow input `dry_run`, or `npm run gotd:seed`).
 One-time setup, one shared secret `SEED_PLAYERS_SECRET` for GitHub, the Worker and Supabase. Keep it in a file outside the repo and never type it on a command line or in an environment variable; every consumer below reads the file (surrounding whitespace is ignored, so a trailing newline does no harm):
 ```
 umask 077; openssl rand -hex 24 > ~/.zip-seed-secret
 ```
 1. GitHub: `gh secret set SEED_PLAYERS_SECRET < ~/.zip-seed-secret` (or paste the value in Settings > Secrets and variables > Actions). The workflow writes it to a temporary file for the script.
 2. Cloudflare: `npx wrangler d1 execute zip-gotd --remote --file=schema.sql` (adds the `seed` table), `npx wrangler secret put SEED_PLAYERS_SECRET < ~/.zip-seed-secret`, `npx wrangler deploy`. `wrangler secret put NAME` takes the value from stdin: it prompts (hidden input) in a terminal and reads the redirected file otherwise; the secret is never an argument. A Worker without the table still answers `/stats` (with `seeds: []`).
-3. Supabase keeps only the SHA-256 of the secret, so that the database never holds the secret itself. Re-run `supabase/schema.sql`, then `node tools/gotd-seed.mjs --token-file ~/.zip-seed-secret --print-supabase-sql` and paste the one statement it prints (`insert into gotd_secret ... on conflict ...`) into the SQL editor. It contains the hash, not the secret.
+3. Supabase keeps only the SHA-256 of the secret, so that the database never holds the secret itself. Re-run `supabase/schema.sql`, then `node tools/gotd-seed.mjs --token-file ~/.zip-seed-secret --print-supabase-sql` and paste the one statement it prints (`insert into gotd_secret ... on conflict ...`) into the SQL editor of every Supabase project. It contains the hash, not the secret.
 Tests: `npm run test:server` (seeding on the real worker code) and `server/supabase/test.py` (`seed_gotd`).
 
 ## Stats page (`stats.html`)
-Reads every configured backend in parallel (no failover) and merges them: n, sum and bins add, best-10 = the ten fastest of the union.
-Both backends expose the same public, read-only aggregate API (<= 90 days per request):
+Reads every configured backend in parallel (no failover). The default source "combined" gives one list of days: on a replicated day (`replicatedFrom`..`replicatedTo`) the backends hold copies of the same players, so the copy with the most players of that day is used (a tie goes to the backend listed first: `always`, then the backups); on every other day they hold different players, so n, sum and bins add up and best-10 = the ten fastest of the union. The bars are coloured by the backend a day was taken from; "days <always> lacks players" counts replicated days on which `always` holds fewer players than the fullest copy (from the first day `always` has data: a backend added later has no earlier days). Any single backend can be chosen as the source too.
+Every backend type exposes the same public, read-only aggregate API (<= 90 days per request):
 - Supabase: `rpc/read_gotd` (`{ p_from, p_to }`). Re-run `supabase/schema.sql`; it is idempotent.
 - Cloudflare: `GET /stats?from=YYYYMMDD&to=YYYYMMDD` (cached 120 s). Redeploy with `npx wrangler deploy`.
-The "Seed players" checkbox switches the seed players (listed in `seeds`) on and off in every chart: on = as stored, seeds drawn as hollow dots / grey bars; off = n, sum, bins and best of the real players only. Hover any point, bar or day column for its values. In the merged view each seed counts once per backend, because both backends hold them.
+The "Seed players" checkbox switches the seed players (listed in `seeds`) on and off in every chart: on = as stored, seeds drawn as hollow dots / grey bars; off = n, sum, bins and best of the real players only. Hover any point, bar or day column for its values. In days added up from several backends (not replicated days) each seed counts once per backend, because all backends hold them.
 Reply: `{ days: [{ d, n, sum, bins: [[bin, n]], best: [ms] }] }`. Submitted times include +180 s per hint used. Serve the page over http (`python3 -m http.server`) or github.io; the difficulty scatter fetches `../demo/GameOfDay/YYYYMMDD.txt`.
+
+## Turso (planned third type)
+`turso/schema.sql` is the database side of a backend that the browser calls directly (Turso's HTTP API, no Worker; Cloudflare is blocked in China): an insert-only `submit` table plus a trigger that validates the row and maintains `day` / `bin` / `best`, so that the public browser token (`-p all:data_read -p submit:data_add`) cannot write anything the Worker would reject. `node server/turso/schema.test.mjs` (part of `npm run test:server`) runs it on SQLite against `worker.js`; `turso/smoke.sh` checks a real database with the browser token (CORS, trigger permissions, denied direct writes, latency). The client adapter (`type: 'turso'`) is not part of this build yet: a `turso` entry in `backends` is skipped. Switching later = add the entry, set `always` to it; the Supabase / Cloudflare backends keep their history and stay readable on the stats page.

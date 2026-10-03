@@ -22,10 +22,11 @@ import { EN, ZH } from '../src/ui/i18n.js';
 import { HINT_PENALTY_S, penalizedTime } from '../src/features/hints.js';
 import { createStore } from '../src/features/stats-store.js';
 import { NB, TOP_K, binOf, summarize, statsLine } from '../src/core/hist.js';
-import { parseDays, mergeDays } from '../src/core/stats-merge.js';
+import { parseDays, mergeDays, combineDays, isReplicated } from '../src/core/stats-merge.js';
 import { wls, fitCandidate, predictH, dedupe, isMonotone, selectEntries, pickEntries, fitTime, predictMs, withoutSeeds, TIME_PRIOR, invert, floorMs, needsThinking, aboveFloor, EXTRA_MIN_SKILL } from '../src/core/gotd-model.js';
 import { barsSvg, linesSvg, histSvg, scatterSvg } from '../src/apps/stats/charts.js';
-import { createLeaderboard, backendsFromConfig, cloudflareBackend, supabaseBackend } from '../src/platform/leaderboard.js';
+import { fetchStats } from '../src/platform/stats-client.js';
+import { createLeaderboard, backendsFromConfig, cloudflareBackend, supabaseBackend, afterSubmit, submitAttempt, MAX_ROUNDS } from '../src/platform/leaderboard.js';
 import { GOLDEN } from './golden.js';
 import { metricsFor, referenceSolve, backtrackOverhead, gradeOf, refNodeCap, REF_FLAGS } from '../src/core/difficulty.js';
 import { calibrate, calibrateAll, calibrateMetric, generateAtDifficulty, DEFAULT_THRESHOLDS, DEFAULT_THRESHOLDS_BY_METRIC, GRADED_METRICS, QUANTILES } from '../src/core/gen/calibration.js';
@@ -1318,28 +1319,46 @@ t('hist: statsLine', () => {
   eq(statsLine({ n: 1, mean: 42.13, top: null, pct: null }, true), 'Everyone: 42.1s avg (1 player)');
   eq(statsLine({ n: 2, mean: 28.5, top: null, pct: 100 }), 'Everyone: 28.5s avg · You beat 100%');
 });
-t('leaderboard: backendsFromConfig skips unconfigured, keeps order, moves ?lb= first', () => {
-  const cfg = { order: ['cloudflare', 'supabase'], cloudflare: { url: 'https://w' }, supabase: { url: 'https://s', key: 'k' } };
-  eq(backendsFromConfig(cfg).map(b => b.name), ['cloudflare', 'supabase']);
-  eq(backendsFromConfig(cfg, 'supabase').map(b => b.name), ['supabase', 'cloudflare']);
-  eq(backendsFromConfig(cfg, 'nope').map(b => b.name), ['cloudflare', 'supabase']);
-  eq(backendsFromConfig({ ...cfg, supabase: { url: 'https://s', key: '' } }).map(b => b.name), ['cloudflare']);
-  eq(backendsFromConfig({ ...cfg, cloudflare: { url: '' } }, 'cloudflare').map(b => b.name), ['supabase']);
-  eq(backendsFromConfig({ ...cfg, cloudflare: { url: '' }, supabase: { url: '' } }), []);
-  eq(createLeaderboard([]).enabled, false);
+t('leaderboard: backendsFromConfig = always + backup chain + the others; skips unconfigured and unknown types; ?lb= moves a backup first', () => {
+  const cfg = {
+    backends: {
+      asia: { type: 'supabase', url: 'https://a', key: 'k' },
+      cf: { type: 'cloudflare', url: 'https://w' },
+      eu: { type: 'supabase', url: 'https://e', key: 'k' },
+      spare: { type: 'supabase', url: 'https://x', key: 'k' },
+    },
+    always: 'asia',
+    order: ['cf', 'eu'],
+  };
+  const names = list => list.map(b => b.name);
+  const setup = backendsFromConfig(cfg);
+  eq([setup.always.name, names(setup.chain), names(setup.list)], ['asia', ['cf', 'eu'], ['asia', 'cf', 'eu', 'spare']], 'a backend that is neither always nor in order is read-only');
+  eq(names(backendsFromConfig(cfg, 'eu').chain), ['eu', 'cf']);
+  eq(names(backendsFromConfig(cfg, 'asia').chain), ['cf', 'eu'], '?lb= naming the always-written backend changes nothing');
+  eq(names(backendsFromConfig(cfg, 'nope').chain), ['cf', 'eu']);
+  eq(names(backendsFromConfig({ ...cfg, order: ['cf', 'asia', 'eu', 'cf'] }).chain), ['cf', 'eu'], 'always is never a backup; duplicates dropped');
+  const noKey = backendsFromConfig({ ...cfg, backends: { ...cfg.backends, asia: { type: 'supabase', url: 'https://a', key: '' } } });
+  eq([noKey.always, names(noKey.chain), names(noKey.list)], [null, ['cf', 'eu'], ['cf', 'eu', 'spare']], 'always not configured: the backups alone');
+  eq(backendsFromConfig({ ...cfg, always: undefined }).always, null);
+  eq(names(backendsFromConfig({ ...cfg, backends: { ...cfg.backends, eu: { type: 'turso', url: 'https://t', key: 'k' } } }).chain), ['cf'], 'a type this build does not know is skipped');
+  eq(names(backendsFromConfig({ ...cfg, backends: { ...cfg.backends, cf: { type: 'cloudflare', url: '' } } }).chain), ['eu']);
+  const none = backendsFromConfig({ backends: {}, always: 'asia', order: ['cf'] });
+  eq([none.always, none.chain, none.list], [null, [], []]);
+  eq(createLeaderboard(none).enabled, false);
+  eq(createLeaderboard(setup).readOrder, ['asia', 'cf', 'eu']);
 });
 const reply = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
 const GOOD = { n: 3, sum: 90000, below: 1, cnt: 1, best: [10000, 30000, 50000] };
 const hang = (url, { signal }) => new Promise((_, rej) => signal.addEventListener('abort', () => rej(new Error('aborted'))));
-const CF = { url: 'https://w.example/' }, SB = { url: 'https://s.example', key: 'anon-key' };
-const both = f => createLeaderboard([cloudflareBackend(CF), supabaseBackend(SB)], { fetchFn: f, timeoutMs: 20 });
+const CF = { url: 'https://w.example/' }, SB = { url: 'https://s.example', key: 'anon-key' }, ASIA = { url: 'https://asia.example', key: 'asia-key' };
+const both = f => createLeaderboard({ always: null, chain: [cloudflareBackend(CF), supabaseBackend(SB)] }, { fetchFn: f, timeoutMs: 20 }); // backups only
 ta('leaderboard: request shapes (cloudflare text/plain no preflight; supabase rpc + apikey) and summary', async () => {
   const calls = []; const f = async (url, init) => { calls.push([url, init]); return reply(200, GOOD); };
   const r = await both(f).submit('20260929', 42.13);
   eq([r.status, r.backend, r.summary], ['ok', 'cloudflare', { n: 3, mean: 30, top: null, pct: 50 }]);
   eq(calls.length, 1); eq(calls[0][0], 'https://w.example/gotd'); eq(calls[0][1].headers, { 'Content-Type': 'text/plain;charset=UTF-8' });
   eq(JSON.parse(calls[0][1].body), { d: 20260929, t: 42130, b: binOf(42130) });
-  const g = []; await createLeaderboard([supabaseBackend(SB)], { fetchFn: async (u, i) => { g.push([u, i]); return reply(200, GOOD); } }).submit('20260929', 42.13);
+  const g = []; await createLeaderboard({ always: null, chain: [supabaseBackend(SB)] }, { fetchFn: async (u, i) => { g.push([u, i]); return reply(200, GOOD); } }).submit('20260929', 42.13);
   eq(g[0][0], 'https://s.example/rest/v1/rpc/submit_gotd'); eq(g[0][1].headers, { 'Content-Type': 'application/json', apikey: 'anon-key' });
   eq(JSON.parse(g[0][1].body), { p_day: 20260929, p_ms: 42130, p_bin: binOf(42130) });
 });
@@ -1355,6 +1374,126 @@ ta('leaderboard: 400/422 = rejected without failover; all down = failed; out-of-
   n = 0; eq((await both(hang).submit('20260929', 30)).status, 'failed');
   for (const sec of [0.4, 3601, NaN]) { let sent = 0; eq((await both(async () => { sent++; return reply(200, GOOD); }).submit('20260929', sec)).status, 'skipped'); eq(sent, 0); }
 });
+// always-written backend `asia` + backup chain [cloudflare, supabase]; every host answers as routes[host]; the summary's mean tells who answered
+const three = routes => {
+  const calls = [];
+  const fetchFn = async (url, init) => {
+    const host = new URL(url).host;
+    calls.push(host);
+    return routes[host](url, init);
+  };
+  const lb = createLeaderboard({ always: supabaseBackend(ASIA, 'asia'), chain: [cloudflareBackend(CF), supabaseBackend(SB)] }, { fetchFn, timeoutMs: 20 });
+  return { lb, calls };
+};
+const meanOf = seconds => async () => reply(200, { n: 3, sum: 3000 * seconds, below: 1, cnt: 1, best: [10000, 30000, 50000] });
+const ALL = { 'asia.example': meanOf(30), 'w.example': meanOf(40), 's.example': meanOf(50) };
+const down = async () => reply(503, {});
+const brief = r => [r.status, r.backend, r.summary && r.summary.mean, r.done, r.complete];
+ta('leaderboard: always + first backup are both written, the summary comes from always, the later backups stay untouched', async () => {
+  const { lb, calls } = three(ALL);
+  eq(brief(await lb.submit('20261004', 42.13)), ['ok', 'asia', 30, ['asia', 'cloudflare'], true]);
+  eq([...calls].sort(), ['asia.example', 'w.example']);
+});
+ta('leaderboard: always and the backup chain are requested in parallel', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const slow = mean => async () => { await gate; return meanOf(mean)(); };
+  const { lb, calls } = three({ 'asia.example': slow(30), 'w.example': slow(40), 's.example': slow(50) });
+  const pending = lb.submit('20261004', 30);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  eq([...calls].sort(), ['asia.example', 'w.example'], 'both in flight before either answered');
+  release();
+  eq((await pending).done, ['asia', 'cloudflare']);
+});
+ta('leaderboard: the backup chain fails over (cloudflare down: supabase), always is unaffected', async () => {
+  const { lb, calls } = three({ ...ALL, 'w.example': down });
+  eq(brief(await lb.submit('20261004', 30)), ['ok', 'asia', 30, ['asia', 'supabase'], true]);
+  eq([...calls].sort(), ['asia.example', 's.example', 'w.example']);
+});
+ta('leaderboard: backups all down = ok but not complete; always down = the backup answers and always is still owed', async () => {
+  const noBackups = three({ ...ALL, 'w.example': down, 's.example': down });
+  eq(brief(await noBackups.lb.submit('20261004', 30)), ['ok', 'asia', 30, ['asia'], false]);
+  const noAsia = three({ ...ALL, 'asia.example': down });
+  eq(brief(await noAsia.lb.submit('20261004', 30)), ['ok', 'cloudflare', 40, ['cloudflare'], false]);
+  const hung = three({ ...ALL, 'asia.example': (url, { signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('aborted')))) });
+  eq(brief(await hung.lb.submit('20261004', 30)), ['ok', 'cloudflare', 40, ['cloudflare'], false], 'a timeout of always does not stop the backup');
+  const nothing = three({ 'asia.example': down, 'w.example': down, 's.example': down });
+  eq(brief(await nothing.lb.submit('20261004', 30)), ['failed', undefined, undefined, [], false]);
+});
+ta('leaderboard: a retry writes only what is missing (done), and nothing when nothing is missing', async () => {
+  const chainOnly = three(ALL);
+  eq(brief(await chainOnly.lb.submit('20261004', 30, ['asia'])), ['ok', 'cloudflare', 40, ['asia', 'cloudflare'], true]);
+  eq(chainOnly.calls, ['w.example']);
+  const alwaysOnly = three(ALL);
+  eq(brief(await alwaysOnly.lb.submit('20261004', 30, ['supabase'])), ['ok', 'asia', 30, ['supabase', 'asia'], true]);
+  eq(alwaysOnly.calls, ['asia.example']);
+  const done = three(ALL);
+  eq(await done.lb.submit('20261004', 30, ['asia', 'cloudflare']), { status: 'ok', done: ['asia', 'cloudflare'], complete: true });
+  eq(done.calls, []);
+});
+ta('leaderboard: a 400/422 backend counts as settled; one that stored the solve wins; only rejections = rejected', async () => {
+  const alwaysRejects = three({ ...ALL, 'asia.example': async () => reply(400, {}) });
+  eq(brief(await alwaysRejects.lb.submit('20261004', 30)), ['ok', 'cloudflare', 40, ['asia', 'cloudflare'], true]);
+  const chainRejects = three({ ...ALL, 'w.example': async () => reply(422, {}) });
+  eq(brief(await chainRejects.lb.submit('20261004', 30)), ['ok', 'asia', 30, ['asia', 'cloudflare'], true]);
+  eq([...chainRejects.calls].sort(), ['asia.example', 'w.example'], 'a rejection ends the chain: no failover to supabase');
+  const allReject = three({ ...ALL, 'asia.example': async () => reply(400, {}), 'w.example': async () => reply(400, {}) });
+  eq((await allReject.lb.submit('20261004', 30)).status, 'rejected');
+  const skipped = three(ALL);
+  eq([(await skipped.lb.submit('20261004', 0.4)).status, skipped.calls], ['skipped', []]);
+});
+ta('leaderboard / stats-client: an adapter with decode() (a database with its own reply envelope) plugs in without changes to the flow', async () => {
+  // stands for a backend like Turso's HTTP API: always HTTP 200, the result or an error inside an envelope
+  const wrapped = {
+    name: 'wrapped',
+    request: ({ d, t, b }) => ({ url: 'https://wrapped.example/q', init: { method: 'POST', body: JSON.stringify({ d, t, b }) } }),
+    read: ({ from, to }) => ({ url: `https://wrapped.example/r?${from}-${to}`, init: { method: 'GET' } }),
+    decode: (kind, json) => {
+      if (json.error) return json.error === 'invalid' ? { rejected: true } : null;
+      return json.result;
+    },
+  };
+  const answer = body => async () => ({ ok: true, status: 200, json: async () => body });
+  const lbOf = f => createLeaderboard({ always: wrapped, chain: [] }, { fetchFn: f, timeoutMs: 20 });
+  eq(brief(await lbOf(answer({ result: GOOD })).submit('20261004', 30)), ['ok', 'wrapped', 30, ['wrapped'], true]);
+  eq((await lbOf(answer({ error: 'invalid' })).submit('20261004', 30)).status, 'rejected');
+  eq((await lbOf(answer({ error: 'db down' })).submit('20261004', 30)).status, 'failed');
+  eq((await lbOf(answer({ result: { n: 'x' } })).submit('20261004', 30)).status, 'failed');
+  const day = { d: 20261004, n: 3, sum: 9000, bins: [[3, 3]], best: [2000, 3000, 4000] };
+  const [ok] = await fetchStats([wrapped], { from: 20261004, to: 20261004 }, { fetchFn: answer({ result: { days: [day] } }) });
+  eq([ok.status, ok.days.length, ok.days[0].n], ['ok', 1, 3]);
+  const [bad] = await fetchStats([wrapped], { from: 20261004, to: 20261004 }, { fetchFn: answer({ error: 'x' }) });
+  eq(bad.status, 'failed');
+});
+const SUM = mean => ({ n: 3, mean, top: null, pct: 50 });
+const OWED = { solved: true, time: 42.1, sent: false };
+const ORDER = ['asia', 'cloudflare', 'supabase'];
+t('afterSubmit: complete = the minimal record; incomplete keeps done / rounds / statsFrom; the always-written backend\'s summary wins', () => {
+  eq(afterSubmit(OWED, { status: 'ok', done: ['asia', 'cloudflare'], complete: true, backend: 'asia', summary: SUM(30) }, ORDER), { solved: true, time: 42.1, sent: true, stats: SUM(30) });
+  const first = afterSubmit(OWED, { status: 'ok', done: ['cloudflare'], complete: false, backend: 'cloudflare', summary: SUM(40) }, ORDER);
+  eq(first, { solved: true, time: 42.1, sent: false, stats: SUM(40), statsFrom: 'cloudflare', done: ['cloudflare'], rounds: 1 });
+  eq(afterSubmit(first, { status: 'ok', done: ['cloudflare', 'asia'], complete: true, backend: 'asia', summary: SUM(30) }, ORDER), { solved: true, time: 42.1, sent: true, stats: SUM(30) }, 'the retry of always replaces the backup\'s summary');
+  const kept = { ...OWED, stats: SUM(30), statsFrom: 'asia', done: ['asia'], rounds: 1 };
+  eq(afterSubmit(kept, { status: 'ok', done: ['asia', 'supabase'], complete: true, backend: 'supabase', summary: SUM(50) }, ORDER).stats, SUM(30), 'a later backup never replaces an earlier one\'s summary');
+});
+t('afterSubmit: a backend that never answers is given up after MAX_ROUNDS rounds; offline (nothing stored) never counts', () => {
+  eq(MAX_ROUNDS, 3);
+  let rec = afterSubmit(OWED, { status: 'ok', done: ['asia'], complete: false, backend: 'asia', summary: SUM(30) }, ORDER);
+  eq([rec.sent, rec.rounds], [false, 1]);
+  rec = afterSubmit(rec, { status: 'failed', done: ['asia'], complete: false }, ORDER);
+  eq([rec.sent, rec.rounds], [false, 2]);
+  rec = afterSubmit(rec, { status: 'failed', done: ['asia'], complete: false }, ORDER);
+  eq(rec, { solved: true, time: 42.1, sent: true, stats: SUM(30) });
+  let offline = OWED;
+  for (let i = 0; i < 5; i++) offline = afterSubmit(offline, { status: 'failed', done: [], complete: false }, ORDER);
+  ok(offline === OWED, 'prev itself: nothing to save, retried on the next page load');
+});
+t('afterSubmit: rejected and skipped finish the record without a summary; a legacy pending record works', () => {
+  eq(afterSubmit(OWED, { status: 'rejected', done: ['asia'], complete: true }, ORDER), { solved: true, time: 42.1, sent: true, stats: null });
+  eq(afterSubmit(OWED, { status: 'skipped', done: [] }, ORDER), { solved: true, time: 42.1, sent: true, stats: null });
+  eq(afterSubmit(OWED, { status: 'ok', done: ['supabase'], complete: true, backend: 'supabase', summary: SUM(50) }, ORDER).stats, SUM(50), 'no always-written backend: the backup\'s summary');
+});
+
 ta('stats-store: pending GOTD attempt is sent:false; saving stats persists and survives hydrate', async () => {
   const st = fakeStorage(), S = createStore(st, [5]); await S.hydrate('20260929');
   await S.recordGotd(5, '20260929', 42.1, true); eq(S.attempt(), { solved: true, time: 42.1, sent: false });
@@ -1372,6 +1511,48 @@ t('stats-merge: parseDays keeps seeds (default [], sorted), rejects malformed on
   const a = parseDays({ days: [aday({ seeds: [3000] })] }), b = parseDays({ days: [aday({ seeds: [2000] })] }), old = [{ ...parseDays({ days: [aday()] })[0], seeds: undefined }];
   const m = mergeDays([a, b, old])[0]; eq([m.n, m.sum, m.seeds], [9, 27000, [2000, 3000]]);
   eq(mergeDays([a])[0].seeds, [3000]);
+});
+t('stats-merge: combineDays adds up the days before replicatedFrom and takes the fullest copy from it on', () => {
+  const dayOf = (d, n, seeds = []) => parseDays({ days: [aday({ d, n, sum: n * 3000, bins: [[3, n]], best: [2000], seeds })] })[0];
+  const results = [
+    { name: 'asia', days: [dayOf(20261002, 3), dayOf(20261004, 10, [5000]), dayOf(20261005, 12, [5000])] },
+    { name: 'cf', days: [dayOf(20261002, 4), dayOf(20261004, 11, [5000]), dayOf(20261005, 12, [5000])] },
+    { name: 'eu', days: [dayOf(20261004, 1)] },
+  ];
+  const combined = combineDays(results, 20261004);
+  eq(combined.map(x => [x.d, x.n, x.sum, x.bins[3], x.src, x.seeds.length]), [
+    [20261002, 7, 21000, 7, ['asia', 'cf'], 0],
+    [20261004, 11, 33000, 11, ['cf'], 1],
+    [20261005, 12, 36000, 12, ['asia'], 1],
+  ], 'before: added up; from replicatedFrom: the fullest copy (a tie: the earlier backend), its seeds once');
+  eq(combineDays(results).map(x => [x.d, x.n, x.src]), [[20261002, 7, ['asia', 'cf']], [20261004, 22, ['asia', 'cf', 'eu']], [20261005, 24, ['asia', 'cf']]], 'no replicatedFrom: everything added up, like mergeDays');
+  eq(combineDays([]), []);
+  eq(results[0].days[1].bins[3], 10, 'the inputs are not changed');
+});
+t('stats-merge: replicatedTo ends the replicated range (both ends included); days after it add up again', () => {
+  const dayOf = (d, n) => parseDays({ days: [aday({ d, n, sum: n * 3000, bins: [[3, n]], best: [2000] })] })[0];
+  const results = [
+    { name: 'asia', days: [20261002, 20261003, 20261004, 20261005, 20261006].map((d, i) => dayOf(d, [3, 10, 12, 8, 6][i])) },
+    { name: 'cf', days: [20261002, 20261003, 20261004, 20261005, 20261006].map((d, i) => dayOf(d, [4, 9, 12, 5, 7][i])) },
+  ];
+  const view = combineDays(results, 20261003, 20261004).map(x => [x.d, x.n, x.src]);
+  eq(view, [
+    [20261002, 7, ['asia', 'cf']],
+    [20261003, 10, ['asia']],
+    [20261004, 12, ['asia']],
+    [20261005, 13, ['asia', 'cf']],
+    [20261006, 13, ['asia', 'cf']],
+  ], 'before from and after to: added up; from and to themselves: one copy');
+  eq(combineDays(results, 20261003, 20261003).map(x => [x.d, x.src.length]), [[20261002, 2], [20261003, 1], [20261004, 2], [20261005, 2], [20261006, 2]], 'a one-day range');
+  eq(combineDays(results, 20261003).map(x => x.src.length), [2, 1, 1, 1, 1], 'no end: replication runs on');
+  eq(combineDays(results, undefined, 20261004).map(x => x.src.length), [2, 2, 2, 2, 2], 'no start: nothing is replicated, whatever the end');
+  eq(combineDays(results, 20261005, 20261003).map(x => x.src.length), [2, 2, 2, 2, 2], 'an empty range (to before from) replicates nothing');
+  eq(combineDays(results, 20261003, null).map(x => x.src.length), [2, 1, 1, 1, 1], 'null = no end, like undefined (a config line `replicatedTo: null`)');
+  eq(combineDays(results, null, 20261004).map(x => x.src.length), [2, 2, 2, 2, 2], 'null start = nothing replicated');
+  ok(isReplicated(20261003, 20261003, 20261004) && isReplicated(20261004, 20261003, 20261004));
+  ok(!isReplicated(20261002, 20261003, 20261004) && !isReplicated(20261005, 20261003, 20261004));
+  ok(!isReplicated(20261003) && !isReplicated(20261003, undefined, 20261009), 'no start: never');
+  ok(isReplicated(99999999, 20261003), 'no end: any later day');
 });
 t('gotd-model: withoutSeeds subtracts n, sum and bins exactly; null when the seeds do not fit', () => {
   const seeds = [41000, 9000, 41000], reals = [30000, 5000], all = [...reals, ...seeds], bins = new Array(NB).fill(0); for (const x of all) bins[binOf(x)]++;
@@ -1556,6 +1737,58 @@ ta('replay: unsent = solved attempts of today and the window the backend never a
   ok(REPLAY_DAYS >= 6, 'the fixture needs a window of at least 6 days');
   const { R } = await setup(atDay(19), { 0: { solved: true, time: 30, sent: false }, 2: { solved: true, time: 41.5, sent: false }, 4: { solved: true, time: 20, sent: true }, 5: { solved: true, time: 20 }, 6: { solved: false, time: null }, [REPLAY_DAYS + 1]: { solved: true, time: 7, sent: false } });
   eq(await R.unsent(), [{ date: '20260919', time: 30 }, { date: '20260917', time: 41.5 }]);
+});
+// The share flow of the play app over several page loads: finish (record + first submit), then the retry of replay.unsent() at every boot.
+const GOTD_DATE = '20260919';
+const finishGotdWith = async (storage, routes) => {
+  const store = createStore(storage, [5]);
+  await store.hydrate(GOTD_DATE);
+  await store.recordGotd(5, GOTD_DATE, 42.1, true);
+  const { lb, calls } = three(routes);
+  await submitAttempt(lb, store, GOTD_DATE);
+  return { calls, record: await store.loadAttempt(GOTD_DATE) };
+};
+const reloadWith = async (storage, routes) => {
+  const store = createStore(storage, [5]);
+  await store.hydrate(GOTD_DATE);
+  const replay = createReplay(storage, store, atDay(19));
+  await replay.init();
+  const { lb, calls } = three(routes);
+  for (const { date } of await replay.unsent()) await submitAttempt(lb, store, date);
+  return { calls: [...calls].sort(), record: await store.loadAttempt(GOTD_DATE), unsent: await replay.unsent() };
+};
+ta('share flow: backups that stay down are retried MAX_ROUNDS times, always is never written twice', async () => {
+  const st = fakeStorage();
+  const backupsDown = { ...ALL, 'w.example': down, 's.example': down };
+  const first = await finishGotdWith(st, backupsDown);
+  eq([...first.calls].sort(), ['asia.example', 's.example', 'w.example']);
+  eq(first.record, { solved: true, time: 42.1, sent: false, stats: SUM(30), statsFrom: 'asia', done: ['asia'], rounds: 1 });
+  const second = await reloadWith(st, backupsDown);
+  eq([second.calls, second.record.rounds, second.record.sent], [['s.example', 'w.example'], 2, false]);
+  const third = await reloadWith(st, backupsDown);
+  eq([third.calls, third.record, third.unsent], [['s.example', 'w.example'], { solved: true, time: 42.1, sent: true, stats: SUM(30) }, []]);
+  eq((await reloadWith(st, backupsDown)).calls, [], 'given up: nothing is sent any more');
+});
+ta('share flow: a backup that comes back completes the record without touching always', async () => {
+  const st = fakeStorage();
+  await finishGotdWith(st, { ...ALL, 'w.example': down, 's.example': down });
+  const later = await reloadWith(st, ALL);
+  eq([later.calls, later.record, later.unsent], [['w.example'], { solved: true, time: 42.1, sent: true, stats: SUM(30) }, []]);
+});
+ta('share flow: always was down: the backup\'s summary is shown, then replaced by always\'s on the retry', async () => {
+  const st = fakeStorage();
+  const first = await finishGotdWith(st, { ...ALL, 'asia.example': down });
+  eq(first.record, { solved: true, time: 42.1, sent: false, stats: SUM(40), statsFrom: 'cloudflare', done: ['cloudflare'], rounds: 1 });
+  const later = await reloadWith(st, ALL);
+  eq([later.calls, later.record, later.unsent], [['asia.example'], { solved: true, time: 42.1, sent: true, stats: SUM(30) }, []]);
+});
+ta('share flow: offline = nothing stored, every page load tries again without using up rounds', async () => {
+  const st = fakeStorage();
+  const offline = { 'asia.example': down, 'w.example': down, 's.example': down };
+  eq((await finishGotdWith(st, offline)).record, { solved: true, time: 42.1, sent: false });
+  for (let i = 0; i < 5; i++) eq((await reloadWith(st, offline)).record, { solved: true, time: 42.1, sent: false });
+  const online = await reloadWith(st, ALL);
+  eq([online.calls, online.record.sent, online.record.stats], [['asia.example', 'w.example'], true, SUM(30)]);
 });
 ta('stats-store: a replay keeps today\'s record and the per-size Game-of-Day time; attemptOn reads any loaded date', async () => {
   const st = fakeStorage(), S = createStore(st, [5]); await S.hydrate('20260929');

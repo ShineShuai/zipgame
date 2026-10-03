@@ -14,7 +14,7 @@ import { bindModal, copyText } from '../../ui/modal.js';
 import { boardSvg, CELL, COLORS } from './board.js';
 import { VERSION } from '../../version.js';
 import { LEADERBOARD } from '../../config.js';
-import { createLeaderboard, backendsFromConfig } from '../../platform/leaderboard.js';
+import { createLeaderboard, backendsFromConfig, submitAttempt } from '../../platform/leaderboard.js';
 import { statsLine } from '../../core/hist.js';
 import { t, getLang, setLang } from '../../ui/i18n.js';
 import { PLAY_FLAGS_INT, flagsToHex } from '../../core/gen/flags.js';
@@ -401,13 +401,12 @@ function onSolved() {
 async function finishGotd(n, date, time, isReplay) {
   await store.recordGotd(n, date, time, lb.enabled, isReplay);
   await replay.addSolved();
-  if (lb.enabled) await shareGotd(date, time);
+  if (lb.enabled) await shareGotd(date);
 }
-async function shareGotd(date, time) {
-  const r = await lb.submit(date, time);
-  if (r.status === 'failed') return; // sent stays false: retried on the next page load
-  await store.saveAttempt(date, { solved: true, time, sent: true, stats: r.summary || null });
-  if (S.screen === 'menu' || (S.screen === 'game' && S.isGotd && S.finished)) render();
+// One submit round (platform/leaderboard.js submitAttempt): the attempt record says which backends already hold the solve.
+async function shareGotd(date) {
+  const saved = await submitAttempt(lb, store, date);
+  if (saved && (S.screen === 'menu' || (S.screen === 'game' && S.isGotd && S.finished))) render();
 }
 
 // ---------- game flow ----------
@@ -530,7 +529,7 @@ async function initLang() {
   lb = createLeaderboard(backendsFromConfig(LEADERBOARD, new URLSearchParams(location.search).get('lb')));
   replay = createReplay(storage, store);
   try { await replay.init(); } catch (e) { console.warn('replay init failed:', e); }
-  if (lb.enabled) for (const { date, time } of await replay.unsent()) shareGotd(date, time); // today's and replayed days whose submit never got an answer
+  if (lb.enabled) for (const { date } of await replay.unsent()) shareGotd(date); // today's and replayed days whose submit never got an answer
   try { for (const n of SIZES) S.nextIdx[n] = (await daily.peek(n)).index; } catch (e) { console.warn('daily counters failed:', e); }
   modal = bindModal($('exportModal'));
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));

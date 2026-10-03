@@ -21,7 +21,7 @@ table { border-collapse: collapse; width: 100%; font-size: .9rem; } th, td { tex
 .tag { display: inline-block; border-radius: 8px; padding: 0 7px; margin: 1px 2px; font-size: .8rem; background: #fdecec; color: var(--red); } .tag.soft { background: #fff4e0; color: #a86400; }
 /* svg */
 .grid { stroke: var(--line); } .tick { fill: var(--muted); font-size: 12px; }
-.bar0, .c-supabase { fill: var(--blue); } .bar1, .c-cloudflare { fill: var(--orange); } .bar-seed, .c-seed { fill: var(--seed); }
+.bar0 { fill: var(--blue); } .bar1 { fill: var(--orange); } .bar2 { fill: var(--green); } .bar3 { fill: var(--violet); } .bar4 { fill: var(--teal); } .bar5 { fill: var(--red); } .bar-seed, .c-seed { fill: var(--seed); }
 .hit { fill: transparent; cursor: pointer; } .hit:hover, .hit.sel { fill: rgba(59, 104, 238, .10); }
 .band { fill: rgba(59, 104, 238, .12); stroke: none; }
 .line { fill: none; stroke-width: 2; } .l-mean { stroke: var(--blue); } .l-p50 { stroke: var(--green); } .l-top { stroke: var(--orange); }
