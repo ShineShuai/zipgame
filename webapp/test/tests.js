@@ -1511,32 +1511,35 @@ ta('replay: chances = floor(solved / 5) - used; toNext counts the solves still n
   for (let i = 1; i <= 12; i++) { await R.addSolved(); eq([R.chances(), R.toNext()], [Math.floor(i / 5), 5 - (i % 5)], 'after ' + i); }
   eq(GAMES_PER_CHANCE, 5);
 });
-ta('replay: window = yesterday .. 14 days back (today excluded), newest first; across a year end', async () => {
-  const { R } = await setup(atDay(19)); eq(R.dates().length, REPLAY_DAYS); eq([R.dates()[0], R.dates()[13]], ['20260918', '20260905']);
-  const ny = () => new Date(Date.UTC(2026, 0, 3, 23, 59)), { R: N } = await setup(ny); eq([N.dates()[0], N.dates()[13]], ['20260102', '20251220']);
+ta('replay: window = yesterday .. REPLAY_DAYS days back (today excluded), newest first; across a year end', async () => {
+  const clock = atDay(19), { R } = await setup(clock); eq(R.dates().length, REPLAY_DAYS); eq([R.dates()[0], R.dates().at(-1)], [gotdDay(clock, 1), gotdDay(clock, REPLAY_DAYS)]);
+  const ny = () => new Date(Date.UTC(2026, 0, 3, 23, 59)), { R: N } = await setup(ny); eq(N.dates()[0], '20260102'); ok(N.dates().includes('20251231') && !N.dates().includes('20260103'), 'crosses the year end, today left out');
 });
 ta('replay: missed = window dates without an attempt record; an unsolved (abandoned) record is not missed', async () => {
-  const { R } = await setup(atDay(19), { 0: { solved: true, time: 30 }, 1: { solved: true, time: 20 }, 3: { solved: false, time: null }, 14: { solved: true, time: 50 }, 15: { solved: true, time: 50 } });
-  const m = await R.missed(); eq(m.length, 11, '14 window days minus the 3 that have a record (1, 3 and 14 days back)');
-  eq(['20260918', '20260916', '20260905'].map(d => m.includes(d)), [false, false, false]); eq(['20260917', '20260915', '20260906'].map(d => m.includes(d)), [true, true, true]);
-  eq(m[0], '20260917', 'newest first');
+  ok(REPLAY_DAYS >= 4, 'the fixture needs a window of at least 4 days'); const clock = atDay(19), N = REPLAY_DAYS, g = k => gotdDay(clock, k);
+  const { R } = await setup(clock, { 0: { solved: true, time: 30 }, 1: { solved: true, time: 20 }, 3: { solved: false, time: null }, [N]: { solved: true, time: 50 }, [N + 1]: { solved: true, time: 50 } });
+  const m = await R.missed(); eq(m.length, N - 3, 'window days minus the 3 that have a record (1, 3 and N days back; 0 and N+1 are outside)');
+  eq([g(1), g(3), g(N)].map(d => m.includes(d)), [false, false, false]); eq([g(2), g(4)].map(d => m.includes(d)), [true, true]);
+  eq(m[0], g(2), 'newest first');
 });
 ta('replay: days() = every window date, newest first, with its stored record (null = missed); nothing outside the window', async () => {
   const solved = { solved: true, time: 21.5, sent: true, stats: { n: 4, mean: 30, top: null, pct: 50 } }, abandoned = { solved: false, time: null };
-  const { R } = await setup(atDay(19), { 0: { solved: true, time: 9 }, 1: solved, 3: abandoned, 14: solved, 15: solved });
-  const d = await R.days(); eq(d.length, 14); eq([d[0].date, d[13].date], ['20260918', '20260905']);
-  eq(d.map(x => x.attempt === null ? 'missed' : x.attempt.solved ? 'played' : 'abandoned'), ['played', 'missed', 'abandoned', 'missed', 'missed', 'missed', 'missed', 'missed', 'missed', 'missed', 'missed', 'missed', 'missed', 'played']);
+  ok(REPLAY_DAYS >= 4, 'the fixture needs a window of at least 4 days'); const clock = atDay(19), N = REPLAY_DAYS;
+  const { R } = await setup(clock, { 0: { solved: true, time: 9 }, 1: solved, 3: abandoned, [N]: solved, [N + 1]: solved });
+  const d = await R.days(); eq(d.length, N); eq([d[0].date, d[N - 1].date], [gotdDay(clock, 1), gotdDay(clock, N)]);
+  eq(d.map(x => x.attempt === null ? 'missed' : x.attempt.solved ? 'played' : 'abandoned'), Array.from({ length: N }, (_, i) => i === 0 || i === N - 1 ? 'played' : i === 2 ? 'abandoned' : 'missed'));
   eq(d[0].attempt, solved, 'the stored stats come back as they were saved');
-  eq((await R.missed()).length, 11);
+  eq((await R.missed()).length, N - 3);
 });
 ta('replay: begin spends one chance, marks the date played, and refuses without a chance, outside the window, or twice', async () => {
-  const { R, store } = await setup();
-  eq(await R.begin('20260917'), false, 'no chance yet'); for (let i = 0; i < 10; i++) await R.addSolved(); eq(R.chances(), 2);
-  eq(await R.begin('20260919'), false, 'today is not a replay'); eq(await R.begin('20260904'), false, '15 days back is outside'); eq(R.chances(), 2);
-  eq(await R.begin('20260917'), true); eq(R.chances(), 1); eq(store.attemptOn('20260917'), { solved: false, time: null });
-  eq(await R.begin('20260917'), false, 'the same date twice'); eq(R.chances(), 1);
-  eq(await R.begin('20260905'), true); eq(R.chances(), 0); eq(await R.begin('20260906'), false, 'chances used up');
-  eq((await R.missed()).includes('20260917'), false);
+  ok(REPLAY_DAYS >= 3, 'the fixture needs a window of at least 3 days'); const clock = atDay(19), g = k => gotdDay(clock, k), N = REPLAY_DAYS;
+  const { R, store } = await setup(clock);
+  eq(await R.begin(g(2)), false, 'no chance yet'); for (let i = 0; i < 10; i++) await R.addSolved(); eq(R.chances(), 2);
+  eq(await R.begin(g(0)), false, 'today is not a replay'); eq(await R.begin(g(N + 1)), false, 'one day past the window is outside'); eq(R.chances(), 2);
+  eq(await R.begin(g(2)), true); eq(R.chances(), 1); eq(store.attemptOn(g(2)), { solved: false, time: null });
+  eq(await R.begin(g(2)), false, 'the same date twice'); eq(R.chances(), 1);
+  eq(await R.begin(g(N)), true, 'the oldest day of the window'); eq(R.chances(), 0); eq(await R.begin(g(3)), false, 'chances used up');
+  eq((await R.missed()).includes(g(2)), false);
 });
 ta('replay: counters persist; the first init counts the solves recorded before the feature existed, once', async () => {
   const clock = atDay(19), st = fakeStorage(), store = createStore(st, [5]); await store.hydrate('20260919');
@@ -1550,7 +1553,8 @@ ta('replay: a corrupt counter is rebuilt from the records; before init there are
   await st.set('zip_gotd_credit', '{"solved":-1}'); const R = createReplay(st, store, atDay(19)); eq([R.chances(), R.toNext()], [0, 5]); await R.init(); eq(R.toNext(), 4);
 });
 ta('replay: unsent = solved attempts of today and the window the backend never acknowledged', async () => {
-  const { R } = await setup(atDay(19), { 0: { solved: true, time: 30, sent: false }, 2: { solved: true, time: 41.5, sent: false }, 4: { solved: true, time: 20, sent: true }, 5: { solved: true, time: 20 }, 6: { solved: false, time: null }, 15: { solved: true, time: 7, sent: false } });
+  ok(REPLAY_DAYS >= 6, 'the fixture needs a window of at least 6 days');
+  const { R } = await setup(atDay(19), { 0: { solved: true, time: 30, sent: false }, 2: { solved: true, time: 41.5, sent: false }, 4: { solved: true, time: 20, sent: true }, 5: { solved: true, time: 20 }, 6: { solved: false, time: null }, [REPLAY_DAYS + 1]: { solved: true, time: 7, sent: false } });
   eq(await R.unsent(), [{ date: '20260919', time: 30 }, { date: '20260917', time: 41.5 }]);
 });
 ta('stats-store: a replay keeps today\'s record and the per-size Game-of-Day time; attemptOn reads any loaded date', async () => {

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Verifies schema.sql's submit_gotd() against a brute-force model on a scratch Postgres.
 Usage: PGHOST=/tmp PGPORT=5544 PGUSER=postgres python3 server/supabase/test.py   (needs psql; creates and drops database gotd_test)"""
-import datetime, json, math, os, random, subprocess, sys, pathlib
+import datetime, json, math, os, random, re, subprocess, sys, pathlib
 
 NB, TOP_K = 80, 10
+REPLAY_DAYS = int(re.search(r'REPLAY_DAYS = (\d+)', (pathlib.Path(__file__).parents[2] / 'src/core/hist.js').read_text()).group(1))
 def bin_of(ms): return min(NB - 1, math.floor(math.log(ms / 1000) / math.log(1.1))) if ms > 1000 else 0
 def psql(sql, db='gotd_test', role=None, check=True):
     pre = f'set role {role};' if role else ''
@@ -31,10 +32,10 @@ print('ok    300 random submits match the model (n, sum, below, cnt, best)')
 for d in (today - datetime.timedelta(1), today + datetime.timedelta(1)):
     assert call(ymd(d), 5000, 3).returncode == 0
 print('ok    day +-1 accepted')
-for k in (2, 14, 15):  # replay window (REPLAY_DAYS = 14, +1 for a replay finished after UTC midnight)
+for k in (2, REPLAY_DAYS, REPLAY_DAYS + 1):  # replay window (REPLAY_DAYS, +1 for a replay finished after UTC midnight)
     assert call(ymd(today - datetime.timedelta(k)), 5000, 3).returncode == 0, k
-print('ok    days 2..15 back accepted (replays)')
-bad = [(ymd(today - datetime.timedelta(16)), 5000, 3), (ymd(today + datetime.timedelta(2)), 5000, 3), (20260231, 5000, 3), (20261301, 5000, 3),
+print(f'ok    days 2..{REPLAY_DAYS + 1} back accepted (replays)')
+bad = [(ymd(today - datetime.timedelta(REPLAY_DAYS + 2)), 5000, 3), (ymd(today + datetime.timedelta(2)), 5000, 3), (20260231, 5000, 3), (20261301, 5000, 3),
        (ymd(today), 499, 3), (ymd(today), 3600001, 3), (ymd(today), 5000, -1), (ymd(today), 5000, 80), ('null', 5000, 3), (ymd(today), 'null', 3), (ymd(today), 5000, 'null')]
 for a in bad:
     p = call(*a); assert p.returncode and '22023' in p.stderr, (a, p.stderr)
