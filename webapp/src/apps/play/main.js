@@ -149,18 +149,20 @@ const dateLabel = d => d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6);
 const weekday = d => new Date(Date.UTC(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6))).toLocaleDateString(getLang() === 'zh' ? 'zh-CN' : 'en', { weekday: 'short', timeZone: 'UTC' });
 
 // Replay screen (opened by the menu's Replay button): every day of the window, newest first. A missed day with a puzzle file is a button;
-// a played day (time and the stats stored with it, nothing is fetched) and an abandoned one are greyed out. Missed days without a puzzle file are left out.
+// a played day (time and the stats stored with it; the stats are never fetched) and an abandoned one are greyed out. Every row shows its grid size, read from the
+// puzzle file (static, cached per page load); a played or abandoned row without a loadable file just has no size. Missed days without a puzzle file are left out.
 // One column on phones, as many 250 px columns as fit on a desktop (css/play.css). Row text is made of small chips that wrap as units, so a row never overflows.
-function replayRowHtml({ date, puzzle, attempt }, canPlay) {
+function replayRowHtml({ date, puzzle, attempt }, canPlay) { // puzzle: the day's puzzle if its file loaded; attempt: the stored record, null = missed
   const chip = text => `<span>${text}</span>`;
+  const size = puzzle ? [`${puzzle.n}x${puzzle.n}`] : [];
   const row = (tag, cls, attrs, right, chips) => `
     <${tag} class="replay-day${cls}"${attrs}>
       <span class="replay-top"><span class="replay-date">${dateLabel(date)} <small>${weekday(date)}</small></span>${right}</span>
       ${chips.length ? `<span class="replay-meta">${chips.map(chip).join('')}</span>` : ''}
     </${tag}>`;
-  if (!attempt) return row('button', '', ` type="button" data-date="${date}"${canPlay ? '' : ' disabled'}`, `<span class="replay-go">${t('replay.play')}</span>`, [`${puzzle.n}x${puzzle.n}`]);
-  if (!attempt.solved) return row('div', ' is-done', '', '', [t('replay.abandoned')]);
-  const s = attempt.stats, chips = s ? [statsText.everyone(sec(s.mean), null), ...(s.top != null ? [statsText.top(REPLAY_TOP_K, sec(s.top))] : []), ...(s.pct != null ? [statsText.beat(s.pct)] : [])] : [];
+  if (!attempt) return row('button', '', ` type="button" data-date="${date}"${canPlay ? '' : ' disabled'}`, `<span class="replay-go">${t('replay.play')}</span>`, size);
+  if (!attempt.solved) return row('div', ' is-done', '', '', [...size, t('replay.abandoned')]);
+  const s = attempt.stats, chips = [...size, ...(s ? [statsText.everyone(sec(s.mean), null), ...(s.top != null ? [statsText.top(REPLAY_TOP_K, sec(s.top))] : []), ...(s.pct != null ? [statsText.beat(s.pct)] : [])] : [])];
   return row('div', ' is-done', '', `<span class="replay-time">${sec(attempt.time)}</span>`, chips);
 }
 function renderReplay() {
@@ -439,10 +441,9 @@ async function openReplay(msg = null) {
   const id = ++replayLoad;
   Object.assign(S, { screen: 'replay', replayPick: { loading: true, list: [], msg } }); render();
   const list = (await Promise.all((await replay.days()).map(async ({ date, attempt }) => {
-    if (attempt) return { date, attempt }; // played or abandoned: shown from the local record, no file needed
     if (!replayPuzzles.has(date)) { const p = await fetchGameOfDayFor(date); if (p) replayPuzzles.set(date, p); }
     const puzzle = replayPuzzles.get(date);
-    return puzzle ? { date, puzzle } : null; // missed day without a puzzle file: nothing to offer
+    return attempt || puzzle ? { date, attempt, puzzle } : null; // missed day without a puzzle file: nothing to offer
   }))).filter(Boolean);
   if (id !== replayLoad || S.screen !== 'replay') return; // superseded, or the player left the screen meanwhile
   S.replayPick = { loading: false, list, msg }; render();
