@@ -29,7 +29,10 @@ export function createReplay(storage, store, now = () => new Date()) {
     toNext: () => GAMES_PER_CHANCE - ((credit ? credit.solved : 0) % GAMES_PER_CHANCE), // solves still needed for the next chance (1..GAMES_PER_CHANCE)
     // The replay window, newest first: yesterday .. REPLAY_DAYS days back.
     dates: () => Array.from({ length: REPLAY_DAYS }, (_, i) => dateOfDay(today() - 1 - i)),
-    async missed() { const out = []; for (const d of replay.dates()) if (!(await store.loadAttempt(d))) out.push(d); return out; },
+    // Every window date with its stored attempt record, newest first: null = missed, { solved: false } = abandoned, { solved: true, time, stats? } = played.
+    // Read from local storage only; the stats inside a record are what the backend answered when the time was submitted.
+    async days() { const out = []; for (const date of replay.dates()) out.push({ date, attempt: await store.loadAttempt(date) }); return out; },
+    async missed() { return (await replay.days()).filter(x => !x.attempt).map(x => x.date); },
     // Today's and the window's solved attempts the averages backend has not acknowledged yet (sent === false): to be submitted again.
     async unsent() {
       const out = [];

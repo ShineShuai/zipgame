@@ -1521,6 +1521,14 @@ ta('replay: missed = window dates without an attempt record; an unsolved (abando
   eq(['20260918', '20260916', '20260905'].map(d => m.includes(d)), [false, false, false]); eq(['20260917', '20260915', '20260906'].map(d => m.includes(d)), [true, true, true]);
   eq(m[0], '20260917', 'newest first');
 });
+ta('replay: days() = every window date, newest first, with its stored record (null = missed); nothing outside the window', async () => {
+  const solved = { solved: true, time: 21.5, sent: true, stats: { n: 4, mean: 30, top: null, pct: 50 } }, abandoned = { solved: false, time: null };
+  const { R } = await setup(atDay(19), { 0: { solved: true, time: 9 }, 1: solved, 3: abandoned, 14: solved, 15: solved });
+  const d = await R.days(); eq(d.length, 14); eq([d[0].date, d[13].date], ['20260918', '20260905']);
+  eq(d.map(x => x.attempt === null ? 'missed' : x.attempt.solved ? 'played' : 'abandoned'), ['played', 'missed', 'abandoned', 'missed', 'missed', 'missed', 'missed', 'missed', 'missed', 'missed', 'missed', 'missed', 'missed', 'played']);
+  eq(d[0].attempt, solved, 'the stored stats come back as they were saved');
+  eq((await R.missed()).length, 11);
+});
 ta('replay: begin spends one chance, marks the date played, and refuses without a chance, outside the window, or twice', async () => {
   const { R, store } = await setup();
   eq(await R.begin('20260917'), false, 'no chance yet'); for (let i = 0; i < 10; i++) await R.addSolved(); eq(R.chances(), 2);
