@@ -27,6 +27,15 @@ import { makePropagator } from './propagate.js';
 //             effect) and the deepest one's depth/T fraction — see difficulty.js. Purely additive
 //             bookkeeping (a comparison + two counters), so it never changes which nodes are
 //             visited; only opt-in because unused fields cost nothing to skip, not to avoid bias.
+//   mustUse   [a, b]: only count solutions whose path walks the grid edge a-b (a and b adjacent cells). Searches
+//             the same tree as without it but refuses every move that leaves a or b by any other edge, and, with
+//             prop, forces the edge during propagation. gen/walls.js uses it (freedEdge) to test a just-removed
+//             wall: the puzzle stays unique iff no solution crosses the freed edge (limit 1, count 0).
+//   fast      (default true) skip prop's recompute when the head is down to a single move; see "fast path" below
+//   lconn     (default true) answer the flood-fill connectivity test from the 8 cells around the previous head
+//             when that is enough; see localConn() below
+// fast and lconn never change which nodes are visited, the solutions or their order (tests.js and
+// bench/bench.js assert node-for-node equality against fast:false, lconn:false); they only make each node cheaper.
 // prune2, prop, seg, pocket, parity and legCollide only prune: they never change the solutions
 // found or their DFS order. They do change how many nodes are visited, which is why they are
 // opt-in (nodeCap-dependent generation must stay reproducible for a given ALGO_VERSION).
@@ -38,6 +47,9 @@ export function solve(p, opts = {}) {
   const T = n * n;
   const cp = p.cp;
   const limit = opts.limit ?? 2;
+  const MUST = opts.mustUse || null;
+  const MA = MUST ? MUST[0] : -1;
+  const MB = MUST ? MUST[1] : -1;
   const cap = opts.nodeCap || 200000;
   const K = maxNumber(p);
   const start = startCell(p);
@@ -137,6 +149,11 @@ export function solve(p, opts = {}) {
   // After a successful prop.deduce(), av[cell] holds the head's still-possible moves.
 
   const PROP = !!opts.prop;
+  // fast path: when prop's fixpoint leaves the head exactly one move, the child's own deduce() would
+  // recompute that same fixpoint (the forced edge head -> child was already part of it; only the head's
+  // role moves one cell on), so the child reuses it and just drops the edge back to where it came from.
+  const FAST = PROP && opts.fast !== false;
+  const ONE_BIT = [0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]; // 1 when the 4-bit mask has exactly one bit
   const prop = PROP ? makePropagator(nb, T, end, vis) : null;
   const av = PROP ? prop.av : null;
   const vm = PROP ? new Uint8Array(T) : null;
@@ -195,9 +212,83 @@ export function solve(p, opts = {}) {
   }
   const LEG_COLLIDE = !!opts.legCollide;
 
+  // ---------- local connectivity shortcut (lconn) ----------
+  //
+  // connOk() flood-fills the whole free region at every node. The parent's connOk already proved that every
+  // free cell is reachable from the previous head c, i.e. every connected piece of the free region touches a
+  // free neighbour of c. After the move c -> v the free region stays one piece reachable from v iff the free
+  // neighbours of c (v counted as free) are still all in one piece WITHOUT c. If they are linked around c
+  // through the 8-cell ring, that is certain, so no flood fill is needed. When the ring cannot prove it
+  // (the neighbours may still be linked further away) this returns false and the caller runs connOk() as
+  // before, so the verdict is always exactly connOk's.
+  const LCONN = opts.lconn !== false;
+  let ringCell = null;  // ringCell[c * 8 + r]: the r-th cell around c (NW N NE E SE S SW W), -1 off the grid
+  let ringLink = null;  // 1 when ring slots r and r+1 of c are grid-adjacent with no wall between them
+  let cardOpen = null;  // 1 when ring slot r (a cardinal one: N E S W) is joined to c by an open edge
+  if (LCONN) {
+    const RING_DR = [-1, -1, -1, 0, 1, 1, 1, 0];
+    const RING_DC = [-1, 0, 1, 1, 1, 0, -1, -1];
+    const RING_DIR = [-1, 3, -1, 0, -1, 2, -1, 1]; // ring slot -> direction index (R,L,D,U) of the cardinal slots
+    ringCell = new Int32Array(T * 8).fill(-1);
+    ringLink = new Uint8Array(T * 8);
+    cardOpen = new Uint8Array(T * 8);
+    for (let c = 0; c < T; c++) {
+      for (let r = 0; r < 8; r++) {
+        const rr = row[c] + RING_DR[r];
+        const cc = col[c] + RING_DC[r];
+        if (rr >= 0 && rr < n && cc >= 0 && cc < n) ringCell[c * 8 + r] = rr * n + cc;
+        if (RING_DIR[r] >= 0 && nb[c * 4 + RING_DIR[r]] >= 0) cardOpen[c * 8 + r] = 1;
+      }
+      for (let r = 0; r < 8; r++) {
+        const a = ringCell[c * 8 + r];
+        const b = ringCell[c * 8 + ((r + 1) & 7)];
+        if (a < 0 || b < 0) continue;
+        for (let d = 0; d < 4; d++) if (nb[a * 4 + d] === b) ringLink[c * 8 + r] = 1;
+      }
+    }
+  }
+
+  // true => the free neighbours of c (v counted as free) are certainly connected to each other without c.
+  function localConn(c, v) {
+    const b8 = c * 8;
+    let need = 0;
+    let first = -1;
+    for (let r = 1; r < 8; r += 2) {
+      if (!cardOpen[b8 + r]) continue;
+      const w = ringCell[b8 + r];
+      if (vis[w] && w !== v) continue;
+      need |= 1 << r;
+      if (first < 0) first = r;
+    }
+    if ((need & (need - 1)) === 0) return true; // 0 or 1 free neighbours: nothing to connect
+    // Walk the ring both ways from one free neighbour over free cells joined by open edges.
+    let seen = 1 << first;
+    let r = first;
+    for (let k = 0; k < 7; k++) { // clockwise
+      if (!ringLink[b8 + r]) break;
+      const next = (r + 1) & 7;
+      const w = ringCell[b8 + next];
+      if (vis[w] && w !== v) break;
+      seen |= 1 << next;
+      r = next;
+    }
+    if ((need & seen) === need) return true;
+    r = first;
+    for (let k = 0; k < 7; k++) { // counter-clockwise
+      const prev = (r + 7) & 7;
+      if (!ringLink[b8 + prev]) break;
+      const w = ringCell[b8 + prev];
+      if (vis[w] && w !== v) break;
+      seen |= 1 << prev;
+      r = prev;
+    }
+    return (need & seen) === need;
+  }
+
   // ---------- search ----------
 
-  function dfs(cell, count, needed, depth) {
+  // used: the must-use edge (opts.mustUse) is already on the path. skip: the parent's prop fixpoint is reused.
+  function dfs(cell, count, needed, depth, used, skip) {
     nodes++;
     if (nodes - prefix > cap || found >= limit) return;
     enter(cell);
@@ -215,7 +306,7 @@ export function solve(p, opts = {}) {
     }
 
     if (count === T) {
-      if (cell === end && need === K + 1) {
+      if (cell === end && need === K + 1 && (MA < 0 || used)) {
         found++;
         if (paths) paths.push(Array.from(pathBuf));
       }
@@ -228,7 +319,15 @@ export function solve(p, opts = {}) {
     // edge propagation, then the single-entrance pocket check, then (most expensive — O(K^2)
     // segBlocker calls) the cross-leg forced-corridor collision check. See legsCollide() in
     // prune.js for what it catches that none of the earlier checks do.
-    let feasible = noDeadEnd(cell) && connOk(cell, remaining) && (!PROP || prop.deduce(cell, count, ul, un, vm)) && (!POCKET || pocketOk(cell));
+    if (skip) {
+      // the fixpoint was computed with the previous cell as head: that edge is behind us now
+      const from = pathBuf[depth - 1];
+      for (let d = 0; d < 4; d++) if (nb[cell * 4 + d] === from) av[cell] &= ~(1 << d);
+    }
+    let feasible = noDeadEnd(cell)
+      && ((LCONN && depth > 0 && localConn(pathBuf[depth - 1], cell)) || connOk(cell, remaining))
+      && (!PROP || skip || (MA >= 0 && !used ? prop.deduce(cell, count, ul, un, vm, MA, MB) : prop.deduce(cell, count, ul, un, vm)))
+      && (!POCKET || pocketOk(cell));
     if (feasible && LEG_COLLIDE && need <= K) {
       const legs = [[cell, pos[need]]];
       for (let k = need; k < K; k++) legs.push([pos[k], pos[k + 1]]);
@@ -262,6 +361,8 @@ export function solve(p, opts = {}) {
       if (v < 0 || vis[v]) continue;
       if (forced && depth < prefix && v !== forced[depth + 1]) continue;
       if (PROP && !((av[cell] >> d) & 1)) continue;
+      // an end of the must-use edge can only be left by that edge
+      if (MA >= 0 && !used && (cell === MA ? v !== MB : cell === MB && v !== MA)) continue;
       const marker2 = cp[v];
       if (marker2 !== 0 && marker2 !== need) continue;
       // v is reserved for a later segment's own path — taking it now (as part of *this*
@@ -311,8 +412,12 @@ export function solve(p, opts = {}) {
       if (frac > maxDecisionDepth) maxDecisionDepth = frac;
     }
 
+    // fast path applies when prop left the head one move (and that move is not onto the end cell, which deduce() rejects)
+    const reuse = FAST && count2 === 1 && ONE_BIT[av[cell]] === 1;
     for (let i = 0; i < count2; i++) {
-      dfs(cand[base + i], count + 1, need, depth + 1);
+      const next = cand[base + i];
+      const nowUsed = used || (cell === MA && next === MB) || (cell === MB && next === MA) ? 1 : 0;
+      dfs(next, count + 1, need, depth + 1, nowUsed, reuse && next !== end ? 1 : 0);
       if (found >= limit || nodes - prefix > cap) break;
     }
     leave(cell);
@@ -320,7 +425,7 @@ export function solve(p, opts = {}) {
 
   // ---------- run ----------
 
-  dfs(start, 1, 1, 0);
+  dfs(start, 1, 1, 0, 0, 0);
   return {
     count: found, exceeded: nodes - prefix > cap, nodes, subNodes: Math.max(0, nodes - prefix), paths: paths || undefined,
     ...(DECISIONS ? { decisionNodes, maxDecisionDepth } : {}),

@@ -10,6 +10,7 @@ const FLAG_LABEL = {
   pocket: ['Pocket', 'Single-entrance pocket check (pocket).'],
   parity: ['Parity', 'Bipartite slack check (parity).'],
   prune2: ['Distance bound', 'Static wall-aware distance bound to the remaining checkpoints (prune2).'],
+  freedEdge: ['Freed edge', 'Minimize only: test each wall removal by searching for a solution that walks the freed edge (stops at the first one) instead of counting up to 2 solutions. Faster, fewer search-limit hits; a different (seeded) result than without.'],
 };
 
 function phaseRowHtml(side, phase) {
@@ -18,7 +19,7 @@ function phaseRowHtml(side, phase) {
   return `<div class="flags-phase-row">
     <div class="flags-phase-label">${PHASE_LABEL[phase]}</div>
     <div class="flags-phase-cbs">
-      ${['prop', 'legCollide', 'pocket', 'parity', 'prune2'].map(cb).join('')}
+      ${['prop', 'legCollide', 'pocket', 'parity', 'prune2'].map(cb).join('')}${phase === 'minimize' ? cb('freedEdge') : ''}
       <label class="flag-cb" title="Per-segment must-pass-through blocker cells (seg): off, next segment only, or every remaining segment.">Seg
         <select class="flags-input" data-phase="${p}" data-flag="seg">
           <option value="off">off</option><option value="next">next</option><option value="all">all</option>

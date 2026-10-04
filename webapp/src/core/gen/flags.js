@@ -11,7 +11,9 @@
 //   bit 0  prop        bit 1  legCollide   bit 2  pocket
 //   bit 3  parity       bit 4  prune2
 //   bits 5-6  seg       00 = off, 01 = next (true), 10 = all      (11 unused/reserved)
-//   bit 7   reserved
+//   bit 7   freedEdge   minimize phase only: test each wall removal with the solver's mustUse check (walls.js
+//                       minimizeWalls). Absent from decodeFlags() when off, so every integer made before this
+//                       bit existed still decodes to the same objects and reproduces the same runs
 //
 // Full integer (27 bits used):
 //   bits 0-7    build phase byte
@@ -37,10 +39,11 @@ function encodeByte(f = {}) {
   if (f.parity) b |= 1 << 3;
   if (f.prune2) b |= 1 << 4;
   b |= (SEG_CODES[f.seg] ?? 0) << 5;
+  if (f.freedEdge) b |= 1 << 7;
   return b;
 }
 function decodeByte(b) {
-  return {
+  const f = {
     prop: !!(b & (1 << 0)),
     legCollide: !!(b & (1 << 1)),
     pocket: !!(b & (1 << 2)),
@@ -48,6 +51,8 @@ function decodeByte(b) {
     prune2: !!(b & (1 << 4)),
     seg: SEG_VALUES[(b >> 5) & 0b11] ?? false,
   };
+  if (b & (1 << 7)) f.freedEdge = true;
+  return f;
 }
 
 // o: { build, minimize, score } phase flag objects (each optional; missing = all off, except

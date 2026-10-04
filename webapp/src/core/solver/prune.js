@@ -389,6 +389,9 @@ export function legConflicts(nb, T, vis, legs) {
 export function forcedEdges(nb, T, vis, head, end) {
   const none = infeasible => ({ forced: new Set(), dirs: new Uint8Array(T), infeasible });
   if (head < 0 || head === end) return none(false);
+  // The end cell is already on the path but the head is elsewhere (possible in the design app's free-play mode):
+  // the path can never end there now. Reported explicitly; the engine itself assumes the end cell is unvisited.
+  if (end >= 0 && vis[end]) return none(true);
 
   const prop = makePropagator(nb, T, end, vis);
   const ul = new Int32Array(T);

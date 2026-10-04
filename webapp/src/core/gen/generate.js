@@ -80,11 +80,17 @@ const fewestWalls = candidates => (
 // candidates seeded with SEED_FRACTION random walls, best of several minimized candidates).
 // o.prop === false reproduces the shape of the ALGO_VERSION 1 search (solver propagation off).
 // o.candidates overrides CANDIDATES[n].
+// o.freedEdge (default false): minimize with the solver's mustUse check (see minimizeWalls in walls.js):
+//   about 1.5x faster again and fewer node-cap hits, but it changes the puzzle of a given seed, so
+//   switching it on for the play app / Game of Day tooling is an ALGO_VERSION bump (src/core/model.js).
+// A candidate whose minimizing can no longer beat the best one so far is dropped early (`bound` below):
+//   same puzzle, less work.
 // Events: { frac|null, walls, K }. `walls` never increases: it is the fewest walls found so far.
 export function* generate(n, seed, o = {}) {
   const depth = o.retryDepth || 0;
   const cells = n * n;
   const prop = o.prop !== false;
+  const freedEdge = !!o.freedEdge;
   const wanted = o.candidates || candidatesFor(n);
   const rnd = makeRng(seed);
   const nodeCap = Math.round(Math.max(30000, 200 * cells) * (prop ? PROP_CAP_X : 1));
@@ -136,10 +142,14 @@ export function* generate(n, seed, o = {}) {
 
   function* minimizeCandidate(candidate, index) {
     const total = candidate.order.length;
-    const events = minimizeWalls(candidate, candidate.order, rnd, checkCap, K, prop);
+    const events = minimizeWalls(candidate, candidate.order, rnd, checkCap, K, { prop, freedEdge, bound: winnerWalls });
     let tested = 0;
     for (let step = events.next(); ; step = events.next()) {
-      if (step.done) return step.value;
+      if (step.done) {
+        // dropped early: it cannot beat the best candidate, so jump the bar to the end of its share
+        if (step.value.aborted) yield { frac: BUILD_SHARE + (1 - BUILD_SHARE) * ((index + 1) / candidates.length), walls: shown, K };
+        return step.value;
+      }
       tested++;
       shown = Math.min(shown, step.value.walls);
       const progress = (index + tested / total) / candidates.length;

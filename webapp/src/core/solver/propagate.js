@@ -8,6 +8,8 @@
 //   - a forced cycle is a contradiction;
 //   - a forced chain from the head to the end that leaves cells uncovered is a contradiction;
 //   - an open edge between the two ends of one forced chain would close a cycle, so it is dropped.
+// An optional "must-use" edge (deduce's last two arguments) is forced before the fixpoint runs; the solver's
+// freedEdge check uses it to look only for solutions that cross a just-removed wall.
 //
 // Cost per deduce() call: O(U * alpha(U)) for U unvisited cells. Space: O(T), allocated once per
 // makePropagator() call (the solver makes one per solve(); the overlay one per repaint).
@@ -21,9 +23,11 @@ const POPCOUNT = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
 //   av[u]  still-open edge bits of u (bit d = direction d, order R,L,D,U), fr[u] = forced edge bits.
 //          Valid after a deduce() call that returned true; av[head] = the head's possible moves.
 //   nbm[u] static open-edge mask of u (walls and borders excluded).
-//   deduce(cur, count, ul, un, vm) -> false when this position cannot be completed.
+//   deduce(cur, count, ul, un, vm, mustA = -1, mustB = -1) -> false when this position cannot be completed.
 //     cur = head cell, count = path length so far (head included),
 //     ul[0 .. un) = unvisited cells, vm[u] = mask of u's neighbours that are on the path.
+//     mustA/mustB = optional edge (two grid-adjacent cells, each the head or unvisited) that the rest of the
+//     path has to use; deduce() fails when it cannot.
 export function makePropagator(nb, T, end, vis) {
   const n = Math.round(Math.sqrt(T));
   // Per cell: av = still-open edge bits, fr = forced edge bits, dg / fd = popcount of av / fr.
@@ -31,13 +35,14 @@ export function makePropagator(nb, T, end, vis) {
   const fr = new Uint8Array(T);
   const fd = new Uint8Array(T);
   const dg = new Uint8Array(T);
-  // Union-find over forced edges, and the work queue of cells that just became forced.
-  const par = new Int32Array(T);
-  const sz = new Int32Array(T);
+  // The work queue of cells that just became forced.
   const pq = new Int32Array(T);
-  // For a chain end x: the chain's other end (a lone cell is its own other end). Only chain ends can
-  // still have an open edge, so a union only has to look at the pair of new ends.
+  // Forced edges form chains (paths). For a chain END x: oe[x] = the chain's other end (a lone cell is its
+  // own other end) and cn[x] = the number of cells in the chain. Both are only read at chain ends, which are
+  // the only cells that can still have an open edge, so no union-find is needed: two ends are in one chain
+  // iff oe[x] is the other, and a merge only has to look at the pair of new ends.
   const oe = new Int32Array(T);
+  const cn = new Int32Array(T);
   const nbm = new Uint8Array(T);
   for (let i = 0; i < T; i++) {
     let mask = 0;
@@ -53,14 +58,6 @@ export function makePropagator(nb, T, end, vis) {
   // Path-degree cell u still needs.
   function required(u) {
     return u === pcur || u === end ? 1 : 2;
-  }
-
-  function find(x) {
-    while (par[x] !== x) {
-      par[x] = par[par[x]];
-      x = par[x];
-    }
-    return x;
   }
 
   // u has all the edges it needs, so its other open edges are unusable.
@@ -113,26 +110,20 @@ export function makePropagator(nb, T, end, vis) {
     fd[v]++;
     if (fd[v] > required(v)) return false;
 
-    let a = find(u);
-    let b = find(v);
-    if (a === b) return false; // forced cycle
-    if (sz[a] < sz[b]) {
-      const t = a;
-      a = b;
-      b = t;
-    }
-    par[b] = a;
-    sz[a] += sz[b];
-    // u and v were chain ends (spare capacity), so the merged chain runs from u's old far end to
-    // v's old far end.
+    // u and v both still have spare capacity, so both are chain ends: they are in one chain iff u's
+    // other end is v, and forcing u-v would then close a cycle.
+    if (oe[u] === v) return false; // forced cycle
+    // The merged chain runs from u's old far end to v's old far end.
     const endA = oe[u];
     const endB = oe[v];
+    const merged = cn[u] + cn[v];
     oe[endA] = endB;
     oe[endB] = endA;
+    cn[endA] = merged;
+    cn[endB] = merged;
 
     // A forced chain from the head to the end has to contain every uncovered cell.
-    const chainRoot = find(pcur);
-    if (chainRoot === find(end) && sz[chainRoot] !== pneed) return false;
+    if (oe[pcur] === end && cn[pcur] !== pneed) return false;
 
     if (!dropClosingEdge(endA, endB)) return false;
     if (fd[u] >= required(u) && !dropEdges(u)) return false;
@@ -140,7 +131,7 @@ export function makePropagator(nb, T, end, vis) {
     return true;
   }
 
-  function deduce(cur, count, ul, un, vm) {
+  function deduce(cur, count, ul, un, vm, mustA = -1, mustB = -1) {
     if (cur === end) return false; // count < T here: the path may only end on the last checkpoint
     pcur = cur;
     pneed = T - count + 1;
@@ -151,15 +142,13 @@ export function makePropagator(nb, T, end, vis) {
       av[u] = nbm[u] & ~vm[u];
       fr[u] = 0;
       fd[u] = 0;
-      par[u] = u;
-      sz[u] = 1;
+      cn[u] = 1;
       oe[u] = u;
     }
     av[cur] = nbm[cur] & ~vm[cur];
     fr[cur] = 0;
     fd[cur] = 0;
-    par[cur] = cur;
-    sz[cur] = 1;
+    cn[cur] = 1;
     oe[cur] = cur;
 
     // The head still counts as an open neighbour of the unvisited cells next to it.
@@ -181,6 +170,11 @@ export function makePropagator(nb, T, end, vis) {
     if (headDegree < 1) return false;
     if (headDegree === 1) pq[qt++] = cur;
 
+    if (mustA >= 0) {
+      let dir = -1;
+      for (let d = 0; d < 4; d++) if (nb[mustA * 4 + d] === mustB) dir = d;
+      if (dir < 0 || ((av[mustA] >> dir) & 1) === 0 || !force(mustA, dir)) return false;
+    }
     for (let h = 0; h < qt; h++) {
       const u = pq[h];
       for (let d = 0; d < 4; d++) {
