@@ -58,7 +58,7 @@ function timedGenerate(n, seed, options) {
 const V1_MAX_N = 11;
 const SEEDS = { 5: [1, 2, 3], 7: [1, 2, 3], 8: [1, 2], 9: [1, 2], 10: [1], 11: [1], 12: [1], 16: [1] };
 
-log('\nGENERATOR (seeded)   n  seed |  prop off: ms walls K |  default (ALGO_VERSION 4): ms walls K | speedup  walls');
+log('\nGENERATOR (seeded)   n  seed |  prop off: ms walls K |  default (ALGO_VERSION 5): ms walls K | speedup  walls');
 for (const n of PLAY_SIZES) {
   for (const seed of SEEDS[n] || [1]) {
     const off = n <= V1_MAX_N ? timedGenerate(n, seed, { prop: false }) : null;

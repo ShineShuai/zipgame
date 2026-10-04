@@ -76,7 +76,7 @@ const fewestWalls = candidates => (
   candidates.length ? Math.min(...candidates.map(c => c.order.length)) : null
 );
 
-// Deterministic puzzle for (n, seed): same seed => same puzzle (ALGO_VERSION 4: solver propagation on,
+// Deterministic puzzle for (n, seed): same seed => same puzzle (ALGO_VERSION 5: solver propagation on,
 // candidates seeded with SEED_FRACTION random walls, best of several minimized candidates).
 // o.prop === false reproduces the shape of the ALGO_VERSION 1 search (solver propagation off).
 // o.candidates overrides CANDIDATES[n].

@@ -1,4 +1,5 @@
 import { hasWall } from '../edges.js';
+import { makePropagator } from './propagate.js';
 
 // Direction order R,L,D,U. Solver generation depends on this exact order for tie-breaks
 // (see ALGO_VERSION in solve.js) — do not reorder.
@@ -370,123 +371,44 @@ export function legConflicts(nb, T, vis, legs) {
   return out;
 }
 
-// Number of set bits in a 4-bit direction mask. Shared with solve.js's DFS hot path.
-const POPCOUNT = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
-
-// Standalone, one-shot version of solve.js's propagate(): forced-edge deduction from a fixed
-// head cell over the currently-unvisited region. Not used by the solver's hot loop (that keeps
-// its own incremental state across DFS depth for speed) — this is the same deduction rule
-// recomputed from scratch each call, for the play-mode overlay to visualize.
-//
-// Every unvisited cell needs path-degree 2 (1 for the end cell), head needs 1 more edge. A cell
-// down to exactly that many open edges forces all of them; propagate forces transitively via
-// union-find, same as solve.js's propagate(). See that function for the full rationale.
+// Standalone, one-shot forced-edge deduction from a fixed head cell over the currently-unvisited
+// region, for the play-mode overlay. It runs the same engine as the solver's `prop` (propagate.js),
+// so what the overlay shows is exactly what the solver deduces at that position. Unlike the solver,
+// which keeps its unvisited list up to date across DFS moves, this rebuilds it from vis[] each call.
 //
 // Returns { forced: Set<cell>, dirs: Uint8Array, infeasible: boolean }.
 //   forced      = unvisited cells (excluding head) with at least one forced edge — i.e. cells the
 //                 deduction has pinned down as "the path must use this specific connection here"
-//   dirs        = per-cell forced-direction bitmask (bit d set = direction d is a forced edge),
-//                 same encoding as solve.js's fr[]. A cell can have 1 or 2 bits set; forced.has()
-//                 is equivalent to dirs[cell] !== 0, dirs is the finer-grained detail.
+//   dirs        = per-cell forced-direction bitmask (bit d set = direction d is a forced edge, order
+//                 R,L,D,U). A cell can have 1 or 2 bits set; forced.has() is equivalent to
+//                 dirs[cell] !== 0, dirs is the finer-grained detail.
 //   infeasible  = true if the deduction already proves this position can't be completed (a forced
-//                 cycle, a cell driven below its required degree, or a forced head-to-end chain
-//                 that doesn't yet cover every uncovered cell) — mirrors propagate()'s false return
+//                 cycle, a cell driven below its required degree — including by dropping a
+//                 cycle-closing edge — or a forced head-to-end chain that doesn't yet cover every
+//                 uncovered cell)
 export function forcedEdges(nb, T, vis, head, end) {
-  if (head < 0 || head === end) return { forced: new Set(), dirs: new Uint8Array(T), infeasible: false };
+  const none = infeasible => ({ forced: new Set(), dirs: new Uint8Array(T), infeasible });
+  if (head < 0 || head === end) return none(false);
 
-  const av = new Uint8Array(T);
-  const fr = new Uint8Array(T);
-  const fd = new Uint8Array(T);
-  const dg = new Uint8Array(T);
-  const par = new Int32Array(T);
-  const sz = new Int32Array(T);
-  const pq = new Int32Array(T);
-  let qt = 0;
-
-  let count = 0; // visited so far, including head
-  for (let i = 0; i < T; i++) if (vis[i]) count++;
-  const pneed = T - count + 1;
-
-  const required = u => (u === head || u === end ? 1 : 2);
-  const find = x => { while (par[x] !== x) { par[x] = par[par[x]]; x = par[x]; } return x; };
-
-  function dropEdges(u) {
-    const unforced = av[u] & ~fr[u];
-    for (let d = 0; d < 4; d++) {
-      if (((unforced >> d) & 1) === 0) continue;
-      const w = nb[u * 4 + d];
-      av[u] &= ~(1 << d);
-      av[w] &= ~(1 << (d ^ 1));
-      dg[u]--;
-      const need = required(w);
-      const left = --dg[w];
-      if (left < need) return false;
-      if (left === need) pq[qt++] = w;
+  const prop = makePropagator(nb, T, end, vis);
+  const ul = new Int32Array(T);
+  const vm = new Uint8Array(T);
+  let un = 0;
+  for (let c = 0; c < T; c++) {
+    if (!vis[c]) {
+      ul[un++] = c;
+      continue;
     }
-    return true;
-  }
-
-  function force(u, d) {
-    if ((fr[u] >> d) & 1) return true;
-    const v = nb[u * 4 + d];
-    fr[u] |= 1 << d;
-    fr[v] |= 1 << (d ^ 1);
-    fd[u]++;
-    if (fd[u] > required(u)) return false;
-    fd[v]++;
-    if (fd[v] > required(v)) return false;
-
-    let a = find(u), b = find(v);
-    if (a === b) return false;
-    if (sz[a] < sz[b]) { const t = a; a = b; b = t; }
-    par[b] = a;
-    sz[a] += sz[b];
-
-    const chainRoot = find(head);
-    if (chainRoot === find(end) && sz[chainRoot] !== pneed) return false;
-
-    if (fd[u] >= required(u) && !dropEdges(u)) return false;
-    if (fd[v] >= required(v) && !dropEdges(v)) return false;
-    return true;
-  }
-
-  for (let i = 0; i < T; i++) {
-    if (vis[i] && i !== head) continue;
-    let mask = 0;
     for (let d = 0; d < 4; d++) {
-      const w = nb[i * 4 + d];
-      if (w >= 0 && (!vis[w] || w === head)) mask |= 1 << d;
-    }
-    av[i] = mask;
-    fr[i] = 0;
-    fd[i] = 0;
-    par[i] = i;
-    sz[i] = 1;
-  }
-
-  const cells = [];
-  for (let i = 0; i < T; i++) if (!vis[i] || i === head) cells.push(i);
-
-  for (const u of cells) {
-    const need = required(u);
-    const degree = POPCOUNT[av[u]];
-    dg[u] = degree;
-    if (degree < need) return { forced: new Set(), dirs: new Uint8Array(T), infeasible: true };
-    if (degree === need) pq[qt++] = u;
-  }
-
-  for (let h = 0; h < qt; h++) {
-    const u = pq[h];
-    for (let d = 0; d < 4; d++) {
-      const open = ((av[u] & ~fr[u]) >> d) & 1;
-      if (open && !force(u, d)) return { forced: new Set(), dirs: new Uint8Array(T), infeasible: true };
+      const w = nb[c * 4 + d];
+      if (w >= 0) vm[w] |= 1 << (d ^ 1);
     }
   }
+  if (!prop.deduce(head, T - un, ul, un, vm)) return none(true);
 
   const forced = new Set();
-  for (const u of cells) {
-    if (u === head) continue;
-    if (fr[u] !== 0) forced.add(u);
+  for (let i = 0; i < un; i++) {
+    if (prop.fr[ul[i]] !== 0) forced.add(ul[i]);
   }
-  return { forced, dirs: fr, infeasible: false };
+  return { forced, dirs: prop.fr, infeasible: false };
 }

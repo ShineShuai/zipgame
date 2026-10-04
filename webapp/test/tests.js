@@ -252,6 +252,55 @@ t('forcedEdges: standalone deduction sound against exhaustive completion enumera
   ok(checked > 50, `expected enough cases, got ${checked}`);
   ok(forcedChecks > 50, `expected some forced-edge checks to actually run, got ${forcedChecks}`);
 });
+t('forcedEdges / propagation: dropping the edge that would close a forced chain into a cycle', () => {
+  // 4x4, start (0,1), checkpoint 2 at (0,0), end (3,2), no walls, head on the start cell. The
+  // corner cells force their two edges each. Two of the resulting chains end on neighbouring
+  // cells ((1,2)-(1,3) and (2,0)-(2,1)): joining those ends would close a 4-cycle, so the new rule
+  // drops both edges. That cascades until the centre cell (1,1) has fewer than 2 open edges. The
+  // degree and cycle rules alone leave this position open. An exhaustive search (no prunes)
+  // confirms there is no completion.
+  const p = parse('size 4\ncheckpoints 0,0=2 0,1=1 3,2=3\nwalls');
+  const { nb, T } = buildNeighbors(p);
+  const start = p.cp.indexOf(1), end = p.cp.indexOf(3);
+  const vis = new Uint8Array(T);
+  vis[start] = 1;
+  eq(solve(p, { limit: 1, nodeCap: 1e6 }).count, 0, 'sanity: no solution exists');
+  eq(forcedEdges(nb, T, vis, start, end).infeasible, true);
+  eq(solve(p, { limit: 1, nodeCap: 1e6, prop: true }).nodes, 1, 'prop refutes it at the root');
+});
+t('forcedEdges: sound on random positions, and whenever it says infeasible the prop solver refutes the same prefix', () => {
+  let checked = 0, flagged = 0;
+  for (let s = 1; s <= 600; s++) {
+    const n = 3 + (s % 3), p = randPuzzle(s * 77 + 5, n, 2 + (s % 3), 0.15 * (s % 4));
+    const K = Math.max(...p.cp), end = p.cp.indexOf(K), { nb, T } = buildNeighbors(p);
+    const rnd = makeRng(s);
+    const prefix = [p.cp.indexOf(1)];
+    const vis = new Uint8Array(T);
+    vis[prefix[0]] = 1;
+    let need = 2;
+    const len = 1 + Math.floor(rnd() * Math.min(6, T - 2));
+    for (let i = 1; i < len; i++) {
+      const h = prefix[prefix.length - 1], opts = [];
+      for (let d = 0; d < 4; d++) { const v = nb[h * 4 + d]; if (v >= 0 && !vis[v] && (!p.cp[v] || p.cp[v] === need)) opts.push(v); }
+      if (!opts.length) break;
+      const v = opts[Math.floor(rnd() * opts.length)];
+      vis[v] = 1; prefix.push(v); if (p.cp[v]) need++;
+    }
+    const head = prefix[prefix.length - 1];
+    if (head === end) continue;
+    checked++;
+    const r = forcedEdges(nb, T, vis, head, end);
+    if (!r.infeasible) continue;
+    flagged++;
+    const truth = solve(p, { limit: 1, nodeCap: 1e6, forced: prefix });
+    eq(truth.count, 0, `forcedEdges infeasible but a completion exists: seed ${s}`);
+    const withProp = solve(p, { limit: 1, nodeCap: 1e6, forced: prefix, prop: true });
+    eq(withProp.count, 0);
+    ok(withProp.subNodes <= 1, `prop solver did not refute the prefix at once: seed ${s}, subNodes ${withProp.subNodes}`);
+  }
+  ok(checked > 400, `expected many positions, got ${checked}`);
+  ok(flagged > 20, `expected some infeasible positions, got ${flagged}`);
+});
 t('legsCollide: never fires on a genuine prefix of a real solution (soundness)', () => {
   // legsCollide is a NECESSARY (not sufficient) infeasibility condition: it may miss some dead
   // positions, but it must NEVER fire on a prefix that a real solution actually continues from.
@@ -456,14 +505,14 @@ t('solver prune: overlay dead-end flag and solver noDeadEnd agree (random puzzle
     eq(noDeadEnd(head), !headAdjacentDead, `trial ${trial}: noDeadEnd(head) must disagree with the overlay only never`);
   }
 });
-t('generate: ALGO_VERSION 4 golden puzzles cover every play size below 16 and are valid and unique', () => {
-  eq(ALGO_VERSION, 4);
+t('generate: ALGO_VERSION 5 golden puzzles cover every play size below 16 and are valid and unique', () => {
+  eq(ALGO_VERSION, 5);
   for (const n of PLAY_SIZES.filter(size => size < 16)) {
     ok(GOLDEN.some(([size]) => size === n), `no golden puzzle for play size ${n}`);
   }
   for (const [n, seed, hash] of GOLDEN) {
     const p = runSync(generate(n, seed));
-    eq(hashStr(serialize(p)), hash, `v4 n=${n} seed=${seed}`);
+    eq(hashStr(serialize(p)), hash, `v5 n=${n} seed=${seed}`);
     eq(validate(p).ok, true, `valid n=${n} seed=${seed}`);
     eq(isSolved(p, p.path), true, `anchor path n=${n} seed=${seed}`);
     eq(solve(p, { limit: 2, nodeCap: 5e6, prop: true }).count, 1, `unique n=${n} seed=${seed}`);

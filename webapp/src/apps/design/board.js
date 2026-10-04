@@ -71,7 +71,8 @@ export function renderBoard(board, stage, V) {
 // showConn: highlight unvisited cells no longer reachable from the head (.conn-unreachable).
 // showDead: highlight unvisited reachable cells that are forced dead ends (.conn-dead).
 // showProp: draw forced-edge deduction — pinned connections (.conn-forced cells + short highlighted
-// segments for each forced edge) and flag when the deduction alone already proves the position stuck.
+// segments for each forced edge, including edges forced after a loop-closing edge was dropped) and flag
+// when the deduction alone already proves the position stuck.
 // showLegCollide: for each colliding leg pair, draw both legs as labelled chords and mark the contested
 // cells (.conn-leg-stuck).
 // showGraph: directed checkpoint graph, an arrow k -> k+1 for every consecutive pair (path-independent).

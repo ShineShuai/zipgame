@@ -1,8 +1,6 @@
 import { maxNumber, startCell, endCell } from '../model.js';
 import { buildNeighbors, makeConnOk, makeNoDeadEnd, makePocketOk, segBlocker, legsCollide } from './prune.js';
-
-// Number of set bits in a 4-bit direction mask.
-const POPCOUNT = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
+import { makePropagator } from './propagate.js';
 
 // Hamiltonian-path search: start at checkpoint 1, hit the checkpoints in order, end on the last one,
 // and cover every cell exactly once.
@@ -12,7 +10,8 @@ const POPCOUNT = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
 //   nodeCap   give up after this many search nodes (default 200000)
 //   capture   also return the solution paths
 //   prune2    static wall-aware distance bound to the remaining checkpoints
-//   prop      forced-edge propagation (see propagate() below)
+//   prop      forced-edge propagation (see propagate.js): degree-forcing, cycle ban and
+//             cycle-closing edge removal
 //   seg       per-segment must-pass-through blocker cells (see segBlocker() below);
 //             true = next segment only, 'all' = every remaining forward segment
 //   pocket    single-entrance pocket check (see makePocketOk() in prune.js)
@@ -131,154 +130,24 @@ export function solve(p, opts = {}) {
 
   // ---------- prop: forced-edge propagation ----------
   //
-  // Every unvisited cell needs path-degree 2 (1 for the end cell), and the head needs 1 more edge.
-  // A cell with exactly that many open edges forces all of them; a cell with all its edges forced
-  // drops its others. Forced cycles, and a forced chain from the head to the end that leaves cells
-  // uncovered, prune the branch.
+  // The deduction itself lives in propagate.js (shared with the play-mode overlay); this file only
+  // keeps the search-side bookkeeping it reads from:
+  //   vm = mask of each cell's neighbours already on the path,
+  //   ul[0 .. un) = unvisited cells (swap-removed on enter, restored LIFO on leave), up = index into ul.
+  // After a successful prop.deduce(), av[cell] holds the head's still-possible moves.
 
   const PROP = !!opts.prop;
-  // Per cell: av = still-open edge bits, fr = forced edge bits (bit d = direction d),
-  // dg / fd = popcount of av / fr.
-  const av = PROP ? new Uint8Array(T) : null;
-  const fr = PROP ? new Uint8Array(T) : null;
-  const fd = PROP ? new Uint8Array(T) : null;
-  const dg = PROP ? new Uint8Array(T) : null;
-  // Union-find over forced edges, and the work queue of cells that just became forced.
-  const par = PROP ? new Int32Array(T) : null;
-  const sz = PROP ? new Int32Array(T) : null;
-  const pq = PROP ? new Int32Array(T) : null;
-  // Incremental bookkeeping kept by enter()/leave():
-  //   nbm = static open-edge mask, vm = mask of neighbours already visited,
-  //   ul[0 .. un) = unvisited cells (swap-removed on enter, restored LIFO on leave), up = index into ul.
-  const nbm = PROP ? new Uint8Array(T) : null;
+  const prop = PROP ? makePropagator(nb, T, end, vis) : null;
+  const av = PROP ? prop.av : null;
   const vm = PROP ? new Uint8Array(T) : null;
   const ul = PROP ? new Int32Array(T) : null;
   const up = PROP ? new Int32Array(T) : null;
-  let qt = 0;      // length of pq
-  let pcur = -1;   // head cell of the current propagate() call
-  let pneed = 0;   // cells a head -> end chain has to contain
   let un = T;      // number of unvisited cells
   if (PROP) {
     for (let i = 0; i < T; i++) {
       ul[i] = i;
       up[i] = i;
-      let mask = 0;
-      for (let d = 0; d < 4; d++) {
-        if (nb[i * 4 + d] >= 0) mask |= 1 << d;
-      }
-      nbm[i] = mask;
     }
-  }
-
-  // Path-degree cell u still needs.
-  function required(u) {
-    return u === pcur || u === end ? 1 : 2;
-  }
-
-  function find(x) {
-    while (par[x] !== x) {
-      par[x] = par[par[x]];
-      x = par[x];
-    }
-    return x;
-  }
-
-  // u has all the edges it needs, so its other open edges are unusable.
-  function dropEdges(u) {
-    const unforced = av[u] & ~fr[u];
-    for (let d = 0; d < 4; d++) {
-      if (((unforced >> d) & 1) === 0) continue;
-      const w = nb[u * 4 + d];
-      av[u] &= ~(1 << d);
-      av[w] &= ~(1 << (d ^ 1));
-      dg[u]--;
-      const need = required(w);
-      const left = --dg[w];
-      if (left < need) return false;
-      if (left === need) pq[qt++] = w;
-    }
-    return true;
-  }
-
-  // Force the edge u -> direction d. Returns false if that makes the branch infeasible.
-  function force(u, d) {
-    if ((fr[u] >> d) & 1) return true;
-    const v = nb[u * 4 + d];
-    fr[u] |= 1 << d;
-    fr[v] |= 1 << (d ^ 1);
-    fd[u]++;
-    if (fd[u] > required(u)) return false;
-    fd[v]++;
-    if (fd[v] > required(v)) return false;
-
-    let a = find(u);
-    let b = find(v);
-    if (a === b) return false; // forced cycle
-    if (sz[a] < sz[b]) {
-      const t = a;
-      a = b;
-      b = t;
-    }
-    par[b] = a;
-    sz[a] += sz[b];
-
-    // A forced chain from the head to the end has to contain every uncovered cell.
-    const chainRoot = find(pcur);
-    if (chainRoot === find(end) && sz[chainRoot] !== pneed) return false;
-
-    if (fd[u] >= required(u) && !dropEdges(u)) return false;
-    if (fd[v] >= required(v) && !dropEdges(v)) return false;
-    return true;
-  }
-
-  // false = this branch cannot be completed. On true, av[cur] holds the head's still-possible moves.
-  function propagate(cur, count) {
-    if (cur === end) return false; // count < T here: the path may only end on the last checkpoint
-    pcur = cur;
-    pneed = T - count + 1;
-    qt = 0;
-
-    for (let i = 0; i < un; i++) {
-      const u = ul[i];
-      av[u] = nbm[u] & ~vm[u];
-      fr[u] = 0;
-      fd[u] = 0;
-      par[u] = u;
-      sz[u] = 1;
-    }
-    av[cur] = nbm[cur] & ~vm[cur];
-    fr[cur] = 0;
-    fd[cur] = 0;
-    par[cur] = cur;
-    sz[cur] = 1;
-
-    // The head still counts as an open neighbour of the unvisited cells next to it.
-    for (let d = 0; d < 4; d++) {
-      const u = nb[cur * 4 + d];
-      if (u >= 0 && !vis[u]) av[u] |= 1 << (d ^ 1);
-    }
-
-    for (let i = 0; i < un; i++) {
-      const u = ul[i];
-      const degree = POPCOUNT[av[u]];
-      const need = u === end ? 1 : 2;
-      dg[u] = degree;
-      if (degree < need) return false;
-      if (degree === need) pq[qt++] = u;
-    }
-    const headDegree = POPCOUNT[av[cur]];
-    dg[cur] = headDegree;
-    if (headDegree < 1) return false;
-    if (headDegree === 1) pq[qt++] = cur;
-
-    for (let h = 0; h < qt; h++) {
-      const u = pq[h];
-      for (let d = 0; d < 4; d++) {
-        const open = ((av[u] & ~fr[u]) >> d) & 1;
-        if (open && !force(u, d)) return false;
-      }
-    }
-    return true;
   }
 
   function enter(c) {
@@ -359,7 +228,7 @@ export function solve(p, opts = {}) {
     // edge propagation, then the single-entrance pocket check, then (most expensive — O(K^2)
     // segBlocker calls) the cross-leg forced-corridor collision check. See legsCollide() in
     // prune.js for what it catches that none of the earlier checks do.
-    let feasible = noDeadEnd(cell) && connOk(cell, remaining) && (!PROP || propagate(cell, count)) && (!POCKET || pocketOk(cell));
+    let feasible = noDeadEnd(cell) && connOk(cell, remaining) && (!PROP || prop.deduce(cell, count, ul, un, vm)) && (!POCKET || pocketOk(cell));
     if (feasible && LEG_COLLIDE && need <= K) {
       const legs = [[cell, pos[need]]];
       for (let k = need; k < K; k++) legs.push([pos[k], pos[k + 1]]);
