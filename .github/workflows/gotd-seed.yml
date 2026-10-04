@@ -22,7 +22,7 @@ jobs:
     defaults: { run: { working-directory: webapp } }
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 22 }
       - name: Seed
         env: # a workflow can only hand a secret to a step through the environment; the step writes it to a file for the script
