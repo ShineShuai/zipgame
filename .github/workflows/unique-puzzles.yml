@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Verify all puzzles are distinct
         run: python3 demo/GameOfDay/check_unique_puzzles.py demo/GameOfDay/
