@@ -6,7 +6,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "check": "node test/check.js",
+    "check": "node test/check.js && node test/check-config.js",
     "test": "node test/tests.js",
     "test:server": "node server/cloudflare/worker.test.mjs && node server/turso/schema.test.mjs",
     "bench": "node bench/bench.js",

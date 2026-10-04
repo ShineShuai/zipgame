@@ -1,22 +1,33 @@
 name: Webapp CI
 
-# The web app lives in webapp/. Checks and unit tests run on every push and pull request that touches
-# it, or this workflow. The benchmark is slower and its timings depend on the
-# runner, so it only runs on the default branch and on demand (Actions tab -> Webapp CI -> Run workflow).
+# The site is the repository root: index.html, assets/, demo/ and webapp/. Checks and unit tests run on every
+# push and pull request that touches any of it, or this workflow. When they pass, a push to main (or a manual
+# run on main) deploys to GitHub Pages: only the allowlist in .github/scripts/stage-site.sh is published.
+# The benchmark is slower and its timings depend on the runner, so it only runs on the default branch and on
+# demand (Actions tab -> Webapp CI -> Run workflow). It does not gate the deployment.
 on:
   push:
+    branches: [main]
     paths:
+      - 'index.html'
+      - 'assets/**'
+      - 'demo/**'
       - 'webapp/**'
       - '.github/workflows/webapp-ci.yml'
+      - '.github/scripts/**'
   pull_request:
     paths:
+      - 'index.html'
+      - 'assets/**'
+      - 'demo/**'
       - 'webapp/**'
       - '.github/workflows/webapp-ci.yml'
+      - '.github/scripts/**'
   workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}   # never cancel a run on main: it may be deploying
 
 permissions:
   contents: read
@@ -43,7 +54,8 @@ jobs:
           node-version: ${{ matrix.node }}
 
       # Every file parses, every import and html reference resolves. The app entry points
-      # need a browser, so the unit tests never load them.
+      # need a browser, so the unit tests never load them. Also fails if a token in config.js
+      # can do more than read and insert.
       - name: Syntax and import check
         run: npm run check
 
@@ -51,6 +63,12 @@ jobs:
       # and ALGO_VERSION has to be bumped (see README).
       - name: Unit tests
         run: npm test
+
+      # What the deploy job publishes: an allowlist, then a scan for files and secrets that must never ship.
+      - name: Dry-run site staging
+        if: matrix.node == 22
+        working-directory: .
+        run: bash .github/scripts/stage-site.sh "$RUNNER_TEMP/site"
 
   bench:
     name: Benchmark
@@ -84,3 +102,54 @@ jobs:
         with:
           name: bench-output
           path: webapp/bench-output.txt
+
+  deploy:
+    name: Deploy to Pages
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: test            # same commit, same workflow: what was tested is what ships
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: .
+    permissions:           # job-level replaces workflow-level: least privilege for this job only
+      contents: read
+      pages: write
+      id-token: write      # lets deploy-pages prove its identity (OIDC)
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Stage allowlisted files
+        run: bash .github/scripts/stage-site.sh _site
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+      # The query string bypasses the CDN cache, which may still hold files of the old branch deployment.
+      - name: Smoke test
+        env:
+          URL: ${{ steps.deployment.outputs.page_url }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          base="${URL%/}"
+          for p in index.html webapp/index.html webapp/src/config.js; do
+            curl -fsS --retry 5 --retry-all-errors --retry-delay 3 -o /dev/null "$base/$p?cb=$RUN_ID"
+          done
+          for p in webapp/package.json webapp/server/README.md webapp/tools/ratings.json; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$base/$p?cb=$RUN_ID")
+            [ "$code" = 404 ] || { echo "::error::$p is public (HTTP $code)"; exit 1; }
+          done
