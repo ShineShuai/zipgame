@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import worker, { submit, validate, validateRange, read, validateSeed, seed } from './worker.js';
-import { binOf, summarize, TOP_K, SEED_MAX, REPLAY_DAYS } from '../../src/core/hist.js';
+import { binOf, summarize, NB, TOP_K, SEED_MAX, REPLAY_DAYS } from '../../src/core/hist.js';
 
 const schema = readFileSync(new URL('./schema.sql', import.meta.url), 'utf8');
 const fakeD1 = () => { // prepare().bind() / batch() as a single transaction, like D1
@@ -26,7 +26,7 @@ await test('validate: accepts today +-1 day, rejects everything else', () => {
   assert.deepEqual(validate(ok, now), ok);
   assert.ok(validate({ ...ok, d: 20260928 }, now) && validate({ ...ok, d: 20260930 }, now));
   for (const bad of [{ ...ok, d: 20260927 }, { ...ok, d: 20261001 }, { ...ok, d: 20260231 }, { ...ok, d: 20261301 }, { ...ok, t: 499 }, { ...ok, t: 3600001 },
-    { ...ok, b: -1 }, { ...ok, b: 80 }, { ...ok, t: 1.5 }, { ...ok, t: '42130' }, { d: ymd }, null, 'x', []]) assert.equal(validate(bad, now), null, JSON.stringify(bad));
+    { ...ok, b: -1 }, { ...ok, b: NB }, { ...ok, t: 1.5 }, { ...ok, t: '42130' }, { d: ymd }, null, 'x', []]) assert.equal(validate(bad, now), null, JSON.stringify(bad));
   assert.ok(validate({ ...ok, d: 20260101 }, Date.UTC(2025, 11, 31, 23)), 'year boundary +1 day');
 });
 
@@ -44,6 +44,11 @@ await test('schema.sql (Supabase) accepts REPLAY_DAYS + 1 days back for submit_g
   const sql = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
   assert.deepEqual([...sql.matchAll(/v_today - v_date > (\d+)/g)].map(m => Number(m[1])), [REPLAY_DAYS + 1], 'submit_gotd: days back = REPLAY_DAYS + 1');
   assert.equal(sql.split('abs(v_date - v_today) > 1').length - 1, 1, 'seed_gotd keeps its +-1 day check');
+});
+
+await test('schema.sql (Supabase) rejects bins >= NB in submit_gotd and seed_gotd: change the number there with NB (server/README.md, "Changing the histogram bins")', () => {
+  const sql = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
+  assert.deepEqual([...sql.matchAll(/(?:p_bin| b) >= (\d+)/g)].map(m => Number(m[1])), [NB, NB]);
 });
 
 await test('POST /gotd accepts a missed day of the replay window and rejects an older one', async () => {
@@ -68,7 +73,7 @@ await test('submit matches a brute-force model over 400 random solves (n, sum, b
     if (others) assert.equal(s.pct, Math.round(100 * (times.filter(x => binOf(x) > b).length + (r.cnt - 1) / 2) / others));
   }
   const rows = t => db.raw.prepare(`SELECT COUNT(*) c FROM ${t}`).get().c;
-  assert.equal(rows('day'), 1); assert.equal(rows('best'), TOP_K); assert.ok(rows('bin') <= 80);
+  assert.equal(rows('day'), 1); assert.equal(rows('best'), TOP_K); assert.ok(rows('bin') <= NB);
 });
 
 await test('days are independent', async () => {
@@ -138,7 +143,7 @@ await test('validateSeed: 1..SEED_MAX valid times with one bin each, day within 
   assert.deepEqual(validateSeed(ok, now), ok);
   assert.ok(validateSeed(seedReq(Array(SEED_MAX).fill(9000)), now) && validateSeed(seedReq([9000]), now));
   for (const bad of [seedReq([]), seedReq(Array(SEED_MAX + 1).fill(9000)), { ...ok, bins: [1, 2] }, { ...ok, ms: [30000, 45000, 499] }, { ...ok, ms: [30000, 45000, 3600001] }, { ...ok, ms: [30000, 45000, 1.5] },
-    { ...ok, bins: [binOf(30000), binOf(45000), 80] }, { ...ok, d: 20260927 }, { ...ok, d: 20260231 }, { ...ok, ms: 'x' }, { ...ok, bins: null }, { d: ymd }, null, 'x', []]) assert.equal(validateSeed(bad, now), null, JSON.stringify(bad));
+    { ...ok, bins: [binOf(30000), binOf(45000), NB] }, { ...ok, d: 20260927 }, { ...ok, d: 20260231 }, { ...ok, ms: 'x' }, { ...ok, bins: null }, { d: ymd }, null, 'x', []]) assert.equal(validateSeed(bad, now), null, JSON.stringify(bad));
 });
 
 await test('seed: day, bins, best and seeds equal a brute-force model, with real players before and after', async () => {

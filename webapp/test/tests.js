@@ -26,7 +26,7 @@ import { parseDays, mergeDays, combineDays, isReplicated } from '../src/core/sta
 import { wls, fitCandidate, predictH, dedupe, isMonotone, selectEntries, pickEntries, fitTime, predictMs, withoutSeeds, TIME_PRIOR, invert, floorMs, needsThinking, aboveFloor, EXTRA_MIN_SKILL } from '../src/core/gotd-model.js';
 import { barsSvg, linesSvg, histSvg, scatterSvg } from '../src/apps/stats/charts.js';
 import { fetchStats } from '../src/platform/stats-client.js';
-import { createLeaderboard, backendsFromConfig, cloudflareBackend, supabaseBackend, afterSubmit, submitAttempt, MAX_ROUNDS } from '../src/platform/leaderboard.js';
+import { createLeaderboard, backendsFromConfig, cloudflareBackend, supabaseBackend, tursoBackend, afterSubmit, submitAttempt, MAX_ROUNDS } from '../src/platform/leaderboard.js';
 import { GOLDEN } from './golden.js';
 import { metricsFor, referenceSolve, backtrackOverhead, gradeOf, refNodeCap, REF_FLAGS } from '../src/core/difficulty.js';
 import { calibrate, calibrateAll, calibrateMetric, generateAtDifficulty, DEFAULT_THRESHOLDS, DEFAULT_THRESHOLDS_BY_METRIC, GRADED_METRICS, QUANTILES } from '../src/core/gen/calibration.js';
@@ -1340,7 +1340,9 @@ t('leaderboard: backendsFromConfig = always + backup chain + the others; skips u
   const noKey = backendsFromConfig({ ...cfg, backends: { ...cfg.backends, asia: { type: 'supabase', url: 'https://a', key: '' } } });
   eq([noKey.always, names(noKey.chain), names(noKey.list)], [null, ['cf', 'eu'], ['cf', 'eu', 'spare']], 'always not configured: the backups alone');
   eq(backendsFromConfig({ ...cfg, always: undefined }).always, null);
-  eq(names(backendsFromConfig({ ...cfg, backends: { ...cfg.backends, eu: { type: 'turso', url: 'https://t', key: 'k' } } }).chain), ['cf'], 'a type this build does not know is skipped');
+  eq(names(backendsFromConfig({ ...cfg, backends: { ...cfg.backends, eu: { type: 'mongo', url: 'https://t', key: 'k' } } }).chain), ['cf'], 'a type this build does not know is skipped');
+  eq(names(backendsFromConfig({ ...cfg, backends: { ...cfg.backends, eu: { type: 'turso', url: 'https://t', key: 'k' } } }).chain), ['cf', 'eu'], 'turso is a known type');
+  eq(names(backendsFromConfig({ ...cfg, backends: { ...cfg.backends, eu: { type: 'turso', url: 'https://t', key: '' } } }).chain), ['cf'], 'a turso entry without its token is not configured');
   eq(names(backendsFromConfig({ ...cfg, backends: { ...cfg.backends, cf: { type: 'cloudflare', url: '' } } }).chain), ['eu']);
   const none = backendsFromConfig({ backends: {}, always: 'asia', order: ['cf'] });
   eq([none.always, none.chain, none.list], [null, [], []]);
@@ -1464,6 +1466,100 @@ ta('leaderboard / stats-client: an adapter with decode() (a database with its ow
   eq([ok.status, ok.days.length, ok.days[0].n], ['ok', 1, 3]);
   const [bad] = await fetchStats([wrapped], { from: 20261004, to: 20261004 }, { fetchFn: answer({ error: 'x' }) });
   eq(bad.status, 'failed');
+});
+const TB = { url: 'https://zip-x.turso.io/', key: 'public-token' };
+const cell = v => (typeof v === 'number' ? { type: 'integer', value: String(v) } : { type: 'text', value: v });
+const pipe = (...results) => ({ baton: null, base_url: null, results: [...results, { type: 'ok', response: { type: 'close' } }] });
+const rowOf = obj => ({ type: 'ok', response: { type: 'execute', result: { cols: Object.keys(obj).map(name => ({ name })), rows: [Object.values(obj).map(cell)], affected_row_count: 0 } } });
+const done = n => ({ type: 'ok', response: { type: 'execute', result: { cols: [], rows: [], affected_row_count: n } } });
+const failed = message => ({ type: 'error', error: { message } });
+const STATS_ROW = { n: 3, sum: 90000, below: 1, cnt: 1, best: '[10000,30000,50000]' };
+t('turso adapter: request = one pipeline (INSERT, summary SELECT) with the token as bearer; read = one statement', () => {
+  const be = tursoBackend(TB, 'turso-asia'), b = binOf(42130);
+  const { url, init } = be.request({ d: 20261004, t: 42130, b, u: 'uid-12345678' });
+  eq([be.name, url, init.method, init.headers], ['turso-asia', 'https://zip-x.turso.io/v2/pipeline', 'POST', { 'Content-Type': 'application/json', Authorization: 'Bearer public-token' }]);
+  const req = JSON.parse(init.body).requests;
+  eq(req.map(r => r.type), ['execute', 'execute', 'close']);
+  eq(req[0].stmt.args, [{ type: 'text', value: 'uid-12345678' }, { type: 'integer', value: '20261004' }, { type: 'integer', value: '42130' }, { type: 'integer', value: String(b) }]);
+  eq(req[1].stmt.args, [{ type: 'integer', value: '20261004' }, { type: 'integer', value: String(b) }]);
+  ok(/^INSERT OR IGNORE INTO submit/.test(req[0].stmt.sql) && /FROM solve/.test(req[1].stmt.sql));
+  const uid = () => JSON.parse(be.request({ d: 20261004, t: 42130, b }).init.body).requests[0].stmt.args[0].value;
+  ok(uid().length >= 8 && uid().length <= 64 && uid() !== uid(), 'a fresh random uid of 8..64 characters per request');
+  const r = be.read({ from: 20261001, to: 20261004 });
+  eq([r.url, JSON.parse(r.init.body).requests.map(x => x.type), JSON.parse(r.init.body).requests[0].stmt.args], ['https://zip-x.turso.io/v2/pipeline', ['execute', 'close'], [{ type: 'integer', value: '20261001' }, { type: 'integer', value: '20261004' }]]);
+});
+t('turso adapter: decode = stats / rejected (the trigger raised invalid) / throws (any other error, nothing usable)', () => {
+  const be = tursoBackend(TB), threw = f => { try { f(); } catch { return true; } return false; };
+  eq(be.decode('submit', pipe(done(1), rowOf(STATS_ROW))), GOOD);
+  eq(be.decode('submit', pipe(done(0), rowOf(STATS_ROW))), GOOD, 'a uid that is already stored: the same answer');
+  eq(be.decode('submit', pipe(failed('SQLite error: invalid'), rowOf(STATS_ROW))), { rejected: true });
+  ok(threw(() => be.decode('submit', pipe(failed('SQLite error: not authorized'), rowOf(STATS_ROW)))), 'SQLITE_AUTH is a failure, not a rejection');
+  ok(threw(() => be.decode('submit', pipe(done(1), failed('SQLite error: no such table: solve')))));
+  ok(threw(() => be.decode('submit', pipe(done(1), { type: 'ok', response: { type: 'execute', result: { cols: [], rows: [], affected_row_count: 0 } } }))), 'no stats row');
+  ok(threw(() => be.decode('submit', { error: 'x' })) && threw(() => be.decode('read', null)));
+  const day = d => ({ d, n: 3, sum: 9000, bins: [[3, 3]], best: [2000, 3000, 4000], seeds: [] });
+  eq(be.decode('read', pipe(rowOf({ reply: JSON.stringify({ days: [day(20261005), day(20261004)] }) }))).days.map(x => x.d), [20261004, 20261005], 'days come back oldest first');
+  eq(be.decode('read', pipe(rowOf({ reply: '{"days":[]}' }))), { days: [] });
+  ok(threw(() => be.decode('read', pipe(failed('SQLite error: not authorized')))));
+});
+ta('turso adapter in the flow: HTTP 200 with an error inside = rejected / failed; a good envelope = ok; the stats page reads it too', async () => {
+  const be = tursoBackend(TB, 'turso-asia');
+  const answer = body => async () => ({ ok: true, status: 200, json: async () => body });
+  const lbOf = f => createLeaderboard({ always: be, chain: [] }, { fetchFn: f, timeoutMs: 20 });
+  eq(brief(await lbOf(answer(pipe(done(1), rowOf(STATS_ROW)))).submit('20261004', 30)), ['ok', 'turso-asia', 30, ['turso-asia'], true]);
+  eq((await lbOf(answer(pipe(failed('SQLite error: invalid'), rowOf(STATS_ROW)))).submit('20261004', 30)).status, 'rejected');
+  eq((await lbOf(answer(pipe(failed('SQLite error: not authorized'), rowOf(STATS_ROW)))).submit('20261004', 30)).status, 'failed');
+  eq((await lbOf(async () => reply(401, {})).submit('20261004', 30)).status, 'failed', 'a wrong token is a failure (HTTP 401), so a backup would be tried');
+  const day = { d: 20261004, n: 3, sum: 9000, bins: [[3, 3]], best: [2000, 3000, 4000], seeds: [3000] };
+  const [res] = await fetchStats([be], { from: 20261004, to: 20261004 }, { fetchFn: answer(pipe(rowOf({ reply: JSON.stringify({ days: [day] }) }))) });
+  eq([res.status, res.days.length, res.days[0].n, res.days[0].seeds], ['ok', 1, 3, [3000]]);
+});
+// any combination of `always` / `order` over four backends (one of them Turso): who gets the solve. A host in `down` answers HTTP 503.
+const comboCfg = (always, order, tursoKey = 'tok') => ({
+  backends: {
+    'turso-asia': { type: 'turso', url: 'https://t.example', key: tursoKey }, 'supabase-asia': { type: 'supabase', url: 'https://asia.example', key: 'k' },
+    cloudflare: { type: 'cloudflare', url: 'https://w.example' }, supabase: { type: 'supabase', url: 'https://s.example', key: 'k' },
+  },
+  always, order,
+});
+const comboRun = async (always, order, down = [], tursoKey) => {
+  const hosts = new Set();
+  const fetchFn = async url => {
+    const host = new URL(url).host;
+    hosts.add(host);
+    if (down.includes(host)) return reply(503, {});
+    return host === 't.example' ? { ok: true, status: 200, json: async () => pipe(done(1), rowOf(STATS_ROW)) } : reply(200, GOOD);
+  };
+  const lb = createLeaderboard(backendsFromConfig(comboCfg(always, order, tursoKey)), { fetchFn, timeoutMs: 20 });
+  const r = await lb.submit('20261004', 30);
+  return { status: r.status, backend: r.backend, complete: r.complete, done: [...r.done].sort(), hosts: [...hosts].sort(), readOrder: lb.readOrder };
+};
+ta('config combinations: always turso-asia with the other backends as backups (supabase-asia first) = two writes per solve, failover inside the chain', async () => {
+  const order = ['supabase-asia', 'cloudflare', 'supabase'];
+  eq(await comboRun('turso-asia', order), { status: 'ok', backend: 'turso-asia', complete: true, done: ['supabase-asia', 'turso-asia'], hosts: ['asia.example', 't.example'], readOrder: ['turso-asia', 'supabase-asia', 'cloudflare', 'supabase'] });
+  const asiaDown = await comboRun('turso-asia', order, ['asia.example']);
+  eq([asiaDown.status, asiaDown.backend, asiaDown.complete, asiaDown.done, asiaDown.hosts], ['ok', 'turso-asia', true, ['cloudflare', 'turso-asia'], ['asia.example', 't.example', 'w.example']], 'the next backup takes over');
+  const tursoDown = await comboRun('turso-asia', order, ['t.example']);
+  eq([tursoDown.status, tursoDown.backend, tursoDown.complete, tursoDown.done], ['ok', 'supabase-asia', false, ['supabase-asia']], 'always failed: stored by a backup, but not complete (the retry goes to turso-asia only)');
+  const allDown = await comboRun('turso-asia', order, ['t.example', 'asia.example', 'w.example', 's.example']);
+  eq([allDown.status, allDown.complete, allDown.done], ['failed', false, []]);
+});
+ta('config combinations: no backups, turso as the first backup (always: null), always listed in order, a backend in neither list', async () => {
+  const alone = await comboRun('turso-asia', []);
+  eq([alone.status, alone.complete, alone.hosts, alone.readOrder], ['ok', true, ['t.example'], ['turso-asia']]);
+  const asBackup = await comboRun(null, ['turso-asia', 'supabase-asia']);
+  eq([asBackup.backend, asBackup.complete, asBackup.hosts], ['turso-asia', true, ['t.example']], 'a backup chain writes to the first backend that answers only');
+  eq((await comboRun(null, ['turso-asia', 'supabase-asia'], ['t.example'])).hosts, ['asia.example', 't.example']);
+  eq(backendsFromConfig(comboCfg('turso-asia', ['turso-asia', 'supabase-asia'])).chain.map(b => b.name), ['supabase-asia'], 'always is never its own backup');
+  const readOnly = await comboRun('turso-asia', ['cloudflare']);
+  eq([readOnly.hosts, readOnly.readOrder], [['t.example', 'w.example'], ['turso-asia', 'cloudflare']], 'supabase-asia and supabase are neither written nor part of the summary order');
+  eq(backendsFromConfig(comboCfg('turso-asia', ['cloudflare'])).list.map(b => b.name), ['turso-asia', 'cloudflare', 'supabase-asia', 'supabase'], '...but the stats page and the seeder still use them');
+});
+ta('config combinations: an `always` backend without its key counts as not set (nothing is written to it, silently), the backups still work', async () => {
+  const setup = backendsFromConfig(comboCfg('turso-asia', ['supabase-asia'], ''));
+  eq([setup.always, setup.chain.map(b => b.name)], [null, ['supabase-asia']]);
+  const r = await comboRun('turso-asia', ['supabase-asia'], [], '');
+  eq([r.status, r.hosts, r.done], ['ok', ['asia.example'], ['supabase-asia']]);
 });
 const SUM = mean => ({ n: 3, mean, top: null, pct: 50 });
 const OWED = { solved: true, time: 42.1, sent: false };

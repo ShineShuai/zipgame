@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Seeds one Game-of-Day with 3..8 synthetic players so the first real players already see averages and a percentile.
 //   node tools/gotd-seed.mjs --token-file FILE --print-supabase-sql      prints the one SQL statement that gives Supabase the secret's hash, then exits
-//   node tools/gotd-seed.mjs [--day YYYYMMDD] [--dry-run] [--token-file FILE] [--only ID] [--stats file.json ...] [--puzzles dir] [--models file]
+//   node tools/gotd-seed.mjs [--day YYYYMMDD] [--dry-run] [--token-file FILE] [--turso-token-file FILE] [--only ID] [--stats file.json ...] [--puzzles dir] [--models file]
 //                            [--summary FILE] [--annotations]
 // Steps: the puzzle of the day gets its difficulty h (0-5, the scale of the hand ratings) from every fitted candidate (tools/gotd-models.json, written
 // by gotd-fit.mjs); the first 3 defined candidates play, of the next 7 the lowest and highest h are dropped (gotd-model.js selectEntries).
@@ -10,7 +10,8 @@
 // (larger than 6x6 or grade >= 1): in the calibration such plays are replays and are left out, and no seed player is faster. Each h becomes a
 // solve time with a model learned from the backends' past days (their real players only, seeds are subtracted; before there is data the
 // prior of gotd-model.js applies). Every configured backend (src/config.js, any number) gets the times once: a retry answers "exists" and changes nothing.
-//   --token-file  file holding the shared secret of all backends (surrounding whitespace is ignored); required unless --dry-run
+//   --token-file  file holding the shared secret of the Cloudflare and Supabase backends (surrounding whitespace is ignored); required unless --dry-run
+//   --turso-token-file  file holding the seeder token of the Turso backends (turso db tokens create <db> -p all:data_read -p seed:data_add); required for them unless --dry-run
 //   --only      seed just this backend id of src/config.js (e.g. one that was added later)
 //   --summary   append a markdown summary to FILE (GitHub Actions: "$GITHUB_STEP_SUMMARY");  --annotations  print warnings/errors as ::warning:: / ::error::
 //   --day       default: tomorrow UTC (the backends accept day +-1; the cron runs in the evening)
@@ -42,8 +43,8 @@ const note = (level, msg) => console.log(args.includes('--annotations') ? `::${l
 const die = msg => { note('error', msg); process.exit(1); };
 
 // the token is read first, so a wrong path fails at once and not after the calibration
-const readToken = () => {
-  const file = opt('--token-file') || die('--token-file FILE is required (or --dry-run)');
+const readToken = (name = '--token-file') => {
+  const file = opt(name) || die(`${name} FILE is required (or --dry-run)`);
   let t; try { t = fs.readFileSync(file, 'utf8').trim(); } catch (e) { die(`cannot read the token file ${file}: ${e.code || e.message}`); }
   return t || die(`the token file ${file} is empty`);
 };
@@ -51,8 +52,10 @@ if (args.includes('--print-supabase-sql')) { // Supabase keeps only the SHA-256 
   console.log(`insert into gotd_secret (name, hash) values ('seed', '${crypto.createHash('sha256').update(readToken(), 'utf8').digest('hex')}') on conflict (name) do update set hash = excluded.hash;`);
   process.exit(0);
 }
-const token = dry ? null : readToken();
 if (only && !setup.list.some(be => be.name === only)) die(`--only ${only}: no such configured backend (${setup.list.map(be => be.name).join(', ')})`);
+const targets = setup.list.filter(be => !only || only === be.name), isTurso = be => LEADERBOARD.backends[be.name].type === 'turso';
+const token = dry || !targets.some(be => !isTurso(be)) ? null : readToken();
+const tursoToken = dry || !targets.some(isTurso) ? null : readToken('--turso-token-file');
 
 const day = opt('--day') || utcDateString(new Date(Date.now() + 86400000));
 if (!/^\d{8}$/.test(day)) die(`bad --day ${day}`);
@@ -153,15 +156,26 @@ const d = +day, trim = u => u.replace(/\/+$/, '');
 const REQUEST = {
   cloudflare: ({ url }) => ({ url: trim(url) + '/seed', headers: { Authorization: 'Bearer ' + token }, body: { d, ms, bins } }),
   supabase: ({ url, key }) => ({ url: trim(url) + '/rest/v1/rpc/seed_gotd', headers: { apikey: key }, body: { p_token: token, p_day: d, p_ms: ms, p_bin: bins } }),
+  // Turso: one row in `seed` (the bins are computed by the database); INSERT OR IGNORE changes no row when the day is already seeded. The answer is an Hrana envelope.
+  turso: ({ url }) => ({
+    url: trim(url) + '/v2/pipeline', headers: { Authorization: 'Bearer ' + tursoToken },
+    body: { requests: [{ type: 'execute', stmt: { sql: 'INSERT OR IGNORE INTO seed (day, ms) VALUES (?1, ?2)', args: [{ type: 'integer', value: String(d) }, { type: 'text', value: JSON.stringify(ms) }] } }, { type: 'close' }] },
+    answer: reply => {
+      const r = reply.results && reply.results[0];
+      if (!r || r.type !== 'ok') return `failed: ${(r && r.error && r.error.message) || 'no result'}`;
+      return r.response.result.affected_row_count ? 'ok' : 'exists';
+    },
+  }),
 };
 async function send(name) {
   const entry = LEADERBOARD.backends[name];
-  const { url, headers, body } = REQUEST[entry.type](entry);
+  const { url, headers, body, answer } = REQUEST[entry.type](entry);
   for (let attempt = 1, why; attempt <= 3; attempt++) {
     const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 15000);
     try {
       const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body), signal: ctl.signal });
       const reply = await res.json().catch(() => ({}));
+      if (res.ok && answer) return answer(reply);
       if (res.ok || res.status === 409) return reply.status === 'exists' || res.status === 409 ? 'exists' : 'ok';
       if (res.status < 500 && res.status !== 429) return `failed: HTTP ${res.status} ${JSON.stringify(reply).slice(0, 120)}`; // rejected input / wrong token: retrying cannot help
       why = `HTTP ${res.status}`;
@@ -171,7 +185,7 @@ async function send(name) {
   }
 }
 let failed = 0;
-for (const { name } of setup.list.filter(be => !only || only === be.name)) {
+for (const { name } of targets) {
   const r = await send(name);
   console.log(`${name}: ${r}`);
   if (r.startsWith('failed')) { failed++; note('error', `${name} ${r}`); }

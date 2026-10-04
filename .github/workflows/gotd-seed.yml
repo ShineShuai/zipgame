@@ -1,6 +1,8 @@
-# Seeds tomorrow's Game of Day with 3..8 synthetic players (webapp/tools/gotd-seed.mjs) in Cloudflare and Supabase.
+# Seeds tomorrow's Game of Day with 3..8 synthetic players (webapp/tools/gotd-seed.mjs) in every enabled backend of webapp/src/config.js: Cloudflare, Supabase, Turso.
 # The second run is a retry: a backend that already has the seeds answers "exists" and is left alone, one that failed the first time gets them now.
 # Needs the repository secret SEED_PLAYERS_SECRET (same value as the Worker secret; Supabase holds its hash in gotd_secret, see webapp/server/README.md).
+# A Turso backend also needs the repository secret TURSO_SEED_TOKEN before its entry in config.js gets a key: the seeder token, NOT the browser token of config.js
+#   (turso db tokens create <db> -e never -p all:data_read -p seed:data_add). Without the secret the seeder stops at once, so no backend is seeded.
 # GitHub pauses scheduled workflows of a repository without activity for 60 days: a push or a manual run re-enables it.
 name: gotd-seed
 on:
@@ -25,6 +27,7 @@ jobs:
       - name: Seed
         env: # a workflow can only hand a secret to a step through the environment; the step writes it to a file for the script
           SEED_TOKEN: ${{ secrets.SEED_PLAYERS_SECRET }}
+          TURSO_SEED_TOKEN: ${{ secrets.TURSO_SEED_PLAYERS_TOKEN }} # empty until the secret exists; the script only reads its file when a Turso backend is enabled
           DAY: ${{ inputs.day }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
@@ -34,5 +37,8 @@ jobs:
             args+=(--dry-run)
           else # the script takes the secret from a file, not from the environment
             umask 077; printf %s "$SEED_TOKEN" > "$RUNNER_TEMP/seed-token"; args+=(--token-file "$RUNNER_TEMP/seed-token")
+            if [ -n "$TURSO_SEED_TOKEN" ]; then
+              printf %s "$TURSO_SEED_TOKEN" > "$RUNNER_TEMP/turso-seed-token"; args+=(--turso-token-file "$RUNNER_TEMP/turso-seed-token")
+            fi
           fi
           node tools/gotd-seed.mjs "${args[@]}"
