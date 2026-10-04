@@ -1,4 +1,4 @@
-import { binOf, summarize, MIN_MS, MAX_MS } from '../core/hist.js';
+import { binOf, summarize, MIN_MS, MAX_MS, TOP_K } from '../core/hist.js';
 
 // Backend adapters: request() turns { d: YYYYMMDD, t: ms, b: bin } into a fetch request (all reply { n, sum, below, cnt, best });
 // read() turns { from, to } (YYYYMMDD, <= 90 days) into the stats page's fetch request (all reply { days: [{ d, n, sum, bins, best }] }).
@@ -19,8 +19,65 @@ export const supabaseBackend = ({ url, key }, id = 'supabase') => ({
   read: ({ from, to }) => ({ url: trim(url) + '/rest/v1/rpc/read_gotd', init: { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: key }, body: JSON.stringify({ p_from: from, p_to: to }) } }),
 });
 
-const FACTORIES = { cloudflare: cloudflareBackend, supabase: supabaseBackend };
-const configured = entry => Boolean(entry && FACTORIES[entry.type] && entry.url && (entry.type !== 'supabase' || entry.key));
+// Turso: the browser talks to the database's HTTP API (Hrana over HTTP, POST <url>/v2/pipeline) with a public token that can only read and
+// INSERT into `submit` (server/turso/schema.sql; token: -p all:data_read -p submit:data_add). A statement error comes back inside an HTTP 200
+// envelope, so decode() reads it: the trigger's 'invalid' = rejected; anything else (e.g. 'not authorized') = failed.
+// The statements are exported so that server/turso/schema.test.mjs runs exactly what the browser sends.
+export const TURSO_SQL = {
+  insert: 'INSERT OR IGNORE INTO submit (uid, day, ms, bin) VALUES (?1, ?2, ?3, ?4)',
+  // ?1 day, ?2 my bin -> one row { n, sum, below, cnt, best } (best = JSON text), the reply shape of the other backends
+  summary: `SELECT COUNT(*) AS n, COALESCE(SUM(ms), 0) AS sum, COALESCE(SUM(bin < ?2), 0) AS below, COALESCE(SUM(bin = ?2), 0) AS cnt,
+    (SELECT json_group_array(ms) FROM (SELECT ms FROM solve WHERE day = ?1 ORDER BY ms LIMIT ${TOP_K})) AS best
+    FROM solve WHERE day = ?1`,
+  // ?1 from, ?2 to -> one row { reply } = JSON text of { days: [{ d, n, sum, bins: [[bin, n]], best, seeds }] }, the shape of the Worker's GET /stats
+  read: `WITH s AS (SELECT day, ms, bin FROM solve WHERE day BETWEEN ?1 AND ?2),
+    dd AS (SELECT day, COUNT(*) AS n, SUM(ms) AS sum FROM s GROUP BY day),
+    bb AS (SELECT day, json_group_array(json_array(bin, c)) AS bins FROM (SELECT day, bin, COUNT(*) AS c FROM s GROUP BY day, bin) GROUP BY day),
+    tt AS (SELECT day, json_group_array(ms) AS best FROM (SELECT day, ms, ROW_NUMBER() OVER (PARTITION BY day ORDER BY ms) AS r FROM s) WHERE r <= ${TOP_K} GROUP BY day),
+    xx AS (SELECT seed.day AS day, json_group_array(j.value) AS seeds FROM seed, json_each(seed.ms) j WHERE seed.day BETWEEN ?1 AND ?2 GROUP BY seed.day)
+    SELECT json_object('days', json(COALESCE((SELECT json_group_array(json_object('d', dd.day, 'n', dd.n, 'sum', dd.sum, 'bins', json(bb.bins), 'best', json(tt.best),
+      'seeds', json(COALESCE(xx.seeds, '[]')))) FROM dd JOIN bb USING (day) JOIN tt USING (day) LEFT JOIN xx USING (day)), '[]'))) AS reply`,
+};
+const hranaInt = n => ({ type: 'integer', value: String(n) }); // Hrana sends integers as strings (they may exceed 2^53)
+const newUid = () => (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 12));
+const pipeline = stmts => JSON.stringify({ requests: [...stmts.map(([sql, args]) => ({ type: 'execute', stmt: { sql, args } })), { type: 'close' }] });
+// the first row of one pipeline result as { column: value } (integers as numbers), or throws on an error result
+function tursoRow(result) {
+  if (!result || result.type !== 'ok') throw Object.assign(new Error((result && result.error && result.error.message) || 'no result'), { sqlError: true });
+  const { cols, rows } = result.response.result;
+  if (!rows.length) return null;
+  return Object.fromEntries(cols.map((c, i) => [c.name, rows[0][i].type === 'integer' ? Number(rows[0][i].value) : rows[0][i].type === 'null' ? null : rows[0][i].value]));
+}
+export const tursoBackend = ({ url, key }, id = 'turso') => ({
+  name: id,
+  request: ({ d, t, b, u = newUid() }) => ({
+    url: trim(url) + '/v2/pipeline',
+    init: {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
+      body: pipeline([[TURSO_SQL.insert, [{ type: 'text', value: u }, hranaInt(d), hranaInt(t), hranaInt(b)]], [TURSO_SQL.summary, [hranaInt(d), hranaInt(b)]]]),
+    },
+  }),
+  read: ({ from, to }) => ({
+    url: trim(url) + '/v2/pipeline',
+    init: { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, body: pipeline([[TURSO_SQL.read, [hranaInt(from), hranaInt(to)]]]) },
+  }),
+  decode(kind, body) {
+    const results = body && body.results;
+    if (!Array.isArray(results)) throw new Error('not a pipeline reply');
+    if (kind === 'read') {
+      const reply = JSON.parse(tursoRow(results[0]).reply);
+      return { days: reply.days.sort((a, b) => a.d - b.d) };
+    }
+    if (results[0] && results[0].type === 'error' && /\binvalid\b/.test(results[0].error.message)) return { rejected: true };
+    tursoRow(results[0]); // INSERT: throws on any other error
+    const row = tursoRow(results[1]);
+    return { n: row.n, sum: row.sum, below: row.below, cnt: row.cnt, best: JSON.parse(row.best) };
+  },
+});
+
+const FACTORIES = { cloudflare: cloudflareBackend, supabase: supabaseBackend, turso: tursoBackend };
+const KEYED = new Set(['supabase', 'turso']); // types whose entry needs a key (Supabase: the anon key; Turso: the insert-only token)
+const configured = entry => Boolean(entry && FACTORIES[entry.type] && entry.url && (!KEYED.has(entry.type) || entry.key));
 
 // The configured backends as { always, chain, list }:
 //   always  the always-written backend, or null (not set, unknown or not configured)

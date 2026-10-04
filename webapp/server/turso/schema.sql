@@ -1,18 +1,18 @@
--- Game-of-Day aggregates on Turso, written straight from the browser (no Worker in between). Aggregates only: no player data.
--- Run once: turso db shell <db> < schema.sql   (idempotent)
+-- Game-of-Day aggregates on Turso, written straight from the browser (no Worker in between). No player data: one row per solve = (random id, day, time, bin).
+-- Run once: turso db shell <db> < schema.sql   (idempotent). A database made with the earlier design (trigger-maintained day / bin / best tables) must be recreated.
 --
--- The browser token may only INSERT into `submit` (and read); it cannot touch the aggregate tables. The trigger below validates the
--- row and maintains day / bin / best, so the token holder cannot write anything that server/cloudflare/worker.js would reject.
--- Mirrors src/core/hist.js (NB = 80, TOP_K = 10, MIN_MS = 500, MAX_MS = 3600000, REPLAY_DAYS = 14) and the Worker: the day is a real date, at most REPLAY_DAYS + 1 = 15 UTC days back and 1 ahead.
-CREATE TABLE IF NOT EXISTS day  (day INTEGER PRIMARY KEY, n INTEGER NOT NULL, sum_ms INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS bin  (day INTEGER NOT NULL, bin INTEGER NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (day, bin)) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS best (day INTEGER NOT NULL, ms INTEGER NOT NULL);
-CREATE INDEX IF NOT EXISTS best_day_ms ON best (day, ms);
--- Synthetic seed players of a day (JSON array of ms, already counted in day / bin / best). The row is also the "already seeded" gate.
-CREATE TABLE IF NOT EXISTS seed (day INTEGER PRIMARY KEY, ms TEXT NOT NULL);
+-- Validation only. Turso (libSQL) checks every statement a trigger runs against the token's table permissions, so a trigger that maintains aggregate
+-- tables would force the public token to be able to write them. Here the trigger only reads and raises: the browser token is just
+--   turso db tokens create <db> -e never -p all:data_read -p submit:data_add
+-- and n / sum / bins / best are computed from `submit` (plus `seed`) when they are read. `submit` is the only copy of the data: never delete from it.
+-- Mirrors src/core/hist.js (NB = 80, TOP_K = 10, MIN_MS = 500, MAX_MS = 3600000, REPLAY_DAYS = 14) and the Worker: the day is a real date, at most
+-- REPLAY_DAYS + 1 = 15 UTC days back and 1 ahead. No WITHOUT ROWID, so that it also loads on a database of the experimental Turso engine.
+-- The queries the client sends are TURSO_SQL in src/platform/leaderboard.js; server/turso/schema.test.mjs runs them against worker.js.
 
--- Histogram bins as integer ms ranges [lo, hi), generated with binOf() of src/core/hist.js (the trigger has no log()).
+-- Histogram bins as integer ms ranges [lo, hi), generated with binOf() of src/core/hist.js (SQL has no exact log()). The block between the marker lines is
+-- written by tools/print-bin-edge.mjs --write: after changing NB, T0_MS or RATIO follow "Changing the histogram bins" in server/README.md.
 CREATE TABLE IF NOT EXISTS bin_edge (bin INTEGER PRIMARY KEY, lo INTEGER NOT NULL, hi INTEGER NOT NULL);
+-- bin_edge:begin  (generated: node tools/print-bin-edge.mjs --write, from NB = 80, T0_MS = 1000, RATIO = 1.1 of src/core/hist.js; do not edit by hand)
 INSERT OR REPLACE INTO bin_edge (bin, lo, hi) VALUES
   (0, 0, 1100),
   (1, 1100, 1211),
@@ -94,10 +94,25 @@ INSERT OR REPLACE INTO bin_edge (bin, lo, hi) VALUES
   (77, 1538994, 1692893),
   (78, 1692893, 1862183),
   (79, 1862183, 4611686018427387904);
+DELETE FROM bin_edge WHERE bin >= 80; -- bins that no longer exist (NB shrank); the table is never empty in between, so a solve sent meanwhile is still checked
+-- bin_edge:end
 
--- One row per solve. `uid` (random, made by the client) makes a retry idempotent: INSERT OR IGNORE skips a known uid and the trigger does not fire.
--- Rows older than 2 days can be deleted at any time: the aggregates do not depend on them.
-CREATE TABLE IF NOT EXISTS submit (uid TEXT PRIMARY KEY, day INTEGER NOT NULL, ms INTEGER NOT NULL) WITHOUT ROWID;
+-- One row per solve. `uid` (random, made by the client) makes a retry idempotent: INSERT OR IGNORE skips a known uid. `bin` is sent by the client
+-- (binOf(ms)) and checked by the trigger, so that the reads can group by it without a log().
+CREATE TABLE IF NOT EXISTS submit (uid TEXT PRIMARY KEY, day INTEGER NOT NULL, ms INTEGER NOT NULL, bin INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS submit_day ON submit (day, bin, ms); -- covers every read: a day's n, sum, bins and best never touch the table itself
+
+-- Synthetic seed players of a day (tools/gotd-seed.mjs): a JSON array of 1..8 ms. The row is also the "already seeded" gate. Only the seeder's
+-- token (-p all:data_read -p seed:data_add) can write it; the view below counts these players like real ones, as the other backends do.
+CREATE TABLE IF NOT EXISTS seed (day INTEGER PRIMARY KEY, ms TEXT NOT NULL CHECK (json_valid(ms) AND json_array_length(ms) BETWEEN 1 AND 8));
+
+-- Every player of a day, real and seed: all aggregates are computed from this.
+DROP VIEW IF EXISTS solve;
+CREATE VIEW solve AS
+  SELECT day, ms, bin FROM submit
+  UNION ALL
+  SELECT s.day, j.value, (SELECT e.bin FROM bin_edge e WHERE j.value >= e.lo AND j.value < e.hi)
+  FROM seed s, json_each(s.ms) j;
 
 DROP TRIGGER IF EXISTS submit_ai; -- so that re-running this file also updates the rules
 CREATE TRIGGER submit_ai AFTER INSERT ON submit
@@ -108,24 +123,10 @@ BEGIN
      OR length(NEW.uid) NOT BETWEEN 8 AND 64
      OR typeof(NEW.day) <> 'integer'
      OR typeof(NEW.ms) <> 'integer'
+     OR typeof(NEW.bin) <> 'integer'
      OR NEW.ms NOT BETWEEN 500 AND 3600000
+     OR NOT EXISTS (SELECT 1 FROM bin_edge WHERE bin = NEW.bin AND NEW.ms >= lo AND NEW.ms < hi)
      OR d IS NULL
      OR strftime('%Y%m%d', d) <> printf('%08d', NEW.day)
      OR julianday(date('now')) - julianday(d) NOT BETWEEN -1 AND 15;
-
-  INSERT INTO day (day, n, sum_ms) VALUES (NEW.day, 1, NEW.ms)
-    ON CONFLICT (day) DO UPDATE SET n = n + 1, sum_ms = sum_ms + NEW.ms;
-
-  INSERT INTO bin (day, bin, n)
-    SELECT NEW.day, bin, 1 FROM bin_edge WHERE NEW.ms >= lo AND NEW.ms < hi
-    ON CONFLICT (day, bin) DO UPDATE SET n = n + 1;
-
-  INSERT INTO best (day, ms)
-    SELECT NEW.day, NEW.ms
-    WHERE (SELECT COUNT(*) FROM best WHERE day = NEW.day) < 10
-       OR NEW.ms < (SELECT MAX(ms) FROM best WHERE day = NEW.day);
-
-  DELETE FROM best
-    WHERE day = NEW.day
-      AND rowid NOT IN (SELECT rowid FROM best WHERE day = NEW.day ORDER BY ms LIMIT 10);
 END;
