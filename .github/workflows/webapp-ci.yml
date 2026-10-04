@@ -137,7 +137,7 @@ jobs:
           path: _site
 
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
       # The query string bypasses the CDN cache, which may still hold files of the old branch deployment.
       - name: Smoke test
