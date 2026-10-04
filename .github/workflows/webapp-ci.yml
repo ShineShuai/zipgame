@@ -130,7 +130,7 @@ jobs:
       - name: Stage allowlisted files
         run: bash .github/scripts/stage-site.sh _site
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
 
       - uses: actions/upload-pages-artifact@v4
         with:
