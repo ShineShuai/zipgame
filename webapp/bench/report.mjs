@@ -66,7 +66,7 @@ if (command === 'add') {
     const v = versionInfo(store, id);
     console.log(`${id.slice(0, 7)}${v.dirty ? '+' : ' '} ${(v.date || '').slice(0, 10)} algo ${v.algo} ${v.subject}${v.note ? `  [${v.note}]` : ''}`);
     for (const r of store.results.filter(x => verId(x) === id)) {
-      const how = isOwn(r) ? '' : `  (backfill, bench@${r.bench.slice(0, 7)})`;
+      const how = isOwn(r) ? '' : `  (backfill, bench@${r.bench.slice(0, 7)}${r.bench.endsWith('+') ? '+' : ''})`;
       console.log(`    ${r.suite.padEnd(12)} ${(store.envs[r.envId] || {}).name}  ${r.rows.length} rows${how}${r.checks.failed ? `  ${r.checks.failed} CHECK FAILURE(S)` : ''}`);
     }
   }
