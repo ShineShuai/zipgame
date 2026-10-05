@@ -5,7 +5,7 @@ import { shuffle, makeRng } from '../../core/rng.js';
 import { solve } from '../../core/solver/solve.js';
 import { step } from '../../core/rules.js';
 import { randomPathPuzzle, generateUnique, generate, CAPPED_TRIES } from '../../core/gen/generate.js';
-import { minimizeWalls } from '../../core/gen/walls.js';
+import { minimizeFully } from '../../core/gen/walls.js';
 import { scatter } from '../../core/gen/checkpoints.js';
 import { cellAtPoint } from '../../view/geometry.js';
 import { runAsync, measured } from '../../platform/run.js';
@@ -20,6 +20,8 @@ import { DEFAULT_FLAGS_INT, PLAY_FLAGS_INT, decodeFlags, flagsToHex } from '../.
 import { mountDifficultyPanel } from './difficulty-panel.js';
 import { initHints, setHintText } from '../../ui/hint-popover.js';
 
+// Minimize: walls whose check hits the search limit get a deeper second look, within this many times the limit in nodes in total.
+const REFINE_BUDGET_X = 50;
 const DEFAULT_NODE_LIMIT = 300000, $ = id => document.getElementById(id);
 // Non-reproducible designer tools (scatter/random-path/random-walls/minimize) keep using plain
 // Math.random, same as before — only the Generate button (randPathUnique) is seed-reproducible.
@@ -392,10 +394,15 @@ async function doMinimize() {
   }
   setBusy(true);
   try {
-    const r = await runAsync(minimizeWalls(P, wallIds(P), rnd, limit, v.max, { prop: true, freedEdge: true }), { onEvent: e => setStatus(`Minimizing… ${plural(e.walls, 'wall')} left`, '') });
+    const r = await runAsync(minimizeFully(P, wallIds(P), rnd, limit, v.max, { prop: true, freedEdge: true, refineBudget: REFINE_BUDGET_X * limit }),
+      { onEvent: e => setStatus(`${e.nodes == null ? 'Minimizing' : 'Looking deeper'}… ${plural(e.walls, 'wall')} left`, '') });
     draw(); renderLegend(); updateWallCapTag();
-    setStatus(r.removed === 0 ? `All ${plural(before, 'wall')} are already necessary — none could be removed without losing uniqueness.`
-      : `Removed ${plural(r.removed, 'unnecessary wall')} — ${plural(r.kept, 'remaining wall')} are each individually necessary for a unique solution.`, 'ok');
+    const undecided = r.uncertain.length;
+    const msg = undecided
+      ? `${r.removed ? `Removed ${plural(r.removed, 'unnecessary wall')}` : 'No wall could be removed'} — of the ${plural(r.kept, 'remaining wall')}, ${r.kept - undecided} are proven necessary and ${undecided} are undecided: the search limit was reached before they could be checked. Raise the search limit and minimize again.`
+      : r.removed === 0 ? `All ${plural(before, 'wall')} are already necessary — none could be removed without losing uniqueness.`
+      : `Removed ${plural(r.removed, 'unnecessary wall')} — ${plural(r.kept, 'remaining wall')} are each individually necessary for a unique solution.`;
+    setStatus(msg, undecided ? 'warn' : 'ok');
   } finally { setBusy(false); }
 }
 
