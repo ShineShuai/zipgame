@@ -54,7 +54,7 @@ function calibrationK(n, rnd) {
 // calibration sample. Stored, not recomputed per call, so a puzzle's combined score is a pure
 // function of ITS OWN metrics — grading one puzzle never depends on which other puzzles happen to be
 // in memory. Regenerate with tools/calibrate.mjs whenever the generator or thresholds change.
-export const COMBINED_ZSCORE = { BperN: { mean: 3.1588, sd: 1.6547 }, cross: { mean: 0.0861, sd: 0.128 } };
+export const COMBINED_ZSCORE = { BperN: { mean: 4.071, sd: 3.003 }, cross: { mean: 0.08286, sd: 0.1342 } };
 export const combinedScore = (m, s) =>
   (m.B / m.n - COMBINED_ZSCORE.BperN.mean) / COMBINED_ZSCORE.BperN.sd
   + (s.crossPerSeg - COMBINED_ZSCORE.cross.mean) / COMBINED_ZSCORE.cross.sd;
@@ -149,14 +149,14 @@ export function calibrate(nRange, seed, samplesPerN = 40) {
 // generator, prune config, or supported N range changes — a stale calibration drifts silently even
 // though nothing here would error.
 export const DEFAULT_THRESHOLDS_BY_METRIC = {
-  decisionNodes: [3.375, 6.49, 8.037, 10.8],
-  B: [1.541, 2.646, 3.249, 4.352],
+  decisionNodes: [1.984, 6.02, 9.017, 12.7],
+  B: [1.355, 2.618, 4.185, 6.221],
   // crossPerSeg is exactly 0 for many generated puzzles (no two non-adjacent checkpoint segments
   // cross), so its lowest two cuts collapse to 0: grade 0-1 both mean "no crossing" in practice.
-  crossPerSeg: [0, 0, 0.08333, 0.1667],
-  overlapPerSeg: [0.25, 0.4167, 0.5385, 0.7],
+  crossPerSeg: [0, 0, 0, 0.1538],
+  overlapPerSeg: [0.2353, 0.3636, 0.5714, 0.7778],
   // Cuts over the combined z-score (see COMBINED_ZSCORE / combinedScore above).
-  combined: [-1.404, -0.373, 0.3096, 1.244],
+  combined: [-1.311, -0.777, 0.168, 1.219],
 };
 export const DEFAULT_THRESHOLDS = DEFAULT_THRESHOLDS_BY_METRIC.decisionNodes; // legacy export, existing callers
 // Kept as an alias for callers that want an explicit "I have no calibration, don't crash" fallback
