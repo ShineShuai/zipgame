@@ -18,19 +18,31 @@ export function resolveRefs(root, spec) {
     : [git(root, 'rev-parse', '--verify', `${part}^{commit}`)]));
 }
 
-// Returns the child's result fragment, or null when the old src cannot run the current benchmark.
+// Returns the child's result fragment, or null when the old commit cannot run the current benchmark.
+// The git root may be above the project folder (e.g. repo/webapp): the project lives at <worktree>/<prefix>.
 function runAt(root, sha, benchSha, extraArgs) {
   const dir = mkdtempSync(path.join(tmpdir(), 'bench-at-'));
   try {
     git(root, 'worktree', 'add', '--detach', dir, sha);
-    cpSync(path.join(root, 'bench'), path.join(dir, 'bench'), {
+    const project = path.join(dir, git(root, 'rev-parse', '--show-prefix'));
+    if (!existsSync(path.join(project, 'src'))) {
+      console.error(`bench: ${sha.slice(0, 7)} has no ${path.relative(dir, project) || '.'}/src`);
+      return null;
+    }
+    cpSync(path.join(root, 'bench'), path.join(project, 'bench'), {
       recursive: true,
       filter: source => !/report\.html(\.tmp)?$/.test(source),
     });
     const out = path.join(dir, 'out.json');
-    const args = [path.join(dir, 'bench', 'bench.js'), '--out', out, '--bench-sha', benchSha, ...extraArgs];
-    spawnSync(process.execPath, args, { cwd: dir, stdio: 'inherit' });
-    return existsSync(out) ? JSON.parse(readFileSync(out, 'utf8')) : null;
+    const args = [path.join(project, 'bench', 'bench.js'), '--out', out, '--bench-sha', benchSha, ...extraArgs];
+    const run = spawnSync(process.execPath, args, { cwd: project, stdio: ['ignore', 'inherit', 'pipe'], encoding: 'utf8' });
+    if (existsSync(out)) {
+      process.stderr.write(run.stderr);
+      return JSON.parse(readFileSync(out, 'utf8'));
+    }
+    const reason = run.stderr.split('\n').filter(line => /Error|Cannot find|SyntaxError/.test(line)).slice(0, 2).join('\n  ');
+    console.error(`bench: ${reason || run.stderr.trim().split('\n').pop()}`);
+    return null;
   } finally {
     try {
       git(root, 'worktree', 'remove', '--force', dir);
