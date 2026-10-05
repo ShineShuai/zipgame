@@ -98,8 +98,8 @@ export const DEFAULT_GEN_FLAGS = { prop: true, legCollide: false, pocket: false,
 export const DEFAULT_FLAGS_INT = encodeFlags({ score: DEFAULT_GEN_FLAGS, path: 'backbite', cps: 'gap' });
 
 // generate()'s (the play app's daily/ALGO_VERSION-pinned generator) actual effective flags — it
-// hardcodes path=warnsdorff, cps=gap, prop=true, legCollide=false with no per-phase distinction,
-// no build/minimize/score is user-choosable there. Used only to compute the fixed badge value
+// hardcodes path=warnsdorff, cps=gap, prop=true, legCollide=false and (ALGO_VERSION 6) the freedEdge
+// minimize check, nothing of it user-choosable there. Used only to compute the fixed badge value
 // shown next to the seed on hold-v in the play app — never passed back into generate() itself,
 // which stays untouched by this whole flags system.
 // Caveat: generate() also builds several path/checkpoint candidates and keeps the one needing the
@@ -107,4 +107,4 @@ export const DEFAULT_FLAGS_INT = encodeFlags({ score: DEFAULT_GEN_FLAGS, path: '
 // generateUnique doesn't have — so pasting this seed+flags into the design app's Generate button
 // (which calls generateUnique, a single attempt per retry) reproduces the same *algorithm choices*
 // but is not guaranteed to reproduce the exact same puzzle as generate()'s multi-candidate result.
-export const PLAY_FLAGS_INT = encodeFlags({ score: DEFAULT_GEN_FLAGS, path: 'warnsdorff', cps: 'gap' });
+export const PLAY_FLAGS_INT = encodeFlags({ build: DEFAULT_GEN_FLAGS, minimize: { ...DEFAULT_GEN_FLAGS, freedEdge: true }, score: DEFAULT_GEN_FLAGS, path: 'warnsdorff', cps: 'gap' });

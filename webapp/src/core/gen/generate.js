@@ -21,6 +21,8 @@ const ATTEMPTS_PER_CANDIDATE = 12;
 const BUILD_SHARE = 0.1;
 // With solver propagation each node is far more effective, so the seeded node caps shrink.
 export const PROP_CAP_X = 0.3;
+// A wall-removal check in minimizeWalls gets this share of the build cap (tools/tune-gen.mjs explores it).
+export const CHECK_CAP_X = 0.5;
 // Every attempt starts by pre-walling this share of the free edges at random. That makes uniqueness
 // cheap to reach; minimizeWalls() later strips the walls that turn out to be unnecessary.
 export const SEED_FRACTION = 0.4;
@@ -76,13 +78,14 @@ const fewestWalls = candidates => (
   candidates.length ? Math.min(...candidates.map(c => c.order.length)) : null
 );
 
-// Deterministic puzzle for (n, seed): same seed => same puzzle (ALGO_VERSION 5: solver propagation on,
-// candidates seeded with SEED_FRACTION random walls, best of several minimized candidates).
+// Deterministic puzzle for (n, seed): same seed => same puzzle (ALGO_VERSION 6: solver propagation on,
+// candidates seeded with SEED_FRACTION random walls, best of several minimized candidates, wall removals
+// tested through the freed edge).
 // o.prop === false reproduces the shape of the ALGO_VERSION 1 search (solver propagation off).
-// o.candidates overrides CANDIDATES[n].
-// o.freedEdge (default false): minimize with the solver's mustUse check (see minimizeWalls in walls.js):
-//   about 1.5x faster again and fewer node-cap hits, but it changes the puzzle of a given seed, so
-//   switching it on for the play app / Game of Day tooling is an ALGO_VERSION bump (src/core/model.js).
+// o.candidates overrides CANDIDATES[n]; o.capX / o.checkCapX override PROP_CAP_X / CHECK_CAP_X (tuning only).
+// o.freedEdge (default true since ALGO_VERSION 6): minimize with the solver's mustUse check (see minimizeWalls
+//   in walls.js): about 1.5x faster and fewer node-cap hits, so fewer walls. o.freedEdge === false gives the
+//   ALGO_VERSION 5 two-solution check (kept for comparisons; the output is not pinned).
 // A candidate whose minimizing can no longer beat the best one so far is dropped early (`bound` below):
 //   same puzzle, less work.
 // Events: { frac|null, walls, K }. `walls` never increases: it is the fewest walls found so far.
@@ -90,12 +93,12 @@ export function* generate(n, seed, o = {}) {
   const depth = o.retryDepth || 0;
   const cells = n * n;
   const prop = o.prop !== false;
-  const freedEdge = !!o.freedEdge;
+  const freedEdge = o.freedEdge !== false;
   const wanted = o.candidates || candidatesFor(n);
   const rnd = makeRng(seed);
-  const nodeCap = Math.round(Math.max(30000, 200 * cells) * (prop ? PROP_CAP_X : 1));
+  const nodeCap = Math.round(Math.max(30000, 200 * cells) * (o.capX ?? (prop ? PROP_CAP_X : 1)));
   const fallbackCap = Math.min(2000000, Math.max(300000, 20 * nodeCap));
-  const checkCap = Math.max(1000, Math.floor(nodeCap / 2));
+  const checkCap = Math.max(1000, Math.floor(nodeCap * (o.checkCapX ?? CHECK_CAP_X)));
   const Kmin = Math.max(4, n);
   const Kmax = Math.max(Kmin + 1, Math.round(cells / 4));
   const K = pickK(Kmin, Kmax, rnd);
