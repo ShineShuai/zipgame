@@ -36,11 +36,11 @@ export const TRAP_CFG = { cap: 1000, obvious: 3, shallow: 30, points: [0, 1, 3, 
 // <TRAP_MODEL>
 export const TRAP_MODEL = {
   features: ['trapMax', 'trapTop3', 'altFrac'],
-  mean: { trapMax: 5.5181, trapTop3: 11.8675, altFrac: 0.5707 },
-  sd: { trapMax: 3.0075, trapTop3: 5.9714, altFrac: 0.0816 },
-  w: { trapMax: 0.1713, trapTop3: 0.3717, altFrac: -0.369 },
-  b: 1.7018,
-  fit: { n: 83, lambda: 10, looRho: 0.62, looMae: 0.78 },
+  mean: { trapMax: 5.6404, trapTop3: 12.0449, altFrac: 0.5681 },
+  sd: { trapMax: 3.0547, trapTop3: 5.894, altFrac: 0.0815 },
+  w: { trapMax: 0.2263, trapTop3: 0.3277, altFrac: -0.4107 },
+  b: 1.7556,
+  fit: { n: 89, lambda: 10, looRho: 0.64, looMae: 0.78 },
 };
 // </TRAP_MODEL>
 
