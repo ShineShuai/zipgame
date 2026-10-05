@@ -10,6 +10,9 @@
     "test": "node test/tests.js",
     "test:server": "node server/cloudflare/worker.test.mjs && node server/turso/schema.test.mjs",
     "bench": "node bench/bench.js",
+    "bench:save": "node bench/bench.js --save",
+    "bench:report": "node bench/report.mjs",
+    "test:bench": "node --test bench/results.test.js",
     "golden": "node test/print-golden.js",
     "gotd:fit": "node tools/gotd-fit.mjs",
     "gotd:seed": "node tools/gotd-seed.mjs --dry-run"

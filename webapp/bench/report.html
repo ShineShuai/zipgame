@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zip benchmark report</title>
+<style>
+:root { --bg:#fafafa; --fg:#1d2024; --mute:#6b7280; --line:#d9dce1; --card:#fff; --better:#0b7a3b; --better-bg:#dff5e6; --worse:#b42318; --worse-bg:#fde4e1; --neutral:#1d4ed8; --neutral-bg:#e0e9ff; --same-bg:#eceef1; --s0:#3b82f6; --s1:#f59e0b; --s2:#10b981; --s3:#d946ef; --s4:#f87171; --s5:#22d3ee; }
+:root[data-theme="dark"] { --bg:#15171a; --fg:#e6e8eb; --mute:#9aa1ab; --line:#363a41; --card:#1d2024; --better:#5ad08a; --better-bg:#17392a; --worse:#ff8a7d; --worse-bg:#432120; --neutral:#8fb0ff; --neutral-bg:#1f2e52; --same-bg:#2a2e35; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#15171a; --fg:#e6e8eb; --mute:#9aa1ab; --line:#363a41; --card:#1d2024; --better:#5ad08a; --better-bg:#17392a; --worse:#ff8a7d; --worse-bg:#432120; --neutral:#8fb0ff; --neutral-bg:#1f2e52; --same-bg:#2a2e35; } }
+body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui, sans-serif; }
+header, main { max-width:1400px; margin:0 auto; padding:0 20px; }
+h1 { margin:18px 0 2px; font-size:22px; }
+h2 { margin:30px 0 8px; font-size:17px; }
+.sub, .note { color:var(--mute); font-size:12.5px; }
+#bar { position:sticky; top:0; z-index:5; background:var(--bg); border-bottom:1px solid var(--line); padding:8px 20px; display:flex; flex-wrap:wrap; gap:14px; align-items:center; }
+#bar label { display:flex; gap:6px; align-items:center; color:var(--mute); font-size:12.5px; }
+select, input[type=number], button { font:inherit; background:var(--card); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:3px 6px; }
+.scroll { overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:8px; }
+table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; }
+th, td { padding:5px 10px; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap; vertical-align:top; }
+th { font-weight:600; background:var(--card); }
+th:first-child, td:first-child { text-align:left; position:sticky; left:0; background:var(--card); z-index:1; }
+td.l, th.l { text-align:left; white-space:normal; }
+tr:last-child td { border-bottom:0; }
+.sha { font:12px ui-monospace, monospace; }
+.val { font-weight:600; }
+.chip { display:inline-block; margin-left:6px; padding:0 6px; border-radius:9px; font-size:12px; }
+.better { color:var(--better); background:var(--better-bg); }
+.worse { color:var(--worse); background:var(--worse-bg); }
+.neutral { color:var(--neutral); background:var(--neutral-bg); }
+.same { color:var(--mute); background:var(--same-bg); }
+.spec { color:var(--mute); background:repeating-linear-gradient(45deg, transparent 0 4px, var(--line) 4px 6px); }
+.none { color:var(--mute); }
+.bad { color:var(--worse); font-weight:700; }
+.empty { padding:40px; text-align:center; color:var(--mute); }
+svg text { fill:var(--mute); font:11px system-ui, sans-serif; }
+.chart { padding:6px 10px 2px; margin-bottom:10px; }
+ul.changes { margin:0; padding-left:18px; }
+code { background:var(--same-bg); padding:1px 5px; border-radius:4px; }
+</style>
+<body>
+<header><h1>Zip benchmark report</h1><div class="sub" id="sub"></div></header>
+<div id="bar"></div>
+<main id="app"></main>
+<script type="application/json" id="bench-data">{"schema":1,
+"versions":{},
+"envs":{},
+"results":[
+
+]}</script>
+<script type="module">
+// Pure data model of the benchmark store. Shared by the Node tools and the report viewer
+// (inlined into report.html with `export ` stripped): no imports, no I/O, no default export.
+const SCHEMA = 1;
+
+// exact: deterministic (identical on every machine); better: direction of improvement (null = neutral).
+const METRICS = {
+  nodes: { better: 'lower', exact: true },
+  walls: { better: 'lower', exact: true },
+  K: { better: null, exact: true },
+  ms: { better: 'lower', exact: false },
+  msMed: { better: 'lower', exact: false },
+};
+
+function canonical(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonical).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    const keys = Object.keys(value).sort();
+    return `{${keys.map(k => `${JSON.stringify(k)}:${canonical(value[k])}`).join(',')}}`;
+  }
+  return String(JSON.stringify(value));
+}
+
+// cyrb53 over canonical JSON (key order independent).
+function hash(value) {
+  const text = canonical(value);
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
+function emptyStore() {
+  return { schema: SCHEMA, versions: {}, envs: {}, results: [] };
+}
+
+// bench = commit that provided the benchmark code: the version itself for a native run, a later commit for a backfill (--at).
+// A version is a commit; results of a working tree with uncommitted changes form a separate version `sha+`
+// (one slot per commit, env, suite: a rerun replaces it).
+const verId = r => r.sha + (r.dirty ? '+' : '');
+const baseSha = id => id.replace(/\+$/, '');
+const resultKey = r => `${verId(r)}|${r.envId}|${r.suite}|${r.bench || r.sha}`;
+
+// true when the result was measured with the benchmark code of its own version (not backfilled)
+const isOwn = r => baseSha(r.bench || r.sha) === r.sha;
+
+function versionInfo(store, id) {
+  const v = store.versions[baseSha(id)] || {};
+  return id.endsWith('+') ? { ...v, subject: `${v.subject || ''} (uncommitted changes)`, note: '', dirty: true } : v;
+}
+
+// Results of a working tree with uncommitted changes are kept out unless allowDirty.
+function validateResult(r, allowDirty = false) {
+  if (!r || !/^[0-9a-f]{40}$/.test(r.sha || '')) {
+    return 'missing git sha';
+  }
+  if (r.dirty && !allowDirty) {
+    return 'uncommitted changes';
+  }
+  if (!r.envId || !r.suite || !Array.isArray(r.rows) || !r.spec) {
+    return 'incomplete result';
+  }
+  return null;
+}
+
+// Pure and idempotent. Same (sha, env, suite): the newer result wins.
+function mergeStores(base, incoming, reject = () => {}, allowDirty = false) {
+  const out = {
+    schema: SCHEMA,
+    versions: { ...base.versions },
+    envs: { ...base.envs },
+    results: [...base.results],
+  };
+  const index = new Map(out.results.map((r, i) => [resultKey(r), i]));
+  for (const r of incoming.results || []) {
+    const problem = validateResult(r, allowDirty);
+    if (problem) {
+      reject(r, problem);
+      continue;
+    }
+    const at = index.get(resultKey(r));
+    if (at === undefined) {
+      index.set(resultKey(r), out.results.length);
+      out.results.push(r);
+    } else if (r.ts > out.results[at].ts) {
+      out.results[at] = r;
+    }
+  }
+  for (const [sha, v] of Object.entries(incoming.versions || {})) {
+    const old = out.versions[sha];
+    out.versions[sha] = { ...v, ...old, note: (old && old.note) || v.note };
+  }
+  for (const [id, e] of Object.entries(incoming.envs || {})) {
+    out.envs[id] = { ...e, ...out.envs[id] };
+  }
+  return out;
+}
+
+// One result per line: appending a run only adds lines to the git diff.
+function serializeStore(store) {
+  const lines = store.results.map(r => JSON.stringify(r)).join(',\n');
+  const text = `{"schema":${store.schema},\n"versions":${JSON.stringify(store.versions)},\n"envs":${JSON.stringify(store.envs)},\n"results":[\n${lines}\n]}`;
+  return text.replace(/</g, '\\u003c');
+}
+
+function orderedVersions(store) {
+  const ids = [...new Set(store.results.map(verId))];
+  const date = id => (id.endsWith('+')
+    ? store.results.filter(r => verId(r) === id).map(r => r.ts).sort().pop()
+    : (store.versions[id] && store.versions[id].date) || '');
+  return ids.sort((a, b) => date(a).localeCompare(date(b)) || a.localeCompare(b));
+}
+
+const specHashOf = r => hash([r.rev, r.spec]);
+
+// Several results can exist for one (version, env, suite): the commit's own benchmark run and runs of a later
+// benchmark backfilled onto it. Prefer the one measured with `specHash`, then this env, then the newest.
+// ms are per environment; exact metrics fall back to any environment's result.
+function pickResult(store, suite, sha, env, metric, specHash) {
+  const found = store.results.filter(r => r.suite === suite && verId(r) === sha);
+  const pool = METRICS[metric] && METRICS[metric].exact ? found : found.filter(r => r.envId === env);
+  const score = r => (specHash && specHashOf(r) === specHash ? 2 : 0) + (r.envId === env ? 1 : 0);
+  return pool.sort((a, b) => score(b) - score(a) || b.ts.localeCompare(a.ts))[0];
+}
+
+// The benchmark of the newest version: older versions are shown with it when a backfilled result exists.
+function referenceSpec(store, suite, env, metric) {
+  for (const sha of orderedVersions(store).reverse()) {
+    const r = pickResult(store, suite, sha, env, metric);
+    if (r) {
+      return specHashOf(r);
+    }
+  }
+  return null;
+}
+
+// Values of one (case, variant, metric) by instance seed.
+function cellAgg(result, c, v, metric) {
+  const values = new Map();
+  let capped = 0;
+  for (const row of result.rows) {
+    if (row.c !== c || row.v !== v || row.m[metric] === undefined) {
+      continue;
+    }
+    values.set(row.s, row.m[metric]);
+    capped += row.cap ? 1 : 0;
+  }
+  if (!values.size) {
+    return null;
+  }
+  const sum = [...values.values()].reduce((a, b) => a + b, 0);
+  return { values, mean: sum / values.size, n: values.size, capped };
+}
+
+// Cells are comparable only when the suite rev and this cell's own spec (suite params, case, variant) match.
+function cellSpecHash(result, c, v) {
+  return hash([result.rev, result.spec.common, result.spec.cases[c], result.spec.variants[v]]);
+}
+
+// ratio = a / b over the instances (seeds) present in both results.
+function cellCompare(a, b, c, v, metric) {
+  const A = cellAgg(a, c, v, metric);
+  const B = cellAgg(b, c, v, metric);
+  if (!A || !B) {
+    return null;
+  }
+  const specDiff = cellSpecHash(a, c, v) !== cellSpecHash(b, c, v);
+  let sumA = 0;
+  let sumB = 0;
+  let n = 0;
+  for (const [seed, x] of A.values) {
+    if (B.values.has(seed)) {
+      sumA += x;
+      sumB += B.values.get(seed);
+      n++;
+    }
+  }
+  let ratio = null;
+  if (n && sumB !== 0) {
+    ratio = sumA / sumB;
+  } else if (n && sumA === 0) {
+    ratio = 1;
+  }
+  return { ratio, n, specDiff, A, B };
+}
+
+function geomean(values) {
+  const good = values.filter(x => x > 0 && Number.isFinite(x));
+  if (!good.length) {
+    return null;
+  }
+  return Math.exp(good.reduce((s, x) => s + Math.log(x), 0) / good.length);
+}
+
+// 'better' | 'worse' | 'neutral' | 'same'. Exact metrics: any change counts; ms: within noise% is 'same'.
+function classify(ratio, metric, noisePct) {
+  const m = METRICS[metric];
+  const tolerance = m.exact ? 1e-12 : noisePct / 100;
+  if (Math.abs(ratio - 1) <= tolerance) {
+    return 'same';
+  }
+  if (!m.better) {
+    return 'neutral';
+  }
+  return (m.better === 'lower') === ratio < 1 ? 'better' : 'worse';
+}
+
+const isObject = x => Boolean(x) && typeof x === 'object' && !Array.isArray(x);
+
+// What changed in the benchmark between two results: rev, suite params, cases, variants.
+function diffSpec(a, b) {
+  const out = [];
+  const show = x => JSON.stringify(x);
+  const walk = (label, x, y) => {
+    if (x === undefined || y === undefined) {
+      out.push(`${label} ${x === undefined ? 'added' : 'removed'}`);
+    } else if (isObject(x) && isObject(y)) {
+      for (const k of new Set([...Object.keys(x), ...Object.keys(y)])) {
+        walk(`${label}.${k}`, x[k], y[k]);
+      }
+    } else if (Array.isArray(x) && Array.isArray(y)) {
+      const kept = new Set(x.map(show));
+      const had = new Set(y.map(show));
+      const delta = [...y.filter(v => !kept.has(show(v))).map(v => `+${show(v)}`), ...x.filter(v => !had.has(show(v))).map(v => `−${show(v)}`)];
+      if (delta.length) {
+        out.push(`${label}: ${delta.join(' ')}`);
+      }
+    } else if (show(x) !== show(y)) {
+      out.push(label.endsWith('.inputs') ? `${label.slice(0, -7)}: instances changed` : `${label}: ${show(x)} → ${show(y)}`);
+    }
+  };
+  if (a.rev !== b.rev) {
+    out.push(`rev ${a.rev} → ${b.rev}`);
+  }
+  const sections = { common: 'common', cases: 'case', variants: 'variant' };
+  for (const [section, name] of Object.entries(sections)) {
+    const x = a.spec[section] || {};
+    const y = b.spec[section] || {};
+    for (const k of new Set([...Object.keys(x), ...Object.keys(y)])) {
+      walk(section === 'common' ? `common.${k}` : `${name} ${k}`, x[k], y[k]);
+    }
+  }
+  return out;
+}
+
+// Cumulative change per variant over ordered column results: each (case, variant) row is chained version to version
+// and indexed to 100 at its first value; a variant is the geomean of its rows. A benchmark change (spec/rev)
+// between two versions breaks the line (broken = true) and carries the level over instead of inventing a delta.
+function trendSeries(results, rows, metric, anyway = false) {
+  const chains = rows.map(([c, v]) => {
+    const points = new Map();
+    let prev = -1;
+    results.forEach((res, i) => {
+      if (!cellAgg(res, c, v, metric)) {
+        return;
+      }
+      if (prev < 0) {
+        points.set(i, { idx: 100, broken: false });
+        prev = i;
+        return;
+      }
+      const cmp = cellCompare(res, results[prev], c, v, metric);
+      if (!cmp || !cmp.n || cmp.ratio === null) {
+        return;
+      }
+      const broken = cmp.specDiff && !anyway;
+      points.set(i, { idx: points.get(prev).idx * (broken ? 1 : cmp.ratio), broken });
+      prev = i;
+    });
+    return { v, points };
+  });
+  const byVariant = new Map();
+  for (const { v, points } of chains) {
+    const list = byVariant.get(v) || [];
+    list.push(points);
+    byVariant.set(v, list);
+  }
+  const out = new Map();
+  for (const [v, list] of byVariant) {
+    const series = [];
+    results.forEach((_, i) => {
+      const here = list.map(points => points.get(i)).filter(Boolean);
+      const idx = geomean(here.map(p => p.idx));
+      if (idx !== null) {
+        series.push({ i, idx, broken: here.some(p => p.broken) });
+      }
+    });
+    out.set(v, series);
+  }
+  return out;
+}
+
+let store = JSON.parse(document.getElementById('bench-data').textContent);
+const state = { env: '', metric: 'nodes', base: 'prev', noise: 5, anyway: false };
+let dirty = false;
+
+function el(tag, attrs = {}, ...kids) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') {
+      node.className = v;
+    } else if (k.startsWith('on')) {
+      node[k] = v;
+    } else if (v === false) {
+      continue;
+    } else if (v === true) {
+      node.setAttribute(k, '');
+    } else {
+      node.setAttribute(k, v);
+    }
+  }
+  for (const kid of kids.flat()) {
+    if (kid !== null && kid !== undefined && kid !== false) {
+      node.append(kid);
+    }
+  }
+  return node;
+}
+
+const fmt = x => (Math.abs(x) >= 100 ? Math.round(x).toLocaleString('en') : String(Math.round(x * 100) / 100));
+const sha7 = id => id.slice(0, 7) + (id.endsWith('+') ? '+' : '');
+const short = (text, n) => (text.length > n ? `${text.slice(0, n - 1)}…` : text);
+const envName = id => (store.envs[id] ? store.envs[id].name : id);
+
+function chip(cmp, metric) {
+  if (!cmp) {
+    return null;
+  }
+  if (!cmp.n) {
+    return el('span', { class: 'chip none', title: 'no instances in common' }, '—');
+  }
+  if (cmp.specDiff && !state.anyway) {
+    return el('span', { class: 'chip spec', title: 'benchmark changed between these versions (suite rev, case or variant spec); enable "compare anyway" to see the number, or rerun the old version with the current benchmark: node bench/bench.js --save --at <sha>' }, 'spec changed');
+  }
+  if (cmp.ratio === null) {
+    return el('span', { class: 'chip none' }, 'n/a');
+  }
+  const kind = classify(cmp.ratio, metric, state.noise);
+  const pct = (cmp.ratio - 1) * 100;
+  const arrow = kind === 'same' ? '≈' : cmp.ratio < 1 ? '▼' : '▲';
+  const text = kind === 'same' && METRICS[metric].exact ? '=' : `${arrow} ${pct > 0 ? '+' : ''}${pct.toFixed(Math.abs(pct) < 10 ? 1 : 0)}%`;
+  const total = Math.max(cmp.A.n, cmp.B.n);
+  const partial = cmp.n < total ? ` · ${cmp.n}/${total}` : '';
+  const title = `${cmp.n} common instance(s) of ${cmp.A.n} (this) and ${cmp.B.n} (baseline)${cmp.specDiff ? '; spec differs (compared anyway)' : ''}`;
+  return el('span', { class: `chip ${kind}`, title }, text + partial);
+}
+
+// One suite: columns = versions with data, rows = (case, variant); ratio(i, c, v) = compare against the chosen baseline.
+function suiteModel(suite) {
+  const ref = referenceSpec(store, suite, state.env, state.metric);
+  const cols = orderedVersions(store)
+    .map(sha => ({ sha, res: pickResult(store, suite, sha, state.env, state.metric, ref) }))
+    .filter(col => col.res);
+  const rows = new Map();
+  for (const { res } of cols) {
+    for (const row of res.rows) {
+      if (row.m[state.metric] !== undefined) {
+        rows.set(`${row.c}\u0000${row.v}`, [row.c, row.v]);
+      }
+    }
+  }
+  const has = (i, c, v) => cellAgg(cols[i].res, c, v, state.metric);
+  function baseIndex(i, c, v) {
+    if (state.base === 'prev') {
+      for (let j = i - 1; j >= 0; j--) {
+        if (has(j, c, v)) {
+          return j;
+        }
+      }
+      return -1;
+    }
+    const j = state.base === 'first' ? cols.findIndex((_, k) => has(k, c, v)) : cols.findIndex(col => col.sha === state.base);
+    return j === i || j < 0 || !has(j, c, v) ? -1 : j;
+  }
+  const compare = (i, c, v) => {
+    const j = baseIndex(i, c, v);
+    return j < 0 ? null : cellCompare(cols[i].res, cols[j].res, c, v, state.metric);
+  };
+  return { suite, cols, rows: [...rows.values()], has, compare };
+}
+
+function versionHead(sha, res) {
+  const v = versionInfo(store, sha);
+  return el('th', { title: `${sha}\n${v.subject || ''}${v.note ? `\nnote: ${v.note}` : ''}` },
+    el('div', { class: 'sha' }, sha7(sha), v.dirty ? el('span', { class: 'bad', title: 'uncommitted changes' }, ' ⚠') : '', res && res.checks.failed ? el('span', { class: 'bad', title: `${res.checks.failed} equivalence check(s) failed: timings untrusted` }, ' ✗') : ''),
+    el('div', { class: 'note' }, (v.date || '').slice(0, 10), ` · algo ${v.algo ?? '?'}`),
+    el('div', { class: 'note' }, short(v.subject || '', 28)),
+    res && !isOwn(res) ? el('div', { class: 'note', title: `measured with the benchmark of commit ${res.bench}` }, `↺ bench@${sha7(res.bench)}`) : '',
+    v.note ? el('div', { class: 'note' }, `“${short(v.note, 28)}”`) : '');
+}
+
+const esc = text => String(text).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// Cumulative change per variant (first version = 100, log axis); ◇ = benchmark changed there, line broken.
+function trendChart(model) {
+  const series = [...trendSeries(model.cols.map(col => col.res), model.rows, state.metric, state.anyway)].filter(([, pts]) => pts.length);
+  const m = model.cols.length;
+  if (m < 2 || !series.length) {
+    return null;
+  }
+  const W = 760;
+  const H = 230;
+  const [L, R, T, B] = [48, 140, 12, 34];
+  const logs = series.flatMap(([, pts]) => pts.map(p => Math.log10(p.idx)));
+  let lo = Math.min(2, ...logs);
+  let hi = Math.max(2, ...logs);
+  const margin = Math.max(0.1, (hi - lo) * 0.08);
+  lo -= margin;
+  hi += margin;
+  const x = i => L + ((W - L - R) * i) / (m - 1);
+  const y = idx => T + (H - T - B) * (1 - (Math.log10(idx) - lo) / (hi - lo));
+  const parts = [];
+  for (let e = -3; e <= 5; e++) {
+    for (const k of [1, 2, 5]) {
+      const t = k * 10 ** e;
+      if (Math.log10(t) > lo && Math.log10(t) < hi) {
+        parts.push(`<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)" stroke-dasharray="${t === 100 ? '5 3' : '1 3'}"/><text x="${L - 6}" y="${y(t) + 4}" text-anchor="end">${t}</text>`);
+      }
+    }
+  }
+  const step = Math.ceil(m / 12);
+  model.cols.forEach((col, i) => {
+    if (i % step === 0 || i === m - 1) {
+      parts.push(`<text x="${x(i)}" y="${H - 16}" text-anchor="middle">${sha7(col.sha)}</text>`);
+    }
+  });
+  const labels = [];
+  series.forEach(([variant, pts], n) => {
+    const color = `var(--s${n % 6})`;
+    let path = '';
+    let before = null;
+    for (const p of pts) {
+      path += before === null || p.broken ? `M${x(p.i)} ${y(p.idx)}` : `L${x(p.i)} ${y(p.idx)}`;
+      before = p;
+    }
+    parts.push(`<path d="${path}" fill="none" stroke="${color}" stroke-width="2"/>`);
+    for (const p of pts) {
+      const tip = `${esc(variant)} @ ${sha7(model.cols[p.i].sha)}: ${p.idx.toFixed(1)}${p.broken ? ' (benchmark changed: level carried over)' : ''}`;
+      const shape = p.broken ? `<path d="M${x(p.i)} ${y(p.idx) - 5}l5 5l-5 5l-5 -5z" fill="var(--card)" stroke="${color}" stroke-width="2"/>` : `<circle cx="${x(p.i)}" cy="${y(p.idx)}" r="3.5" fill="${color}"/>`;
+      parts.push(`<g>${shape}<title>${tip}</title></g>`);
+    }
+    const last = pts[pts.length - 1];
+    labels.push({ y: y(last.idx), text: `${esc(variant)} ${last.idx < 10 ? last.idx.toFixed(1) : Math.round(last.idx)}`, color });
+  });
+  labels.sort((a, b) => a.y - b.y);
+  labels.forEach((l, i) => {
+    l.y = i && l.y < labels[i - 1].y + 13 ? labels[i - 1].y + 13 : l.y;
+    parts.push(`<text x="${W - R + 8}" y="${l.y + 4}" style="fill:${l.color};font-weight:600">${l.text}</text>`);
+  });
+  const box = el('div', { class: 'scroll chart' });
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="trend of ${esc(state.metric)} per variant">${parts.join('')}</svg>`;
+  return el('div', {}, el('div', { class: 'note' }, `Trend of ${state.metric}: cumulative change per variant (geomean over cases; first version = 100, log axis, lower is better unless noted). ◇ = benchmark changed, line broken.`), box);
+}
+
+// What changed in the benchmark itself between consecutive versions (own-commit results only).
+function changelog() {
+  const rows = [];
+  for (const suite of new Set(store.results.map(r => r.suite))) {
+    const own = orderedVersions(store)
+      .map(sha => store.results.filter(r => r.suite === suite && verId(r) === sha && isOwn(r)).sort((a, b) => b.ts.localeCompare(a.ts))[0])
+      .filter(Boolean);
+    for (let i = 1; i < own.length; i++) {
+      const [a, b] = [own[i - 1], own[i]];
+      const changes = diffSpec(a, b);
+      const algo = [a, b].map(r => versionInfo(store, verId(r)).algo);
+      if (algo[0] !== algo[1]) {
+        changes.push(`ALGO_VERSION ${algo[0]} → ${algo[1]} (deterministic outputs may change)`);
+      }
+      if (changes.length) {
+        rows.push([suite, `${sha7(verId(a))} → ${sha7(verId(b))}`, (versionInfo(store, verId(b)).date || b.ts).slice(0, 10), el('ul', { class: 'changes' }, changes.map(c => el('li', {}, c)))]);
+      }
+    }
+  }
+  return rows.length ? table(['suite', 'versions', 'date', 'benchmark changes'], rows) : el('p', { class: 'note' }, 'No benchmark changes between the recorded versions.');
+}
+
+function matrix(model) {
+  const head = el('tr', {}, el('th', {}, 'case · variant'), model.cols.map(col => versionHead(col.sha, col.res)));
+  const body = model.rows.map(([c, v]) => el('tr', {},
+    el('td', {}, el('div', {}, c), el('div', { class: 'note' }, v)),
+    model.cols.map((col, i) => {
+      const agg = model.has(i, c, v);
+      if (!agg) {
+        return el('td', { class: 'none' }, '—');
+      }
+      const capped = agg.capped ? el('span', { class: 'bad', title: `${agg.capped} of ${agg.n} instance(s) hit the node cap: value is a lower bound` }, '≥') : '';
+      return el('td', {}, capped, el('span', { class: 'val' }, fmt(agg.mean)), chip(model.compare(i, c, v), state.metric));
+    })));
+  return el('div', { class: 'scroll' }, el('table', {}, el('thead', {}, head), el('tbody', {}, body)));
+}
+
+function summary(models) {
+  const versions = orderedVersions(store);
+  const head = el('tr', {}, el('th', {}, 'suite · geomean vs baseline'), versions.map(sha => versionHead(sha, null)));
+  const body = models.filter(m => m.cols.length).map(model => el('tr', {},
+    el('td', {}, model.suite),
+    versions.map(sha => {
+      const i = model.cols.findIndex(col => col.sha === sha);
+      if (i < 0) {
+        return el('td', { class: 'none' }, '—');
+      }
+      const cmps = model.rows.map(([c, v]) => model.compare(i, c, v)).filter(x => x && x.n && x.ratio !== null && (state.anyway || !x.specDiff));
+      const ratio = geomean(cmps.map(x => x.ratio));
+      const skipped = model.rows.length - cmps.length;
+      if (ratio === null) {
+        return el('td', { class: 'none' }, '—');
+      }
+      const cell = { ratio, n: 1, specDiff: false, A: { n: 1 }, B: { n: 1 } };
+      return el('td', {}, chip(cell, state.metric), skipped && model.rows.length > 1 ? el('div', { class: 'note' }, `${cmps.length}/${model.rows.length} rows`) : '');
+    })));
+  return el('div', { class: 'scroll' }, el('table', {}, el('thead', {}, head), el('tbody', {}, body)));
+}
+
+function table(headers, rows) {
+  return el('div', { class: 'scroll' }, el('table', {}, el('thead', {}, el('tr', {}, headers.map(h => el('th', { class: 'l' }, h)))),
+    el('tbody', {}, rows.map(cells => el('tr', {}, cells.map(c => el('td', { class: 'l' }, c)))))));
+}
+
+function runsTable() {
+  const sorted = [...store.results].sort((a, b) => b.ts.localeCompare(a.ts));
+  return table(['recorded', 'version', 'environment', 'suite (rev)', 'benchmark code', 'rows', 'checks', 'runtime · power', 'note'], sorted.map(r => {
+    const v = versionInfo(store, verId(r));
+    return [
+      r.ts.slice(0, 16).replace('T', ' '),
+      el('div', {}, el('span', { class: 'sha' }, sha7(verId(r))), ' ', short(v.subject || '', 40)),
+      envName(r.envId),
+      `${r.suite} (rev ${r.rev})`,
+      isOwn(r) ? (r.dirty ? 'working tree' : 'own commit') : `backfill · bench@${sha7(r.bench)}`,
+      String(r.rows.length),
+      r.checks.failed ? el('span', { class: 'bad' }, `✗ ${r.checks.failed} failed`) : '✓ ok',
+      `${r.runtime || ''}${r.power ? ` · ${r.power}` : ''}`,
+      [v.note, r.note].filter(Boolean).join(' · '),
+    ];
+  }));
+}
+
+function envTables() {
+  const ids = Object.keys(store.envs);
+  const count = id => store.results.filter(r => r.envId === id).length;
+  const info = ids.map(id => {
+    const e = store.envs[id];
+    const d = e.device || {};
+    return [e.name, el('span', { class: 'sha' }, id), `${d.cpu || ''}${d.model ? ` (${d.model})` : ''}`, `${d.cores || '?'} cores · ${d.ramGb ? `${d.ramGb} GB` : 'RAM ?'} · ${d.os || ''} ${d.arch || ''}`, `${e.runtime ? `${e.runtime.name} ${e.runtime.major}` : ''}`, String(count(id))];
+  });
+  const versions = orderedVersions(store);
+  const coverage = versions.map(sha => [
+    el('span', { class: 'sha' }, sha7(sha)),
+    ...ids.map(id => {
+      const suites = store.results.filter(r => verId(r) === sha && r.envId === id).map(r => r.suite);
+      return suites.length ? [...new Set(suites)].join(', ') : el('span', { class: 'none' }, '—');
+    }),
+  ]);
+  return [table(['environment', 'id', 'CPU', 'device', 'runtime', 'results'], info), el('h2', {}, 'Coverage: suites recorded per version × environment'), table(['version', ...ids.map(envName)], coverage)];
+}
+
+function renderMain() {
+  const app = document.getElementById('app');
+  app.replaceChildren();
+  document.getElementById('sub').textContent = `${orderedVersions(store).length} version(s) · ${Object.keys(store.envs).length} environment(s) · ${store.results.length} result(s)`;
+  if (!store.results.length) {
+    app.append(el('div', { class: 'empty' }, 'No results yet. Run ', el('code', {}, 'npm run bench:save'), ' from a clean checkout, or import result files above.'));
+    return;
+  }
+  const suites = [...new Set(store.results.map(r => r.suite))];
+  const models = suites.map(suiteModel);
+  const exact = METRICS[state.metric].exact;
+  app.append(el('p', { class: 'note' }, exact ? 'Deterministic metric: identical on every machine, so results from any environment are used. Any change is flagged.' : `Machine-dependent metric: only environment “${envName(state.env)}” is used; changes within ±${state.noise}% are shown as noise (≈). Values are per-instance means, deltas use the instances both versions ran.`));
+  app.append(el('h2', {}, 'Summary'), summary(models));
+  for (const model of models) {
+    app.append(el('h2', {}, `${model.suite}  `, el('span', { class: 'note' }, model.cols.length ? `rev ${[...new Set(model.cols.map(c => c.res.rev))].join(', ')}` : '')));
+    app.append(...(model.cols.length ? [trendChart(model), matrix(model)].filter(Boolean) : [el('div', { class: 'empty' }, `No ${state.metric} data for this environment.`)]));
+  }
+  app.append(el('h2', {}, 'Benchmark changes'), changelog(), el('h2', {}, 'Runs'), runsTable(), el('h2', {}, 'Environments'), ...envTables());
+}
+
+function option(value, label, selected) {
+  const o = el('option', { value }, label);
+  o.selected = selected;
+  return o;
+}
+
+function buildBar() {
+  const bar = document.getElementById('bar');
+  bar.replaceChildren();
+  const counts = {};
+  for (const r of store.results) {
+    counts[r.envId] = (counts[r.envId] || 0) + 1;
+  }
+  const envIds = Object.keys(store.envs);
+  if (!state.env || !store.envs[state.env]) {
+    state.env = envIds.sort((a, b) => (counts[b] || 0) - (counts[a] || 0))[0] || '';
+  }
+  const present = new Set(store.results.flatMap(r => r.rows.flatMap(row => Object.keys(row.m))));
+  const metrics = Object.keys(METRICS).filter(m => present.has(m));
+  if (!metrics.includes(state.metric)) {
+    state.metric = metrics[0] || 'nodes';
+  }
+  const pick = (label, items, key, parse = x => x) => el('label', {}, label, el('select', { onchange: e => { state[key] = parse(e.target.value); renderMain(); } }, items));
+  bar.append(
+    pick('Environment', envIds.map(id => option(id, store.envs[id].name, id === state.env)), 'env'),
+    pick('Metric', metrics.map(m => option(m, m + (METRICS[m].exact ? ' (exact)' : ''), m === state.metric)), 'metric'),
+    pick('Baseline', [option('prev', 'previous version', state.base === 'prev'), option('first', 'first version', state.base === 'first'), ...orderedVersions(store).map(sha => option(sha, `${sha7(sha)} ${short(versionInfo(store, sha).subject || '', 24)}`, state.base === sha))], 'base'),
+    el('label', {}, 'Noise ±', el('input', { type: 'number', min: '0', max: '50', value: String(state.noise), style: 'width:56px', onchange: e => { state.noise = Number(e.target.value) || 0; renderMain(); } }), '%'),
+    el('label', {}, el('input', { type: 'checkbox', onchange: e => { state.anyway = e.target.checked; renderMain(); } }), 'compare anyway (ignore spec changes)'),
+    el('label', {}, 'Import', el('input', { type: 'file', multiple: '', accept: '.json,.html', onchange: importFiles })),
+    el('button', { id: 'save', onclick: saveMerged, hidden: !dirty }, 'Save merged HTML'),
+  );
+}
+
+async function importFiles(e) {
+  for (const file of e.target.files) {
+    const text = await file.text();
+    const match = /<script type="application\/json" id="bench-data">([\s\S]*?)<\/script>/.exec(text);
+    const rejected = [];
+    store = mergeStores(store, JSON.parse(match ? match[1] : text), (r, why) => rejected.push(`${r.suite}: ${why}`), true);
+    if (rejected.length) {
+      alert(`${file.name}: rejected ${rejected.join('; ')}`);
+    }
+    dirty = true;
+  }
+  buildBar();
+  renderMain();
+}
+
+function saveMerged() {
+  const clone = document.documentElement.cloneNode(true);
+  clone.querySelector('#app').replaceChildren();
+  clone.querySelector('#bar').replaceChildren();
+  clone.querySelector('#sub').textContent = '';
+  clone.querySelector('#bench-data').textContent = serializeStore(store);
+  const blob = new Blob([`<!DOCTYPE html>\n${clone.outerHTML}`], { type: 'text/html' });
+  Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'report.html' }).click();
+}
+
+buildBar();
+renderMain();
+</script>
+</body>
+</html>
