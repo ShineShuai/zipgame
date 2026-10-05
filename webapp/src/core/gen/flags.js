@@ -92,10 +92,11 @@ export function hexToFlags(s) {
 }
 
 // Default flags matching generateUnique()'s own hardcoded defaults (prop on everywhere, else off,
-// path=backbite, cps=gap) — same shape for build/minimize/score. This is what the design app's
-// flags panel opens with, since Generate there calls generateUnique.
+// path=backbite, cps=gap; the minimize phase also on freedEdge) — the same shape for build and score.
+// This is what the design app's flags panel opens with, since Generate there calls generateUnique.
 export const DEFAULT_GEN_FLAGS = { prop: true, legCollide: false, pocket: false, parity: false, prune2: false, seg: false };
-export const DEFAULT_FLAGS_INT = encodeFlags({ score: DEFAULT_GEN_FLAGS, path: 'backbite', cps: 'gap' });
+export const DEFAULT_MINIMIZE_FLAGS = { ...DEFAULT_GEN_FLAGS, freedEdge: true };
+export const DEFAULT_FLAGS_INT = encodeFlags({ build: DEFAULT_GEN_FLAGS, minimize: DEFAULT_MINIMIZE_FLAGS, score: DEFAULT_GEN_FLAGS, path: 'backbite', cps: 'gap' });
 
 // generate()'s (the play app's daily/ALGO_VERSION-pinned generator) actual effective flags — it
 // hardcodes path=warnsdorff, cps=gap, prop=true, legCollide=false and (ALGO_VERSION 6) the freedEdge
@@ -107,4 +108,4 @@ export const DEFAULT_FLAGS_INT = encodeFlags({ score: DEFAULT_GEN_FLAGS, path: '
 // generateUnique doesn't have — so pasting this seed+flags into the design app's Generate button
 // (which calls generateUnique, a single attempt per retry) reproduces the same *algorithm choices*
 // but is not guaranteed to reproduce the exact same puzzle as generate()'s multi-candidate result.
-export const PLAY_FLAGS_INT = encodeFlags({ build: DEFAULT_GEN_FLAGS, minimize: { ...DEFAULT_GEN_FLAGS, freedEdge: true }, score: DEFAULT_GEN_FLAGS, path: 'warnsdorff', cps: 'gap' });
+export const PLAY_FLAGS_INT = encodeFlags({ build: DEFAULT_GEN_FLAGS, minimize: DEFAULT_MINIMIZE_FLAGS, score: DEFAULT_GEN_FLAGS, path: 'warnsdorff', cps: 'gap' });

@@ -11,9 +11,9 @@ import { arrowSegment } from '../src/view/geometry.js';
 import { buildNeighbors, makeNoDeadEnd, forcedEdges, legsCollide, legConflicts, segBlocker } from '../src/core/solver/prune.js';
 import { makePropagator } from '../src/core/solver/propagate.js';
 import { makeIncremental } from '../src/core/solver/incremental.js';
-import { generate, generateUnique, randomPathPuzzle, pickK, PLAY_SIZES } from '../src/core/gen/generate.js';
+import { generate, generateUnique, randomPathPuzzle, pickK, PLAY_SIZES, tryGenerate, PROP_CAP_X } from '../src/core/gen/generate.js';
 import { scatter } from '../src/core/gen/checkpoints.js';
-import { encodeFlags, decodeFlags, flagsToHex, hexToFlags, DEFAULT_FLAGS_INT, DEFAULT_GEN_FLAGS, PLAY_FLAGS_INT } from '../src/core/gen/flags.js';
+import { encodeFlags, decodeFlags, flagsToHex, hexToFlags, DEFAULT_FLAGS_INT, DEFAULT_GEN_FLAGS, DEFAULT_MINIMIZE_FLAGS, PLAY_FLAGS_INT } from '../src/core/gen/flags.js';
 import { minimizeWalls, makeUnique } from '../src/core/gen/walls.js';
 import { runSync } from '../src/core/run.js';
 import { createHoldReveal } from '../src/ui/hold-reveal.js';
@@ -649,8 +649,8 @@ t('flags: encode/decode round trip (all-off, all-on, seg tri-state, path/cps, pe
   eq(hexToFlags('0X' + v.toString(16).toUpperCase()), v);
   eq(hexToFlags('ff'), 0xff); eq(hexToFlags('123'), 123); // no a-f digit and no 0x prefix -> read as decimal
   eq(hexToFlags('not-hex'), null); eq(hexToFlags(''), null); eq(hexToFlags('  '), null);
-  // default constant matches generate()/generateUnique()'s actual defaults (prop on, rest off, backbite/gap)
-  eq(decodeFlags(DEFAULT_FLAGS_INT), { build: DEFAULT_GEN_FLAGS, minimize: DEFAULT_GEN_FLAGS, score: DEFAULT_GEN_FLAGS, path: 'backbite', cps: 'gap' });
+  // default constant matches generateUnique()'s actual defaults (prop on, rest off, backbite/gap; minimize also freedEdge)
+  eq(decodeFlags(DEFAULT_FLAGS_INT), { build: DEFAULT_GEN_FLAGS, minimize: DEFAULT_MINIMIZE_FLAGS, score: DEFAULT_GEN_FLAGS, path: 'backbite', cps: 'gap' });
 });
 
 t('generateUnique: o.flags with per-phase divergence actually reaches each phase\'s solve() calls, and o.flags overrides o.prop/o.legCollide', () => {
@@ -785,13 +785,21 @@ t('solver: mustUse finds exactly the solutions that walk the edge (all flag sets
 });
 
 t('flags: the freedEdge bit (minimize phase) round-trips, and every integer made before it still decodes to the same objects', () => {
-  eq(DEFAULT_FLAGS_INT, 0x1010101); eq(flagsToHex(PLAY_FLAGS_INT), '0x18101'); // pinned: the design app flags and the play app seed tag (generate() uses the freedEdge minimize check since v6)
+  // pinned: the design app's default flags and the play app's seed tag (generate() and the design app use the freedEdge minimize check)
+  eq(DEFAULT_FLAGS_INT, 0x1018101); eq(flagsToHex(PLAY_FLAGS_INT), '0x18101');
   eq(decodeFlags(PLAY_FLAGS_INT).minimize.freedEdge, true);
-  const on = { ...DEFAULT_GEN_FLAGS, freedEdge: true };
-  const v = encodeFlags({ build: DEFAULT_GEN_FLAGS, minimize: on, score: DEFAULT_GEN_FLAGS, path: 'backbite', cps: 'gap' });
-  eq(v, DEFAULT_FLAGS_INT | 0x8000);
-  eq(decodeFlags(v), { build: DEFAULT_GEN_FLAGS, minimize: on, score: DEFAULT_GEN_FLAGS, path: 'backbite', cps: 'gap' });
-  eq(Object.keys(decodeFlags(DEFAULT_FLAGS_INT).minimize).includes('freedEdge'), false);
+  eq(decodeFlags(DEFAULT_FLAGS_INT).minimize.freedEdge, true);
+  const before = 0x1010101; // the design app's default before the bit existed: still the plain two-solution check
+  eq(decodeFlags(before), { build: DEFAULT_GEN_FLAGS, minimize: DEFAULT_GEN_FLAGS, score: DEFAULT_GEN_FLAGS, path: 'backbite', cps: 'gap' });
+  eq(Object.keys(decodeFlags(before).minimize).includes('freedEdge'), false);
+  eq(before | 0x8000, DEFAULT_FLAGS_INT);
+  eq(decodeFlags(encodeFlags(decodeFlags(DEFAULT_FLAGS_INT))), decodeFlags(DEFAULT_FLAGS_INT));
+});
+
+t('generateUnique: without o.flags it behaves exactly like the default flags (freedEdge in minimize), and o.freedEdge === false like the old flags', () => {
+  const run = o => { const r = runSync(generateUnique(7, 7, makeRng(9), { maxWalls: 10, tries: 4, ...o })); return [serialize(r.puzzle), r.walls, r.counts.total]; };
+  eq(run({}), run({ flags: decodeFlags(DEFAULT_FLAGS_INT) }));
+  eq(run({ freedEdge: false }), run({ flags: decodeFlags(0x1010101) }));
 });
 
 t('freedEdge (default in generate() since ALGO_VERSION 6): generate() and generateUnique() give valid, unique puzzles where every kept wall is needed', () => {
@@ -802,8 +810,21 @@ t('freedEdge (default in generate() since ALGO_VERSION 6): generate() and genera
   }
   // the ALGO_VERSION 5 check (freedEdge: false) still gives valid unique puzzles
   const v5 = runSync(generate(6, 1, { freedEdge: false })); ok(validate(v5).ok); eq(solve(v5, { limit: 2, nodeCap: 2e6, prop: true }).count, 1);
-  const flags = decodeFlags(DEFAULT_FLAGS_INT | 0x8000);
-  const u = runSync(generateUnique(7, 7, makeRng(5), { maxWalls: 8, flags })); eq(u.unique, true); needed(u.puzzle);
+  // generateUnique's default and the default flags both use it
+  for (const o of [{}, { flags: decodeFlags(DEFAULT_FLAGS_INT) }]) { const u = runSync(generateUnique(7, 7, makeRng(5), { maxWalls: 8, ...o })); eq(u.unique, true); needed(u.puzzle); }
+});
+
+t('generate(): the dense last-resort path (densest K, minimized) is unique and every kept wall is needed with freedEdge on and off', () => {
+  // the same calls generate() makes when no candidate was built: tryGenerate at the largest K, then minimizeWalls
+  for (const freedEdge of [true, false]) for (const [n, seed] of [[6, 1], [7, 2], [8, 3]]) {
+    const rnd = makeRng(seed), cells = n * n, Kmax = Math.max(5, Math.round(cells / 4)), cap = Math.round(Math.max(30000, 200 * cells) * PROP_CAP_X);
+    let dense = null; // an attempt can fail (Warnsdorff dead end): retry like generate() does
+    for (let attempt = 0; attempt < 30 && !dense; attempt++) dense = runSync(tryGenerate(n, Kmax, rnd, Math.max(300000, 20 * cap), cells, 0, { prop: true }));
+    ok(dense && dense.order, 'no dense puzzle');
+    runSync(minimizeWalls(dense, dense.order, rnd, cap, Kmax, { prop: true, freedEdge }));
+    const r = solve(dense, { limit: 2, nodeCap: 2e6, prop: true }); eq([r.count, r.exceeded], [1, false], `n=${n} freedEdge=${freedEdge}`);
+    for (const w of allEdges(n)) { if (!hasWallId(dense.walls, w)) continue; const q = clonePuzzle(dense); setWallId(q.walls, w, false); ok(solve(q, { limit: 2, nodeCap: 2e6, prop: true }).count >= 2, 'a kept wall is unnecessary'); }
+  }
 });
 
 t('minimizeWalls: bound aborts only a run that ends with >= bound walls; any other run equals the unbounded one', () => {

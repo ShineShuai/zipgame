@@ -11,7 +11,7 @@ import { solve } from '../solver/solve.js';
 // time grows roughly with the count, the wall count shrinks. More attempts alone would not help,
 // because the wall count before minimizing predicts the final count only weakly.
 // The keys are the grid sizes the play app offers.
-export const CANDIDATES = { 5: 32, 6: 32, 7: 20, 8: 16, 9: 16, 10: 8, 11: 6, 12: 4, 16: 3 };
+export const CANDIDATES = { 5: 64, 6: 64, 7: 64, 8: 64, 9: 64, 10: 32, 11: 32, 12: 16, 16: 8 };
 export const PLAY_SIZES = Object.keys(CANDIDATES).map(Number);
 const candidatesFor = n => CANDIDATES[n] || 2;
 // Most attempts spent per candidate. Failed attempts (Warnsdorff dead ends) are cheap and 30-60% of
@@ -128,7 +128,7 @@ export function* generate(n, seed, o = {}) {
     const denseCap = Math.max(300000, 20 * nodeCap);
     const dense = yield* tryGenerate(n, Kmax, rnd, denseCap, cells, 0, { prop });
     if (dense) {
-      if (dense.order.length) yield* minimizeWalls(dense, dense.order, rnd, nodeCap, Kmax, prop);
+      if (dense.order.length) yield* minimizeWalls(dense, dense.order, rnd, nodeCap, Kmax, { prop, freedEdge });
       delete dense.order;
       dense.seed = seed;
       return dense;
@@ -231,7 +231,8 @@ function* tag(gen, extra) {
 //   cps } — lets each of the 3 solve() phases (build/minimize/score) use a different set of
 //   solver prunes, and path/cps override the hardcoded 'backbite'/'gap' below. When given, it
 //   overrides o.prop/o.legCollide entirely (each phase byte already carries its own prop/legCollide
-//   bits); when absent, behaviour is exactly o.prop/o.legCollide applied to every phase, as before.
+//   bits); when absent, behaviour is o.prop/o.legCollide applied to every phase, and the minimize phase
+//   with the freedEdge check unless o.freedEdge === false (the same as DEFAULT_FLAGS_INT in flags.js).
 // Random by design (caller supplies rnd), so none of this touches generate().
 // Events: { frac, walls, K, attempt, of, found }.
 // Returns { puzzle, unique, walls, removed, attempts, found, nodes?, counts }; on failure walls = 0.
@@ -246,7 +247,7 @@ export function* generateUnique(n, K, rnd, o = {}) {
   const legCollide = o.legCollide ?? false;
   const f = o.flags || null;
   const buildFlags = f ? f.build : { prop, legCollide };
-  const minimizeFlags = f ? f.minimize : { prop, legCollide };
+  const minimizeFlags = f ? f.minimize : { prop, legCollide, freedEdge: o.freedEdge ?? true };
   const scoreFlags = f ? f.score : { prop, legCollide };
   const pathAlgo = f ? f.path : 'backbite';
   const cpsAlgo = f ? f.cps : 'gap';
