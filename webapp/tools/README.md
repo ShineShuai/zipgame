@@ -35,6 +35,7 @@ range 0-1), plus chatter such as `you graded as 3`, `not 4`, `instead of 3`. Any
 | `gotd-fit.mjs` | Fits every metric / grade to `ratings.json` and ranks them -> `tools/gotd-models.json` (see below). |
 | `gotd-seed.mjs` | Seeds a Game of Day with 3..8 synthetic players on every configured backend (see below). |
 | `print-bin-edge.mjs` | The Turso table `bin_edge` (histogram bins of `src/core/hist.js` as integer ms ranges): prints it, `--write` puts it into `server/turso/schema.sql`, `--check` exits 1 when that file is stale. Run `--write` after changing `NB`, `T0_MS` or `RATIO` (`server/README.md`, "Changing the histogram bins"). |
+| `tune-gen.mjs` | Generator quality/time knobs on paired seeds: `--sizes 8,10,12 --seeds 8 --check-cap-x 0.25,0.5,1 --candidates-x 1,2 [--freed-edge | --no-freed-edge]` prints mean walls and mean ms per combination (see `generate.js` CHECK_CAP_X, PROP_CAP_X, CANDIDATES). |
 | `calibrate.mjs` | Recompute the quantile cut points of the legacy grades on generated puzzles (`calibration.js`); these are calibrated to the generator, not to human ratings. |
 
 ## Game-of-Day seed players

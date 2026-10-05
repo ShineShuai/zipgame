@@ -11,7 +11,7 @@ import { solve } from '../solver/solve.js';
 // time grows roughly with the count, the wall count shrinks. More attempts alone would not help,
 // because the wall count before minimizing predicts the final count only weakly.
 // The keys are the grid sizes the play app offers.
-export const CANDIDATES = { 5: 32, 6: 32, 7: 20, 8: 16, 9: 16, 10: 8, 11: 6, 12: 4, 16: 3 };
+export const CANDIDATES = { 5: 64, 6: 64, 7: 64, 8: 64, 9: 64, 10: 32, 11: 32, 12: 16, 16: 8 };
 export const PLAY_SIZES = Object.keys(CANDIDATES).map(Number);
 const candidatesFor = n => CANDIDATES[n] || 2;
 // Most attempts spent per candidate. Failed attempts (Warnsdorff dead ends) are cheap and 30-60% of
@@ -21,6 +21,8 @@ const ATTEMPTS_PER_CANDIDATE = 12;
 const BUILD_SHARE = 0.1;
 // With solver propagation each node is far more effective, so the seeded node caps shrink.
 export const PROP_CAP_X = 0.3;
+// A wall-removal check in minimizeWalls gets this share of the build cap (tools/tune-gen.mjs explores it).
+export const CHECK_CAP_X = 0.5;
 // Every attempt starts by pre-walling this share of the free edges at random. That makes uniqueness
 // cheap to reach; minimizeWalls() later strips the walls that turn out to be unnecessary.
 export const SEED_FRACTION = 0.4;
@@ -76,13 +78,14 @@ const fewestWalls = candidates => (
   candidates.length ? Math.min(...candidates.map(c => c.order.length)) : null
 );
 
-// Deterministic puzzle for (n, seed): same seed => same puzzle (ALGO_VERSION 5: solver propagation on,
-// candidates seeded with SEED_FRACTION random walls, best of several minimized candidates).
+// Deterministic puzzle for (n, seed): same seed => same puzzle (ALGO_VERSION 6: solver propagation on,
+// candidates seeded with SEED_FRACTION random walls, best of several minimized candidates, wall removals
+// tested through the freed edge).
 // o.prop === false reproduces the shape of the ALGO_VERSION 1 search (solver propagation off).
-// o.candidates overrides CANDIDATES[n].
-// o.freedEdge (default false): minimize with the solver's mustUse check (see minimizeWalls in walls.js):
-//   about 1.5x faster again and fewer node-cap hits, but it changes the puzzle of a given seed, so
-//   switching it on for the play app / Game of Day tooling is an ALGO_VERSION bump (src/core/model.js).
+// o.candidates overrides CANDIDATES[n]; o.capX / o.checkCapX override PROP_CAP_X / CHECK_CAP_X (tuning only).
+// o.freedEdge (default true since ALGO_VERSION 6): minimize with the solver's mustUse check (see minimizeWalls
+//   in walls.js): about 1.5x faster and fewer node-cap hits, so fewer walls. o.freedEdge === false gives the
+//   ALGO_VERSION 5 two-solution check (kept for comparisons; the output is not pinned).
 // A candidate whose minimizing can no longer beat the best one so far is dropped early (`bound` below):
 //   same puzzle, less work.
 // Events: { frac|null, walls, K }. `walls` never increases: it is the fewest walls found so far.
@@ -90,12 +93,12 @@ export function* generate(n, seed, o = {}) {
   const depth = o.retryDepth || 0;
   const cells = n * n;
   const prop = o.prop !== false;
-  const freedEdge = !!o.freedEdge;
+  const freedEdge = o.freedEdge !== false;
   const wanted = o.candidates || candidatesFor(n);
   const rnd = makeRng(seed);
-  const nodeCap = Math.round(Math.max(30000, 200 * cells) * (prop ? PROP_CAP_X : 1));
+  const nodeCap = Math.round(Math.max(30000, 200 * cells) * (o.capX ?? (prop ? PROP_CAP_X : 1)));
   const fallbackCap = Math.min(2000000, Math.max(300000, 20 * nodeCap));
-  const checkCap = Math.max(1000, Math.floor(nodeCap / 2));
+  const checkCap = Math.max(1000, Math.floor(nodeCap * (o.checkCapX ?? CHECK_CAP_X)));
   const Kmin = Math.max(4, n);
   const Kmax = Math.max(Kmin + 1, Math.round(cells / 4));
   const K = pickK(Kmin, Kmax, rnd);
@@ -125,7 +128,7 @@ export function* generate(n, seed, o = {}) {
     const denseCap = Math.max(300000, 20 * nodeCap);
     const dense = yield* tryGenerate(n, Kmax, rnd, denseCap, cells, 0, { prop });
     if (dense) {
-      if (dense.order.length) yield* minimizeWalls(dense, dense.order, rnd, nodeCap, Kmax, prop);
+      if (dense.order.length) yield* minimizeWalls(dense, dense.order, rnd, nodeCap, Kmax, { prop, freedEdge });
       delete dense.order;
       dense.seed = seed;
       return dense;
@@ -228,7 +231,8 @@ function* tag(gen, extra) {
 //   cps } — lets each of the 3 solve() phases (build/minimize/score) use a different set of
 //   solver prunes, and path/cps override the hardcoded 'backbite'/'gap' below. When given, it
 //   overrides o.prop/o.legCollide entirely (each phase byte already carries its own prop/legCollide
-//   bits); when absent, behaviour is exactly o.prop/o.legCollide applied to every phase, as before.
+//   bits); when absent, behaviour is o.prop/o.legCollide applied to every phase, and the minimize phase
+//   with the freedEdge check unless o.freedEdge === false (the same as DEFAULT_FLAGS_INT in flags.js).
 // Random by design (caller supplies rnd), so none of this touches generate().
 // Events: { frac, walls, K, attempt, of, found }.
 // Returns { puzzle, unique, walls, removed, attempts, found, nodes?, counts }; on failure walls = 0.
@@ -243,7 +247,7 @@ export function* generateUnique(n, K, rnd, o = {}) {
   const legCollide = o.legCollide ?? false;
   const f = o.flags || null;
   const buildFlags = f ? f.build : { prop, legCollide };
-  const minimizeFlags = f ? f.minimize : { prop, legCollide };
+  const minimizeFlags = f ? f.minimize : { prop, legCollide, freedEdge: o.freedEdge ?? true };
   const scoreFlags = f ? f.score : { prop, legCollide };
   const pathAlgo = f ? f.path : 'backbite';
   const cpsAlgo = f ? f.cps : 'gap';

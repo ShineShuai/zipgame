@@ -1,6 +1,7 @@
 import { maxNumber, startCell, endCell } from '../model.js';
 import { buildNeighbors, makeConnOk, makeNoDeadEnd, makePocketOk, segBlocker, legsCollide } from './prune.js';
 import { makePropagator } from './propagate.js';
+import { makeIncremental } from './incremental.js';
 
 // Hamiltonian-path search: start at checkpoint 1, hit the checkpoints in order, end on the last one,
 // and cover every cell exactly once.
@@ -31,10 +32,12 @@ import { makePropagator } from './propagate.js';
 //             the same tree as without it but refuses every move that leaves a or b by any other edge, and, with
 //             prop, forces the edge during propagation. gen/walls.js uses it (freedEdge) to test a just-removed
 //             wall: the puzzle stays unique iff no solution crosses the freed edge (limit 1, count 0).
-//   fast      (default true) skip prop's recompute when the head is down to a single move; see "fast path" below
+//   incr      (default true) with prop: keep the deduced state between nodes and repair it per move (incremental.js)
+//             instead of recomputing it from scratch at every node (propagate.js deduce(), the reference)
+//   fast      (default true) only with incr:false: skip prop's recompute when the head is down to a single move
 //   lconn     (default true) answer the flood-fill connectivity test from the 8 cells around the previous head
 //             when that is enough; see localConn() below
-// fast and lconn never change which nodes are visited, the solutions or their order (tests.js and
+// incr, fast and lconn never change which nodes are visited, the solutions or their order (tests.js and
 // bench/bench.js assert node-for-node equality against fast:false, lconn:false); they only make each node cheaper.
 // prune2, prop, seg, pocket, parity and legCollide only prune: they never change the solutions
 // found or their DFS order. They do change how many nodes are visited, which is why they are
@@ -142,25 +145,29 @@ export function solve(p, opts = {}) {
 
   // ---------- prop: forced-edge propagation ----------
   //
-  // The deduction itself lives in propagate.js (shared with the play-mode overlay); this file only
-  // keeps the search-side bookkeeping it reads from:
+  // The deduction lives in propagate.js (one-shot, shared with the play-mode overlay) and incremental.js
+  // (the same rules kept up to date along the search path, the default here). After a successful step, the
+  // head's still-possible moves are av[cell].
+  // The one-shot reference path keeps its own search-side bookkeeping:
   //   vm = mask of each cell's neighbours already on the path,
   //   ul[0 .. un) = unvisited cells (swap-removed on enter, restored LIFO on leave), up = index into ul.
-  // After a successful prop.deduce(), av[cell] holds the head's still-possible moves.
 
   const PROP = !!opts.prop;
-  // fast path: when prop's fixpoint leaves the head exactly one move, the child's own deduce() would
-  // recompute that same fixpoint (the forced edge head -> child was already part of it; only the head's
+  const INC = PROP && opts.incr !== false;
+  const ONESHOT = PROP && !INC;
+  // fast path (one-shot only): when prop's fixpoint leaves the head exactly one move, the child's own deduce()
+  // would recompute that same fixpoint (the forced edge head -> child was already part of it; only the head's
   // role moves one cell on), so the child reuses it and just drops the edge back to where it came from.
-  const FAST = PROP && opts.fast !== false;
+  const FAST = ONESHOT && opts.fast !== false;
   const ONE_BIT = [0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]; // 1 when the 4-bit mask has exactly one bit
-  const prop = PROP ? makePropagator(nb, T, end, vis) : null;
-  const av = PROP ? prop.av : null;
-  const vm = PROP ? new Uint8Array(T) : null;
-  const ul = PROP ? new Int32Array(T) : null;
-  const up = PROP ? new Int32Array(T) : null;
+  const inc = INC ? makeIncremental(nb, T, end, vis) : null;
+  const prop = ONESHOT ? makePropagator(nb, T, end, vis) : null;
+  const av = INC ? inc.S : ONESHOT ? prop.av : null; // av[cell]: the head's possible moves (bit d = direction d)
+  const vm = ONESHOT ? new Uint8Array(T) : null;
+  const ul = ONESHOT ? new Int32Array(T) : null;
+  const up = ONESHOT ? new Int32Array(T) : null;
   let un = T;      // number of unvisited cells
-  if (PROP) {
+  if (ONESHOT) {
     for (let i = 0; i < T; i++) {
       ul[i] = i;
       up[i] = i;
@@ -169,7 +176,7 @@ export function solve(p, opts = {}) {
 
   function enter(c) {
     vis[c] = 1;
-    if (!PROP) return;
+    if (!ONESHOT) return;
     for (let d = 0; d < 4; d++) {
       const w = nb[c * 4 + d];
       if (w >= 0) vm[w] |= 1 << (d ^ 1);
@@ -186,7 +193,7 @@ export function solve(p, opts = {}) {
 
   function leave(c) {
     vis[c] = 0;
-    if (!PROP) return;
+    if (!ONESHOT) return;
     un++;
     for (let d = 0; d < 4; d++) {
       const w = nb[c * 4 + d];
@@ -285,6 +292,41 @@ export function solve(p, opts = {}) {
     return (need & seen) === need;
   }
 
+  // When the ring cannot prove it, search for it: from one free neighbour of c, flood through free cells until
+  // every other free neighbour of c has been reached (stop at once when they have), or the flood runs dry. Same
+  // exact verdict as connOk() (see localConn above for why), but in a well-connected region it ends after a few
+  // cells instead of covering the whole free region.
+  const bSeen = LCONN ? new Int32Array(T) : null;
+  const bTarget = LCONN ? new Int32Array(T) : null;
+  const bStack = LCONN ? new Int32Array(T) : null;
+  let bStamp = 0;
+  function neighboursConnected(c, v) {
+    bStamp++;
+    let first = -1;
+    let left = 0;
+    for (let d = 0; d < 4; d++) {
+      const w = nb[c * 4 + d];
+      if (w < 0 || (vis[w] && w !== v)) continue;
+      if (first < 0) first = w;
+      else { bTarget[w] = bStamp; left++; }
+    }
+    if (left === 0) return true;
+    let sp = 0;
+    bStack[sp++] = first;
+    bSeen[first] = bStamp;
+    while (sp > 0) {
+      const u = bStack[--sp];
+      for (let d = 0; d < 4; d++) {
+        const x = nb[u * 4 + d];
+        if (x < 0 || (vis[x] && x !== v) || bSeen[x] === bStamp) continue;
+        bSeen[x] = bStamp;
+        if (bTarget[x] === bStamp && --left === 0) return true;
+        bStack[sp++] = x;
+      }
+    }
+    return false;
+  }
+
   // ---------- search ----------
 
   // used: the must-use edge (opts.mustUse) is already on the path. skip: the parent's prop fixpoint is reused.
@@ -319,14 +361,18 @@ export function solve(p, opts = {}) {
     // edge propagation, then the single-entrance pocket check, then (most expensive — O(K^2)
     // segBlocker calls) the cross-leg forced-corridor collision check. See legsCollide() in
     // prune.js for what it catches that none of the earlier checks do.
+    const prev = depth > 0 ? pathBuf[depth - 1] : -1;
+    const trail = INC ? inc.mark() : 0;
     if (skip) {
       // the fixpoint was computed with the previous cell as head: that edge is behind us now
       const from = pathBuf[depth - 1];
       for (let d = 0; d < 4; d++) if (nb[cell * 4 + d] === from) av[cell] &= ~(1 << d);
     }
     let feasible = noDeadEnd(cell)
-      && ((LCONN && depth > 0 && localConn(pathBuf[depth - 1], cell)) || connOk(cell, remaining))
-      && (!PROP || skip || (MA >= 0 && !used ? prop.deduce(cell, count, ul, un, vm, MA, MB) : prop.deduce(cell, count, ul, un, vm)))
+      && (LCONN && depth > 0 ? localConn(prev, cell) || neighboursConnected(prev, cell) : connOk(cell, remaining))
+      && (!PROP || (INC
+        ? (depth === 0 ? inc.init(cell, count, MA, MB) : inc.step(prev, cell, count))
+        : skip || (MA >= 0 && !used ? prop.deduce(cell, count, ul, un, vm, MA, MB) : prop.deduce(cell, count, ul, un, vm))))
       && (!POCKET || pocketOk(cell));
     if (feasible && LEG_COLLIDE && need <= K) {
       const legs = [[cell, pos[need]]];
@@ -334,6 +380,7 @@ export function solve(p, opts = {}) {
       feasible = !legsCollide(nb, T, vis, legs);
     }
     if (!feasible) {
+      if (INC) inc.undo(trail, prev);
       leave(cell);
       return;
     }
@@ -420,6 +467,7 @@ export function solve(p, opts = {}) {
       dfs(next, count + 1, need, depth + 1, nowUsed, reuse && next !== end ? 1 : 0);
       if (found >= limit || nodes - prefix > cap) break;
     }
+    if (INC) inc.undo(trail, prev);
     leave(cell);
   }
 

@@ -9,9 +9,11 @@ import { isSolved, step } from '../src/core/rules.js';
 import { boardConnectivity, boardLegCollide } from '../src/core/connectivity.js';
 import { arrowSegment } from '../src/view/geometry.js';
 import { buildNeighbors, makeNoDeadEnd, forcedEdges, legsCollide, legConflicts, segBlocker } from '../src/core/solver/prune.js';
-import { generate, generateUnique, randomPathPuzzle, pickK, PLAY_SIZES } from '../src/core/gen/generate.js';
+import { makePropagator } from '../src/core/solver/propagate.js';
+import { makeIncremental } from '../src/core/solver/incremental.js';
+import { generate, generateUnique, randomPathPuzzle, pickK, PLAY_SIZES, tryGenerate, PROP_CAP_X } from '../src/core/gen/generate.js';
 import { scatter } from '../src/core/gen/checkpoints.js';
-import { encodeFlags, decodeFlags, flagsToHex, hexToFlags, DEFAULT_FLAGS_INT, DEFAULT_GEN_FLAGS, PLAY_FLAGS_INT } from '../src/core/gen/flags.js';
+import { encodeFlags, decodeFlags, flagsToHex, hexToFlags, DEFAULT_FLAGS_INT, DEFAULT_GEN_FLAGS, DEFAULT_MINIMIZE_FLAGS, PLAY_FLAGS_INT } from '../src/core/gen/flags.js';
 import { minimizeWalls, makeUnique } from '../src/core/gen/walls.js';
 import { runSync } from '../src/core/run.js';
 import { createHoldReveal } from '../src/ui/hold-reveal.js';
@@ -505,14 +507,14 @@ t('solver prune: overlay dead-end flag and solver noDeadEnd agree (random puzzle
     eq(noDeadEnd(head), !headAdjacentDead, `trial ${trial}: noDeadEnd(head) must disagree with the overlay only never`);
   }
 });
-t('generate: ALGO_VERSION 5 golden puzzles cover every play size below 16 and are valid and unique', () => {
-  eq(ALGO_VERSION, 5);
+t('generate: ALGO_VERSION 6 golden puzzles cover every play size below 16 and are valid and unique', () => {
+  eq(ALGO_VERSION, 6);
   for (const n of PLAY_SIZES.filter(size => size < 16)) {
     ok(GOLDEN.some(([size]) => size === n), `no golden puzzle for play size ${n}`);
   }
   for (const [n, seed, hash] of GOLDEN) {
     const p = runSync(generate(n, seed));
-    eq(hashStr(serialize(p)), hash, `v5 n=${n} seed=${seed}`);
+    eq(hashStr(serialize(p)), hash, `v6 n=${n} seed=${seed}`);
     eq(validate(p).ok, true, `valid n=${n} seed=${seed}`);
     eq(isSolved(p, p.path), true, `anchor path n=${n} seed=${seed}`);
     eq(solve(p, { limit: 2, nodeCap: 5e6, prop: true }).count, 1, `unique n=${n} seed=${seed}`);
@@ -647,8 +649,8 @@ t('flags: encode/decode round trip (all-off, all-on, seg tri-state, path/cps, pe
   eq(hexToFlags('0X' + v.toString(16).toUpperCase()), v);
   eq(hexToFlags('ff'), 0xff); eq(hexToFlags('123'), 123); // no a-f digit and no 0x prefix -> read as decimal
   eq(hexToFlags('not-hex'), null); eq(hexToFlags(''), null); eq(hexToFlags('  '), null);
-  // default constant matches generate()/generateUnique()'s actual defaults (prop on, rest off, backbite/gap)
-  eq(decodeFlags(DEFAULT_FLAGS_INT), { build: DEFAULT_GEN_FLAGS, minimize: DEFAULT_GEN_FLAGS, score: DEFAULT_GEN_FLAGS, path: 'backbite', cps: 'gap' });
+  // default constant matches generateUnique()'s actual defaults (prop on, rest off, backbite/gap; minimize also freedEdge)
+  eq(decodeFlags(DEFAULT_FLAGS_INT), { build: DEFAULT_GEN_FLAGS, minimize: DEFAULT_MINIMIZE_FLAGS, score: DEFAULT_GEN_FLAGS, path: 'backbite', cps: 'gap' });
 });
 
 t('generateUnique: o.flags with per-phase divergence actually reaches each phase\'s solve() calls, and o.flags overrides o.prop/o.legCollide', () => {
@@ -696,24 +698,71 @@ let sampleCache = null; const cachedSamples = () => sampleCache ??= sampleUnique
 
 // ---- solver speedups: fast path, local connectivity, mustUse, freedEdge, bound ----
 
-t('solver: fast path + local connectivity change nothing but speed (nodes, count, paths, DFS order, decision counters)', () => {
+t('solver: incremental prop, fast path and local connectivity change nothing but speed (nodes, count, paths, DFS order, decision counters)', () => {
   let cmp = 0;
+  const REF = { incr: false, fast: false, lconn: false }; // the from-scratch propagation and plain flood fill
   const same = (p, extra, limit, label) => {
     const o = { ...extra, limit, nodeCap: 20000, capture: true, decisions: true };
-    const a = solve(p, { ...o, fast: false, lconn: false }), b = solve(p, o);
-    eq([b.nodes, b.count, b.exceeded, b.paths, b.decisionNodes, b.maxDecisionDepth], [a.nodes, a.count, a.exceeded, a.paths, a.decisionNodes, a.maxDecisionDepth], label); cmp++;
+    const a = solve(p, { ...o, ...REF });
+    for (const mode of [{}, { incr: false }]) {
+      const b = solve(p, { ...o, ...mode });
+      eq([b.nodes, b.count, b.exceeded, b.paths, b.decisionNodes, b.maxDecisionDepth], [a.nodes, a.count, a.exceeded, a.paths, a.decisionNodes, a.maxDecisionDepth], `${label} ${JSON.stringify(mode)}`); cmp++;
+    }
   };
-  for (let s = 1; s <= 100; s++) {
+  for (let s = 1; s <= 60; s++) {
     const n = 4 + (s % 6), p = randPuzzle(s, n, 3 + (s % 5), 0.05 * (s % 9));
     for (const extra of [{}, { prop: true }, { prop: true, pocket: true }, { prop: true, seg: true, parity: true }]) for (const limit of [2, 1e9]) same(p, extra, limit, `random ${s} ${JSON.stringify(extra)} limit ${limit}`);
   }
   // the states the generator really searches: a unique puzzle with each wall freed in turn
-  for (const p of cachedSamples()) for (const w of allEdges(p.n)) {
-    if (!hasWallId(p.walls, w)) continue;
+  for (const p of cachedSamples()) for (const w of allEdges(p.n).filter(e => hasWallId(p.walls, e)).slice(0, 14)) {
     const q = clonePuzzle(p); setWallId(q.walls, w, false);
     same(q, { prop: true }, 2, `freed wall ${w} of n=${p.n}`);
+    const [x, y] = edgeCells(p.n, w);
+    same(q, { prop: true, mustUse: [x, y] }, 1, `freed wall ${w} of n=${p.n} mustUse`);
   }
-  ok(cmp >= 800, 'compared ' + cmp);
+  ok(cmp >= 900, 'compared ' + cmp);
+});
+
+t('incremental propagation: after every move, undo and redo, the state equals propagate.js deduce() from scratch (the play-mode overlay engine)', () => {
+  let states = 0, infeasible = 0;
+  // solvable puzzles: the generated samples as they are, and with every second wall freed (many more branches)
+  const boards = []; cachedSamples().forEach((q, i) => { boards.push(q); const f = clonePuzzle(q); allEdges(q.n).filter(w => hasWallId(q.walls, w)).forEach((w, j) => { if ((i + j) % 2 === 0) setWallId(f.walls, w, false); }); boards.push(f); });
+  ok(boards.length >= 4, 'boards ' + boards.length);
+  for (const [bi, p] of boards.entries()) for (const seed of [1, 2, 3]) {
+    const n = p.n, wallFrac = 0, T = n * n, { nb } = buildNeighbors(p);
+    const start = p.cp.indexOf(1), end = p.cp.indexOf(maxNumber(p));
+    const vis = new Uint8Array(T), one = makePropagator(nb, T, end, vis), inc = makeIncremental(nb, T, end, vis);
+    const ul = new Int32Array(T), vm = new Uint8Array(T), rnd = makeRng(bi * 10 + seed);
+    const scratch = (cur, count) => { // deduce() from scratch for the current path
+      let un = 0; vm.fill(0);
+      for (let c = 0; c < T; c++) { if (!vis[c]) ul[un++] = c; else for (let d = 0; d < 4; d++) { const x = nb[c * 4 + d]; if (x >= 0) vm[x] |= 1 << (d ^ 1); } }
+      return one.deduce(cur, count, ul, un, vm);
+    };
+    const agree = (cur, count, okInc, label) => {
+      const okOne = scratch(cur, count);
+      eq(okInc, okOne, `${label}: feasibility`); states++;
+      if (!okOne) { infeasible++; return; }
+      for (let u = 0; u < T; u++) if (!vis[u] || u === cur) eq([inc.S[u], inc.forcedBits(u)], [one.av[u], one.fr[u]], `${label}: cell ${u}`);
+    };
+    for (let walk = 0; walk < 8; walk++) {
+      vis.fill(0); let cur = start, count = 1; vis[cur] = 1;
+      let live = inc.init(cur, count); agree(cur, count, live, 'root');
+      const trail = [];
+      for (let s = 0; s < T - 1 && live; s++) {
+        const cands = []; for (let d = 0; d < 4; d++) { const x = nb[cur * 4 + d]; if (x >= 0 && !vis[x] && ((inc.S[cur] >> d) & 1)) cands.push(x); }
+        if (!cands.length) break;
+        const next = cands[Math.floor(rnd() * cands.length)], mark = inc.mark(), prev = cur;
+        vis[next] = 1; count++; cur = next;
+        live = inc.step(prev, cur, count); agree(cur, count, live, `walk ${walk} step ${s}`);
+        trail.push({ mark, prev, cur, count });
+        if (live && rnd() < 0.3) { // back out of that move: the parent's state must come back exactly
+          const f = trail.pop(); inc.undo(f.mark, f.prev); vis[f.cur] = 0; cur = f.prev; count = f.count - 1;
+          agree(cur, count, scratch(cur, count), `walk ${walk} undo ${s}`);
+        }
+      }
+    }
+  }
+  ok(states > 1500 && infeasible < states, 'compared ' + states + ' states, ' + infeasible + ' infeasible');
 });
 
 t('solver: mustUse finds exactly the solutions that walk the edge (all flag sets)', () => {
@@ -736,22 +785,46 @@ t('solver: mustUse finds exactly the solutions that walk the edge (all flag sets
 });
 
 t('flags: the freedEdge bit (minimize phase) round-trips, and every integer made before it still decodes to the same objects', () => {
-  eq(DEFAULT_FLAGS_INT, 0x1010101); eq(flagsToHex(PLAY_FLAGS_INT), '0x10101'); // pinned: the design app flags and the play app seed tag
-  const on = { ...DEFAULT_GEN_FLAGS, freedEdge: true };
-  const v = encodeFlags({ build: DEFAULT_GEN_FLAGS, minimize: on, score: DEFAULT_GEN_FLAGS, path: 'backbite', cps: 'gap' });
-  eq(v, DEFAULT_FLAGS_INT | 0x8000);
-  eq(decodeFlags(v), { build: DEFAULT_GEN_FLAGS, minimize: on, score: DEFAULT_GEN_FLAGS, path: 'backbite', cps: 'gap' });
-  eq(Object.keys(decodeFlags(DEFAULT_FLAGS_INT).minimize).includes('freedEdge'), false);
+  // pinned: the design app's default flags and the play app's seed tag (generate() and the design app use the freedEdge minimize check)
+  eq(DEFAULT_FLAGS_INT, 0x1018101); eq(flagsToHex(PLAY_FLAGS_INT), '0x18101');
+  eq(decodeFlags(PLAY_FLAGS_INT).minimize.freedEdge, true);
+  eq(decodeFlags(DEFAULT_FLAGS_INT).minimize.freedEdge, true);
+  const before = 0x1010101; // the design app's default before the bit existed: still the plain two-solution check
+  eq(decodeFlags(before), { build: DEFAULT_GEN_FLAGS, minimize: DEFAULT_GEN_FLAGS, score: DEFAULT_GEN_FLAGS, path: 'backbite', cps: 'gap' });
+  eq(Object.keys(decodeFlags(before).minimize).includes('freedEdge'), false);
+  eq(before | 0x8000, DEFAULT_FLAGS_INT);
+  eq(decodeFlags(encodeFlags(decodeFlags(DEFAULT_FLAGS_INT))), decodeFlags(DEFAULT_FLAGS_INT));
 });
 
-t('freedEdge: generate() and generateUnique() give valid, unique puzzles where every kept wall is needed', () => {
+t('generateUnique: without o.flags it behaves exactly like the default flags (freedEdge in minimize), and o.freedEdge === false like the old flags', () => {
+  const run = o => { const r = runSync(generateUnique(7, 7, makeRng(9), { maxWalls: 10, tries: 4, ...o })); return [serialize(r.puzzle), r.walls, r.counts.total]; };
+  eq(run({}), run({ flags: decodeFlags(DEFAULT_FLAGS_INT) }));
+  eq(run({ freedEdge: false }), run({ flags: decodeFlags(0x1010101) }));
+});
+
+t('freedEdge (default in generate() since ALGO_VERSION 6): generate() and generateUnique() give valid, unique puzzles where every kept wall is needed', () => {
   const needed = p => { for (const w of allEdges(p.n)) { if (!hasWallId(p.walls, w)) continue; const q = clonePuzzle(p); setWallId(q.walls, w, false); ok(solve(q, { limit: 2, nodeCap: 2e6, prop: true }).count >= 2, 'a kept wall is unnecessary'); } };
   for (const [n, seed] of [[6, 1], [6, 2], [7, 1], [7, 2]]) {
     const p = runSync(generate(n, seed, { freedEdge: true }));
     ok(validate(p).ok); const r = solve(p, { limit: 2, nodeCap: 2e6, prop: true }); eq([r.count, r.exceeded], [1, false]); needed(p);
   }
-  const flags = decodeFlags(DEFAULT_FLAGS_INT | 0x8000);
-  const u = runSync(generateUnique(7, 7, makeRng(5), { maxWalls: 8, flags })); eq(u.unique, true); needed(u.puzzle);
+  // the ALGO_VERSION 5 check (freedEdge: false) still gives valid unique puzzles
+  const v5 = runSync(generate(6, 1, { freedEdge: false })); ok(validate(v5).ok); eq(solve(v5, { limit: 2, nodeCap: 2e6, prop: true }).count, 1);
+  // generateUnique's default and the default flags both use it
+  for (const o of [{}, { flags: decodeFlags(DEFAULT_FLAGS_INT) }]) { const u = runSync(generateUnique(7, 7, makeRng(5), { maxWalls: 8, ...o })); eq(u.unique, true); needed(u.puzzle); }
+});
+
+t('generate(): the dense last-resort path (densest K, minimized) is unique and every kept wall is needed with freedEdge on and off', () => {
+  // the same calls generate() makes when no candidate was built: tryGenerate at the largest K, then minimizeWalls
+  for (const freedEdge of [true, false]) for (const [n, seed] of [[6, 1], [7, 2], [8, 3]]) {
+    const rnd = makeRng(seed), cells = n * n, Kmax = Math.max(5, Math.round(cells / 4)), cap = Math.round(Math.max(30000, 200 * cells) * PROP_CAP_X);
+    let dense = null; // an attempt can fail (Warnsdorff dead end): retry like generate() does
+    for (let attempt = 0; attempt < 30 && !dense; attempt++) dense = runSync(tryGenerate(n, Kmax, rnd, Math.max(300000, 20 * cap), cells, 0, { prop: true }));
+    ok(dense && dense.order, 'no dense puzzle');
+    runSync(minimizeWalls(dense, dense.order, rnd, cap, Kmax, { prop: true, freedEdge }));
+    const r = solve(dense, { limit: 2, nodeCap: 2e6, prop: true }); eq([r.count, r.exceeded], [1, false], `n=${n} freedEdge=${freedEdge}`);
+    for (const w of allEdges(n)) { if (!hasWallId(dense.walls, w)) continue; const q = clonePuzzle(dense); setWallId(q.walls, w, false); ok(solve(q, { limit: 2, nodeCap: 2e6, prop: true }).count >= 2, 'a kept wall is unnecessary'); }
+  }
 });
 
 t('minimizeWalls: bound aborts only a run that ends with >= bound walls; any other run equals the unbounded one', () => {

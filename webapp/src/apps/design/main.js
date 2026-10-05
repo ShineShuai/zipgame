@@ -290,7 +290,7 @@ async function doMinimize() {
   }
   setBusy(true);
   try {
-    const r = await runAsync(minimizeWalls(P, wallIds(P), rnd, limit, v.max, true), { onEvent: e => setStatus(`Minimizing… ${plural(e.walls, 'wall')} left`, '') });
+    const r = await runAsync(minimizeWalls(P, wallIds(P), rnd, limit, v.max, { prop: true, freedEdge: true }), { onEvent: e => setStatus(`Minimizing… ${plural(e.walls, 'wall')} left`, '') });
     draw(); renderLegend(); updateWallCapTag();
     setStatus(r.removed === 0 ? `All ${plural(before, 'wall')} are already necessary — none could be removed without losing uniqueness.`
       : `Removed ${plural(r.removed, 'unnecessary wall')} — ${plural(r.kept, 'remaining wall')} are each individually necessary for a unique solution.`, 'ok');
