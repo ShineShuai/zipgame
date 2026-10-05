@@ -14,7 +14,7 @@ import { makeIncremental } from '../src/core/solver/incremental.js';
 import { generate, generateUnique, randomPathPuzzle, pickK, PLAY_SIZES, tryGenerate, PROP_CAP_X } from '../src/core/gen/generate.js';
 import { scatter } from '../src/core/gen/checkpoints.js';
 import { encodeFlags, decodeFlags, flagsToHex, hexToFlags, DEFAULT_FLAGS_INT, DEFAULT_GEN_FLAGS, DEFAULT_MINIMIZE_FLAGS, PLAY_FLAGS_INT } from '../src/core/gen/flags.js';
-import { minimizeWalls, makeUnique } from '../src/core/gen/walls.js';
+import { minimizeWalls, makeUnique, refineWalls, minimizeFully, REFINE_CAP_X } from '../src/core/gen/walls.js';
 import { runSync } from '../src/core/run.js';
 import { runAsync, measured } from '../src/platform/run.js';
 import { createHoldReveal } from '../src/ui/hold-reveal.js';
@@ -743,6 +743,82 @@ t('minimizeWalls: options-object form matches the legacy boolean-5th-arg form ex
   const legacy = runSync(minimizeWalls(a, orderA, rndA, 5000, maxNumber(a), true));
   const opts = runSync(minimizeWalls(b, orderA, rndB, 5000, maxNumber(b), { prop: true }));
   eq(legacy, opts); eq(serialize(a), serialize(b));
+});
+
+// A puzzle that a tiny check cap leaves with many undecided walls, so the second look has work to do.
+function undecidedSetup() {
+  const rnd = makeRng(5), K = 9, p = randomPathPuzzle(9, K, rnd);
+  const order = runSync(makeUnique(p, p.path, rnd, { nodeCap: 90000, wallBudget: null, seedFraction: 0.4, K, prop: true }));
+  return { p, order, K, cap: 100 }; // 28 walls; a check cap of 100 leaves 18, 17 of them undecided (300000 leaves 14)
+}
+const necessaryWalls = p => allEdges(p.n).every(w => { if (!hasWallId(p.walls, w)) return true; const q = clonePuzzle(p); setWallId(q.walls, w, false); return solve(q, { limit: 2, nodeCap: 5e6, prop: true }).count >= 2; });
+
+t('minimizeWalls: reports the walls kept only because a check hit its cap (uncertain); a generous cap leaves none', () => {
+  const { p: p0, order, K, cap } = undecidedSetup();
+  const small = clonePuzzle(p0), big = clonePuzzle(p0);
+  const a = runSync(minimizeWalls(small, order, makeRng(3), cap, K, { prop: true, freedEdge: true }));
+  ok(a.uncertain.length >= 2, 'the setup must leave undecided walls');
+  ok(a.uncertain.every(w => hasWallId(small.walls, w)), 'an undecided wall is still a wall');
+  ok(a.uncertain.length <= a.kept);
+  const b = runSync(minimizeWalls(big, order, makeRng(3), 300000, K, { prop: true, freedEdge: true }));
+  eq(b.uncertain, []); ok(b.kept < a.kept, 'the big cap removes more');
+  ok(necessaryWalls(big), 'with no undecided wall left, every kept wall is necessary');
+});
+
+t('refineWalls: only undecided walls can go; the puzzle stays unique; budget is a node count that is respected', () => {
+  const { p: p0, order, K, cap } = undecidedSetup();
+  const p = clonePuzzle(p0);
+  const a = runSync(minimizeWalls(p, order, makeRng(3), cap, K, { prop: true, freedEdge: true }));
+  const before = new Set(allEdges(p.n).filter(w => hasWallId(p.walls, w)));
+  const events = [];
+  const r = runSync(refineWalls(p, a.uncertain, makeRng(4), { caps: [600, 6000, 300000], prop: true, K, walls: a.kept }), e => events.push(e));
+  ok(r.removed > 0 && r.removed <= a.uncertain.length);
+  eq(r.kept, a.kept - r.removed); eq(wallCount(p), r.kept);
+  for (const w of allEdges(p.n)) if (before.has(w) && !hasWallId(p.walls, w)) ok(a.uncertain.includes(w), 'removed a wall that was not undecided');
+  const u = solve(p, { limit: 2, nodeCap: 5e6, prop: true }); eq([u.count, u.exceeded], [1, false]);
+  eq(r.left, []); ok(necessaryWalls(p));
+  ok(events.length > 0 && events.every(e => e.frac === null && e.K === K && Number.isInteger(e.walls) && e.nodes <= r.nodes), 'events share the minimizeWalls shape');
+  eq(events[events.length - 1].walls, r.kept);
+  // a tiny budget stops early and leaves the rest undecided, never spending (much) more than the budget
+  const q = clonePuzzle(p0); runSync(minimizeWalls(q, order, makeRng(3), cap, K, { prop: true, freedEdge: true }));
+  const budget = 500, s = runSync(refineWalls(q, a.uncertain, makeRng(4), { caps: [600, 6000, 300000], prop: true, budget }));
+  ok(s.left.length > 0 && s.nodes <= budget + a.uncertain.length, `nodes ${s.nodes}`);
+  const w = solve(q, { limit: 2, nodeCap: 5e6, prop: true }); eq(w.count, 1);
+  // no caps or no budget: nothing happens
+  eq(runSync(refineWalls(q, a.uncertain, makeRng(4), { caps: [], prop: true })).removed, 0);
+  eq(runSync(refineWalls(q, a.uncertain, makeRng(4), { caps: [6000], budget: 0, prop: true })).removed, 0);
+});
+
+t('minimizeFully: no budget = minimizeWalls exactly; with a budget it reaches a puzzle whose kept walls are all necessary; maxKept skips pointless second looks', () => {
+  const { p: p0, order, K, cap } = undecidedSetup();
+  const o = { prop: true, freedEdge: true };
+  const a = clonePuzzle(p0), b = clonePuzzle(p0);
+  const ra = runSync(minimizeWalls(a, order, makeRng(3), cap, K, o)), rb = runSync(minimizeFully(b, order, makeRng(3), cap, K, o));
+  eq(ra, rb); eq(serialize(a), serialize(b));
+  // budget, with events of both phases
+  const c = clonePuzzle(p0), seen = new Set();
+  const rc = runSync(minimizeFully(c, order, makeRng(3), cap, K, { ...o, refineBudget: 1e8, refineCapX: [10, 100, 5000] }), e => seen.add(e.nodes == null ? 'first' : 'second'));
+  eq([...seen].sort(), ['first', 'second']);
+  eq(rc.uncertain, []); eq(rc.removed, ra.removed + (ra.kept - rc.kept)); eq(wallCount(c), rc.kept); ok(rc.kept < ra.kept);
+  const u = solve(c, { limit: 2, nodeCap: 5e6, prop: true }); eq([u.count, u.exceeded], [1, false]); ok(necessaryWalls(c));
+  // maxKept: even removing every undecided wall would leave more than this, so no second look
+  const d = clonePuzzle(p0);
+  eq(runSync(minimizeFully(d, order, makeRng(3), cap, K, { ...o, refineBudget: 1e8, maxKept: 0 })), ra); eq(serialize(d), serialize(a));
+  // the default per-pass caps are the documented ones
+  eq(REFINE_CAP_X, [8, 32, 128]);
+});
+
+t('generate(): the deeper look at undecided walls never adds walls to the winner and keeps it valid and unique with every kept wall needed', () => {
+  for (const [n, seed] of [[9, 3], [10, 1]]) {
+    const off = runSync(generate(n, seed, { refineNodes: 0 })), on = runSync(generate(n, seed));
+    const walls = p => wallCount(p.walls ? p : p);
+    ok(validate(on).ok);
+    const r = solve(on, { limit: 2, nodeCap: 5e6, prop: true }); eq([r.count, r.exceeded], [1, false]);
+    ok(wallCount(on) <= wallCount(off), `n=${n}: ${wallCount(on)} > ${wallCount(off)}`);
+    ok(necessaryWalls(on), `n=${n} seed=${seed}: a kept wall is unnecessary`);
+    // the same candidate wins in both runs, so the second look only takes walls out of it
+    for (const w of allEdges(n)) if (hasWallId(on.walls, w)) ok(hasWallId(off.walls, w), 'refined puzzle has a wall the unrefined one lacks');
+  }
 });
 
 // ---- difficulty grading ----

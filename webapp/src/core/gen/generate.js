@@ -2,7 +2,7 @@ import { makePuzzle } from '../model.js';
 import { makeRng } from '../rng.js';
 import { warnsdorff, backbite } from './hampath.js';
 import { gapCheckpoints, randomCheckpoints } from './checkpoints.js';
-import { makeUnique, minimizeWalls } from './walls.js';
+import { makeUnique, minimizeWalls, refineWalls, minimizeFully, REFINE_CAP_X } from './walls.js';
 import { solve } from '../solver/solve.js';
 
 // Candidate puzzles built per play grid size. A candidate is a fresh random path with fresh
@@ -17,6 +17,12 @@ const candidatesFor = n => CANDIDATES[n] || 2;
 // Most attempts spent per candidate. Failed attempts (Warnsdorff dead ends) are cheap and 30-60% of
 // attempts succeed, so this only guards against an unlucky seed.
 const ATTEMPTS_PER_CANDIDATE = 12;
+// Wall-minimizing second look (refineWalls in walls.js), on the winner only: a total solver-node budget
+// per grid cell (the per-check caps of its passes are REFINE_CAP_X times the check cap of the first look).
+export const REFINE_NODES_PER_CELL = 20000;
+const refineNodesFor = n => REFINE_NODES_PER_CELL * n * n;
+// Share of the progress bar for that second look (taken from the minimizing share).
+const REFINE_SHARE = 0.25;
 // Share of the progress bar for building candidates; the rest is minimizing them.
 const BUILD_SHARE = 0.1;
 // With solver propagation each node is far more effective, so the seeded node caps shrink.
@@ -88,6 +94,9 @@ const fewestWalls = candidates => (
 //   ALGO_VERSION 5 two-solution check (kept for comparisons; the output is not pinned).
 // A candidate whose minimizing can no longer beat the best one so far is dropped early (`bound` below):
 //   same puzzle, less work.
+// The winner then gets a deeper look at the walls its minimizing kept only because a check hit its node cap
+//   (refineWalls in walls.js), within o.refineNodes solver nodes (default REFINE_NODES_PER_CELL * n^2; 0 = off).
+//   A node budget, not a clock, so the same seed still gives the same puzzle on every device.
 // Events: { frac|null, walls, K }. `walls` never increases: it is the fewest walls found so far.
 export function* generate(n, seed, o = {}) {
   const depth = o.retryDepth || 0;
@@ -142,6 +151,9 @@ export function* generate(n, seed, o = {}) {
 
   // 2. Minimize every candidate; keep the one with the fewest walls (the earliest on a tie).
   let shown = fewestWalls(candidates); // the wall count reported to the UI; it only goes down
+  const budget = o.refineNodes ?? refineNodesFor(n);
+  const refining = freedEdge && budget > 0;
+  const minShare = 1 - BUILD_SHARE - (refining ? REFINE_SHARE : 0);
 
   function* minimizeCandidate(candidate, index) {
     const total = candidate.order.length;
@@ -150,26 +162,42 @@ export function* generate(n, seed, o = {}) {
     for (let step = events.next(); ; step = events.next()) {
       if (step.done) {
         // dropped early: it cannot beat the best candidate, so jump the bar to the end of its share
-        if (step.value.aborted) yield { frac: BUILD_SHARE + (1 - BUILD_SHARE) * ((index + 1) / candidates.length), walls: shown, K };
+        if (step.value.aborted) yield { frac: BUILD_SHARE + minShare * ((index + 1) / candidates.length), walls: shown, K };
         return step.value;
       }
       tested++;
       shown = Math.min(shown, step.value.walls);
       const progress = (index + tested / total) / candidates.length;
-      yield { frac: BUILD_SHARE + (1 - BUILD_SHARE) * progress, walls: shown, K };
+      yield { frac: BUILD_SHARE + minShare * progress, walls: shown, K };
     }
   }
 
   let winner = null;
   let winnerWalls = Infinity;
+  let winnerUncertain = [];
   for (let i = 0; i < candidates.length && winnerWalls > 0; i++) {
     const candidate = candidates[i];
     let kept = candidate.order.length;
-    if (kept > 0) kept = (yield* minimizeCandidate(candidate, i)).kept;
+    let uncertain = [];
+    if (kept > 0) {
+      const r = yield* minimizeCandidate(candidate, i);
+      kept = r.kept;
+      uncertain = r.uncertain || [];
+    }
     if (kept < winnerWalls) {
       winner = candidate;
       winnerWalls = kept;
+      winnerUncertain = uncertain;
     }
+  }
+  // 3. Only the winner: take a second, deeper look at the walls kept because a check hit its node cap.
+  if (refining && winnerUncertain.length) {
+    const events = refineWalls(winner, winnerUncertain, rnd, { prop, caps: REFINE_CAP_X.map(x => x * checkCap), budget, walls: winnerWalls, K });
+    let step;
+    while (!(step = events.next()).done) {
+      yield { ...step.value, frac: BUILD_SHARE + minShare + (REFINE_SHARE * step.value.nodes) / budget };
+    }
+    winnerWalls = step.value.kept;
   }
   yield { frac: 1, walls: winnerWalls, K };
   delete winner.order;
@@ -192,6 +220,9 @@ export function randomPathPuzzle(n, K, rnd) {
 }
 
 export const CAPPED_TRIES = 40;
+// generateUnique()'s second look at the walls kept because a check hit its node cap (refineWalls in walls.js):
+// this many times the minimizing check cap in solver nodes, per attempt (o.refineNodes overrides; 0 = off).
+export const GENERATE_UNIQUE_REFINE_X = 10;
 
 // Share of the free edges a designer attempt pre-walls at random: SEED_FRACTION without a wall cap,
 // otherwise only as many walls as the cap allows, so the seeds never outgrow what the puzzle may keep.
@@ -222,6 +253,9 @@ function* tag(gen, extra) {
 //   whose uniqueness proof needs the most solver nodes (same solver and count as the designer's
 //   Solve). Ties keep the earliest.
 // The search is heuristic, not exhaustive: unique: false means "no attempt got there", not "none exists".
+// o.refineNodes (default GENERATE_UNIQUE_REFINE_X * 2 * nodeCap): solver-node budget per attempt for the deeper look at walls
+//   that minimizing kept only because a check hit its cap (minimizeFully in walls.js); 0 = minimize once, as before.
+//   An attempt with a wall cap skips it when even removing every undecided wall could not get under maxWalls.
 // o.prop (default true): solver propagation (same solutions, far fewer nodes).
 // o.legCollide (default false): leg-collision pruning (see legsCollide() in solver/prune.js) —
 //   applied to every internal solve() call this makes (the makeUnique probe/search loop,
@@ -254,6 +288,7 @@ export function* generateUnique(n, K, rnd, o = {}) {
   const tries = o.tries || (unbounded ? 3 : CAPPED_TRIES);
   const wallBudget = unbounded ? null : Math.ceil(maxWalls * 2.5);
   const seedFraction = designSeedFraction(n, maxWalls);
+  const refineBudget = o.refineNodes ?? GENERATE_UNIQUE_REFINE_X * nodeCap * 2;
   const counts = { makeUnique: 0, minimizeWalls: 0, other: 0 };
   const withTotal = () => ({ ...counts, total: counts.makeUnique + counts.minimizeWalls + counts.other });
 
@@ -267,7 +302,7 @@ export function* generateUnique(n, K, rnd, o = {}) {
       const before = p.order.length;
       let removed = 0;
       if (before) {
-        const minimized = yield* tag(minimizeWalls(p, p.order, rnd, nodeCap * 2, K, { flags: minimizeFlags, counts }), extra);
+        const minimized = yield* tag(minimizeFully(p, p.order, rnd, nodeCap * 2, K, { flags: minimizeFlags, counts, refineBudget, maxKept: unbounded ? null : maxWalls }), extra);
         removed = minimized.removed;
       }
       if (unbounded || before - removed <= maxWalls) {
