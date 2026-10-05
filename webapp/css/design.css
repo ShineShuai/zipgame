@@ -70,6 +70,7 @@ button.playbtn.on{background:linear-gradient(135deg,#b3344f,#e0526f);}
 .status-below{margin-top:22px;width:100%;max-width:var(--board-size,100%);min-width:0;text-align:center;white-space:normal;word-wrap:break-word;overflow-wrap:break-word;}
 .playinfo{white-space:pre-line;margin-top:10px;font-size:12.5px;line-height:1.5;padding:9px 11px;border-radius:8px;background:rgba(91,124,250,.12);color:#a9bcff;border:1px solid rgba(91,124,250,.3);}
 .playtimer{margin-top:8px;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;color:#e7e9f3;}
+.timing{margin-top:8px;font-size:12.5px;font-variant-numeric:tabular-nums;color:#8b93b8;}
 .side-right .hint-icon{margin-top:14px;margin-bottom:0;}
 /* min() here, not the flags-bar/compare-result's own width: those two need more horizontal room
    than a small board (--board-size) provides, especially with two Compare-mode columns, but must

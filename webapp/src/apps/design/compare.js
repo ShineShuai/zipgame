@@ -1,6 +1,6 @@
 import { makeRng } from '../../core/rng.js';
 import { generateUnique } from '../../core/gen/generate.js';
-import { runAsync } from '../../platform/run.js';
+import { runAsync, measured } from '../../platform/run.js';
 
 // Runs generateUnique twice — once with flagsA, once with flagsB — at the same rnd seed, so the
 // only difference between the two runs is the flags (see generateUnique's flags param, gen/flags.js).
@@ -10,16 +10,15 @@ import { runAsync } from '../../platform/run.js';
 // point they behave differently, not a guarantee every later attempt lines up between the two runs.
 //
 // o: { n, K, maxWalls, tries, hardest, seed, flagsA, flagsB, onEvent(side, event) }
+// msA/msB are compute-only times (see measured() in platform/run.js).
 // Returns { seed, msA, msB, a, b } where a/b are generateUnique's own return shape.
 export async function runCompare(o) {
   const seed = o.seed;
-  const t0 = performance.now();
-  const a = await runAsync(generateUnique(o.n, o.K, makeRng(seed), { maxWalls: o.maxWalls, tries: o.tries, hardest: o.hardest, flags: o.flagsA }),
+  const clockA = { ms: 0 };
+  const a = await runAsync(measured(generateUnique(o.n, o.K, makeRng(seed), { maxWalls: o.maxWalls, tries: o.tries, hardest: o.hardest, flags: o.flagsA }), clockA),
     { onEvent: e => o.onEvent && o.onEvent('A', e) });
-  const msA = performance.now() - t0;
-  const t1 = performance.now();
-  const b = await runAsync(generateUnique(o.n, o.K, makeRng(seed), { maxWalls: o.maxWalls, tries: o.tries, hardest: o.hardest, flags: o.flagsB }),
+  const clockB = { ms: 0 };
+  const b = await runAsync(measured(generateUnique(o.n, o.K, makeRng(seed), { maxWalls: o.maxWalls, tries: o.tries, hardest: o.hardest, flags: o.flagsB }), clockB),
     { onEvent: e => o.onEvent && o.onEvent('B', e) });
-  const msB = performance.now() - t1;
-  return { seed, msA, msB, a, b };
+  return { seed, msA: clockA.ms, msB: clockB.ms, a, b };
 }

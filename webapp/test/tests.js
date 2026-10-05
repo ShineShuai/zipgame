@@ -16,6 +16,7 @@ import { scatter } from '../src/core/gen/checkpoints.js';
 import { encodeFlags, decodeFlags, flagsToHex, hexToFlags, DEFAULT_FLAGS_INT, DEFAULT_GEN_FLAGS, DEFAULT_MINIMIZE_FLAGS, PLAY_FLAGS_INT } from '../src/core/gen/flags.js';
 import { minimizeWalls, makeUnique } from '../src/core/gen/walls.js';
 import { runSync } from '../src/core/run.js';
+import { runAsync, measured } from '../src/platform/run.js';
 import { createHoldReveal } from '../src/ui/hold-reveal.js';
 import { createDaily, utcDayNumber, utcDateString, dateOfDay, fetchGameOfDayFor } from '../src/features/daily.js';
 import { createReplay, GAMES_PER_CHANCE, BACKFILL_DAYS } from '../src/features/replay.js';
@@ -96,6 +97,71 @@ t('format: path line — round trip, cell order, and rejects disconnected / wall
   const walled = makePuzzle(3); setWallId(walled.walls, edgeId(3, 0, 1), true);
   let threw = false; try { parse(serialize(walled, { path: [] }) + '\npath 0,0 0,1'); } catch (e) { threw = true; } ok(threw, 'should reject path crossing a wall');
   threw = false; try { parse('size 3\npath 0,0 0,1 0,0'); } catch (e) { threw = true; } ok(threw, 'should reject repeated cell');
+});
+t('format: time comments — only the given times, in a fixed order, ignored by parse, none by default', () => {
+  const p = makePuzzle(3);
+  p.cp[0] = 1;
+  p.cp[8] = 9;
+  const plain = serialize(p);
+  eq(plain.includes('_time_'), false, 'no times option -> no time lines');
+  eq(serialize(p, { times: {} }), plain, 'empty times -> identical to plain');
+  eq(serialize(p, { times: { generateMs: null, solveMs: null, playS: null } }), plain, 'null times are skipped');
+
+  const all = serialize(p, { times: { generateMs: 12.345, solveMs: 0.04, playS: 83.25 } });
+  const lines = all.split('\n');
+  eq(lines.filter(l => l.includes('_time_')), ['# generate_time_ms 12.3', '# solve_time_ms 0.0', '# play_time_s 83.3'], 'one comment line per time: ms or s with one decimal');
+  const firstTime = lines.findIndex(l => l.includes('_time_'));
+  eq(lines.findIndex(l => l.startsWith('size ')) > firstTime, true, 'time comments come before the data lines');
+  eq(lines.slice(firstTime).filter(l => l.startsWith('#')).length, 3, 'nothing but the three comments between');
+
+  eq(serialize(parse(all)), plain, 'parse skips the comments: round trip gives the plain text');
+  eq(serialize(p, { times: { solveMs: 5 } }).split('\n').filter(l => l.includes('_time_')), ['# solve_time_ms 5.0'], 'a single time');
+  const withPath = serialize(p, { path: [0, 1, 2, 5, 4, 3, 6, 7, 8], times: { playS: 1 } });
+  eq(parse(withPath).path, [0, 1, 2, 5, 4, 3, 6, 7, 8], 'times and a path line together still parse');
+});
+t('run: measured() passes events and the return value through and clocks only the generator’s own compute time', () => {
+  const burn = ms => {
+    const end = performance.now() + ms;
+    while (performance.now() < end) { /* busy wait */ }
+  };
+  function* work() {
+    yield { frac: 0.1 };
+    burn(8);
+    yield undefined;
+    burn(8);
+    yield { frac: 1 };
+    burn(8);
+    return 'done';
+  }
+  const clock = { ms: 0 };
+  const seen = [];
+  const result = runSync(measured(work(), clock), e => {
+    seen.push(e);
+    burn(40); // consumer-side work (UI updates in the app) must not be counted
+  });
+  eq(result, 'done');
+  eq(seen, [{ frac: 0.1 }, { frac: 1 }], 'falsy events are dropped by runSync as before; others arrive unchanged');
+  ok(clock.ms >= 24, `clock counts the 3 x 8 ms of compute (got ${clock.ms.toFixed(1)})`);
+  ok(clock.ms < 24 + 40, `clock excludes the consumer's 2 x 40 ms (got ${clock.ms.toFixed(1)})`);
+});
+t('run: measured() works under runAsync (time-sliced, setTimeout yields) and propagates errors', async () => {
+  const clock = { ms: 0 };
+  const events = [];
+  const value = await runAsync(measured(generate(5, 3), clock), { onEvent: e => events.push(e), sliceMs: 1 });
+  eq(serialize(value), serialize(runSync(generate(5, 3))), 'same puzzle as the plain run');
+  ok(clock.ms > 0, 'some compute time was clocked');
+  ok(events.length > 0, 'progress events still reach onEvent');
+  function* boom() {
+    yield { frac: 0 };
+    throw new Error('boom');
+  }
+  let message = null;
+  try {
+    await runAsync(measured(boom(), { ms: 0 }));
+  } catch (e) {
+    message = e.message;
+  }
+  eq(message, 'boom');
 });
 t('rng: deterministic; dailySeed matches legacy values', () => {
   const a = makeRng(42), b = makeRng(42); for (let i = 0; i < 5; i++) eq(a(), b());

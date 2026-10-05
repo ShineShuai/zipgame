@@ -3,7 +3,24 @@ import { edgeToKey, keyToEdge, wallIds, setWallId } from './edges.js';
 import { gridAdjacent, canStep } from './rules.js';
 
 export const MAX_N = 16;
+
+// `# name value` comment lines for measured times (parse() skips them). Only the given times are written.
+function timeComments({ generateMs, solveMs, playS } = {}) {
+  const lines = [];
+  if (generateMs != null) {
+    lines.push(`# generate_time_ms ${generateMs.toFixed(1)}`);
+  }
+  if (solveMs != null) {
+    lines.push(`# solve_time_ms ${solveMs.toFixed(1)}`);
+  }
+  if (playS != null) {
+    lines.push(`# play_time_s ${playS.toFixed(1)}`);
+  }
+  return lines;
+}
+
 // opts.path: optional current play-mode path (array of cell indices) to include as a `path` line.
+// opts.times: optional { generateMs, solveMs, playS }, written as comment lines (see timeComments).
 export function serialize(p, opts = {}) {
   const cps = [];
   for (let i = 0; i < p.n * p.n; i++) if (p.cp[i]) cps.push(`${(i / p.n) | 0},${i % p.n}=${p.cp[i]}`);
@@ -11,6 +28,7 @@ export function serialize(p, opts = {}) {
   const lines = ['# Zip Puzzle — plain text format', '# size N', '# checkpoints r,c=n ...   (0-based row/col)',
     '# walls T,r,c ...        (T = H or V; H spans (r,c)-(r+1,c); V spans (r,c)-(r,c+1))'];
   if (opts.path && opts.path.length) lines.push('# path r,c ...           (current play-mode line, in order, optional)');
+  lines.push(...timeComments(opts.times));
   lines.push(`size ${p.n}`, cps.length ? 'checkpoints ' + cps.join(' ') : 'checkpoints', ws.length ? 'walls ' + ws.join(' ') : 'walls');
   if (opts.path && opts.path.length) lines.push('path ' + opts.path.map(cell => `${(cell / p.n) | 0},${cell % p.n}`).join(' '));
   return lines.join('\n');

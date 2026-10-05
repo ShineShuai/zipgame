@@ -8,7 +8,7 @@ import { randomPathPuzzle, generateUnique, generate, CAPPED_TRIES } from '../../
 import { minimizeWalls } from '../../core/gen/walls.js';
 import { scatter } from '../../core/gen/checkpoints.js';
 import { cellAtPoint } from '../../view/geometry.js';
-import { runAsync } from '../../platform/run.js';
+import { runAsync, measured } from '../../platform/run.js';
 import { bindModal, copyText } from '../../ui/modal.js';
 import { installHoldReveal } from '../../ui/hold-reveal.js';
 import { VERSION } from '../../version.js';
@@ -27,9 +27,49 @@ const rnd = Math.random;
 const boardEl = $('board'), stageEl = document.querySelector('.stage'), plural = (k, w) => `${k} ${w}${k === 1 ? '' : 's'}`;
 let P = makePuzzle(7), mode = 'number', selected = -1, buffer = '', solutions = [], solVisible = [], lastAborted = false, lastNodes = 0;
 let preview = null, previewVisible = true, playMode = false, playPath = [], drawing = false, refs = {}, numDrag = null, dragGhost = null, suppressClick = false, busy = false, modalMode = 'export', showConn = false, showDead = false, showProp = false, showLegCollide = false, showGraph = false;
-let playStartTime = 0, playElapsed = 0, playTimerId = null, playFinished = false;
+let playStartTime = 0, playElapsed = 0, playTimerId = null, playFinished = false, playPaused = false, playSeededSolved = false;
 const sec = x => x.toFixed(1) + 's';
 const playStep = { truncate: true, strictOrder: true }, modal = bindModal($('modalBackdrop'));
+
+// ---------- algorithm timings (shown under the board, written to the export as comments) ----------
+// A time belongs to the exact puzzle it was measured on: each entry stores that puzzle's plain text.
+// Any edit changes the text, so a hand-built or hand-edited board never shows or exports a
+// generate/solve time, and a hand-played board has no solve time (only a play time).
+//   gen   - compute time of Generate / Reproduce Play puzzle (side = 'A' / 'B' when comparing)
+//   solve - time of the Solve button's solve() (side as above)
+//   play  - time of a finished hand-played solve in Play mode
+const timing = { gen: null, solve: null, play: null };
+const puzzleText = () => serialize(P);
+function setTiming(kind, ms, side = '') {
+  timing[kind] = { text: puzzleText(), ms, side };
+}
+function currentTiming(kind) {
+  const entry = timing[kind];
+  return entry && entry.text === puzzleText() ? entry : null;
+}
+const fmtMs = ms => `${ms.toFixed(1)} ms`;
+function renderTiming() {
+  const parts = [];
+  for (const [kind, label] of [['gen', 'Generate'], ['solve', 'Solve']]) {
+    const entry = currentTiming(kind);
+    if (entry) {
+      parts.push(`${label} ${fmtMs(entry.ms)}${entry.side ? ` (${entry.side})` : ''}`);
+    }
+  }
+  const el = $('timing');
+  el.textContent = parts.join(' · ');
+  el.style.display = parts.length ? '' : 'none';
+}
+function exportTimes() {
+  const gen = currentTiming('gen');
+  const solve = currentTiming('solve');
+  const play = currentTiming('play');
+  return {
+    generateMs: gen ? gen.ms : null,
+    solveMs: solve ? solve.ms : null,
+    playS: play ? play.ms / 1000 : null,
+  };
+}
 
 // ---------- seed + algorithm flags (above the board) ----------
 const compareMode = () => $('compareToggle').checked;
@@ -77,10 +117,11 @@ function draw() {
   $('wallModeTag').textContent = countWalls(P) ? `(${countWalls(P)})` : '';
   if (playMode) paintPlayNow();
   updateValidity();
+  renderTiming();
 }
 function setStatus(msg, type) { const s = $('status'); s.className = msg ? 'status show ' + (type || '') : 'status'; s.textContent = msg || ''; }
 function nodeLimit() { const v = parseInt($('nodeLimit').value, 10); return Number.isFinite(v) && v >= 1000 ? v : DEFAULT_NODE_LIMIT; }
-function clearSolutions() { solutions = []; solVisible = []; lastAborted = false; lastNodes = 0; renderLegend(); setStatus(''); }
+function clearSolutions() { solutions = []; solVisible = []; lastAborted = false; lastNodes = 0; timing.solve = null; renderLegend(); setStatus(''); }
 function clearPreview() { if (preview) { preview = null; previewVisible = true; renderLegend(); } }
 const wallable = () => { const all = allEdges(P.n); if (!preview || preview.length < 2) return all; const pe = new Set(pathEdgeIds(P.n, preview)); return all.filter(e => !pe.has(e)); };
 function updateWallCapTag() {
@@ -151,6 +192,7 @@ function endGhost() { if (dragGhost) { dragGhost.remove(); dragGhost = null; } }
 boardEl.addEventListener('pointerdown', e => {
   if (busy) return;
   if (playMode) { // start (or rewind) the play path
+    if (playPaused) return;
     const idx = cellFromEvent(e); if (idx < 0) return; e.preventDefault();
     if (!playPath.length) { if (P.cp[idx] !== 1) { $('playInfo').textContent = 'Start at checkpoint 1.'; return; } playPath = [idx]; }
     else { const i = playPath.indexOf(idx); if (i < 0) return; playPath = playPath.slice(0, i + 1); }
@@ -198,13 +240,51 @@ addEventListener('pointercancel', () => { drawing = false; endGhost(); clearDrop
 // playPath) does NOT reset the clock, matching how a human solve attempt actually works — undoing a
 // few cells isn't a new attempt.
 function stopPlayTimer() { if (playTimerId) { clearInterval(playTimerId); playTimerId = null; } }
-function startPlayTimer() {
-  stopPlayTimer(); playStartTime = performance.now(); playElapsed = 0; playFinished = false;
-  const el = $('playTimer'); if (el) el.textContent = sec(0);
+// Ticks from the current playElapsed, so it also resumes after a pause.
+function runPlayTimer() {
+  stopPlayTimer();
+  playStartTime = performance.now() - playElapsed * 1000;
   playTimerId = setInterval(() => {
     playElapsed = (performance.now() - playStartTime) / 1000;
-    const t = $('playTimer'); if (t) t.textContent = sec(playElapsed);
+    const t = $('playTimer');
+    if (t) {
+      t.textContent = sec(playElapsed);
+    }
   }, 100);
+}
+function startPlayTimer() {
+  playElapsed = 0;
+  playFinished = false;
+  playPaused = false;
+  const el = $('playTimer');
+  if (el) {
+    el.textContent = sec(0);
+  }
+  runPlayTimer();
+}
+function syncPauseButton() {
+  const btn = $('pauseBtn');
+  btn.style.display = playMode ? '' : 'none';
+  btn.disabled = playFinished;
+  btn.textContent = playPaused ? '▶ Resume' : '⏸ Pause';
+}
+function togglePause() {
+  if (!playMode || playFinished) {
+    return;
+  }
+  const el = $('playTimer');
+  if (playPaused) {
+    playPaused = false;
+    runPlayTimer();
+    el.textContent = sec(playElapsed);
+  } else {
+    playElapsed = (performance.now() - playStartTime) / 1000;
+    stopPlayTimer();
+    playPaused = true;
+    drawing = false;
+    el.textContent = sec(playElapsed) + ' — paused';
+  }
+  syncPauseButton();
 }
 function paintPlayNow() {
   const { legConflicts } = paintPlay(refs, P.n, playPath, P, showConn, showDead, showProp, showLegCollide, showGraph);
@@ -212,12 +292,28 @@ function paintPlayNow() {
   if (!playPath.length) info.textContent = `Drag from checkpoint 1 to start. 0 / ${total} cells.`;
   else if (playPath.length === total) {
     info.textContent = '🎉 Solved! Every cell visited exactly once.';
-    if (!playFinished) { playFinished = true; stopPlayTimer(); const t = $('playTimer'); if (t) t.textContent = sec(playElapsed) + ' — solved'; }
+    if (!playFinished) {
+      playElapsed = (performance.now() - playStartTime) / 1000;
+      playFinished = true;
+      stopPlayTimer();
+      const t = $('playTimer');
+      if (t) {
+        t.textContent = sec(playElapsed) + ' — solved';
+      }
+      if (!playSeededSolved) {
+        setTiming('play', playElapsed * 1000);
+      }
+      syncPauseButton();
+    }
   } else {
     let hi = 0; for (const c of playPath) hi = Math.max(hi, P.cp[c]);
     const last = playPath[playPath.length - 1], extra = K > 1 && P.cp[last] === K ? ' — final checkpoint reached but board not full.' : '';
     info.textContent = `${playPath.length} / ${total} cells · next checkpoint: ${hi + 1 <= K ? '#' + (hi + 1) : '—'}${extra}`;
-    if (playFinished) { playFinished = false; startPlayTimer(); } // rewound off the finished cell: resume timing
+    if (playFinished) { // rewound off the finished cell: resume timing
+      timing.play = null;
+      startPlayTimer();
+      syncPauseButton();
+    }
   }
   if (legConflicts.length) info.textContent += '\nLeg collision: ' + legConflicts.map(k => `${legName(P, k.a)} ✕ ${legName(P, k.b)} (${k.cells.length} cell${k.cells.length > 1 ? 's' : ''})`).join(', ');
 }
@@ -226,11 +322,15 @@ function enterPlay(seedPath) {
   playMode = true; playPath = seedPath || []; drawing = false; solutions = []; solVisible = []; selected = -1; buffer = ''; endGhost(); numDrag = null;
   $('playBtn').classList.add('on'); $('playBtn').textContent = '■ Stop playing'; $('playInfo').style.display = '';
   $('connToggles').style.display = '';
+  playSeededSolved = Boolean(seedPath) && seedPath.length === P.n * P.n;
+  timing.play = null;
   startPlayTimer(); const pt = $('playTimer'); if (pt) pt.style.display = '';
+  syncPauseButton();
   setStatus(''); updateHint(); draw(); renderLegend();
 }
 function exitPlay() {
-  playMode = false; playPath = []; drawing = false; stopPlayTimer();
+  playMode = false; playPath = []; drawing = false; playPaused = false; stopPlayTimer();
+  syncPauseButton();
   $('playBtn').classList.remove('on'); $('playBtn').textContent = '▶ Play'; $('playInfo').style.display = 'none';
   $('connToggles').style.display = 'none';
   const pt = $('playTimer'); if (pt) pt.style.display = 'none';
@@ -249,6 +349,7 @@ function doSolve() {
     const r = solve(P, { limit: 2, nodeCap: nodeLimit(), capture: true, ...flags });
     const ms = performance.now() - t0;
     solutions = r.paths; solVisible = solutions.map(() => true); lastAborted = r.exceeded; lastNodes = r.nodes;
+    setTiming('solve', ms);
     draw(); renderLegend(); updateWallCapTag();
     const nodeInfo = ` (${r.nodes.toLocaleString()} nodes, ${ms.toFixed(0)}ms)`;
     if (r.count >= 2) setStatus('Multiple solutions — this puzzle is NOT unique. Showing 2 (click the legend chips to toggle).' + nodeInfo, 'warn');
@@ -262,6 +363,7 @@ function doSolve() {
   const t0 = performance.now(); const rA = solve(P, { limit: 2, nodeCap: cap, capture: true, ...fA }); const msA = performance.now() - t0;
   const t1 = performance.now(); const rB = solve(P, { limit: 2, nodeCap: cap, capture: true, ...fB }); const msB = performance.now() - t1;
   solutions = rA.paths; solVisible = solutions.map(() => true); lastAborted = rA.exceeded; lastNodes = rA.nodes;
+  setTiming('solve', msA, 'A');
   draw(); renderLegend(); updateWallCapTag();
   const fmt = r => `${r.count >= 2 ? 'multiple solutions' : r.count === 1 ? (r.exceeded ? '1 found, capped' : 'unique') : (r.exceeded ? 'capped, none found' : 'no solution')}, ${r.nodes.toLocaleString()} nodes`;
   setStatus(`Solve comparison — A: ${msA.toFixed(0)}ms, ${fmt(rA)}. B: ${msB.toFixed(0)}ms, ${fmt(rB)}. Showing A's solution(s) on the board.`, 'ok');
@@ -298,7 +400,7 @@ async function doMinimize() {
 }
 
 // ---------- import / export / modal ----------
-function exportText() { return serialize(P, { path: $('includePath').checked ? playPath : null }); }
+function exportText() { return serialize(P, { path: $('includePath').checked ? playPath : null, times: exportTimes() }); }
 // Cheap detection of a `path` line without surfacing parse errors — used only to enable/disable
 // the "also load path" checkbox live as the import text is edited/pasted.
 function textHasPathLine(text) { return /^\s*path\s+\S/mi.test(text); }
@@ -358,6 +460,7 @@ const difficultyPanel = mountDifficultyPanel($('difficultyResult'), () => P, nod
 });
 $('difficultyBtn').onclick = () => { if (playMode) exitPlay(); difficultyPanel.run(); };
 $('playBtn').onclick = () => (playMode ? exitPlay() : enterPlay());
+$('pauseBtn').onclick = togglePause;
 $('showConn').onclick = () => { showConn = $('showConn').checked; if (playMode) paintPlayNow(); };
 $('showDead').onclick = () => { showDead = $('showDead').checked; if (playMode) paintPlayNow(); };
 $('showProp').onclick = () => { showProp = $('showProp').checked; if (playMode) paintPlayNow(); };
@@ -384,8 +487,13 @@ $('randPathUnique').onclick = async () => {
   try {
     if (!compareMode()) {
       const flags = decodeFlags(flagsSingle.get());
-      const r = await runAsync(generateUnique(P.n, K, makeRng(seed), { maxWalls: W, tries, hardest, flags }), { onEvent: e => setStatus(`Generating… retry ${e.attempt}/${e.of}${hardest ? ` · ${plural(e.found, 'candidate')}` : ''}${e.walls != null ? ` · ${plural(e.walls, 'wall')} so far` : ''}`, '') });
-      adopt(r.puzzle); refresh();
+      const clock = { ms: 0 };
+      const r = await runAsync(measured(generateUnique(P.n, K, makeRng(seed), { maxWalls: W, tries, hardest, flags }), clock), { onEvent: e => setStatus(`Generating… retry ${e.attempt}/${e.of}${hardest ? ` · ${plural(e.found, 'candidate')}` : ''}${e.walls != null ? ` · ${plural(e.walls, 'wall')} so far` : ''}`, '') });
+      adopt(r.puzzle);
+      if (r.unique) {
+        setTiming('gen', clock.ms); // a failed run's wall-free fallback is not a generated puzzle
+      }
+      refresh();
       const used = `${plural(maxNumber(P), 'checkpoint')} (max ${K}), ${plural(r.walls, 'wall')} (max ${W})${r.removed ? `, ${r.removed} unnecessary removed` : ''}`;
       if (r.unique) setStatus(hardest ? `Picked the puzzle with the most search nodes (${plural(r.nodes, 'node')}) of ${plural(r.found, 'candidate')} from ${tries} retries: ${used}. Seed ${seed}. The template is shown dashed.` : `Generated a unique puzzle: ${used}; found on retry ${r.attempts}/${tries}. Seed ${seed}. The template is shown dashed.`, 'ok');
       else setStatus(`None of ${tries} retries produced a unique puzzle with ${plural(K, 'checkpoint')} and ≤ ${plural(W, 'wall')} (seed ${seed}). This does not mean none exists: the search is heuristic, not exhaustive, and each retry tests only one random path and checkpoint placement. Showing the wall-free path instead. Try again, raise Search retries, or raise Max walls / Max checkpoints (more checkpoints need fewer walls).`, 'warn');
@@ -408,13 +516,19 @@ $('randPathUnique').onclick = async () => {
     if (r.a.unique && r.b.unique) {
       // Both succeeded: show B (the "new" side, by convention — matches the old checkbox's
       // behaviour of previewing the setting being compared against the baseline).
-      adopt(r.b.puzzle); refresh();
+      adopt(r.b.puzzle);
+      setTiming('gen', r.msB, 'B');
+      refresh();
       setStatus(`${summary} Showing B's result. See the table below for the full comparison.`, 'ok');
     } else if (r.b.unique) {
-      adopt(r.b.puzzle); refresh();
+      adopt(r.b.puzzle);
+      setTiming('gen', r.msB, 'B');
+      refresh();
       setStatus(`${summary} A failed to find a unique puzzle at this seed/budget; showing B's result, which did succeed.`, 'warn');
     } else if (r.a.unique) {
-      adopt(r.a.puzzle); refresh();
+      adopt(r.a.puzzle);
+      setTiming('gen', r.msA, 'A');
+      refresh();
       setStatus(`${summary} B failed to find a unique puzzle at this seed/budget; showing A's result, which did succeed.`, 'warn');
     } else {
       // Neither found a unique puzzle — do not adopt either fallback as if it were a real result.
@@ -432,8 +546,11 @@ $('reproducePlay').onclick = async () => {
     // cheapest) — structurally different from generateUnique() above, not just a different flags
     // value, so this calls it directly rather than routing through the flags panel/Max
     // checkpoints/Max walls, none of which apply here.
-    const p = await runAsync(generate(P.n, seed), { onEvent: e => setStatus(`Reproducing… ${plural(e.walls ?? 0, 'wall')} so far`, '') });
-    adopt(p); refresh();
+    const clock = { ms: 0 };
+    const p = await runAsync(measured(generate(P.n, seed), clock), { onEvent: e => setStatus(`Reproducing… ${plural(e.walls ?? 0, 'wall')} so far`, '') });
+    adopt(p);
+    setTiming('gen', clock.ms);
+    refresh();
     setStatus(`Reproduced generate()'s puzzle for seed ${seed} at ${P.n}×${P.n} (flags always ${flagsToHex(PLAY_FLAGS_INT)} — generate() has no flags of its own yet). The template is shown dashed.`, 'ok');
   } finally { setBusy(false); }
 };

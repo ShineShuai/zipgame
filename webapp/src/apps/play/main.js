@@ -64,6 +64,8 @@ function renderGenerating() {
   const gen = S.gen;
   const percent = Math.round(gen.frac * 100);
   const walls = gen.walls == null ? t('gen.searching') : t('gen.walls', gen.walls);
+  // Players see only the percentage and the bar; the walls count and K appear while V is held.
+  const devInfo = ` — ${walls}${gen.K == null ? '' : ` · K ${gen.K}`}`;
   return `
     <div class="center-stage">
       <section class="card">
@@ -72,7 +74,7 @@ function renderGenerating() {
         <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}">
           <div style="width:${percent}%"></div>
         </div>
-        <p class="small">${t('gen.progress', percent, walls)}</p>
+        <p class="small">${t('gen.progress', percent)}<span id="genDev" style="display:${S.showDev ? 'inline' : 'none'}">${devInfo}</span></p>
       </section>
     </div>`;
 }
@@ -468,6 +470,7 @@ function setDevReveal(on) {
   const sn = $('storageNote'); if (sn) sn.style.display = on ? '' : 'none';
   const tag = $('seedTag'); if (tag) tag.style.display = on ? 'inline' : 'none';
   const d = $('difficultyDev'); if (d) d.style.display = on ? 'inline' : 'none';
+  const g = $('genDev'); if (g) g.style.display = on ? 'inline' : 'none';
   const shown = S.screen === 'game' && S.isGotd ? store.attemptOn(S.gotdDate) : store.attempt(), st = shown && shown.stats;
   if (st) document.querySelectorAll('.gotd-stats').forEach(e => { e.textContent = statsLineT(st, on); });
 }
