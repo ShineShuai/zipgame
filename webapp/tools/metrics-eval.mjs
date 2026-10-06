@@ -13,7 +13,7 @@
 // Part 3  chronological holdout: models fit on the first --split puzzles (default 43 = the labels ladder.js was designed on),
 //         scored on the rest — the fairest test for the fixed-formula ladder grade.
 // Part 4  the ladder grade's own constants (wideFrac threshold, probe-trials cutoff, size floors): sweep + nested re-tuning.
-// Scores: rho = Spearman; in-range = grade lies in [lo,hi]; MAE = mean |grade - human|; 0->0 = human-0 puzzles graded 0.
+// Scores: rho = Spearman; in-range = grade lies in [lo,hi]; MAE = mean |grade - human|; 0->0 = human-0 puzzles graded 0; hard = puzzles rated >= 3.5 graded >= 3.
 import fs from 'node:fs';
 import { NAMES, GROUP, LOG, featuresOf } from './features.mjs';
 import { ratingWeight, UNSURE_WEIGHT, findDuplicateGroups } from '../src/core/ratings-io.js';
@@ -98,19 +98,20 @@ const picks = [];
 const looForward = all.map(i => { const tr = all.filter(j => j !== i), ks = forward(tr); picks.push(ks); return ks.length ? predict(ridgeFit(ks, tr, LAM), i) : mean(tr.map(j => H[j])); });
 
 function score(name, pred, integer = false, idx = all) {
-  const g = integer ? pred : pred.map(clampGrade), zero = idx.filter(i => HI[i] === 0), rho = spearman(idx.map(i => pred[i]), idx.map(i => H[i]));
-  console.log(name.padEnd(46), (Number.isFinite(rho) && Math.abs(rho) < 0.999 ? rho.toFixed(2) : '—').padStart(5), ((100 * mean(idx.map(i => +(dist(g[i], i) === 0)))).toFixed(0) + '%').padStart(9), mean(idx.map(i => Math.abs(g[i] - H[i]))).toFixed(2).padStart(6), mean(idx.map(i => dist(g[i], i))).toFixed(2).padStart(9), (zero.filter(i => g[i] === 0).length + '/' + zero.length).padStart(6), '  ' + [0, 1, 2, 3, 4, 5].map(k => idx.filter(i => g[i] === k).length).join(' '));
+  const g = integer ? pred : pred.map(clampGrade), zero = idx.filter(i => HI[i] === 0), hard = idx.filter(i => H[i] >= 3.5), rho = spearman(idx.map(i => pred[i]), idx.map(i => H[i]));
+  console.log(name.padEnd(46), (Number.isFinite(rho) && Math.abs(rho) < 0.999 ? rho.toFixed(2) : '—').padStart(5), ((100 * mean(idx.map(i => +(dist(g[i], i) === 0)))).toFixed(0) + '%').padStart(9), mean(idx.map(i => Math.abs(g[i] - H[i]))).toFixed(2).padStart(6), mean(idx.map(i => dist(g[i], i))).toFixed(2).padStart(9), (zero.filter(i => g[i] === 0).length + '/' + zero.length).padStart(6), (hard.filter(i => g[i] >= 3).length + '/' + hard.length).padStart(7), '  ' + [0, 1, 2, 3, 4, 5].map(k => idx.filter(i => g[i] === k).length).join(' '));
 }
 console.log('\n== Part 2: grading models (LOO: a puzzle is never scored by a model that saw it) ==');
-console.log('model'.padEnd(46), '  rho', ' in-range', '   MAE', ' dist-to-range', ' 0->0', '  grades 0..5 used');
+console.log('model'.padEnd(46), '  rho', ' in-range', '   MAE', ' dist-to-range', ' 0->0', ' hard>=3', '  grades 0..5 used');
 score('constant (training mean)', all.map(i => mean(all.filter(j => j !== i).map(j => H[j]))));
 console.log('   (rho of a constant is undefined, shown —)');
 console.log('-- existing grades exactly as shipped (nothing refit; capped puzzles count as 5) --');
 for (const k of ['grade:decisionNodes', 'grade:B', 'grade:cross', 'grade:combined', 'grade:ladder']) score(k.replace('grade:', 'shipped ') + (k === 'grade:ladder' ? ' (fixed formula)' : ''), col(k), true);
-score('shipped trap grade (weights fit on ALL ' + n + ': optimistic)', col('trapPredicted'));
-console.log('-- ridge, refit inside every fold (lambda ' + LAM + ') --');
+score('shipped trap badge (weights + cuts fit on ALL ' + n + ': optimistic)', col('grade:trap'), true);
+console.log('-- ridge, refit inside every fold (lambda ' + LAM + '; grades here are the rounded score: tools/fit-trap.mjs prints the cut-based badge) --');
 const SETS = {
-  'trap (shipped features)': ['trapMax', 'trapTop3', 'altFrac'],
+  'trap (shipped features)': ['trapMax', 'trapTop3', 'altFrac', 'lTr'],
+  'trap without lTr (previous model)': ['trapMax', 'trapTop3', 'altFrac'],
   'trap + wideFrac': ['trapMax', 'trapTop3', 'altFrac', 'wideFrac'],
   'trap + ladTrials': ['trapMax', 'trapTop3', 'altFrac', 'ladTrials'],
   'trap + wideFrac + ladTrials': ['trapMax', 'trapTop3', 'altFrac', 'wideFrac', 'ladTrials'],
@@ -132,10 +133,10 @@ console.log('   forward selection on all ' + n + ' puzzles picks: ' + (fin.join(
 if (SPLIT > 0 && SPLIT < n - 4) {
   const tr = all.slice(0, SPLIT), te = all.slice(SPLIT);
   console.log(`\n== Part 3: fit on the first ${SPLIT} puzzles, score the last ${te.length} (ratings were added over time, so this is also a check against drift) ==`);
-  console.log('model'.padEnd(46), '  rho', ' in-range', '   MAE', ' dist-to-range', ' 0->0', '  grades 0..5 used');
+  console.log('model'.padEnd(46), '  rho', ' in-range', '   MAE', ' dist-to-range', ' 0->0', ' hard>=3', '  grades 0..5 used');
   score('constant (mean of first ' + SPLIT + ')', all.map(() => mean(tr.map(j => H[j]))), false, te);
   score('ladder grade (fixed formula, no fitting)', col('grade:ladder'), true, te);
-  score('shipped trap grade (weights saw all ' + n + ': optimistic)', col('trapPredicted'), false, te);
+  score('shipped trap badge (weights + cuts saw all ' + n + ': optimistic)', col('grade:trap'), true, te);
   for (const [name, keys] of [['trap ridge', SETS['trap (shipped features)']], ['trap + ladProbe2 ridge', ['trapMax', 'trapTop3', 'altFrac', 'ladProbe2']]]) {
     const m = ridgeFit(keys, tr, LAM), pr = all.map(i => (te.includes(i) ? predict(m, i) : NaN));
     score(name + ' fit on first ' + SPLIT, pr, false, te);

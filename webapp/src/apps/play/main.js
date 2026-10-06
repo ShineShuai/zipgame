@@ -19,6 +19,7 @@ import { statsLine } from '../../core/hist.js';
 import { t, getLang, setLang } from '../../ui/i18n.js';
 import { PLAY_FLAGS_INT, flagsToHex } from '../../core/gen/flags.js';
 import { playGradesFor } from '../../core/grades.js';
+import { createPlayLog, newTrace, traceStep, traceClear, buildRecord } from '../../features/playlog.js';
 import { sfxMove, sfxBack, sfxCheckpoint, sfxMoveAfterCheckpoint, sfxBlocked, sfxSolved, setSoundEnabled, isSoundEnabled } from '../../platform/sound.js';
 
 const SIZES = PLAY_SIZES;
@@ -269,12 +270,12 @@ function difficultyBadgeHtml() {
 // Hidden by default; same hold-to-reveal pattern as seedTag.
 function difficultyDevHtml() {
   const d = S.difficulty, t = d && d.trap, g = d && d.legacy;
-  const trapPart = t ? `trap ${t.predicted.toFixed(2)} <span class="dev-raw">max ${t.trapMax} · top3 ${t.trapTop3} · alt ${t.altFrac.toFixed(2)}</span> · ` : '';
+  const trapPart = t ? `trap ${t.predicted.toFixed(2)} <span class="dev-raw">max ${t.trapMax} · top3 ${t.trapTop3} · alt ${t.altFrac.toFixed(2)} · ladder trials ${t.ladTrials}</span> · ` : '';
   const legacyPart = g
     ? `decisionNodes ${g.grades.decisionNodes}/5 · B ${g.grades.B}/5 · cross ${g.grades.crossPerSeg}/5 · <span class="dev-raw">decisionNodes ${g.raw.decisionNodes} · B ${g.raw.B.toFixed(2)} · cross/seg ${g.raw.crossPerSeg.toFixed(2)}</span>`
     : 'old grades: ungraded (search capped)';
   const body = t || g ? trapPart + legacyPart : 'ungraded';
-  return `<span id="difficultyDev" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="trap: the badge grade before rounding, with its inputs (worst step's trap score, top-3 steps' sum, fraction of steps that have any wrong move). decisionNodes: the previous badge grade (solver branch points per cell). B: backtrack overhead (nodes/cells - 1) from the same solve. cross: how many non-adjacent checkpoint-to-checkpoint segments geometrically cross, per segment. Each old grade is graded 0-5 with its own calibration; the trap grade is fit to hand ratings. The design app shows all of them.">${body}</span>`;
+  return `<span id="difficultyDev" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="trap: the badge score before it is cut into a grade, with its inputs (worst step's trap score, top-3 steps' sum, fraction of steps that have any wrong move, what-if guesses the technique ladder needed). decisionNodes: the previous badge grade (solver branch points per cell). B: backtrack overhead (nodes/cells - 1) from the same solve. cross: how many non-adjacent checkpoint-to-checkpoint segments geometrically cross, per segment. Each old grade is graded 0-5 with its own calibration; the trap grade is fit to hand ratings. The design app shows all of them.">${body}${t || g ? ' · <a href="#" id="exportPlayLog" title="Download the play log (what you did on each puzzle: time, cells drawn and taken back), local to this device, for tools/playlog-eval.mjs">play log</a>' : ''}</span>`;
 }
 
 function renderGame() {
@@ -330,8 +331,9 @@ function attachHandlers() {
   on('replayBack', () => { S.replayPick = null; S.screen = 'menu'; render(); });
   on('toReplay', () => openReplay());
   document.querySelectorAll('.replay-day').forEach(b => { b.onclick = () => startReplay(b.dataset.date); });
-  on('backMenu2', () => { stopTimer(); S.screen = 'menu'; render(); });
-  on('resetPath', () => { S.path = []; S.finished = false; S.hintCell = S.hintWrongCell = null; render(); });
+  on('backMenu2', () => { logPlay(false); stopTimer(); S.screen = 'menu'; render(); });
+  on('resetPath', () => { if (S.trace && !S.finished) traceClear(S.trace, S.path.length); S.path = []; S.finished = false; S.hintCell = S.hintWrongCell = null; render(); });
+  on('exportPlayLog', ev => { ev.preventDefault(); exportPlayLog(); });
   on('newPuzzle', () => { if (!S.isGotd) startLocal('skip'); });
   on('exportBtn', () => { $('exportText').value = serialize(S.puzzle); $('exportMsg').textContent = ''; modal.open(); setTimeout(() => $('exportText').focus(), 30); });
   on('hintBtn', () => {
@@ -363,7 +365,8 @@ function setupGridInput(svg) {
   const syncFills = () => { const on = new Set(S.path); svg.querySelectorAll('[data-num-cell]').forEach(g => fill(+g.dataset.numCell, on.has(+g.dataset.numCell))); };
   function walkTo(cell) {
     if (cell < 0 || S.finished) return;
-    const prev = S.path[S.path.length - 1], kind = step(p, S.path, cell);
+    const prev = S.path[S.path.length - 1], before = S.path.length, kind = step(p, S.path, cell);
+    if (kind && S.trace) traceStep(S.trace, kind, before, S.path.length);
     if (!kind) { if (prev != null && cell !== prev) sfxBlocked(); return; }
     if (kind === 'push') fill(cell, true); else if (kind === 'pop') fill(prev, false); else syncFills();
     setD(); clearHint();
@@ -391,7 +394,21 @@ function setupGridInput(svg) {
   svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', up);
 }
 
+// Play log (features/playlog.js): one record per puzzle, on the solve or when the puzzle is left unsolved. Local only.
+let playlog = null;
+function logPlay(solved) {
+  if (!playlog || !S.puzzle || !S.trace || S.logged || S.screen !== 'game' || (!solved && S.trace.pushes < 2)) return;
+  S.logged = true;
+  const ms = S.timerId != null ? performance.now() - S.startTime : S.elapsed * 1000;
+  playlog.add(buildRecord(S.puzzle, S.trace, { ms, solved, hints: S.hintsUsed, mode: S.isGotd ? (S.isReplay ? 'replay' : 'gotd') : 'local' }));
+}
+async function exportPlayLog() {
+  const a = document.createElement('a'), url = URL.createObjectURL(new Blob([await playlog.exportJson()], { type: 'application/json' }));
+  a.href = url; a.download = 'playlog.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function onSolved() {
+  logPlay(true); // before the hint penalty below: the log keeps the raw time
   S.finished = true; stopTimer(); sfxSolved();
   if (!S.penaltyApplied) { S.elapsed = penalizedTime(S.elapsed, S.hintsUsed); S.penaltyApplied = true; } // once, even if the path is reset and re-solved
   if (S.isGotd) { const a = store.attemptOn(S.gotdDate); if (!(a && a.solved)) finishGotd(S.puzzle.n, S.gotdDate, S.elapsed, S.isReplay); } // a Game of Day (live or replay) counts once
@@ -413,8 +430,9 @@ async function shareGotd(date) {
 
 // ---------- game flow ----------
 function beginGame(puzzle, gotdDate, isReplay = false) {
+  logPlay(false); // a puzzle left unfinished is logged as abandoned
   const difficulty = gradePuzzle(puzzle);
-  Object.assign(S, { puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
+  Object.assign(S, { trace: newTrace(), logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
   startTimer(); render();
 }
 async function startLocal(how) { // how: 'open' (Play local: current or next-if-solved) | 'skip' (New puzzle)
@@ -527,7 +545,7 @@ async function initLang() {
 
 // ---------- boot ----------
 (async function boot() {
-  storage = await pickStorage(); store = createStore(storage, SIZES); daily = createDaily(storage);
+  storage = await pickStorage(); store = createStore(storage, SIZES); daily = createDaily(storage); playlog = createPlayLog(storage);
   try { await store.hydrate(today()); } catch (e) { console.warn('stats hydration failed:', e); }
   lb = createLeaderboard(backendsFromConfig(LEADERBOARD, new URLSearchParams(location.search).get('lb')));
   replay = createReplay(storage, store);

@@ -18,7 +18,7 @@ export const DEFS = [
   ['decisionNodes/cell', 'legacy', 1], ['B/N', 'legacy'], ['maxDecisionDepth', 'legacy'], ['nodes/cell', 'legacy', 1],
   ['crossPerSeg', 'spatial'], ['overlapPerSeg', 'spatial'],
   ['grade:decisionNodes', 'grade'], ['grade:B', 'grade'], ['grade:cross', 'grade'], ['grade:combined', 'grade'],
-  ['trapMax', 'trap'], ['trapTop3', 'trap'], ['trapDeep', 'trap'], ['altFrac', 'trap'], ['alts/T', 'trap'], ['trapPredicted', 'trap'], ['grade:trap', 'trap'],
+  ['trapMax', 'trap'], ['trapTop3', 'trap'], ['trapDeep', 'trap'], ['altFrac', 'trap'], ['alts/T', 'trap'], ['lTr', 'trap'], ['trapPredicted', 'trap'], ['grade:trap', 'trap'],
   ['ladHardest', 'ladder'], ['ladChain', 'ladder', 1], ['ladTerr', 'ladder', 1], ['ladProbe1', 'ladder', 1], ['ladProbe2', 'ladder', 1], ['ladSearch', 'ladder', 1], ['ladTrials', 'ladder', 1], ['wideFrac', 'ladder'], ['grade:ladder', 'ladder'],
 ];
 export const NAMES = DEFS.map(d => d[0]), GROUP = Object.fromEntries(DEFS.map(d => [d[0], d[1]])), LOG = new Set(DEFS.filter(d => d[2]).map(d => d[0]));
@@ -41,8 +41,9 @@ export const INFO = {
   trapDeep: ['number of solution steps with a trap score >= 5 (a wrong move the solver could not refute within 1000 nodes, or several smaller ones adding up)', 'trapDeep'],
   altFrac: ['fraction of solution steps that have any legal wrong move (low = long forced corridors = easy)', 'altFrac'],
   'alts/T': ['legal wrong moves along the solution, per cell', ''],
-  trapPredicted: ['trap grade before rounding: ridge model over trapMax, trapTop3, altFrac on the 0-5 scale; its rounded value is the Play badge', 'trapPredicted'],
-  'grade:trap': ['trap grade = the Play badge (trapPredicted rounded to 0-5)', 'trap grade (Play badge)'],
+  lTr: ['log(1 + what-if guesses the technique ladder tried, stopped at TRAP_CFG.ladderWorkCap): input of the trap grade', 'lTr'],
+  trapPredicted: ['trap score before it is cut into a grade: ridge model over trapMax, trapTop3, altFrac, lTr on the 0-5 scale', 'trapPredicted'],
+  'grade:trap': ['trap grade = the Play badge (trapPredicted cut at the fitted thresholds, then capped by board size)', 'trap grade (Play badge)'],
   ladHardest: ['hardest technique level the ladder grader needed (1 local, 2 chain, 3 territory, 4 probe1, 5 probe2, 6 search)', 'ladderHardest'],
   ladChain: ['ladder: passes at level 2 (chain rules)', ''], ladTerr: ['ladder: passes at level 3 (territory rule)', ''],
   ladProbe1: ['ladder: successful single what-if guesses (level 4)', ''], ladProbe2: ['ladder: successful nested what-if guesses (level 5)', ''],
@@ -66,7 +67,7 @@ export const featuresOf = (r, cap = DEFAULT_EVAL_CAP) => {
     'decisionNodes/cell': d.decisionNodes / T, 'B/N': d.B / p.n, maxDecisionDepth: d.maxDecisionDepth, 'nodes/cell': d.nodes / T,
     crossPerSeg: sp.crossPerSeg, overlapPerSeg: sp.overlapPerSeg,
     'grade:decisionNodes': g ? g.grades.decisionNodes : 5, 'grade:B': g ? g.grades.B : 5, 'grade:cross': g ? g.grades.crossPerSeg : 5, 'grade:combined': g ? g.grades.combined : 5,
-    trapMax: tr.trapMax, trapTop3: tr.trapTop3, trapDeep: tr.trapDeep, altFrac: tr.altFrac, 'alts/T': tr.alternatives / T, trapPredicted: tr.predicted, 'grade:trap': tr.grade,
+    trapMax: tr.trapMax, trapTop3: tr.trapTop3, trapDeep: tr.trapDeep, altFrac: tr.altFrac, 'alts/T': tr.alternatives / T, lTr: tr.lTr, trapPredicted: tr.predicted, 'grade:trap': tr.grade,
     ladHardest: L.hardest ?? 0, ladChain: L.passes?.[2] ?? 0, ladTerr: L.passes?.[3] ?? 0, ladProbe1: L.passes?.[4] ?? 0, ladProbe2: L.passes?.[5] ?? 0, ladSearch: L.search?.nodes ?? 0, ladTrials: L.probeTrials ?? 0, wideFrac: wf, 'grade:ladder': lg,
     _capped: d.exceeded ? 1 : 0, _ladBad: L.exceeded || L.contradiction ? 1 : 0, _ladSolved: L.solved && L.path ? 1 : 0,
   };

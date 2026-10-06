@@ -24,6 +24,7 @@ import { REPLAY_DAYS } from '../src/core/hist.js';
 import { EN, ZH } from '../src/ui/i18n.js';
 import { HINT_PENALTY_S, penalizedTime } from '../src/features/hints.js';
 import { createStore } from '../src/features/stats-store.js';
+import { newTrace, traceStep, traceClear, buildRecord, createPlayLog, PLAYLOG_KEY } from '../src/features/playlog.js';
 import { NB, TOP_K, binOf, summarize, statsLine } from '../src/core/hist.js';
 import { parseDays, mergeDays, combineDays, isReplicated } from '../src/core/stats-merge.js';
 import { wls, fitCandidate, predictH, dedupe, isMonotone, selectEntries, pickEntries, fitTime, predictMs, withoutSeeds, TIME_PRIOR, invert, floorMs, needsThinking, aboveFloor, EXTRA_MIN_SKILL } from '../src/core/gotd-model.js';
@@ -36,7 +37,7 @@ import { calibrate, calibrateAll, calibrateMetric, generateAtDifficulty, DEFAULT
 import { checkpointPositions, segmentCrossCount, segmentOverlapCount, spatialMetrics } from '../src/core/spatial.js';
 import { gradesFor, gradesFromMetrics, playGradesFor, GRADE_ORDER } from '../src/core/grades.js';
 import { combinedScore, COMBINED_ZSCORE } from '../src/core/gen/calibration.js';
-import { solutionPath, trapProfile, trapMetrics, trapGradeOf, trapPredict, TRAP_CFG, TRAP_MODEL } from '../src/core/trap.js';
+import { solutionPath, trapProfile, trapMetrics, trapGradeOf, trapPredict, capGradeBySize, SIZE_GRADE_CAP, ladderTrials, TRAP_CFG, TRAP_MODEL } from '../src/core/trap.js';
 import { mountDifficultyPanel } from '../src/apps/design/difficulty-panel.js';
 import { ratingKey, ratingFromSelection, leanOf, describeRating, toRatingsJson, parseRatingsJson, mergeRatings, parseRatingComment, ratingWeight, UNSURE_WEIGHT, symmetryKey, findDuplicateGroups, transformPuzzle, asciiPuzzle, keyDifference } from '../src/core/ratings-io.js';
 import { parsePairsJson, toPairsJson, mergePairs, pairAccuracy, impliedPairs, flipCmp, pairKeyOf } from '../src/core/pairs-io.js';
@@ -1292,6 +1293,76 @@ t('trap: TRAP_MODEL carries the fit metadata the design panel displays (tools/fi
   const f = TRAP_MODEL.fit;
   ok(f && Number.isInteger(f.n) && f.n > 0 && Number.isFinite(f.looRho) && Number.isFinite(f.looMae) && Number.isFinite(f.lambda), 'fit = { n, lambda, looRho, looMae }');
   for (const k of TRAP_MODEL.features) ok([TRAP_MODEL.mean[k], TRAP_MODEL.sd[k], TRAP_MODEL.w[k]].every(Number.isFinite) && TRAP_MODEL.sd[k] > 0, `weights for ${k}`);
+  const c = TRAP_MODEL.cuts;
+  ok(Array.isArray(c) && c.length === 5 && c.every(Number.isFinite) && c.every((v, i) => !i || v > c[i - 1]), 'cuts = 5 strictly increasing score thresholds');
+  const a = f.looAnchors;
+  ok(a && ['easy', 'hard3', 'hard4'].every(k => Array.isArray(a[k]) && a[k].length === 2 && a[k][0] <= a[k][1]), 'fit.looAnchors = { easy, hard3, hard4 } as [hits, total]');
+});
+t('playlog: a trace counts cells drawn and taken back, with the real rules; pushes - undone = cells left on the board', () => {
+  const p = makePuzzle(3); p.cp[0] = 1; p.cp[8] = 2;
+  const path = [], tr = newTrace(), mv = c => { const b = path.length, k = step(p, path, c, { truncate: true }); traceStep(tr, k, b, path.length); return k; };
+  eq([0, 1, 2, 5].map(mv), ['push', 'push', 'push', 'push']);
+  eq(mv(2), 'pop', 'one-step undo');
+  eq([5, 4, 3].map(mv), ['push', 'push', 'push']);
+  eq(mv(1), 'trunc', 'cut back to an earlier cell');
+  eq(mv(8), null, 'a blocked move is not counted');
+  eq({ pushes: tr.pushes, undone: tr.undone, maxUndone: tr.maxUndone, backtracks: tr.backtracks, resets: tr.resets }, { pushes: 7, undone: 5, maxUndone: 4, backtracks: 2, resets: 0 });
+  eq(tr.pushes - tr.undone, path.length, 'pushes - undone = cells on the board');
+  traceClear(tr, path.length);
+  eq([tr.resets, tr.undone, tr.backtracks], [1, 7, 3], 'the reset button takes back everything drawn');
+  traceClear(tr, 0); eq(tr.resets, 1, 'resetting an empty path counts nothing');
+});
+t('playlog: consecutive one-step undos are one take-back action; maxUndone is the deepest one', () => {
+  const tr = newTrace();
+  for (let i = 0; i < 6; i++) traceStep(tr, 'push', i, i + 1);
+  for (let i = 0; i < 3; i++) traceStep(tr, 'pop', 6 - i, 5 - i); // one run of 3
+  traceStep(tr, 'push', 3, 4); traceStep(tr, 'pop', 4, 3);        // a second run of 1
+  eq([tr.backtracks, tr.undone, tr.maxUndone], [2, 4, 3]);
+});
+ta('playlog: records keep the puzzle text, raw time and counts; the stored list is capped, survives a reload and a corrupt value', async () => {
+  const p = makePuzzle(3); p.cp[0] = 1; p.cp[8] = 2;
+  const tr = newTrace(); traceStep(tr, 'push', 0, 1);
+  const rec = buildRecord(p, tr, { ms: 12345.6, solved: true, hints: 1, mode: 'gotd', at: 7 });
+  eq([rec.n, rec.ms, rec.solved, rec.hints, rec.mode, rec.pushes, rec.at], [3, 12346, true, 1, 'gotd', 1, 7]);
+  eq(serialize(parse(rec.key)), serialize(p), 'the key is the puzzle text the ratings and tools use');
+  const st = fakeStorage(), log = createPlayLog(st, 2);
+  await Promise.all([log.add({ id: 1 }), log.add({ id: 2 }), log.add({ id: 3 })]);
+  eq((await log.all()).map(r => r.id), [2, 3], 'concurrent adds are all kept, then the oldest is dropped past the cap');
+  eq((await createPlayLog(st, 2).all()).map(r => r.id), [2, 3], 'a new log object reads the same list back');
+  eq(JSON.parse(await log.exportJson()).length, 2, 'export is the JSON list');
+  await st.set(PLAYLOG_KEY, '{not json');
+  eq(await createPlayLog(st).all(), [], 'a corrupt value reads as an empty log');
+});
+ta('playlog-eval: runs end to end on a small play log and prints the metrics and the badge table', async () => {
+  const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path'), { spawnSync } = await import('node:child_process');
+  const rated = JSON.parse(fs.readFileSync(new URL('../tools/ratings.json', import.meta.url))).filter(r => parse(r.key).n <= 6).slice(0, 6);
+  ok(rated.length >= 4, 'the ratings hold enough small puzzles for the smoke test');
+  const recs = rated.flatMap((r, i) => [0, 1].map(k => { const p = parse(r.key), T = p.n * p.n; return { v: 1, key: r.key, n: p.n, ms: 4000 + 900 * i + 300 * k, solved: true, hints: 0, mode: 'local', pushes: T + i, undone: i, maxUndone: i, backtracks: i ? 1 : 0, resets: 0, at: i * 2 + k + 1 }; }));
+  recs.push({ ...recs[0], solved: false, at: 99 });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'playlog-')), f = path.join(dir, 'playlog.json'); fs.writeFileSync(f, JSON.stringify(recs));
+  const r = spawnSync(process.execPath, [new URL('../tools/playlog-eval.mjs', import.meta.url).pathname, f, '--cap', '20000', '--min-solved', '5'], { encoding: 'utf8' });
+  fs.rmSync(dir, { recursive: true, force: true });
+  eq(r.status, 0, r.stderr);
+  ok(r.stdout.includes(`${recs.length} records`) && r.stdout.includes('1 abandoned') && r.stdout.includes('grade:trap') && r.stdout.includes('by Play badge'), r.stdout.slice(0, 400));
+  ok(!/NaN|undefined/.test(r.stdout.replace(/—/g, '')), 'no NaN/undefined in the output');
+});
+t('trap: grade = number of cuts reached; no cuts = the old round(); size caps apply on top', () => {
+  const cuts = { cuts: [1, 2, 3, 4, 5] };
+  eq([-3, 0.99, 1, 2.5, 4.99, 5, 9].map(v => trapGradeOf(v, cuts)), [0, 0, 1, 2, 4, 5, 5], 'count of cuts <= score, clamped 0..5');
+  eq([-3, 0.4, 0.5, 2.49, 5.4, 9].map(v => trapGradeOf(v, {})), [0, 0, 1, 2, 5, 5], 'a model without cuts rounds, as before');
+  eq([[5, 5], [5, 1], [6, 5], [6, 3], [7, 5], [11, 5]].map(([n, g]) => capGradeBySize(g, n)), [SIZE_GRADE_CAP[5], 1, SIZE_GRADE_CAP[6], 3, 5, 5], '5x5 <= 2, 6x6 <= 3, larger sizes uncapped');
+  ok(SIZE_GRADE_CAP[5] === 2 && SIZE_GRADE_CAP[6] === 3, 'the agreed caps');
+});
+t('trap: lTr = log(1 + ladder trials), capped by TRAP_CFG.ladderWorkCap, is part of the model and of every result', () => {
+  ok(TRAP_MODEL.features.includes('lTr'), 'the model uses lTr');
+  const p = makePuzzle(5); // any solvable board: 1 at the start, 2 at the end
+  p.cp[0] = 1; p.cp[24] = 2;
+  const m = trapMetrics(p);
+  ok(m.ok && Number.isInteger(m.ladTrials) && m.ladTrials >= 0, 'ladTrials is a count');
+  ok(Math.abs(m.lTr - Math.log1p(m.ladTrials)) < 1e-12, 'lTr = log1p(ladTrials)');
+  eq(ladderTrials(p), m.ladTrials, 'ladderTrials() gives the same count');
+  ok(m.grade <= SIZE_GRADE_CAP[5], 'a 5x5 stays at or below its cap');
+  ok(m.gradeUncapped >= m.grade, 'the cap only lowers');
 });
 // The design panel is DOM code, but its HTML building is plain string work: run the real "Compute diagnostics" path against a
 // minimal fake element. (A missing TRAP_MODEL.fit once threw here, in the browser only, because nothing rendered the panel.)
@@ -1402,7 +1473,6 @@ t('trap: no solution -> { ok:false } instead of a made-up grade; grade clamps to
   const p = makePuzzle(4); p.cp[0] = 1; p.cp[15] = 2; p.cp[5] = 3; // 1 -> 2 -> 3 order cannot be a Hamiltonian path here
   const r = trapMetrics(p);
   ok(!r.ok && typeof r.reason === 'string', 'unsolvable puzzle reports why');
-  eq([-3, 0.4, 0.5, 2.49, 5.4, 9].map(trapGradeOf), [0, 0, 1, 2, 5, 5]);
   eq(trapPredict({ trapMax: 0, trapTop3: 0, altFrac: 0 }, { features: ['trapMax'], mean: { trapMax: 0 }, sd: { trapMax: 2 }, w: { trapMax: 1 }, b: 1 }), 1);
 });
 

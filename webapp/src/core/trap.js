@@ -17,30 +17,44 @@
 // solve). Puzzles that are one long forced corridor are easy for humans even when the solver's tree
 // is large (rho -0.54 vs human on the same sample).
 //
-// The grade is a small ridge model over [trapMax, trapTop3, altFrac] fitted to hand ratings (see
-// TRAP_MODEL). Few labels, features picked on the same sample: treat it as a hypothesis to keep testing
-// via the design app's rating log, and refit with tools/fit-trap.mjs as ratings accumulate.
+// Also used: lTr = log(1 + ladTrials), where ladTrials = how many what-if guesses the technique ladder
+// (ladder.js) needed. Its median over the hand ratings climbs with the rating (24 / 44 / 62 / 442 for
+// ratings 0 / 1 / 2 / >=3.5), so it separates the easy puzzles that trapMax and altFrac cannot.
+//
+// The score is a small ridge model over [trapMax, trapTop3, altFrac, lTr] fitted to hand ratings (see
+// TRAP_MODEL); the grade is that score cut at TRAP_MODEL.cuts (also fitted), then capped by size
+// (SIZE_GRADE_CAP). Few labels, features picked on the same sample: treat it as a hypothesis to keep
+// testing via the design app's rating log, and refit with tools/fit-trap.mjs as ratings accumulate.
 import { solve } from './solver/solve.js';
+import { ladder } from './ladder.js';
 import { buildNeighbors } from './solver/prune.js';
 import { isSolved } from './rules.js';
 import { REF_FLAGS } from './difficulty.js';
 
-export const TRAP_CFG = { cap: 1000, obvious: 3, shallow: 30, points: [0, 1, 3, 5] };
+// ladderWorkCap: the ladder gives up after this many edge assignments (a few hundred ms at worst; 2 of the
+// 89 rated puzzles, both n >= 10, hit it). A capped run still reports the trials it made, a lower bound.
+export const TRAP_CFG = { cap: 1000, obvious: 3, shallow: 30, points: [0, 1, 3, 5], ladderWorkCap: 1e5 };
+
+// Hard ceiling of the grade by board size (a 5x5 never grades above 2, a 6x6 never above 3).
+export const SIZE_GRADE_CAP = { 5: 2, 6: 3 };
 
 // Ridge weights fitted to hand ratings. Do not edit by hand: `node tools/fit-trap.mjs <ratings.json> --write`
 // rewrites everything between the two marker comments (weights + `fit` = how many ratings and how well it did).
-// pred = b + sum w[k] * (x[k]-mean[k])/sd[k] is on the human 0-5 scale, so grade = clamp(round(pred), 0, 5):
-// no quantile buckets. The ratings so far cover sizes 5-11 only. `fit.looRho` / `fit.looMae` are
-// leave-one-out figures (optimistic: the feature set was chosen on the same ratings). The fit rarely leaves
-// 0.6..3.4, so grades 0, 4 and 5 are seldom produced (few hard labels so far; 0 and 1 look alike to these features).
+// pred = b + sum w[k] * (x[k]-mean[k])/sd[k] is on the human 0-5 scale; grade = how many of `cuts` pred has
+// reached (clamped to 0-5; no `cuts` = round(pred), the old rule). Rounding a ridge fit can never reach 0, 4
+// or 5 (it shrinks toward the mean), so the cuts are fitted instead, with the anchor ratings (<= 0.5 or
+// >= 3.5, the ones trusted most) weighted double. The ratings so far cover sizes 5-11 only. `fit.looRho` /
+// `fit.looMae` / `fit.looAnchors` are leave-one-out figures (optimistic: the feature set was chosen on the
+// same ratings).
 // <TRAP_MODEL>
 export const TRAP_MODEL = {
-  features: ['trapMax', 'trapTop3', 'altFrac'],
-  mean: { trapMax: 5.6404, trapTop3: 12.0449, altFrac: 0.5681 },
-  sd: { trapMax: 3.0547, trapTop3: 5.894, altFrac: 0.0815 },
-  w: { trapMax: 0.2263, trapTop3: 0.3277, altFrac: -0.4107 },
-  b: 1.7556,
-  fit: { n: 89, lambda: 10, looRho: 0.64, looMae: 0.78 },
+  features: ['trapMax', 'trapTop3', 'altFrac', 'lTr'],
+  mean: { trapMax: 5.5889, trapTop3: 11.9444, altFrac: 0.5668, lTr: 3.9612 },
+  sd: { trapMax: 3.0764, trapTop3: 5.9374, altFrac: 0.082, lTr: 2.1831 },
+  w: { trapMax: 0.2132, trapTop3: 0.2134, altFrac: -0.4289, lTr: 0.2697 },
+  b: 1.7472,
+  cuts: [0.8782, 1.515, 2.1519, 2.7888, 3.4257],
+  fit: { n: 90, lambda: 10, looRho: 0.64, looMae: 0.82, cuts: 'anchors', looAnchors: { easy: [8,17], hard3: [7,11], hard4: [3,11] } },
 };
 // </TRAP_MODEL>
 
@@ -49,7 +63,12 @@ export function trapPredict(m, model = TRAP_MODEL) {
   for (const k of model.features) s += model.w[k] * (m[k] - model.mean[k]) / model.sd[k];
   return s;
 }
-export const trapGradeOf = pred => Math.max(0, Math.min(5, Math.round(pred)));
+// Grade of a score: the number of model.cuts it has reached, or round(pred) when the model has no cuts.
+export function trapGradeOf(pred, model = TRAP_MODEL) {
+  const g = model.cuts ? model.cuts.filter(c => pred >= c).length : Math.round(pred);
+  return Math.max(0, Math.min(5, g));
+}
+export const capGradeBySize = (grade, n) => Math.min(grade, SIZE_GRADE_CAP[n] ?? 5);
 
 // The puzzle's solution path: the generator's own (p.path) when valid, else one first-solution solve.
 // null when none is found within `cap` nodes.
@@ -79,10 +98,14 @@ export function trapProfile(p, path, cfg = TRAP_CFG) {
   return out;
 }
 
+// The ladder's probe-trial count (what-if guesses), 0 for a degenerate puzzle the ladder rejects.
+export const ladderTrials = (p, cfg = TRAP_CFG) => ladder(p, { workCap: cfg.ladderWorkCap }).probeTrials ?? 0;
+
 const alternativePoints = (w, cfg) => w.capped ? cfg.points[3] : w.sub <= cfg.obvious ? cfg.points[0] : w.sub <= cfg.shallow ? cfg.points[1] : cfg.points[2];
 
 // All trap metrics from a profile. `steps` = per-step scores, worst first.
-export function trapMetricsFromProfile(p, path, profile, cfg = TRAP_CFG) {
+// `ladTrials` (optional) = the ladder's probe-trial count when the caller already ran it; else it runs here.
+export function trapMetricsFromProfile(p, path, profile, cfg = TRAP_CFG, ladTrials = undefined) {
   const T = p.n * p.n, byStep = new Map();
   for (const w of profile) {
     const s = byStep.get(w.i) || { i: w.i, score: 0, worst: null };
@@ -98,8 +121,11 @@ export function trapMetricsFromProfile(p, path, profile, cfg = TRAP_CFG) {
     trapDeep: steps.filter(s => s.score >= cfg.points[3]).length,
     alternatives: profile.length, nonUnique: profile.nonUnique, steps,
   };
+  m.ladTrials = ladTrials ?? ladderTrials(p, cfg);
+  m.lTr = Math.log1p(m.ladTrials);
   m.predicted = trapPredict(m);
-  m.grade = trapGradeOf(m.predicted);
+  m.gradeUncapped = trapGradeOf(m.predicted);
+  m.grade = capGradeBySize(m.gradeUncapped, p.n);
   return m;
 }
 

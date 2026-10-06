@@ -124,7 +124,7 @@ const times = entries.map(e => ({ ...e, ms: timeAt(e.h) })).sort((x, y) => x.ms 
 const cutTimes = picked.cut.map(e => ({ ...e, ms: timeAt(e.h) }));
 const ms = times.map(t => t.ms), bins = ms.map(binOf);
 console.log(`${day}: ${puzzle.n}x${puzzle.n}${f._capped ? ', reference solve capped: solver metrics skipped' : ''} -> ${times.length} seed players (h = difficulty on the 0-5 scale of the hand ratings)`);
-for (const t of times) console.log(`  ${(t.ms / 1000).toFixed(1).padStart(7)} s  h ${t.h.toFixed(2)}  ${t.role.padEnd(5)} ${t.id}${t.id === BADGE ? '  (production grade, Play badge before rounding)' : ''}`);
+for (const t of times) console.log(`  ${(t.ms / 1000).toFixed(1).padStart(7)} s  h ${t.h.toFixed(2)}  ${t.role.padEnd(5)} ${t.id}${t.id === BADGE ? '  (production grade, Play badge before it is cut into a grade)' : ''}`);
 if (cutTimes.length) {
   console.log('not played: of the candidates behind the top 3 (skill >= threshold) the lowest and the highest h of THIS puzzle are dropped, whatever their skill rank:');
   for (const t of cutTimes) {
