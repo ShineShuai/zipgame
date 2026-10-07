@@ -1,6 +1,6 @@
 // Runs in the browser (open test/index.html via a local server) and in Node (node test/tests.js). No dependencies.
 import { makePuzzle, clonePuzzle, validate, maxNumber, ALGO_VERSION, endCell, checkpointCells } from '../src/core/model.js';
-import { edgeId, edgeCells, allEdges, edgeToKey, keyToEdge, setWallId, hasWallId, wallCount } from '../src/core/edges.js';
+import { edgeId, edgeCells, allEdges, edgeToKey, keyToEdge, setWallId, hasWallId, wallCount, wallIds } from '../src/core/edges.js';
 import { serialize, parse } from '../src/core/format.js';
 import { makeRng, dailySeed, hashStr, shuffle } from '../src/core/rng.js';
 import { newStat, updateStat, statSummary } from '../src/core/stats.js';
@@ -38,6 +38,7 @@ import { checkpointPositions, segmentCrossCount, segmentOverlapCount, spatialMet
 import { gradesFor, gradesFromMetrics, playGradesFor, GRADE_ORDER } from '../src/core/grades.js';
 import { combinedScore, COMBINED_ZSCORE } from '../src/core/gen/calibration.js';
 import { solutionPath, trapProfile, trapMetrics, trapGradeOf, trapPredict, capGradeBySize, SIZE_GRADE_CAP, ladderTrials, TRAP_CFG, TRAP_MODEL } from '../src/core/trap.js';
+import { generateTargeted, targetBand, maxTargetGrade, missOf, proposalBudget, TARGET_CFG } from '../src/core/gen/target.js';
 import { mountDifficultyPanel } from '../src/apps/design/difficulty-panel.js';
 import { ratingKey, ratingFromSelection, leanOf, describeRating, toRatingsJson, parseRatingsJson, mergeRatings, parseRatingComment, ratingWeight, UNSURE_WEIGHT, symmetryKey, findDuplicateGroups, transformPuzzle, asciiPuzzle, keyDifference } from '../src/core/ratings-io.js';
 import { parsePairsJson, toPairsJson, mergePairs, pairAccuracy, impliedPairs, flipCmp, pairKeyOf } from '../src/core/pairs-io.js';
@@ -1372,6 +1373,61 @@ function renderDiagnostics(p) {
   mountDifficultyPanel(el, () => p, () => undefined).run();
   return el._html;
 }
+// ---- targeted generation (core/gen/target.js): written against the CURRENT trap model, so a refit (fit-trap.mjs --write) needs no edit here ----
+t('target: the band of a grade is read from the model cuts; open at both ends; the size cap makes a lower grade the top one', () => {
+  const m = { cuts: [1, 2, 3, 4, 5] }; // spacing 1, margin 0.15
+  const b0 = targetBand(0, 9, m), b2 = targetBand(2, 9, m), b5 = targetBand(5, 9, m);
+  eq([b0.lo, b0.hi, b0.a, b0.b], [-Infinity, 1, -Infinity, 0.85]);
+  eq([b2.lo, b2.hi, b2.a, b2.b].map(x => +x.toFixed(2)), [2, 3, 2.15, 2.85]);
+  eq([b5.lo, b5.hi, b5.a, b5.b].map(x => +x.toFixed(2)), [5, Infinity, 5.15, Infinity]);
+  eq([maxTargetGrade(5, m), maxTargetGrade(6, m), maxTargetGrade(9, m), maxTargetGrade(9, {})], [SIZE_GRADE_CAP[5], SIZE_GRADE_CAP[6], 5, 5]);
+  const c5 = targetBand(5, 5, m); // a 5x5 never shows more than SIZE_GRADE_CAP[5], so that grade is open above
+  eq([c5.grade, c5.hi], [SIZE_GRADE_CAP[5], Infinity]);
+  const narrow = targetBand(1, 9, { cuts: [1, 1.1, 3, 4, 5] }); // a fitted band thinner than the margin shrinks it to 30% per side
+  eq([narrow.a, narrow.b].map(x => +x.toFixed(2)), [1.03, 1.07]);
+  eq([missOf(0.5, b2), missOf(2.5, b2), missOf(3.4, b2)].map(x => +x.toFixed(2)), [1.65, 0, 0.55]);
+});
+t('target: generateTargeted is deterministic and returns a unique puzzle whose reported grade is its trap grade', () => {
+  for (const [n, g, seed] of [[6, 1, 1], [7, 3, 2]]) {
+    const a = runSync(generateTargeted(n, g, seed)), b = runSync(generateTargeted(n, g, seed));
+    ok(a.puzzle && a.unique, 'a puzzle');
+    eq(serialize(a.puzzle), serialize(b.puzzle), 'same seed + target = same puzzle');
+    const r = solve(a.puzzle, { limit: 2, nodeCap: 300000, ...REF_FLAGS });
+    ok(r.count === 1 && !r.exceeded, 'unique'); ok(isSolved(a.puzzle, a.puzzle.path), 'its path is the solution');
+    const m = trapMetrics(a.puzzle);
+    eq(m.grade, a.grade, 'reported grade = the Play badge grade'); ok(Math.abs(m.predicted - a.pred) < 1e-9, 'reported score = trapPredicted');
+    eq(a.hit, a.grade === a.target); eq(a.puzzle.seed, seed);
+    const Kmin = Math.max(4, n), Kmax = Math.max(Kmin + 1, Math.round(n * n / 4));
+    ok(a.K >= Kmin && a.K <= Kmax && a.K === maxNumber(a.puzzle), `K ${a.K} stays in generate()'s range ${Kmin}..${Kmax}`);
+  }
+});
+t('target: every grade the generator can show is reachable (this is what to look at after a refit: node tools/target-eval.mjs)', () => {
+  let hit = 0, total = 0;
+  for (const g of [0, 1, 2, 3]) for (const seed of [1, 2]) { const r = runSync(generateTargeted(7, g, seed * 31 + g)); total++; if (r.hit) hit++; }
+  ok(hit >= 0.75 * total, `${hit}/${total} targets hit at 7x7, grades 0-3`);
+});
+t('target: wall-minimal mode keeps only needed walls and the reported grade is the grade of that puzzle; a time cap stops the search and returns the closest puzzle', () => {
+  const r = runSync(generateTargeted(7, 3, 4)), p = r.puzzle;
+  ok(r.minimal === true, 'minimal by default');
+  for (const w of wallIds(p)) { // dropping any single wall must give a second solution (or an undecided check): the wall is needed
+    const q = clonePuzzle(p); setWallId(q.walls, w, false);
+    ok(solve(q, { limit: 2, nodeCap: 300000, ...REF_FLAGS }).count !== 1, 'a wall of the result is not needed');
+  }
+  eq(trapMetrics(p).grade, r.grade, 'grade read on the stripped puzzle');
+  const off = runSync(generateTargeted(7, 3, 4, { minimize: false }));
+  ok(off.minimal === false && validate(off.puzzle).ok, 'minimize:false = the first version');
+  const t0 = performance.now(), c = runSync(generateTargeted(9, 5, 3, { maxMs: 400 }));
+  ok(performance.now() - t0 < 3000, 'a 400 ms time cap ends the run soon (the cap is checked between tried changes, one can take a while)');
+  ok(c.puzzle && validate(c.puzzle).ok && c.elapsedMs >= 0 && typeof c.timedOut === 'boolean', 'the closest puzzle is returned with its time info');
+});
+t('target: a grade the size cannot show is clamped (5x5 <= its cap), the budget scales with effort, events report progress', () => {
+  const events = [], r = runSync(generateTargeted(5, 5, 7, { effort: 0.5 }), e => events.push(e));
+  eq([r.requested, r.target], [5, SIZE_GRADE_CAP[5]]); ok(r.grade <= SIZE_GRADE_CAP[5], 'capped grade');
+  ok(r.proposals <= proposalBudget(5, 0.5) + 2, 'stays within the proposal budget');
+  ok(proposalBudget(7, 2) > proposalBudget(7, 1) && proposalBudget(7, 1) > proposalBudget(5, 1), 'budget grows with effort and size');
+  ok(events.length > 0 && events.every(e => e.frac >= 0 && e.frac <= 1 && e.target === r.target), 'events: frac in 0..1, target');
+  ok(events.every((e, i) => i === 0 || e.frac >= events[i - 1].frac), 'progress never goes back');
+});
 t('design panel: Compute diagnostics renders trap + ladder sections without NaN/undefined', () => {
   const html = renderDiagnostics(cachedSamples()[0]);
   ok(html.includes('Trap grade (candidate)') && html.includes('Technique ladder (candidate)'), 'both sections');

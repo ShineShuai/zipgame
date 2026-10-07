@@ -6,6 +6,7 @@ import { solve } from '../../core/solver/solve.js';
 import { step } from '../../core/rules.js';
 import { randomPathPuzzle, generateUnique, generate, CAPPED_TRIES } from '../../core/gen/generate.js';
 import { minimizeFully } from '../../core/gen/walls.js';
+import { generateTargeted, targetBand, maxTargetGrade } from '../../core/gen/target.js';
 import { scatter } from '../../core/gen/checkpoints.js';
 import { cellAtPoint } from '../../view/geometry.js';
 import { runAsync, measured } from '../../platform/run.js';
@@ -49,7 +50,7 @@ function currentTiming(kind) {
   const entry = timing[kind];
   return entry && entry.text === puzzleText() ? entry : null;
 }
-const fmtMs = ms => `${ms.toFixed(1)} ms`;
+const fmtMs = ms => (ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${ms.toFixed(1)} ms`);
 function renderTiming() {
   const parts = [];
   for (const [kind, label] of [['gen', 'Generate'], ['solve', 'Solve']]) {
@@ -133,8 +134,20 @@ function updateWallCapTag() {
 }
 function setBusy(b) { busy = b; document.querySelectorAll('button').forEach(x => { x.disabled = b; }); }
 function adopt(q) { P = { n: q.n, cp: q.cp, walls: q.walls }; preview = q.path || null; previewVisible = true; selected = -1; buffer = ''; }
-function setDefaults(n) { $('cpCount').max = n * n; $('cpCount').value = n; $('wallCount').value = n; updateWallCapTag(); } // max checkpoints / max walls default to the grid size
+function setDefaults(n) { $('cpCount').max = n * n; $('cpCount').value = n; $('wallCount').value = n; updateWallCapTag(); updateTargetGrades(); } // max checkpoints / max walls default to the grid size
 function refresh() { clearSolutions(); draw(); renderLegend(); updateWallCapTag(); }
+
+// ---------- target grade generator ----------
+// A size caps the grade (core/trap.js SIZE_GRADE_CAP), so grades above it are not offered; the hover text shows the trap-score
+// band of the chosen grade, read from the current trap model (so it follows a refit).
+const fmtScore = x => (Number.isFinite(x) ? x.toFixed(2) : x > 0 ? '∞' : '-∞');
+function updateTargetGrades() {
+  const sel = $('targetGrade'), top = maxTargetGrade(P.n);
+  [...sel.options].forEach(o => { o.disabled = +o.value > top; });
+  if (+sel.value > top) sel.value = String(top);
+  const b = targetBand(+sel.value, P.n);
+  sel.title = `Grade ${b.grade} at ${P.n}×${P.n} = trap score from ${fmtScore(b.lo)} up to ${fmtScore(b.hi)} (the search aims at ${fmtScore(b.a)} to ${fmtScore(b.b)}). The highest grade offered for this size is ${top}.`;
+}
 
 function updateValidity() {
   const v = validate(P), el = $('validity');
@@ -541,6 +554,29 @@ $('randPathUnique').onclick = async () => {
       // Neither found a unique puzzle — do not adopt either fallback as if it were a real result.
       setStatus(`${summary} Neither run found a unique puzzle within ${tries} retries and ≤ ${plural(W, 'wall')} — board left unchanged. Try again, raise Search retries, or raise Max walls / Max checkpoints.`, 'error');
     }
+  } finally { setBusy(false); }
+};
+$('targetGrade').onchange = updateTargetGrades;
+$('genTarget').onclick = async () => {
+  if (playMode) exitPlay();
+  const grade = +$('targetGrade').value, seed = currentSeed(), effort = Math.max(0.1, parseFloat($('targetEffort').value) || 1);
+  const capS = parseFloat($('targetTime').value), maxMs = Number.isFinite(capS) && capS > 0 ? capS * 1000 : 0, minimize = $('targetMinimize').checked;
+  setBusy(true); setStatus(`Searching for a grade ${grade} puzzle…`, '');
+  $('compareResult').style.display = 'none';
+  try {
+    const clock = { ms: 0 };
+    const r = await runAsync(measured(generateTargeted(P.n, grade, seed, { effort, maxMs, minimize }), clock), {
+      onEvent: e => setStatus(`Searching for a grade ${e.target} puzzle… ${e.phase === 'start' ? 'building a start puzzle' : `${plural(e.proposals, 'change')} tried`}${e.grade != null ? ` · best so far: grade ${e.grade} (score ${e.pred.toFixed(2)}, ${plural(e.walls, 'wall')})` : ''}${e.restarts ? ` · ${plural(e.restarts, 'restart')}` : ''} · ${fmtMs(e.elapsedMs)}${maxMs ? ` of ${fmtMs(maxMs)}` : ''}`, ''),
+    });
+    if (!r.puzzle) { setStatus(`Could not build a unique start puzzle at ${P.n}×${P.n} (seed ${seed}). Try another seed.`, 'error'); return; }
+    adopt(r.puzzle);
+    setTiming('gen', clock.ms);
+    refresh();
+    const found = `grade ${r.grade} (trap score ${r.pred.toFixed(2)}; grade ${r.target} is ${fmtScore(r.lo)} to ${fmtScore(r.hi)}) in ${fmtMs(clock.ms)}, after ${plural(r.proposals, 'change')} and ${plural(r.restarts, 'start')}: ${plural(r.K, 'checkpoint')}, ${plural(r.walls, 'wall')}${r.minimal ? ' (every wall needed)' : ''}. Seed ${seed}, ${maxMs ? `time cap ${fmtMs(maxMs)}` : `effort ${effort}`}. The template is shown dashed.`;
+    const clamped = r.requested !== r.target ? ` (grade ${r.requested} is not possible at ${P.n}×${P.n}; aimed at ${r.target})` : '';
+    if (r.hit) setStatus(`Target reached${clamped}: ${found}`, 'ok');
+    else setStatus(`Target grade ${r.target} not reached${clamped}${r.timedOut ? ' within the time cap' : ''}. Closest: ${found} ${maxMs ? 'Raise the time cap' : 'Raise Search effort or set a time cap'}, or try another seed.`, 'warn');
+    difficultyPanel.run();
   } finally { setBusy(false); }
 };
 $('reproducePlay').onclick = async () => {

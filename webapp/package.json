@@ -15,6 +15,7 @@
     "test:bench": "node --test bench/results.test.js",
     "golden": "node test/print-golden.js",
     "gotd:fit": "node tools/gotd-fit.mjs",
+    "target:eval": "node tools/target-eval.mjs",
     "gotd:seed": "node tools/gotd-seed.mjs --dry-run"
   }
 }
