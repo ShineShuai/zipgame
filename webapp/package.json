@@ -14,6 +14,7 @@
     "bench:report": "node bench/report.mjs",
     "test:bench": "node --test bench/results.test.js",
     "golden": "node test/print-golden.js",
+    "share:decode": "node tools/share-decode.mjs",
     "gotd:fit": "node tools/gotd-fit.mjs",
     "gotd:seed": "node tools/gotd-seed.mjs --dry-run"
   }

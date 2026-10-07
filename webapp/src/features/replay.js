@@ -47,6 +47,13 @@ export function createReplay(storage, store, now = () => new Date()) {
       credit.used++; await save();
       return true;
     },
+    // Same as begin() for a Game of Day opened from a share link: the link is the ticket, so no chance is spent.
+    // Same window and once-per-date rules; false = refused (outside the window, already played, or not initialised).
+    async beginShared(date) {
+      if (!credit || !replay.dates().includes(date) || await store.loadAttempt(date)) return false;
+      await store.saveAttempt(date, { solved: false, time: null });
+      return true;
+    },
     // A Game of Day was solved for the first time (live or replay).
     async addSolved() { if (!credit) return; credit.solved++; await save(); },
   };
