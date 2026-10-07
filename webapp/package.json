@@ -16,6 +16,7 @@
     "golden": "node test/print-golden.js",
     "gotd:fit": "node tools/gotd-fit.mjs",
     "target:eval": "node tools/target-eval.mjs",
+    "size:level": "node tools/size-level.mjs",
     "gotd:seed": "node tools/gotd-seed.mjs --dry-run"
   }
 }

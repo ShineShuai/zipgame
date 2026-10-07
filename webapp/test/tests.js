@@ -1,7 +1,7 @@
 // Runs in the browser (open test/index.html via a local server) and in Node (node test/tests.js). No dependencies.
 import { makePuzzle, clonePuzzle, validate, maxNumber, ALGO_VERSION, endCell, checkpointCells } from '../src/core/model.js';
 import { edgeId, edgeCells, allEdges, edgeToKey, keyToEdge, setWallId, hasWallId, wallCount, wallIds } from '../src/core/edges.js';
-import { serialize, parse } from '../src/core/format.js';
+import { serialize, parse, commentTimes } from '../src/core/format.js';
 import { makeRng, dailySeed, hashStr, shuffle } from '../src/core/rng.js';
 import { newStat, updateStat, statSummary } from '../src/core/stats.js';
 import { solve } from '../src/core/solver/solve.js';
@@ -27,7 +27,7 @@ import { createStore } from '../src/features/stats-store.js';
 import { newTrace, traceStep, traceClear, buildRecord, createPlayLog, PLAYLOG_KEY } from '../src/features/playlog.js';
 import { NB, TOP_K, binOf, summarize, statsLine } from '../src/core/hist.js';
 import { parseDays, mergeDays, combineDays, isReplicated } from '../src/core/stats-merge.js';
-import { wls, fitCandidate, predictH, dedupe, isMonotone, selectEntries, pickEntries, fitTime, predictMs, withoutSeeds, TIME_PRIOR, invert, floorMs, needsThinking, aboveFloor, EXTRA_MIN_SKILL } from '../src/core/gotd-model.js';
+import { wls, fitCandidate, predictH, dedupe, isMonotone, selectEntries, pickEntries, fitTime, predictMs, withoutSeeds, TIME_PRIOR, invert, floorMs, needsThinking, aboveFloor, EXTRA_MIN_SKILL, timePoints, fitTimeSize, sizeShift, sizeLevel, localDifficulty, globalDifficulty, localFromGlobal } from '../src/core/gotd-model.js';
 import { barsSvg, linesSvg, histSvg, scatterSvg } from '../src/apps/stats/charts.js';
 import { fetchStats } from '../src/platform/stats-client.js';
 import { createLeaderboard, backendsFromConfig, cloudflareBackend, supabaseBackend, tursoBackend, afterSubmit, submitAttempt, MAX_ROUNDS } from '../src/platform/leaderboard.js';
@@ -2223,6 +2223,36 @@ t('gotd-model: fitTime = prior without data, anchors the level with one day, rec
   const m = fitTime(pts); ok(Math.abs(m.mean[1] - 0.9) < 0.1 && Math.abs(m.mean[2] - 0.6) < 0.05 && Math.abs(Math.exp(m.mean[0]) - 40000) < 3000, JSON.stringify(m.mean));
   ok(m.sd[2] < p0.sd[2] / 3, 'posterior is tighter'); eq(predictMs({ mean: [Math.log(1), 0, 0] }, 7, 1.5), 500); eq(predictMs({ mean: [Math.log(1e9), 0, 0] }, 7, 1.5), 3600000);
   const I = invert([[2, 1, 0], [1, 3, 1], [0, 1, 4]]), P = [[2, 1, 0], [1, 3, 1], [0, 1, 4]].map(r => I[0].map((_, j) => r.reduce((a, v, k) => a + v * I[k][j], 0))); ok(P.every((r, i) => r.every((v, j) => Math.abs(v - +(i === j)) < 1e-12)));
+});
+t('format: commentTimes reads back the times serialize writes, and nothing else', () => {
+  const p = makePuzzle(3), text = serialize(p, { times: { generateMs: 12.34, solveMs: 0, playS: 83.26 } });
+  eq(commentTimes(text), { generateMs: 12.3, solveMs: 0, playS: 83.3 }); eq(commentTimes(serialize(p)), {}); eq(commentTimes('# play_time_s abc\n# note play_time_s 5\nsize 3'), {});
+});
+t('gotd-model: timePoints drops seed players, plays below the floor and thin days; the author time counts once above the floor', () => {
+  const day = (d, n, reals, seeds) => { const all = [...reals, ...seeds], bins = new Array(NB).fill(0); for (const x of all) bins[binOf(x)]++; return { d, n: all.length, sum: all.reduce((a, x) => a + x, 0), bins, best: [], seeds }; };
+  const slow = Array.from({ length: 25 }, (_, i) => 60000 + i * 1000), fast = [3000, 4000, 5000]; // 8x8: floor 32 s
+  const days = [day(1, 8, [...slow, ...fast], [20000, 70000]), day(2, 8, [...fast, ...slow.slice(0, 10)], []), day(3, 5, [...slow.slice(0, 22), 2000], [])];
+  const puzzles = new Map([[1, { n: 8, h: 1.5, authorS: 90 }], [2, { n: 8, h: 1.5, authorS: 20 }], [3, { n: 5, h: 0.2 }], [4, { n: 8, h: 1, authorS: 75 }]]);
+  const { points, skipped } = timePoints(days, puzzles);
+  const d1 = points.find(p => p.day === 1 && p.src === 'players'); eq([d1.count, d1.seeds, d1.real], [25, 2, 28]); ok(d1.dropped === 3, 'the three plays below the floor are dropped');
+  ok(Math.abs(Math.exp(d1.y) / 1000 - 72) < 8, 'median of the 25 valid plays, not of the seeds or the fast ones');
+  ok(skipped.some(s => s.day === 2 && /need 20/.test(s.why)), 'day 2: 10 valid players are too few'); ok(skipped.some(s => s.day === 2 && /below the .*floor/.test(s.why)), 'day 2: author time 20 s is under the floor');
+  const d3 = points.find(p => p.day === 3); eq(d3.count, 23); eq(d3.dropped, 0); // 5x5 grade 0 needs no thinking: nothing is cut
+  eq(points.filter(p => p.src === 'author').map(p => p.day), [1, 4]); eq(timePoints(days, puzzles, { useAuthor: false }).points.filter(p => p.src === 'author').length, 0);
+  eq(timePoints([{ ...days[0], seeds: [5000, 5000, 5000] }], new Map([[1, { n: 8, h: 1.5 }]])).skipped[0].day, 1, 'seeds that do not fit into the aggregate: day skipped');
+});
+t('gotd-model: fitTimeSize = prior without data; recovers the size exponent, the grade slope and a per-size level; global and local difficulty are consistent', () => {
+  const p0 = fitTimeSize([]); eq(p0.mean.map(v => +v.toFixed(6)), TIME_PRIOR.mean.map(v => +v.toFixed(6))); eq(p0.size, {}); eq(p0.author, null);
+  eq([5, 6, 7, 8, 10, 12].map(n => +sizeShift(n, p0.mean).toFixed(2)), [-0.97, -0.44, 0, 0.39, 1.03, 1.56]); // time ~ cells, x2 per grade
+  let s = 5; const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32, gauss = () => Math.sqrt(-2 * Math.log(1 - rnd())) * Math.cos(2 * Math.PI * rnd());
+  const U = { 6: -0.2, 8: 0.3 }, pts = Array.from({ length: 120 }, (_, i) => { const n = 6 + (i % 5), h = rnd() * 4; return { n, h, count: 30, src: 'players', y: Math.log(100000) + 1.2 * Math.log(n * n / 49) + 0.8 * (h - 1.5) + (U[n] || 0) + 0.15 * gauss() }; });
+  const m = fitTimeSize(pts);
+  ok(Math.abs(m.mean[1] - 1.2) < 0.12 && Math.abs(m.mean[2] - 0.8) < 0.08, 'gamma and c: ' + m.mean.map(v => v.toFixed(2)));
+  ok(m.size[8].u > 0.18 && m.size[8].u < 0.4 && m.size[6].u < -0.1 && m.size[6].u > -0.3 && Math.abs(m.size[9].u) < 0.1, 'levels: ' + JSON.stringify(m.size));
+  ok(sizeLevel(m, 8) > 0.2 && sizeLevel(m, 5) === 0, 'level in grades; a size without data has none');
+  const one = fitTimeSize(pts.slice(0, 3)); ok(Math.abs(one.size[6].u) < Math.abs(m.size[6].u) + 0.05, 'with little data the per-size correction stays near 0');
+  for (const n of [6, 8, 10]) for (const h of [0, 2.5, 5]) { const G = globalDifficulty(m, n, h); ok(Math.abs(localFromGlobal(m, n, G) - localDifficulty(m, n, h)) < 1e-12, 'local = global - shift'); ok(Math.abs(G - localDifficulty(m, n, h) - sizeShift(n, m.mean)) < 1e-12); }
+  const withAuthor = fitTimeSize([...pts, { n: 7, h: 1.5, count: 1, src: 'author', y: Math.log(60000) }]); ok(withAuthor.author && Number.isFinite(withAuthor.author.u), 'author times get their own offset');
 });
 
 // ---- Replay of missed Games of Day ----

@@ -3,7 +3,7 @@
 //   2. selectEntries             which candidates become seed players of a day: top 3 + the next 7 without min and max = 3..8
 //   3. withoutSeeds / fitTime    solve time of a puzzle from its grid size N and human-scale difficulty h, learned from the backends
 import { MIN_MS, MAX_MS, binOf } from './hist.js';
-import { spearman } from './stats-merge.js';
+import { spearman, quantile } from './stats-merge.js';
 
 const sum = xs => xs.reduce((a, x) => a + x, 0);
 export const clampH = h => Math.max(0, Math.min(5, h));
@@ -161,3 +161,73 @@ export function withoutSeeds(day) {
   }
   return { d: day.d, n, sum: total, bins, best, seeds: [] };
 }
+
+// ---------- 4. the size effect: local and global difficulty ----------
+// Valid play times of the past Game-of-Day puzzles, one point per day (and one per puzzle author time):
+//   days    = backend days as combineDays makes them ({ d, n, sum, bins, best, seeds })
+//   puzzles = Map(day number -> { n, h, authorS? }): size, human-scale difficulty h (the unrounded Play badge score) and the author's own
+//             play_time_s of the puzzle file, if it has one
+// Excluded with the best knowledge available: the synthetic seed players (withoutSeeds; a day whose seeds do not fit into its aggregate is
+// skipped), and on puzzles that need thinking (needsThinking: larger than 6x6, or grade >= 1) every play below the drawing floor (floorMs,
+// 0.5 s per cell: such a time is a replay or a puzzle played without thinking). A day needs `minReal` players left. The point is the median
+// of the rest (robust against walk-aways and the hour clamp). The author's time is one extra point with count 1 and src 'author' (it gets its
+// own offset in fitTimeSize: the author is not the median player), left out below the floor too.
+// -> { points: [{ day, n, h, y: ln(ms), count, src: 'players' | 'author', seeds, dropped, real }], skipped: [{ day, why }] }
+export function timePoints(days, puzzles, { minReal = TIME_PRIOR.minReal, useAuthor = true } = {}) {
+  const points = [], skipped = [], byDay = new Map(days.map(d => [d.d, d]));
+  for (const [day, info] of [...puzzles].sort((a, b) => a[0] - b[0])) {
+    const { n, h } = info, thinking = needsThinking(n, h), d = byDay.get(day);
+    if (d) {
+      const real = withoutSeeds(d);
+      if (!real) skipped.push({ day, why: 'the seed players do not fit into the aggregate' });
+      else {
+        const cut = thinking ? aboveFloor(real.bins, n) : { bins: real.bins, n: real.n, cut: 0 };
+        if (cut.n < minReal) skipped.push({ day, why: `${cut.n} valid player(s) of ${real.n} real (${d.n - real.n} seed${d.n - real.n === 1 ? '' : 's'}${thinking ? `, floor ${(floorMs(n) / 1000).toFixed(0)} s` : ''}), need ${minReal}` });
+        else points.push({ day, n, h, y: Math.log(quantile(cut.bins, 0.5)), count: cut.n, src: 'players', seeds: d.n - real.n, dropped: cut.cut, real: real.n });
+      }
+    }
+    if (useAuthor && Number.isFinite(info.authorS) && info.authorS > 0) {
+      const ms = info.authorS * 1000;
+      if (thinking && ms < floorMs(n)) skipped.push({ day, why: `author time ${info.authorS.toFixed(1)} s is below the ${(floorMs(n) / 1000).toFixed(0)} s floor` });
+      else points.push({ day, n, h, y: Math.log(ms), count: 1, src: 'author', seeds: 0, dropped: 0, real: 1 });
+    }
+  }
+  return { points, skipped };
+}
+
+// fitTime plus one small correction per grid size and an offset for the authors' own times:
+//   ln(median ms) = alpha + gamma * ln(N^2 / refN^2) + c * (h - refH) + u_N (+ a for an author time)
+// u_N ~ N(0, sizeSd^2): only what the log-linear size trend cannot carry is identifiable, so a size whose puzzles are slower (u > 0) or faster
+// than their grade suggests shows up there, and the trend itself (gamma) is the honest size effect. A uniformly size-biased grading cannot
+// be told from it by times alone and counts as part of gamma. Prior means/sds of alpha, gamma, c are fitTime's.
+// -> { mean: [alpha, gamma, c], sd, size: { N: { u, sd } }, author: { u, sd } | null, points }
+export const SIZE_PRIOR = { sizeSd: 0.2, sourceSd: 1 };
+export function fitTimeSize(points, P = TIME_PRIOR, S = SIZE_PRIOR) {
+  const sizes = [...new Set(points.map(p => p.n))].sort((a, b) => a - b), hasAuthor = points.some(p => p.src === 'author');
+  const k = 3 + sizes.length + (hasAuthor ? 1 : 0), sd0 = [...P.sd, ...sizes.map(() => S.sizeSd), ...(hasAuthor ? [S.sourceSd] : [])];
+  const L = Array.from({ length: k }, (_, i) => Array.from({ length: k }, (_, j) => (i === j ? 1 / sd0[i] ** 2 : 0)));
+  const b = [...P.mean.map((m, i) => m / P.sd[i] ** 2), ...new Array(k - 3).fill(0)];
+  for (const p of points) {
+    const x = [...timeX(p.n, p.h, P), ...sizes.map(s => +(s === p.n)), ...(hasAuthor ? [+(p.src === 'author')] : [])], v = P.tau ** 2 + (1.25 * P.sigma) ** 2 / p.count;
+    x.forEach((xi, i) => { if (xi) { b[i] += xi * p.y / v; x.forEach((xj, j) => { if (xj) L[i][j] += xi * xj / v; }); } });
+  }
+  const cov = invert(L), mean = cov.map(r => sum(r.map((c, j) => c * b[j]))), sd = cov.map((r, i) => Math.sqrt(r[i]));
+  return {
+    mean: mean.slice(0, 3), sd: sd.slice(0, 3), points: points.length,
+    size: Object.fromEntries(sizes.map((s, i) => [s, { u: mean[3 + i], sd: sd[3 + i] }])),
+    author: hasAuthor ? { u: mean[k - 1], sd: sd[k - 1] } : null,
+  };
+}
+
+// Grades are worth c in ln(time), so a size step is worth gamma / c grades:
+//   sizeShift(n)           = (gamma / c) * ln(N^2 / refN^2)       grades of difficulty that the grid size alone adds (negative below refN)
+//   sizeLevel(model, n)    = u_N / c                              grades that this size's puzzles are harder than their badge says (fitted)
+//   localDifficulty(h)     = h + sizeLevel                         the badge, leveled for its size: how hard among puzzles of the SAME size
+//   globalDifficulty(h)    = localDifficulty + sizeShift           comparable across sizes (Game of Day); an open scale, not clamped to 0-5
+//   localFromGlobal(G)     = G - sizeShift                         the way back (what Play local needs)
+// `model` is a fitTimeSize result; with a plain fitTime result or the prior (no `size`), the level is 0.
+export const sizeShift = (n, mean = TIME_PRIOR.mean, P = TIME_PRIOR) => (mean[1] / mean[2]) * Math.log((n * n) / (P.refN * P.refN));
+export const sizeLevel = (model, n) => ((model.size && model.size[n] ? model.size[n].u : 0) / model.mean[2]);
+export const localDifficulty = (model, n, h) => h + sizeLevel(model, n);
+export const globalDifficulty = (model, n, h) => localDifficulty(model, n, h) + sizeShift(n, model.mean);
+export const localFromGlobal = (model, n, G) => G - sizeShift(n, model.mean);
