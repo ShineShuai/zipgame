@@ -21,10 +21,12 @@ import { createHoldReveal } from '../src/ui/hold-reveal.js';
 import { createDaily, utcDayNumber, utcDateString, dateOfDay, fetchGameOfDayFor } from '../src/features/daily.js';
 import { createReplay, GAMES_PER_CHANCE, BACKFILL_DAYS } from '../src/features/replay.js';
 import { REPLAY_DAYS } from '../src/core/hist.js';
-import { EN, ZH } from '../src/ui/i18n.js';
+import { EN, ZH, t as tr } from '../src/ui/i18n.js';
 import { HINT_PENALTY_S, penalizedTime } from '../src/features/hints.js';
 import { createStore } from '../src/features/stats-store.js';
 import { newTrace, traceStep, traceClear, buildRecord, createPlayLog, PLAYLOG_KEY } from '../src/features/playlog.js';
+import { encodeShare, decodeShare, SHARE_VERSION, MAX_LEGS } from '../src/core/share-code.js';
+import { levelOf, legsUndo, legLevels, stripText, dayOfDate, makeShareRecord, shareUrl, parseShareLink, shareText, shareStatus, isPlayable, LEVEL_EMOJI } from '../src/features/share.js';
 import { NB, TOP_K, binOf, summarize, statsLine } from '../src/core/hist.js';
 import { parseDays, mergeDays, combineDays, isReplicated } from '../src/core/stats-merge.js';
 import { wls, fitCandidate, predictH, dedupe, isMonotone, selectEntries, pickEntries, fitTime, predictMs, withoutSeeds, TIME_PRIOR, invert, floorMs, needsThinking, aboveFloor, EXTRA_MIN_SKILL } from '../src/core/gotd-model.js';
@@ -2362,6 +2364,134 @@ ta('stats-store: a replay keeps today\'s record and the per-size Game-of-Day tim
   eq(S.gotdBest(5), { date: '20260929', time: 42.1 }); eq(S.attempt(), { solved: true, time: 42.1, sent: false }); eq(S.attemptDate(), '20260929');
   eq(S.attemptOn('20260920'), { solved: true, time: 9.5, sent: false });
   const S2 = createStore(st, [5]); await S2.hydrate('20260929'); eq(S2.attemptOn('20260920'), null, 'not loaded yet'); eq(await S2.loadAttempt('20260920'), { solved: true, time: 9.5, sent: false });
+});
+
+// ---- Share link: codec, color strip, receiver status, shared replay ----
+const GOTD_REC = { kind: 'gotd', n: 7, grade: 3, timeS: 72.4, day: dayOfDate('20261007'), pct: 83, levels: [0, 0, 1, 0, 3, 2, 0] };
+const LOCAL_REC = { kind: 'local', n: 12, grade: null, timeS: 1234.5, day: dayOfDate('20261007'), index: 41, algo: ALGO_VERSION, levels: [] };
+t('share-code: Game of Day and local records round-trip; codes are URL-safe and short', () => {
+  for (const rec of [GOTD_REC, LOCAL_REC, { ...GOTD_REC, pct: null, grade: null }, { ...GOTD_REC, pct: 0, grade: 0, n: 31 }, { ...LOCAL_REC, index: 1023, levels: Array(MAX_LEGS).fill(3) }]) {
+    const code = encodeShare(rec);
+    ok(/^[A-Za-z0-9_-]+$/.test(code), code);
+    eq(decodeShare(code), rec);
+  }
+  ok(encodeShare(GOTD_REC).length <= 14, 'a Game of Day with 7 legs is at most 14 characters');
+  ok(encodeShare(LOCAL_REC).length <= 16, 'a local game without strip is at most 16 characters');
+  ok(ALGO_VERSION <= 15 && SHARE_VERSION === 1, 'algo version must fit 4 bits: widen the field (and SHARE_VERSION) before bumping past 15');
+});
+t('share-code: time is kept in tenths, clamped at 13107.1 s; a strip longer than 63 legs is dropped', () => {
+  eq(decodeShare(encodeShare({ ...GOTD_REC, timeS: 72.44 })).timeS, 72.4);
+  eq(decodeShare(encodeShare({ ...GOTD_REC, timeS: 1e6 })).timeS, 13107.1);
+  eq(decodeShare(encodeShare({ ...GOTD_REC, levels: Array(MAX_LEGS + 1).fill(1) })).levels, []);
+});
+t('share-code: out-of-range fields are not encoded', () => {
+  for (const bad of [{ n: 1 }, { n: 32 }, { grade: 6 }, { timeS: 0 }, { timeS: NaN }, { day: -1 }, { day: 65536 }, { pct: 101 }, { levels: [4] }, { kind: 'x' }]) eq(encodeShare({ ...GOTD_REC, ...bad }), null, JSON.stringify(bad));
+  for (const bad of [{ index: 1024 }, { algo: 16 }, { algo: -1 }]) eq(encodeShare({ ...LOCAL_REC, ...bad }), null, JSON.stringify(bad));
+  eq(encodeShare(null), null);
+});
+t('share-code: damaged codes are rejected (empty, truncated, extended, foreign characters, mistyped character)', () => {
+  const code = encodeShare(GOTD_REC);
+  for (const bad of ['', null, undefined, 42, code.slice(0, -1), code + 'A', code + 'AA', code.slice(0, 5), code + '=', ' ' + code, 'AAAAAAAAAAAAAA']) eq(decodeShare(bad), null, String(bad));
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  let tried = 0, accepted = 0;
+  for (let i = 0; i < code.length; i++) for (const ch of alphabet) {
+    if (ch === code[i]) continue;
+    tried++;
+    if (decodeShare(code.slice(0, i) + ch + code.slice(i + 1))) accepted++;
+  }
+  ok(accepted / tried < 0.02, `an 8-bit check lets ~0.4% of single-character mistakes through, got ${accepted}/${tried}`);
+});
+t('share: levelOf thresholds and legLevels (K-1 legs; extra legs merge into the last; none for K<2 or too many)', () => {
+  eq([0, 1, 2, 3, 6, 7, 99].map(levelOf), [0, 1, 1, 2, 2, 3, 3]);
+  eq(legLevels([2, , 9], 3), [1, 3]);          // leg 2 (index 2) is beyond K-1 = 2 legs: merged into the last
+  eq(legLevels([], 4), [0, 0, 0]);
+  eq([legLevels([1], 1), legLevels([1], 0), legLevels([], MAX_LEGS + 2)], [[], [], []]);
+  eq(legLevels([], MAX_LEGS + 1).length, MAX_LEGS);
+  eq(stripText([0, 1, 2, 3]), LEVEL_EMOJI.join(''));
+});
+t('share: legsUndo credits every removed cell to the leg it was drawn in (the cell that is checkpoint k+1 closes leg k)', () => {
+  const p = makePuzzle(3); p.cp[0] = 1; p.cp[2] = 2; p.cp[8] = 3;
+  const reset = [], a = [0, 1, 2, 5];
+  legsUndo(reset, p, a, 1);                              // cells 1 and 2 are leg 0 (2 closes it), cell 5 is leg 1
+  eq([reset[0], reset[1]], [2, 1]);
+  const legs = []; legsUndo(legs, p, [0, 1, 4], 2); legsUndo(legs, p, [0, 1], 1);   // two one-step undos inside leg 0
+  eq([legs[0], legs[1]], [2, undefined]);
+  const trunc = []; legsUndo(trunc, p, [0, 1, 2, 5, 4], 3);                          // cut back to the checkpoint: 5 and 4 are leg 1
+  eq([trunc[0], trunc[1]], [undefined, 2]);
+  const none = []; legsUndo(none, p, [0, 1, 2], 3); legsUndo(none, p, [], 0);
+  eq(none.length, 0, 'nothing removed, nothing counted');
+});
+t('share: legsUndo agrees with the play trace (same moves through rules.step: total credited = cells undone)', () => {
+  const p = makePuzzle(3); p.cp[0] = 1; p.cp[2] = 2; p.cp[8] = 3;
+  const path = [], tr = newTrace(), legs = [];
+  for (const c of [0, 1, 4, 1, 0, 3, 6, 7, 4, 1, 2, 5, 4, 5]) {
+    const before = path.length, prev = path.slice(), k = step(p, path, c, { truncate: true });
+    traceStep(tr, k, before, path.length);
+    if (k && k !== 'push') legsUndo(legs, p, prev, path.length);
+  }
+  const credited = legs.reduce((a, v) => a + (v || 0), 0);
+  ok(tr.backtracks === 2 && tr.undone === 5, 'the moves include a run of two undos and a cut back of three cells');
+  eq(credited, tr.undone, 'every cell taken back is credited to some leg (this sequence has no reset, which would also count the start cell)');
+});
+t('share: makeShareRecord -> shareUrl -> parseShareLink round trip; the text carries head, time, percent, strip and the link', () => {
+  const legs = [0, 1, 7];
+  const sorted = o => Object.fromEntries(Object.entries(o).sort()); // key order is not part of the contract
+  const g = makeShareRecord({ gotdDate: '20261007', n: 7, grade: 3, timeS: 72.44, pct: 83, day: null, index: 0, algo: ALGO_VERSION, legs, K: 4 });
+  eq(sorted(g), sorted({ kind: 'gotd', n: 7, grade: 3, timeS: 72.4, levels: [0, 1, 3], day: dayOfDate('20261007'), pct: 83 }));
+  const url = shareUrl('https://x.example/zip/', g);
+  ok(url.startsWith('https://x.example/zip/?s=') && !url.includes('%'), url);
+  const parsed = parseShareLink(new URL(url).search);
+  eq([sorted(parsed.rec), parsed.bad], [sorted(g), false]);
+  eq(shareText(g, url, tr), `Zip · Game of Day 2026-10-07 · 7x7 · Hard 3/5\n⏱ 72.4s · beat 83%\n🟩🟨🟥\n${url}`);
+  const l = makeShareRecord({ gotdDate: null, n: 8, grade: null, timeS: 40, pct: null, day: 20700, index: 2, algo: ALGO_VERSION, legs: [], K: 1 });
+  eq(sorted(l), sorted({ kind: 'local', n: 8, grade: null, timeS: 40, levels: [], day: 20700, index: 2, algo: ALGO_VERSION }));
+  eq(shareText(l, 'U', tr), 'Zip · 8x8 · game #3\n⏱ 40.0s\nU');
+  eq(parseShareLink(''), { rec: null, bad: false });
+  eq(parseShareLink('?s=garbage'), { rec: null, bad: true });
+  eq(sorted(parseShareLink('?lb=x&s=' + encodeShare(l)).rec), sorted(l));
+  eq(dayOfDate(dateOfDay(20733)), 20733);
+});
+t('share: shareStatus = what the receiver may do (live / replay / ok) or why not', () => {
+  const clock = atDay(19), today = utcDayNumber(clock()), window = Array.from({ length: REPLAY_DAYS }, (_, i) => dateOfDay(today - 1 - i));
+  const ctx = (attempt = null) => ({ today, replayDates: window, attempt, algo: ALGO_VERSION, sizes: PLAY_SIZES });
+  const day = k => ({ ...GOTD_REC, day: today - k });
+  eq(shareStatus(day(0), ctx()).status, 'live');
+  eq(shareStatus(day(1), ctx()).status, 'replay');
+  eq(shareStatus(day(REPLAY_DAYS), ctx()).status, 'replay');
+  eq(shareStatus(day(REPLAY_DAYS + 1), ctx()).status, 'old');
+  eq(shareStatus(day(-1), ctx()).status, 'future');
+  eq(shareStatus(day(0), ctx({ solved: true, time: 30 })).status, 'played');
+  eq(shareStatus(day(3), ctx({ solved: false, time: null })).status, 'played');
+  eq(shareStatus(day(-1), ctx({ solved: true, time: 30 })).status, 'future', 'a future date is refused before anything else');
+  eq(shareStatus({ ...LOCAL_REC, n: 7 }, ctx()).status, 'ok');
+  eq(shareStatus({ ...LOCAL_REC, n: 7, algo: ALGO_VERSION - 1 }, ctx()).status, 'version');
+  eq(shareStatus({ ...LOCAL_REC, n: 3 }, ctx()).status, 'invalid', 'a size the generator does not serve');
+  eq(['live', 'replay', 'ok', 'played', 'old', 'future', 'version', 'invalid'].map(status => isPlayable({ status })), [true, true, true, false, false, false, false, false]);
+});
+t('share: the local seed a link names is the seed the game was made with (day, size, index, version -> same puzzle)', () => {
+  const day = 20733, n = 5, index = 3, seed = dailySeed(day, n, index, ALGO_VERSION);
+  const g = generate(n, seed), h = generate(n, dailySeed(day, n, index, ALGO_VERSION));
+  eq(serialize(runSync(g)), serialize(runSync(h)));
+  ok(dailySeed(day - 1, n, index, ALGO_VERSION) !== seed && dailySeed(day, n, index + 1, ALGO_VERSION) !== seed);
+});
+ta('replay: beginShared opens a missed window day without spending a chance; same window / once rules; refuses before init()', async () => {
+  const clock = atDay(19), { R, store } = await setup(clock, { 2: { solved: true, time: 30 } }), g = k => gotdDay(clock, k);
+  const solved0 = R.toNext();
+  eq(await R.beginShared(g(3)), true);
+  eq(store.attemptOn(g(3)), { solved: false, time: null }, 'the date is spent, like begin()');
+  eq(R.chances(), 0);
+  eq(await R.beginShared(g(3)), false, 'once per date');
+  eq(await R.beginShared(g(2)), false, 'already has a record');
+  eq(await R.beginShared(g(REPLAY_DAYS + 1)), false, 'outside the window');
+  eq(await R.beginShared(g(0)), false, 'today is the live game, not a replay');
+  await R.addSolved();
+  eq(R.toNext(), solved0 - 1, 'solving it counts towards the next replay chance');
+  while (R.chances() < 1) await R.addSolved();
+  const chances = R.chances();
+  eq(await R.beginShared(g(4)), true);
+  eq(R.chances(), chances, 'a shared replay costs no chance');
+  const st = fakeStorage(), cold = createReplay(st, createStore(st, [5]), clock);
+  eq(await cold.beginShared(g(5)), false, 'before init() there is no credit to count the solve in');
 });
 
 for (const [name, fn] of pending) { const t0 = Date.now(); try { await fn(); pass++; out.push(`ok    ${name} (${Date.now() - t0}ms)`); } catch (e) { fail++; out.push(`FAIL  ${name}: ${e.message}`); } }

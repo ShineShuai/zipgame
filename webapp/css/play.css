@@ -399,3 +399,48 @@ tr:last-child td { border-bottom: 0; }
   table.responsive td:first-child::before { content: none; }
   .modal textarea { font-size: 16px; } /* 16 px stops iOS from zooming in on focus */
 }
+
+/* ---------- shared game (opened from a share link) ---------- */
+
+/* Own card above the menu card. Wide: text left, button right. Phone: stacked, full-width button. */
+.shared-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px 28px;
+  background: linear-gradient(135deg, #ffffff 0%, var(--blue-soft) 100%);
+  border-color: #c4d3fb;
+}
+.shared-eyebrow { font-size: 0.78rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--blue-dark); }
+.shared-title { margin: 2px 0 10px; font-size: 1.2rem; overflow-wrap: anywhere; }
+.shared-row {
+  position: relative; /* anchors the color-strip tip */
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px;
+  color: var(--heading); font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.shared-strip-wrap { min-width: 0; overflow-wrap: anywhere; } /* the (i) stays inline after the last square */
+.shared-strip { font-size: 1.1rem; letter-spacing: 1px; line-height: 1.5; }
+.shared-state { margin-top: 10px; font-size: 0.9rem; color: var(--muted); }
+.shared-state.bad { color: var(--red); }
+.shared-action .btn { min-width: 190px; white-space: nowrap; }
+
+.tip-btn {
+  width: 24px; height: 24px; margin-left: 8px; padding: 0; vertical-align: middle;
+  border: 2px solid var(--blue); border-radius: 50%; background: #fff;
+  color: var(--blue); font: italic 700 0.8rem/1 Georgia, serif; cursor: help;
+}
+.tip-btn:hover, .tip-btn[aria-expanded="true"] { background: var(--blue); color: #fff; }
+.tip-pop {
+  display: none; position: absolute; left: 0; top: calc(100% + 8px); z-index: 5;
+  width: min(100%, 360px); padding: 10px 14px; border-radius: 12px;
+  background: var(--heading); color: #fff; box-shadow: var(--shadow);
+  font-size: 0.86rem; font-weight: 400; line-height: 1.45; letter-spacing: 0;
+}
+.tip-btn:hover + .tip-pop, .tip-btn:focus-visible + .tip-pop, .tip-pop.open { display: block; }
+
+@media (max-width: 640px) {
+  .shared-card { grid-template-columns: 1fr; }
+  .shared-action .btn { width: 100%; }
+}
+
+.share-msg { min-height: 1.2em; margin-top: 8px; } /* "copied" line after a solve */
