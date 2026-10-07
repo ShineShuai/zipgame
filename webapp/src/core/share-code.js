@@ -1,0 +1,138 @@
+// Share-link codec: one finished game <-> a short URL-safe string (base64url over a packed bit
+// stream, no separators, no readable text). Pure: no DOM, no storage.
+//
+// Layout (MSB first, zero-padded to a multiple of 6 bits; the code length must match exactly):
+//   version 3 | kind 1 (0 = Game of Day, 1 = local) | size 5 | grade 3 (7 = unknown)
+//   | time 17 (tenths of a second) | day 16 (UTC day number)
+//   | Game of Day: percent beaten 7 (127 = unknown)
+//   | local:       game index 10, ALGO_VERSION 4
+//   | strip length 6, then 2 bits per leg (effort level 0..3)
+//   | check 8 (fold of FNV-1a over every bit before it: catches truncated / mistyped links)
+// A Game of Day with 8 legs is 14 characters.
+export const SHARE_VERSION = 1;
+export const MAX_LEGS = 63;
+export const MAX_TENTHS = 131071;
+
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+const NO_GRADE = 7;
+const NO_PCT = 127;
+const CHECK_BITS = 8;
+
+function pushBits(bits, value, width) {
+  for (let i = width - 1; i >= 0; i--) {
+    bits.push((value >>> i) & 1);
+  }
+}
+
+function checksum(bits, end) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < end; i++) {
+    h = Math.imul(h ^ bits[i], 0x01000193);
+  }
+  h >>>= 0;
+  return (h ^ (h >>> 8) ^ (h >>> 16) ^ (h >>> 24)) & 0xff;
+}
+
+const isInt = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+
+function isEncodable(rec) {
+  if (!rec || (rec.kind !== 'gotd' && rec.kind !== 'local')) return false;
+  if (!isInt(rec.n, 2, 31) || !isInt(rec.day, 0, 65535)) return false;
+  if (rec.grade != null && !isInt(rec.grade, 0, 5)) return false;
+  if (!(rec.timeS > 0) || !Number.isFinite(rec.timeS)) return false;
+  if (!Array.isArray(rec.levels) || !rec.levels.every(v => isInt(v, 0, 3))) return false;
+  if (rec.kind === 'gotd') return rec.pct == null || isInt(rec.pct, 0, 100);
+  return isInt(rec.index, 0, 1023) && isInt(rec.algo, 0, 15);
+}
+
+// record: { kind: 'gotd' | 'local', n, grade: 0..5 | null, timeS, day, levels: [0..3],
+//           gotd: pct: 0..100 | null;  local: index (0-based), algo }
+// -> code, or null when a field is out of range.
+export function encodeShare(rec) {
+  if (!isEncodable(rec)) {
+    return null;
+  }
+  const local = rec.kind === 'local';
+  const levels = rec.levels.length <= MAX_LEGS ? rec.levels : [];
+  const bits = [];
+  pushBits(bits, SHARE_VERSION, 3);
+  pushBits(bits, local ? 1 : 0, 1);
+  pushBits(bits, rec.n, 5);
+  pushBits(bits, rec.grade == null ? NO_GRADE : rec.grade, 3);
+  pushBits(bits, Math.min(MAX_TENTHS, Math.round(rec.timeS * 10)), 17);
+  pushBits(bits, rec.day, 16);
+  if (local) {
+    pushBits(bits, rec.index, 10);
+    pushBits(bits, rec.algo, 4);
+  } else {
+    pushBits(bits, rec.pct == null ? NO_PCT : rec.pct, 7);
+  }
+  pushBits(bits, levels.length, 6);
+  for (const level of levels) {
+    pushBits(bits, level, 2);
+  }
+  pushBits(bits, checksum(bits, bits.length), CHECK_BITS);
+  let code = '';
+  for (let i = 0; i < bits.length; i += 6) {
+    let v = 0;
+    for (let j = 0; j < 6; j++) {
+      v = (v << 1) | (bits[i + j] || 0);
+    }
+    code += ALPHABET[v];
+  }
+  return code;
+}
+
+// code -> the record encodeShare() was given (time in tenths), or null if not a valid code.
+export function decodeShare(code) {
+  if (typeof code !== 'string' || !/^[A-Za-z0-9_-]+$/.test(code)) {
+    return null;
+  }
+  const bits = [];
+  for (const ch of code) {
+    pushBits(bits, ALPHABET.indexOf(ch), 6);
+  }
+  let pos = 0;
+  const read = width => {
+    if (pos + width > bits.length) {
+      throw new RangeError('short');
+    }
+    let v = 0;
+    for (let i = 0; i < width; i++) {
+      v = (v << 1) | bits[pos++];
+    }
+    return v;
+  };
+  try {
+    if (read(3) !== SHARE_VERSION) {
+      return null;
+    }
+    const local = read(1) === 1;
+    const rec = { kind: local ? 'local' : 'gotd', n: read(5) };
+    const grade = read(3);
+    rec.grade = grade === NO_GRADE ? null : grade;
+    rec.timeS = read(17) / 10;
+    rec.day = read(16);
+    if (local) {
+      rec.index = read(10);
+      rec.algo = read(4);
+    } else {
+      const pct = read(7);
+      rec.pct = pct === NO_PCT ? null : pct;
+    }
+    const legs = read(6);
+    rec.levels = [];
+    for (let i = 0; i < legs; i++) {
+      rec.levels.push(read(2));
+    }
+    const end = pos;
+    if (read(CHECK_BITS) !== checksum(bits, end)) {
+      return null;
+    }
+    const exactLength = code.length === Math.ceil(pos / 6);
+    const zeroPadding = bits.slice(pos).every(b => b === 0);
+    return exactLength && zeroPadding && isEncodable(rec) ? rec : null;
+  } catch {
+    return null;
+  }
+}

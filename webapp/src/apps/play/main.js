@@ -5,8 +5,11 @@ import { statSummary } from '../../core/stats.js';
 import { pickStorage } from '../../platform/storage.js';
 import { runAsync } from '../../platform/run.js';
 import { createStore } from '../../features/stats-store.js';
-import { createDaily, fetchGameOfDay, fetchGameOfDayFor, utcDateString, utcDayNumber } from '../../features/daily.js';
+import { createDaily, fetchGameOfDay, fetchGameOfDayFor, utcDateString, utcDayNumber, dateOfDay } from '../../features/daily.js';
 import { createReplay } from '../../features/replay.js';
+import { ALGO_VERSION, maxNumber } from '../../core/model.js';
+import { dailySeed } from '../../core/rng.js';
+import { legsUndo, makeShareRecord, shareStatus, isPlayable, shareText, shareUrl, parseShareLink, stripText, dateLabel } from '../../features/share.js';
 import { REPLAY_DAYS, TOP_K as REPLAY_TOP_K } from '../../core/hist.js';
 import { maxHints, computeHint, solutionOf, penalizedTime, HINT_PENALTY_S } from '../../features/hints.js';
 import { cellAtPoint, pathD } from '../../view/geometry.js';
@@ -24,7 +27,8 @@ import { sfxMove, sfxBack, sfxCheckpoint, sfxMoveAfterCheckpoint, sfxBlocked, sf
 
 const SIZES = PLAY_SIZES;
 const S = { screen: 'menu', size: 7, puzzle: null, path: [], elapsed: 0, startTime: 0, timerId: null, finished: false,
-  gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, isReplay: false, replayPick: null, gotdDate: null, gotdHint: null, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, difficulty: null };
+  gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, isReplay: false, replayPick: null, gotdDate: null, gotdHint: null, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, difficulty: null,
+  legs: [], gameDay: null, isShared: false, shared: null, sharedBad: false, sharedMsg: null };
 
 // Grade a puzzle right after generation, once, before it's shown (see core/grades.js playGradesFor):
 //   trap   - the main grade (badge): one capped solve per wrong turn along the solution, ~2-200 ms at
@@ -119,9 +123,11 @@ function renderMenu() {
     ? `<button class="btn secondary" id="openReplay">${t('menu.replay', chances)}</button>`
     : `<button class="btn secondary" disabled title="${t('replay.locked', replay.toNext())}">${t('menu.replay', 0)}</button>`;
   const replayNote = `<p class="small replay-note">${t(chances > 0 ? 'replay.progress' : 'replay.locked', replay.toNext())}</p>`;
+  const sharedCard = sharedCardHtml();
 
   return `
     <div class="menu-layout${stats ? '' : ' single'}">
+      ${sharedCard}
       <section class="card play-card">
         <div class="play-intro">
           <h2 class="card-title">${t('menu.title')}</h2>
@@ -148,7 +154,6 @@ function renderMenu() {
     </div>`;
 }
 
-const dateLabel = d => d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6);
 const weekday = d => new Date(Date.UTC(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6))).toLocaleDateString(getLang() === 'zh' ? 'zh-CN' : 'en', { weekday: 'short', timeZone: 'UTC' });
 
 // Replay screen (opened by the menu's Replay button): every day of the window, newest first. A missed day with a puzzle file is a button;
@@ -283,7 +288,10 @@ function renderGame() {
   const time = sec(S.elapsed);
   const cap = maxHints(p);
   const seedTag = `<span id="seedTag" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="Design app's Generate uses these same algorithm choices, but generate() here also tries several candidates and keeps the cheapest, so pasting this seed+flags there is not guaranteed to reproduce this exact puzzle">seed ${S.seed} · flags ${flagsToHex(PLAY_FLAGS_INT)}</span>`;
-  const title = S.isGotd ? t(S.isReplay ? 'game.replayTitle' : 'game.gotdTitle', S.gotdDate) : t('game.localTitle', p.n, S.gameIndex + 1) + seedTag;
+  const localTitle = S.isShared ? t('game.sharedTitle', p.n, S.gameIndex + 1, dateLabel(dateOfDay(S.gameDay))) : t('game.localTitle', p.n, S.gameIndex + 1);
+  const title = S.isGotd ? t(S.isReplay ? 'game.replayTitle' : 'game.gotdTitle', S.gotdDate) : localTitle + seedTag;
+  const canShare = S.finished && (S.isGotd || S.gameDay != null);
+  const shareButton = canShare ? `<button class="btn" id="shareBtn">${t('share.btn')}</button>` : '';
   const nextReplay = S.isReplay && S.finished && replay.chances() > 0 ? `<button class="btn" id="toReplay">${t('game.nextReplay', replay.chances())}</button>` : '';
   const newPuzzleButton = S.isGotd ? '' : `<button class="btn secondary" id="newPuzzle">${t('game.new')}</button>`;
   const hiddenUnlessDev = S.showDev ? '' : 'display:none';
@@ -307,6 +315,7 @@ function renderGame() {
       <div class="side">
         <section class="card">
           <div class="button-row">
+            ${shareButton}
             ${nextReplay}
             <button class="btn secondary" id="backMenu2">${t('game.menu')}</button>
             ${newPuzzleButton}
@@ -315,6 +324,7 @@ function renderGame() {
             <button class="btn secondary" id="exportBtn" style="${hiddenUnlessDev}">Export</button>
           </div>
           ${solved}
+          ${canShare ? '<p class="small share-msg" id="shareMsg"></p>' : ''}
         </section>
         ${sizeStats(p.n)}
       </div>
@@ -327,12 +337,15 @@ function attachHandlers() {
   on('playLocal', () => { S.size = +$('sizeSel').value; startLocal('open'); });
   const sel = $('sizeSel'); if (sel) sel.onchange = () => { S.size = +sel.value; $('gameNo').textContent = t('menu.today', gameNo(S.size)); };
   on('playGotd', startGameOfDay);
+  on('playShared', startShared);
+  on('shareBtn', shareResult);
+  on('shareTip', toggleShareTip);
   on('openReplay', () => openReplay());
   on('replayBack', () => { S.replayPick = null; S.screen = 'menu'; render(); });
   on('toReplay', () => openReplay());
   document.querySelectorAll('.replay-day').forEach(b => { b.onclick = () => startReplay(b.dataset.date); });
   on('backMenu2', () => { logPlay(false); stopTimer(); S.screen = 'menu'; render(); });
-  on('resetPath', () => { if (S.trace && !S.finished) traceClear(S.trace, S.path.length); S.path = []; S.finished = false; S.hintCell = S.hintWrongCell = null; render(); });
+  on('resetPath', () => { if (S.trace && !S.finished) traceClear(S.trace, S.path.length); if (!S.finished) legsUndo(S.legs, S.puzzle, S.path, 1); S.path = []; S.finished = false; S.hintCell = S.hintWrongCell = null; render(); });
   on('exportPlayLog', ev => { ev.preventDefault(); exportPlayLog(); });
   on('newPuzzle', () => { if (!S.isGotd) startLocal('skip'); });
   on('exportBtn', () => { $('exportText').value = serialize(S.puzzle); $('exportMsg').textContent = ''; modal.open(); setTimeout(() => $('exportText').focus(), 30); });
@@ -365,8 +378,9 @@ function setupGridInput(svg) {
   const syncFills = () => { const on = new Set(S.path); svg.querySelectorAll('[data-num-cell]').forEach(g => fill(+g.dataset.numCell, on.has(+g.dataset.numCell))); };
   function walkTo(cell) {
     if (cell < 0 || S.finished) return;
-    const prev = S.path[S.path.length - 1], before = S.path.length, kind = step(p, S.path, cell);
+    const prev = S.path[S.path.length - 1], before = S.path.length, prevPath = S.path.slice(), kind = step(p, S.path, cell);
     if (kind && S.trace) traceStep(S.trace, kind, before, S.path.length);
+    if (kind && kind !== 'push') legsUndo(S.legs, p, prevPath, S.path.length);
     if (!kind) { if (prev != null && cell !== prev) sfxBlocked(); return; }
     if (kind === 'push') fill(cell, true); else if (kind === 'pop') fill(prev, false); else syncFills();
     setD(); clearHint();
@@ -412,7 +426,7 @@ function onSolved() {
   S.finished = true; stopTimer(); sfxSolved();
   if (!S.penaltyApplied) { S.elapsed = penalizedTime(S.elapsed, S.hintsUsed); S.penaltyApplied = true; } // once, even if the path is reset and re-solved
   if (S.isGotd) { const a = store.attemptOn(S.gotdDate); if (!(a && a.solved)) finishGotd(S.puzzle.n, S.gotdDate, S.elapsed, S.isReplay); } // a Game of Day (live or replay) counts once
-  else { const n = S.puzzle.n; store.recordSolve(n, dayNo(), S.elapsed); daily.markSolved(n, S.gameIndex).then(refreshNext); }
+  else { const n = S.puzzle.n; store.recordSolve(n, dayNo(), S.elapsed); if (!S.isShared) daily.markSolved(n, S.gameIndex).then(refreshNext); }
 }
 
 // Game of Day (live or replay): record locally, count it towards the next replay chance, then submit to the averages backend
@@ -429,18 +443,21 @@ async function shareGotd(date) {
 }
 
 // ---------- game flow ----------
-function beginGame(puzzle, gotdDate, isReplay = false) {
+function beginGame(puzzle, gotdDate, isReplay = false, isShared = false) {
   logPlay(false); // a puzzle left unfinished is logged as abandoned
   const difficulty = gradePuzzle(puzzle);
-  Object.assign(S, { trace: newTrace(), logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
+  Object.assign(S, { trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
   startTimer(); render();
 }
+const generateShown = (n, seed) => runAsync(generate(n, seed), { onEvent: e => { S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls, K: e.K }; if (S.screen === 'generating') render(); } });
 async function startLocal(how) { // how: 'open' (Play local: current or next-if-solved) | 'skip' (New puzzle)
   S.screen = 'generating'; S.gen = { frac: 0, walls: null, K: null }; render();
   try {
     const { index, seed } = how === 'skip' ? await daily.skip(S.size) : await daily.open(S.size);
-    const puzzle = await runAsync(generate(S.size, seed), { onEvent: e => { S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls, K: e.K }; if (S.screen === 'generating') render(); } });
-    S.gameIndex = index; S.seed = seed; beginGame(puzzle, null);
+    const puzzle = await generateShown(S.size, seed);
+    S.gameIndex = index; S.seed = seed;
+    S.gameDay = [dayNo(), dayNo() - 1].find(d => dailySeed(d, S.size, index, ALGO_VERSION) === seed) ?? null; // the day this seed was made on: what a share link needs
+    beginGame(puzzle, null);
   } catch (e) { console.error('startLocal failed:', e); S.screen = 'menu'; render(); alert(t('err.generate')); }
 }
 async function startGameOfDay() {
@@ -473,6 +490,184 @@ async function startReplay(date) {
   S.size = puzzle.n;
   beginGame(puzzle, date, true);
 }
+// ---------- sharing (features/share.js, core/share-code.js) ----------
+// Finished game -> link with the result packed into `?s=`; opening such a link makes the menu's "Shared game" button playable.
+const sharedStatus = rec => shareStatus(rec, {
+  today: dayNo(),
+  replayDates: replay.dates(),
+  attempt: rec.kind === 'gotd' ? store.attemptOn(dateOfDay(rec.day)) : null,
+  algo: ALGO_VERSION,
+  sizes: SIZES,
+});
+
+function sharedStateText(state) {
+  switch (state.status) {
+    case 'replay': return t('share.freeReplay');
+    case 'played': return state.attempt.solved ? t('share.st.played', sec(state.attempt.time)) : t('share.st.attempted');
+    case 'old': return t('replay.unavailable');
+    case 'future': return t('share.st.future');
+    case 'version': return t('share.st.version');
+    case 'invalid': return t('share.invalid');
+    default: return '';
+  }
+}
+
+const SHARED_BAD = ['old', 'future', 'version', 'invalid'];
+
+// First card of the menu, only for a page opened from a share link:
+//   eyebrow / title (what was shared) / one row: time, percent beaten, color strip + tip / reason or note | button
+function sharedCardHtml() {
+  if (S.sharedBad) {
+    return `<section class="card shared-card"><div class="shared-main">
+      <div class="shared-eyebrow">${t('share.title')}</div>
+      <p class="shared-state bad">${t('share.invalid')}</p></div></section>`;
+  }
+  const rec = S.shared;
+  if (!rec) return '';
+  const state = sharedStatus(rec);
+  const date = dateLabel(dateOfDay(rec.day));
+  const head = rec.kind === 'gotd' ? t('share.gotd', date) : t('share.local', rec.index + 1, date);
+  const grade = rec.grade == null ? '' : ` · ${t('grade.' + rec.grade)} ${rec.grade}/5`;
+  const row = [`<span>⏱ ${sec(rec.timeS)}</span>`];
+  if (rec.pct != null) row.push(`<span>${t('share.beat', rec.pct)}</span>`);
+  if (rec.levels.length) {
+    row.push(`<span class="shared-strip-wrap"><span class="shared-strip">${stripText(rec.levels)}</span>
+      <button type="button" class="tip-btn" id="shareTip" aria-expanded="false" aria-label="${t('share.tipLabel')}">i</button>
+      <span class="tip-pop" id="shareTipPop" role="tooltip">${t('share.tip')}</span></span>`);
+  }
+  const text = S.sharedMsg ? t(S.sharedMsg) : sharedStateText(state);
+  const bad = Boolean(S.sharedMsg) || SHARED_BAD.includes(state.status);
+  const line = text ? `<p class="shared-state${bad ? ' bad' : ''}">${text}</p>` : '';
+  return `<section class="card shared-card">
+    <div class="shared-main">
+      <div class="shared-eyebrow">${t('share.title')}</div>
+      <h2 class="shared-title">${head} · ${rec.n}x${rec.n}${grade}</h2>
+      <div class="shared-row">${row.join('')}</div>
+      ${line}
+    </div>
+    <div class="shared-action">
+      <button class="btn" id="playShared"${isPlayable(state) ? '' : ' disabled'}>${t('share.play')}</button>
+    </div>
+  </section>`;
+}
+
+function setShareTip(open) {
+  const pop = $('shareTipPop');
+  const button = $('shareTip');
+  if (!pop || !button) return;
+  pop.classList.toggle('open', open);
+  button.setAttribute('aria-expanded', String(open));
+  if (!open) button.blur(); // a focused button would keep the tip visible (:focus-visible)
+}
+
+function toggleShareTip(ev) {
+  ev.stopPropagation();
+  setShareTip(!$('shareTipPop').classList.contains('open'));
+}
+
+async function loadSharedLink() {
+  const { rec, bad } = parseShareLink(location.search);
+  S.shared = rec;
+  S.sharedBad = bad;
+  if (rec && rec.kind === 'gotd') {
+    await store.loadAttempt(dateOfDay(rec.day)); // so the menu can tell "already played" without waiting
+  }
+}
+
+function clearSharedLink() {
+  S.shared = null;
+  S.sharedBad = false;
+  S.sharedMsg = null;
+  try { history.replaceState(null, '', location.pathname); } catch { /* ignore */ }
+}
+
+// Menu button. A Game of Day counts like the real thing: today's date = the live game (once per day), a missed day of the
+// replay window = a replay that spends no chance (the link is the ticket); both raise the Game-of-Day solve count.
+// A local game is a plain local game of that seed; it leaves today's per-size counters alone.
+async function startShared() {
+  const rec = S.shared;
+  if (!rec) return;
+  const state = sharedStatus(rec);
+  if (!isPlayable(state)) return render();
+  S.sharedMsg = null;
+  if (rec.kind === 'local') return startSharedLocal(rec);
+  if (state.status === 'live') {
+    await startGameOfDay();
+  } else {
+    const date = dateOfDay(rec.day);
+    const puzzle = replayPuzzles.get(date) || await fetchGameOfDayFor(date);
+    if (puzzle) replayPuzzles.set(date, puzzle);
+    if (!puzzle || !(await replay.beginShared(date))) {
+      S.sharedMsg = 'replay.unavailable';
+      return render();
+    }
+    S.size = puzzle.n;
+    beginGame(puzzle, date, true);
+  }
+  if (S.screen === 'game') clearSharedLink();
+}
+
+async function startSharedLocal(rec) {
+  S.screen = 'generating';
+  S.size = rec.n;
+  S.gen = { frac: 0, walls: null, K: null };
+  render();
+  try {
+    const seed = dailySeed(rec.day, rec.n, rec.index, rec.algo);
+    const puzzle = await generateShown(rec.n, seed);
+    Object.assign(S, { gameIndex: rec.index, seed, gameDay: rec.day });
+    beginGame(puzzle, null, false, true);
+    clearSharedLink();
+  } catch (e) {
+    console.error('startSharedLocal failed:', e);
+    S.screen = 'menu';
+    render();
+    alert(t('err.generate'));
+  }
+}
+
+function currentShareRecord() {
+  const trap = S.difficulty && S.difficulty.ok ? S.difficulty.trap : null;
+  const attempt = S.isGotd ? store.attemptOn(S.gotdDate) : null;
+  return makeShareRecord({
+    gotdDate: S.isGotd ? S.gotdDate : null,
+    n: S.puzzle.n,
+    grade: trap ? trap.grade : null,
+    timeS: S.elapsed,
+    pct: attempt && attempt.stats ? attempt.stats.pct : null,
+    day: S.gameDay,
+    index: S.gameIndex,
+    algo: ALGO_VERSION,
+    legs: S.legs,
+    K: maxNumber(S.puzzle),
+  });
+}
+
+// Share button (after a solve): the phone share sheet where there is one, else the clipboard, else a prompt to copy by hand.
+async function shareResult() {
+  if (!S.finished) return;
+  const rec = currentShareRecord();
+  const url = shareUrl(location.href.split(/[?#]/)[0], rec);
+  if (!url) return;
+  const text = shareText(rec, url, t);
+  const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  if (touch && navigator.share) {
+    try {
+      await navigator.share({ text });
+      return;
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    const msg = $('shareMsg');
+    if (msg) msg.textContent = t('share.copied');
+  } catch {
+    prompt(t('share.copy'), text);
+  }
+}
+
 function startTimer() {
   stopTimer(); S.startTime = performance.now() - S.elapsed * 1000;
   S.timerId = setInterval(() => { S.elapsed = (performance.now() - S.startTime) / 1000; const el = $('hudTime'); if (el) el.textContent = sec(S.elapsed); }, 100);
@@ -552,6 +747,9 @@ async function initLang() {
   try { await replay.init(); } catch (e) { console.warn('replay init failed:', e); }
   if (lb.enabled) for (const { date } of await replay.unsent()) shareGotd(date); // today's and replayed days whose submit never got an answer
   try { for (const n of SIZES) S.nextIdx[n] = (await daily.peek(n)).index; } catch (e) { console.warn('daily counters failed:', e); }
+  await loadSharedLink();
+  document.addEventListener('click', () => setShareTip(false));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') setShareTip(false); });
   modal = bindModal($('exportModal'));
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));
   installDevReveal(); await initSoundToggle(); await initLang(); render();
