@@ -112,7 +112,7 @@ function checkOptions(opts, fallback) {
 // Returns { removable, capped, nodes }. A wall that is neither removable nor capped is necessary for
 // good (a solution was found; removing more walls only adds solutions). A capped one is undecided.
 // counts, when given, gets counts.minimizeWalls++ per call.
-function tryRemoveWall(p, wall, cap, solveOpts, freedEdge, counts) {
+export function tryRemoveWall(p, wall, cap, solveOpts, freedEdge, counts) {
   setWallId(p.walls, wall, false);
   if (counts) counts.minimizeWalls++;
   let check;

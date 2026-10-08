@@ -1429,6 +1429,17 @@ t('target: the retry cap is a count (same arguments = same puzzle), more retries
   const l = runSync(generateTargeted(7, 3, 5, { retries: Infinity, maxWalls: 12, maxCheckpoints: 8 }));
   ok(l.hit && l.walls <= 12 && l.K <= 8, `limits: ${l.walls} walls, ${l.K} checkpoints`);
 });
+t('target: witnesses make wall stripping cheaper without changing it, guided moves and the checkpoint range work', () => {
+  for (const [n, g, seed] of [[6, 2, 5], [7, 3, 4], [7, 4, 3]]) {
+    const plain = runSync(generateTargeted(n, g, seed, { retries: 2, freedEdge: false })), wit = runSync(generateTargeted(n, g, seed, { retries: 2 }));
+    eq([serialize(wit.puzzle), wit.proposals, wit.pred], [serialize(plain.puzzle), plain.proposals, plain.pred], `${n}x${n} g${g}: plain uniqueness checks vs freed-edge searches + witnesses`);
+    ok(wit.stats.witnessSkips > 0, 'a witness replaced a search');
+    const gd = runSync(generateTargeted(n, g, seed, { retries: 2, guided: true }));
+    ok(gd.puzzle && validate(gd.puzzle).ok, 'guided moves keep the puzzle valid and unique');
+  }
+  const k = runSync(generateTargeted(7, 3, 2, { retries: 3, minCheckpoints: 8, maxCheckpoints: 8 }));
+  eq(k.K, 8, 'min = max checkpoints: exactly that many');
+});
 t('target: the prefilter and the score cache change the time, never the result; the ladder trial cap is a lower bound', () => {
   for (const [n, g, seed] of [[6, 2, 5], [7, 3, 4], [7, 4, 3]]) {
     const slow = runSync(generateTargeted(n, g, seed, { retries: 2, prefilter: false, cache: false })), fast = runSync(generateTargeted(n, g, seed, { retries: 2 }));

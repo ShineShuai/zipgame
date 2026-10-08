@@ -565,7 +565,7 @@ $('genTarget').onclick = async () => {
   $('compareResult').style.display = 'none';
   try {
     const clock = { ms: 0 };
-    const r = await runAsync(measured(generateTargeted(P.n, grade, seed, { effort, retries, minimize }), clock), {
+    const r = await runAsync(measured(generateTargeted(P.n, grade, seed, { effort, retries, minimize, maxWalls: W_(), maxCheckpoints: K_() }), clock), {
       onEvent: e => setStatus(`Searching for a grade ${e.target} puzzle… ${e.phase === 'start' ? 'building a start puzzle' : `${plural(e.proposals, 'change')} tried`}${e.grade != null ? ` · best so far: grade ${e.grade} (score ${e.pred.toFixed(2)}, ${plural(e.walls, 'wall')})` : ''} · try ${Math.max(1, e.tries)} of ${e.retries} · ${fmtMs(e.elapsedMs)}`, ''),
     });
     if (!r.puzzle) { setStatus(`Could not build a unique start puzzle at ${P.n}×${P.n} (seed ${seed}). Try another seed.`, 'error'); return; }
