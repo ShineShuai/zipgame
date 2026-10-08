@@ -45,7 +45,12 @@ import { mountDifficultyPanel } from '../src/apps/design/difficulty-panel.js';
 import { ratingKey, ratingFromSelection, leanOf, describeRating, toRatingsJson, parseRatingsJson, mergeRatings, parseRatingComment, ratingWeight, UNSURE_WEIGHT, symmetryKey, findDuplicateGroups, transformPuzzle, asciiPuzzle, keyDifference } from '../src/core/ratings-io.js';
 import { parsePairsJson, toPairsJson, mergePairs, pairAccuracy, impliedPairs, flipCmp, pairKeyOf } from '../src/core/pairs-io.js';
 import { pickStorage } from '../src/platform/storage.js';
-import { generateCutout, pickShape, shapeIsViable, isBalanced, colourCounts, SHAPES } from '../src/core/gen/cutout.js';
+import {
+  generateCutout, shapeIsViable, isBalanced, colourCounts, scoreOf, SCORE, SILHOUETTES, LABELS,
+  CUTOUT_CANDIDATES,
+} from '../src/core/gen/cutout.js';
+import { proposeBoard, adjacency } from '../src/core/gen/shapes.js';
+import { ladder } from '../src/core/ladder.js';
 import { boardSvg } from '../src/apps/play/board.js';
 import { VARIANTS } from '../src/core/share-code.js';
 
@@ -2578,19 +2583,63 @@ t('cutout: the checkerboard rule — colour counts differ by at most 1, so 5x5 m
   eq(colourCounts(4, new Uint8Array(16)), [8, 8]);
   ok(!shapeIsViable(5, Uint8Array.from({ length: 25 }, (_, i) => (i % 5 === 2 ? 1 : 0)))); // a full column cut away splits the board
 });
-t('cutout: every size offers donut, L and cross shapes that obey the rule and have a path', () => {
-  for (const n of PLAY_SIZES) for (const shape of SHAPES) {
-    const r = pickShape(n, makeRng(n * 7 + shape.length), shape);
-    ok(r && r.shape === shape, `${n} ${shape}`);
-    ok(isBalanced(n, r.holes) && shapeIsViable(n, r.holes));
-    ok(r.holes.some(Boolean) && cellCount({ n, holes: r.holes }) >= n * n * 0.45, 'a real cut, but most of the board is left');
+t('cutout: every outline is offered; boards obey the rule, have a path, no edge hole', () => {
+  const seen = new Set();
+  for (const n of PLAY_SIZES) {
+    for (const silhouette of SILHOUETTES) {
+      const rnd = makeRng(n * 131 + silhouette.length);
+      const interior = silhouette === 'square' ? 2 : 1;
+      const board = proposeBoard(n, rnd, { silhouettes: [silhouette], interior });
+      if (!board) {
+        continue;
+      }
+      seen.add(silhouette);
+      const { holes, path } = board;
+      ok(board.silhouette === silhouette && LABELS.includes(board.label), `${n} ${silhouette}`);
+      ok(isBalanced(n, holes) && shapeIsViable(n, holes) && holes.some(Boolean));
+      eq(path.length, cellCount({ n, holes }));
+      ok(new Set(path).size === path.length, 'every cell once');
+      ok(path.every(c => !holes[c]), 'no hole');
+      const adj = adjacency(n, holes);
+      ok(path.every((c, i) => i === 0 || adj[path[i - 1]].includes(c)), 'neighbour steps');
+      if (silhouette === 'square') {
+        ok(board.interior >= 1 && ['donut', 'pillars'].includes(board.label));
+        for (let i = 0; i < n * n; i++) {
+          const edge = i < n || i >= n * (n - 1) || i % n === 0 || i % n === n - 1;
+          ok(!(edge && holes[i]), 'an interior hole never touches the edge');
+        }
+      }
+    }
   }
+  eq([...seen].sort(), [...SILHOUETTES].sort());
 });
-t('cutout: generateCutout gives unique, checkerboard-balanced puzzles with no wall at a hole; same seed, same puzzle', () => {
-  for (const [n, seed, only] of [[5, 11, 'donut'], [6, 12, 'ell'], [7, 13, 'cross'], [8, 14, null], [9, 15, null]]) {
-    const p = runSync(generateCutout(n, seed, { shape: only })), again = runSync(generateCutout(n, seed, { shape: only }));
+t('cutout: boards with several interior holes exist and keep the checkerboard rule', () => {
+  const counts = new Set();
+  const kinds = new Set();
+  for (let seed = 1; seed <= 60; seed++) {
+    const board = proposeBoard(12, makeRng(seed), { silhouettes: ['square'], interior: 4 });
+    ok(board && isBalanced(12, board.holes) && shapeIsViable(12, board.holes));
+    counts.add(board.interior);
+    kinds.add(board.label);
+    const holeCells = board.holes.reduce((sum, v) => sum + v, 0);
+    ok(holeCells >= board.interior, 'at least one cell per hole');
+  }
+  ok(counts.has(4) && [...counts].every(c => c >= 3), `hole counts ${[...counts]}`);
+  eq([...kinds].sort(), ['donut', 'pillars']);
+  const odd = proposeBoard(9, makeRng(5), { silhouettes: ['square'], interior: 3 });
+  ok(isBalanced(9, odd.holes), 'odd size: single holes sit on the colour that keeps the rule');
+});
+t('cutout: generateCutout: unique, balanced, no wall at a hole, deterministic, best wins', () => {
+  const cases = [[5, 11, null], [6, 12, ['ell']], [7, 13, ['cross']], [8, 14, null]];
+  cases.push([9, 15, null], [10, 16, ['square']]);
+  for (const [n, seed, silhouettes] of cases) {
+    const seen = [];
+    const base = { silhouettes: silhouettes || undefined, candidates: 12 };
+    const p = runSync(generateCutout(n, seed, { ...base, onCandidate: c => seen.push(c.total) }));
+    const again = runSync(generateCutout(n, seed, base));
     eq(serialize(p), serialize(again), 'deterministic');
-    ok(SHAPES.includes(p.shape) && (!only || p.shape === only));
+    const wanted = silhouettes ? silhouettes[0] : null;
+    ok(LABELS.includes(p.shape) && (!wanted || wanted === 'square' || p.shape === wanted));
     ok(isBalanced(n, p.holes) && validate(p).ok && p.holes.some(Boolean));
     const r = solve(p, { limit: 2, nodeCap: 5e6, capture: true, prop: true });
     eq([r.count, r.exceeded], [1, false], `${n}x${n} seed ${seed}: unique`);
@@ -2598,6 +2647,26 @@ t('cutout: generateCutout gives unique, checkerboard-balanced puzzles with no wa
     ok(p.path.every((c, i) => i === 0 || canStep(p, p.path[i - 1], c)));
     for (const e of allEdges(n)) if (hasWallId(p.walls, e)) ok(!p.holes[e >> 1] && !p.holes[edgeCells(n, e)[1]], 'a wall next to a hole');
     ok(p.cp.every((v, i) => !v || !p.holes[i]));
+    ok(seen.length === 12, 'all candidates scored');
+    ok(p.score.total >= Math.max(...seen) - 1e-9, 'the winner has the best score');
+    eq(p.score.total, scoreOf(p.score.difficulty, p.score.walls, p.score.interior));
+    eq(p.score.walls, wallCount(p));
+  }
+  eq(scoreOf(2, 10, 3), 2 - SCORE.wall * 10 - SCORE.hole * 3);
+  ok(PLAY_SIZES.every(n => CUTOUT_CANDIDATES[n] >= 4));
+});
+t('holes: the difficulty grader (ladder, trap) is sound on boards with holes', () => {
+  for (const [n, seed] of [[6, 1], [7, 2], [8, 3], [9, 4], [10, 5]]) {
+    const p = runSync(generateCutout(n, seed, { candidates: 6, refineNodes: 0 }));
+    const lad = ladder(p);
+    const state = JSON.stringify([lad.error, lad.contradiction, lad.solved]);
+    ok(!lad.error && !lad.contradiction && lad.solved, `${n}x${n}: ladder ${state}`);
+    ok(isSolved(p, lad.path), 'the ladder path is a solution');
+    const m = trapMetrics(p);
+    ok(m.ok && !m.nonUnique && Number.isFinite(m.predicted), `${n}x${n}: trap`);
+    eq(m.T, cellCount(p));
+    ok(m.altFrac > 0 && m.altFrac <= 1);
+    eq(m.path.length, cellCount(p));
   }
 });
 t('cutout: boardSvg draws one tile per cell that is left, an outline, and nothing for holes; the standard board is unchanged', () => {

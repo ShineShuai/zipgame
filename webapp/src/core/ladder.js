@@ -34,6 +34,19 @@ export function ladder(p, o = {}) {
   for (let i = 0; i < T; i++) if (cp[i]) pos[cp[i]] = i;
   const need = new Uint8Array(T).fill(2);
   need[start] = 1; need[end] = 1;
+  // Holes (puzzle.holes, see model.js) are not part of the board: no edges, nothing to cover.
+  // A hole needs 0 edges, so its degree constraint is satisfied from the start, and the path
+  // covers TC cells instead of T.
+  const holes = p.holes || null;
+  let TC = T;
+  if (holes) {
+    for (let i = 0; i < T; i++) {
+      if (holes[i]) {
+        need[i] = 0;
+        TC--;
+      }
+    }
+  }
 
   // ---- state (cloneable) ----
   // es[u*4+d]: 0 unknown, 1 in, 2 out (mirrored on both half-edges). dopen = non-out edges, din = in edges.
@@ -57,6 +70,7 @@ export function ladder(p, o = {}) {
     if (open < need[u]) initBad = true;
     real.other[u] = u; real.sz[u] = 1; real.cnt[u] = cp[u] ? 1 : 0;
     real.lo[u] = real.hi[u] = real.near[u] = cp[u]; real.dflag[u] = 1;
+    if (need[u] === 0) real.meta[0]++;
   }
   if (initBad) return { error: 'cell with too few open edges' };
 
@@ -77,7 +91,8 @@ export function ladder(p, o = {}) {
     if (pu && pv && pu - pv !== 1 && pv - pu !== 1) return false; // checkpoints at the junction not consecutive
     const size = S.sz[u] + S.sz[v];
     const lo = min0(S.lo[u], S.lo[v]), hi = Math.max(S.hi[u], S.hi[v]);
-    if (lo === 1 && hi === K && size !== T) return false;      // full-length chain must cover everything
+    // a full-length chain must cover everything
+    if (lo === 1 && hi === K && size !== TC) return false;
     const c = S.cnt[u] + S.cnt[v];
     const nearA = S.near[a] || pv, nearB = S.near[b] || pu;
     S.other[a] = b; S.other[b] = a;
@@ -155,10 +170,11 @@ export function ladder(p, o = {}) {
       if (D < 0) return -1;
       Dseg[s] = D; sum += D;
     }
-    slack = T - 1 - sum;
+    slack = TC - 1 - sum;
     if (slack < 0) return -1;
     segLo.fill(0); segHi.fill(0);
     for (let x = 0; x < T; x++) {
+      if (holes && holes[x]) continue;
       const k = cp[x];
       if (k) { segLo[x] = Math.max(1, k - 1); segHi[x] = Math.min(K - 1, k); continue; }
       let lo = 0, hi = 0;
@@ -185,7 +201,8 @@ export function ladder(p, o = {}) {
     if (S.other[x] === y) return false;
     const px = S.near[x], py = S.near[y];
     if (px && py && px - py !== 1 && py - px !== 1) return false;
-    if (min0(S.lo[x], S.lo[y]) === 1 && Math.max(S.hi[x], S.hi[y]) === K && S.sz[x] + S.sz[y] !== T) return false;
+    const full = min0(S.lo[x], S.lo[y]) === 1 && Math.max(S.hi[x], S.hi[y]) === K;
+    if (full && S.sz[x] + S.sz[y] !== TC) return false;
     return edgeFits(x, y);
   }
   function chainPass() { // -1 contradiction, else #edges removed
@@ -341,7 +358,7 @@ export function ladder(p, o = {}) {
   // alone solved it, or the live `S` (a scratch buffer left pointing at the winning branch — see
   // search()'s success path above, which never copies back to `real`) when the search fallback
   // found it. Read S BEFORE anything below could touch it again.
-  const path = solved ? extractPath(S, nb, start, T) : null;
+  const path = solved ? extractPath(S, nb, start, TC) : null;
   return {
     solved, exceeded, contradiction: status === 0, hardest, edges: edgesBy, passes: passesBy,
     probeTrials, search: sr, work, ms: performance.now() - t0, path,

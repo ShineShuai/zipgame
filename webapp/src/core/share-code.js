@@ -12,14 +12,17 @@
 //
 // Version 2 = a game of a variant (see VARIANTS). Variant games are random, not rebuilt from a seed, so the code carries the
 // puzzle itself (Cutout, id 1):
-//   version 3 (=2) | variant 4 | size 5 | time 17 | shape 2 (0 none, else 1 + index in SHAPES)
+//   version 3 (=2) | variant 4 | size 5 | time 17
+//   | shape 4 (0 none, else 1 + index in LABELS, see gen/shapes.js)
 //   | holes: size*size bits, 1 = hole | K 7, then K cell indices of checkpoints 1..K, 8 bits each
 //   | wall count 8, then 9 bits per wall (edge id, see core/edges.js) | strip length 6, 2 bits per leg | check 8
 // A 7x7 Cutout is about 50 characters, a 16x16 one about 140. Version 1 links are unchanged.
+import { LABELS } from './gen/shapes.js';
+
 export const SHARE_VERSION = 1;
 export const SHARE_VERSION_VARIANT = 2;
 export const VARIANTS = [null, 'cutout']; // variant id -> name
-export const VARIANT_SHAPES = ['donut', 'ell', 'cross']; // shape id - 1 -> name (gen/cutout.js SHAPES)
+export const VARIANT_SHAPES = LABELS; // shape id - 1 -> name
 export const VARIANT_MAX_N = 16;
 export const MAX_LEGS = 63;
 export const MAX_TENTHS = 131071;
@@ -140,7 +143,7 @@ function pushVariant(bits, rec, levels) {
   pushBits(bits, VARIANTS.indexOf(rec.variant), 4);
   pushBits(bits, p.n, 5);
   pushBits(bits, Math.min(MAX_TENTHS, Math.round(rec.timeS * 10)), 17);
-  pushBits(bits, p.shape ? VARIANT_SHAPES.indexOf(p.shape) + 1 : 0, 2);
+  pushBits(bits, p.shape ? VARIANT_SHAPES.indexOf(p.shape) + 1 : 0, 4);
   for (let i = 0; i < T; i++) pushBits(bits, p.holes[i] ? 1 : 0, 1);
   pushBits(bits, cells.length, 7);
   for (const c of cells) pushBits(bits, c, 8);
@@ -218,7 +221,7 @@ function readVariant(read, bits, code, pos) {
     return null;
   }
   const rec = { kind: 'local', variant: 'cutout', n, grade: null, timeS: read(17) / 10 };
-  const shape = read(2);
+  const shape = read(4);
   const T = n * n;
   const puzzle = { n, shape: shape === 0 ? null : VARIANT_SHAPES[shape - 1] || false, holes: new Uint8Array(T), cp: new Uint16Array(T), walls: new Uint8Array(T) };
   for (let i = 0; i < T; i++) {
