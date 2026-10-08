@@ -3,7 +3,7 @@
 //   2. selectEntries             which candidates become seed players of a day: top 3 + the next 7 without min and max = 3..8
 //   3. withoutSeeds / fitTime    solve time of a puzzle from its grid size N and human-scale difficulty h, learned from the backends
 import { MIN_MS, MAX_MS, binOf } from './hist.js';
-import { spearman, quantile } from './stats-merge.js';
+import { spearman, quantile, binLo, binHi } from './stats-merge.js';
 
 const sum = xs => xs.reduce((a, x) => a + x, 0);
 export const clampH = h => Math.max(0, Math.min(5, h));
@@ -195,6 +195,41 @@ export function timePoints(days, puzzles, { minReal = TIME_PRIOR.minReal, useAut
   return { points, skipped };
 }
 
+// Per-play variant of timePoints for thin days: one point per day with ANY valid players, y = mean of ln(time) of the plays left (a bin counts
+// at its geometric centre, +-5 %), weighted by v = tau^2 + sigma^2 / count (day effect + sampling error of a mean, no 1.25 median penalty), so a
+// day with 2 players counts little and a day with 20 counts a lot, instead of being dropped. sigma = the spread of ln(time) among players of
+// one puzzle: `sigma` option, else pooled from the days with >= 3 valid plays (`sigmaFit`), else TIME_PRIOR.sigma.
+// -> { points (with v), skipped, sigma, sigmaFit: { sigma, days, df } | null }
+export function playPoints(days, puzzles, { useAuthor = true, sigma = null, P = TIME_PRIOR } = {}) {
+  const points = [], skipped = [], byDay = new Map(days.map(d => [d.d, d]));
+  let ss = 0, df = 0, nd = 0;
+  for (const [day, info] of [...puzzles].sort((a, b) => a[0] - b[0])) {
+    const { n, h } = info, thinking = needsThinking(n, h), d = byDay.get(day);
+    if (d) {
+      const real = withoutSeeds(d);
+      if (!real) skipped.push({ day, why: 'the seed players do not fit into the aggregate' });
+      else {
+        const cut = thinking ? aboveFloor(real.bins, n) : { bins: real.bins, n: real.n, cut: 0 };
+        if (cut.n < 1) skipped.push({ day, why: `no valid player of ${real.n} real` });
+        else {
+          const ys = []; cut.bins.forEach((c, b) => { for (let i = 0; i < c; i++) ys.push(Math.log(Math.sqrt(binLo(b) * binHi(b)))); });
+          const mean = sum(ys) / ys.length;
+          if (ys.length >= 3) { ss += sum(ys.map(v => (v - mean) ** 2)); df += ys.length - 1; nd++; }
+          points.push({ day, n, h, y: mean, count: cut.n, src: 'players', seeds: d.n - real.n, dropped: cut.cut, real: real.n });
+        }
+      }
+    }
+    if (useAuthor && Number.isFinite(info.authorS) && info.authorS > 0) {
+      const ms = info.authorS * 1000;
+      if (thinking && ms < floorMs(n)) skipped.push({ day, why: `author time ${info.authorS.toFixed(1)} s is below the ${(floorMs(n) / 1000).toFixed(0)} s floor` });
+      else points.push({ day, n, h, y: Math.log(ms), count: 1, src: 'author', seeds: 0, dropped: 0, real: 1 });
+    }
+  }
+  const sigmaFit = df >= 4 ? { sigma: Math.sqrt(ss / df), days: nd, df } : null, sg = sigma ?? sigmaFit?.sigma ?? P.sigma;
+  for (const p of points) p.v = P.tau ** 2 + sg ** 2 / p.count;
+  return { points, skipped, sigma: sg, sigmaFit };
+}
+
 // fitTime plus one small correction per grid size and an offset for the authors' own times:
 //   ln(median ms) = alpha + gamma * ln(N^2 / refN^2) + c * (h - refH) + u_N (+ a for an author time)
 // u_N ~ N(0, sizeSd^2): only what the log-linear size trend cannot carry is identifiable, so a size whose puzzles are slower (u > 0) or faster
@@ -208,7 +243,7 @@ export function fitTimeSize(points, P = TIME_PRIOR, S = SIZE_PRIOR) {
   const L = Array.from({ length: k }, (_, i) => Array.from({ length: k }, (_, j) => (i === j ? 1 / sd0[i] ** 2 : 0)));
   const b = [...P.mean.map((m, i) => m / P.sd[i] ** 2), ...new Array(k - 3).fill(0)];
   for (const p of points) {
-    const x = [...timeX(p.n, p.h, P), ...sizes.map(s => +(s === p.n)), ...(hasAuthor ? [+(p.src === 'author')] : [])], v = P.tau ** 2 + (1.25 * P.sigma) ** 2 / p.count;
+    const x = [...timeX(p.n, p.h, P), ...sizes.map(s => +(s === p.n)), ...(hasAuthor ? [+(p.src === 'author')] : [])], v = p.v ?? P.tau ** 2 + (1.25 * P.sigma) ** 2 / p.count;
     x.forEach((xi, i) => { if (xi) { b[i] += xi * p.y / v; x.forEach((xj, j) => { if (xj) L[i][j] += xi * xj / v; }); } });
   }
   const cov = invert(L), mean = cov.map(r => sum(r.map((c, j) => c * b[j]))), sd = cov.map((r, i) => Math.sqrt(r[i]));

@@ -1,7 +1,9 @@
 // How much does the grid size change difficulty? Fits the Game-of-Day solve times of real players on size and difficulty h, with a small
 // per-size correction, and prints the size shift s(n), the per-size level and the global / local difficulty tables.
-//   node tools/size-level.mjs [--stats reply.json ...] [--puzzles DIR] [--days 60] [--min-players 20] [--no-author] [--size-sd 0.2] [--out FILE]
+//   node tools/size-level.mjs [--per-play [--sigma S]] [--stats reply.json ...] [--puzzles DIR] [--days 60] [--min-players 20] [--no-author] [--size-sd 0.2] [--out FILE]
 //   --stats        saved backend /stats replies (repeat for several backends); without it the configured backends are read for the last --days days
+//   --per-play     thin-data fit: every day with >= 1 valid play counts, weighted by its player count (mean of ln time, not the median of >= --min-players);
+//                  --sigma = spread of ln(time) among players of one puzzle (default: pooled from the days with >= 3 plays)
 //   --puzzles      the plain puzzle files YYYYMMDD.txt (default: ../demo/GameOfDay next to webapp/)
 //   --min-players  real players a day needs after the exclusions below (default 20, gotd-model.js TIME_PRIOR.minReal)
 //   --no-author    do not use the author's own `# play_time_s` comment of a puzzle file as an extra (noisy, one-player) observation
@@ -15,7 +17,7 @@
 // harder (+) or easier (-) than their badge says AFTER the trend. Before enough days exist everything stays at the prior of gotd-model.js.
 import fs from 'node:fs';
 import { loadDays, loadPuzzles } from './gotd-data.mjs';
-import { TIME_PRIOR, SIZE_PRIOR, timePoints, fitTimeSize, sizeShift, sizeLevel, localDifficulty, globalDifficulty } from '../src/core/gotd-model.js';
+import { TIME_PRIOR, SIZE_PRIOR, timePoints, playPoints, fitTimeSize, sizeShift, sizeLevel, localDifficulty, globalDifficulty } from '../src/core/gotd-model.js';
 
 const args = process.argv.slice(2), here = p => new URL(p, import.meta.url).pathname;
 const opt = (name, dflt) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : dflt; };
@@ -29,11 +31,13 @@ try {
   puzzles = loadPuzzles(opt('--puzzles', here('../../demo/GameOfDay')));
   days = await loadDays({ statsFiles: optAll('--stats'), days: nDays });
 } catch (e) { die(e.message); }
-const { points, skipped } = timePoints(days, puzzles, { minReal, useAuthor: !args.includes('--no-author') });
+const perPlay = args.includes('--per-play'), useAuthor = !args.includes('--no-author');
+const { points, skipped, sigma, sigmaFit } = perPlay ? playPoints(days, puzzles, { useAuthor, sigma: opt('--sigma') === undefined ? null : +opt('--sigma') }) : { ...timePoints(days, puzzles, { minReal, useAuthor }) };
 const players = points.filter(p => p.src === 'players'), authors = points.filter(p => p.src === 'author');
 const sum = a => a.reduce((s, v) => s + v, 0);
 console.log(`${puzzles.size} puzzle file(s), ${days.length} backend day(s)`);
-console.log(`valid points: ${players.length} day(s) with >= ${minReal} real players (${sum(players.map(p => p.count))} players; removed: ${sum(players.map(p => p.seeds))} seed players, ${sum(players.map(p => p.dropped))} plays below the floor) + ${authors.length} author time(s)`);
+console.log(`valid points: ${players.length} day(s) with ${perPlay ? '>= 1 valid play' : `>= ${minReal} real players`} (${sum(players.map(p => p.count))} players; removed: ${sum(players.map(p => p.seeds))} seed players, ${sum(players.map(p => p.dropped))} plays below the floor) + ${authors.length} author time(s)`);
+if (perPlay) console.log(`per-play: sigma ${sigma.toFixed(2)} (${sigmaFit ? `pooled from ${sigmaFit.days} day(s), ${sigmaFit.df} df` : 'prior: too few days with >= 3 plays'}), day weights 1/(tau^2 + sigma^2/count)`);
 for (const s of skipped) console.log(`  not used ${s.day}: ${s.why}`);
 
 const model = fitTimeSize(points, TIME_PRIOR, { ...SIZE_PRIOR, sizeSd });

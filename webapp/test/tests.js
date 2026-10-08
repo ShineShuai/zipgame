@@ -29,7 +29,7 @@ import { encodeShare, decodeShare, SHARE_VERSION, MAX_LEGS } from '../src/core/s
 import { levelOf, legsUndo, legLevels, stripText, dayOfDate, makeShareRecord, shareUrl, parseShareLink, shareText, shareStatus, isPlayable, LEVEL_EMOJI } from '../src/features/share.js';
 import { NB, TOP_K, binOf, summarize, statsLine } from '../src/core/hist.js';
 import { parseDays, mergeDays, combineDays, isReplicated } from '../src/core/stats-merge.js';
-import { wls, fitCandidate, predictH, dedupe, isMonotone, selectEntries, pickEntries, fitTime, predictMs, withoutSeeds, TIME_PRIOR, invert, floorMs, needsThinking, aboveFloor, EXTRA_MIN_SKILL, timePoints, fitTimeSize, sizeShift, sizeLevel, localDifficulty, globalDifficulty, localFromGlobal } from '../src/core/gotd-model.js';
+import { wls, fitCandidate, predictH, dedupe, isMonotone, selectEntries, pickEntries, fitTime, predictMs, withoutSeeds, TIME_PRIOR, invert, floorMs, needsThinking, aboveFloor, EXTRA_MIN_SKILL, timePoints, playPoints, fitTimeSize, sizeShift, sizeLevel, localDifficulty, globalDifficulty, localFromGlobal } from '../src/core/gotd-model.js';
 import { barsSvg, linesSvg, histSvg, scatterSvg } from '../src/apps/stats/charts.js';
 import { fetchStats } from '../src/platform/stats-client.js';
 import { createLeaderboard, backendsFromConfig, cloudflareBackend, supabaseBackend, tursoBackend, afterSubmit, submitAttempt, MAX_ROUNDS } from '../src/platform/leaderboard.js';
@@ -2242,6 +2242,16 @@ t('gotd-model: timePoints drops seed players, plays below the floor and thin day
   const d3 = points.find(p => p.day === 3); eq(d3.count, 23); eq(d3.dropped, 0); // 5x5 grade 0 needs no thinking: nothing is cut
   eq(points.filter(p => p.src === 'author').map(p => p.day), [1, 4]); eq(timePoints(days, puzzles, { useAuthor: false }).points.filter(p => p.src === 'author').length, 0);
   eq(timePoints([{ ...days[0], seeds: [5000, 5000, 5000] }], new Map([[1, { n: 8, h: 1.5 }]])).skipped[0].day, 1, 'seeds that do not fit into the aggregate: day skipped');
+});
+t('gotd-model: playPoints keeps thin days, weights them by player count and pools sigma from days with >= 3 plays', () => {
+  const day = (d, n, reals, seeds) => { const all = [...reals, ...seeds], bins = new Array(NB).fill(0); for (const x of all) bins[binOf(x)]++; return { d, n: all.length, sum: all.reduce((a, x) => a + x, 0), bins, best: [], seeds }; };
+  const days = [day(1, 8, [60000, 90000, 120000, 3000], [20000]), day(2, 8, [100000], []), day(3, 8, [3000], [])];
+  const puzzles = new Map([[1, { n: 8, h: 1.5 }], [2, { n: 8, h: 1.5 }], [3, { n: 8, h: 1.5 }]]);
+  const r = playPoints(days, puzzles, { sigma: 0.5 });
+  eq(r.points.map(p => [p.day, p.count]), [[1, 3], [2, 1]]); ok(r.skipped.some(s => s.day === 3 && /no valid player/.test(s.why)), 'a day with only plays below the floor is skipped');
+  ok(Math.abs(Math.exp(r.points[0].y) / 1000 - 90) < 9, 'geometric mean of 60, 90, 120 s'); ok(r.points[1].v > r.points[0].v, 'one player weighs less than three');
+  eq(r.sigmaFit, null); ok(playPoints(days, puzzles).sigma === TIME_PRIOR.sigma, 'too little data: the prior sigma');
+  const m = fitTimeSize(r.points); ok(Number.isFinite(m.mean[1]) && m.size[8], 'the points feed fitTimeSize');
 });
 t('gotd-model: fitTimeSize = prior without data; recovers the size exponent, the grade slope and a per-size level; global and local difficulty are consistent', () => {
   const p0 = fitTimeSize([]); eq(p0.mean.map(v => +v.toFixed(6)), TIME_PRIOR.mean.map(v => +v.toFixed(6))); eq(p0.size, {}); eq(p0.author, null);
