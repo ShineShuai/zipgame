@@ -17,6 +17,7 @@
     "share:decode": "node tools/share-decode.mjs",
     "gotd:fit": "node tools/gotd-fit.mjs",
     "target:eval": "node tools/target-eval.mjs",
+    "size:level": "node tools/size-level.mjs",
     "gotd:seed": "node tools/gotd-seed.mjs --dry-run"
   }
 }
