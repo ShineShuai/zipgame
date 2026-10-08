@@ -26,7 +26,7 @@ export function* makeUnique(p, path, rnd, cfg) {
   const n = p.n;
   const { nodeCap, seedFraction, K, prop, legCollide, counts, flags } = cfg;
   const solveOpts = flags ? { ...flags } : { prop, legCollide };
-  const all = allEdges(n);
+  const all = allEdges(n, p.holes); // no wall is ever put next to a hole
   const maxWalls = cfg.wallBudget == null ? all.length : cfg.wallBudget;
   const anchor = edgeMarks(n, path);
   const pool = shuffle(all.filter(e => !anchor[e]), rnd); // walls we may still place, in random order

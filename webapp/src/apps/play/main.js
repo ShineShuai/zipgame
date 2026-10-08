@@ -1,5 +1,6 @@
 import { serialize } from '../../core/format.js';
 import { generate, PLAY_SIZES } from '../../core/gen/generate.js';
+import { generateCutout } from '../../core/gen/cutout.js';
 import { isSolved, step } from '../../core/rules.js';
 import { statSummary } from '../../core/stats.js';
 import { pickStorage } from '../../platform/storage.js';
@@ -26,7 +27,7 @@ import { createPlayLog, newTrace, traceStep, traceClear, buildRecord } from '../
 import { sfxMove, sfxBack, sfxCheckpoint, sfxMoveAfterCheckpoint, sfxBlocked, sfxSolved, setSoundEnabled, isSoundEnabled } from '../../platform/sound.js';
 
 const SIZES = PLAY_SIZES;
-const S = { screen: 'menu', size: 7, puzzle: null, path: [], elapsed: 0, startTime: 0, timerId: null, finished: false,
+const S = { screen: 'menu', mode: 'standard', variant: null, genMode: 'standard', size: 7, puzzle: null, path: [], elapsed: 0, startTime: 0, timerId: null, finished: false,
   gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, isReplay: false, replayPick: null, gotdDate: null, gotdHint: null, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, difficulty: null,
   legs: [], gameDay: null, isShared: false, shared: null, sharedBad: false, sharedMsg: null };
 
@@ -75,7 +76,7 @@ function renderGenerating() {
     <div class="center-stage">
       <section class="card">
         <h2 class="card-title">${t('gen.title')}</h2>
-        <p class="small">${t('gen.sub', S.size)}</p>
+        <p class="small">${t(S.genMode === 'cutout' ? 'gen.subCutout' : 'gen.sub', S.size)}</p>
         <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}">
           <div style="width:${percent}%"></div>
         </div>
@@ -102,6 +103,12 @@ async function refreshNext() {
 
 const gameNo = n => (S.nextIdx[n] == null ? '-' : '#' + (S.nextIdx[n] + 1));
 
+// Modes: 'standard', and the Cutout variant (core/gen/cutout.js). Cutout is random, with no daily sequence, no grade and no stats
+// (yet); a shared Cutout carries its puzzle in the link. The mode select in the menu is revealed by holding V (setDevReveal).
+const MODES = ['standard', 'cutout'];
+const todayText = () => (S.mode === 'cutout' ? '' : t('menu.today', gameNo(S.size)));
+const randomSeed = () => (globalThis.crypto && crypto.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 4294967296));
+
 function renderMenu() {
   refreshAttemptIfStale();
   refreshNext();
@@ -110,6 +117,7 @@ function renderMenu() {
   const sizeOptions = SIZES
     .map(n => `<option value="${n}"${n === S.size ? ' selected' : ''}>${n}x${n}</option>`)
     .join('');
+  const modeOptions = MODES.map(m => `<option value="${m}"${m === S.mode ? ' selected' : ''}>${t('mode.' + m)}</option>`).join('');
   const gotdButton = attempt
     ? `<button class="btn secondary" disabled title="${t('menu.gotdOnce')}">${t('menu.gotd')}</button>`
     : `<button class="btn secondary" id="playGotd">${t('menu.gotd')}</button>`;
@@ -137,7 +145,12 @@ function renderMenu() {
           <div class="field">
             <label class="field-label" for="sizeSel">${t('menu.size')}</label>
             <select id="sizeSel">${sizeOptions}</select>
-            <span class="small" id="gameNo">${t('menu.today', gameNo(S.size))}</span>
+            <span class="small" id="gameNo">${todayText()}</span>
+          </div>
+          <div class="field" id="modeField" style="${S.showDev ? '' : 'display:none'}">
+            <label class="field-label" for="modeSel">${t('menu.mode')}</label>
+            <select id="modeSel">${modeOptions}</select>
+            <span class="small" id="modeBlurb">${S.mode === 'cutout' ? t('mode.cutoutBlurb') : ''}</span>
           </div>
           <div class="button-row">
             <button class="btn" id="playLocal">${t('menu.playLocal')}</button>
@@ -287,10 +300,15 @@ function renderGame() {
   const p = S.puzzle;
   const time = sec(S.elapsed);
   const cap = maxHints(p);
-  const seedTag = `<span id="seedTag" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="Design app's Generate uses these same algorithm choices, but generate() here also tries several candidates and keeps the cheapest, so pasting this seed+flags there is not guaranteed to reproduce this exact puzzle">seed ${S.seed} · flags ${flagsToHex(PLAY_FLAGS_INT)}</span>`;
-  const localTitle = S.isShared ? t('game.sharedTitle', p.n, S.gameIndex + 1, dateLabel(dateOfDay(S.gameDay))) : t('game.localTitle', p.n, S.gameIndex + 1);
+  const seedText = S.variant ? `cutout · ${S.seed == null ? 'shared' : 'seed ' + S.seed} · ${p.shape}` : `seed ${S.seed} · flags ${flagsToHex(PLAY_FLAGS_INT)}`;
+  const seedHint = S.variant ? 'generateCutout (core/gen/cutout.js) is seeded, but the app seeds it at random; a shared game carries its puzzle in the link.' : "Design app's Generate uses these same algorithm choices, but generate() here also tries several candidates and keeps the cheapest, so pasting this seed+flags there is not guaranteed to reproduce this exact puzzle";
+  const seedTag = `<span id="seedTag" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="${seedHint}">${seedText}</span>`;
+  const shapeName = p.shape ? t('shape.' + p.shape) : '';
+  const localTitle = S.variant
+    ? t(S.isShared ? 'game.sharedCutoutTitle' : 'game.cutoutTitle', p.n, shapeName)
+    : (S.isShared ? t('game.sharedTitle', p.n, S.gameIndex + 1, dateLabel(dateOfDay(S.gameDay))) : t('game.localTitle', p.n, S.gameIndex + 1));
   const title = S.isGotd ? t(S.isReplay ? 'game.replayTitle' : 'game.gotdTitle', S.gotdDate) : localTitle + seedTag;
-  const canShare = S.finished && (S.isGotd || S.gameDay != null);
+  const canShare = S.finished && (S.isGotd || S.gameDay != null || S.variant);
   const shareButton = canShare ? `<button class="btn" id="shareBtn">${t('share.btn')}</button>` : '';
   const nextReplay = S.isReplay && S.finished && replay.chances() > 0 ? `<button class="btn" id="toReplay">${t('game.nextReplay', replay.chances())}</button>` : '';
   const newPuzzleButton = S.isGotd ? '' : `<button class="btn secondary" id="newPuzzle">${t('game.new')}</button>`;
@@ -326,7 +344,7 @@ function renderGame() {
           ${solved}
           ${canShare ? '<p class="small share-msg" id="shareMsg"></p>' : ''}
         </section>
-        ${sizeStats(p.n)}
+        ${S.variant ? '' : sizeStats(p.n)}
       </div>
     </div>`;
 }
@@ -334,8 +352,9 @@ function renderGame() {
 // ---------- handlers ----------
 function attachHandlers() {
   const on = (id, f) => { const e = $(id); if (e) e.onclick = f; };
-  on('playLocal', () => { S.size = +$('sizeSel').value; startLocal('open'); });
-  const sel = $('sizeSel'); if (sel) sel.onchange = () => { S.size = +sel.value; $('gameNo').textContent = t('menu.today', gameNo(S.size)); };
+  on('playLocal', () => { S.size = +$('sizeSel').value; startLocal('open', S.mode); });
+  const sel = $('sizeSel'); if (sel) sel.onchange = () => { S.size = +sel.value; $('gameNo').textContent = todayText(); };
+  const msel = $('modeSel'); if (msel) msel.onchange = () => { S.mode = msel.value; $('gameNo').textContent = todayText(); $('modeBlurb').textContent = S.mode === 'cutout' ? t('mode.cutoutBlurb') : ''; };
   on('playGotd', startGameOfDay);
   on('playShared', startShared);
   on('shareBtn', shareResult);
@@ -347,7 +366,7 @@ function attachHandlers() {
   on('backMenu2', () => { logPlay(false); stopTimer(); S.screen = 'menu'; render(); });
   on('resetPath', () => { if (S.trace && !S.finished) traceClear(S.trace, S.path.length); if (!S.finished) legsUndo(S.legs, S.puzzle, S.path, 1); S.path = []; S.finished = false; S.hintCell = S.hintWrongCell = null; render(); });
   on('exportPlayLog', ev => { ev.preventDefault(); exportPlayLog(); });
-  on('newPuzzle', () => { if (!S.isGotd) startLocal('skip'); });
+  on('newPuzzle', () => { if (!S.isGotd) startLocal('skip', S.variant || 'standard'); });
   on('exportBtn', () => { $('exportText').value = serialize(S.puzzle); $('exportMsg').textContent = ''; modal.open(); setTimeout(() => $('exportText').focus(), 30); });
   on('hintBtn', () => {
     if (S.finished || S.hintsUsed >= maxHints(S.puzzle)) return;
@@ -377,7 +396,7 @@ function setupGridInput(svg) {
   const clearHint = () => { if (S.hintCell == null && S.hintWrongCell == null) return; S.hintCell = S.hintWrongCell = null; svg.querySelectorAll('[data-role="hint"],[data-role="hint-wrong"]').forEach(e => e.remove()); };
   const syncFills = () => { const on = new Set(S.path); svg.querySelectorAll('[data-num-cell]').forEach(g => fill(+g.dataset.numCell, on.has(+g.dataset.numCell))); };
   function walkTo(cell) {
-    if (cell < 0 || S.finished) return;
+    if (cell < 0 || S.finished || (p.holes && p.holes[cell])) return; // a hole is not part of the board
     const prev = S.path[S.path.length - 1], before = S.path.length, prevPath = S.path.slice(), kind = step(p, S.path, cell);
     if (kind && S.trace) traceStep(S.trace, kind, before, S.path.length);
     if (kind && kind !== 'push') legsUndo(S.legs, p, prevPath, S.path.length);
@@ -411,7 +430,7 @@ function setupGridInput(svg) {
 // Play log (features/playlog.js): one record per puzzle, on the solve or when the puzzle is left unsolved. Local only.
 let playlog = null;
 function logPlay(solved) {
-  if (!playlog || !S.puzzle || !S.trace || S.logged || S.screen !== 'game' || (!solved && S.trace.pushes < 2)) return;
+  if (!playlog || !S.puzzle || S.variant || !S.trace || S.logged || S.screen !== 'game' || (!solved && S.trace.pushes < 2)) return;
   S.logged = true;
   const ms = S.timerId != null ? performance.now() - S.startTime : S.elapsed * 1000;
   playlog.add(buildRecord(S.puzzle, S.trace, { ms, solved, hints: S.hintsUsed, mode: S.isGotd ? (S.isReplay ? 'replay' : 'gotd') : 'local' }));
@@ -426,7 +445,8 @@ function onSolved() {
   S.finished = true; stopTimer(); sfxSolved();
   if (!S.penaltyApplied) { S.elapsed = penalizedTime(S.elapsed, S.hintsUsed); S.penaltyApplied = true; } // once, even if the path is reset and re-solved
   if (S.isGotd) { const a = store.attemptOn(S.gotdDate); if (!(a && a.solved)) finishGotd(S.puzzle.n, S.gotdDate, S.elapsed, S.isReplay); } // a Game of Day (live or replay) counts once
-  else { const n = S.puzzle.n; store.recordSolve(n, dayNo(), S.elapsed); if (!S.isShared) daily.markSolved(n, S.gameIndex).then(refreshNext); }
+  else if (!S.variant) { // no stats and no daily counter for a variant yet
+    const n = S.puzzle.n; store.recordSolve(n, dayNo(), S.elapsed); if (!S.isShared) daily.markSolved(n, S.gameIndex).then(refreshNext); }
 }
 
 // Game of Day (live or replay): record locally, count it towards the next replay chance, then submit to the averages backend
@@ -445,18 +465,19 @@ async function shareGotd(date) {
 // ---------- game flow ----------
 function beginGame(puzzle, gotdDate, isReplay = false, isShared = false) {
   logPlay(false); // a puzzle left unfinished is logged as abandoned
-  const difficulty = gradePuzzle(puzzle);
-  Object.assign(S, { trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
+  const variant = puzzle.holes ? 'cutout' : null; // only Cutout puzzles have holes
+  const difficulty = variant ? null : gradePuzzle(puzzle); // a variant is not graded yet
+  Object.assign(S, { variant, trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
   startTimer(); render();
 }
-const generateShown = (n, seed) => runAsync(generate(n, seed), { onEvent: e => { S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls, K: e.K }; if (S.screen === 'generating') render(); } });
-async function startLocal(how) { // how: 'open' (Play local: current or next-if-solved) | 'skip' (New puzzle)
-  S.screen = 'generating'; S.gen = { frac: 0, walls: null, K: null }; render();
+const generateShown = (n, seed, mode = 'standard') => runAsync((mode === 'cutout' ? generateCutout : generate)(n, seed), { onEvent: e => { S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls, K: e.K }; if (S.screen === 'generating') render(); } });
+async function startLocal(how, mode = 'standard') { // how: 'open' (Play local: current or next-if-solved) | 'skip' (New puzzle); a Cutout is always a new random one
+  S.screen = 'generating'; S.genMode = mode; S.gen = { frac: 0, walls: null, K: null }; render();
   try {
-    const { index, seed } = how === 'skip' ? await daily.skip(S.size) : await daily.open(S.size);
-    const puzzle = await generateShown(S.size, seed);
+    const { index, seed } = mode === 'cutout' ? { index: 0, seed: randomSeed() } : how === 'skip' ? await daily.skip(S.size) : await daily.open(S.size);
+    const puzzle = await generateShown(S.size, seed, mode);
     S.gameIndex = index; S.seed = seed;
-    S.gameDay = [dayNo(), dayNo() - 1].find(d => dailySeed(d, S.size, index, ALGO_VERSION) === seed) ?? null; // the day this seed was made on: what a share link needs
+    S.gameDay = mode === 'cutout' ? null : [dayNo(), dayNo() - 1].find(d => dailySeed(d, S.size, index, ALGO_VERSION) === seed) ?? null; // the day this seed was made on: what a share link needs
     beginGame(puzzle, null);
   } catch (e) { console.error('startLocal failed:', e); S.screen = 'menu'; render(); alert(t('err.generate')); }
 }
@@ -525,8 +546,8 @@ function sharedCardHtml() {
   const rec = S.shared;
   if (!rec) return '';
   const state = sharedStatus(rec);
-  const date = dateLabel(dateOfDay(rec.day));
-  const head = rec.kind === 'gotd' ? t('share.gotd', date) : t('share.local', rec.index + 1, date);
+  const date = rec.variant ? '' : dateLabel(dateOfDay(rec.day));
+  const head = rec.kind === 'gotd' ? t('share.gotd', date) : rec.variant ? t('share.cutout') + (rec.puzzle.shape ? ' · ' + t('shape.' + rec.puzzle.shape) : '') : t('share.local', rec.index + 1, date);
   const grade = rec.grade == null ? '' : ` · ${t('grade.' + rec.grade)} ${rec.grade}/5`;
   const row = [`<span>⏱ ${sec(rec.timeS)}</span>`];
   if (rec.pct != null) row.push(`<span>${t('share.beat', rec.pct)}</span>`);
@@ -608,8 +629,16 @@ async function startShared() {
 }
 
 async function startSharedLocal(rec) {
+  if (rec.variant) { // the link carries the puzzle: nothing to generate
+    S.size = rec.n;
+    Object.assign(S, { gameIndex: 0, seed: null, gameDay: null });
+    beginGame({ ...rec.puzzle, shape: rec.puzzle.shape || undefined }, null, false, true);
+    clearSharedLink();
+    return;
+  }
   S.screen = 'generating';
   S.size = rec.n;
+  S.genMode = 'standard';
   S.gen = { frac: 0, walls: null, K: null };
   render();
   try {
@@ -638,6 +667,8 @@ function currentShareRecord() {
     day: S.gameDay,
     index: S.gameIndex,
     algo: ALGO_VERSION,
+    variant: S.variant,
+    puzzle: S.puzzle,
     legs: S.legs,
     K: maxNumber(S.puzzle),
   });
@@ -684,6 +715,7 @@ function setDevReveal(on) {
   const tag = $('seedTag'); if (tag) tag.style.display = on ? 'inline' : 'none';
   const d = $('difficultyDev'); if (d) d.style.display = on ? 'inline' : 'none';
   const g = $('genDev'); if (g) g.style.display = on ? 'inline' : 'none';
+  const mf = $('modeField'); if (mf) mf.style.display = on ? '' : 'none'; // the mode select (Cutout variant)
   const shown = S.screen === 'game' && S.isGotd ? store.attemptOn(S.gotdDate) : store.attempt(), st = shown && shown.stats;
   if (st) document.querySelectorAll('.gotd-stats').forEach(e => { e.textContent = statsLineT(st, on); });
 }
@@ -691,7 +723,8 @@ function installDevReveal() {
   const typing = t => t && t.tagName && (/^(input|textarea|select)$/i.test(t.tagName) || t.isContentEditable);
   addEventListener('keydown', e => { if ((e.key === 'v' || e.key === 'V') && !e.ctrlKey && !e.metaKey && !e.altKey && !typing(e.target)) setDevReveal(true); });
   addEventListener('keyup', e => { if (e.key === 'v' || e.key === 'V') setDevReveal(false); });
-  addEventListener('blur', () => setDevReveal(false));
+  // an open native select can blur the window while the reveal key is still held: keep the mode select usable then
+  addEventListener('blur', () => { if (document.activeElement && document.activeElement.id === 'modeSel') return; setDevReveal(false); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) setDevReveal(false); });
 }
 

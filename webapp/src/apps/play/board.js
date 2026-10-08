@@ -5,6 +5,7 @@ export const CELL = 60; // logical units; on-screen size comes from viewBox scal
 // One palette for the board. The numbers are recolored while drawing (main.js), so it is shared.
 export const COLORS = {
   grid: '#dbe4fb',
+  outline: '#aebff5',     // the edge of a board with holes (Cutout)
   wall: '#26324f',
   path: '#ffb020',
   number: '#3b68ee',      // idle number: blue ring and text on white; visited: filled blue, white text
@@ -28,6 +29,29 @@ function gridLines(size) {
     lines.push(`<line x1="0" y1="${at}" x2="${size}" y2="${at}"/><line x1="${at}" y1="0" x2="${at}" y2="${size}"/>`);
   }
   return `<g stroke="${COLORS.grid}" stroke-width="1.5">${lines.join('')}</g>`;
+}
+
+// Board with holes (Cutout): only the cells that are left are drawn, each a white tile; the grid lines run between two
+// tiles, and the edge of the shape (every side of a tile that faces a hole or the border) gets the outline. Holes stay empty.
+function cutoutLayers(p) {
+  const n = p.n;
+  const open = (r, c) => r >= 0 && r < n && c >= 0 && c < n && !p.holes[r * n + c];
+  const tiles = [], grid = [], edge = [];
+  const line = (x1, y1, x2, y2) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      if (!open(r, c)) continue;
+      const x = c * CELL, y = r * CELL;
+      tiles.push(`<rect x="${x}" y="${y}" width="${CELL}" height="${CELL}"/>`);
+      if (open(r, c + 1)) grid.push(line(x + CELL, y, x + CELL, y + CELL)); else edge.push(line(x + CELL, y, x + CELL, y + CELL));
+      if (open(r + 1, c)) grid.push(line(x, y + CELL, x + CELL, y + CELL)); else edge.push(line(x, y + CELL, x + CELL, y + CELL));
+      if (!open(r, c - 1)) edge.push(line(x, y, x, y + CELL));
+      if (!open(r - 1, c)) edge.push(line(x, y, x + CELL, y));
+    }
+  }
+  return `<g data-role="tiles" fill="#fff">${tiles.join('')}</g>` +
+    `<g stroke="${COLORS.grid}" stroke-width="1.5">${grid.join('')}</g>` +
+    `<g data-role="outline" stroke="${COLORS.outline}" stroke-width="5" stroke-linecap="round">${edge.join('')}</g>`;
 }
 
 function wallLines(puzzle) {
@@ -79,8 +103,8 @@ export function boardSvg(S) {
   const visited = new Set(S.path);
   const route = S.path.length > 1 ? pathD(n, S.path, CELL) : '';
 
-  let svg = `<svg viewBox="0 0 ${size} ${size}" class="zip-svg" style="${maxBoardCss(n)}">`;
-  svg += gridLines(size);
+  let svg = `<svg viewBox="0 0 ${size} ${size}" class="zip-svg${p.holes ? ' cutout' : ''}" style="${maxBoardCss(n)}">`;
+  svg += p.holes ? cutoutLayers(p) : gridLines(size);
   svg += wallLines(p);
   svg += `<path data-role="path" d="${route}" stroke="${COLORS.path}" stroke-width="${CELL * 0.28}" fill="none" ` +
     `stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>`;

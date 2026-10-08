@@ -1,11 +1,11 @@
 // Runs in the browser (open test/index.html via a local server) and in Node (node test/tests.js). No dependencies.
-import { makePuzzle, clonePuzzle, validate, maxNumber, ALGO_VERSION, endCell, checkpointCells } from '../src/core/model.js';
+import { makePuzzle, clonePuzzle, validate, maxNumber, ALGO_VERSION, endCell, checkpointCells, cellCount } from '../src/core/model.js';
 import { edgeId, edgeCells, allEdges, edgeToKey, keyToEdge, setWallId, hasWallId, wallCount, wallIds } from '../src/core/edges.js';
 import { serialize, parse } from '../src/core/format.js';
 import { makeRng, dailySeed, hashStr, shuffle } from '../src/core/rng.js';
 import { newStat, updateStat, statSummary } from '../src/core/stats.js';
 import { solve } from '../src/core/solver/solve.js';
-import { isSolved, step } from '../src/core/rules.js';
+import { isSolved, step, canStep } from '../src/core/rules.js';
 import { boardConnectivity, boardLegCollide } from '../src/core/connectivity.js';
 import { arrowSegment } from '../src/view/geometry.js';
 import { buildNeighbors, makeNoDeadEnd, forcedEdges, legsCollide, legConflicts, segBlocker } from '../src/core/solver/prune.js';
@@ -45,6 +45,9 @@ import { mountDifficultyPanel } from '../src/apps/design/difficulty-panel.js';
 import { ratingKey, ratingFromSelection, leanOf, describeRating, toRatingsJson, parseRatingsJson, mergeRatings, parseRatingComment, ratingWeight, UNSURE_WEIGHT, symmetryKey, findDuplicateGroups, transformPuzzle, asciiPuzzle, keyDifference } from '../src/core/ratings-io.js';
 import { parsePairsJson, toPairsJson, mergePairs, pairAccuracy, impliedPairs, flipCmp, pairKeyOf } from '../src/core/pairs-io.js';
 import { pickStorage } from '../src/platform/storage.js';
+import { generateCutout, pickShape, shapeIsViable, isBalanced, colourCounts, SHAPES } from '../src/core/gen/cutout.js';
+import { boardSvg } from '../src/apps/play/board.js';
+import { VARIANTS } from '../src/core/share-code.js';
 
 // ---- mini harness ----
 const out = []; let pass = 0, fail = 0;
@@ -2492,6 +2495,153 @@ ta('replay: beginShared opens a missed window day without spending a chance; sam
   eq(R.chances(), chances, 'a shared replay costs no chance');
   const st = fakeStorage(), cold = createReplay(st, createStore(st, [5]), clock);
   eq(await cold.beginShared(g(5)), false, 'before init() there is no credit to count the solve in');
+});
+
+// ---- Cutout variant: boards with holes (core/gen/cutout.js; puzzle.holes, see core/model.js) ----
+const holesBrute = p => { // every Hamiltonian path of the cells that are left, in checkpoint order
+  const n = p.n, T = n * n, K = Math.max(...p.cp), start = p.cp.indexOf(1), end = p.cp.indexOf(K), TC = cellCount(p), vis = new Uint8Array(T); let count = 0;
+  const go = (c, len, need) => {
+    if (p.cp[c]) { if (p.cp[c] !== need) return; need++; }
+    if (len === TC) { if (c === end && need === K + 1) count++; return; }
+    vis[c] = 1;
+    for (const v of [c + 1, c - 1, c + n, c - n]) if (v >= 0 && v < T && !vis[v] && canStep(p, c, v)) go(v, len + 1, need);
+    vis[c] = 0;
+  };
+  go(start, 1, 1);
+  return count;
+};
+const holesBoard = (seed, n) => { // random board with holes, checkpoints along a random path, random walls off that path
+  const rnd = makeRng(seed), p = makePuzzle(n); p.holes = new Uint8Array(n * n);
+  for (let i = 0, h = 1 + Math.floor(rnd() * 5); i < h; i++) p.holes[Math.floor(rnd() * n * n)] = 1;
+  const TC = cellCount(p), vis = new Uint8Array(n * n), path = []; let budget = 100000;
+  const go = c => {
+    if (budget-- < 0) return false;
+    vis[c] = 1; path.push(c);
+    if (path.length === TC) return true;
+    for (const v of shuffle([c + 1, c - 1, c + n, c - n], rnd)) if (v >= 0 && v < n * n && !vis[v] && canStep(p, c, v) && go(v)) return true;
+    vis[c] = 0; path.pop(); return false;
+  };
+  for (const s of shuffle([...Array(n * n).keys()].filter(i => !p.holes[i]), rnd)) { path.length = 0; vis.fill(0); if (go(s)) break; }
+  if (path.length !== TC) return null;
+  const pos = new Set([0, TC - 1]); while (pos.size < Math.min(4, TC)) pos.add(Math.floor(rnd() * TC));
+  [...pos].sort((a, b) => a - b).forEach((q, i) => { p.cp[path[q]] = i + 1; });
+  const on = new Set(path.slice(1).map((c, i) => edgeId(n, path[i], c)));
+  for (const e of allEdges(n, p.holes)) if (!on.has(e) && rnd() < 0.2) setWallId(p.walls, e, true);
+  return p;
+};
+t('holes: allEdges leaves out the edges that touch a hole; without holes it is unchanged', () => {
+  const n = 4, holes = new Uint8Array(16); holes[5] = 1;
+  eq(allEdges(n).length, 24); eq(allEdges(n, holes).length, 20);
+  ok(allEdges(n, holes).every(e => !holes[e >> 1] && !holes[edgeCells(n, e)[1]]));
+  eq(allEdges(n, null), allEdges(n));
+});
+t('holes: the solver finds exactly the solutions a brute-force search finds, with every prune on or off', () => {
+  const flags = [{}, { prop: true }, { prop: true, incr: false }, { prop: true, lconn: false }, { prop: true, pocket: true, parity: true, prune2: true, seg: 'all', legCollide: true }, { pocket: true, parity: true, prune2: true, seg: true }];
+  let checked = 0, unique = 0;
+  for (let seed = 1; checked < 80 && seed < 400; seed++) {
+    const p = holesBoard(seed * 31, 3 + (seed % 4)); if (!p) continue;
+    const want = holesBrute(p); checked++; if (want === 1) unique++;
+    ok(want >= 1, 'the board was built from a solution');
+    for (const f of flags) {
+      const r = solve(p, { limit: 1e9, nodeCap: 1e9, capture: true, ...f });
+      eq(r.count, want, `seed ${seed} ${JSON.stringify(f)}`);
+      ok(r.paths.every(path => path.length === cellCount(p) && isSolved(p, path)), 'a captured solution has exactly the cells that are left');
+    }
+  }
+  ok(checked >= 80 && unique > 10, `checked ${checked}, unique ${unique}`);
+});
+t('holes: canStep refuses a hole, isSolved needs every cell that is left, a checkpoint on a hole is invalid', () => {
+  const p = makePuzzle(3); p.holes = new Uint8Array(9); p.holes[4] = 1; p.cp[0] = 1; p.cp[1] = 2;
+  ok(!canStep(p, 1, 4) && !canStep(p, 3, 4) && canStep(p, 0, 1));
+  eq(cellCount(p), 8);
+  p.cp[1] = 0; p.cp[3] = 2;
+  const ring = [0, 1, 2, 5, 8, 7, 6, 3];
+  ok(isSolved(p, ring) && !isSolved(p, ring.slice(0, 7)));
+  const q = clonePuzzle(p); ok(q.holes && q.holes[4] === 1 && q.holes !== p.holes);
+  eq(Object.keys(clonePuzzle(makePuzzle(3))).sort(), ['cp', 'n', 'walls']);
+  const path = []; step(p, path, 0); step(p, path, 1); eq(step(p, path, 4), null); // walking into a hole does nothing
+  p.cp[4] = 3; ok(!validate(p).ok);
+});
+t('holes: the text format round-trips holes; a standard puzzle has no holes line', () => {
+  const p = holesBoard(5, 5);
+  const text = serialize(p), back = parse(text);
+  ok(/^holes /m.test(text)); eq([...back.holes], [...p.holes]); eq([...back.cp], [...p.cp]); eq(serialize(back), text);
+  ok(!/holes/.test(serialize(randPuzzle(1, 5, 4, 0.1))));
+  let msg = ''; try { parse('size 3\ncheckpoints 1,1=1 0,0=2\nwalls\nholes 1,1'); } catch (e) { msg = e.message; }
+  ok(/hole/.test(msg), msg);
+});
+t('cutout: the checkerboard rule — colour counts differ by at most 1, so 5x5 minus its four corners has no path', () => {
+  const corners = new Uint8Array(25); for (const c of [0, 4, 20, 24]) corners[c] = 1;
+  eq(colourCounts(5, corners), [9, 12]); ok(!isBalanced(5, corners) && !shapeIsViable(5, corners));
+  const centre = new Uint8Array(25); centre[12] = 1;
+  eq(colourCounts(5, centre), [12, 12]); ok(isBalanced(5, centre) && shapeIsViable(5, centre));
+  eq(colourCounts(4, new Uint8Array(16)), [8, 8]);
+  ok(!shapeIsViable(5, Uint8Array.from({ length: 25 }, (_, i) => (i % 5 === 2 ? 1 : 0)))); // a full column cut away splits the board
+});
+t('cutout: every size offers donut, L and cross shapes that obey the rule and have a path', () => {
+  for (const n of PLAY_SIZES) for (const shape of SHAPES) {
+    const r = pickShape(n, makeRng(n * 7 + shape.length), shape);
+    ok(r && r.shape === shape, `${n} ${shape}`);
+    ok(isBalanced(n, r.holes) && shapeIsViable(n, r.holes));
+    ok(r.holes.some(Boolean) && cellCount({ n, holes: r.holes }) >= n * n * 0.45, 'a real cut, but most of the board is left');
+  }
+});
+t('cutout: generateCutout gives unique, checkerboard-balanced puzzles with no wall at a hole; same seed, same puzzle', () => {
+  for (const [n, seed, only] of [[5, 11, 'donut'], [6, 12, 'ell'], [7, 13, 'cross'], [8, 14, null], [9, 15, null]]) {
+    const p = runSync(generateCutout(n, seed, { shape: only })), again = runSync(generateCutout(n, seed, { shape: only }));
+    eq(serialize(p), serialize(again), 'deterministic');
+    ok(SHAPES.includes(p.shape) && (!only || p.shape === only));
+    ok(isBalanced(n, p.holes) && validate(p).ok && p.holes.some(Boolean));
+    const r = solve(p, { limit: 2, nodeCap: 5e6, capture: true, prop: true });
+    eq([r.count, r.exceeded], [1, false], `${n}x${n} seed ${seed}: unique`);
+    ok(isSolved(p, r.paths[0]) && isSolved(p, p.path), 'the stored solution solves it');
+    ok(p.path.every((c, i) => i === 0 || canStep(p, p.path[i - 1], c)));
+    for (const e of allEdges(n)) if (hasWallId(p.walls, e)) ok(!p.holes[e >> 1] && !p.holes[edgeCells(n, e)[1]], 'a wall next to a hole');
+    ok(p.cp.every((v, i) => !v || !p.holes[i]));
+  }
+});
+t('cutout: boardSvg draws one tile per cell that is left, an outline, and nothing for holes; the standard board is unchanged', () => {
+  const p = runSync(generateCutout(6, 3)), svg = boardSvg({ puzzle: p, path: [], hintCell: null, hintWrongCell: null });
+  ok(svg.includes('class="zip-svg cutout"'));
+  eq((svg.match(/<rect /g) || []).length, cellCount(p)); ok(svg.includes('data-role="outline"'));
+  const std = boardSvg({ puzzle: randPuzzle(2, 5, 4, 0.1), path: [], hintCell: null, hintWrongCell: null });
+  ok(!std.includes('cutout') && !std.includes('<rect '));
+});
+t('share-code: a Cutout game round-trips with its puzzle; 7x7 stays short; damaged codes are rejected; version 1 codes still decode', () => {
+  for (const n of [5, 8, 16]) {
+    const p = runSync(generateCutout(n, 40 + n, { candidates: 2, refineNodes: 0 }));
+    const rec = makeShareRecord({ n, timeS: 83.4, legs: [0, 2, 3], K: maxNumber(p), variant: 'cutout', puzzle: p }), code = encodeShare(rec);
+    ok(/^[A-Za-z0-9_-]+$/.test(code), code);
+    const back = decodeShare(code);
+    eq([back.kind, back.variant, back.n, back.timeS, back.levels, back.grade], ['local', 'cutout', n, 83.4, rec.levels, null]);
+    eq([back.puzzle.shape, [...back.puzzle.holes], [...back.puzzle.cp], [...back.puzzle.walls]], [p.shape, [...p.holes], [...p.cp], [...p.walls]]);
+    eq(encodeShare(back), code);
+    ok(decodeShare(code.slice(0, -1)) === null && decodeShare(code + 'A') === null);
+    ok(decodeShare(code.slice(0, 5) + (code[5] === 'A' ? 'B' : 'A') + code.slice(6)) === null || n === 8, 'a changed character is caught by the check');
+    ok(parseShareLink('?s=' + code).rec.puzzle.n === n);
+  }
+  ok(encodeShare(makeShareRecord({ n: 7, timeS: 9, legs: [], K: 7, variant: 'cutout', puzzle: runSync(generateCutout(7, 4, { candidates: 2, refineNodes: 0 })) })).length <= 64);
+  eq(decodeShare(encodeShare(LOCAL_REC)), LOCAL_REC); eq(decodeShare(encodeShare(GOTD_REC)), GOTD_REC);
+  eq(VARIANTS, [null, 'cutout']);
+});
+t('share-code: a Cutout record is refused when its puzzle is unsound (unbalanced, checkpoint on a hole, wall at a hole, a gap in the numbers)', () => {
+  const good = runSync(generateCutout(6, 8, { candidates: 2, refineNodes: 0 }));
+  const rec = puzzle => makeShareRecord({ n: 6, timeS: 5, legs: [], K: 2, variant: 'cutout', puzzle });
+  ok(encodeShare(rec(good)) !== null);
+  const flat = new Uint8Array(36), withCp = (a, b) => { const q = { ...good, holes: flat.slice(), cp: new Uint16Array(36), walls: new Uint8Array(36) }; q.cp[a] = 1; q.cp[b] = 2; return q; };
+  ok(encodeShare(rec(withCp(0, 35))) !== null);
+  const odd = withCp(0, 35); odd.holes[1] = 1; odd.holes[3] = 1; odd.holes[5] = 1; ok(encodeShare(rec(odd)) === null, 'three holes of one colour');
+  const onHole = withCp(0, 35); onHole.holes[0] = 1; onHole.holes[1] = 1; ok(encodeShare(rec(onHole)) === null, 'checkpoint on a hole');
+  const wallHole = withCp(0, 35); wallHole.holes[7] = 1; wallHole.holes[10] = 1; wallHole.walls[6] = 1; ok(encodeShare(rec(wallHole)) === null, 'wall at a hole');
+  const gap = withCp(0, 35); gap.cp[35] = 3; ok(encodeShare(rec(gap)) === null, 'numbering has a gap');
+});
+t('share: a Cutout share record has the puzzle, a head line of its own, and is always playable at a listed size', () => {
+  const p = runSync(generateCutout(6, 21, { candidates: 2, refineNodes: 0 }));
+  const rec = makeShareRecord({ n: 6, timeS: 12.5, legs: [], K: maxNumber(p), variant: 'cutout', puzzle: p });
+  ok(rec.variant === 'cutout' && rec.kind === 'local' && rec.day === undefined && rec.puzzle.holes !== p.holes);
+  ok(shareText(rec, 'u', tr).startsWith('Zip Cutout · 6x6'));
+  eq(shareStatus(rec, { today: 20000, replayDates: [], attempt: null, algo: ALGO_VERSION, sizes: PLAY_SIZES }), { status: 'ok' });
+  eq(shareStatus({ ...rec, n: 3 }, { today: 20000, replayDates: [], attempt: null, algo: ALGO_VERSION, sizes: PLAY_SIZES }), { status: 'invalid' });
 });
 
 for (const [name, fn] of pending) { const t0 = Date.now(); try { await fn(); pass++; out.push(`ok    ${name} (${Date.now() - t0}ms)`); } catch (e) { fail++; out.push(`FAIL  ${name}: ${e.message}`); } }

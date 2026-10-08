@@ -12,6 +12,7 @@ export const DC = [1, -1, 0, 0];
 export function buildNeighbors(p) {
   const n = p.n;
   const T = n * n;
+  const holes = p.holes || null; // a hole has no edges, and no cell has an edge to it
   const nb = new Int32Array(T * 4).fill(-1);
   const row = new Int32Array(T);
   const col = new Int32Array(T);
@@ -25,7 +26,7 @@ export function buildNeighbors(p) {
       const cc = c + DC[d];
       if (rr < 0 || rr >= n || cc < 0 || cc >= n) continue;
       const j = rr * n + cc;
-      if (!hasWall(p, i, j)) nb[i * 4 + d] = j;
+      if (!hasWall(p, i, j) && !(holes && (holes[i] || holes[j]))) nb[i * 4 + d] = j;
     }
   }
   return { nb, row, col, T };

@@ -283,6 +283,9 @@ select:focus { border-color: var(--blue); }
   cursor: pointer;
 }
 
+/* Cutout: the tiles carry the white and the outline, so the holes show the page behind them */
+.zip-svg.cutout { background: transparent; box-shadow: none; overflow: visible; }
+
 .solved {
   margin-top: 14px;
   padding: 12px 16px;

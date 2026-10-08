@@ -34,7 +34,9 @@
 // }
 const POP = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
 
-export function makeIncremental(nb, T, end, vis) {
+// holes (optional Uint8Array, 1 = hole): cells that are not on the board; they are skipped. cells (default T): how many cells the
+// path covers in all.
+export function makeIncremental(nb, T, end, vis, holes = null, cells = T) {
   const n = Math.round(Math.sqrt(T));
   const AV = 0, FR = T, FD = 2 * T, DG = 3 * T, OE = 4 * T, CN = 5 * T;
   const S = new Int32Array(6 * T);
@@ -152,12 +154,13 @@ export function makeIncremental(nb, T, end, vis) {
     S.fill(0);
     tp = 0;
     hd = cur;
-    pneed = T - count + 1;
+    pneed = cells - count + 1;
     qt = 0;
     for (let u = 0; u < T; u++) {
-      S[AV + u] = nbm[u]; // only `cur` is on the path, and the head counts as an open neighbour
       S[OE + u] = u;
       S[CN + u] = 1;
+      if (holes && holes[u]) continue;
+      S[AV + u] = nbm[u]; // only `cur` is on the path, and the head counts as an open neighbour
       const degree = POP[nbm[u]];
       S[DG + u] = degree;
       const need = required(u);
@@ -177,7 +180,7 @@ export function makeIncremental(nb, T, end, vis) {
   function step(h, v, count) {
     if (v === end) return false; // count < T here: the path may only end on the last checkpoint
     hd = v;
-    pneed = T - count + 1;
+    pneed = cells - count + 1;
     qt = 0;
     const fh = S[FR + h]; // h had one edge to give, so this is 0 or the single forced edge
 

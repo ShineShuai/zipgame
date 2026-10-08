@@ -28,7 +28,8 @@ const POPCOUNT = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
 //     ul[0 .. un) = unvisited cells, vm[u] = mask of u's neighbours that are on the path.
 //     mustA/mustB = optional edge (two grid-adjacent cells, each the head or unvisited) that the rest of the
 //     path has to use; deduce() fails when it cannot.
-export function makePropagator(nb, T, end, vis) {
+// cells (default T): how many cells the path covers in all (T minus the holes of a Cutout puzzle).
+export function makePropagator(nb, T, end, vis, cells = T) {
   const n = Math.round(Math.sqrt(T));
   // Per cell: av = still-open edge bits, fr = forced edge bits, dg / fd = popcount of av / fr.
   const av = new Uint8Array(T);
@@ -134,7 +135,7 @@ export function makePropagator(nb, T, end, vis) {
   function deduce(cur, count, ul, un, vm, mustA = -1, mustB = -1) {
     if (cur === end) return false; // count < T here: the path may only end on the last checkpoint
     pcur = cur;
-    pneed = T - count + 1;
+    pneed = cells - count + 1;
     qt = 0;
 
     for (let i = 0; i < un; i++) {

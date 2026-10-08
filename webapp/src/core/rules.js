@@ -1,12 +1,12 @@
-import { startCell, endCell, maxNumber } from './model.js';
+import { startCell, endCell, maxNumber, cellCount } from './model.js';
 import { hasWall } from './edges.js';
 
 export const gridAdjacent = (n, a, b) => Math.abs(((a / n) | 0) - ((b / n) | 0)) + Math.abs(a % n - b % n) === 1;
-export const canStep = (p, a, b) => gridAdjacent(p.n, a, b) && !hasWall(p, a, b);
+export const canStep = (p, a, b) => gridAdjacent(p.n, a, b) && !hasWall(p, a, b) && !(p.holes && (p.holes[a] || p.holes[b]));
 
 // Full-board solved check: covers every cell, starts at 1, ends on the max checkpoint, checkpoints visited in ascending order.
 export function isSolved(p, path) {
-  if (path.length !== p.n * p.n) return false;
+  if (path.length !== cellCount(p)) return false;
   if (path[0] !== startCell(p) || path[path.length - 1] !== endCell(p)) return false;
   let prev = 0, seen = 0;
   for (const c of path) { const v = p.cp[c]; if (v) { if (v < prev) return false; prev = v; seen++; } }
