@@ -60,8 +60,9 @@ export const dayOfDate = date => {
 };
 
 // gotdDate ('YYYYMMDD') given = a Game of Day, else a local game
-// (day = UTC day of its seed, index 0-based).
-export function makeShareRecord({ gotdDate, n, grade, timeS, pct, day, index, algo, legs, K }) {
+// (day = UTC day of its seed, index 0-based). variant ('cutout') = a game of that variant: random, so the record carries the
+// puzzle itself ({ n, shape, holes, cp, walls }) instead of day / index / algo.
+export function makeShareRecord({ gotdDate, n, grade, timeS, pct, day, index, algo, legs, K, variant, puzzle }) {
   const common = {
     n,
     grade: grade == null ? null : grade,
@@ -70,6 +71,10 @@ export function makeShareRecord({ gotdDate, n, grade, timeS, pct, day, index, al
   };
   if (gotdDate) {
     return { kind: 'gotd', ...common, day: dayOfDate(gotdDate), pct: pct == null ? null : pct };
+  }
+  if (variant) {
+    const { shape, holes, cp, walls } = puzzle;
+    return { kind: 'local', ...common, variant, puzzle: { n, shape: shape || null, holes: holes.slice(), cp: cp.slice(), walls: walls.slice() } };
   }
   return { kind: 'local', ...common, day, index, algo };
 }
@@ -94,7 +99,7 @@ export function parseShareLink(search) {
 export function shareText(rec, url, tr) {
   const head = rec.kind === 'gotd'
     ? tr('share.headGotd', dateLabel(dateOfDay(rec.day)), rec.n)
-    : tr('share.headLocal', rec.n, rec.index + 1);
+    : rec.variant ? tr('share.headCutout', rec.n) : tr('share.headLocal', rec.n, rec.index + 1);
   const grade = rec.grade == null ? '' : ` · ${tr('grade.' + rec.grade)} ${rec.grade}/5`;
   const result = [`⏱ ${rec.timeS.toFixed(1)}s`];
   if (rec.pct != null) {
@@ -114,6 +119,9 @@ export function shareStatus(rec, ctx) {
   if (rec.kind === 'local') {
     if (!ctx.sizes.includes(rec.n)) {
       return { status: 'invalid' };
+    }
+    if (rec.variant) {
+      return { status: 'ok' }; // the puzzle is in the link: no app version to match
     }
     return { status: rec.algo === ctx.algo ? 'ok' : 'version' };
   }

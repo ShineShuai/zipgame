@@ -4,7 +4,10 @@
 export const ALGO_VERSION = 6; // bump when generator/solver output changes for a given seed. v2: solver propagation + scaled node caps in generate() (fewer walls, faster). v3: K ~ Normal peaked at 30% of range. v4: candidates seeded with 40% random walls; best of several minimized candidates (CANDIDATES). v5: solver propagation also drops cycle-closing edges (fewer nodes, so node-capped generation of the larger sizes changes). v6: wall minimizing tests each removal by searching only for solutions through the freed edge (fewer node-cap hits, fewer walls); the winning candidate also gets a deeper second look at the walls kept only because a check hit its node cap (refineWalls; fewer walls again, same ALGO_VERSION by choice, golden puzzles regenerated)
 
 export const makePuzzle = n => ({ n, cp: new Uint16Array(n * n), walls: new Uint8Array(n * n) });
-export const clonePuzzle = p => ({ n: p.n, cp: p.cp.slice(), walls: p.walls.slice() });
+export const clonePuzzle = p => ({ n: p.n, cp: p.cp.slice(), walls: p.walls.slice(), ...(p.holes ? { holes: p.holes.slice() } : {}) });
+// Cells the path has to cover: all n*n, minus the holes. A puzzle may carry `holes` (Uint8Array(n*n), 1 = hole): cells that are
+// not part of the board (no edges, no checkpoint, not drawn, not counted). Only the Cutout variant (gen/cutout.js) has them.
+export const cellCount = p => { let c = p.n * p.n; if (p.holes) for (let i = 0; i < p.holes.length; i++) if (p.holes[i]) c--; return c; };
 export const maxNumber = p => { let m = 0; for (const v of p.cp) if (v > m) m = v; return m; };
 export const startCell = p => p.cp.indexOf(1);
 // Cell index of checkpoint k at [k-1], k = 1..K (assumes a valid puzzle: no gaps / duplicates).
@@ -18,6 +21,7 @@ export function validate(p) {
   const set = new Set(nums);
   if (set.size !== nums.length) return { ok: false, msg: 'Invalid: duplicate checkpoint numbers.' };
   if (!set.has(1)) return { ok: false, msg: 'Invalid: missing checkpoint 1 — numbering must start at 1.' };
+  if (p.holes) for (let i = 0; i < p.cp.length; i++) if (p.holes[i] && p.cp[i]) return { ok: false, msg: 'Invalid: a checkpoint sits on a hole.' };
   const max = Math.max(...nums);
   for (let k = 1; k <= max; k++) if (!set.has(k)) return { ok: false, msg: `Invalid: gap in checkpoints — number ${k} is missing.` };
   return { ok: true, max };

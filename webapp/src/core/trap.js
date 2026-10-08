@@ -29,6 +29,7 @@ import { solve } from './solver/solve.js';
 import { ladder } from './ladder.js';
 import { buildNeighbors } from './solver/prune.js';
 import { isSolved } from './rules.js';
+import { cellCount } from './model.js';
 import { REF_FLAGS } from './difficulty.js';
 
 // ladderWorkCap: the ladder gives up after this many edge assignments (a few hundred ms at worst; 2 of the
@@ -81,10 +82,11 @@ export function solutionPath(p, cap = 2000000) {
 // Every wrong turn along `path`: [{ i, cell, sub, capped }] — `sub` = nodes the solver needed below the
 // wrong move (0 = a local prune already rejected it), `capped` = it survived cfg.cap nodes.
 export function trapProfile(p, path, cfg = TRAP_CFG) {
-  const T = p.n * p.n, { nb } = buildNeighbors(p);
-  const seen = new Uint8Array(T), out = [];
+  const { nb } = buildNeighbors(p);
+  const seen = new Uint8Array(p.n * p.n), out = [];
   let nonUnique = false;
-  for (let i = 0; i < T - 1; i++) {
+  // path.length = the cells to cover (n*n, fewer with holes)
+  for (let i = 0; i < path.length - 1; i++) {
     seen[path[i]] = 1;
     for (let d = 0; d < 4; d++) {
       const v = nb[path[i] * 4 + d];
@@ -107,7 +109,7 @@ const alternativePoints = (w, cfg) => w.capped ? cfg.points[3] : w.sub <= cfg.ob
 // All trap metrics from a profile. `steps` = per-step scores, worst first.
 // `ladTrials` (optional) = the ladder's probe-trial count when the caller already ran it; else it runs here.
 export function trapMetricsFromProfile(p, path, profile, cfg = TRAP_CFG, ladTrials = undefined) {
-  const T = p.n * p.n, byStep = new Map();
+  const T = cellCount(p), byStep = new Map();
   for (const w of profile) {
     const s = byStep.get(w.i) || { i: w.i, score: 0, worst: null };
     s.score += alternativePoints(w, cfg);

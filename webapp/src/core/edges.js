@@ -4,13 +4,14 @@ export const edgeCells = (n, e) => { const a = e >> 1; return [a, e & 1 ? a + n 
 export const hasWallId = (w, e) => (w[e >> 1] >> (e & 1)) & 1;
 export const setWallId = (w, e, on) => { if (on) w[e >> 1] |= 1 << (e & 1); else w[e >> 1] &= ~(1 << (e & 1)); };
 export const hasWall = (p, a, b) => hasWallId(p.walls, edgeId(p.n, a, b));
-// All grid edges, in the legacy order (row-major; right edge before down edge).
-export function allEdges(n) {
+// All grid edges, in the legacy order (row-major; right edge before down edge). `holes` (optional, 1 = hole): edges touching a hole are left out.
+export function allEdges(n, holes = null) {
   const out = [];
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
     const i = r * n + c;
-    if (c + 1 < n) out.push(i * 2);
-    if (r + 1 < n) out.push(i * 2 + 1);
+    if (holes && holes[i]) continue;
+    if (c + 1 < n && !(holes && holes[i + 1])) out.push(i * 2);
+    if (r + 1 < n && !(holes && holes[i + n])) out.push(i * 2 + 1);
   }
   return out;
 }

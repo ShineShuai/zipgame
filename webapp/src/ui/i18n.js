@@ -75,6 +75,18 @@ export const EN = {
   'game.sharedTitle': 'Shared {0}x{0} · game #{1} · {2}',
   'game.penalty': (s, n) => ` (incl. +${s} for ${n} hint${n === 1 ? '' : 's'})`,
   'game.badgeTip': 'Difficulty {0}/5 (trap grade) — how hard the worst wrong turn on the solution is to refute; hold V for the other candidate grades',
+  'menu.mode': 'Mode',
+  'mode.standard': 'Standard',
+  'mode.cutout': 'Cutout',
+  'mode.cutoutBlurb': 'Some cells are cut out of the board. Cover every cell that is left.',
+  'shape.donut': 'Donut', 'shape.pillars': 'Pillars', 'shape.octagon': 'Octagon',
+  'shape.ell': 'L-shape', 'shape.cross': 'Cross', 'shape.tee': 'T-shape',
+  'shape.ushape': 'U-shape', 'shape.hshape': 'H-shape',
+  'gen.subCutout': '{0}x{0} board — cutting out the shape.',
+  'game.cutoutTitle': 'Cutout {0}x{0} · {1}',
+  'game.sharedCutoutTitle': 'Shared Cutout {0}x{0} · {1}',
+  'share.cutout': 'Cutout',
+  'share.headCutout': 'Zip Cutout · {0}x{0}',
 };
 
 export const ZH = {
@@ -151,6 +163,17 @@ export const ZH = {
   'game.sharedTitle': '分享 {0}x{0} · 第 {1} 局 · {2}',
   'game.penalty': (s, n) => `（含 ${n} 次提示罚时 +${s}）`,
   'game.badgeTip': '难度 {0}/5（陷阱分级）——解答路径上最糟的错误转弯有多难被排除；按住 V 查看其他候选分级',
+  'menu.mode': '模式',
+  'mode.standard': '标准',
+  'mode.cutout': '镂空',
+  'mode.cutoutBlurb': '棋盘上有些格子被挖空了，走遍剩下的每一格。',
+  'shape.donut': '环形', 'shape.pillars': '立柱', 'shape.octagon': '八角形', 'shape.ell': 'L 形',
+  'shape.cross': '十字形', 'shape.tee': 'T 形', 'shape.ushape': 'U 形', 'shape.hshape': 'H 形',
+  'gen.subCutout': '{0}x{0} 棋盘——正在挖出形状。',
+  'game.cutoutTitle': '镂空 {0}x{0} · {1}',
+  'game.sharedCutoutTitle': '分享镂空 {0}x{0} · {1}',
+  'share.cutout': '镂空',
+  'share.headCutout': 'Zip 镂空 · {0}x{0}',
 };
 
 const DICTS = { en: EN, zh: ZH };

@@ -48,6 +48,11 @@ import { makeIncremental } from './incremental.js';
 export function solve(p, opts = {}) {
   const n = p.n;
   const T = n * n;
+  // Holes (puzzle.holes, see model.js) are not part of the board: buildNeighbors gives them no edges, and the path covers the
+  // other TC cells. Without holes TC === T and every line below behaves exactly as before.
+  const holes = p.holes || null;
+  let TC = T;
+  if (holes) for (let i = 0; i < T; i++) if (holes[i]) TC--;
   const cp = p.cp;
   const limit = opts.limit ?? 2;
   const MUST = opts.mustUse || null;
@@ -57,7 +62,7 @@ export function solve(p, opts = {}) {
   const K = maxNumber(p);
   const start = startCell(p);
   const end = endCell(p);
-  if (K < 1 || start < 0) {
+  if (K < 1 || start < 0 || (holes && cp.some((v, i) => v && holes[i]))) {
     return { count: 0, exceeded: false, nodes: 0, paths: opts.capture ? [] : undefined };
   }
 
@@ -160,17 +165,18 @@ export function solve(p, opts = {}) {
   // role moves one cell on), so the child reuses it and just drops the edge back to where it came from.
   const FAST = ONESHOT && opts.fast !== false;
   const ONE_BIT = [0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]; // 1 when the 4-bit mask has exactly one bit
-  const inc = INC ? makeIncremental(nb, T, end, vis) : null;
-  const prop = ONESHOT ? makePropagator(nb, T, end, vis) : null;
+  const inc = INC ? makeIncremental(nb, T, end, vis, holes, TC) : null;
+  const prop = ONESHOT ? makePropagator(nb, T, end, vis, TC) : null;
   const av = INC ? inc.S : ONESHOT ? prop.av : null; // av[cell]: the head's possible moves (bit d = direction d)
   const vm = ONESHOT ? new Uint8Array(T) : null;
   const ul = ONESHOT ? new Int32Array(T) : null;
   const up = ONESHOT ? new Int32Array(T) : null;
-  let un = T;      // number of unvisited cells
+  let un = TC;     // number of unvisited cells
   if (ONESHOT) {
-    for (let i = 0; i < T; i++) {
-      ul[i] = i;
-      up[i] = i;
+    for (let i = 0, k = 0; i < T; i++) {
+      if (holes && holes[i]) continue;
+      ul[k] = i;
+      up[i] = k++;
     }
   }
 
@@ -347,16 +353,16 @@ export function solve(p, opts = {}) {
       need++;
     }
 
-    if (count === T) {
+    if (count === TC) {
       if (cell === end && need === K + 1 && (MA < 0 || used)) {
         found++;
-        if (paths) paths.push(Array.from(pathBuf));
+        if (paths) paths.push(Array.from(pathBuf.subarray(0, TC))); // pathBuf is T long, a board with holes has fewer cells
       }
       leave(cell);
       return;
     }
 
-    const remaining = T - count;
+    const remaining = TC - count;
     // Checked cheapest-first, short-circuiting: local degree, then flood-fill count, then forced-
     // edge propagation, then the single-entrance pocket check, then (most expensive — O(K^2)
     // segBlocker calls) the cross-leg forced-corridor collision check. See legsCollide() in
