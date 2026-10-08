@@ -26,8 +26,9 @@
 // Deterministic: same (n, grade, seed, effort) and the same TRAP_MODEL give the same puzzle on every device, because
 // the budgets are counts of proposals and solver nodes, never clocks.
 import { clonePuzzle, maxNumber } from '../model.js';
+import { canStep, isSolved } from '../rules.js';
 import { makeRng } from '../rng.js';
-import { allEdges, hasWallId, setWallId, wallIds, pathEdgeIds } from '../edges.js';
+import { allEdges, edgeCells, hasWallId, setWallId, wallIds, pathEdgeIds } from '../edges.js';
 import { solve } from '../solver/solve.js';
 import { REF_FLAGS } from '../difficulty.js';
 import { trapProfile, trapMetricsFromProfile, ladderTrials, TRAP_MODEL, TRAP_CFG, SIZE_GRADE_CAP } from '../trap.js';
@@ -98,10 +99,11 @@ function pickMove(up, rnd, minimal) {
 }
 
 // Strips every wall that can go without a second solution appearing (each tried once, random order). The solution path stays valid.
-function dropWalls(q, isUnique, rnd) {
+// removable(q, w) = true when q stays unique without wall w (it takes the wall out then, and leaves it in otherwise).
+function dropWalls(q, removable, rnd) {
   const ws = wallIds(q);
   for (let i = ws.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [ws[i], ws[j]] = [ws[j], ws[i]]; }
-  for (const w of ws) { setWallId(q.walls, w, false); if (!isUnique(q)) setWallId(q.walls, w, true); }
+  for (const w of ws) removable(q, w);
   return q;
 }
 
@@ -131,7 +133,15 @@ function propose(p, ctx, rnd, up) {
   }
   if (move === 'move') {
     if (!walls.length) return null;
-    setWallId(q.walls, pick(walls, rnd), false);
+    const w = pick(walls, rnd);
+    setWallId(q.walls, w, false);
+    // Guided: the new wall goes onto an off-path edge of a second solution the old wall was holding off, so the puzzle has a good chance
+    // to stay unique (a wall anywhere else breaks uniqueness about 9 times in 10 when every wall is needed).
+    const second = ctx.guided && ctx.witness(q, w);
+    if (second) {
+      const at = pathEdgeIds(ctx.n, second).filter(e => ctx.freeSet.has(e) && !hasWallId(q.walls, e));
+      if (at.length) { setWallId(q.walls, pick(at, rnd), true); return { q, check: true }; }
+    }
     return addOne() ? { q, check: true } : null;
   }
   const cells = cpCells(q), K = cells.length;
@@ -175,7 +185,10 @@ const keyOf = q => String.fromCharCode(...q.cp) + '|' + String.fromCharCode(...q
 //   o.retries        tries (fresh start puzzle + hill-climb) the run may make (default TARGET_CFG.retries; Infinity = until the target is met)
 //   o.effort         multiplier of how deep one try may go, in changes (default 1)
 //   o.maxWalls       most walls the puzzle may have (default: the fitted range, see TARGET_CFG.maxWallsPerCell, for the added walls)
-//   o.maxCheckpoints most numbered cells it may have (default: the fitted range)
+//   o.maxCheckpoints most numbered cells it may have, o.minCheckpoints fewest (defaults: the fitted range, from the board size n up to a quarter of the
+//                    cells; both equal = exactly that many). The search varies the count inside the range, fewer for harder targets.
+//   o.guided         true = a wall that moves goes onto an edge of the second solution it was holding off, not onto a random free edge (more of
+//                    the moves keep the puzzle unique, but the search was not faster in measurements: off by default)
 //   o.minimize       false = do not strip walls (the first version of this generator)
 //   o.margin         see TARGET_CFG.margin
 //   o.prefilter, o.cache  false = switch the speed-ups off (same result, slower; the tests compare both)
@@ -183,13 +196,14 @@ const keyOf = q => String.fromCharCode(...q.cp) + '|' + String.fromCharCode(...q
 // Returns { puzzle, unique: true, grade, pred, target, requested, hit, inside, lo, hi, proposals, restarts, tries, retries, K, walls, stats }:
 //   target = the grade aimed at (`requested` clamped to what this size can show), grade / pred = what the best puzzle
 //   found has under the CURRENT trap model, hit = grade === target, inside = also clear of the band's edges,
-//   stats = how often the speed-ups worked ({ scored, cacheHits, filtered, ladderRuns, ladderAborts, uniqueRuns, uniqueHits }).
+//   stats = how often the speed-ups worked ({ scored, cacheHits, filtered, ladderRuns, ladderAborts, uniqueRuns, uniqueHits, dropRuns, witnessSkips }).
 //   puzzle carries .path (the solution) and .seed. puzzle = null when no start puzzle could be built.
 export function* generateTargeted(n, grade, seed, o = {}) {
   const band = targetBand(grade, n, TRAP_MODEL, o.margin ?? TARGET_CFG.margin);
   const rnd = makeRng(seed);
   const T = n * n;
   let Kmin = Math.max(4, n), Kmax = Math.max(Kmin + 1, Math.round(T / 4));
+  if (o.minCheckpoints > 0) { Kmin = Math.max(2, Math.floor(o.minCheckpoints)); Kmax = Math.max(Kmax, Kmin); }
   if (o.maxCheckpoints > 0) { Kmax = Math.max(2, Math.floor(o.maxCheckpoints)); Kmin = Math.min(Kmin, Kmax); }
   const cap = Math.max(TARGET_CFG.uniqueCapFloor, TARGET_CFG.uniqueCapPerCell * T);
   const minimal = o.minimize !== false, t0 = performance.now();
@@ -198,7 +212,7 @@ export function* generateTargeted(n, grade, seed, o = {}) {
   const hardWalls = o.maxWalls >= 0 ? Math.floor(o.maxWalls) : Infinity;
   const maxWalls = o.maxWalls >= 0 ? hardWalls : Math.max(2, Math.floor(TARGET_CFG.maxWallsPerCell * T));
   const K0 = Math.max(Kmin, Math.min(Kmax, Math.round(Kmax - ((Kmax - Kmin) * band.grade) / 5))); // fewer checkpoints for harder targets
-  const stats = { scored: 0, cacheHits: 0, filtered: 0, ladderRuns: 0, ladderAborts: 0, uniqueRuns: 0, uniqueHits: 0 };
+  const stats = { scored: 0, cacheHits: 0, filtered: 0, ladderRuns: 0, ladderAborts: 0, uniqueRuns: 0, uniqueHits: 0, dropRuns: 0, witnessSkips: 0 };
   const solveOnce = q => { const r = solve(q, { limit: 2, nodeCap: cap, ...REF_FLAGS }); return r.count === 1 && !r.exceeded; };
   const uniq = o.cache === false ? null : new Map(); // puzzle -> its uniqueness verdict (the same puzzle is proposed again and again)
   const isUnique = q => {
@@ -207,6 +221,30 @@ export function* generateTargeted(n, grade, seed, o = {}) {
     let v = uniq.get(key);
     if (v === undefined) { v = solveOnce(q); if (uniq.size >= TARGET_CFG.cacheMax) uniq.clear(); uniq.set(key, v); stats.uniqueRuns++; } else stats.uniqueHits++;
     return v;
+  };
+  // Walls a puzzle does not need are stripped (dropWalls). The puzzle is unique when this runs, so without wall w it stays unique iff no
+  // solution walks the freed edge: a smaller search than a two-solution search (tryRemoveWall in walls.js does the same). A wall that
+  // has to stay comes with a WITNESS, the second solution that appears without it; the next candidate, one change away, then only
+  // needs the witness checked (a path walk) instead of a search. Witnesses are kept per wall in `wit` (wall id -> path).
+  // o.freedEdge = false: the plain uniqueness check, no witnesses (same result unless a node cap is hit).
+  const validPath = (q, path) => { for (let i = 1; i < path.length; i++) if (!canStep(q, path[i - 1], path[i])) return false; return isSolved(q, path); };
+  const freedSearch = (q, w) => { const [a, b] = edgeCells(n, w); return solve(q, { limit: 1, nodeCap: cap, mustUse: [a, b], capture: true, ...REF_FLAGS }); };
+  const strip = (q, parentWit) => {
+    const wit = new Map();
+    dropWalls(q, o.freedEdge === false
+      ? (q_, w) => { setWallId(q_.walls, w, false); if (isUnique(q_)) return true; setWallId(q_.walls, w, true); return false; }
+      : (q_, w) => {
+        setWallId(q_.walls, w, false);
+        const old = parentWit && parentWit.get(w);
+        if (old && validPath(q_, old)) { stats.witnessSkips++; setWallId(q_.walls, w, true); wit.set(w, old); return false; }
+        stats.dropRuns++;
+        const r = freedSearch(q_, w);
+        if (!r.exceeded && r.count === 0) return true;
+        setWallId(q_.walls, w, true);
+        if (r.count === 1) wit.set(w, r.paths[0]);
+        return false;
+      }, rnd);
+    return wit;
   };
 
   // Score of a puzzle: { pred, grade }, null when it is not valid (second solution, too many walls). pred = b + sum of terms, and the
@@ -260,15 +298,22 @@ export function* generateTargeted(n, grade, seed, o = {}) {
     for (let s = inner.next(); ; s = inner.next()) { if (s.done) { start = s.value; break; } yield event('start', null); }
     proposals++;
     const path = start.unique && start.puzzle.path;
-    if (path && minimal) { start.puzzle.path = path; dropWalls(start.puzzle, isUnique, rnd); }
+    let startWit = new Map();
+    if (path && minimal) { start.puzzle.path = path; startWit = strip(start.puzzle, null); }
     const first = path && score(start.puzzle, path, null);
     if (!first) { failedStarts++; continue; }
     failedStarts = 0;
-    const ctx = { path, pos: Int32Array.from({ length: T }), free: null, Kmin, Kmax, maxWalls, minimal };
+    const ctx = { n, path, pos: Int32Array.from({ length: T }), free: null, freeSet: null, Kmin, Kmax, maxWalls, minimal, guided: o.guided === true, wit: null, witness: null };
     path.forEach((c, i) => { ctx.pos[c] = i; });
     const onPath = new Set(pathEdgeIds(n, path));
     ctx.free = allEdges(n).filter(e => !onPath.has(e));
-    let cur = { puzzle: start.puzzle, ...first, d: missOf(first.pred, band) };
+    ctx.freeSet = new Set(ctx.free);
+    ctx.witness = (q, w) => { // a second solution of q, which has wall w taken out (null = none found); remembered in ctx.wit
+      let v = ctx.wit.get(w);
+      if (v === undefined) { const r = freedSearch(q, w); v = !r.exceeded && r.count === 1 ? r.paths[0] : null; ctx.wit.set(w, v); }
+      return v;
+    };
+    let cur = { puzzle: start.puzzle, ...first, d: missOf(first.pred, band), wit: startWit };
     consider(cur);
     yield event('search', cur);
 
@@ -276,6 +321,7 @@ export function* generateTargeted(n, grade, seed, o = {}) {
     let stale = 0;
     while (tryProps < depth && cur.d > 0 && stale < patience) {
       proposals++; tryProps++;
+      ctx.wit = cur.wit;
       const m = propose(cur.puzzle, ctx, rnd, cur.pred < band.a);
       if (!m || (m.check && !isUnique(m.q))) { stale++; continue; }
       const win = { lo: band.a - cur.d, hi: band.b + cur.d };
@@ -283,15 +329,16 @@ export function* generateTargeted(n, grade, seed, o = {}) {
       if (s === OUT) { stale++; yield event('search', cur); continue; }
       if (!s) { stale++; continue; }
       // A candidate that is not worse is stripped of the walls it does not need before it is kept, and judged as that stripped puzzle.
+      let wit = new Map();
       if (minimal && missOf(s.pred, band) <= cur.d) {
-        q = dropWalls(q, isUnique, rnd); s = score(q, path, win);
+        wit = strip(q, cur.wit); s = score(q, path, win);
         if (s === OUT) { stale++; yield event('search', cur); continue; }
         if (!s) { stale++; continue; }
       }
       const d = missOf(s.pred, band);
       if (d <= cur.d) {
         stale = d < cur.d ? 0 : stale + 1;
-        cur = { puzzle: q, ...s, d };
+        cur = { puzzle: q, ...s, d, wit };
         consider(cur);
       } else stale++;
       yield event('search', cur);

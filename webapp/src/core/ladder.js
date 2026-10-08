@@ -20,13 +20,14 @@ import { maxNumber, startCell, endCell } from './model.js';
 import { buildNeighbors } from './solver/prune.js';
 
 export const LEVELS = ['', 'local', 'chain', 'territory', 'probe1', 'probe2', 'search'];
-const FIELDS = ['es', 'din', 'dopen', 'other', 'sz', 'cnt', 'lo', 'hi', 'near', 'dflag', 'meta'];
+const FIELDS = ['es', 'din', 'dopen', 'other', 'sz', 'cnt', 'lo', 'hi', 'near', 'dflag', 'meta', 'dS', 'dE', 'Dseg', 'segLo', 'segHi', 'esAt', 'tm'];
 const CAP = { cap: true };
 
 export function ladder(p, o = {}) {
   const t0 = performance.now();
   const pdMax = o.probeDepth ?? 2;
   const workCap = o.workCap ?? 3e6;
+  const incr = o.incrTerritory !== false, st = o.stats; // incrTerritory:false = the reference: recompute the territory from scratch every time (same results, slower); stats: optional counters
   const trialCap = o.trialCap ?? Infinity; // stop (like workCap) once more than this many what-if trials were made: probeTrials is then trialCap + 1, a lower bound
   const { nb, T } = buildNeighbors(p);
   const K = maxNumber(p), cp = p.cp, start = startCell(p), end = endCell(p);
@@ -59,6 +60,11 @@ export function ladder(p, o = {}) {
     other: new Int16Array(T), sz: new Int16Array(T), cnt: new Int16Array(T),
     lo: new Int16Array(T), hi: new Int16Array(T), near: new Int16Array(T),
     dflag: new Uint8Array(T), meta: new Int32Array(3),
+    // L3 territory (see refreshTerritory): kept per state, so a what-if starts from its parent's distances instead of from scratch.
+    dS: new Int16Array(K * T), dE: new Int16Array(K * T), Dseg: new Int32Array(K + 1),
+    segLo: new Int16Array(T), segHi: new Int16Array(T),
+    esAt: new Uint8Array(T * 4), // es as it was when dS/dE were last brought up to date
+    tm: new Int32Array(3),       // [0] dS/dE valid, [1] global slack, [2] the exact edge test (territory) has run on exactly this data
   });
   const copy = (dst, src) => { for (const f of FIELDS) dst[f].set(src[f]); };
   const real = mk();
@@ -143,9 +149,8 @@ export function ladder(p, o = {}) {
   // L3 state, computed lazily and shared with L2 (see below). segOf[x] = bitmask of segments
   // s (1..K-1, i.e. between checkpoint s and s+1) that cell x could still lie on given the
   // current global slack; slackOK[x*4+d] = does edge (x,d) still fit some segment's budget.
-  const dS = new Int16Array(K * T), dE = new Int16Array(K * T), Dseg = new Int32Array(K + 1);
-  const segLo = new Int16Array(T), segHi = new Int16Array(T); // per-cell reachable segment range (0 = none)
-  let slack = -1, terrStale = true;
+  // (segLo/segHi = per-cell reachable segment range, 0 = none; Dseg[s] = shortest distance between checkpoints s and s+1.)
+  let terrStale = true;
   function bfs(src, out, off, s) {
     out.fill(-1, off, off + T);
     out[off + src] = 0; bq[0] = src;
@@ -162,17 +167,57 @@ export function ladder(p, o = {}) {
     }
   }
   const bq = new Int32Array(T);
-  // Refresh dS/dE/slack/segLo/segHi from the current edge state. -1 = contradiction.
+  // Refresh dS/dE/slack/segLo/segHi from the current edge state. -1 = contradiction, 0 = nothing changed since they were last
+  // up to date, 1 = recomputed. Distances only grow as edges go out (an `in` edge changes none), and a cut edge x-y changes a
+  // BFS field only if it carried a shortest path whose far end has no other way in (cutsPath). So a state starts from the
+  // distances of the state it was copied from and re-runs only the BFS fields whose paths were cut, none at all when there are
+  // none. Same numbers as from scratch (o.incrTerritory = false is that reference). (Repairing the cut fields cell by cell instead
+  // of re-running them was tried: no faster, the fields are small.)
+  const aff = new Uint8Array(2 * K);
+  function cutsPath(F, off, x, y) {
+    const dx = F[off + x], dy = F[off + y];
+    let w;
+    if (dx >= 0 && dy === dx + 1) w = y; else if (dy >= 0 && dx === dy + 1) w = x; else return false;
+    const dw = F[off + w];
+    for (let d = 0; d < 4; d++) {
+      const i = w * 4 + d;
+      if (S.es[i] === 2) continue;
+      const z = nb[i];
+      if (z >= 0 && F[off + z] === dw - 1) return false; // another cell one step closer still leads in
+    }
+    return true;
+  }
   function refreshTerritory() {
+    const { dS, dE, Dseg, segLo, segHi, es, esAt, tm } = S;
+    const all = !incr || !tm[0];
+    if (!all) {
+      aff.fill(0);
+      let any = false;
+      for (let i = 0; i < T * 4; i++) {
+        if (es[i] !== 2 || esAt[i] === 2) continue; // an edge that went out since
+        const x = i >> 2, y = nb[i];
+        if (y < x) continue;                         // each edge once
+        for (let s = 1; s < K; s++) {
+          for (let f = 0; f < 2; f++) {
+            const a = 2 * (s - 1) + f;
+            if (!aff[a] && cutsPath(f ? dE : dS, (s - 1) * T, x, y)) { aff[a] = 1; any = true; }
+          }
+        }
+      }
+      if (!any) { esAt.set(es); terrStale = false; if (st) st.same = (st.same || 0) + 1; return 0; }
+    }
+    if (st) { const k = all ? 'full' : 'partial'; st[k] = (st[k] || 0) + 1; }
     let sum = 0;
     for (let s = 1; s < K; s++) {
-      bfs(pos[s], dS, (s - 1) * T, s); bfs(pos[s + 1], dE, (s - 1) * T, s);
+      if (all || aff[2 * (s - 1)]) bfs(pos[s], dS, (s - 1) * T, s);
+      if (all || aff[2 * (s - 1) + 1]) bfs(pos[s + 1], dE, (s - 1) * T, s);
       const D = dS[(s - 1) * T + pos[s + 1]];
-      if (D < 0) return -1;
+      if (D < 0) { tm[0] = 0; return -1; }
       Dseg[s] = D; sum += D;
     }
-    slack = TC - 1 - sum;
-    if (slack < 0) return -1;
+    const slack = T - 1 - sum;
+    if (slack < 0) { tm[0] = 0; return -1; }
+    tm[1] = slack;
     segLo.fill(0); segHi.fill(0);
     for (let x = 0; x < T; x++) {
       if (holes && holes[x]) continue;
@@ -183,18 +228,19 @@ export function ladder(p, o = {}) {
         const a = dS[(s - 1) * T + x], b = dE[(s - 1) * T + x];
         if (a >= 0 && b >= 0 && a + b <= Dseg[s] + slack) { if (!lo) lo = s; hi = s; }
       }
-      if (!lo) return -1;
+      if (!lo) { tm[0] = 0; return -1; }
       segLo[x] = lo; segHi[x] = hi;
     }
+    esAt.set(es); tm[0] = 1; tm[2] = 0;
     terrStale = false;
-    return 0;
+    return 1;
   }
   // Would edge (x,y) fit within some segment's slack budget? Cheap once dS/dE are fresh:
   // just checks whether x and y's reachable-segment ranges overlap (a necessary, not exact,
   // test vs. the true per-edge distance sum, but O(1) and enough to prune cycles/dead spurs).
   function edgeFits(x, y) {
     if (terrStale) return true; // no data yet, defer to territory()
-    return segLo[x] <= segHi[y] && segLo[y] <= segHi[x];
+    return S.segLo[x] <= S.segHi[y] && S.segLo[y] <= S.segHi[x];
   }
 
   // L2: would joining chains at end x and neighbour y be impossible?
@@ -224,7 +270,10 @@ export function ladder(p, o = {}) {
   // exact per-edge distance-sum test (stronger than chain's cached-range shortcut above).
   function territory() {
     if (K - 1 > 64) return 0;
-    if (refreshTerritory() < 0) return -1;
+    const r = refreshTerritory();
+    if (r < 0) return -1;
+    if (incr && r === 0 && S.tm[2]) { if (st) st.skipped = (st.skipped || 0) + 1; return 0; } // same data as at the last complete pass: every edge left passed it
+    const { dS, dE, Dseg, segLo, segHi } = S, slack = S.tm[1];
     let ch = 0;
     for (let x = 0; x < T; x++) {
       for (let d = 0; d < 4; d++) {
@@ -242,6 +291,7 @@ export function ladder(p, o = {}) {
         if (!fits) { if (!setEdge(x, d, 2)) return -1; ch++; }
       }
     }
+    S.tm[2] = 1;
     return ch;
   }
 

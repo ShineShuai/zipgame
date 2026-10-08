@@ -39,6 +39,7 @@ import { calibrate, calibrateAll, calibrateMetric, generateAtDifficulty, DEFAULT
 import { checkpointPositions, segmentCrossCount, segmentOverlapCount, spatialMetrics } from '../src/core/spatial.js';
 import { gradesFor, gradesFromMetrics, playGradesFor, GRADE_ORDER } from '../src/core/grades.js';
 import { combinedScore, COMBINED_ZSCORE } from '../src/core/gen/calibration.js';
+import { ladder as ladderRun } from '../src/core/ladder.js';
 import { solutionPath, trapProfile, trapMetrics, trapGradeOf, trapPredict, capGradeBySize, SIZE_GRADE_CAP, ladderTrials, TRAP_CFG, TRAP_MODEL } from '../src/core/trap.js';
 import { generateTargeted, targetBand, maxTargetGrade, missOf, proposalBudget, TARGET_CFG } from '../src/core/gen/target.js';
 import { mountDifficultyPanel } from '../src/apps/design/difficulty-panel.js';
@@ -1436,6 +1437,29 @@ t('target: the retry cap is a count (same arguments = same puzzle), more retries
   if (a.hit) eq(serialize(b.puzzle), serialize(a.puzzle), 'a run that hit in its first try is the same with more retries');
   const l = runSync(generateTargeted(7, 3, 5, { retries: Infinity, maxWalls: 12, maxCheckpoints: 8 }));
   ok(l.hit && l.walls <= 12 && l.K <= 8, `limits: ${l.walls} walls, ${l.K} checkpoints`);
+});
+t('ladder: the incremental territory (distances kept per state, cut fields re-run, exact edge test skipped when nothing changed) = the from-scratch one', () => {
+  const strip = r => JSON.stringify({ ...r, ms: 0 });
+  let skipped = 0;
+  for (let n = 5; n <= 8; n++) for (let seed = 1; seed <= 3; seed++) {
+    const rnd = makeRng(seed * 31 + n), p = randomPathPuzzle(n, [3, n, n + 2][seed - 1], rnd), stats = {};
+    for (const o of [{ workCap: 2e4 }, { workCap: 2e4, probeDepth: 1, search: false }]) {
+      eq(strip(ladderRun(p, { ...o, stats })), strip(ladderRun(p, { ...o, incrTerritory: false })), `${n}x${n} seed ${seed}`);
+    }
+    skipped += stats.skipped || 0;
+  }
+  ok(skipped > 0, 'the territory pass was skipped when nothing had changed');
+});
+t('target: witnesses make wall stripping cheaper without changing it, guided moves and the checkpoint range work', () => {
+  for (const [n, g, seed] of [[6, 2, 5], [7, 3, 4], [7, 4, 3]]) {
+    const plain = runSync(generateTargeted(n, g, seed, { retries: 2, freedEdge: false })), wit = runSync(generateTargeted(n, g, seed, { retries: 2 }));
+    eq([serialize(wit.puzzle), wit.proposals, wit.pred], [serialize(plain.puzzle), plain.proposals, plain.pred], `${n}x${n} g${g}: plain uniqueness checks vs freed-edge searches + witnesses`);
+    ok(wit.stats.witnessSkips > 0, 'a witness replaced a search');
+    const gd = runSync(generateTargeted(n, g, seed, { retries: 2, guided: true }));
+    ok(gd.puzzle && validate(gd.puzzle).ok, 'guided moves keep the puzzle valid and unique');
+  }
+  const k = runSync(generateTargeted(7, 3, 2, { retries: 3, minCheckpoints: 8, maxCheckpoints: 8 }));
+  eq(k.K, 8, 'min = max checkpoints: exactly that many');
 });
 t('target: the prefilter and the score cache change the time, never the result; the ladder trial cap is a lower bound', () => {
   for (const [n, g, seed] of [[6, 2, 5], [7, 3, 4], [7, 4, 3]]) {
