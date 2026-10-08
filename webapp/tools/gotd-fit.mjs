@@ -39,7 +39,9 @@ const R = JSON.parse(raw), H = R.map(r => r.human), W = R.map(ratingWeight);
 const t0 = Date.now(), F = R.map(featuresOf);
 const BASE = { 'grade:decisionNodes': 'decisionNodes/cell', 'grade:B': 'B/N', 'grade:cross': 'crossPerSeg', 'grade:trap': 'trapPredicted' };
 const familyOf = id => BASE[id] || id, MIN_SKILL = 0.02;
-const defined = id => F.map((f, i) => i).filter(i => !(needsSolver(id) && F[i]._capped));
+// A row counts for a candidate when its value is finite (a rating without a solution path has NaN trap metrics: one such row would
+// poison the whole fit of every trap candidate) and, for a solver metric, when the reference solve was not capped.
+const defined = id => F.map((f, i) => i).filter(i => Number.isFinite(F[i][id]) && !(needsSolver(id) && F[i]._capped));
 const column = (id, rows) => rows.map(i => F[i][id]);
 
 const fitOn = (id, rows) => fitCandidate(column(id, rows), rows.map(i => H[i]), rows.map(i => W[i]), { bucket: isGrade(id) });
@@ -90,8 +92,11 @@ const out = {
 fs.writeFileSync(outFile, JSON.stringify(out, null, 1) + '\n');
 
 console.log(`${R.length} ratings, ${NAMES.length - 1} metrics fitted in ${((Date.now() - t0) / 1000).toFixed(1)}s -> ${ranked.length} candidates kept, ${dropped.length} dropped`);
+const nonFinite = NAMES.filter(id => id !== 'n' && F.some(f => !Number.isFinite(f[id])));
+if (nonFinite.length) console.log(`NOTE: rows with a non-finite value are left out of the fit of: ${nonFinite.join(', ')}`);
 console.log('rank  candidate              group    rows  skill   +-sd  LOO-MAE  LOO-rho  top3  top10  fit');
 ranked.forEach((c, i) => console.log(String(i + 1).padStart(4), ' ', c.id.padEnd(22), c.group.padEnd(8), String(c.rows).padStart(4), c.skill.toFixed(2).padStart(6), c.skillSd.toFixed(2).padStart(6), c.looMae.toFixed(3).padStart(8), String(c.looRho?.toFixed(2) ?? '—').padStart(8), (c.top3 * 100).toFixed(0).padStart(4) + '%', (c.top10 * 100).toFixed(0).padStart(5) + '%', ' ', c.model.kind === 'bucket' ? 'bucket means' : `${c.model.kind}: ${c.model.a} + ${c.model.b}*x`));
 console.log('dropped: ' + dropped.map(d => `${d.id} (${d.because.includes(' ') ? d.because : '~' + d.because})`).join('; '));
 console.log(`no better than a constant (skill <= ${MIN_SKILL}): ` + NAMES.filter(id => id !== 'n' && !cands.some(c => c.id === id)).join(', '));
-if (TRAP_MODEL.fit && TRAP_MODEL.fit.n !== R.length) console.log(`WARNING: the trap model was fitted on ${TRAP_MODEL.fit.n} ratings, ratings.json has ${R.length}: run node tools/fit-trap.mjs --write first, then this tool again`);
+const trapOf = TRAP_MODEL.fit && (TRAP_MODEL.fit.of ?? TRAP_MODEL.fit.n); // ratings.json size at fit time (n can be smaller: unsolvable puzzles are skipped)
+if (trapOf != null && trapOf !== R.length) console.log(`WARNING: the trap model was fitted from a ratings.json of ${trapOf} ratings, now it has ${R.length}: run node tools/fit-trap.mjs --write first, then this tool again`);

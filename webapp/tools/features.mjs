@@ -8,7 +8,7 @@ import { gradesFromMetrics } from '../src/core/grades.js';
 import { trapMetrics } from '../src/core/trap.js';
 import { ladder, wideFrac, grade as ladderGrade } from '../src/core/ladder.js';
 import { maxNumber } from '../src/core/model.js';
-import { DEFAULT_EVAL_CAP } from './lib.mjs';
+import { DEFAULT_EVAL_CAP, OFFLINE_TRAP_CFG } from './lib.mjs';
 
 // group: struct = puzzle shape only, legacy = solver cost (difficulty.js), spatial = checkpoint geometry (spatial.js),
 //        grade = an existing 0-5 grade as shipped, trap = core/trap.js, ladder = core/ladder.js.
@@ -58,7 +58,7 @@ export const featuresOf = (r, cap = DEFAULT_EVAL_CAP) => {
   const p = parse(r.key), T = p.n * p.n, K = maxNumber(p),
   d = metricsFor(p, cap), sp = spatialMetrics(p),
   g = d.exceeded ? null : gradesFromMetrics({ ...d, n: p.n }, sp),
-  tr = trapMetrics(p), L = ladder(p);
+  tr = trapMetrics(p, OFFLINE_TRAP_CFG), L = ladder(p);
   const walls = p.walls.reduce((a, w) => a + (w & 1) + ((w >> 1) & 1), 0);
   let turns = 0; if (tr.ok) for (let i = 2; i < tr.path.length; i++) if (tr.path[i] - tr.path[i - 1] !== tr.path[i - 1] - tr.path[i - 2]) turns++;
   const wf = L.solved && L.path ? wideFrac(p, L.path).frac : 0, lg = ladderGrade(p, L).grade;

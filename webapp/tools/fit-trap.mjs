@@ -1,11 +1,12 @@
 // Fit / evaluate the trap grade against hand ratings.
 //   node tools/fit-trap.mjs [tools/ratings.json] [--features trapMax,trapTop3,altFrac,lTr] [--lambda 10] [--cuts anchors|fit|round]
-//                           [--anchor-weight 3] [--ladder-work-cap N] [--cap 1000000] [--write]
+//                           [--anchor-weight 3] [--ladder-work-cap N] [--path-cap 50000000] [--cap 1000000] [--write]
 // Grade = the ridge score cut at TRAP_MODEL.cuts. --cuts anchors (default) fits only the 0|1 and 3|4 boundaries and spaces
 // the others evenly (2 parameters, least overfit); fit = all five free (more anchor hits, but the 4|5 cut is overfit);
 // round = the old round(score). The cuts are fitted on the training part of every leave-one-out fold too, so the printed
 // leave-one-out grades are honest about them. Anchor ratings (human <= 0.5 or >= 3.5) count --anchor-weight times in the
 // cut fit (not in the ridge): they are the ratings trusted most.
+// --path-cap N: node budget for finding a puzzle's solution path (default 5e7); a rating that exceeds it is skipped and listed.
 // ratings.json (default: tools/ratings.json): [{ "key": "<puzzle text>", "human": 0..5, "lo": .., "hi": .. }, ...] — exactly what the
 // design app's "Export ratings.json" button writes (see src/core/ratings-io.js for the format).
 // Prints leave-one-out (LOO) accuracy for the trap grade vs. the shipped grades, then the TRAP_MODEL
@@ -17,12 +18,12 @@ import { parse } from '../src/core/format.js';
 import { trapMetrics, TRAP_CFG, capGradeBySize } from '../src/core/trap.js';
 import { gradesFor } from '../src/core/grades.js';
 import { ratingWeight, UNSURE_WEIGHT } from '../src/core/ratings-io.js';
-import { evalCap } from './lib.mjs';
+import { evalCap, OFFLINE_PATH_CAP } from './lib.mjs';
 
 const args = process.argv.slice(2);
 const WRITE = args.includes('--write');
 const opt = (name, dflt) => { const i = args.indexOf('--' + name); return i >= 0 ? args[i + 1] : dflt; };
-const VALUE_OPTS = ['features', 'lambda', 'cap', 'cuts', 'anchor-weight', 'ladder-work-cap'].map(k => opt(k));
+const VALUE_OPTS = ['features', 'lambda', 'cap', 'cuts', 'anchor-weight', 'ladder-work-cap', 'path-cap'].map(k => opt(k));
 const file = args.find(a => !a.startsWith('--') && !VALUE_OPTS.includes(a)) || new URL('./ratings.json', import.meta.url).pathname;
 const features = opt('features', 'trapMax,trapTop3,altFrac,lTr').split(',');
 const lambda = +opt('lambda', 10);
@@ -30,12 +31,13 @@ const CUTS_MODE = opt('cuts', 'anchors'), ANCHOR_W = +opt('anchor-weight', 3);
 if (!['anchors', 'fit', 'round'].includes(CUTS_MODE)) { console.error('--cuts must be anchors, fit or round'); process.exit(1); }
 const WORKCAP = +opt('ladder-work-cap', TRAP_CFG.ladderWorkCap);
 if (WRITE && WORKCAP !== TRAP_CFG.ladderWorkCap) { console.error(`--write needs the production --ladder-work-cap (${TRAP_CFG.ladderWorkCap}): lTr depends on it`); process.exit(1); }
-const CFG = { ...TRAP_CFG, ladderWorkCap: WORKCAP };
+const CFG = { ...TRAP_CFG, ladderWorkCap: WORKCAP, pathCap: +opt('path-cap', OFFLINE_PATH_CAP) }; // pathCap: nodes to find a solution path (the path is unique, so it cannot change the fit)
 const CAP = evalCap(args);
 
-const rows = JSON.parse(fs.readFileSync(file, 'utf8')).map(e => {
+const rated = JSON.parse(fs.readFileSync(file, 'utf8')), skipped = [];
+const rows = rated.map((e, i) => {
   const p = parse(e.key), t = trapMetrics(p, CFG);
-  if (!t.ok) return null;
+  if (!t.ok) { skipped.push(`#${i} (human ${e.human}, size ${p.n}: ${t.reason})`); return null; }
   const g = gradesFor(p, CAP);
   return { human: e.human, n: p.n, w: ratingWeight(e), t, shipped: g ? g.grades.decisionNodes : 5, combined: g ? g.grades.combined : 5 };
 }).filter(Boolean);
@@ -111,6 +113,7 @@ const report = (name, pred, grades = pred.map(v => Math.max(0, Math.min(5, Math.
   report.last = { rho: spearman(pred, H), mae: mean(err.map(Math.abs)) };
   console.log(name.padEnd(28), 'rho', (Number.isFinite(spearman(pred, H)) ? spearman(pred, H).toFixed(2) : '  —').padStart(5), '| MAE', mean(err.map(Math.abs)).toFixed(2), '| within 1:', (100 * err.filter(e => Math.abs(e) <= 1).length / n).toFixed(0) + '%', '| bias', mean(err).toFixed(2));
 };
+if (skipped.length) console.log(`skipped ${skipped.length} of ${rated.length} ratings (0-based index in the file): ${skipped.join('; ')}`);
 console.log(`n=${n} rated puzzles (${nUnsure} unsure, counted at weight ${UNSURE_WEIGHT}), features=${features.join(',')}, lambda=${lambda}`);
 report('predict-median baseline', H.map(() => H.slice().sort((a, b) => a - b)[n >> 1]));
 report('shipped decisionNodes', rows.map(r => r.shipped));
@@ -137,7 +140,7 @@ export const TRAP_MODEL = {
   w: ${obj(Object.fromEntries(features.map((k, i) => [k, +w[i + 1].toFixed(4)])))},
   b: ${+w[0].toFixed(4)},
   cuts: [${cuts.join(', ')}],
-  fit: { n: ${n}, lambda: ${lambda}, looRho: ${+looStats.rho.toFixed(2)}, looMae: ${+looStats.mae.toFixed(2)}, cuts: '${CUTS_MODE}', looAnchors: { easy: [${looAnchors.easy}], hard3: [${looAnchors.hard3}], hard4: [${looAnchors.hard4}] } },
+  fit: { n: ${n}, of: ${rated.length}, lambda: ${lambda}, looRho: ${+looStats.rho.toFixed(2)}, looMae: ${+looStats.mae.toFixed(2)}, cuts: '${CUTS_MODE}', looAnchors: { easy: [${looAnchors.easy}], hard3: [${looAnchors.hard3}], hard4: [${looAnchors.hard4}] } },
 };
 // </TRAP_MODEL>`;
 if (WRITE) {

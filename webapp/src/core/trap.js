@@ -34,7 +34,8 @@ import { REF_FLAGS } from './difficulty.js';
 
 // ladderWorkCap: the ladder gives up after this many edge assignments (a few hundred ms at worst; 2 of the
 // 89 rated puzzles, both n >= 10, hit it). A capped run still reports the trials it made, a lower bound.
-export const TRAP_CFG = { cap: 1000, obvious: 3, shallow: 30, points: [0, 1, 3, 5], ladderWorkCap: 1e5 };
+export const TRAP_CFG = { cap: 1000, obvious: 3, shallow: 30, points: [0, 1, 3, 5], ladderWorkCap: 1e5,
+  pathCap: 2e6 }; // pathCap: node budget of the solve that finds the solution path when the puzzle carries none (offline tools raise it)
 
 // Hard ceiling of the grade by board size (a 5x5 never grades above 2, a 6x6 never above 3).
 export const SIZE_GRADE_CAP = { 5: 2, 6: 3 };
@@ -50,12 +51,12 @@ export const SIZE_GRADE_CAP = { 5: 2, 6: 3 };
 // <TRAP_MODEL>
 export const TRAP_MODEL = {
   features: ['trapMax', 'trapTop3', 'altFrac', 'lTr'],
-  mean: { trapMax: 6.2455, trapTop3: 13.3839, altFrac: 0.5575, lTr: 4.6456 },
-  sd: { trapMax: 3.2852, trapTop3: 6.6309, altFrac: 0.0853, lTr: 2.5464 },
-  w: { trapMax: 0.1527, trapTop3: 0.287, altFrac: -0.3754, lTr: 0.1191 },
-  b: 1.8036,
-  cuts: [0.9454, 1.4775, 2.0095, 2.5416, 3.0736],
-  fit: { n: 114, lambda: 10, looRho: 0.6, looMae: 0.9, cuts: 'anchors', looAnchors: { easy: [8,17], hard3: [12,16], hard4: [6,16] } },
+  mean: { trapMax: 6.2622, trapTop3: 13.4578, altFrac: 0.5579, lTr: 4.6718 },
+  sd: { trapMax: 3.2874, trapTop3: 6.7078, altFrac: 0.0854, lTr: 2.5708 },
+  w: { trapMax: 0.1337, trapTop3: 0.3181, altFrac: -0.367, lTr: 0.1297 },
+  b: 1.8144,
+  cuts: [0.9437, 1.4856, 2.0275, 2.5693, 3.1112],
+  fit: { n: 115, of: 115, lambda: 10, looRho: 0.6, looMae: 0.95, cuts: 'anchors', looAnchors: { easy: [7,17], hard3: [13,17], hard4: [7,17] } },
 };
 // </TRAP_MODEL>
 
@@ -73,7 +74,7 @@ export const capGradeBySize = (grade, n) => Math.min(grade, SIZE_GRADE_CAP[n] ??
 
 // The puzzle's solution path: the generator's own (p.path) when valid, else one first-solution solve.
 // null when none is found within `cap` nodes.
-export function solutionPath(p, cap = 2000000) {
+export function solutionPath(p, cap = TRAP_CFG.pathCap) {
   if (p.path && isSolved(p, p.path)) return p.path;
   const r = solve(p, { limit: 1, nodeCap: cap, capture: true, ...REF_FLAGS });
   return r.count ? r.paths[0] : null;
@@ -134,8 +135,8 @@ export function trapMetricsFromProfile(p, path, profile, cfg = TRAP_CFG, ladTria
 
 // One call: { ok:false, reason } when no solution can be found, else the metrics above + path.
 export function trapMetrics(p, cfg = TRAP_CFG, path = null) {
-  path = path || solutionPath(p);
-  if (!path) return { ok: false, reason: 'no solution found within the search budget' };
+  path = path || solutionPath(p, cfg.pathCap);
+  if (!path) return { ok: false, reason: 'no solution found within the search budget (pathCap)' };
   return { ok: true, path, ...trapMetricsFromProfile(p, path, trapProfile(p, path, cfg), cfg) };
 }
 

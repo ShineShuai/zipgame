@@ -1,5 +1,6 @@
 // Shared by parse-ratings.mjs / check-ratings.mjs / metrics-eval.mjs: one way to print ratings and duplicate groups.
 import { asciiPuzzle, describeRating } from '../src/core/ratings-io.js';
+import { TRAP_CFG } from '../src/core/trap.js';
 
 // Node cap for the reference solve in OFFLINE tools, set with `--cap N`. The app's refNodeCap (flat 9000 up to n=12) is a latency budget:
 // 15 of the 78 rated puzzles hit it, which turned their solver metrics into lower bounds and their legacy grades into 5. The rated
@@ -12,6 +13,11 @@ export function evalCap(args) {
   if (!Number.isFinite(v) || v <= 0) throw new Error('--cap needs a positive number of nodes, e.g. --cap 2000000');
   return v;
 }
+
+// Node budget for finding a solution path in OFFLINE tools (TRAP_CFG.pathCap = 2e6 is the app's latency budget). A rated 12x12 needs
+// 2.7M nodes (~3 s); the cap only matters for a puzzle that has no path attached, and a unique puzzle always finishes.
+export const OFFLINE_PATH_CAP = 5e7;
+export const OFFLINE_TRAP_CFG = { ...TRAP_CFG, pathCap: OFFLINE_PATH_CAP };
 
 export const labelText = r => r ? `${describeRating(r)}${r.unsure ? ', unsure' : ''} (human ${r.human})` : 'no rating';
 export const sameLabel = (a, b) => a && b && Math.abs(a.human - b.human) < 1e-9 && (a.lo ?? a.human) === (b.lo ?? b.human) && (a.hi ?? a.human) === (b.hi ?? b.human);

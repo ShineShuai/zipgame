@@ -1301,9 +1301,16 @@ t('trap: metrics are deterministic, in range, and consistent with the profile', 
     eq(trapMetrics(p, TRAP_CFG, a.path).trapMax, a.trapMax, 'passing the path in skips the solve but gives the same answer');
   }
 });
+t('trap: cfg.pathCap is the node budget of the solve that finds the path; a puzzle carrying its path never needs it', () => {
+  const p = cachedSamples()[0], bare = { ...p, path: null };
+  eq(trapMetrics(bare, { ...TRAP_CFG, pathCap: 1 }).ok, false, 'a 1-node budget cannot find the path');
+  ok(trapMetrics(bare, { ...TRAP_CFG, pathCap: 1e7 }).ok, 'a large budget does');
+  ok(trapMetrics(p, { ...TRAP_CFG, pathCap: 1 }, p.path).ok, 'a given path skips the solve');
+});
 t('trap: TRAP_MODEL carries the fit metadata the design panel displays (tools/fit-trap.mjs --write writes it)', () => {
   const f = TRAP_MODEL.fit;
   ok(f && Number.isInteger(f.n) && f.n > 0 && Number.isFinite(f.looRho) && Number.isFinite(f.looMae) && Number.isFinite(f.lambda), 'fit = { n, lambda, looRho, looMae }');
+  ok(Number.isInteger(f.of) && f.of >= f.n, 'fit.of = size of ratings.json at fit time (>= n: unsolvable puzzles are skipped)');
   for (const k of TRAP_MODEL.features) ok([TRAP_MODEL.mean[k], TRAP_MODEL.sd[k], TRAP_MODEL.w[k]].every(Number.isFinite) && TRAP_MODEL.sd[k] > 0, `weights for ${k}`);
   const c = TRAP_MODEL.cuts;
   ok(Array.isArray(c) && c.length === 5 && c.every(Number.isFinite) && c.every((v, i) => !i || v > c[i - 1]), 'cuts = 5 strictly increasing score thresholds');
