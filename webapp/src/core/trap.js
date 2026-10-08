@@ -101,7 +101,8 @@ export function trapProfile(p, path, cfg = TRAP_CFG) {
 }
 
 // The ladder's probe-trial count (what-if guesses), 0 for a degenerate puzzle the ladder rejects.
-export const ladderTrials = (p, cfg = TRAP_CFG) => ladder(p, { workCap: cfg.ladderWorkCap }).probeTrials ?? 0;
+// `trialCap` (optional): stop the ladder after that many trials; the result is then trialCap + 1 = "more than trialCap".
+export const ladderTrials = (p, cfg = TRAP_CFG, trialCap = Infinity) => ladder(p, { workCap: cfg.ladderWorkCap, trialCap }).probeTrials ?? 0;
 
 const alternativePoints = (w, cfg) => w.capped ? cfg.points[3] : w.sub <= cfg.obvious ? cfg.points[0] : w.sub <= cfg.shallow ? cfg.points[1] : cfg.points[2];
 

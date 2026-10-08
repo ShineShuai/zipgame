@@ -96,12 +96,12 @@
       </select>
     </div>
     <div class="field field-row">
-      <label for="targetEffort" title="Multiplier of the number of changes the search tries. Raise it when the target is missed.">Search effort (×)</label>
+      <label for="targetEffort" title="How deep one try may go: a multiplier of the number of changes a try is allowed (a try also ends after a quarter of that without progress). Raise it when the closest puzzle keeps improving until the try ends.">Search effort (×)</label>
       <input id="targetEffort" type="number" min="0.1" step="0.5" value="1">
     </div>
     <div class="field field-row">
-      <label for="targetTime" title="Keep searching until the target is met or this many seconds have passed, then use the closest puzzle found. 0 = no time cap: use Search effort instead (the same seed then gives the same puzzle on every machine; with a time cap it depends on the machine's speed).">Time cap (s)</label>
-      <input id="targetTime" type="number" min="0" step="1" value="10">
+      <label for="targetRetries" title="How many tries the search may make: a try is a fresh start puzzle plus its hill-climb. It stops at the first try that reaches the target, else the closest puzzle of all tries is used. Raise it when tries end stuck (the same seed gives the same puzzle on every machine, whatever the retries: more retries only add tries).">Retries</label>
+      <input id="targetRetries" type="number" min="1" step="1" value="4">
     </div>
     <div class="field field-row">
       <label for="targetMinimize" title="Strip every wall the puzzle can lose without getting a second solution, inside the search, so the grade is the grade of the wall-minimal puzzle. Off = the first version (walls are not stripped).">Minimize walls</label>
@@ -112,8 +112,9 @@
       puzzle and keeps every wall or checkpoint change that moves the trap score toward the score band of the target grade
       (the band is read from the fitted trap model, so a refit with tools/fit-trap.mjs moves it automatically; hover the
       grade for the band). With Minimize walls on, every kept puzzle has had its unneeded walls stripped and the grade is
-      read on that puzzle, like the Play app's own fewest-walls puzzles. The search stops when the target is met or the Time
-      cap is up (0 = use Search effort, the number of tried changes, instead). Max checkpoints, Max walls and the flags above
+      read on that puzzle, like the Play app's own fewest-walls puzzles. The search makes up to Retries tries (a try = a fresh
+      start puzzle and its hill-climb, at most Search effort × the default number of changes deep) and stops at the first try that meets the target.
+      Both are counts, not seconds, so the same seed gives the same puzzle on every machine. Max checkpoints, Max walls and the flags above
       do not apply. Grades 4 and 5 (and bigger boards) take longer. If the target is missed, the closest puzzle is shown
       with the grade it reached. The diagnostics are computed for the result, so it can be rated right away.
     </div>

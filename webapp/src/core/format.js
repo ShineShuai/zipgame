@@ -19,6 +19,17 @@ function timeComments({ generateMs, solveMs, playS } = {}) {
   return lines;
 }
 
+// The measured times in the `# name value` comment lines that serialize(p, { times }) writes: { generateMs, solveMs, playS } (only those present).
+// parse() skips these lines; this reads them back (the Game-of-Day files carry the author's own play_time_s).
+export function commentTimes(text) {
+  const names = { generate_time_ms: 'generateMs', solve_time_ms: 'solveMs', play_time_s: 'playS' }, out = {};
+  for (const raw of text.split(/\r?\n/)) {
+    const m = raw.trim().match(/^#\s*(generate_time_ms|solve_time_ms|play_time_s)\s+(\d+(?:\.\d+)?)\s*$/);
+    if (m) out[names[m[1]]] = +m[2];
+  }
+  return out;
+}
+
 // opts.path: optional current play-mode path (array of cell indices) to include as a `path` line.
 // opts.times: optional { generateMs, solveMs, playS }, written as comment lines (see timeComments).
 export function serialize(p, opts = {}) {

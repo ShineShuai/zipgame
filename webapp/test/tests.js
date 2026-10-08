@@ -1,7 +1,7 @@
 // Runs in the browser (open test/index.html via a local server) and in Node (node test/tests.js). No dependencies.
 import { makePuzzle, clonePuzzle, validate, maxNumber, ALGO_VERSION, endCell, checkpointCells, cellCount } from '../src/core/model.js';
 import { edgeId, edgeCells, allEdges, edgeToKey, keyToEdge, setWallId, hasWallId, wallCount, wallIds } from '../src/core/edges.js';
-import { serialize, parse } from '../src/core/format.js';
+import { serialize, parse, commentTimes } from '../src/core/format.js';
 import { makeRng, dailySeed, hashStr, shuffle } from '../src/core/rng.js';
 import { newStat, updateStat, statSummary } from '../src/core/stats.js';
 import { solve } from '../src/core/solver/solve.js';
@@ -29,7 +29,7 @@ import { encodeShare, decodeShare, SHARE_VERSION, MAX_LEGS } from '../src/core/s
 import { levelOf, legsUndo, legLevels, stripText, dayOfDate, makeShareRecord, shareUrl, parseShareLink, shareText, shareStatus, isPlayable, LEVEL_EMOJI } from '../src/features/share.js';
 import { NB, TOP_K, binOf, summarize, statsLine } from '../src/core/hist.js';
 import { parseDays, mergeDays, combineDays, isReplicated } from '../src/core/stats-merge.js';
-import { wls, fitCandidate, predictH, dedupe, isMonotone, selectEntries, pickEntries, fitTime, predictMs, withoutSeeds, TIME_PRIOR, invert, floorMs, needsThinking, aboveFloor, EXTRA_MIN_SKILL } from '../src/core/gotd-model.js';
+import { wls, fitCandidate, predictH, dedupe, isMonotone, selectEntries, pickEntries, fitTime, predictMs, withoutSeeds, TIME_PRIOR, invert, floorMs, needsThinking, aboveFloor, EXTRA_MIN_SKILL, timePoints, playPoints, fitTimeSize, sizeShift, sizeLevel, localDifficulty, globalDifficulty, localFromGlobal } from '../src/core/gotd-model.js';
 import { barsSvg, linesSvg, histSvg, scatterSvg } from '../src/apps/stats/charts.js';
 import { fetchStats } from '../src/platform/stats-client.js';
 import { createLeaderboard, backendsFromConfig, cloudflareBackend, supabaseBackend, tursoBackend, afterSubmit, submitAttempt, MAX_ROUNDS } from '../src/platform/leaderboard.js';
@@ -1416,7 +1416,7 @@ t('target: every grade the generator can show is reachable (this is what to look
   for (const g of [0, 1, 2, 3]) for (const seed of [1, 2]) { const r = runSync(generateTargeted(7, g, seed * 31 + g)); total++; if (r.hit) hit++; }
   ok(hit >= 0.75 * total, `${hit}/${total} targets hit at 7x7, grades 0-3`);
 });
-t('target: wall-minimal mode keeps only needed walls and the reported grade is the grade of that puzzle; a time cap stops the search and returns the closest puzzle', () => {
+t('target: wall-minimal mode keeps only needed walls and the reported grade is the grade of that puzzle; the retry cap stops the search and returns the closest puzzle', () => {
   const r = runSync(generateTargeted(7, 3, 4)), p = r.puzzle;
   ok(r.minimal === true, 'minimal by default');
   for (const w of wallIds(p)) { // dropping any single wall must give a second solution (or an undecided check): the wall is needed
@@ -1426,14 +1426,31 @@ t('target: wall-minimal mode keeps only needed walls and the reported grade is t
   eq(trapMetrics(p).grade, r.grade, 'grade read on the stripped puzzle');
   const off = runSync(generateTargeted(7, 3, 4, { minimize: false }));
   ok(off.minimal === false && validate(off.puzzle).ok, 'minimize:false = the first version');
-  const t0 = performance.now(), c = runSync(generateTargeted(9, 5, 3, { maxMs: 400 }));
-  ok(performance.now() - t0 < 3000, 'a 400 ms time cap ends the run soon (the cap is checked between tried changes, one can take a while)');
-  ok(c.puzzle && validate(c.puzzle).ok && c.elapsedMs >= 0 && typeof c.timedOut === 'boolean', 'the closest puzzle is returned with its time info');
+  const c = runSync(generateTargeted(8, 5, 3, { retries: 1, effort: 0.2 }));
+  ok(c.puzzle && validate(c.puzzle).ok && c.tries === 1 && c.proposals <= proposalBudget(8, 0.2) + 2, 'one try of little depth ends the run and returns the closest puzzle');
+});
+t('target: the retry cap is a count (same arguments = same puzzle), more retries only add tries, and the limits hold', () => {
+  const a = runSync(generateTargeted(7, 4, 3, { retries: 1 })), a2 = runSync(generateTargeted(7, 4, 3, { retries: 1 })), b = runSync(generateTargeted(7, 4, 3, { retries: 3 }));
+  eq([serialize(a.puzzle), a.proposals], [serialize(a2.puzzle), a2.proposals], 'deterministic');
+  ok(b.tries <= 3 && b.tries >= a.tries && b.proposals >= a.proposals, 'retries only add tries');
+  if (a.hit) eq(serialize(b.puzzle), serialize(a.puzzle), 'a run that hit in its first try is the same with more retries');
+  const l = runSync(generateTargeted(7, 3, 5, { retries: Infinity, maxWalls: 12, maxCheckpoints: 8 }));
+  ok(l.hit && l.walls <= 12 && l.K <= 8, `limits: ${l.walls} walls, ${l.K} checkpoints`);
+});
+t('target: the prefilter and the score cache change the time, never the result; the ladder trial cap is a lower bound', () => {
+  for (const [n, g, seed] of [[6, 2, 5], [7, 3, 4], [7, 4, 3]]) {
+    const slow = runSync(generateTargeted(n, g, seed, { retries: 2, prefilter: false, cache: false })), fast = runSync(generateTargeted(n, g, seed, { retries: 2 }));
+    eq([serialize(fast.puzzle), fast.proposals, fast.pred, fast.grade], [serialize(slow.puzzle), slow.proposals, slow.pred, slow.grade], `${n}x${n} g${g}`);
+    ok(fast.stats.cacheHits + fast.stats.uniqueHits > 0, 'the cache is used');
+  }
+  const p = runSync(generateTargeted(7, 3, 4)).puzzle, full = ladderTrials(p);
+  ok(full > 3, 'the sample ladder makes some trials');
+  eq([ladderTrials(p, TRAP_CFG, 3), ladderTrials(p, TRAP_CFG, full), ladderTrials(p, TRAP_CFG, full + 50)], [4, full, full], 'a cap below the count stops at cap + 1, a cap at or above it changes nothing');
 });
 t('target: a grade the size cannot show is clamped (5x5 <= its cap), the budget scales with effort, events report progress', () => {
   const events = [], r = runSync(generateTargeted(5, 5, 7, { effort: 0.5 }), e => events.push(e));
   eq([r.requested, r.target], [5, SIZE_GRADE_CAP[5]]); ok(r.grade <= SIZE_GRADE_CAP[5], 'capped grade');
-  ok(r.proposals <= proposalBudget(5, 0.5) + 2, 'stays within the proposal budget');
+  ok(r.tries <= TARGET_CFG.retries && r.proposals <= TARGET_CFG.retries * (proposalBudget(5, 0.5) + 1), 'stays within retries x depth');
   ok(proposalBudget(7, 2) > proposalBudget(7, 1) && proposalBudget(7, 1) > proposalBudget(5, 1), 'budget grows with effort and size');
   ok(events.length > 0 && events.every(e => e.frac >= 0 && e.frac <= 1 && e.target === r.target), 'events: frac in 0..1, target');
   ok(events.every((e, i) => i === 0 || e.frac >= events[i - 1].frac), 'progress never goes back');
@@ -2233,6 +2250,46 @@ t('gotd-model: fitTime = prior without data, anchors the level with one day, rec
   const m = fitTime(pts); ok(Math.abs(m.mean[1] - 0.9) < 0.1 && Math.abs(m.mean[2] - 0.6) < 0.05 && Math.abs(Math.exp(m.mean[0]) - 40000) < 3000, JSON.stringify(m.mean));
   ok(m.sd[2] < p0.sd[2] / 3, 'posterior is tighter'); eq(predictMs({ mean: [Math.log(1), 0, 0] }, 7, 1.5), 500); eq(predictMs({ mean: [Math.log(1e9), 0, 0] }, 7, 1.5), 3600000);
   const I = invert([[2, 1, 0], [1, 3, 1], [0, 1, 4]]), P = [[2, 1, 0], [1, 3, 1], [0, 1, 4]].map(r => I[0].map((_, j) => r.reduce((a, v, k) => a + v * I[k][j], 0))); ok(P.every((r, i) => r.every((v, j) => Math.abs(v - +(i === j)) < 1e-12)));
+});
+t('format: commentTimes reads back the times serialize writes, and nothing else', () => {
+  const p = makePuzzle(3), text = serialize(p, { times: { generateMs: 12.34, solveMs: 0, playS: 83.26 } });
+  eq(commentTimes(text), { generateMs: 12.3, solveMs: 0, playS: 83.3 }); eq(commentTimes(serialize(p)), {}); eq(commentTimes('# play_time_s abc\n# note play_time_s 5\nsize 3'), {});
+});
+t('gotd-model: timePoints drops seed players, plays below the floor and thin days; the author time counts once above the floor', () => {
+  const day = (d, n, reals, seeds) => { const all = [...reals, ...seeds], bins = new Array(NB).fill(0); for (const x of all) bins[binOf(x)]++; return { d, n: all.length, sum: all.reduce((a, x) => a + x, 0), bins, best: [], seeds }; };
+  const slow = Array.from({ length: 25 }, (_, i) => 60000 + i * 1000), fast = [3000, 4000, 5000]; // 8x8: floor 32 s
+  const days = [day(1, 8, [...slow, ...fast], [20000, 70000]), day(2, 8, [...fast, ...slow.slice(0, 10)], []), day(3, 5, [...slow.slice(0, 22), 2000], [])];
+  const puzzles = new Map([[1, { n: 8, h: 1.5, authorS: 90 }], [2, { n: 8, h: 1.5, authorS: 20 }], [3, { n: 5, h: 0.2 }], [4, { n: 8, h: 1, authorS: 75 }]]);
+  const { points, skipped } = timePoints(days, puzzles);
+  const d1 = points.find(p => p.day === 1 && p.src === 'players'); eq([d1.count, d1.seeds, d1.real], [25, 2, 28]); ok(d1.dropped === 3, 'the three plays below the floor are dropped');
+  ok(Math.abs(Math.exp(d1.y) / 1000 - 72) < 8, 'median of the 25 valid plays, not of the seeds or the fast ones');
+  ok(skipped.some(s => s.day === 2 && /need 20/.test(s.why)), 'day 2: 10 valid players are too few'); ok(skipped.some(s => s.day === 2 && /below the .*floor/.test(s.why)), 'day 2: author time 20 s is under the floor');
+  const d3 = points.find(p => p.day === 3); eq(d3.count, 23); eq(d3.dropped, 0); // 5x5 grade 0 needs no thinking: nothing is cut
+  eq(points.filter(p => p.src === 'author').map(p => p.day), [1, 4]); eq(timePoints(days, puzzles, { useAuthor: false }).points.filter(p => p.src === 'author').length, 0);
+  eq(timePoints([{ ...days[0], seeds: [5000, 5000, 5000] }], new Map([[1, { n: 8, h: 1.5 }]])).skipped[0].day, 1, 'seeds that do not fit into the aggregate: day skipped');
+});
+t('gotd-model: playPoints keeps thin days, weights them by player count and pools sigma from days with >= 3 plays', () => {
+  const day = (d, n, reals, seeds) => { const all = [...reals, ...seeds], bins = new Array(NB).fill(0); for (const x of all) bins[binOf(x)]++; return { d, n: all.length, sum: all.reduce((a, x) => a + x, 0), bins, best: [], seeds }; };
+  const days = [day(1, 8, [60000, 90000, 120000, 3000], [20000]), day(2, 8, [100000], []), day(3, 8, [3000], [])];
+  const puzzles = new Map([[1, { n: 8, h: 1.5 }], [2, { n: 8, h: 1.5 }], [3, { n: 8, h: 1.5 }]]);
+  const r = playPoints(days, puzzles, { sigma: 0.5 });
+  eq(r.points.map(p => [p.day, p.count]), [[1, 3], [2, 1]]); ok(r.skipped.some(s => s.day === 3 && /no valid player/.test(s.why)), 'a day with only plays below the floor is skipped');
+  ok(Math.abs(Math.exp(r.points[0].y) / 1000 - 90) < 9, 'geometric mean of 60, 90, 120 s'); ok(r.points[1].v > r.points[0].v, 'one player weighs less than three');
+  eq(r.sigmaFit, null); ok(playPoints(days, puzzles).sigma === TIME_PRIOR.sigma, 'too little data: the prior sigma');
+  const m = fitTimeSize(r.points); ok(Number.isFinite(m.mean[1]) && m.size[8], 'the points feed fitTimeSize');
+});
+t('gotd-model: fitTimeSize = prior without data; recovers the size exponent, the grade slope and a per-size level; global and local difficulty are consistent', () => {
+  const p0 = fitTimeSize([]); eq(p0.mean.map(v => +v.toFixed(6)), TIME_PRIOR.mean.map(v => +v.toFixed(6))); eq(p0.size, {}); eq(p0.author, null);
+  eq([5, 6, 7, 8, 10, 12].map(n => +sizeShift(n, p0.mean).toFixed(2)), [-0.97, -0.44, 0, 0.39, 1.03, 1.56]); // time ~ cells, x2 per grade
+  let s = 5; const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32, gauss = () => Math.sqrt(-2 * Math.log(1 - rnd())) * Math.cos(2 * Math.PI * rnd());
+  const U = { 6: -0.2, 8: 0.3 }, pts = Array.from({ length: 120 }, (_, i) => { const n = 6 + (i % 5), h = rnd() * 4; return { n, h, count: 30, src: 'players', y: Math.log(100000) + 1.2 * Math.log(n * n / 49) + 0.8 * (h - 1.5) + (U[n] || 0) + 0.15 * gauss() }; });
+  const m = fitTimeSize(pts);
+  ok(Math.abs(m.mean[1] - 1.2) < 0.12 && Math.abs(m.mean[2] - 0.8) < 0.08, 'gamma and c: ' + m.mean.map(v => v.toFixed(2)));
+  ok(m.size[8].u > 0.18 && m.size[8].u < 0.4 && m.size[6].u < -0.1 && m.size[6].u > -0.3 && Math.abs(m.size[9].u) < 0.1, 'levels: ' + JSON.stringify(m.size));
+  ok(sizeLevel(m, 8) > 0.2 && sizeLevel(m, 5) === 0, 'level in grades; a size without data has none');
+  const one = fitTimeSize(pts.slice(0, 3)); ok(Math.abs(one.size[6].u) < Math.abs(m.size[6].u) + 0.05, 'with little data the per-size correction stays near 0');
+  for (const n of [6, 8, 10]) for (const h of [0, 2.5, 5]) { const G = globalDifficulty(m, n, h); ok(Math.abs(localFromGlobal(m, n, G) - localDifficulty(m, n, h)) < 1e-12, 'local = global - shift'); ok(Math.abs(G - localDifficulty(m, n, h) - sizeShift(n, m.mean)) < 1e-12); }
+  const withAuthor = fitTimeSize([...pts, { n: 7, h: 1.5, count: 1, src: 'author', y: Math.log(60000) }]); ok(withAuthor.author && Number.isFinite(withAuthor.author.u), 'author times get their own offset');
 });
 
 // ---- Replay of missed Games of Day ----
