@@ -560,22 +560,22 @@ $('targetGrade').onchange = updateTargetGrades;
 $('genTarget').onclick = async () => {
   if (playMode) exitPlay();
   const grade = +$('targetGrade').value, seed = currentSeed(), effort = Math.max(0.1, parseFloat($('targetEffort').value) || 1);
-  const capS = parseFloat($('targetTime').value), maxMs = Number.isFinite(capS) && capS > 0 ? capS * 1000 : 0, minimize = $('targetMinimize').checked;
+  const retries = Math.max(1, Math.floor(parseFloat($('targetRetries').value)) || 1), minimize = $('targetMinimize').checked;
   setBusy(true); setStatus(`Searching for a grade ${grade} puzzle…`, '');
   $('compareResult').style.display = 'none';
   try {
     const clock = { ms: 0 };
-    const r = await runAsync(measured(generateTargeted(P.n, grade, seed, { effort, maxMs, minimize }), clock), {
-      onEvent: e => setStatus(`Searching for a grade ${e.target} puzzle… ${e.phase === 'start' ? 'building a start puzzle' : `${plural(e.proposals, 'change')} tried`}${e.grade != null ? ` · best so far: grade ${e.grade} (score ${e.pred.toFixed(2)}, ${plural(e.walls, 'wall')})` : ''}${e.restarts ? ` · ${plural(e.restarts, 'restart')}` : ''} · ${fmtMs(e.elapsedMs)}${maxMs ? ` of ${fmtMs(maxMs)}` : ''}`, ''),
+    const r = await runAsync(measured(generateTargeted(P.n, grade, seed, { effort, retries, minimize }), clock), {
+      onEvent: e => setStatus(`Searching for a grade ${e.target} puzzle… ${e.phase === 'start' ? 'building a start puzzle' : `${plural(e.proposals, 'change')} tried`}${e.grade != null ? ` · best so far: grade ${e.grade} (score ${e.pred.toFixed(2)}, ${plural(e.walls, 'wall')})` : ''} · try ${Math.max(1, e.tries)} of ${e.retries} · ${fmtMs(e.elapsedMs)}`, ''),
     });
     if (!r.puzzle) { setStatus(`Could not build a unique start puzzle at ${P.n}×${P.n} (seed ${seed}). Try another seed.`, 'error'); return; }
     adopt(r.puzzle);
     setTiming('gen', clock.ms);
     refresh();
-    const found = `grade ${r.grade} (trap score ${r.pred.toFixed(2)}; grade ${r.target} is ${fmtScore(r.lo)} to ${fmtScore(r.hi)}) in ${fmtMs(clock.ms)}, after ${plural(r.proposals, 'change')} and ${plural(r.restarts, 'start')}: ${plural(r.K, 'checkpoint')}, ${plural(r.walls, 'wall')}${r.minimal ? ' (every wall needed)' : ''}. Seed ${seed}, ${maxMs ? `time cap ${fmtMs(maxMs)}` : `effort ${effort}`}. The template is shown dashed.`;
+    const found = `grade ${r.grade} (trap score ${r.pred.toFixed(2)}; grade ${r.target} is ${fmtScore(r.lo)} to ${fmtScore(r.hi)}) in ${fmtMs(clock.ms)}, after ${plural(r.proposals, 'change')} in ${r.tries} ${r.tries === 1 ? 'try' : 'tries'}: ${plural(r.K, 'checkpoint')}, ${plural(r.walls, 'wall')}${r.minimal ? ' (every wall needed)' : ''}. Seed ${seed}, effort ${effort}, retries ${retries}. The template is shown dashed.`;
     const clamped = r.requested !== r.target ? ` (grade ${r.requested} is not possible at ${P.n}×${P.n}; aimed at ${r.target})` : '';
     if (r.hit) setStatus(`Target reached${clamped}: ${found}`, 'ok');
-    else setStatus(`Target grade ${r.target} not reached${clamped}${r.timedOut ? ' within the time cap' : ''}. Closest: ${found} ${maxMs ? 'Raise the time cap' : 'Raise Search effort or set a time cap'}, or try another seed.`, 'warn');
+    else setStatus(`Target grade ${r.target} not reached${clamped} in ${r.tries} ${r.tries === 1 ? 'try' : 'tries'}. Closest: ${found} Raise Retries (or Search effort), or try another seed.`, 'warn');
     difficultyPanel.run();
   } finally { setBusy(false); }
 };

@@ -1408,7 +1408,7 @@ t('target: every grade the generator can show is reachable (this is what to look
   for (const g of [0, 1, 2, 3]) for (const seed of [1, 2]) { const r = runSync(generateTargeted(7, g, seed * 31 + g)); total++; if (r.hit) hit++; }
   ok(hit >= 0.75 * total, `${hit}/${total} targets hit at 7x7, grades 0-3`);
 });
-t('target: wall-minimal mode keeps only needed walls and the reported grade is the grade of that puzzle; a time cap stops the search and returns the closest puzzle', () => {
+t('target: wall-minimal mode keeps only needed walls and the reported grade is the grade of that puzzle; the retry cap stops the search and returns the closest puzzle', () => {
   const r = runSync(generateTargeted(7, 3, 4)), p = r.puzzle;
   ok(r.minimal === true, 'minimal by default');
   for (const w of wallIds(p)) { // dropping any single wall must give a second solution (or an undecided check): the wall is needed
@@ -1418,14 +1418,31 @@ t('target: wall-minimal mode keeps only needed walls and the reported grade is t
   eq(trapMetrics(p).grade, r.grade, 'grade read on the stripped puzzle');
   const off = runSync(generateTargeted(7, 3, 4, { minimize: false }));
   ok(off.minimal === false && validate(off.puzzle).ok, 'minimize:false = the first version');
-  const t0 = performance.now(), c = runSync(generateTargeted(9, 5, 3, { maxMs: 400 }));
-  ok(performance.now() - t0 < 3000, 'a 400 ms time cap ends the run soon (the cap is checked between tried changes, one can take a while)');
-  ok(c.puzzle && validate(c.puzzle).ok && c.elapsedMs >= 0 && typeof c.timedOut === 'boolean', 'the closest puzzle is returned with its time info');
+  const c = runSync(generateTargeted(8, 5, 3, { retries: 1, effort: 0.2 }));
+  ok(c.puzzle && validate(c.puzzle).ok && c.tries === 1 && c.proposals <= proposalBudget(8, 0.2) + 2, 'one try of little depth ends the run and returns the closest puzzle');
+});
+t('target: the retry cap is a count (same arguments = same puzzle), more retries only add tries, and the limits hold', () => {
+  const a = runSync(generateTargeted(7, 4, 3, { retries: 1 })), a2 = runSync(generateTargeted(7, 4, 3, { retries: 1 })), b = runSync(generateTargeted(7, 4, 3, { retries: 3 }));
+  eq([serialize(a.puzzle), a.proposals], [serialize(a2.puzzle), a2.proposals], 'deterministic');
+  ok(b.tries <= 3 && b.tries >= a.tries && b.proposals >= a.proposals, 'retries only add tries');
+  if (a.hit) eq(serialize(b.puzzle), serialize(a.puzzle), 'a run that hit in its first try is the same with more retries');
+  const l = runSync(generateTargeted(7, 3, 5, { retries: Infinity, maxWalls: 12, maxCheckpoints: 8 }));
+  ok(l.hit && l.walls <= 12 && l.K <= 8, `limits: ${l.walls} walls, ${l.K} checkpoints`);
+});
+t('target: the prefilter and the score cache change the time, never the result; the ladder trial cap is a lower bound', () => {
+  for (const [n, g, seed] of [[6, 2, 5], [7, 3, 4], [7, 4, 3]]) {
+    const slow = runSync(generateTargeted(n, g, seed, { retries: 2, prefilter: false, cache: false })), fast = runSync(generateTargeted(n, g, seed, { retries: 2 }));
+    eq([serialize(fast.puzzle), fast.proposals, fast.pred, fast.grade], [serialize(slow.puzzle), slow.proposals, slow.pred, slow.grade], `${n}x${n} g${g}`);
+    ok(fast.stats.cacheHits + fast.stats.uniqueHits > 0, 'the cache is used');
+  }
+  const p = runSync(generateTargeted(7, 3, 4)).puzzle, full = ladderTrials(p);
+  ok(full > 3, 'the sample ladder makes some trials');
+  eq([ladderTrials(p, TRAP_CFG, 3), ladderTrials(p, TRAP_CFG, full), ladderTrials(p, TRAP_CFG, full + 50)], [4, full, full], 'a cap below the count stops at cap + 1, a cap at or above it changes nothing');
 });
 t('target: a grade the size cannot show is clamped (5x5 <= its cap), the budget scales with effort, events report progress', () => {
   const events = [], r = runSync(generateTargeted(5, 5, 7, { effort: 0.5 }), e => events.push(e));
   eq([r.requested, r.target], [5, SIZE_GRADE_CAP[5]]); ok(r.grade <= SIZE_GRADE_CAP[5], 'capped grade');
-  ok(r.proposals <= proposalBudget(5, 0.5) + 2, 'stays within the proposal budget');
+  ok(r.tries <= TARGET_CFG.retries && r.proposals <= TARGET_CFG.retries * (proposalBudget(5, 0.5) + 1), 'stays within retries x depth');
   ok(proposalBudget(7, 2) > proposalBudget(7, 1) && proposalBudget(7, 1) > proposalBudget(5, 1), 'budget grows with effort and size');
   ok(events.length > 0 && events.every(e => e.frac >= 0 && e.frac <= 1 && e.target === r.target), 'events: frac in 0..1, target');
   ok(events.every((e, i) => i === 0 || e.frac >= events[i - 1].frac), 'progress never goes back');

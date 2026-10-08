@@ -27,6 +27,7 @@ export function ladder(p, o = {}) {
   const t0 = performance.now();
   const pdMax = o.probeDepth ?? 2;
   const workCap = o.workCap ?? 3e6;
+  const trialCap = o.trialCap ?? Infinity; // stop (like workCap) once more than this many what-if trials were made: probeTrials is then trialCap + 1, a lower bound
   const { nb, T } = buildNeighbors(p);
   const K = maxNumber(p), cp = p.cp, start = startCell(p), end = endCell(p);
   if (K < 2) return { error: 'K<2' };
@@ -262,7 +263,7 @@ export function ladder(p, o = {}) {
 
   // Try `val` on edge (x,e) inside scratch buffer; returns true if it stays consistent.
   function trial(buf, x, e, val, d) {
-    probeTrials++;
+    if (++probeTrials > trialCap) throw CAP;
     const prev = S, prevRec = rec, prevLvl = lvl;
     copy(buf, S); S = buf; rec = false; q.length = 0;
     let ok = false;
