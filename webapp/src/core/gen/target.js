@@ -196,6 +196,8 @@ const keyOf = q => String.fromCharCode(...q.cp) + '|' + String.fromCharCode(...q
 //   o.model          the score model (default TRAP_MODEL; Cutout passes withoutAltFrac(TRAP_MODEL)): the band, the score and the ladder term all read it
 //   o.atLeast        true = the target is "this grade or harder" (open band above); `hit` then means grade >= target
 //   o.cells          cells the board has when it has holes (default n * n): sets the checkpoint and wall limits
+//   o.valid          q => false rejects a change before it is checked or scored (a rule about the puzzle the solver does not know, e.g. Cutout's
+//                    layout of checkpoints, see gen/layout.js). Unset = every change is looked at, as before.
 //   o.stop           () => true ends the run early (a clock for an app, e.g. () => performance.now() > deadline); checked once a start puzzle has
 //                    been scored and after every change, and the best puzzle found so far is returned. Unset = counts only, as before.
 //   o.start          a generator function (rnd, K0, nodeCap) -> { unique, puzzle } (puzzle.path = its solution) that supplies the start puzzle
@@ -336,7 +338,7 @@ export function* generateTargeted(n, grade, seed, o = {}) {
       proposals++; tryProps++;
       ctx.wit = cur.wit;
       const m = propose(cur.puzzle, ctx, rnd, cur.pred < band.a);
-      if (!m || (m.check && !isUnique(m.q))) { stale++; continue; }
+      if (!m || (o.valid && !o.valid(m.q)) || (m.check && !isUnique(m.q))) { stale++; continue; }
       const win = { lo: band.a - cur.d, hi: band.b + cur.d };
       let q = m.q, s = score(q, path, win);
       if (s === OUT) { stale++; yield event('search', cur); continue; }
