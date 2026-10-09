@@ -5,8 +5,8 @@
 -- tables would force the public token to be able to write them. Here the trigger only reads and raises: the browser token is just
 --   turso db tokens create <db> -e never -p all:data_read -p submit:data_add
 -- and n / sum / bins / best are computed from `submit` (plus `seed`) when they are read. `submit` is the only copy of the data: never delete from it.
--- Mirrors src/core/hist.js (NB = 80, TOP_K = 10, MIN_MS = 500, MAX_MS = 3600000, REPLAY_DAYS = 14) and the Worker: the day is a real date, at most
--- REPLAY_DAYS + 1 = 15 UTC days back and 1 ahead. No WITHOUT ROWID, so that it also loads on a database of the experimental Turso engine.
+-- Mirrors src/core/hist.js (NB = 80, TOP_K = 10, MIN_MS = 500, MAX_MS = 3600000, REPLAY_DAYS = 90) and the Worker: the day is a real date, at most
+-- REPLAY_DAYS + 1 = 91 UTC days back and 1 ahead. No WITHOUT ROWID, so that it also loads on a database of the experimental Turso engine.
 -- The queries the client sends are TURSO_SQL in src/platform/leaderboard.js; server/turso/schema.test.mjs runs them against worker.js.
 
 -- Histogram bins as integer ms ranges [lo, hi), generated with binOf() of src/core/hist.js (SQL has no exact log()). The block between the marker lines is
@@ -128,5 +128,5 @@ BEGIN
      OR NOT EXISTS (SELECT 1 FROM bin_edge WHERE bin = NEW.bin AND NEW.ms >= lo AND NEW.ms < hi)
      OR d IS NULL
      OR strftime('%Y%m%d', d) <> printf('%08d', NEW.day)
-     OR julianday(date('now')) - julianday(d) NOT BETWEEN -1 AND 15;
+     OR julianday(date('now')) - julianday(d) NOT BETWEEN -1 AND 91;
 END;

@@ -8,10 +8,11 @@ import { runAsync } from '../../platform/run.js';
 import { createStore } from '../../features/stats-store.js';
 import { createDaily, fetchGameOfDay, fetchGameOfDayFor, utcDateString, utcDayNumber, dateOfDay } from '../../features/daily.js';
 import { createReplay } from '../../features/replay.js';
+import { createStreak, FREEZE_EVERY, FREEZE_MAX } from '../../features/streak.js';
 import { ALGO_VERSION, maxNumber } from '../../core/model.js';
 import { dailySeed } from '../../core/rng.js';
 import { legsUndo, makeShareRecord, shareStatus, isPlayable, shareText, shareUrl, parseShareLink, stripText, dateLabel } from '../../features/share.js';
-import { REPLAY_DAYS, TOP_K as REPLAY_TOP_K } from '../../core/hist.js';
+import { REPLAY_DAYS } from '../../core/hist.js';
 import { maxHints, computeHint, solutionOf, penalizedTime, HINT_PENALTY_S } from '../../features/hints.js';
 import { cellAtPoint, pathD } from '../../view/geometry.js';
 import { bindModal, copyText } from '../../ui/modal.js';
@@ -46,8 +47,8 @@ function gradePuzzle(puzzle) {
     return { ok: false, trap: null, legacy: null };
   }
 }
-let storage, store, daily, replay, modal, lb;
-const replayPuzzles = new Map(); // date -> puzzle: the file of a past day never changes, so each is fetched once per page load
+let storage, store, daily, replay, streak, modal, lb;
+const replayPuzzles = new Map(), replayNoFile = new Set(); // date -> puzzle (the file of a past day never changes, so each is fetched once per page load); dates without a file
 const $ = id => document.getElementById(id), today = () => utcDateString(new Date()), dayNo = () => utcDayNumber(new Date()), sec = x => x.toFixed(1) + 's';
 const statsText = { everyone: (avg, n) => t('stats.everyone', avg, n), top: (k, avg) => t('stats.top', k, avg), beat: pct => t('stats.beat', pct) };
 const statsLineT = (s, detail) => statsLine(s, detail, statsText);
@@ -130,7 +131,7 @@ function renderMenu() {
   const replayButton = chances > 0
     ? `<button class="btn secondary" id="openReplay">${t('menu.replay', chances)}</button>`
     : `<button class="btn secondary" disabled title="${t('replay.locked', replay.toNext())}">${t('menu.replay', 0)}</button>`;
-  const replayNote = `<p class="small replay-note">${t(chances > 0 ? 'replay.progress' : 'replay.locked', replay.toNext())}</p>`;
+  const statusPanel = statusPanelHtml(chances, streak && streak.view());
   const sharedCard = sharedCardHtml();
 
   return `
@@ -157,7 +158,7 @@ function renderMenu() {
             ${gotdButton}
             ${replayButton}
           </div>
-          ${replayNote}
+          ${statusPanel}
           ${attemptNote}
           ${hintNote}
           <p class="small storage-note" id="storageNote" style="${S.showDev ? '' : 'display:none'}">Storage: ${storage.name}${storage.shared ? '' : ' (local only)'}</p>
@@ -169,27 +170,54 @@ function renderMenu() {
 
 const weekday = d => new Date(Date.UTC(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6))).toLocaleDateString(getLang() === 'zh' ? 'zh-CN' : 'en', { weekday: 'short', timeZone: 'UTC' });
 
-// Replay screen (opened by the menu's Replay button): every day of the window, newest first. A missed day with a puzzle file is a button;
-// a played day (time and the stats stored with it; the stats are never fetched) and an abandoned one are greyed out. Every row shows its grid size, read from the
-// puzzle file (static, cached per page load); a played or abandoned row without a loadable file just has no size. Missed days without a puzzle file are left out.
-// One column on phones, as many 250 px columns as fit on a desktop (css/play.css). Row text is made of small chips that wrap as units, so a row never overflows.
-function replayRowHtml({ date, puzzle, attempt }, canPlay) { // puzzle: the day's puzzle if its file loaded; attempt: the stored record, null = missed
-  const chip = text => `<span>${text}</span>`;
-  const size = puzzle ? [`${puzzle.n}x${puzzle.n}`] : [];
-  const row = (tag, cls, attrs, right, chips) => `
-    <${tag} class="replay-day${cls}"${attrs}>
-      <span class="replay-top"><span class="replay-date">${dateLabel(date)} <small>${weekday(date)}</small></span>${right}</span>
-      ${chips.length ? `<span class="replay-meta">${chips.map(chip).join('')}</span>` : ''}
-    </${tag}>`;
-  if (!attempt) return row('button', '', ` type="button" data-date="${date}"${canPlay ? '' : ' disabled'}`, `<span class="replay-go">${t('replay.play')}</span>`, size);
-  if (!attempt.solved) return row('div', ' is-done', '', '', [...size, t('replay.abandoned')]);
-  const s = attempt.stats, chips = [...size, ...(s ? [statsText.everyone(sec(s.mean), null), ...(s.top != null ? [statsText.top(REPLAY_TOP_K, sec(s.top))] : []), ...(s.pct != null ? [statsText.beat(s.pct)] : [])] : [])];
-  return row('div', ' is-done', '', `<span class="replay-time">${sec(attempt.time)}</span>`, chips);
+// Status panel under the menu buttons: two cards, each with a tooltip (hover on a desktop, tap on a phone; Esc or a tap elsewhere closes it).
+//   replay card: chances left + dots for the solves made in the current price step; streak card: flame + days, 7 dots to the next reward, freeze slots.
+const ICON = {
+  replay: '<svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v5h-5"/></svg>',
+  flame: '<svg class="stat-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c1 4 6 7 6 12a6 6 0 0 1-12 0c0-3 2-5 3-7 1 2 2 2 2 1 0-2-.5-4 1-6z"/></svg>',
+  snow: '<svg class="freeze-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/></svg>',
+};
+const closeStatTips = () => document.querySelectorAll('.stat-item.open').forEach(b => b.classList.remove('open'));
+function statusPanelHtml(chances, sv) { // sv: streak.view(), null before the streak is loaded
+  const pips = (on, total, cls = '') => `<span class="pips ${cls}">${Array.from({ length: total }, (_, i) => `<i class="pip${i < on ? ' on' : ''}"></i>`).join('')}</span>`;
+  const card = (cls, lines, body) => `
+    <button type="button" class="stat-item ${cls}" aria-label="${lines.join(' ')}">
+      ${body}
+      <span class="stat-tip" role="tooltip">${lines.join('<br>')}</span>
+    </button>`;
+  const step = replay.step(), toNext = replay.toNext();
+  const replayCard = card('stat-replay' + (chances > 0 ? ' ready' : ''), [t(chances > 0 ? 'replay.progress' : 'replay.locked', toNext)], `
+      ${ICON.replay}
+      <span class="stat-main">
+        <span class="stat-top"><b>${chances}</b><small>${t('status.replays')}</small></span>
+        ${pips(step.done, step.total)}
+        <small class="stat-sub">${t('status.toGo', toNext)}</small>
+      </span>`);
+  if (!sv) return `<div class="status-panel">${replayCard}</div>`;
+  const lines = [sv.streak > 0 ? t('streak.line', sv.streak, sv.freezes) + (sv.today ? '' : ' ' + t('streak.keep')) : t('streak.none'), t('streak.help', FREEZE_EVERY, FREEZE_MAX)];
+  const streakCard = card('stat-streak' + (sv.streak > 0 ? (sv.today ? ' lit' : ' lit risk') : ''), lines, `
+      ${ICON.flame}
+      <span class="stat-main">
+        <span class="stat-top"><b>${sv.streak}</b><small>${t('status.streak')}</small></span>
+        ${pips(sv.streak > 0 ? ((sv.streak - 1) % FREEZE_EVERY) + 1 : 0, FREEZE_EVERY, 'week')}
+        <span class="freezes">${Array.from({ length: FREEZE_MAX }, (_, i) => `<span class="freeze${i < sv.freezes ? ' on' : ''}">${ICON.snow}</span>`).join('')}</span>
+      </span>`);
+  return `<div class="status-panel">${replayCard}${streakCard}</div>`;
+}
+
+// Replay screen (opened by the menu's Replay button): up to REPLAY_SHOW dates, each a button: the missed days (newest first), then old solved days to repeat (slowest first), each with its earlier time. Every row shows its grid size, read from the puzzle file (static,
+// cached per page load). One column on phones, as many 250 px columns as fit on a desktop (css/play.css). Row text is made of small chips that wrap as units.
+function replayRowHtml({ date, puzzle, attempt }, canPlay) { // attempt: the stored record, null = missed (else abandoned, or solved = a day to repeat)
+  const chips = [`${puzzle.n}x${puzzle.n}`, ...(attempt ? [attempt.solved ? t('replay.prev', sec(attempt.time)) : t('replay.abandoned')] : [])];
+  return `
+    <button class="replay-day" type="button" data-date="${date}"${canPlay ? '' : ' disabled'}>
+      <span class="replay-top"><span class="replay-date">${dateLabel(date)} <small>${weekday(date)}</small></span><span class="replay-go">${t('replay.play')}</span></span>
+      <span class="replay-meta">${chips.map(c => `<span>${c}</span>`).join('')}</span>
+    </button>`;
 }
 function renderReplay() {
   const r = S.replayPick || { loading: true, list: [], msg: null }, chances = replay.chances();
-  const playable = r.list.some(x => !x.attempt);
-  const info = r.loading ? t('replay.loading') : chances < 1 ? t('replay.locked', replay.toNext()) : !playable ? t('replay.none', REPLAY_DAYS) : '';
+  const info = r.loading ? t('replay.loading') : chances < 1 ? t('replay.locked', replay.toNext()) : !r.list.length ? t('replay.none', REPLAY_DAYS) : '';
   const grid = !r.loading && r.list.length ? `<div class="replay-grid">${r.list.map(x => replayRowHtml(x, chances > 0)).join('')}</div>` : '';
   return `
     <div class="replay-stage">
@@ -363,6 +391,7 @@ function attachHandlers() {
   on('replayBack', () => { S.replayPick = null; S.screen = 'menu'; render(); });
   on('toReplay', () => openReplay());
   document.querySelectorAll('.replay-day').forEach(b => { b.onclick = () => startReplay(b.dataset.date); });
+  document.querySelectorAll('.stat-item').forEach(b => { b.onclick = e => { e.stopPropagation(); const open = !b.classList.contains('open'); closeStatTips(); b.classList.toggle('open', open); }; });
   on('backMenu2', () => { logPlay(false); stopTimer(); S.screen = 'menu'; render(); });
   on('resetPath', () => { if (S.trace && !S.finished) traceClear(S.trace, S.path.length); if (!S.finished) legsUndo(S.legs, S.puzzle, S.path, 1); S.path = []; S.finished = false; S.hintCell = S.hintWrongCell = null; render(); });
   on('exportPlayLog', ev => { ev.preventDefault(); exportPlayLog(); });
@@ -442,6 +471,7 @@ async function exportPlayLog() {
 
 function onSolved() {
   logPlay(true); // before the hint penalty below: the log keeps the raw time
+  if (streak) streak.record().then(milestone => milestone && replay.addBonus()); // every 7th streak day: one more replay chance
   S.finished = true; stopTimer(); sfxSolved();
   if (!S.penaltyApplied) { S.elapsed = penalizedTime(S.elapsed, S.hintsUsed); S.penaltyApplied = true; } // once, even if the path is reset and re-solved
   if (S.isGotd) { const a = store.attemptOn(S.gotdDate); if (!(a && a.solved)) finishGotd(S.puzzle.n, S.gotdDate, S.elapsed, S.isReplay); } // a Game of Day (live or replay) counts once
@@ -492,16 +522,17 @@ async function startGameOfDay() {
   await store.saveAttempt(date, { solved: false, time: null }); // abandoning mid-puzzle still uses today's try
   beginGame(puzzle, puzzle.gotdDate);
 }
-// Replay: the replay screen lists the missed days that have a puzzle file; choosing one spends a chance once its puzzle has loaded.
+// Replay: the replay screen lists up to REPLAY_SHOW days that have a puzzle file (replay.pick); choosing one spends a chance
+// once its puzzle has loaded.
 let replayLoad = 0; // a newer openReplay() makes an older, slower one drop its result
+async function replayFile(date) {
+  if (!replayPuzzles.has(date) && !replayNoFile.has(date)) { const p = await fetchGameOfDayFor(date); if (p) replayPuzzles.set(date, p); else replayNoFile.add(date); }
+  return replayPuzzles.get(date) || null;
+}
 async function openReplay(msg = null) {
   const id = ++replayLoad;
   Object.assign(S, { screen: 'replay', replayPick: { loading: true, list: [], msg } }); render();
-  const list = (await Promise.all((await replay.days()).map(async ({ date, attempt }) => {
-    if (!replayPuzzles.has(date)) { const p = await fetchGameOfDayFor(date); if (p) replayPuzzles.set(date, p); }
-    const puzzle = replayPuzzles.get(date);
-    return attempt || puzzle ? { date, attempt, puzzle } : null; // missed day without a puzzle file: nothing to offer
-  }))).filter(Boolean);
+  const list = (await replay.pick(async date => !!(await replayFile(date)))).map(d => ({ ...d, puzzle: replayPuzzles.get(d.date) }));
   if (id !== replayLoad || S.screen !== 'replay') return; // superseded, or the player left the screen meanwhile
   S.replayPick = { loading: false, list, msg }; render();
 }
@@ -778,11 +809,13 @@ async function initLang() {
   lb = createLeaderboard(backendsFromConfig(LEADERBOARD, new URLSearchParams(location.search).get('lb')));
   replay = createReplay(storage, store);
   try { await replay.init(); } catch (e) { console.warn('replay init failed:', e); }
+  streak = createStreak(storage, playlog);
+  try { await streak.init(); } catch (e) { console.warn('streak init failed:', e); }
   if (lb.enabled) for (const { date } of await replay.unsent()) shareGotd(date); // today's and replayed days whose submit never got an answer
   try { for (const n of SIZES) S.nextIdx[n] = (await daily.peek(n)).index; } catch (e) { console.warn('daily counters failed:', e); }
   await loadSharedLink();
-  document.addEventListener('click', () => setShareTip(false));
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') setShareTip(false); });
+  document.addEventListener('click', () => { setShareTip(false); closeStatTips(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { setShareTip(false); closeStatTips(); } });
   modal = bindModal($('exportModal'));
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));
   installDevReveal(); await initSoundToggle(); await initLang(); render();
