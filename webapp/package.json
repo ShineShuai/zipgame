@@ -18,6 +18,7 @@
     "gotd:fit": "node tools/gotd-fit.mjs",
     "target:eval": "node tools/target-eval.mjs",
     "size:level": "node tools/size-level.mjs",
-    "gotd:seed": "node tools/gotd-seed.mjs --dry-run"
+    "gotd:seed": "node tools/gotd-seed.mjs --dry-run",
+    "behaviour": "node tools/behaviour.mjs"
   }
 }

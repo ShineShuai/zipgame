@@ -7,7 +7,7 @@ import { binOf, summarize, MIN_MS, MAX_MS, TOP_K } from '../core/hist.js';
 // whose answer comes in its own envelope). It returns the reply in the shape above, { rejected: true } for an invalid-input answer that arrives
 // with HTTP 200, or throws / returns garbage for a malformed one (= failed). Without it the JSON body is the reply and 400/422 mean rejected.
 // Cloudflare sends text/plain so the browser skips the CORS preflight (one request instead of two); the Worker parses JSON anyway.
-const trim = u => u.replace(/\/+$/, '');
+export const trim = u => u.replace(/\/+$/, '');
 export const cloudflareBackend = ({ url }, id = 'cloudflare') => ({
   name: id,
   request: ({ d, t, b }) => ({ url: trim(url) + '/gotd', init: { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify({ d, t, b }) } }),
@@ -38,9 +38,9 @@ export const TURSO_SQL = {
     SELECT json_object('days', json(COALESCE((SELECT json_group_array(json_object('d', dd.day, 'n', dd.n, 'sum', dd.sum, 'bins', json(bb.bins), 'best', json(tt.best),
       'seeds', json(COALESCE(xx.seeds, '[]')))) FROM dd JOIN bb USING (day) JOIN tt USING (day) LEFT JOIN xx USING (day)), '[]'))) AS reply`,
 };
-const hranaInt = n => ({ type: 'integer', value: String(n) }); // Hrana sends integers as strings (they may exceed 2^53)
+export const hranaInt = n => ({ type: 'integer', value: String(n) }); // Hrana sends integers as strings (they may exceed 2^53)
 const newUid = () => (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 12));
-const pipeline = stmts => JSON.stringify({ requests: [...stmts.map(([sql, args]) => ({ type: 'execute', stmt: { sql, args } })), { type: 'close' }] });
+export const pipeline = stmts => JSON.stringify({ requests: [...stmts.map(([sql, args]) => ({ type: 'execute', stmt: { sql, args } })), { type: 'close' }] });
 // the first row of one pipeline result as { column: value } (integers as numbers), or throws on an error result
 function tursoRow(result) {
   if (!result || result.type !== 'ok') throw Object.assign(new Error((result && result.error && result.error.message) || 'no result'), { sqlError: true });
