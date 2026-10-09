@@ -132,7 +132,38 @@ b { color: var(--heading); font-variant-numeric: tabular-nums; }
 .note { margin-top: 14px; padding: 10px 14px; border-radius: 12px; background: var(--blue-soft); color: var(--blue-dark); font-weight: 600; }
 .note.error { background: #fdecec; color: var(--red); }
 .storage-note { margin-top: 16px; }
-.replay-note { margin-top: 10px; }
+/* ---------- status panel: replay chances + streak (menu) ---------- */
+.status-panel { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.stat-item {
+  position: relative; flex: 1 1 210px; display: flex; align-items: center; gap: 12px; min-width: 0; padding: 10px 14px;
+  border: 2px solid var(--line); border-radius: 16px; background: #fff; color: var(--heading); font: inherit; text-align: left; cursor: help;
+}
+.stat-icon { flex: none; width: 30px; height: 30px; color: #9aa6c8; }
+.stat-replay.ready { border-color: var(--blue); background: var(--blue-soft); }
+.stat-replay.ready .stat-icon, .stat-replay .pip.on { color: var(--blue); }
+.stat-streak.lit .stat-icon { color: #f97316; }
+.stat-streak.risk .stat-icon { animation: stat-pulse 1.6s ease-in-out infinite; }
+@keyframes stat-pulse { 50% { opacity: 0.45; } }
+.stat-main { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.stat-top { display: flex; align-items: baseline; gap: 6px; }
+.stat-top b { font-size: 1.35rem; line-height: 1; }
+.stat-top small, .stat-sub { font-size: 0.8rem; color: var(--muted); }
+.pips { display: flex; flex-wrap: wrap; gap: 4px; }
+.pip { width: 10px; height: 10px; border-radius: 50%; background: #dfe5f7; }
+.stat-replay .pip.on { background: var(--blue); }
+.stat-streak .pip.on { background: #f97316; }
+.pips.week .pip:last-child { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #fdba74; } /* the 7th dot: the reward */
+.freezes { display: flex; gap: 4px; }
+.freeze { width: 16px; height: 16px; color: #ccd4ec; }
+.freeze.on { color: var(--blue); }
+.freeze-icon { display: block; width: 100%; height: 100%; }
+.stat-tip {
+  display: none; position: absolute; left: 0; right: 0; top: calc(100% + 8px); z-index: 30; padding: 10px 12px; border-radius: 12px;
+  background: var(--heading); color: #fff; font-size: 0.85rem; font-weight: 400; line-height: 1.4; box-shadow: 0 8px 24px rgba(22, 32, 60, 0.28);
+}
+.stat-item.open .stat-tip, .stat-item:focus-visible .stat-tip { display: block; }
+@media (hover: hover) { .stat-item:hover .stat-tip { display: block; } }
+@media (max-width: 560px) { .stat-item { flex-basis: 100%; } }
 
 /* ---------- replay screen ---------- */
 
@@ -153,17 +184,13 @@ b { color: var(--heading); font-variant-numeric: tabular-nums; }
 .replay-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 10px; min-width: 0; }
 .replay-date { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .replay-date small { font-size: 0.85rem; font-weight: 400; color: var(--muted); }
-.replay-day.is-done .replay-date small { color: inherit; }
 .replay-meta { display: flex; flex-wrap: wrap; gap: 0 14px; min-width: 0; font-size: 0.9rem; color: var(--muted); overflow-wrap: anywhere; }
 .replay-meta > span { min-width: 0; }
 .replay-go { flex: none; padding: 6px 14px; border-radius: 999px; background: var(--blue); color: #fff; font-weight: 700; }
-.replay-time { font-weight: 700; font-variant-numeric: tabular-nums; }
-.replay-day.is-done { background: #f1f3f9; border-color: #e6eaf5; color: #5f6b8a; cursor: default; }
-.replay-day.is-done .replay-meta { color: inherit; }
 .replay-day:disabled { opacity: 0.55; cursor: default; }
 .replay-day:disabled .replay-go { background: #8a97bd; }
-.replay-day:not(.is-done):not(:disabled):active { background: var(--blue-soft); border-color: var(--blue); }
-@media (hover: hover) { .replay-day:not(.is-done):not(:disabled):hover { background: var(--blue-soft); border-color: var(--blue); } }
+.replay-day:not(:disabled):active { background: var(--blue-soft); border-color: var(--blue); }
+@media (hover: hover) { .replay-day:not(:disabled):hover { background: var(--blue-soft); border-color: var(--blue); } }
 .center-stage { max-width: 560px; margin: 0 auto; }
 
 /* ---------- buttons and inputs ---------- */

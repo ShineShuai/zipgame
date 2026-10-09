@@ -33,7 +33,7 @@ await test('validate: accepts today +-1 day, rejects everything else', () => {
 await test('validate(back): a replay day is accepted up to back days before now; the future limit stays +1; seeding stays +-1', () => {
   const ok = { d: ymd, t: 42130, b: 37 }, back = REPLAY_DAYS + 1, dayOf = k => Number(new Date(now + k * 86400000).toISOString().slice(0, 10).replaceAll('-', ''));
   for (let k = -back; k <= 1; k++) assert.ok(validate({ ...ok, d: dayOf(k) }, now, back), `day ${k}`);
-  for (const k of [-back - 1, -30, 2]) assert.equal(validate({ ...ok, d: dayOf(k) }, now, back), null, `day ${k}`);
+  for (const k of [-back - 1, -300, 2]) assert.equal(validate({ ...ok, d: dayOf(k) }, now, back), null, `day ${k}`);
   assert.equal(validate({ ...ok, d: dayOf(-2) }, now), null, 'default back = 1 is unchanged');
   assert.equal(validateSeed({ d: dayOf(-2), ms: [9000], bins: [binOf(9000)] }, now), null, 'seeding never goes back');
   const jan = Date.UTC(2026, 0, 1, 23), dayFrom = k => Number(new Date(jan + k * 86400000).toISOString().slice(0, 10).replaceAll('-', '')); // the window crosses the year boundary

@@ -171,7 +171,7 @@ await test('days: today, tomorrow and up to REPLAY_DAYS + 1 back are accepted; e
     assert.equal((await solve(db, `window-${k + 100}`, dayOf(k), 5000)).n, 1, `day ${k}`);
   }
   const before = [count(db, 'submit'), count(db, 'solve')];
-  for (const k of [-(REPLAY_DAYS + 2), -40, 2]) {
+  for (const k of [-(REPLAY_DAYS + 2), -300, 2]) {
     assert.deepEqual(await solve(db, `outside-${k + 100}`, dayOf(k), 5000), { rejected: true }, `day ${k}`);
   }
   for (const day of [20260231, 20261301, 20260100, 20260132, 0, 99999999]) {
@@ -224,7 +224,7 @@ await test('the adapter in the leaderboard flow: ok, rejected (invalid input) an
   const ok = await lb.submit(String(today), 42.5);
   assert.deepEqual([ok.status, ok.complete, ok.backend, ok.summary.n, ok.summary.mean], ['ok', true, 'turso-asia', 1, 42.5]);
   assert.equal((await lb.submit(String(today), 0.4)).status, 'skipped', 'below MIN_MS: nothing sent');
-  assert.equal((await lb.submit(String(dayOf(-30)), 42.5)).status, 'rejected', 'a day outside the window: the trigger says invalid');
+  assert.equal((await lb.submit(String(dayOf(-300)), 42.5)).status, 'rejected', 'a day outside the window: the trigger says invalid');
   const noInsertRight = async (url, init) => { // e.g. a token without submit:data_add: SQLITE_AUTH inside the envelope
     const reply = await (await fakeTurso(db)(url, init)).json();
     reply.results[0] = { type: 'error', error: { message: 'SQLite error: not authorized', code: 'SQLITE_AUTH' } };

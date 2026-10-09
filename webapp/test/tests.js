@@ -19,7 +19,8 @@ import { runSync } from '../src/core/run.js';
 import { runAsync, measured } from '../src/platform/run.js';
 import { createHoldReveal } from '../src/ui/hold-reveal.js';
 import { createDaily, utcDayNumber, utcDateString, dateOfDay, fetchGameOfDayFor } from '../src/features/daily.js';
-import { createReplay, GAMES_PER_CHANCE, BACKFILL_DAYS } from '../src/features/replay.js';
+import { createReplay, earned, solvesToNext, stepOf, thresholdOf, REPLAY_SHOW, REPEAT_MIN_AGE, BACKFILL_DAYS } from '../src/features/replay.js';
+import { createStreak, play as streakPlay, current as streakNow, fresh as streakFresh, FREEZE_EVERY, FREEZE_MAX } from '../src/features/streak.js';
 import { REPLAY_DAYS } from '../src/core/hist.js';
 import { EN, ZH, t as tr } from '../src/ui/i18n.js';
 import { HINT_PENALTY_S, penalizedTime } from '../src/features/hints.js';
@@ -2351,10 +2352,12 @@ ta('daily: fetchGameOfDayFor reads that date\'s file, null when missing; only to
     await fetchGameOfDayFor('20260918', { fresh: true }); eq(calls[2][1], { cache: 'no-store' });
   } finally { globalThis.fetch = realFetch; }
 });
-ta('replay: chances = floor(solved / 5) - used; toNext counts the solves still needed', async () => {
-  const { R } = await setup(); eq([R.chances(), R.toNext()], [0, GAMES_PER_CHANCE]);
-  for (let i = 1; i <= 12; i++) { await R.addSolved(); eq([R.chances(), R.toNext()], [Math.floor(i / 5), 5 - (i % 5)], 'after ' + i); }
-  eq(GAMES_PER_CHANCE, 5);
+ta('replay: chances come after 1, 2 more, 3 more, then every 5 more solves; toNext counts the solves still needed', async () => {
+  const chances = [0, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4], toNext = [1, 2, 1, 3, 2, 1, 5, 4, 3, 2, 1, 5, 4];
+  eq([chances.map((_, i) => earned(i)), toNext.map((_, i) => solvesToNext(i))], [chances, toNext]);
+  eq([earned(16), solvesToNext(16), earned(100), solvesToNext(100)], [5, 5, 21, 1]);
+  const { R } = await setup(); eq([R.chances(), R.toNext()], [0, 1]);
+  for (let i = 1; i <= 12; i++) { await R.addSolved(); eq([R.chances(), R.toNext()], [chances[i], toNext[i]], 'after ' + i); }
 });
 ta('replay: window = yesterday .. REPLAY_DAYS days back (today excluded), newest first; across a year end', async () => {
   const clock = atDay(19), { R } = await setup(clock); eq(R.dates().length, REPLAY_DAYS); eq([R.dates()[0], R.dates().at(-1)], [gotdDay(clock, 1), gotdDay(clock, REPLAY_DAYS)]);
@@ -2379,28 +2382,106 @@ ta('replay: days() = every window date, newest first, with its stored record (nu
 ta('replay: begin spends one chance, marks the date played, and refuses without a chance, outside the window, or twice', async () => {
   ok(REPLAY_DAYS >= 3, 'the fixture needs a window of at least 3 days'); const clock = atDay(19), g = k => gotdDay(clock, k), N = REPLAY_DAYS;
   const { R, store } = await setup(clock);
-  eq(await R.begin(g(2)), false, 'no chance yet'); for (let i = 0; i < 10; i++) await R.addSolved(); eq(R.chances(), 2);
-  eq(await R.begin(g(0)), false, 'today is not a replay'); eq(await R.begin(g(N + 1)), false, 'one day past the window is outside'); eq(R.chances(), 2);
-  eq(await R.begin(g(2)), true); eq(R.chances(), 1); eq(store.attemptOn(g(2)), { solved: false, time: null });
-  eq(await R.begin(g(2)), false, 'the same date twice'); eq(R.chances(), 1);
+  eq(await R.begin(g(2)), false, 'no chance yet'); for (let i = 0; i < 6; i++) await R.addSolved(); eq(R.chances(), 3);
+  eq(await R.begin(g(0)), false, 'today is not a replay'); eq(await R.begin(g(N + 1)), false, 'one day past the window is outside'); eq(R.chances(), 3);
+  eq(await R.begin(g(2)), true); eq(R.chances(), 2); eq(store.attemptOn(g(2)), { solved: false, time: null });
+  eq(await R.begin(g(2)), true, 'abandoned: offered again'); eq(R.chances(), 1);
   eq(await R.begin(g(N)), true, 'the oldest day of the window'); eq(R.chances(), 0); eq(await R.begin(g(3)), false, 'chances used up');
   eq((await R.missed()).includes(g(2)), false);
 });
 ta('replay: counters persist; the first init counts the solves recorded before the feature existed, once', async () => {
   const clock = atDay(19), st = fakeStorage(), store = createStore(st, [5]); await store.hydrate('20260919');
   for (const [k, rec] of [[0, { solved: true, time: 9 }], [2, { solved: true, time: 9 }], [5, { solved: false, time: null }], [9, { solved: true, time: 9 }], [BACKFILL_DAYS, { solved: true, time: 9 }], [BACKFILL_DAYS + 1, { solved: true, time: 9 }]]) await store.saveAttempt(dateOfDay(utcDayNumber(clock()) - k), rec);
-  const A = createReplay(st, store, clock); await A.init(); eq([A.chances(), A.toNext()], [0, 1], '4 solves counted (the unsolved record and the one past the scan are not)');
-  await A.addSolved(); const B = createReplay(st, createStore(st, [5]), clock); await B.init(); eq([B.chances(), B.toNext()], [1, 5], 'reloaded: 5 solved, not recounted');
-  await store.saveAttempt('20260918', { solved: true, time: 9 }); const C = createReplay(st, store, clock); await C.init(); eq(C.toNext(), 5, 'a stored counter is never rebuilt from records');
+  const A = createReplay(st, store, clock); await A.init(); eq([A.chances(), A.toNext()], [2, 2], '4 solves counted (the unsolved record and the one past the scan are not)');
+  await A.addSolved(); const B = createReplay(st, createStore(st, [5]), clock); await B.init(); eq([B.chances(), B.toNext()], [2, 1], 'reloaded: 5 solved, not recounted');
+  await store.saveAttempt('20260918', { solved: true, time: 9 }); const C = createReplay(st, store, clock); await C.init(); eq(C.toNext(), 1, 'a stored counter is never rebuilt from records');
 });
 ta('replay: a corrupt counter is rebuilt from the records; before init there are no chances', async () => {
   const st = fakeStorage(), store = createStore(st, [5]); await store.hydrate('20260919'); await store.saveAttempt('20260919', { solved: true, time: 9 });
-  await st.set('zip_gotd_credit', '{"solved":-1}'); const R = createReplay(st, store, atDay(19)); eq([R.chances(), R.toNext()], [0, 5]); await R.init(); eq(R.toNext(), 4);
+  await st.set('zip_gotd_credit', '{"solved":-1}'); const R = createReplay(st, store, atDay(19)); eq([R.chances(), R.toNext()], [0, 1]); await R.init(); eq([R.chances(), R.toNext()], [1, 2]);
 });
 ta('replay: unsent = solved attempts of today and the window the backend never acknowledged', async () => {
   ok(REPLAY_DAYS >= 6, 'the fixture needs a window of at least 6 days');
   const { R } = await setup(atDay(19), { 0: { solved: true, time: 30, sent: false }, 2: { solved: true, time: 41.5, sent: false }, 4: { solved: true, time: 20, sent: true }, 5: { solved: true, time: 20 }, 6: { solved: false, time: null }, [REPLAY_DAYS + 1]: { solved: true, time: 7, sent: false } });
   eq(await R.unsent(), [{ date: '20260919', time: 30 }, { date: '20260917', time: 41.5 }]);
+});
+ta('replay: repeats = solved window dates older than REPEAT_MIN_AGE days, slowest first, then oldest first', async () => {
+  ok(REPLAY_DAYS > REPEAT_MIN_AGE + 5, 'the fixture needs a window longer than the minimum age'); const clock = atDay(19), A = REPEAT_MIN_AGE, g = k => gotdDay(clock, k);
+  const { R } = await setup(clock, { [A]: { solved: true, time: 99 }, [A + 1]: { solved: true, time: 20 }, [A + 2]: { solved: true, time: 50 }, [A + 3]: { solved: true, time: 50 },
+    [A + 4]: { solved: false, time: null }, 5: { solved: true, time: 200 }, [REPLAY_DAYS + 1]: { solved: true, time: 300 } });
+  eq((await R.repeats()).map(x => x.date), [g(A + 3), g(A + 2), g(A + 1)], 'the 99 s day is only A days old, the abandoned and out-of-window ones are no repeats');
+  eq((await R.repeats())[0].attempt, { solved: true, time: 50 });
+});
+ta('replay: a repeat spends a chance and keeps its record; a solved recent day refuses, an abandoned one can be played again', async () => {
+  const clock = atDay(19), A = REPEAT_MIN_AGE, g = k => gotdDay(clock, k), rec = { solved: true, time: 33.3, sent: true };
+  const { R, store } = await setup(clock, { [A + 1]: rec, [A]: { solved: true, time: 10 }, 3: { solved: false, time: null } });
+  for (let i = 0; i < 6; i++) await R.addSolved(); const before = R.chances();
+  eq(await R.begin(g(A + 1)), true); eq(R.chances(), before - 1); eq(store.attemptOn(g(A + 1)), rec, 'the record is untouched');
+  eq(await R.begin(g(A)), false, 'a solved day younger than the minimum age'); eq(R.chances(), before - 1);
+  eq(await R.begin(g(3)), true, 'an abandoned day'); eq(store.attemptOn(g(3)), { solved: false, time: null }); eq(R.chances(), before - 2);
+});
+t('replay: stepOf = progress inside the current price step (dots of the menu panel)', () => {
+  eq([0, 1, 2, 3, 5, 6, 8, 11].map(s => stepOf(s)), [{ done: 0, total: 1 }, { done: 0, total: 2 }, { done: 1, total: 2 }, { done: 0, total: 3 }, { done: 2, total: 3 }, { done: 0, total: 5 }, { done: 2, total: 5 }, { done: 0, total: 5 }]);
+  eq([0, 1, 2, 3, 4].map(thresholdOf), [0, 1, 3, 6, 11]);
+});
+ta('replay: a streak milestone adds one chance, once initialised', async () => {
+  const clock = atDay(19), { R } = await setup(clock, { 2: { solved: true, time: 9 } }); eq(R.chances(), 1, 'the one backfilled solve'); await R.addBonus(); eq(R.chances(), 2);
+  const st = fakeStorage(), cold = createReplay(st, createStore(st, [5]), clock); await cold.addBonus(); eq(cold.chances(), 0, 'before init there is nothing to add to');
+});
+ta('replay: pick = the newest missed days with a file, filled up to REPLAY_SHOW with the slowest old solved days', async () => {
+  const clock = atDay(19), A = REPEAT_MIN_AGE, N = REPLAY_DAYS, g = k => gotdDay(clock, k), rec = {};
+  for (let k = 1; k <= N; k++) rec[k] = { solved: true, time: k > A ? 10 + k : 5 };
+  for (const k of [3, 4, 5, 6, 7, 8, 9, 10]) delete rec[k]; rec[2] = { solved: false, time: null };
+  const files = new Set([...Array.from({ length: N }, (_, i) => g(i + 1))].filter(d => d !== g(6))); // every day has a file but the 6th
+  const { R } = await setup(clock, rec), pick = await R.pick(async d => files.has(d));
+  eq(pick.map(x => x.date), [g(3), g(4), g(5), g(7), g(8), g(9), g(10), g(N)], '7 missed (day 6 has no file), then the slowest; the abandoned day waits');
+  eq(pick.map(x => x.attempt === null), [true, true, true, true, true, true, true, false]);
+});
+ta('replay: pick with no missed day = at most one abandoned day (the newest), then the slowest old solved days', async () => {
+  const clock = atDay(19), A = REPEAT_MIN_AGE, N = REPLAY_DAYS, g = k => gotdDay(clock, k), rec = {};
+  for (let k = 1; k <= N; k++) rec[k] = { solved: true, time: k > A ? 10 + k : 5 };
+  rec[2] = { solved: false, time: null }; rec[5] = { solved: false, time: null };
+  const { R } = await setup(clock, rec), pick = await R.pick(async () => true);
+  eq(pick.length, REPLAY_SHOW); eq(pick[0], { date: g(2), attempt: { solved: false, time: null } });
+  eq(pick.slice(1).map(x => x.date), Array.from({ length: REPLAY_SHOW - 1 }, (_, i) => g(N - i)));
+  eq((await R.pick(async d => d !== g(2))).map(x => x.date)[0], g(5), 'the next abandoned day when the newest has no file');
+});
+t('replay: REPLAY_SHOW is 8, the replay window reaches past the repeat age', () => { eq(REPLAY_SHOW, 8); ok(REPLAY_DAYS > REPEAT_MIN_AGE); });
+
+// ---- Streak ----
+const sPlay = days => days.reduce(streakPlay, streakFresh());
+t('streak: consecutive days count; the same day twice and an earlier day change nothing', () => {
+  const s = sPlay([10, 11, 12]); eq([s.streak, s.best, s.last], [3, 3, 12]);
+  eq(streakPlay(s, 12), s); eq(streakPlay(s, 5), s);
+});
+t('streak: a freeze is earned every FREEZE_EVERY streak days, capped at FREEZE_MAX', () => {
+  const run = n => sPlay(Array.from({ length: n }, (_, i) => 100 + i));
+  eq([run(FREEZE_EVERY - 1).freezes, run(FREEZE_EVERY).freezes, run(2 * FREEZE_EVERY).freezes, run(5 * FREEZE_EVERY).freezes], [0, 1, 2, FREEZE_MAX]);
+});
+t('streak: a freeze covers a missed day (streak goes on, freeze spent); a longer gap restarts at 1 and keeps the freezes', () => {
+  const week = Array.from({ length: FREEZE_EVERY }, (_, i) => 100 + i), last = 100 + FREEZE_EVERY - 1;
+  const kept = streakPlay(sPlay(week), last + 2); eq([kept.streak, kept.freezes], [FREEZE_EVERY + 1, 0], 'one day missed, one freeze');
+  const lost = streakPlay(sPlay(week), last + 3); eq([lost.streak, lost.freezes, lost.best], [1, 1, FREEZE_EVERY], 'two days missed, one freeze: restart');
+  eq(streakPlay(streakFresh(), 7).streak, 1); eq(streakPlay(sPlay([1, 2]), 5).streak, 1, 'no freeze: restart');
+});
+ta('streak: record() answers true on the first solve of every FREEZE_EVERY-th streak day only', async () => {
+  let d = 1; const S = createStreak(fakeStorage(), { all: async () => [] }, () => new Date(Date.UTC(2026, 0, d, 12))); await S.init();
+  const got = []; for (; d <= 2 * FREEZE_EVERY; d++) { got.push(await S.record()); got.push(await S.record()); }
+  eq(got.filter(Boolean).length, 2); eq([got[2 * FREEZE_EVERY - 2], got[2 * FREEZE_EVERY - 1], got[4 * FREEZE_EVERY - 2]], [true, false, true]);
+});
+t('streak: current() shows 0 once the gap exceeds the freezes left', () => {
+  const s = sPlay(Array.from({ length: FREEZE_EVERY }, (_, i) => 100 + i)), l = s.last; // 1 freeze
+  eq([streakNow(s, l), streakNow(s, l + 1), streakNow(s, l + 2), streakNow(s, l + 3), streakNow(streakFresh(), 5)], [7, 7, 7, 0, 0]);
+});
+ta('streak: record() counts any solve once per day and persists; the first init rebuilds it from the play log', async () => {
+  const st = fakeStorage(), day = k => new Date(Date.UTC(2026, 8, k, 12)), at = k => day(k).getTime();
+  const log = { all: async () => [{ at: at(17), solved: true }, { at: at(18), solved: true }, { at: at(18), solved: true }, { at: at(14), solved: false }] };
+  let now = day(19); const S = createStreak(st, log, () => now); eq(S.view(), null, 'nothing before init'); await S.init();
+  eq(S.view(), { streak: 2, best: 2, freezes: 0, today: false }, 'days 17 and 18 from the log; the unsolved record counts for nothing');
+  eq(await S.record(), false); eq(await S.record(), false); eq(S.view(), { streak: 3, best: 3, freezes: 0, today: true });
+  const B = createStreak(st, { all: async () => [] }, () => now); await B.init(); eq(B.view().streak, 3, 'stored, not rebuilt');
+  now = day(25); eq(B.view().streak, 0, 'a gap without freezes ends it');
+  await st.set('zip_streak', '{"streak":-1}'); const C = createStreak(st, log, () => day(19)); await C.init(); eq(C.view().streak, 2, 'corrupt state is rebuilt');
 });
 // The share flow of the play app over several page loads: finish (record + first submit), then the retry of replay.unsent() at every boot.
 const GOTD_DATE = '20260919';
@@ -2572,8 +2653,7 @@ t('share: the local seed a link names is the seed the game was made with (day, s
   ok(dailySeed(day - 1, n, index, ALGO_VERSION) !== seed && dailySeed(day, n, index + 1, ALGO_VERSION) !== seed);
 });
 ta('replay: beginShared opens a missed window day without spending a chance; same window / once rules; refuses before init()', async () => {
-  const clock = atDay(19), { R, store } = await setup(clock, { 2: { solved: true, time: 30 } }), g = k => gotdDay(clock, k);
-  const solved0 = R.toNext();
+  const clock = atDay(19), { R, store } = await setup(clock, { 2: { solved: false, time: null } }), g = k => gotdDay(clock, k);
   eq(await R.beginShared(g(3)), true);
   eq(store.attemptOn(g(3)), { solved: false, time: null }, 'the date is spent, like begin()');
   eq(R.chances(), 0);
@@ -2582,8 +2662,7 @@ ta('replay: beginShared opens a missed window day without spending a chance; sam
   eq(await R.beginShared(g(REPLAY_DAYS + 1)), false, 'outside the window');
   eq(await R.beginShared(g(0)), false, 'today is the live game, not a replay');
   await R.addSolved();
-  eq(R.toNext(), solved0 - 1, 'solving it counts towards the next replay chance');
-  while (R.chances() < 1) await R.addSolved();
+  eq([R.chances(), R.toNext()], [1, 2], 'solving it counts towards the next replay chance');
   const chances = R.chances();
   eq(await R.beginShared(g(4)), true);
   eq(R.chances(), chances, 'a shared replay costs no chance');
