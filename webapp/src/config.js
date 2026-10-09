@@ -17,11 +17,27 @@
 export const LEADERBOARD = {
   backends: {
     'supabase-asia': { type: 'supabase', url: 'https://tjaidjrjcugkxkluxvrc.supabase.co', key: 'sb_publishable_x3Mq5hbPn9o5Xsg5FDZNSQ_4OWqZ-1N' },
-    'turso-asia': { type: 'turso', url: 'https://zipgame-becu.aws-ap-northeast-1.turso.io', key: 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTExMDUyMzUsImlkIjoiMDFhMTA2MmQtYjcwMS03N2JkLWE0MGQtYTA5ODJhNDU4MDNkIiwia2lkIjoiMW1zR05ZbjRmV09xVWoxd1MzRTVkMkpfS0l4azUzdm80SVVjMmJaT21WUSIsInBlcm0iOlt7InQiOm51bGwsImEiOlsiZGF0YV9yZWFkIl19LHsidCI6WyJzdWJtaXQiXSwiYSI6WyJkYXRhX2FkZCJdfV0sInJpZCI6ImYwOTFhOGU1LTQzYmQtNDljNS05YzhkLWZkMjZiYzhhMjQxNyJ9.-lQnXqgZBRZNrIXiGRoelYCLoxAfWs-I_wLX2JgsH97sIBQM5hooNKzj65Eu0TZs86-8TcUGManFLWJVwP18AA' },   // disabled until the key (the insert-only token) is set; see above
+    'turso-asia': { type: 'turso', url: 'https://zipgame-becu.aws-ap-northeast-1.turso.io', key: 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTE1Nzk5MjUsImlkIjoiMDFhMTA2MmQtYjcwMS03N2JkLWE0MGQtYTA5ODJhNDU4MDNkIiwia2lkIjoiMW1zR05ZbjRmV09xVWoxd1MzRTVkMkpfS0l4azUzdm80SVVjMmJaT21WUSIsInBlcm0iOlt7InQiOm51bGwsImEiOlsiZGF0YV9yZWFkIl19LHsidCI6WyJzdWJtaXQiXSwiYSI6WyJkYXRhX2FkZCJdfSx7InQiOlsicGxheSJdLCJhIjpbImRhdGFfYWRkIl19XSwicmlkIjoiZjA5MWE4ZTUtNDNiZC00OWM1LTljOGQtZmQyNmJjOGEyNDE3In0.tTfjWXKMxJ7J8Kb2yW08dAyevQN5rsNCEeSju8-dRgUgiqJHIBoD6Meh_33d-pAs6A-2jZfHjVxwFmCZv9FHAg' },   // disabled until the key (the insert-only token) is set; see above
     cloudflare: { type: 'cloudflare', url: 'https://zip-gotd.shineshine.workers.dev' },   // e.g. 'https://zip-gotd.<account>.workers.dev' (see server/README.md)
     supabase: { type: 'supabase', url: 'https://uxtmfpgxjdabpfzmmqzm.supabase.co', key: 'sb_publishable_fTLmg4p-Z73VYXYblWf0hQ_g8C79jg8' },    // e.g. 'https://<ref>.supabase.co'
   },
   always: 'turso-asia',
   order: ['supabase-asia', 'cloudflare', 'supabase'],
   replicatedFrom: 20261003,
+};
+
+// Anonymous play behaviour (src/core/behaviour.js, server/README.md "Behaviour rows"): for each solved game the page uploads the puzzle, the time and how
+// many cells the player took back. No identifier. Only Turso and Cloudflare receive it (never Supabase): each row goes to `primary`, to `backup` only when
+// the primary does not answer. Both are ids of LEADERBOARD.backends. The Turso token must also allow `play:data_add` (server/README.md).
+//   enabled        THE GLOBAL SWITCH. false = nothing is queued or sent, the hold-V toggle is hidden, a queue left on a device is discarded.
+//   defaultOn      a device's setting until its player changes it (hold V in the menu: "Anonymous play stats"). false = off until switched on.
+//   localSizes     [min, max]: local games are logged at these sizes only. The Game of Day is logged at every size.
+//   hiddenMaxMs    a game with more than this much time in a hidden tab is not uploaded (the timer keeps running there).
+export const BEHAVIOUR = {
+  enabled: true,
+  defaultOn: true,
+  localSizes: [7, 11],
+  hiddenMaxMs: 5000,
+  primary: 'turso-asia',
+  backup: 'cloudflare',
 };
