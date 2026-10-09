@@ -60,6 +60,13 @@ export const TRAP_MODEL = {
 };
 // </TRAP_MODEL>
 
+// The model with its altFrac term switched off (weight 0 = altFrac held at its mean), for boards the fit never saw. altFrac is
+// a geometry measure: the share of solution steps that have a legal wrong move. On a board with holes the holes themselves take
+// neighbours away, so it falls for a reason that has nothing to do with the clues, and the fitted negative weight reads that as
+// "harder" (Cutout: +0.3..+0.5 of predicted rating against -0.5..-0.6 on standard boards of the same size). trapMax, trapTop3 and
+// lTr (the ladder) look at the clues only. Same cuts, same other weights: a ranking, not a recalibrated grade.
+export const withoutAltFrac = (model = TRAP_MODEL) => ({ ...model, w: { ...model.w, altFrac: 0 } });
+
 export function trapPredict(m, model = TRAP_MODEL) {
   let s = model.b;
   for (const k of model.features) s += model.w[k] * (m[k] - model.mean[k]) / model.sd[k];
@@ -109,7 +116,8 @@ const alternativePoints = (w, cfg) => w.capped ? cfg.points[3] : w.sub <= cfg.ob
 
 // All trap metrics from a profile. `steps` = per-step scores, worst first.
 // `ladTrials` (optional) = the ladder's probe-trial count when the caller already ran it; else it runs here.
-export function trapMetricsFromProfile(p, path, profile, cfg = TRAP_CFG, ladTrials = undefined) {
+// `model` (optional) = the score model, TRAP_MODEL unless the board needs another (see withoutAltFrac).
+export function trapMetricsFromProfile(p, path, profile, cfg = TRAP_CFG, ladTrials = undefined, model = TRAP_MODEL) {
   const T = cellCount(p), byStep = new Map();
   for (const w of profile) {
     const s = byStep.get(w.i) || { i: w.i, score: 0, worst: null };
@@ -127,17 +135,17 @@ export function trapMetricsFromProfile(p, path, profile, cfg = TRAP_CFG, ladTria
   };
   m.ladTrials = ladTrials ?? ladderTrials(p, cfg);
   m.lTr = Math.log1p(m.ladTrials);
-  m.predicted = trapPredict(m);
-  m.gradeUncapped = trapGradeOf(m.predicted);
+  m.predicted = trapPredict(m, model);
+  m.gradeUncapped = trapGradeOf(m.predicted, model);
   m.grade = capGradeBySize(m.gradeUncapped, p.n);
   return m;
 }
 
 // One call: { ok:false, reason } when no solution can be found, else the metrics above + path.
-export function trapMetrics(p, cfg = TRAP_CFG, path = null) {
+export function trapMetrics(p, cfg = TRAP_CFG, path = null, model = TRAP_MODEL) {
   path = path || solutionPath(p, cfg.pathCap);
   if (!path) return { ok: false, reason: 'no solution found within the search budget (pathCap)' };
-  return { ok: true, path, ...trapMetricsFromProfile(p, path, trapProfile(p, path, cfg), cfg) };
+  return { ok: true, path, ...trapMetricsFromProfile(p, path, trapProfile(p, path, cfg), cfg, undefined, model) };
 }
 
 // The route to display for a trap: solution up to the step, then the wrong move.

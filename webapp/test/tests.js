@@ -40,15 +40,15 @@ import { checkpointPositions, segmentCrossCount, segmentOverlapCount, spatialMet
 import { gradesFor, gradesFromMetrics, playGradesFor, GRADE_ORDER } from '../src/core/grades.js';
 import { combinedScore, COMBINED_ZSCORE } from '../src/core/gen/calibration.js';
 import { ladder as ladderRun } from '../src/core/ladder.js';
-import { solutionPath, trapProfile, trapMetrics, trapGradeOf, trapPredict, capGradeBySize, SIZE_GRADE_CAP, ladderTrials, TRAP_CFG, TRAP_MODEL } from '../src/core/trap.js';
+import { solutionPath, trapProfile, trapMetrics, trapGradeOf, trapPredict, capGradeBySize, SIZE_GRADE_CAP, ladderTrials, TRAP_CFG, TRAP_MODEL, withoutAltFrac } from '../src/core/trap.js';
 import { generateTargeted, targetBand, maxTargetGrade, missOf, proposalBudget, TARGET_CFG } from '../src/core/gen/target.js';
 import { mountDifficultyPanel } from '../src/apps/design/difficulty-panel.js';
 import { ratingKey, ratingFromSelection, leanOf, describeRating, toRatingsJson, parseRatingsJson, mergeRatings, parseRatingComment, ratingWeight, UNSURE_WEIGHT, symmetryKey, findDuplicateGroups, transformPuzzle, asciiPuzzle, keyDifference } from '../src/core/ratings-io.js';
 import { parsePairsJson, toPairsJson, mergePairs, pairAccuracy, impliedPairs, flipCmp, pairKeyOf } from '../src/core/pairs-io.js';
 import { pickStorage } from '../src/platform/storage.js';
 import {
-  generateCutout, shapeIsViable, isBalanced, colourCounts, scoreOf, SCORE, SILHOUETTES, LABELS,
-  CUTOUT_CANDIDATES,
+  generateCutout, shapeIsViable, isBalanced, colourCounts, costOf, COST, CUTOUT_MODEL, CUTOUT_GRADE, SILHOUETTES, LABELS,
+  CUTOUT_BOARDS,
 } from '../src/core/gen/cutout.js';
 import { proposeBoard, adjacency } from '../src/core/gen/shapes.js';
 import { ladder } from '../src/core/ladder.js';
@@ -2717,13 +2717,13 @@ t('cutout: boards with several interior holes exist and keep the checkerboard ru
   const odd = proposeBoard(9, makeRng(5), { silhouettes: ['square'], interior: 3 });
   ok(isBalanced(9, odd.holes), 'odd size: single holes sit on the colour that keeps the rule');
 });
-t('cutout: generateCutout: unique, balanced, no wall at a hole, deterministic, best wins', () => {
+t('cutout: generateCutout: unique, balanced, no wall at a hole, deterministic, the cheapest board that reaches the target wins', () => {
   const cases = [[5, 11, null], [6, 12, ['ell']], [7, 13, ['cross']], [8, 14, null]];
   cases.push([9, 15, null], [10, 16, ['square']]);
   for (const [n, seed, silhouettes] of cases) {
     const seen = [];
-    const base = { silhouettes: silhouettes || undefined, candidates: 12 };
-    const p = runSync(generateCutout(n, seed, { ...base, onCandidate: c => seen.push(c.total) }));
+    const base = { silhouettes: silhouettes || undefined, boards: 3, effort: 0.15 };
+    const p = runSync(generateCutout(n, seed, { ...base, onCandidate: c => seen.push(c) }));
     const again = runSync(generateCutout(n, seed, base));
     eq(serialize(p), serialize(again), 'deterministic');
     const wanted = silhouettes ? silhouettes[0] : null;
@@ -2735,17 +2735,47 @@ t('cutout: generateCutout: unique, balanced, no wall at a hole, deterministic, b
     ok(p.path.every((c, i) => i === 0 || canStep(p, p.path[i - 1], c)));
     for (const e of allEdges(n)) if (hasWallId(p.walls, e)) ok(!p.holes[e >> 1] && !p.holes[edgeCells(n, e)[1]], 'a wall next to a hole');
     ok(p.cp.every((v, i) => !v || !p.holes[i]));
-    ok(seen.length === 12, 'all candidates scored');
-    ok(p.score.total >= Math.max(...seen) - 1e-9, 'the winner has the best score');
-    eq(p.score.total, scoreOf(p.score.difficulty, p.score.walls, p.score.interior));
+    ok(seen.length >= 1 && seen.length <= 3 + 2, 'every board tried was reported (3 boards, 2 more in a second look)');
+    const hits = seen.filter(c => c.hit);
+    eq(p.score.hit, hits.length > 0);
+    if (hits.length) ok(p.score.cost <= Math.min(...hits.map(c => c.cost)) + 1e-9, 'the winner is the cheapest of the boards that got there');
+    else ok(seen.every(c => c.miss >= p.score.miss - 1e-9), 'short of the target, the closest board wins');
     eq(p.score.walls, wallCount(p));
+    eq(p.score.cost, costOf(p.score.walls, p.score.interior));
+    eq(p.score.target, Math.min(CUTOUT_GRADE, SIZE_GRADE_CAP[n] ?? 5));
+    const m = trapMetrics(p, undefined, p.path, CUTOUT_MODEL);
+    eq([m.grade, +m.predicted.toFixed(9)], [p.score.grade, +p.score.difficulty.toFixed(9)], 'the score is the grade under the Cutout model');
   }
-  eq(scoreOf(2, 10, 3), 2 - SCORE.wall * 10 - SCORE.hole * 3);
-  ok(PLAY_SIZES.every(n => CUTOUT_CANDIDATES[n] >= 4));
+  eq(costOf(4, 2), COST.wall * 4 + COST.hole * 2);
+  ok(COST.hole < COST.wall, 'a hole is cheaper than a wall: it pays for itself when it makes a wall unnecessary');
+  ok(PLAY_SIZES.every(n => CUTOUT_BOARDS[n] >= 2));
+});
+t('cutout: the grade model is the trap model without altFrac; a clock ends the search early and still gives a unique puzzle', () => {
+  const p = runSync(generateCutout(7, 5, { boards: 1, effort: 0.1 }));
+  const full = trapMetrics(p, undefined, p.path), flat = trapMetrics(p, undefined, p.path, withoutAltFrac());
+  const term = TRAP_MODEL.w.altFrac * (full.altFrac - TRAP_MODEL.mean.altFrac) / TRAP_MODEL.sd.altFrac;
+  ok(Math.abs(full.predicted - term - flat.predicted) < 1e-9, 'only the altFrac term goes');
+  eq(withoutAltFrac().cuts, TRAP_MODEL.cuts);
+  eq(withoutAltFrac(TRAP_MODEL).w.altFrac, 0);
+  ok(TRAP_MODEL.w.altFrac !== 0, 'the original model is not touched');
+  const b = targetBand(3, 9, TRAP_MODEL, 0.15, true), c = targetBand(3, 9, TRAP_MODEL, 0.15, false);
+  eq([b.lo, b.hi, b.b], [c.lo, Infinity, Infinity]);
+  const t0 = performance.now();
+  const q = runSync(generateCutout(9, 3, { maxMs: 1 }));
+  ok(performance.now() - t0 < 20000, 'a 1 ms clock ends it after the first board (a start puzzle is always scored)');
+  const r = solve(q, { limit: 2, nodeCap: 5e6, prop: true });
+  eq([r.count, r.exceeded], [1, false]);
+});
+t('target: o.stop ends the search once a start puzzle is scored; the same seed gives the same puzzle; counts-only runs are unchanged', () => {
+  const a = runSync(generateTargeted(7, 3, 4, { stop: () => true })), b = runSync(generateTargeted(7, 3, 4, { stop: () => true }));
+  ok(a.puzzle && a.unique && a.proposals <= 2, `stopped after the start (${a.proposals} proposals)`);
+  eq(serialize(a.puzzle), serialize(b.puzzle));
+  const free = runSync(generateTargeted(7, 3, 4, { stop: () => false })), plain = runSync(generateTargeted(7, 3, 4));
+  eq(serialize(free.puzzle), serialize(plain.puzzle));
 });
 t('holes: the difficulty grader (ladder, trap) is sound on boards with holes', () => {
   for (const [n, seed] of [[6, 1], [7, 2], [8, 3], [9, 4], [10, 5]]) {
-    const p = runSync(generateCutout(n, seed, { candidates: 6, refineNodes: 0 }));
+    const p = runSync(generateCutout(n, seed, { boards: 2, effort: 0.1 }));
     const lad = ladder(p);
     const state = JSON.stringify([lad.error, lad.contradiction, lad.solved]);
     ok(!lad.error && !lad.contradiction && lad.solved, `${n}x${n}: ladder ${state}`);
@@ -2758,7 +2788,7 @@ t('holes: the difficulty grader (ladder, trap) is sound on boards with holes', (
   }
 });
 t('cutout: boardSvg draws one tile per cell that is left, an outline, and nothing for holes; the standard board is unchanged', () => {
-  const p = runSync(generateCutout(6, 3)), svg = boardSvg({ puzzle: p, path: [], hintCell: null, hintWrongCell: null });
+  const p = runSync(generateCutout(6, 3, { boards: 1, effort: 0.1 })), svg = boardSvg({ puzzle: p, path: [], hintCell: null, hintWrongCell: null });
   ok(svg.includes('class="zip-svg cutout"'));
   eq((svg.match(/<rect /g) || []).length, cellCount(p)); ok(svg.includes('data-role="outline"'));
   const std = boardSvg({ puzzle: randPuzzle(2, 5, 4, 0.1), path: [], hintCell: null, hintWrongCell: null });
@@ -2766,7 +2796,7 @@ t('cutout: boardSvg draws one tile per cell that is left, an outline, and nothin
 });
 t('share-code: a Cutout game round-trips with its puzzle; 7x7 stays short; damaged codes are rejected; version 1 codes still decode', () => {
   for (const n of [5, 8, 16]) {
-    const p = runSync(generateCutout(n, 40 + n, { candidates: 2, refineNodes: 0 }));
+    const p = runSync(generateCutout(n, 40 + n, { boards: 1, effort: 0.1 }));
     const rec = makeShareRecord({ n, timeS: 83.4, legs: [0, 2, 3], K: maxNumber(p), variant: 'cutout', puzzle: p }), code = encodeShare(rec);
     ok(/^[A-Za-z0-9_-]+$/.test(code), code);
     const back = decodeShare(code);
@@ -2777,12 +2807,12 @@ t('share-code: a Cutout game round-trips with its puzzle; 7x7 stays short; damag
     ok(decodeShare(code.slice(0, 5) + (code[5] === 'A' ? 'B' : 'A') + code.slice(6)) === null || n === 8, 'a changed character is caught by the check');
     ok(parseShareLink('?s=' + code).rec.puzzle.n === n);
   }
-  ok(encodeShare(makeShareRecord({ n: 7, timeS: 9, legs: [], K: 7, variant: 'cutout', puzzle: runSync(generateCutout(7, 4, { candidates: 2, refineNodes: 0 })) })).length <= 64);
+  ok(encodeShare(makeShareRecord({ n: 7, timeS: 9, legs: [], K: 7, variant: 'cutout', puzzle: runSync(generateCutout(7, 4, { boards: 1, effort: 0.1 })) })).length <= 64);
   eq(decodeShare(encodeShare(LOCAL_REC)), LOCAL_REC); eq(decodeShare(encodeShare(GOTD_REC)), GOTD_REC);
   eq(VARIANTS, [null, 'cutout']);
 });
 t('share-code: a Cutout record is refused when its puzzle is unsound (unbalanced, checkpoint on a hole, wall at a hole, a gap in the numbers)', () => {
-  const good = runSync(generateCutout(6, 8, { candidates: 2, refineNodes: 0 }));
+  const good = runSync(generateCutout(6, 8, { boards: 1, effort: 0.1 }));
   const rec = puzzle => makeShareRecord({ n: 6, timeS: 5, legs: [], K: 2, variant: 'cutout', puzzle });
   ok(encodeShare(rec(good)) !== null);
   const flat = new Uint8Array(36), withCp = (a, b) => { const q = { ...good, holes: flat.slice(), cp: new Uint16Array(36), walls: new Uint8Array(36) }; q.cp[a] = 1; q.cp[b] = 2; return q; };
@@ -2793,7 +2823,7 @@ t('share-code: a Cutout record is refused when its puzzle is unsound (unbalanced
   const gap = withCp(0, 35); gap.cp[35] = 3; ok(encodeShare(rec(gap)) === null, 'numbering has a gap');
 });
 t('share: a Cutout share record has the puzzle, a head line of its own, and is always playable at a listed size', () => {
-  const p = runSync(generateCutout(6, 21, { candidates: 2, refineNodes: 0 }));
+  const p = runSync(generateCutout(6, 21, { boards: 1, effort: 0.1 }));
   const rec = makeShareRecord({ n: 6, timeS: 12.5, legs: [], K: maxNumber(p), variant: 'cutout', puzzle: p });
   ok(rec.variant === 'cutout' && rec.kind === 'local' && rec.day === undefined && rec.puzzle.holes !== p.holes);
   ok(shareText(rec, 'u', tr).startsWith('Zip Cutout · 6x6'));

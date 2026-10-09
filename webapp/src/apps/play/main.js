@@ -1,6 +1,6 @@
 import { serialize } from '../../core/format.js';
 import { generate, PLAY_SIZES } from '../../core/gen/generate.js';
-import { generateCutout } from '../../core/gen/cutout.js';
+import { generateCutout, CUTOUT_MAX_MS } from '../../core/gen/cutout.js';
 import { isSolved, step } from '../../core/rules.js';
 import { statSummary } from '../../core/stats.js';
 import { pickStorage } from '../../platform/storage.js';
@@ -470,7 +470,7 @@ function beginGame(puzzle, gotdDate, isReplay = false, isShared = false) {
   Object.assign(S, { variant, trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
   startTimer(); render();
 }
-const generateShown = (n, seed, mode = 'standard') => runAsync((mode === 'cutout' ? generateCutout : generate)(n, seed), { onEvent: e => { S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls, K: e.K }; if (S.screen === 'generating') render(); } });
+const generateShown = (n, seed, mode = 'standard') => runAsync(mode === 'cutout' ? generateCutout(n, seed, { maxMs: CUTOUT_MAX_MS }) : generate(n, seed), { onEvent: e => { S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls, K: e.K }; if (S.screen === 'generating') render(); } });
 async function startLocal(how, mode = 'standard') { // how: 'open' (Play local: current or next-if-solved) | 'skip' (New puzzle); a Cutout is always a new random one
   S.screen = 'generating'; S.genMode = mode; S.gen = { frac: 0, walls: null, K: null }; render();
   try {
