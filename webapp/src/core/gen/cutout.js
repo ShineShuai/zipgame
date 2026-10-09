@@ -3,7 +3,8 @@ import { makeRng } from '../rng.js';
 import { gapCheckpoints } from './checkpoints.js';
 import { makeUnique } from './walls.js';
 import { PROP_CAP_X, SEED_FRACTION } from './generate.js';
-import { proposeBoard } from './shapes.js';
+import { proposeBoard, adjacency } from './shapes.js';
+import { interleavedPath, layoutFor, placeCheckpoints, LAYOUT } from './layout.js';
 import { generateTargeted, maxTargetGrade, targetBand, missOf, TARGET_CFG } from './target.js';
 import { TRAP_MODEL, withoutAltFrac } from '../trap.js';
 
@@ -22,9 +23,11 @@ import { TRAP_MODEL, withoutAltFrac } from '../trap.js';
 // Difficulty is a target, reached by the search of gen/target.js (the Play app's own targeted
 // generator) on the board's puzzle, instead of the best of many random candidates: at 8x8 about
 // 1 candidate in a thousand is at grade 3, which is out of reach for a lottery. generateCutout
-// proposes boards (outline x interior holes, see shapes.js), climbs each toward the target grade
-// (walls and checkpoints move, the board stays), and keeps the cheapest board that got there. What
-// the search needs from target.js: o.model, o.atLeast, o.cells, o.start, o.stop.
+// proposes boards (outline x interior holes, see shapes.js), gives each a solution path that crosses
+// the board's middle line often and checkpoints that change quadrant (gen/layout.js: the grade does not
+// see how a board falls into regions, a player does), climbs each toward the target grade (walls and
+// checkpoints move, the board and the path stay), and keeps the cheapest board that got there. What the
+// search needs from target.js: o.model, o.atLeast, o.cells, o.start, o.stop, o.valid.
 //
 // The grade is the trap model (core/trap.js: trapMax, trapTop3 and the ladder's lTr) WITHOUT its
 // altFrac term (CUTOUT_MODEL). altFrac = the share of solution steps that have a wrong turn: holes
@@ -67,10 +70,11 @@ const REACH = 0.3; // second look only at boards whose best puzzle is this close
 const DEEP = { boards: 2, retries: 3, effort: 2 };
 const FIRST_SHARE = 0.7; // share of the progress bar for the first pass over the boards
 
-// One start puzzle on a board: checkpoints along the board's path, then walls until unique. A
-// generator function (rnd, K, cap) -> { unique, puzzle } for generateTargeted's o.start.
-const startOn = (n, board, cells) => function* start(rnd, K) {
-  const positions = gapCheckpoints(n, board.path, Math.min(K, cells));
+// One start puzzle on a board: checkpoints along the board's path (placed for detour and region changes, see layout.js; `layout`
+// null = evenly spaced as in the standard game), then walls until unique. A generator function (rnd, K, cap) -> { unique, puzzle }
+// for generateTargeted's o.start.
+const startOn = (n, board, cells, layout) => function* start(rnd, K) {
+  const positions = (layout && placeCheckpoints(layout, Math.min(K, cells))) || gapCheckpoints(n, board.path, Math.min(K, cells));
   if (!positions) {
     return { unique: false };
   }
@@ -88,6 +92,27 @@ const startOn = (n, board, cells) => function* start(rnd, K) {
   p.path = board.path;
   return { unique: true, puzzle: p };
 };
+
+// The climb may move and add checkpoints; it may not give up the layout the start was placed with: the share of legs that end in
+// another quadrant stays above LAYOUT.keepSwitches of what the placement itself reaches with that many checkpoints.
+function keepLayout(layout) {
+  const best = new Map(); // K -> the stats of the placement at K (null: none)
+  const bestAt = K => {
+    if (!best.has(K)) {
+      const positions = placeCheckpoints(layout, K);
+      best.set(K, positions && layout.stats(positions));
+    }
+    return best.get(K);
+  };
+  return q => {
+    const positions = layout.positionsOf(q.cp), base = bestAt(positions.length);
+    if (!base) {
+      return true;
+    }
+    const s = layout.stats(positions);
+    return s.switches >= LAYOUT.keepSwitches * base.switches - 1e-9;
+  };
+}
 
 // Last resort: every cell numbered along the path.
 function numberEveryCell(n, board, seed) {
@@ -140,8 +165,10 @@ export function* generateCutout(n, seed, o = {}) {
   function* climb(board, entry, how, share, from) {
     const cells = cellCount({ n, holes: board.holes });
     const subSeed = Math.floor(rnd() * 2 ** 32);
+    const layout = o.layout === false || o.place === false ? null : layoutFor(n, adjacency(n, board.holes), board.path);
     const search = generateTargeted(n, target, subSeed, {
-      model: CUTOUT_MODEL, atLeast: true, cells, start: startOn(n, board, cells), stop,
+      model: CUTOUT_MODEL, atLeast: true, cells, start: startOn(n, board, cells, layout), stop,
+      valid: layout && keepLayout(layout),
       retries: how.retries, effort: how.effort,
     });
     let step;
@@ -180,6 +207,9 @@ export function* generateCutout(n, seed, o = {}) {
     const board = proposeBoard(n, rnd, o);
     if (!board) {
       continue;
+    }
+    if (o.layout !== false) {
+      board.path = interleavedPath(n, board, rnd);
     }
     const from = (FIRST_SHARE * tried) / wanted;
     const record = yield* climb(board, results.length, first, FIRST_SHARE / wanted, from);
