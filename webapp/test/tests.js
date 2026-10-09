@@ -51,7 +51,7 @@ import {
   CUTOUT_BOARDS,
 } from '../src/core/gen/cutout.js';
 import { proposeBoard, adjacency } from '../src/core/gen/shapes.js';
-import { backbiteHoles, pathCrossings, interleavedPath, layoutFor, placeCheckpoints, LAYOUT } from '../src/core/gen/layout.js';
+import { backbiteHoles, pathCrossings, interleavedPath, layoutFor, placeCheckpoints, placementScore, LAYOUT } from '../src/core/gen/layout.js';
 import { ladder } from '../src/core/ladder.js';
 import { boardSvg } from '../src/apps/play/board.js';
 import { VARIANTS } from '../src/core/share-code.js';
@@ -2799,6 +2799,22 @@ t('layout: placeCheckpoints puts K checkpoints with near-even legs; its detour i
   const lay = layoutFor(4, adjacency(4, new Uint8Array(16)), [0, 1, 2, 3, 7, 6, 5, 4, 8, 9, 10, 11, 15, 14, 13, 12]);
   eq(lay.dist(0, 5), 3, 'cell 0 to cell 6 (row 1, column 2): 3 steps');
   eq(lay.stats([0, 15]).detour, (15 - 3) / 15, 'one leg from cell 0 to cell 12: 15 steps walked, 3 needed');
+});
+t('layout: the polish of the placement is deterministic, keeps the legs inside the bounds, never lowers the score, and stats count the overlap of legs the way spatial.js does', () => {
+  for (const [n, seed, K] of [[8, 5, 9], [10, 7, 14]]) {
+    const board = proposeBoard(n, makeRng(seed), {}), adj = adjacency(n, board.holes), lay = layoutFor(n, adj, board.path), P = board.path.length;
+    const dp = placeCheckpoints(lay, K), a = placeCheckpoints(lay, K, { rnd: makeRng(3) }), b = placeCheckpoints(lay, K, { rnd: makeRng(3) });
+    eq(a, b, 'deterministic for a seed');
+    eq(a.length, K);
+    ok(a[0] === 0 && a[K - 1] === P - 1);
+    const mean = (P - 1) / (K - 1);
+    for (let i = 1; i < K; i++) { const leg = a[i] - a[i - 1]; ok(leg >= Math.floor(LAYOUT.minLeg * mean) && leg <= Math.ceil(LAYOUT.maxLeg * mean)); }
+    ok(placementScore(lay, a) >= placementScore(lay, dp) - 1e-9, 'the local search only keeps what does not lower the score');
+    eq(placeCheckpoints(lay, K, { rnd: makeRng(3), polish: 0 }), dp, 'polish 0 = the programme alone');
+    eq(placeCheckpoints(lay, K, { rnd: makeRng(3), overlap: 0, cross: 0 }), dp, 'no weight on overlap: nothing to polish');
+    const s = lay.stats(a), pts = a.map(q => [board.path[q] / n | 0, board.path[q] % n]);
+    eq([s.overlap, s.cross], [segmentOverlapCount(pts) / (K - 1), segmentCrossCount(pts) / (K - 1)]);
+  }
 });
 t('cutout: the layout (interleaved path, checkpoints that change quadrant) is on by default and can be switched off; o.valid in the targeted search', () => {
   const base = { boards: 2, effort: 0.15 };

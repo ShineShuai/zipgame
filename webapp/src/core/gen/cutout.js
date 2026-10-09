@@ -74,7 +74,7 @@ const FIRST_SHARE = 0.7; // share of the progress bar for the first pass over th
 // null = evenly spaced as in the standard game), then walls until unique. A generator function (rnd, K, cap) -> { unique, puzzle }
 // for generateTargeted's o.start.
 const startOn = (n, board, cells, layout) => function* start(rnd, K) {
-  const positions = (layout && placeCheckpoints(layout, Math.min(K, cells))) || gapCheckpoints(n, board.path, Math.min(K, cells));
+  const positions = (layout && placeCheckpoints(layout, Math.min(K, cells), { rnd })) || gapCheckpoints(n, board.path, Math.min(K, cells));
   if (!positions) {
     return { unique: false };
   }
@@ -94,12 +94,13 @@ const startOn = (n, board, cells, layout) => function* start(rnd, K) {
 };
 
 // The climb may move and add checkpoints; it may not give up the layout the start was placed with: the share of legs that end in
-// another quadrant stays above LAYOUT.keepSwitches of what the placement itself reaches with that many checkpoints.
+// another quadrant, and the legs that overlap, stay above LAYOUT.keepSwitches / keepOverlap of what the placement itself reaches with that
+// many checkpoints (found with a fixed seed: the floor does not depend on the run's random numbers).
 function keepLayout(layout) {
   const best = new Map(); // K -> the stats of the placement at K (null: none)
   const bestAt = K => {
     if (!best.has(K)) {
-      const positions = placeCheckpoints(layout, K);
+      const positions = placeCheckpoints(layout, K, { rnd: makeRng(K) });
       best.set(K, positions && layout.stats(positions));
     }
     return best.get(K);
@@ -110,7 +111,7 @@ function keepLayout(layout) {
       return true;
     }
     const s = layout.stats(positions);
-    return s.switches >= LAYOUT.keepSwitches * base.switches - 1e-9;
+    return s.switches >= LAYOUT.keepSwitches * base.switches - 1e-9 && s.overlap >= LAYOUT.keepOverlap * base.overlap - 1e-9;
   };
 }
 
