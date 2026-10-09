@@ -55,6 +55,7 @@ import { proposeBoard, adjacency } from '../src/core/gen/shapes.js';
 import { backbiteHoles, pathCrossings, interleavedPath, layoutFor, placeCheckpoints, placementScore, LAYOUT } from '../src/core/gen/layout.js';
 import { ladder } from '../src/core/ladder.js';
 import { boardSvg } from '../src/apps/play/board.js';
+import { variantIcon, cardIcon, PUZZLE_TYPES } from '../src/apps/play/icons.js';
 import { VARIANTS } from '../src/core/share-code.js';
 
 // ---- mini harness ----
@@ -2337,6 +2338,30 @@ t('i18n: EN and ZH have the same keys and the same {n} placeholders', () => {
   const ph = v => typeof v === 'string' ? (v.match(/\{\d+\}/g) || []).sort() : 'fn';
   for (const k of Object.keys(EN)) eq(ph(ZH[k]), ph(EN[k]), k);
   for (const k of ['replay.locked', 'replay.progress']) eq([typeof EN[k], typeof ZH[k]], ['function', 'function']);
+});
+t('play icons: standard shows all 16 tiles, cutout a ring of 12; both variants differ; card icons are svg', () => {
+  const standard = variantIcon('standard');
+  const cutout = variantIcon('cutout');
+  const tiles = svg => (svg.match(/rx="1\.6"/g) || []).length;
+  eq([tiles(standard), tiles(cutout)], [16, 12]);
+  ok(standard.includes('vi-standard') && cutout.includes('vi-cutout'));
+  ok(standard !== cutout);
+  eq(variantIcon(null), standard); // the app keeps S.variant = null for a standard puzzle
+  eq(variantIcon(undefined), standard);
+  for (const svg of [standard, cutout, cardIcon('gotd'), cardIcon('free')]) {
+    ok(svg.startsWith('<svg ') && svg.endsWith('</svg>'), svg.slice(0, 40));
+    ok(svg.includes('aria-hidden="true"'));
+  }
+  eq(PUZZLE_TYPES, ['standard', 'cutout']);
+});
+t('play menu i18n: every variant has a name and a tagline, the Game-of-Day card has its texts, in both languages', () => {
+  for (const dict of [EN, ZH]) {
+    for (const mode of PUZZLE_TYPES) {
+      ok(dict['mode.' + mode], 'mode.' + mode);
+      ok(dict['mode.' + mode + 'Tag'], 'mode.' + mode + 'Tag');
+    }
+    for (const key of ['menu.mode', 'menu.sub', 'gotd.play', 'gotd.blurb']) ok(dict[key], key);
+  }
 });
 t('daily: dateOfDay inverts utcDayNumber across month and year ends', () => {
   for (const d of [new Date(Date.UTC(2026, 8, 30, 23, 59)), new Date(Date.UTC(2026, 0, 1)), new Date(Date.UTC(2025, 11, 31, 12)), new Date(Date.UTC(2024, 1, 29))]) eq(dateOfDay(utcDayNumber(d)), utcDateString(d));

@@ -17,6 +17,7 @@ import { maxHints, computeHint, solutionOf, penalizedTime, HINT_PENALTY_S } from
 import { cellAtPoint, pathD } from '../../view/geometry.js';
 import { bindModal, copyText } from '../../ui/modal.js';
 import { boardSvg, CELL, COLORS } from './board.js';
+import { variantIcon, cardIcon, PUZZLE_TYPES } from './icons.js';
 import { VERSION } from '../../version.js';
 import { LEADERBOARD } from '../../config.js';
 import { createLeaderboard, backendsFromConfig, submitAttempt } from '../../platform/leaderboard.js';
@@ -76,6 +77,7 @@ function renderGenerating() {
   return `
     <div class="center-stage">
       <section class="card">
+        <div class="gen-icon">${variantIcon(S.genMode)}</div>
         <h2 class="card-title">${t('gen.title')}</h2>
         <p class="small">${t(S.genMode === 'cutout' ? 'gen.subCutout' : 'gen.sub', S.size)}</p>
         <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}">
@@ -104,67 +106,112 @@ async function refreshNext() {
 
 const gameNo = n => (S.nextIdx[n] == null ? '-' : '#' + (S.nextIdx[n] + 1));
 
-// Modes: 'standard', and the Cutout variant (core/gen/cutout.js). Cutout is random, with no daily sequence, no grade and no stats
-// (yet); a shared Cutout carries its puzzle in the link. The mode select in the menu is revealed by holding V (setDevReveal).
-const MODES = ['standard', 'cutout'];
+// Puzzle types (PUZZLE_TYPES in ./icons.js): 'standard', and the Cutout variant (core/gen/cutout.js). Cutout is random,
+// with no daily sequence, no grade and no stats (yet); a shared Cutout carries its puzzle in the link.
+// The menu offers both as two icon tiles (variantPickerHtml); the Game of Day is always a standard puzzle.
 const todayText = () => (S.mode === 'cutout' ? '' : t('menu.today', gameNo(S.size)));
 const randomSeed = () => (globalThis.crypto && crypto.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 4294967296));
+
+// Two radio tiles, each an icon of the board it plays (full square / square with holes), a name and a tagline.
+// Native radios: keyboard (arrows), screen readers and touch work without extra code; css/play.css draws the state.
+function variantPickerHtml() {
+  const tiles = PUZZLE_TYPES.map(mode => {
+    const checked = mode === S.mode ? ' checked' : '';
+    return `
+        <label class="variant-opt">
+          <input type="radio" name="variant" value="${mode}"${checked}>
+          <span class="variant-card">
+            ${variantIcon(mode)}
+            <span class="variant-name">${t('mode.' + mode)}</span>
+            <span class="variant-tag">${t('mode.' + mode + 'Tag')}</span>
+          </span>
+        </label>`;
+  });
+  return `
+      <fieldset class="variant-picker">
+        <legend class="field-label">${t('menu.mode')}</legend>
+        <div class="variant-options">${tiles.join('')}
+        </div>
+      </fieldset>`;
+}
+
+// Dedicated Game-of-Day card: today's date, one button, the result once played, replay chances and streak.
+function gotdCardHtml() {
+  const attempt = store.attempt();
+  const chances = replay.chances();
+  const date = today();
+  const playButton = attempt
+    ? `<button class="btn" disabled title="${t('menu.gotdOnce')}">${t('gotd.play')}</button>`
+    : `<button class="btn" id="playGotd">${t('gotd.play')}</button>`;
+  const replayButton = chances > 0
+    ? `<button class="btn secondary" id="openReplay">${t('menu.replay', chances)}</button>`
+    : `<button class="btn secondary" disabled title="${t('replay.locked', replay.toNext())}">${t('menu.replay', 0)}</button>`;
+  const attemptText = attempt && attempt.solved
+    ? t('menu.attemptSolved', sec(attempt.time))
+    : t('menu.attemptDone');
+  const stats = attempt && attempt.stats
+    ? `<br><span class="gotd-stats">${statsLineT(attempt.stats, S.showDev)}</span>`
+    : '';
+  const attemptNote = attempt ? `<p class="note">${attemptText}${stats}</p>` : '';
+  const hintNote = S.gotdHint ? `<p class="note error">${t(...S.gotdHint)}</p>` : '';
+  return `
+      <section class="card gotd-card">
+        <header class="card-head">
+          <span class="card-badge">${cardIcon('gotd')}</span>
+          <div class="card-head-text">
+            <h2 class="card-title">${t('menu.gotd')}</h2>
+            <p class="card-sub">${dateLabel(date)} · ${weekday(date)}</p>
+          </div>
+        </header>
+        <p class="blurb">${t('gotd.blurb')}</p>
+        <div class="button-row">
+          ${playButton}
+          ${replayButton}
+        </div>
+        ${attemptNote}
+        ${hintNote}
+        ${statusPanelHtml(chances, streak && streak.view())}
+      </section>`;
+}
+
+// Free-play card: pick the puzzle type (icon tiles) and the grid size, then play. Both types are always on offer.
+function freePlayCardHtml() {
+  const sizeOptions = SIZES
+    .map(n => `<option value="${n}"${n === S.size ? ' selected' : ''}>${n}x${n}</option>`)
+    .join('');
+  const storageNote = `Storage: ${storage.name}${storage.shared ? '' : ' (local only)'}`;
+  return `
+      <section class="card">
+        <header class="card-head">
+          <span class="card-badge">${cardIcon('free')}</span>
+          <div class="card-head-text">
+            <h2 class="card-title">${t('menu.title')}</h2>
+            <p class="card-sub">${t('menu.sub')}</p>
+          </div>
+        </header>
+        ${variantPickerHtml()}
+        <div class="field size-field">
+          <label class="field-label" for="sizeSel">${t('menu.size')}</label>
+          <select id="sizeSel">${sizeOptions}</select>
+          <span class="small" id="gameNo">${todayText()}</span>
+        </div>
+        <div class="button-row">
+          <button class="btn" id="playLocal">${t('menu.playLocal')}</button>
+        </div>
+        <p class="small storage-note" id="storageNote" style="${S.showDev ? '' : 'display:none'}">${storageNote}</p>
+      </section>`;
+}
 
 function renderMenu() {
   refreshAttemptIfStale();
   refreshNext();
-  const attempt = store.attempt();
-  const stats = menuStats();
-  const sizeOptions = SIZES
-    .map(n => `<option value="${n}"${n === S.size ? ' selected' : ''}>${n}x${n}</option>`)
-    .join('');
-  const modeOptions = MODES.map(m => `<option value="${m}"${m === S.mode ? ' selected' : ''}>${t('mode.' + m)}</option>`).join('');
-  const gotdButton = attempt
-    ? `<button class="btn secondary" disabled title="${t('menu.gotdOnce')}">${t('menu.gotd')}</button>`
-    : `<button class="btn secondary" id="playGotd">${t('menu.gotd')}</button>`;
-  const attemptText = attempt && attempt.solved
-    ? t('menu.attemptSolved', sec(attempt.time))
-    : t('menu.attemptDone');
-  const attemptNote = attempt ? `<p class="note">${attemptText}${attempt.stats ? '<br><span class="gotd-stats">' + statsLineT(attempt.stats, S.showDev) + '</span>' : ''}</p>` : '';
-  const hintNote = S.gotdHint ? `<p class="note error">${t(...S.gotdHint)}</p>` : '';
-  const chances = replay.chances();
-  const replayButton = chances > 0
-    ? `<button class="btn secondary" id="openReplay">${t('menu.replay', chances)}</button>`
-    : `<button class="btn secondary" disabled title="${t('replay.locked', replay.toNext())}">${t('menu.replay', 0)}</button>`;
-  const statusPanel = statusPanelHtml(chances, streak && streak.view());
-  const sharedCard = sharedCardHtml();
-
   return `
-    <div class="menu-layout${stats ? '' : ' single'}">
-      ${sharedCard}
-      <section class="card play-card">
-        <div class="play-intro">
-          <h2 class="card-title">${t('menu.title')}</h2>
-          <p class="blurb">${t('menu.blurb')}</p>
-        </div>
-        <div class="play-controls">
-          <div class="field">
-            <label class="field-label" for="sizeSel">${t('menu.size')}</label>
-            <select id="sizeSel">${sizeOptions}</select>
-            <span class="small" id="gameNo">${todayText()}</span>
-          </div>
-          <div class="field" id="modeField" style="${S.showDev ? '' : 'display:none'}">
-            <label class="field-label" for="modeSel">${t('menu.mode')}</label>
-            <select id="modeSel">${modeOptions}</select>
-            <span class="small" id="modeBlurb">${S.mode === 'cutout' ? t('mode.cutoutBlurb') : ''}</span>
-          </div>
-          <div class="button-row">
-            <button class="btn" id="playLocal">${t('menu.playLocal')}</button>
-            ${gotdButton}
-            ${replayButton}
-          </div>
-          ${statusPanel}
-          ${attemptNote}
-          ${hintNote}
-          <p class="small storage-note" id="storageNote" style="${S.showDev ? '' : 'display:none'}">Storage: ${storage.name}${storage.shared ? '' : ' (local only)'}</p>
-        </div>
-      </section>
-      ${stats}
+    <div class="menu-layout">
+      ${sharedCardHtml()}
+      <p class="menu-intro">${t('menu.blurb')}</p>
+      <div class="menu-grid">${gotdCardHtml()}${freePlayCardHtml()}
+      </div>
+      ${menuStats()}
     </div>`;
 }
 
@@ -351,7 +398,7 @@ function renderGame() {
     <div class="game-layout">
       <section class="card board-card">
         <div class="hud">
-          <div class="hud-title">${title}</div>
+          <div class="hud-title"><span class="hud-icon">${variantIcon(S.variant)}</span><span>${title}</span></div>
           ${difficultyBadgeHtml()}
           ${difficultyDevHtml()}
           <div class="hud-time">${t('game.time', `<b id="hudTime">${time}</b>`)}</div>
@@ -382,7 +429,12 @@ function attachHandlers() {
   const on = (id, f) => { const e = $(id); if (e) e.onclick = f; };
   on('playLocal', () => { S.size = +$('sizeSel').value; startLocal('open', S.mode); });
   const sel = $('sizeSel'); if (sel) sel.onchange = () => { S.size = +sel.value; $('gameNo').textContent = todayText(); };
-  const msel = $('modeSel'); if (msel) msel.onchange = () => { S.mode = msel.value; $('gameNo').textContent = todayText(); $('modeBlurb').textContent = S.mode === 'cutout' ? t('mode.cutoutBlurb') : ''; };
+  document.querySelectorAll('input[name="variant"]').forEach(input => {
+    input.onchange = () => {
+      S.mode = input.value;
+      $('gameNo').textContent = todayText();
+    };
+  });
   on('playGotd', startGameOfDay);
   on('playShared', startShared);
   on('shareBtn', shareResult);
@@ -593,7 +645,10 @@ function sharedCardHtml() {
   return `<section class="card shared-card">
     <div class="shared-main">
       <div class="shared-eyebrow">${t('share.title')}</div>
-      <h2 class="shared-title">${head} · ${rec.n}x${rec.n}${grade}</h2>
+      <h2 class="shared-title">
+        <span class="shared-icon">${variantIcon(rec.variant)}</span>
+        <span>${head} · ${rec.n}x${rec.n}${grade}</span>
+      </h2>
       <div class="shared-row">${row.join('')}</div>
       ${line}
     </div>
@@ -746,7 +801,6 @@ function setDevReveal(on) {
   const tag = $('seedTag'); if (tag) tag.style.display = on ? 'inline' : 'none';
   const d = $('difficultyDev'); if (d) d.style.display = on ? 'inline' : 'none';
   const g = $('genDev'); if (g) g.style.display = on ? 'inline' : 'none';
-  const mf = $('modeField'); if (mf) mf.style.display = on ? '' : 'none'; // the mode select (Cutout variant)
   const shown = S.screen === 'game' && S.isGotd ? store.attemptOn(S.gotdDate) : store.attempt(), st = shown && shown.stats;
   if (st) document.querySelectorAll('.gotd-stats').forEach(e => { e.textContent = statsLineT(st, on); });
 }
@@ -754,8 +808,7 @@ function installDevReveal() {
   const typing = t => t && t.tagName && (/^(input|textarea|select)$/i.test(t.tagName) || t.isContentEditable);
   addEventListener('keydown', e => { if ((e.key === 'v' || e.key === 'V') && !e.ctrlKey && !e.metaKey && !e.altKey && !typing(e.target)) setDevReveal(true); });
   addEventListener('keyup', e => { if (e.key === 'v' || e.key === 'V') setDevReveal(false); });
-  // an open native select can blur the window while the reveal key is still held: keep the mode select usable then
-  addEventListener('blur', () => { if (document.activeElement && document.activeElement.id === 'modeSel') return; setDevReveal(false); });
+  addEventListener('blur', () => setDevReveal(false));
   document.addEventListener('visibilitychange', () => { if (document.hidden) setDevReveal(false); });
 }
 
