@@ -41,6 +41,7 @@ range 0-1), plus chatter such as `you graded as 3`, `not 4`, `instead of 3`. Any
 | `gotd-seed.mjs` | Seeds a Game of Day with 3..8 synthetic players on every configured backend (see below). |
 | `print-bin-edge.mjs` | The Turso table `bin_edge` (histogram bins of `src/core/hist.js` as integer ms ranges): prints it, `--write` puts it into `server/turso/schema.sql`, `--check` exits 1 when that file is stale. Run `--write` after changing `NB`, `T0_MS` or `RATIO` (`server/README.md`, "Changing the histogram bins"). |
 | `tune-gen.mjs` | Generator quality/time knobs on paired seeds: `--sizes 8,10,12 --seeds 8 --check-cap-x 0.25,0.5,1 --candidates-x 1,2 --refine-x 0,1,2 [--freed-edge | --no-freed-edge]` prints mean walls and mean ms per combination (see `generate.js` CHECK_CAP_X, PROP_CAP_X, CANDIDATES, REFINE_NODES_PER_CELL). |
+| `bench-arrows.mjs` | The "One way arrows" generator (`gen/arrows.js`) per grid size: `node tools/bench-arrows.mjs [sizes=5,6,7,8,9] [seeds=6] [candidates=N K=N minArrows=N capX=F checkCapX=F refineNodes=N pathArrows=0|1 freedEdge=0|1]` prints mean/max ms, mean and range of arrows, and mean K. Run one at a time: the generator is single-threaded and timings overlap otherwise. |
 | `calibrate.mjs` | Recompute the quantile cut points of the legacy grades on generated puzzles (`calibration.js`); these are calibrated to the generator, not to human ratings. |
 
 ## Targeted generation (design app: "Target difficulty generator")

@@ -57,6 +57,8 @@ import { ladder } from '../src/core/ladder.js';
 import { boardSvg } from '../src/apps/play/board.js';
 import { variantIcon, cardIcon, PUZZLE_TYPES } from '../src/apps/play/icons.js';
 import { VARIANTS } from '../src/core/share-code.js';
+import { directedTests } from './directed.js';
+import { arrowsGenTests } from './arrows-gen.js';
 
 // ---- mini harness ----
 const out = []; let pass = 0, fail = 0;
@@ -2996,6 +2998,9 @@ t('share: a Cutout share record has the puzzle, a head line of its own, and is a
   eq(shareStatus(rec, { today: 20000, replayDates: [], attempt: null, algo: ALGO_VERSION, sizes: PLAY_SIZES }), { status: 'ok' });
   eq(shareStatus({ ...rec, n: 3 }, { today: 20000, replayDates: [], attempt: null, algo: ALGO_VERSION, sizes: PLAY_SIZES }), { status: 'invalid' });
 });
+
+directedTests(t, ok, eq);
+arrowsGenTests(t, ok, eq);
 
 for (const [name, fn] of pending) { const t0 = Date.now(); try { await fn(); pass++; out.push(`ok    ${name} (${Date.now() - t0}ms)`); } catch (e) { fail++; out.push(`FAIL  ${name}: ${e.message}`); } }
 const text = out.join('\n') + `\n\n${pass} passed, ${fail} failed`;
