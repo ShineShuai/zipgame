@@ -13,7 +13,7 @@ import { createReplay } from '../../features/replay.js';
 import { createStreak, FREEZE_EVERY, FREEZE_MAX } from '../../features/streak.js';
 import { ALGO_VERSION, maxNumber } from '../../core/model.js';
 import { dailySeed } from '../../core/rng.js';
-import { legsUndo, makeShareRecord, shareStatus, isPlayable, shareText, shareUrl, parseShareLink, stripText, dateLabel } from '../../features/share.js';
+import { legsUndo, makeShareRecord, shareStatus, isPlayable, shareText, shareUrl, parseShareLink, stripText, dateLabel, dayOfDate } from '../../features/share.js';
 import { REPLAY_DAYS } from '../../core/hist.js';
 import { maxHints, computeHint, solutionOf, penalizedTime, HINT_PENALTY_S } from '../../features/hints.js';
 import { cellAtPoint, pathD } from '../../view/geometry.js';
@@ -22,8 +22,10 @@ import { boardSvg, CELL, COLORS } from './board.js';
 import { variantIcon, cardIcon, PUZZLE_TYPES, HIDDEN_TYPES } from './icons.js';
 import { variantOf, sizesFor, nearestSize } from './variants.js';
 import { VERSION } from '../../version.js';
-import { LEADERBOARD } from '../../config.js';
+import { LEADERBOARD, BEHAVIOUR } from '../../config.js';
 import { createLeaderboard, backendsFromConfig, submitAttempt } from '../../platform/leaderboard.js';
+import { createBehaviour, sinksFromConfig } from '../../platform/behaviour.js';
+import { rowFromGame, skillBucket } from '../../core/behaviour.js';
 import { statsLine } from '../../core/hist.js';
 import { t, getLang, setLang } from '../../ui/i18n.js';
 import { PLAY_FLAGS_INT, flagsToHex } from '../../core/gen/flags.js';
@@ -33,7 +35,8 @@ import { sfxMove, sfxBack, sfxCheckpoint, sfxMoveAfterCheckpoint, sfxBlocked, sf
 
 const SIZES = PLAY_SIZES;
 const S = { screen: 'menu', mode: 'standard', variant: null, genMode: 'standard', size: 7, puzzle: null, path: [], elapsed: 0, startTime: 0, timerId: null, finished: false,
-  gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, isReplay: false, replayPick: null, gotdDate: null, gotdHint: null, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, arrowsUnlocked: false, difficulty: null,
+  gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, isReplay: false, replayPick: null, gotdDate: null, gotdHint: null, hintsUsed: 0,
+  penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, behaviourOn: false, arrowsUnlocked: false, difficulty: null,
   legs: [], gameDay: null, isShared: false, shared: null, sharedBad: false, sharedMsg: null };
 
 // Grade a puzzle right after generation, once, before it's shown (see core/grades.js playGradesFor):
@@ -183,6 +186,7 @@ function gotdCardHtml() {
         ${attemptNote}
         ${hintNote}
         ${statusPanelHtml(chances, streak && streak.view())}
+        ${BEHAVIOUR.enabled ? `<p class="small storage-note" id="behaviourNote" style="${S.showDev ? '' : 'display:none'}" title="For each solved game: the puzzle, your time and how many cells you took back. No name, no identifier. Games with a hint or a long time in a hidden tab are not sent.">Anonymous play stats: <a href="#" id="behaviourToggle">${S.behaviourOn ? 'on' : 'off'}</a></p>` : ''}
       </section>`;
 }
 
@@ -469,6 +473,7 @@ function attachHandlers() {
   on('backMenu2', () => { logPlay(false); stopTimer(); S.screen = 'menu'; render(); });
   on('resetPath', () => { if (S.trace && !S.finished) traceClear(S.trace, S.path.length); if (!S.finished) legsUndo(S.legs, S.puzzle, S.path, 1); S.path = []; S.finished = false; S.hintCell = S.hintWrongCell = null; render(); });
   on('exportPlayLog', ev => { ev.preventDefault(); exportPlayLog(); });
+  on('behaviourToggle', async ev => { ev.preventDefault(); S.behaviourOn = !S.behaviourOn; await behaviour.setOn(S.behaviourOn); render(); });
   on('newPuzzle', () => { if (!S.isGotd) startLocal('skip', S.variant || 'standard'); });
   on('exportBtn', () => { $('exportText').value = serialize(S.puzzle); $('exportMsg').textContent = ''; modal.open(); setTimeout(() => $('exportText').focus(), 30); });
   on('hintBtn', () => {
@@ -545,12 +550,25 @@ function setupGridInput(svg) {
 }
 
 // Play log (features/playlog.js): one record per puzzle, on the solve or when the puzzle is left unsolved. Local only.
-let playlog = null;
+let playlog = null, behaviour = null;
 function logPlay(solved) {
   if (!playlog || !S.puzzle || S.variant || !S.trace || S.logged || S.screen !== 'game' || (!solved && S.trace.pushes < 2)) return;
   S.logged = true;
   const ms = S.timerId != null ? performance.now() - S.startTime : S.elapsed * 1000;
-  playlog.add(buildRecord(S.puzzle, S.trace, { ms, solved, hints: S.hintsUsed, mode: S.isGotd ? (S.isReplay ? 'replay' : 'gotd') : 'local' }));
+  const mode = S.isGotd ? (S.isReplay ? 'replay' : 'gotd') : 'local';
+  const history = playlog.all(); // asked before add(): the skill bucket of the upload must not count this game
+  playlog.add(buildRecord(S.puzzle, S.trace, { ms, solved, hints: S.hintsUsed, mode }));
+  if (solved) uploadBehaviour(history, ms, mode);
+}
+// The anonymous behaviour row of a solved game (core/behaviour.js decides whether it is sent at all; platform/behaviour.js sends it).
+// Everything of S is read now, before the await: the game state moves on. A Game of Day this device already solved is a repeat: not sent.
+function uploadBehaviour(history, ms, mode) {
+  if (!behaviour) return;
+  const attempt = S.isGotd ? store.attemptOn(S.gotdDate) : null;
+  const game = { puzzle: S.puzzle, mode, ms, hints: S.hintsUsed, hiddenMs: S.trace.hiddenMs, undone: S.trace.undone, maxUndone: S.trace.maxUndone,
+    day: S.isGotd ? dayOfDate(S.gotdDate) : S.gameDay ?? dayNo(), variant: S.variant, shared: S.isShared, known: Boolean(attempt && attempt.solved) };
+  history.then(h => { const row = rowFromGame({ ...game, skill: skillBucket(h) }, BEHAVIOUR); return row && behaviour.enqueue(row); })
+    .catch(e => console.warn('behaviour upload skipped:', e));
 }
 async function exportPlayLog() {
   const a = document.createElement('a'), url = URL.createObjectURL(new Blob([await playlog.exportJson()], { type: 'application/json' }));
@@ -840,6 +858,7 @@ function setDevReveal(on) {
   const h = $('hintBtn'); if (h) h.style.display = on ? '' : 'none';
   const x = $('exportBtn'); if (x) x.style.display = on ? '' : 'none';
   const sn = $('storageNote'); if (sn) sn.style.display = on ? '' : 'none';
+  const bn = $('behaviourNote'); if (bn) bn.style.display = on ? '' : 'none';
   const tag = $('seedTag'); if (tag) tag.style.display = on ? 'inline' : 'none';
   const d = $('difficultyDev'); if (d) d.style.display = on ? 'inline' : 'none';
   const g = $('genDev'); if (g) g.style.display = on ? 'inline' : 'none';
@@ -847,12 +866,19 @@ function setDevReveal(on) {
   const shown = S.screen === 'game' && S.isGotd ? store.attemptOn(S.gotdDate) : store.attempt(), st = shown && shown.stats;
   if (st) document.querySelectorAll('.gotd-stats').forEach(e => { e.textContent = statsLineT(st, on); });
 }
+// Time the tab is hidden during a game (the timer runs on): a game with much of it is not uploaded (BEHAVIOUR.hiddenMaxMs).
+let hiddenAt = null;
+function trackHidden() {
+  if (document.hidden) { hiddenAt = performance.now(); return; }
+  if (hiddenAt != null && S.trace && S.screen === 'game' && !S.finished) S.trace.hiddenMs += performance.now() - hiddenAt;
+  hiddenAt = null;
+}
 function installDevReveal() {
   const typing = t => t && t.tagName && (/^(input|textarea|select)$/i.test(t.tagName) || t.isContentEditable);
   addEventListener('keydown', e => { if ((e.key === 'v' || e.key === 'V') && !e.ctrlKey && !e.metaKey && !e.altKey && !typing(e.target)) setDevReveal(true); });
   addEventListener('keyup', e => { if (e.key === 'v' || e.key === 'V') setDevReveal(false); });
   addEventListener('blur', () => setDevReveal(false));
-  document.addEventListener('visibilitychange', () => { if (document.hidden) setDevReveal(false); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) setDevReveal(false); trackHidden(); });
 }
 
 // ---------- sound toggle (lives in the app bar, outside #app — wired once, not by render()) ----------
@@ -908,6 +934,8 @@ async function initLang() {
   streak = createStreak(storage, playlog);
   try { await streak.init(); } catch (e) { console.warn('streak init failed:', e); }
   if (lb.enabled) for (const { date } of await replay.unsent()) shareGotd(date); // today's and replayed days whose submit never got an answer
+  behaviour = createBehaviour({ storage, cfg: BEHAVIOUR, sinks: sinksFromConfig(BEHAVIOUR, LEADERBOARD) });
+  try { S.behaviourOn = await behaviour.isOn(); behaviour.flush().catch(() => {}); } catch (e) { console.warn('behaviour init failed:', e); } // rows left from an earlier page load
   try { for (const n of SIZES) S.nextIdx[n] = (await daily.peek(n)).index; } catch (e) { console.warn('daily counters failed:', e); }
   await loadSharedLink();
   document.addEventListener('click', () => { setShareTip(false); closeStatTips(); });

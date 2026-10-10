@@ -2,8 +2,10 @@
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import worker, { submit, validate, validateRange, read, validateSeed, seed } from './worker.js';
+import worker, { submit, validate, validateRange, read, validateSeed, seed, addPlay, readPlay, deletePlay } from './worker.js';
 import { binOf, summarize, NB, TOP_K, SEED_MAX, REPLAY_DAYS } from '../../src/core/hist.js';
+import { parse } from '../../src/core/format.js';
+import { packPuzzle, packS, toB64u, fromB64u, utcDay } from '../../src/core/behaviour.js';
 
 const schema = readFileSync(new URL('./schema.sql', import.meta.url), 'utf8');
 const fakeD1 = () => { // prepare().bind() / batch() as a single transaction, like D1
@@ -12,7 +14,8 @@ const fakeD1 = () => { // prepare().bind() / batch() as a single transaction, li
     prepare: sql => ({ bind: (...args) => ({ sql, args }) }),
     async batch(stmts) {
       db.exec('BEGIN');
-      try { const out = stmts.map(s => ({ results: db.prepare(s.sql).all(...s.args) })); db.exec('COMMIT'); return out; } catch (e) { db.exec('ROLLBACK'); throw e; }
+      // like D1: a BLOB is bound as an ArrayBuffer and read back as an array of bytes
+      try { const out = stmts.map(s => ({ results: db.prepare(s.sql).all(...s.args.map(a => (a instanceof ArrayBuffer ? new Uint8Array(a) : a))).map(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v instanceof Uint8Array ? Array.from(v) : v]))) })); db.exec('COMMIT'); return out; } catch (e) { db.exec('ROLLBACK'); throw e; }
     },
     raw: db,
   };
@@ -199,6 +202,73 @@ await test('http POST /seed: bearer token, status codes, seeds visible in /stats
   assert.deepEqual(stats.days.map(x => [x.n, x.seeds]), [[3, [30000, 50000, 70000]]]);
   assert.equal((await worker.fetch(new Request('https://w.example/seed', { method: 'GET' }), env)).status, 404);
   assert.equal((await call({ ...good, d: today + 0 }, 'Bearer s3cret', { DB: { prepare() { throw new Error('x'); } }, SEED_PLAYERS_SECRET: 's3cret' })).status, 500);
+});
+
+// ---------- behaviour rows ----------
+const PUZZLE = parse('size 7\ncheckpoints 0,1=2 0,6=1 1,3=3 2,2=5 2,5=4 3,1=7 3,5=9 4,3=8 5,3=6\nwalls V,4,3 H,5,4');
+const PZ = packPuzzle(PUZZLE);
+const playRow = (extra = {}) => ({ day: utcDay(), ms: 42130, u: 7, deep: 3, s: packS('local', 5), pz: toB64u(PZ), ev: null, v: 0, ...extra }); // the wire form (BLOBs as base64url)
+const playEnv = (cap, secret = 'adm1n') => { const DB = fakeD1(); if (cap !== undefined) DB.raw.exec(`UPDATE play_cfg SET cap = ${cap}`); return { DB, PLAY_ADMIN_SECRET: secret, ALLOWED_ORIGIN: 'https://u.github.io' }; };
+const callPlay = (env, path, { method = 'POST', body, auth, headers = {} } = {}) => worker.fetch(new Request('https://w.example' + path, { method, body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body), headers: { ...(auth ? { Authorization: auth } : {}), ...headers } }), env);
+const rowsOf = db => db.raw.prepare('SELECT rowid AS id, * FROM play ORDER BY rowid').all();
+
+await test('POST /play: a valid row is stored as it was sent (the puzzle as bytes), anything invalid is 400 and stores nothing', async () => {
+  const env = playEnv(); let r = await callPlay(env, '/play', { body: playRow(), headers: { 'Content-Type': 'text/plain;charset=UTF-8' } });
+  assert.equal(r.status, 200); assert.deepEqual(await r.json(), { status: 'ok' });
+  const [row] = rowsOf(env.DB); assert.deepEqual([row.day, row.ms, row.u, row.deep, row.s, row.ev, row.v], [utcDay(), 42130, 7, 3, packS('local', 5), null, 0]);
+  assert.deepEqual([...row.pz], [...PZ]);
+  assert.equal((await callPlay(env, '/play', { body: playRow({ pz: null, s: packS('gotd', 15), u: null, deep: null }) })).status, 200, 'a Game of Day row: no puzzle, no counts');
+  const bad = { 'unknown key': { ...playRow(), extra: 1 }, 'ms too small': playRow({ ms: 499 }), 'ms too large': playRow({ ms: 3600001 }), 'ms text': playRow({ ms: '42130' }), 'ms float': playRow({ ms: 4.5 }),
+    'day too old': playRow({ day: utcDay() - REPLAY_DAYS - 2 }), 'day too new': playRow({ day: utcDay() + 2 }), 'no day': { ...playRow(), day: undefined }, 'u negative': playRow({ u: -1 }), 'u too large': playRow({ u: 65536 }),
+    's too large': playRow({ s: 256 }), 'pz too short': playRow({ pz: toB64u(PZ.slice(0, 3)) }), 'pz too long': playRow({ pz: toB64u(new Uint8Array(129)) }), 'pz not base64': playRow({ pz: '!!' }),
+    'ev too long': playRow({ ev: toB64u(new Uint8Array(65)) }), 'v too large': playRow({ v: 16 }), 'ms null': playRow({ ms: null }), 'array': [], 'text': 'x' };
+  for (const [name, body] of Object.entries(bad)) { r = await callPlay(env, '/play', { body: typeof body === 'string' ? JSON.stringify(body) : body }); assert.equal(r.status, 400, name); }
+  assert.equal((await callPlay(env, '/play', { body: '{nope' })).status, 400, 'bad json');
+  assert.equal((await callPlay(env, '/play', { body: JSON.stringify(playRow({ pz: 'A'.repeat(600) })), headers: { 'content-length': '600' } })).status, 400, 'too large');
+  assert.equal((await callPlay(env, '/play', { method: 'GET' })).status, 404);
+  assert.equal(rowsOf(env.DB).length, 2, 'only the two valid rows');
+});
+
+await test('the ceiling and the off switch: play_cfg.cap bounds the highest row id; cap 0 closes the table; a missing config closes it too', async () => {
+  const env = playEnv(2), post = () => callPlay(env, '/play', { body: playRow() });
+  assert.deepEqual([(await post()).status, (await post()).status], [200, 200]);
+  const r = await post(); assert.equal(r.status, 503); assert.deepEqual(await r.json(), { status: 'closed' });
+  assert.equal(rowsOf(env.DB).length, 2);
+  env.DB.raw.exec('DELETE FROM play WHERE rowid = 1'); assert.equal((await post()).status, 503, 'the ids of deleted rows are not reused below the highest one: no room made');
+  env.DB.raw.exec('UPDATE play_cfg SET cap = 3'); assert.equal((await post()).status, 200, 'a higher cap opens it again');
+  env.DB.raw.exec('UPDATE play_cfg SET cap = 0'); assert.equal((await post()).status, 503, 'the off switch');
+  env.DB.raw.exec('DELETE FROM play; UPDATE play_cfg SET cap = 3000000'); assert.equal((await post()).status, 200);
+  assert.equal(rowsOf(env.DB)[0].id, 1, 'an emptied table restarts at id 1');
+  env.DB.raw.exec('DELETE FROM play_cfg'); assert.equal((await post()).status, 503, 'no config row: closed');
+});
+
+await test('GET /play-export: bearer secret, pages by id, the first page lists the real columns, blobs come out as base64url', async () => {
+  const env = playEnv(); for (let i = 0; i < 5; i++) await addPlay(env.DB, { ...playRow({ ms: 1000 + i }), pz: PZ, ev: null });
+  const get = (q, auth = 'Bearer adm1n', e = env) => callPlay(e, '/play-export' + q, { method: 'GET', auth });
+  for (const auth of [null, '', 'Bearer', 'Bearer wrong', 'adm1n']) assert.equal((await get('', auth)).status, 401, String(auth)); // null = no header (undefined would take the default)
+  assert.equal((await get('', 'Bearer adm1n', { ...env, PLAY_ADMIN_SECRET: undefined })).status, 401, 'no secret configured: closed');
+  assert.equal((await get('', 'Bearer adm1n', { ...env, PLAY_ADMIN_SECRET: undefined, SEED_PLAYERS_SECRET: 'adm1n' })).status, 401, 'the seed secret does not open it');
+  for (const q of ['?limit=0', '?limit=1001', '?after=-1', '?after=x', '?limit=1.5']) assert.equal((await get(q)).status, 400, q);
+  let r = await (await get('?limit=2')).json();
+  assert.deepEqual(r.rows.map(x => x.id), [1, 2]); assert.equal(r.next, 2); assert.deepEqual(r.columns, ['day', 'ms', 'u', 'deep', 's', 'pz', 'ev', 'v']);
+  assert.deepEqual([...fromB64u(r.rows[0].pz)], [...PZ]); assert.equal(r.rows[0].ev, null); assert.equal(r.rows[1].ms, 1001);
+  r = await (await get('?after=2&limit=2')).json(); assert.deepEqual([r.rows.map(x => x.id), r.next, r.columns], [[3, 4], 4, undefined]);
+  r = await (await get('?after=4&limit=2')).json(); assert.deepEqual([r.rows.map(x => x.id), r.next], [[5], null]);
+  assert.equal((await readPlay(env.DB, { after: 0, limit: 1000 })).next, null);
+  assert.equal((await callPlay(env, '/play-export', { method: 'POST', auth: 'Bearer adm1n' })).status, 404);
+});
+
+await test('POST /play-delete: bearer secret, 1..500 ids, counts what existed, deletes across chunks, leaves the other rows', async () => {
+  const env = playEnv(); for (let i = 0; i < 200; i++) await addPlay(env.DB, { ...playRow({ ms: 1000 + i }), pz: PZ, ev: null });
+  const del = (body, auth = 'Bearer adm1n') => callPlay(env, '/play-delete', { body, auth });
+  for (const auth of [null, 'Bearer wrong', 'adm1n']) assert.equal((await del({ ids: [1] }, auth)).status, 401, String(auth));
+  for (const body of [{}, { ids: [] }, { ids: [0] }, { ids: [1.5] }, { ids: ['1'] }, { ids: 5 }, { ids: Array.from({ length: 501 }, (_, i) => i + 1) }, 'nope']) assert.equal((await del(body)).status, 400, JSON.stringify(body).slice(0, 30));
+  assert.equal(rowsOf(env.DB).length, 200, 'nothing deleted by the refused calls');
+  let r = await del({ ids: [3] }); assert.deepEqual([r.status, await r.json()], [200, { deleted: 1 }]);
+  r = await del({ ids: [3, 999] }); assert.deepEqual(await r.json(), { deleted: 0 }, 'an id that is no row counts nothing');
+  r = await del({ ids: Array.from({ length: 150 }, (_, i) => i + 11) }); assert.deepEqual(await r.json(), { deleted: 150 }, 'more than one chunk of 90');
+  const left = rowsOf(env.DB).map(x => x.id); assert.equal(left.length, 49); assert.ok(!left.includes(3) && !left.includes(11) && !left.includes(160) && left.includes(1) && left.includes(161) && left.includes(200));
+  assert.equal((await deletePlay(env.DB, [1, 2])).deleted, 2);
 });
 
 console.log(`${n} passed`);
