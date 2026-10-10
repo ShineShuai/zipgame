@@ -28,6 +28,7 @@ button.playbtn.on{background:linear-gradient(135deg,#b3344f,#e0526f);}
 .segmented{display:flex;gap:6px;}
 .seg{flex:1;}
 .seg-count{opacity:.65;font-size:11px;}
+.arrowmark{pointer-events:none;}
 .seg.active{background:#3b4a80;border-color:#5b7cfa;color:#fff;box-shadow:0 0 0 1px #5b7cfa55 inset;}
 .row{display:flex;gap:6px;}
 .row input,.row button{flex:1;min-width:0;}

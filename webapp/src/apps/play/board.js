@@ -1,4 +1,5 @@
 import { wallSegments, cellCenter, pathD } from '../../view/geometry.js';
+import { arrowIds, arrowDirId, arrowMove } from '../../core/edges.js';
 
 export const CELL = 60; // logical units; on-screen size comes from viewBox scaling
 
@@ -7,6 +8,7 @@ export const COLORS = {
   grid: '#dbe4fb',
   outline: '#aebff5',     // the edge of a board with holes (Cutout)
   wall: '#26324f',
+  arrow: '#26324f',       // one-way arrows (same ink as the walls), with a white halo
   path: '#ffb020',
   number: '#3b68ee',      // idle number: blue ring and text on white; visited: filled blue, white text
   numberFill: '#ffffff',
@@ -59,6 +61,26 @@ function wallLines(puzzle) {
   return `<g stroke="${COLORS.wall}" stroke-width="6" stroke-linecap="round">${lines.join('')}</g>`;
 }
 
+// One-way arrows (puzzle.arrows): a filled triangle on the middle of the edge it belongs to, pointing the
+// way the edge may be walked. data-arrow = the edge id, so a blocked step can flash the right one.
+// The triangle is drawn for a right-pointing arrow and rotated about the edge's middle.
+function arrowMarks(puzzle) {
+  const n = puzzle.n;
+  const marks = arrowIds(puzzle).map(edge => {
+    const [from, to] = arrowMove(n, edge, arrowDirId(puzzle.arrows, edge));
+    const [x1, y1] = cellCenter(n, from, CELL);
+    const [x2, y2] = cellCenter(n, to, CELL);
+    const angle = Math.round((Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI);
+    const tip = CELL * 0.26;
+    const back = CELL * 0.14;
+    const half = CELL * 0.19;
+    const points = `${tip},0 ${-back},${-half} ${-back},${half}`;
+    return `<g class="arrow-mark" data-arrow="${edge}" transform="translate(${(x1 + x2) / 2} ${(y1 + y2) / 2}) rotate(${angle})">` +
+      `<polygon points="${points}" fill="${COLORS.arrow}" stroke="#fff" stroke-width="2.5" paint-order="stroke" stroke-linejoin="round"/></g>`;
+  });
+  return marks.join('');
+}
+
 function numberBadges(puzzle, visited) {
   const n = puzzle.n;
   const badges = [];
@@ -103,11 +125,12 @@ export function boardSvg(S) {
   const visited = new Set(S.path);
   const route = S.path.length > 1 ? pathD(n, S.path, CELL) : '';
 
-  let svg = `<svg viewBox="0 0 ${size} ${size}" class="zip-svg${p.holes ? ' cutout' : ''}" style="${maxBoardCss(n)}">`;
+  let svg = `<svg viewBox="0 0 ${size} ${size}" class="zip-svg${p.holes ? ' cutout' : ''}${p.arrows ? ' arrows' : ''}" style="${maxBoardCss(n)}">`;
   svg += p.holes ? cutoutLayers(p) : gridLines(size);
   svg += wallLines(p);
   svg += `<path data-role="path" d="${route}" stroke="${COLORS.path}" stroke-width="${CELL * 0.28}" fill="none" ` +
     `stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>`;
+  if (p.arrows) svg += arrowMarks(p);
   svg += numberBadges(p, visited);
   if (S.hintWrongCell != null) svg += wrongMoveMark(n, S.hintWrongCell);
   if (S.hintCell != null) svg += correctMoveRing(n, S.hintCell);

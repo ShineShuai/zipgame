@@ -60,6 +60,10 @@ import { ladder } from '../src/core/ladder.js';
 import { boardSvg } from '../src/apps/play/board.js';
 import { variantIcon, cardIcon, PUZZLE_TYPES } from '../src/apps/play/icons.js';
 import { VARIANTS } from '../src/core/share-code.js';
+import { directedTests } from './directed.js';
+import { arrowsGenTests } from './arrows-gen.js';
+import { playArrowsTests } from './play-arrows.js';
+import { designArrowsTests } from './design-arrows.js';
 
 // ---- mini harness ----
 const out = []; let pass = 0, fail = 0;
@@ -2978,7 +2982,7 @@ t('share-code: a Cutout game round-trips with its puzzle; 7x7 stays short; damag
   }
   ok(encodeShare(makeShareRecord({ n: 7, timeS: 9, legs: [], K: 7, variant: 'cutout', puzzle: runSync(generateCutout(7, 4, { boards: 1, effort: 0.1 })) })).length <= 64);
   eq(decodeShare(encodeShare(LOCAL_REC)), LOCAL_REC); eq(decodeShare(encodeShare(GOTD_REC)), GOTD_REC);
-  eq(VARIANTS, [null, 'cutout']);
+  eq(VARIANTS, [null, 'cutout', 'arrows']);
 });
 t('share-code: a Cutout record is refused when its puzzle is unsound (unbalanced, checkpoint on a hole, wall at a hole, a gap in the numbers)', () => {
   const good = runSync(generateCutout(6, 8, { boards: 1, effort: 0.1 }));
@@ -2999,6 +3003,12 @@ t('share: a Cutout share record has the puzzle, a head line of its own, and is a
   eq(shareStatus(rec, { today: 20000, replayDates: [], attempt: null, algo: ALGO_VERSION, sizes: PLAY_SIZES }), { status: 'ok' });
   eq(shareStatus({ ...rec, n: 3 }, { today: 20000, replayDates: [], attempt: null, algo: ALGO_VERSION, sizes: PLAY_SIZES }), { status: 'invalid' });
 });
+
+// ---------- One Way Arrows Puzzles ----------
+directedTests(t, ok, eq);
+arrowsGenTests(t, ok, eq);
+playArrowsTests(t, ok, eq);
+designArrowsTests(t, ok, eq);
 
 // ---------- behaviour rows (core/behaviour.js, platform/behaviour.js) ----------
 const BEH_TEXT = 'size 7\ncheckpoints 0,1=2 0,6=1 1,3=3 2,2=5 2,5=4 3,1=7 3,5=9 4,3=8 5,3=6\nwalls V,4,3 H,5,4';

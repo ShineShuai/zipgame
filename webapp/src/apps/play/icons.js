@@ -1,4 +1,4 @@
-// Icons of the play menu: one per puzzle variant (standard, cutout) and one per menu card.
+// Icons of the play menu: one per puzzle variant (standard, cutout, arrows) and one per menu card.
 // Plain SVG strings, no DOM. Colours come from css/play.css (.vi-*, currentColor), so the
 // icons follow the page theme and the same markup serves the picker, the HUD and the cards.
 
@@ -43,17 +43,44 @@ function route(corners) {
     `<circle class="vi-dot" cx="${centre(endCol)}" cy="${centre(endRow)}" r="2.7"/>`;
 }
 
+// The puzzle types the menu always offers, and the ones it shows only while V is held (once picked,
+// a hidden type stays on offer until the page is reloaded).
 export const PUZZLE_TYPES = ['standard', 'cutout'];
+export const HIDDEN_TYPES = ['arrows'];
 
-// variant: 'cutout' or anything else (= standard). Class: variant-icon vi-standard | vi-cutout.
+// Arrows icon: the snake board with three one-way arrows on its edges (the first and last point the
+// way the snake goes, the middle one is a decoy). Each is [col, row, side, direction]: the edge sits
+// on the right ('r') or the bottom ('b') side of that cell, the direction is the unit step [dx, dy].
+const ICON_ARROWS = [
+  [1, 1, 'r', [-1, 0]],
+  [1, 1, 'b', [0, 1]],
+  [2, 2, 'b', [0, -1]],
+];
+
+function arrowheads() {
+  const heads = ICON_ARROWS.map(([col, row, side, [dx, dy]]) => {
+    const x = side === 'r' ? ORIGIN + UNIT * (col + 1) : centre(col);
+    const y = side === 'b' ? ORIGIN + UNIT * (row + 1) : centre(row);
+    const tip = [x + dx * 3.2, y + dy * 3.2];
+    const left = [x - dx * 2 - dy * 3, y - dy * 2 + dx * 3];
+    const right = [x - dx * 2 + dy * 3, y - dy * 2 - dx * 3];
+    const points = [tip, left, right].map(([px, py]) => `${num(px)},${num(py)}`).join(' ');
+    return `<polygon class="vi-arrow" points="${points}"/>`;
+  });
+  return heads.join('');
+}
+
+// variant: 'cutout', 'arrows' or anything else (= standard).
+// Class: variant-icon vi-standard | vi-cutout | vi-arrows.
 export function variantIcon(variant) {
   const cutout = variant === 'cutout';
-  const name = cutout ? 'cutout' : 'standard';
+  const arrows = variant === 'arrows';
+  const name = cutout ? 'cutout' : arrows ? 'arrows' : 'standard';
   const board = tiles(cutout ? RING_HOLES : NO_HOLES);
   const path = route(cutout ? LAP : SNAKE);
   return `<svg class="variant-icon vi-${name}" viewBox="0 0 48 48" aria-hidden="true" ` +
     'focusable="false"><rect class="vi-bg" x="2" y="2" width="44" height="44" rx="11"/>' +
-    `${board}${path}</svg>`;
+    `${board}${path}${arrows ? arrowheads() : ''}</svg>`;
 }
 
 function star(cx, cy, outer, inner) {

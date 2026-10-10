@@ -1,8 +1,13 @@
 import { startCell, endCell, maxNumber, cellCount } from './model.js';
-import { hasWall } from './edges.js';
+import { hasWall, arrowAllows } from './edges.js';
 
 export const gridAdjacent = (n, a, b) => Math.abs(((a / n) | 0) - ((b / n) | 0)) + Math.abs(a % n - b % n) === 1;
-export const canStep = (p, a, b) => gridAdjacent(p.n, a, b) && !hasWall(p, a, b) && !(p.holes && (p.holes[a] || p.holes[b]));
+// One-way arrows (p.arrows) allow a step in their own direction only. Undoing a step (see step()
+// below) is not a step, so it stays free.
+export const canStep = (p, a, b) => gridAdjacent(p.n, a, b)
+  && !hasWall(p, a, b)
+  && !(p.holes && (p.holes[a] || p.holes[b]))
+  && !(p.arrows && !arrowAllows(p.arrows, p.n, a, b));
 
 // Full-board solved check: covers every cell, starts at 1, ends on the max checkpoint, checkpoints visited in ascending order.
 export function isSolved(p, path) {
