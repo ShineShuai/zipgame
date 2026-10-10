@@ -11,6 +11,7 @@ import {
 import { canStep, step } from '../src/core/rules.js';
 import { solve } from '../src/core/solver/solve.js';
 import { buildMoves } from '../src/core/solver/solve-dir.js';
+import { makeDirPropagator } from '../src/core/solver/propagate-dir.js';
 import { makeRng, shuffle } from '../src/core/rng.js';
 import { backbite } from '../src/core/gen/hampath.js';
 import { randomCheckpoints } from '../src/core/gen/checkpoints.js';
@@ -216,16 +217,9 @@ export function directedTests(t, ok, eq) {
     for (const [seed, n, K, arrowFrac, wallFrac, holes] of cases) {
       const p = make(seed, n, K, arrowFrac, wallFrac, holes);
       const want = brute(p);
-      const got = solved(p);
-      const tag = `seed ${seed} n ${n} K ${K}`;
-      ok(!got.exceeded, `${tag}: not capped`);
-      eq(joined(got), want, tag);
-      const lim = solve(p, { nodeCap: 5e6 });
-      eq(lim.count, Math.min(2, want.length), `${tag}: default limit 2`);
       total += want.length;
       if (want.length > 1) multi++;
-      if (!want.length) continue;
-      const cells = want[0].split(',').map(Number);
+      const cells = want.length ? want[0].split(',').map(Number) : [];
       const rnd = makeRng(seed * 31 + 5);
       const picks = [[cells[2], cells[3]], [cells[3], cells[2]]];
       for (let i = 0; i < 2; i++) {
@@ -233,14 +227,23 @@ export function directedTests(t, ok, eq) {
         const b = canStep(p, a, a + 1) ? a + 1 : a + n;
         if (b < n * n) picks.push([a, b]);
       }
-      for (const [a, b] of picks) {
-        const using = want.filter(x => usesMove(x, a, b));
-        const r = solved(p, { mustUse: [a, b] });
-        eq(joined(r), using, `${tag}: mustUse ${a}->${b}`);
-      }
       const prefix = cells.slice(0, 4);
       const below = want.filter(x => x.startsWith(prefix.join(',') + ','));
-      eq(solved(p, { forced: prefix }).count, below.length, `${tag}: forced prefix ${prefix}`);
+      for (const prop of [true, false]) {
+        const tag = `seed ${seed} n ${n} K ${K} prop ${prop}`;
+        const got = solved(p, { prop });
+        ok(!got.exceeded, `${tag}: not capped`);
+        eq(joined(got), want, tag);
+        const lim = solve(p, { nodeCap: 5e6, prop });
+        eq(lim.count, Math.min(2, want.length), `${tag}: default limit 2`);
+        if (!want.length) continue;
+        for (const [a, b] of picks) {
+          const using = want.filter(x => usesMove(x, a, b));
+          const r = solved(p, { mustUse: [a, b], prop });
+          eq(joined(r), using, `${tag}: mustUse ${a}->${b}`);
+        }
+        eq(solved(p, { forced: prefix, prop }).count, below.length, `${tag}: forced ${prefix}`);
+      }
     }
     const enough = total >= cases.length / 2 && multi >= cases.length / 10;
     ok(enough || make === randomArrowPuzzle, `weak coverage: ${total} solutions, ${multi} multi`);
@@ -259,6 +262,54 @@ export function directedTests(t, ok, eq) {
   differential('4x4 planted puzzles', cases4, plantedArrowPuzzle);
   differential('5x5 planted puzzles', cases5, plantedArrowPuzzle);
   differential('4x4 random puzzles with walls and holes', mixed, randomArrowPuzzle);
+
+  t('propagate-dir: along every solution the position stays feasible and keeps its moves', () => {
+    let positions = 0;
+    let forcedSomething = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      const n = 4 + (seed % 3);
+      const p = plantedArrowPuzzle(700 + seed, n, 3 + (seed % 4), 0.1 + (seed % 5) * 0.07);
+      const sols = solve(p, { limit: 4, capture: true, prop: false, nodeCap: 5e6 }).paths;
+      const moves = buildMoves(p);
+      const vis = new Uint8Array(n * n);
+      const prop = makeDirPropagator(moves, endCell(p), vis);
+      for (const sol of sols) {
+        vis.fill(0);
+        for (let m = 1; m < sol.length; m++) {
+          const head = sol[m - 1];
+          vis[head] = 1;
+          ok(prop.deduce(head, sol.length - m + 1), `seed ${seed}: position ${m} of ${sol}`);
+          for (let i = m - 1; i < sol.length - 1; i++) {
+            const d = [0, 1, 2, 3].find(e => moves.out[sol[i] * 4 + e] === sol[i + 1]);
+            const kept = (prop.av[sol[i]] >> d) & 1;
+            ok(kept, `seed ${seed}: ${sol[i]}->${sol[i + 1]} dropped at ${m}`);
+          }
+          positions++;
+          const open = [0, 1, 2, 3].filter(e => {
+            const v = moves.out[head * 4 + e];
+            return v >= 0 && !vis[v];
+          });
+          if (open.some(e => !((prop.av[head] >> e) & 1))) forcedSomething++;
+        }
+      }
+    }
+    ok(positions > 300, `${positions} positions`);
+    ok(forcedSomething > 10, `only ${forcedSomething} positions where the head loses a move`);
+  });
+
+  t('solve-dir: propagation visits far fewer nodes than the plain search, same solutions', () => {
+    let on = 0;
+    let off = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const p = plantedArrowPuzzle(1000 + seed, 6, 6, 0.15);
+      const a = solved(p);
+      const b = solved(p, { prop: false });
+      eq(joined(a), joined(b), `seed ${seed}`);
+      on += a.nodes;
+      off += b.nodes;
+    }
+    ok(on * 3 < off, `${on} nodes with propagation, ${off} without`);
+  });
 
   t('solve-dir: decisions are counted; hopeless puzzles give 0 solutions at once', () => {
     const p = plantedArrowPuzzle(11, 5, 4, 0.1);

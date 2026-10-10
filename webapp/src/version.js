@@ -1,2 +1,2 @@
 // One version for the whole web app: the play and design pages both show it (hold "v").
-export const VERSION = '0.8.3';
+export const VERSION = '0.8.4';
