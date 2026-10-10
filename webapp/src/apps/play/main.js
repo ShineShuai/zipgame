@@ -1,7 +1,9 @@
 import { serialize } from '../../core/format.js';
 import { generate, PLAY_SIZES } from '../../core/gen/generate.js';
 import { generateCutout, CUTOUT_MAX_MS } from '../../core/gen/cutout.js';
-import { isSolved, step } from '../../core/rules.js';
+import { generateArrows } from '../../core/gen/arrows.js';
+import { edgeId, arrowAllows } from '../../core/edges.js';
+import { isSolved, step, gridAdjacent } from '../../core/rules.js';
 import { statSummary } from '../../core/stats.js';
 import { pickStorage } from '../../platform/storage.js';
 import { runAsync } from '../../platform/run.js';
@@ -17,7 +19,8 @@ import { maxHints, computeHint, solutionOf, penalizedTime, HINT_PENALTY_S } from
 import { cellAtPoint, pathD } from '../../view/geometry.js';
 import { bindModal, copyText } from '../../ui/modal.js';
 import { boardSvg, CELL, COLORS } from './board.js';
-import { variantIcon, cardIcon, PUZZLE_TYPES } from './icons.js';
+import { variantIcon, cardIcon, PUZZLE_TYPES, HIDDEN_TYPES } from './icons.js';
+import { variantOf, sizesFor, nearestSize } from './variants.js';
 import { VERSION } from '../../version.js';
 import { LEADERBOARD } from '../../config.js';
 import { createLeaderboard, backendsFromConfig, submitAttempt } from '../../platform/leaderboard.js';
@@ -30,7 +33,7 @@ import { sfxMove, sfxBack, sfxCheckpoint, sfxMoveAfterCheckpoint, sfxBlocked, sf
 
 const SIZES = PLAY_SIZES;
 const S = { screen: 'menu', mode: 'standard', variant: null, genMode: 'standard', size: 7, puzzle: null, path: [], elapsed: 0, startTime: 0, timerId: null, finished: false,
-  gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, isReplay: false, replayPick: null, gotdDate: null, gotdHint: null, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, difficulty: null,
+  gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, isReplay: false, replayPick: null, gotdDate: null, gotdHint: null, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, arrowsUnlocked: false, difficulty: null,
   legs: [], gameDay: null, isShared: false, shared: null, sharedBad: false, sharedMsg: null };
 
 // Grade a puzzle right after generation, once, before it's shown (see core/grades.js playGradesFor):
@@ -68,10 +71,13 @@ function devBadgeHtml() {
   return `<div id="versionBadge" class="dev-badge" style="display:${display}">Zip v${VERSION}</div>`;
 }
 
+const GEN_SUB = { cutout: 'gen.subCutout', arrows: 'gen.subArrows' }; // the texts under the title, per type
+
 function renderGenerating() {
   const gen = S.gen;
   const percent = Math.round(gen.frac * 100);
-  const walls = gen.walls == null ? t('gen.searching') : t('gen.walls', gen.walls);
+  const countKey = S.genMode === 'arrows' ? 'gen.arrows' : 'gen.walls';
+  const walls = gen.walls == null ? t('gen.searching') : t(countKey, gen.walls);
   // Players see only the percentage and the bar; the walls count and K appear while V is held.
   const devInfo = ` — ${walls}${gen.K == null ? '' : ` · K ${gen.K}`}`;
   return `
@@ -79,7 +85,7 @@ function renderGenerating() {
       <section class="card">
         <div class="gen-icon">${variantIcon(S.genMode)}</div>
         <h2 class="card-title">${t('gen.title')}</h2>
-        <p class="small">${t(S.genMode === 'cutout' ? 'gen.subCutout' : 'gen.sub', S.size)}</p>
+        <p class="small">${t(GEN_SUB[S.genMode] || 'gen.sub', S.size)}</p>
         <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}">
           <div style="width:${percent}%"></div>
         </div>
@@ -106,19 +112,25 @@ async function refreshNext() {
 
 const gameNo = n => (S.nextIdx[n] == null ? '-' : '#' + (S.nextIdx[n] + 1));
 
-// Puzzle types (PUZZLE_TYPES in ./icons.js): 'standard', and the Cutout variant (core/gen/cutout.js). Cutout is random,
-// with no daily sequence, no grade and no stats (yet); a shared Cutout carries its puzzle in the link.
-// The menu offers both as two icon tiles (variantPickerHtml); the Game of Day is always a standard puzzle.
-const todayText = () => (S.mode === 'cutout' ? '' : t('menu.today', gameNo(S.size)));
+// Puzzle types (PUZZLE_TYPES, HIDDEN_TYPES in ./icons.js): 'standard', the Cutout variant (core/gen/cutout.js) and the One way
+// arrows variant (core/gen/arrows.js). A variant is random, with no daily sequence, no grade and no stats (yet); a shared
+// one carries its puzzle in the link. The menu offers them as icon tiles (variantPickerHtml), the arrows tile only after V
+// was held; the Game of Day is always a standard puzzle.
+const todayText = () => (S.mode !== 'standard' ? '' : t('menu.today', gameNo(S.size)));
 const randomSeed = () => (globalThis.crypto && crypto.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 4294967296));
 
 // Two radio tiles, each an icon of the board it plays (full square / square with holes), a name and a tagline.
 // Native radios: keyboard (arrows), screen readers and touch work without extra code; css/play.css draws the state.
+// A hidden type is in the markup from the start (setDevReveal shows it while V is held); once it has been picked it stays.
+const typeShown = mode => !HIDDEN_TYPES.includes(mode) || S.showDev || S.arrowsUnlocked || S.mode === mode;
+
 function variantPickerHtml() {
-  const tiles = PUZZLE_TYPES.map(mode => {
+  const tiles = [...PUZZLE_TYPES, ...HIDDEN_TYPES].map(mode => {
     const checked = mode === S.mode ? ' checked' : '';
+    const extra = HIDDEN_TYPES.includes(mode) ? ' variant-extra' : '';
+    const style = typeShown(mode) ? '' : ' style="display:none"';
     return `
-        <label class="variant-opt">
+        <label class="variant-opt${extra}" id="variantOpt-${mode}"${style}>
           <input type="radio" name="variant" value="${mode}"${checked}>
           <span class="variant-card">
             ${variantIcon(mode)}
@@ -175,10 +187,15 @@ function gotdCardHtml() {
 }
 
 // Free-play card: pick the puzzle type (icon tiles) and the grid size, then play. Both types are always on offer.
+// The grid sizes on offer for the picked puzzle type (sizesFor in ./variants.js); S.size moves to the nearest one on offer.
+function sizeOptionsHtml() {
+  const sizes = sizesFor(S.mode, SIZES);
+  if (!sizes.includes(S.size)) S.size = nearestSize(S.size, sizes);
+  return sizes.map(n => `<option value="${n}"${n === S.size ? ' selected' : ''}>${n}x${n}</option>`).join('');
+}
+
 function freePlayCardHtml() {
-  const sizeOptions = SIZES
-    .map(n => `<option value="${n}"${n === S.size ? ' selected' : ''}>${n}x${n}</option>`)
-    .join('');
+  const sizeOptions = sizeOptionsHtml();
   const storageNote = `Storage: ${storage.name}${storage.shared ? '' : ' (local only)'}`;
   return `
       <section class="card">
@@ -371,16 +388,18 @@ function difficultyDevHtml() {
   return `<span id="difficultyDev" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="trap: the badge score before it is cut into a grade, with its inputs (worst step's trap score, top-3 steps' sum, fraction of steps that have any wrong move, what-if guesses the technique ladder needed). decisionNodes: the previous badge grade (solver branch points per cell). B: backtrack overhead (nodes/cells - 1) from the same solve. cross: how many non-adjacent checkpoint-to-checkpoint segments geometrically cross, per segment. Each old grade is graded 0-5 with its own calibration; the trap grade is fit to hand ratings. The design app shows all of them.">${body}${t || g ? ' · <a href="#" id="exportPlayLog" title="Download the play log (what you did on each puzzle: time, cells drawn and taken back), local to this device, for tools/playlog-eval.mjs">play log</a>' : ''}</span>`;
 }
 
+const VARIANT_TITLE = { cutout: ['game.cutoutTitle', 'game.sharedCutoutTitle'], arrows: ['game.arrowsTitle', 'game.sharedArrowsTitle'] };
+
 function renderGame() {
   const p = S.puzzle;
   const time = sec(S.elapsed);
   const cap = maxHints(p);
-  const seedText = S.variant ? `cutout · ${S.seed == null ? 'shared' : 'seed ' + S.seed} · ${p.shape}` : `seed ${S.seed} · flags ${flagsToHex(PLAY_FLAGS_INT)}`;
-  const seedHint = S.variant ? 'generateCutout (core/gen/cutout.js) is seeded, but the app seeds it at random; a shared game carries its puzzle in the link.' : "Design app's Generate uses these same algorithm choices, but generate() here also tries several candidates and keeps the cheapest, so pasting this seed+flags there is not guaranteed to reproduce this exact puzzle";
+  const seedText = S.variant ? `${S.variant} · ${S.seed == null ? 'shared' : 'seed ' + S.seed}${p.shape ? ' · ' + p.shape : ''}` : `seed ${S.seed} · flags ${flagsToHex(PLAY_FLAGS_INT)}`;
+  const seedHint = S.variant ? (S.variant === 'arrows' ? 'generateArrows (core/gen/arrows.js)' : 'generateCutout (core/gen/cutout.js)') + ' is seeded, but the app seeds it at random; a shared game carries its puzzle in the link.' : "Design app's Generate uses these same algorithm choices, but generate() here also tries several candidates and keeps the cheapest, so pasting this seed+flags there is not guaranteed to reproduce this exact puzzle";
   const seedTag = `<span id="seedTag" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="${seedHint}">${seedText}</span>`;
   const shapeName = p.shape ? t('shape.' + p.shape) : '';
   const localTitle = S.variant
-    ? t(S.isShared ? 'game.sharedCutoutTitle' : 'game.cutoutTitle', p.n, shapeName)
+    ? t(VARIANT_TITLE[S.variant][S.isShared ? 1 : 0], p.n, shapeName)
     : (S.isShared ? t('game.sharedTitle', p.n, S.gameIndex + 1, dateLabel(dateOfDay(S.gameDay))) : t('game.localTitle', p.n, S.gameIndex + 1));
   const title = S.isGotd ? t(S.isReplay ? 'game.replayTitle' : 'game.gotdTitle', S.gotdDate) : localTitle + seedTag;
   const canShare = S.finished && (S.isGotd || S.gameDay != null || S.variant);
@@ -414,7 +433,7 @@ function renderGame() {
             ${newPuzzleButton}
             <button class="btn secondary" id="resetPath">${t('game.reset')}</button>
             <button class="btn secondary" id="hintBtn" style="${hiddenUnlessDev}" ${hintDisabled}>Hint (${S.hintsUsed}/${cap})</button>
-            <button class="btn secondary" id="exportBtn" style="${hiddenUnlessDev}">Export</button>
+            ${S.variant === 'arrows' ? '' : `<button class="btn secondary" id="exportBtn" style="${hiddenUnlessDev}">Export</button>`}
           </div>
           ${solved}
           ${canShare ? '<p class="small share-msg" id="shareMsg"></p>' : ''}
@@ -432,6 +451,9 @@ function attachHandlers() {
   document.querySelectorAll('input[name="variant"]').forEach(input => {
     input.onchange = () => {
       S.mode = input.value;
+      if (S.mode === 'arrows') S.arrowsUnlocked = true;
+      S.size = +$('sizeSel').value;
+      $('sizeSel').innerHTML = sizeOptionsHtml();
       $('gameNo').textContent = todayText();
     };
   });
@@ -476,12 +498,26 @@ function setupGridInput(svg) {
   };
   const clearHint = () => { if (S.hintCell == null && S.hintWrongCell == null) return; S.hintCell = S.hintWrongCell = null; svg.querySelectorAll('[data-role="hint"],[data-role="hint-wrong"]').forEach(e => e.remove()); };
   const syncFills = () => { const on = new Set(S.path); svg.querySelectorAll('[data-num-cell]').forEach(g => fill(+g.dataset.numCell, on.has(+g.dataset.numCell))); };
+  // A step against a one-way arrow: that arrow flashes (the animation is in css/play.css).
+  function flashBlockedArrow(from, to) {
+    if (!p.arrows || !gridAdjacent(n, from, to) || arrowAllows(p.arrows, n, from, to)) return;
+    const mark = svg.querySelector(`[data-arrow="${edgeId(n, from, to)}"] polygon`);
+    if (!mark || mark.classList.contains('blocked')) return;
+    mark.classList.add('blocked');
+    mark.addEventListener('animationend', () => mark.classList.remove('blocked'), { once: true });
+  }
   function walkTo(cell) {
     if (cell < 0 || S.finished || (p.holes && p.holes[cell])) return; // a hole is not part of the board
     const prev = S.path[S.path.length - 1], before = S.path.length, prevPath = S.path.slice(), kind = step(p, S.path, cell);
     if (kind && S.trace) traceStep(S.trace, kind, before, S.path.length);
     if (kind && kind !== 'push') legsUndo(S.legs, p, prevPath, S.path.length);
-    if (!kind) { if (prev != null && cell !== prev) sfxBlocked(); return; }
+    if (!kind) {
+      if (prev != null && cell !== prev) {
+        sfxBlocked();
+        flashBlockedArrow(prev, cell);
+      }
+      return;
+    }
     if (kind === 'push') fill(cell, true); else if (kind === 'pop') fill(prev, false); else syncFills();
     setD(); clearHint();
     if (kind === 'push' && isSolved(p, S.path)) { onSolved(); return; }
@@ -547,19 +583,25 @@ async function shareGotd(date) {
 // ---------- game flow ----------
 function beginGame(puzzle, gotdDate, isReplay = false, isShared = false) {
   logPlay(false); // a puzzle left unfinished is logged as abandoned
-  const variant = puzzle.holes ? 'cutout' : null; // only Cutout puzzles have holes
+  const variant = variantOf(puzzle);
   const difficulty = variant ? null : gradePuzzle(puzzle); // a variant is not graded yet
   Object.assign(S, { variant, trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
   startTimer(); render();
 }
-const generateShown = (n, seed, mode = 'standard') => runAsync(mode === 'cutout' ? generateCutout(n, seed, { maxMs: CUTOUT_MAX_MS }) : generate(n, seed), { onEvent: e => { S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls, K: e.K }; if (S.screen === 'generating') render(); } });
-async function startLocal(how, mode = 'standard') { // how: 'open' (Play local: current or next-if-solved) | 'skip' (New puzzle); a Cutout is always a new random one
+function generatorFor(mode, n, seed) {
+  if (mode === 'cutout') return generateCutout(n, seed, { maxMs: CUTOUT_MAX_MS });
+  if (mode === 'arrows') return generateArrows(n, seed);
+  return generate(n, seed);
+}
+const generateShown = (n, seed, mode = 'standard') => runAsync(generatorFor(mode, n, seed), { onEvent: e => { S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls ?? e.arrows, K: e.K }; if (S.screen === 'generating') render(); } });
+async function startLocal(how, mode = 'standard') {
+  if (mode === 'arrows') S.size = nearestSize(S.size, sizesFor(mode, SIZES)); // e.g. after a shared 12x12 one // how: 'open' (Play local: current or next-if-solved) | 'skip' (New puzzle); a variant is always a new random one
   S.screen = 'generating'; S.genMode = mode; S.gen = { frac: 0, walls: null, K: null }; render();
   try {
-    const { index, seed } = mode === 'cutout' ? { index: 0, seed: randomSeed() } : how === 'skip' ? await daily.skip(S.size) : await daily.open(S.size);
+    const { index, seed } = mode !== 'standard' ? { index: 0, seed: randomSeed() } : how === 'skip' ? await daily.skip(S.size) : await daily.open(S.size);
     const puzzle = await generateShown(S.size, seed, mode);
     S.gameIndex = index; S.seed = seed;
-    S.gameDay = mode === 'cutout' ? null : [dayNo(), dayNo() - 1].find(d => dailySeed(d, S.size, index, ALGO_VERSION) === seed) ?? null; // the day this seed was made on: what a share link needs
+    S.gameDay = mode !== 'standard' ? null : [dayNo(), dayNo() - 1].find(d => dailySeed(d, S.size, index, ALGO_VERSION) === seed) ?? null; // the day this seed was made on: what a share link needs
     beginGame(puzzle, null);
   } catch (e) { console.error('startLocal failed:', e); S.screen = 'menu'; render(); alert(t('err.generate')); }
 }
@@ -630,7 +672,7 @@ function sharedCardHtml() {
   if (!rec) return '';
   const state = sharedStatus(rec);
   const date = rec.variant ? '' : dateLabel(dateOfDay(rec.day));
-  const head = rec.kind === 'gotd' ? t('share.gotd', date) : rec.variant ? t('share.cutout') + (rec.puzzle.shape ? ' · ' + t('shape.' + rec.puzzle.shape) : '') : t('share.local', rec.index + 1, date);
+  const head = rec.kind === 'gotd' ? t('share.gotd', date) : rec.variant ? t(rec.variant === 'arrows' ? 'share.arrows' : 'share.cutout') + (rec.puzzle.shape ? ' · ' + t('shape.' + rec.puzzle.shape) : '') : t('share.local', rec.index + 1, date);
   const grade = rec.grade == null ? '' : ` · ${t('grade.' + rec.grade)} ${rec.grade}/5`;
   const row = [`<span>⏱ ${sec(rec.timeS)}</span>`];
   if (rec.pct != null) row.push(`<span>${t('share.beat', rec.pct)}</span>`);
@@ -801,6 +843,7 @@ function setDevReveal(on) {
   const tag = $('seedTag'); if (tag) tag.style.display = on ? 'inline' : 'none';
   const d = $('difficultyDev'); if (d) d.style.display = on ? 'inline' : 'none';
   const g = $('genDev'); if (g) g.style.display = on ? 'inline' : 'none';
+  for (const type of HIDDEN_TYPES) { const tile = $('variantOpt-' + type); if (tile) tile.style.display = typeShown(type) ? '' : 'none'; }
   const shown = S.screen === 'game' && S.isGotd ? store.attemptOn(S.gotdDate) : store.attempt(), st = shown && shown.stats;
   if (st) document.querySelectorAll('.gotd-stats').forEach(e => { e.textContent = statsLineT(st, on); });
 }

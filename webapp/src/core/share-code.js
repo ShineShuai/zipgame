@@ -17,11 +17,19 @@
 //   | holes: size*size bits, 1 = hole | K 7, then K cell indices of checkpoints 1..K, 8 bits each
 //   | wall count 8, then 9 bits per wall (edge id, see core/edges.js) | strip length 6, 2 bits per leg | check 8
 // A 7x7 Cutout is about 50 characters, a 16x16 one about 140. Version 1 links are unchanged.
+//
+// One way arrows (variant id 2) uses the same version 2 frame, with the puzzle as
+//   version 3 (=2) | variant 4 | size 5 | time 17
+//   | K 7, then K cell indices of checkpoints 1..K, 8 bits each
+//   | arrow count 8, then per arrow: edge id 9 + direction 1 (1 = it points to the lower cell index)
+//   | strip length 6, 2 bits per leg | check 8
+// A 7x7 one with 6 arrows is about 40 characters.
 import { LABELS } from './gen/shapes.js';
+import { arrowProblem, arrowDirId } from './edges.js';
 
 export const SHARE_VERSION = 1;
 export const SHARE_VERSION_VARIANT = 2;
-export const VARIANTS = [null, 'cutout']; // variant id -> name
+export const VARIANTS = [null, 'cutout', 'arrows']; // variant id -> name
 export const VARIANT_SHAPES = LABELS; // shape id - 1 -> name
 export const VARIANT_MAX_N = 16;
 export const MAX_LEGS = 63;
@@ -70,10 +78,27 @@ function isCutoutPuzzle(p) {
   return Math.abs(colours[0] - colours[1]) <= 1 && marks.length >= 2 && marks.length <= 127 && marks.every((v, i) => v === i + 1);
 }
 
+// A One way arrows puzzle { n, cp, walls, arrows }: numbered 1..K without gaps, no walls, sound arrows (see
+// arrowProblem in core/edges.js), at most 255 of them.
+function isArrowsPuzzle(p) {
+  if (!p || !isInt(p.n, 2, VARIANT_MAX_N)) return false;
+  const T = p.n * p.n;
+  if (!p.cp || p.cp.length !== T || !p.walls || p.walls.length !== T || !p.arrows || p.arrows.length !== T) return false;
+  if (p.walls.some(w => w !== 0) || arrowProblem(p) !== null) return false;
+  const marks = [];
+  for (let i = 0; i < T; i++) if (p.cp[i]) marks.push(p.cp[i]);
+  marks.sort((a, b) => a - b);
+  const arrows = p.arrows.reduce((k, a) => k + (a & 1) + ((a >> 1) & 1), 0);
+  return marks.length >= 2 && marks.length <= 127 && marks.every((v, i) => v === i + 1) && arrows <= 255;
+}
+
+const SOUND_PUZZLE = { cutout: isCutoutPuzzle, arrows: isArrowsPuzzle };
+
 function isEncodable(rec) {
   if (rec && rec.variant != null) {
-    return rec.kind === 'local' && rec.variant === 'cutout' && isInt(rec.n, 2, VARIANT_MAX_N) && rec.puzzle && rec.puzzle.n === rec.n
-      && isCutoutPuzzle(rec.puzzle) && rec.grade == null && (rec.timeS > 0) && Number.isFinite(rec.timeS)
+    const sound = SOUND_PUZZLE[rec.variant];
+    return rec.kind === 'local' && !!sound && isInt(rec.n, 2, VARIANT_MAX_N) && rec.puzzle && rec.puzzle.n === rec.n
+      && sound(rec.puzzle) && rec.grade == null && (rec.timeS > 0) && Number.isFinite(rec.timeS)
       && Array.isArray(rec.levels) && rec.levels.every(v => isInt(v, 0, 3));
   }
   if (!rec || (rec.kind !== 'gotd' && rec.kind !== 'local')) return false;
@@ -133,7 +158,29 @@ function bitsToCode(bits) {
 }
 
 // Version 2 body (see the layout at the top). Walls are written in edge id order; levels as in version 1.
+function pushArrows(bits, rec, levels) {
+  const p = rec.puzzle, T = p.n * p.n, cells = [], arrows = [];
+  for (let i = 0; i < T; i++) {
+    if (p.cp[i]) cells[p.cp[i] - 1] = i;
+    for (let t = 0; t < 2; t++) if ((p.arrows[i] >> t) & 1) arrows.push(i * 2 + t);
+  }
+  pushBits(bits, SHARE_VERSION_VARIANT, 3);
+  pushBits(bits, VARIANTS.indexOf('arrows'), 4);
+  pushBits(bits, p.n, 5);
+  pushBits(bits, Math.min(MAX_TENTHS, Math.round(rec.timeS * 10)), 17);
+  pushBits(bits, cells.length, 7);
+  for (const c of cells) pushBits(bits, c, 8);
+  pushBits(bits, arrows.length, 8);
+  for (const e of arrows) {
+    pushBits(bits, e, 9);
+    pushBits(bits, arrowDirId(p.arrows, e) < 0 ? 1 : 0, 1);
+  }
+  pushBits(bits, levels.length, 6);
+  for (const level of levels) pushBits(bits, level, 2);
+}
+
 function pushVariant(bits, rec, levels) {
+  if (rec.variant === 'arrows') return pushArrows(bits, rec, levels);
   const p = rec.puzzle, T = p.n * p.n, cells = [], walls = [];
   for (let i = 0; i < T; i++) {
     if (p.cp[i]) cells[p.cp[i] - 1] = i;
@@ -213,7 +260,9 @@ export function decodeShare(code) {
 
 // Version 2 body, after its 3-bit version. read(width) / pos() are decodeShare's cursor; null when anything is off.
 function readVariant(read, bits, code, pos) {
-  if (VARIANTS[read(4)] !== 'cutout') {
+  const variant = VARIANTS[read(4)];
+  if (variant === 'arrows') return readArrows(read, bits, code, pos);
+  if (variant !== 'cutout') {
     return null;
   }
   const n = read(5);
@@ -256,4 +305,45 @@ function readVariant(read, bits, code, pos) {
   const exactLength = code.length === Math.ceil(pos() / 6);
   const zeroPadding = bits.slice(pos()).every(b => b === 0);
   return exactLength && zeroPadding && puzzle.shape !== false && isEncodable(rec) ? rec : null;
+}
+
+// The body of a One way arrows code, after its version and variant id (layout at the top).
+function readArrows(read, bits, code, pos) {
+  const n = read(5);
+  if (!isInt(n, 2, VARIANT_MAX_N)) {
+    return null;
+  }
+  const T = n * n;
+  const rec = { kind: 'local', variant: 'arrows', n, grade: null, timeS: read(17) / 10 };
+  const puzzle = { n, cp: new Uint16Array(T), walls: new Uint8Array(T), arrows: new Uint8Array(T) };
+  const K = read(7);
+  for (let k = 1; k <= K; k++) {
+    const cell = read(8);
+    if (cell >= T || puzzle.cp[cell]) {
+      return null;
+    }
+    puzzle.cp[cell] = k;
+  }
+  const arrows = read(8);
+  for (let i = 0; i < arrows; i++) {
+    const e = read(9);
+    const reversed = read(1);
+    if ((e >> 1) >= T || arrowDirId(puzzle.arrows, e) !== 0) {
+      return null;
+    }
+    puzzle.arrows[e >> 1] |= (1 << (e & 1)) | (reversed << (2 + (e & 1)));
+  }
+  rec.puzzle = puzzle;
+  const legs = read(6);
+  rec.levels = [];
+  for (let i = 0; i < legs; i++) {
+    rec.levels.push(read(2));
+  }
+  const end = pos();
+  if (read(CHECK_BITS) !== checksum(bits, end)) {
+    return null;
+  }
+  const exactLength = code.length === Math.ceil(pos() / 6);
+  const zeroPadding = bits.slice(pos()).every(b => b === 0);
+  return exactLength && zeroPadding && isEncodable(rec) ? rec : null;
 }

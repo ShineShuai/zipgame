@@ -270,12 +270,13 @@ select:focus { border-color: var(--blue); }
 .gotd-card .status-panel { margin-top: auto; padding-top: 12px; } /* replays and streak sit at the foot of the card */
 .gotd-card .card-badge { background: #fff1d6; color: #e8890c; }
 
-/* Puzzle type: two big tiles, each showing the board it plays. The radio is stretched over its tile
+/* Puzzle type: big tiles (two, or three while the hidden one is shown), each showing the board it plays. The radio is stretched over its tile
    (invisible), so a tap anywhere selects it; the selected tile gets a blue frame and a check mark. */
 .variant-picker { min-width: 0; margin: 0 0 18px; padding: 0; border: 0; }
 .variant-picker legend { padding: 0; margin-bottom: 8px; }
 .variant-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .variant-opt { position: relative; display: block; cursor: pointer; }
+.variant-extra { grid-column: 1 / -1; } /* the hidden type, when shown, takes a row of its own */
 .variant-opt input {
   position: absolute;
   inset: 0;
@@ -334,6 +335,7 @@ select:focus { border-color: var(--blue); }
 .vi-tile { fill: #fff; stroke: #a9bcf5; stroke-width: 0.7; }
 .vi-path { fill: none; stroke: #ffb020; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .vi-dot { fill: var(--blue); stroke: #fff; stroke-width: 1.2; }
+.vi-arrow { fill: #26324f; stroke: #fff; stroke-width: 0.8; stroke-linejoin: round; paint-order: stroke; }
 
 .size-field { margin-bottom: 16px; }
 
@@ -400,6 +402,17 @@ select:focus { border-color: var(--blue); }
 
 /* Cutout: the tiles carry the white and the outline, so the holes show the page behind them */
 .zip-svg.cutout { background: transparent; box-shadow: none; overflow: visible; }
+/* One way arrows: a step against an arrow flashes it (the polygon gets .blocked, see flashBlockedArrow in main.js). */
+.arrow-mark polygon { transform-box: fill-box; transform-origin: center; }
+.arrow-mark polygon.blocked { animation: arrow-blocked 0.45s ease-out; }
+@keyframes arrow-blocked {
+  0% { fill: #e5484d; transform: scale(1); }
+  35% { fill: #e5484d; transform: scale(1.7); }
+  100% { fill: #26324f; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arrow-mark polygon.blocked { animation: none; fill: #e5484d; }
+}
 
 .solved {
   margin-top: 14px;

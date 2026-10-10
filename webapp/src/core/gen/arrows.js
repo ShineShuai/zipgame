@@ -28,6 +28,8 @@ import { solve } from '../solver/solve.js';
 // trade-off).
 export const ARROW_CANDIDATES = { 5: 32, 6: 24, 7: 16, 8: 8, 9: 3 };
 const candidatesFor = n => ARROW_CANDIDATES[n] || 2;
+// The grid sizes the play app offers for this variant (it grows with the solver; see generateArrows).
+export const ARROW_SIZES = Object.keys(ARROW_CANDIDATES).map(Number);
 export const ARROW_CAP_PER_CELL = 600;
 export const ARROW_MIN_CAP = 20000;
 export const ARROW_CHECK_CAP_X = 0.2;

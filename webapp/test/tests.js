@@ -59,6 +59,7 @@ import { variantIcon, cardIcon, PUZZLE_TYPES } from '../src/apps/play/icons.js';
 import { VARIANTS } from '../src/core/share-code.js';
 import { directedTests } from './directed.js';
 import { arrowsGenTests } from './arrows-gen.js';
+import { playArrowsTests } from './play-arrows.js';
 
 // ---- mini harness ----
 const out = []; let pass = 0, fail = 0;
@@ -2977,7 +2978,7 @@ t('share-code: a Cutout game round-trips with its puzzle; 7x7 stays short; damag
   }
   ok(encodeShare(makeShareRecord({ n: 7, timeS: 9, legs: [], K: 7, variant: 'cutout', puzzle: runSync(generateCutout(7, 4, { boards: 1, effort: 0.1 })) })).length <= 64);
   eq(decodeShare(encodeShare(LOCAL_REC)), LOCAL_REC); eq(decodeShare(encodeShare(GOTD_REC)), GOTD_REC);
-  eq(VARIANTS, [null, 'cutout']);
+  eq(VARIANTS, [null, 'cutout', 'arrows']);
 });
 t('share-code: a Cutout record is refused when its puzzle is unsound (unbalanced, checkpoint on a hole, wall at a hole, a gap in the numbers)', () => {
   const good = runSync(generateCutout(6, 8, { boards: 1, effort: 0.1 }));
@@ -3001,6 +3002,7 @@ t('share: a Cutout share record has the puzzle, a head line of its own, and is a
 
 directedTests(t, ok, eq);
 arrowsGenTests(t, ok, eq);
+playArrowsTests(t, ok, eq);
 
 for (const [name, fn] of pending) { const t0 = Date.now(); try { await fn(); pass++; out.push(`ok    ${name} (${Date.now() - t0}ms)`); } catch (e) { fail++; out.push(`FAIL  ${name}: ${e.message}`); } }
 const text = out.join('\n') + `\n\n${pass} passed, ${fail} failed`;

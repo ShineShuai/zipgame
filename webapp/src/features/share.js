@@ -60,8 +60,8 @@ export const dayOfDate = date => {
 };
 
 // gotdDate ('YYYYMMDD') given = a Game of Day, else a local game
-// (day = UTC day of its seed, index 0-based). variant ('cutout') = a game of that variant: random, so the record carries the
-// puzzle itself ({ n, shape, holes, cp, walls }) instead of day / index / algo.
+// (day = UTC day of its seed, index 0-based). variant ('cutout' | 'arrows') = a game of that variant: random, so the record
+// carries the puzzle itself ({ n, shape, holes, cp, walls } | { n, cp, walls, arrows }) instead of day / index / algo.
 export function makeShareRecord({ gotdDate, n, grade, timeS, pct, day, index, algo, legs, K, variant, puzzle }) {
   const common = {
     n,
@@ -71,6 +71,10 @@ export function makeShareRecord({ gotdDate, n, grade, timeS, pct, day, index, al
   };
   if (gotdDate) {
     return { kind: 'gotd', ...common, day: dayOfDate(gotdDate), pct: pct == null ? null : pct };
+  }
+  if (variant === 'arrows') {
+    const { cp, walls, arrows } = puzzle;
+    return { kind: 'local', ...common, variant, puzzle: { n, cp: cp.slice(), walls: walls.slice(), arrows: arrows.slice() } };
   }
   if (variant) {
     const { shape, holes, cp, walls } = puzzle;
@@ -99,7 +103,8 @@ export function parseShareLink(search) {
 export function shareText(rec, url, tr) {
   const head = rec.kind === 'gotd'
     ? tr('share.headGotd', dateLabel(dateOfDay(rec.day)), rec.n)
-    : rec.variant ? tr('share.headCutout', rec.n) : tr('share.headLocal', rec.n, rec.index + 1);
+    : rec.variant ? tr(rec.variant === 'arrows' ? 'share.headArrows' : 'share.headCutout', rec.n)
+      : tr('share.headLocal', rec.n, rec.index + 1);
   const grade = rec.grade == null ? '' : ` · ${tr('grade.' + rec.grade)} ${rec.grade}/5`;
   const result = [`⏱ ${rec.timeS.toFixed(1)}s`];
   if (rec.pct != null) {
