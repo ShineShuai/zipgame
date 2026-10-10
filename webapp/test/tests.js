@@ -60,6 +60,7 @@ import { VARIANTS } from '../src/core/share-code.js';
 import { directedTests } from './directed.js';
 import { arrowsGenTests } from './arrows-gen.js';
 import { playArrowsTests } from './play-arrows.js';
+import { designArrowsTests } from './design-arrows.js';
 
 // ---- mini harness ----
 const out = []; let pass = 0, fail = 0;
@@ -3003,6 +3004,7 @@ t('share: a Cutout share record has the puzzle, a head line of its own, and is a
 directedTests(t, ok, eq);
 arrowsGenTests(t, ok, eq);
 playArrowsTests(t, ok, eq);
+designArrowsTests(t, ok, eq);
 
 for (const [name, fn] of pending) { const t0 = Date.now(); try { await fn(); pass++; out.push(`ok    ${name} (${Date.now() - t0}ms)`); } catch (e) { fail++; out.push(`FAIL  ${name}: ${e.message}`); } }
 const text = out.join('\n') + `\n\n${pass} passed, ${fail} failed`;

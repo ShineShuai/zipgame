@@ -1,11 +1,15 @@
 import { makePuzzle, validate, maxNumber } from '../../core/model.js';
-import { allEdges, hasWallId, setWallId, wallIds, wallCount as countWalls, pathEdgeIds } from '../../core/edges.js';
+import {
+  allEdges, hasWallId, setWallId, wallIds, wallCount as countWalls, pathEdgeIds,
+  arrowIds, arrowCount, arrowDirId, setArrowId,
+} from '../../core/edges.js';
 import { serialize, parse } from '../../core/format.js';
 import { shuffle, makeRng } from '../../core/rng.js';
 import { solve } from '../../core/solver/solve.js';
 import { step } from '../../core/rules.js';
 import { randomPathPuzzle, generateUnique, generate, CAPPED_TRIES } from '../../core/gen/generate.js';
 import { minimizeFully } from '../../core/gen/walls.js';
+import { generateArrows, minimizeArrowsFully, ARROW_SIZES } from '../../core/gen/arrows.js';
 import { generateTargeted, targetBand, maxTargetGrade } from '../../core/gen/target.js';
 import { scatter } from '../../core/gen/checkpoints.js';
 import { cellAtPoint } from '../../view/geometry.js';
@@ -118,6 +122,8 @@ const view = () => ({ P, cellSize: cellSizeFor(P.n), mode, selected, buffer, pla
 function draw() {
   refs = renderBoard(boardEl, stageEl, view());
   $('wallModeTag').textContent = countWalls(P) ? `(${countWalls(P)})` : '';
+  $('arrowModeTag').textContent = P.arrows && arrowCount(P) ? `(${arrowCount(P)})` : '';
+  syncArrowsUi();
   if (playMode) paintPlayNow();
   updateValidity();
   renderTiming();
@@ -132,8 +138,52 @@ function updateWallCapTag() {
   $('wallCapTag').textContent = `(≤ ${cap})`; $('wallCount').max = cap;
   if (parseInt($('wallCount').value, 10) > cap) $('wallCount').value = cap;
 }
-function setBusy(b) { busy = b; document.querySelectorAll('button').forEach(x => { x.disabled = b; }); }
-function adopt(q) { P = { n: q.n, cp: q.cp, walls: q.walls }; preview = q.path || null; previewVisible = true; selected = -1; buffer = ''; }
+function setBusy(b) {
+  busy = b;
+  document.querySelectorAll('button').forEach(x => { x.disabled = b; });
+  syncArrowsUi();
+}
+
+// ---------- One way arrows ----------
+// A puzzle with P.arrows (even an empty array) is a One way arrows puzzle; resetting the board or
+// importing a text without an `arrows` line makes it a standard one again. What assumes two-way
+// edges is switched off for it: Minimize walls (its freed-edge check is about the edge, either
+// way), the difficulty grade (fitted on walls) and the play highlights that flood-fill or count
+// degrees (connectivity, dead ends, forced edges, leg collisions; the checkpoint graph stays).
+const ARROW_OFF = [
+  'minimizeWalls', 'difficultyBtn', 'showConn', 'showDead', 'showProp', 'showLegCollide',
+];
+const ARROW_OFF_TITLE = 'Not available for One way arrows puzzles: it assumes two-way edges.';
+function syncArrowsUi() {
+  const on = !!P.arrows;
+  for (const id of ARROW_OFF) {
+    const el = $(id);
+    if (!el) continue;
+    el.disabled = on || (el.tagName === 'BUTTON' && busy);
+    if (el.dataset.title === undefined) el.dataset.title = el.title;
+    el.title = on ? ARROW_OFF_TITLE : el.dataset.title;
+    if (on && el.type === 'checkbox') el.checked = false;
+  }
+  if (on) showConn = showDead = showProp = showLegCollide = false;
+}
+// Click on a gap: none -> an arrow right/down -> an arrow left/up -> none.
+function cycleArrow(e) {
+  if (hasWallId(P.walls, e)) {
+    setStatus('That gap has a wall: take it away first (an edge carries a wall or an arrow, '
+      + 'not both).', 'warn');
+    return;
+  }
+  if (!P.arrows) P.arrows = new Uint8Array(P.n * P.n);
+  const next = { 0: 1, 1: -1, '-1': 0 }[arrowDirId(P.arrows, e)];
+  setArrowId(P.arrows, e, next);
+  clearSolutions();
+  clearPreview();
+  draw();
+}
+function adopt(q) {
+  P = { n: q.n, cp: q.cp, walls: q.walls, ...(q.arrows ? { arrows: q.arrows } : {}) };
+  preview = q.path || null; previewVisible = true; selected = -1; buffer = '';
+}
 function setDefaults(n) { $('cpCount').max = n * n; $('cpCount').value = n; $('wallCount').value = n; updateWallCapTag(); updateTargetGrades(); } // max checkpoints / max walls default to the grid size
 function refresh() { clearSolutions(); draw(); renderLegend(); updateWallCapTag(); }
 
@@ -166,9 +216,19 @@ function renderLegend() {
 function updateHint() {
   setHintText($('hint'), playMode ? 'Drag from checkpoint 1 through every cell. Move back over the path to undo.'
     : mode === 'number' ? 'Click a cell then type a number (Enter to confirm · Esc to cancel). Drag a numbered cell to move it to an empty cell. Press Delete or Backspace to clear the selected cell.'
+      : mode === 'arrow' ? ARROW_HINT
       : 'Click the gaps between cells to add or remove blocking walls.');
 }
-function setMode(m) { mode = m; $('modeNumber').classList.toggle('active', m === 'number'); $('modeWall').classList.toggle('active', m === 'wall'); updateHint(); draw(); }
+const ARROW_HINT = 'Click a gap between cells to cycle it: an arrow one way, the other way, none. '
+  + 'A one-way edge may only be walked in its arrow\'s direction; nothing has to cross it.';
+function setMode(m) {
+  mode = m;
+  const tools = [['modeNumber', 'number'], ['modeWall', 'wall'], ['modeArrow', 'arrow']];
+  for (const [id, name] of tools) {
+    $(id).classList.toggle('active', m === name);
+  }
+  updateHint(); draw();
+}
 function resetBoard(n) {
   if (playMode) exitPlay();
   P = makePuzzle(n); preview = null; previewVisible = true; selected = -1; buffer = ''; playPath = []; drawing = false;
@@ -182,6 +242,7 @@ boardEl.addEventListener('click', e => {
   if (suppressClick) { suppressClick = false; return; }
   const w = e.target.closest('.wallhit');
   if (w && mode === 'wall') { const id = +w.dataset.edge; setWallId(P.walls, id, !hasWallId(P.walls, id)); clearSolutions(); clearPreview(); draw(); updateWallCapTag(); return; }
+  if (w && mode === 'arrow') { cycleArrow(+w.dataset.edge); return; }
   const c = e.target.closest('.cell');
   if (c && mode === 'number') { selected = +c.dataset.idx; buffer = ''; draw(); }
 });
@@ -337,6 +398,7 @@ function enterPlay(seedPath) {
   playMode = true; playPath = seedPath || []; drawing = false; solutions = []; solVisible = []; selected = -1; buffer = ''; endGhost(); numDrag = null;
   $('playBtn').classList.add('on'); $('playBtn').textContent = '■ Stop playing'; $('playInfo').style.display = '';
   $('connToggles').style.display = '';
+  syncArrowsUi();
   playSeededSolved = Boolean(seedPath) && seedPath.length === P.n * P.n;
   timing.play = null;
   startPlayTimer(); const pt = $('playTimer'); if (pt) pt.style.display = '';
@@ -419,6 +481,88 @@ async function doMinimize() {
   } finally { setBusy(false); }
 }
 
+async function doMinimizeArrows() {
+  if (playMode) exitPlay();
+  if (!P.arrows || !arrowCount(P)) return setStatus('There are no arrows to minimize.', 'warn');
+  const v = validate(P);
+  if (!v.ok) {
+    clearSolutions();
+    setStatus('Fix the puzzle before minimizing: ' + v.msg, 'error');
+    return;
+  }
+  const limit = nodeLimit(), before = arrowCount(P);
+  const first = solve(P, { limit: 2, nodeCap: limit });
+  solutions = []; solVisible = []; lastAborted = false; lastNodes = 0; previewVisible = false;
+  if (first.exceeded || first.count !== 1) {
+    draw(); renderLegend();
+    const why = first.exceeded ? 'the search limit was reached before confirming it'
+      : first.count === 0 ? 'it has no solution' : 'it has multiple solutions';
+    return setStatus(
+      `Can't minimize — the puzzle isn't uniquely solvable as-is (${why}). `
+      + 'Solve first to check, add arrows to disambiguate, or raise the search limit.', 'error',
+    );
+  }
+  setBusy(true);
+  try {
+    const opts = { freedEdge: true, refineBudget: REFINE_BUDGET_X * limit };
+    const run = minimizeArrowsFully(P, arrowIds(P), rnd, limit, v.max, opts);
+    const r = await runAsync(run, {
+      onEvent: e => {
+        const what = e.nodes == null ? 'Minimizing' : 'Looking deeper';
+        setStatus(`${what}… ${plural(e.arrows, 'arrow')} left`, '');
+      },
+    });
+    draw(); renderLegend();
+    const undecided = r.uncertain.length;
+    const removed = r.removed
+      ? `Removed ${plural(r.removed, 'unnecessary arrow')}` : 'No arrow could be removed';
+    const left = plural(r.kept, 'remaining arrow');
+    let msg;
+    if (undecided) {
+      msg = `${removed} — of the ${left}, ${r.kept - undecided} are proven necessary and `
+        + `${undecided} are undecided: the search limit was reached. Raise it and minimize again.`;
+    } else if (r.removed === 0) {
+      msg = `All ${plural(before, 'arrow')} are already necessary — none could be removed `
+        + 'without losing uniqueness.';
+    } else {
+      msg = `${removed} — ${left} are each individually necessary for a unique solution.`;
+    }
+    setStatus(msg, undecided ? 'warn' : 'ok');
+  } finally { setBusy(false); }
+}
+$('minimizeArrows').onclick = doMinimizeArrows;
+$('clearArrows').onclick = () => {
+  delete P.arrows;
+  clearSolutions(); clearPreview(); draw();
+  setStatus('Arrows removed: a standard puzzle again.', 'ok');
+};
+$('randArrows').onclick = async () => {
+  if (playMode) exitPlay();
+  const K = Math.min(Math.max(K_(), 3), P.n * P.n);
+  const candidates = int_('arrowCandidates', 0, 1) || undefined;
+  const seed = currentSeed();
+  const top = Math.max(...ARROW_SIZES);
+  const slow = P.n > top
+    ? ` Sizes above ${top} are slow and may keep more arrows than needed.` : '';
+  setBusy(true); setStatus('Generating arrows…' + slow, '');
+  $('compareResult').style.display = 'none';
+  try {
+    const clock = { ms: 0 };
+    const p = await runAsync(measured(generateArrows(P.n, seed, { K, candidates }), clock), {
+      onEvent: e => {
+        const so = e.arrows == null ? '' : ` · ${plural(e.arrows, 'arrow')} so far`;
+        setStatus(`Generating arrows… ${Math.round(e.frac * 100)}%${so}${slow}`, '');
+      },
+    });
+    adopt(p);
+    setTiming('gen', clock.ms);
+    refresh();
+    setStatus(`Generated a One way arrows puzzle: ${plural(maxNumber(P), 'checkpoint')}, `
+      + `${plural(arrowCount(P), 'arrow')}, unique. Seed ${seed}.${slow} `
+      + 'The template path is shown dashed.', 'ok');
+  } finally { setBusy(false); }
+};
+
 // ---------- import / export / modal ----------
 function exportText() { return serialize(P, { path: $('includePath').checked ? playPath : null, times: exportTimes() }); }
 // Cheap detection of a `path` line without surfacing parse errors — used only to enable/disable
@@ -467,7 +611,9 @@ $('modalOk').onclick = async () => {
 };
 
 // ---------- bindings ----------
-$('modeNumber').onclick = () => setMode('number'); $('modeWall').onclick = () => setMode('wall');
+$('modeNumber').onclick = () => setMode('number');
+$('modeWall').onclick = () => setMode('wall');
+$('modeArrow').onclick = () => setMode('arrow');
 $('sizeSel').onchange = () => { resetBoard(+$('sizeSel').value); setDefaults(P.n); };
 $('clearWalls').onclick = () => { P.walls.fill(0); clearSolutions(); clearPreview(); draw(); updateWallCapTag(); };
 $('clearAll').onclick = () => resetBoard(P.n);

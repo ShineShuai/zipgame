@@ -1,9 +1,12 @@
 import { maxNumber, checkpointCells } from '../../core/model.js';
 import { hasWallId } from '../../core/edges.js';
-import { polyPoints, wallSegments, cellCenter, arrowSegment } from '../../view/geometry.js';
+import {
+  polyPoints, wallSegments, cellCenter, arrowSegment, arrowMarks,
+} from '../../view/geometry.js';
 import { boardConnectivity, boardPropagation, boardLegCollide } from '../../core/connectivity.js';
 
 export const TPL_C = '#8b93b8', PLAY_C = '#5b7cfa', SOL_C = ['#ffa62b', '#38bdf8'], LEG_C = '#c754ff', GRAPH_C = '#2dd4bf';
+export const ARROW_C = '#ffd23f';
 export const cellSizeFor = n => n <= 5 ? 66 : n <= 7 ? 54 : 46;
 const NS = 'http://www.w3.org/2000/svg';
 const box = (cls, x, y, w, h) => { const d = document.createElement('div'); d.className = cls; Object.assign(d.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' }); return d; };
@@ -19,7 +22,7 @@ export function renderBoard(board, stage, V) {
   const { P, cellSize: cs } = V, n = P.n, size = n * cs;
   board.style.width = board.style.height = size + 'px';
   stage.style.setProperty('--board-size', size + 'px');
-  board.classList.toggle('wallmode', V.mode === 'wall' && !V.playMode);
+  board.classList.toggle('wallmode', (V.mode === 'wall' || V.mode === 'arrow') && !V.playMode);
   board.classList.toggle('playmode', V.playMode);
   board.innerHTML = '';
 
@@ -48,6 +51,17 @@ export function renderBoard(board, stage, V) {
     refs.head = document.createElementNS(NS, 'circle');
     for (const [k, v] of Object.entries({ r: 0.16, fill: '#c3d0ff', stroke: PLAY_C, 'stroke-width': 0.06 })) refs.head.setAttribute(k, v);
     svg.appendChild(refs.head);
+  }
+  if (P.arrows) { // one-way arrows, above the lines
+    for (const { edge, points } of arrowMarks(P)) {
+      const tri = document.createElementNS(NS, 'polygon');
+      const attrs = {
+        points, fill: ARROW_C, stroke: '#0d1120', 'stroke-width': 0.04, 'stroke-linejoin': 'round',
+        class: 'arrowmark', 'data-edge': edge,
+      };
+      for (const [k, v] of Object.entries(attrs)) tri.setAttribute(k, v);
+      svg.appendChild(tri);
+    }
   }
   board.appendChild(svg);
 
@@ -164,11 +178,15 @@ function seg(x1, y1, x2, y2, stroke = '#ffd23f', width = 0.1, opacity = 0.85) {
 // Small static SVG snapshot of a puzzle (grid + walls + checkpoint dots + optional solved path),
 // for showing two generation/solve outcomes side by side. Not interactive, no DOM board underneath —
 // pure markup string so it can drop straight into an innerHTML'd panel (see renderCompare()).
-// p: { n, cp, walls }. path: optional array of cell indices (a found solution) to draw as a line.
+// p: { n, cp, walls, arrows? }. path: optional array of cell indices (a found solution) to draw as
+// a line.
 export function miniPreviewSvg(p, path, color) {
   const n = p.n, PAD = 0.06;
   const lines = wallSegments(p).map(([x1, y1, x2, y2]) =>
     `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#5b6489" stroke-width="0.08" stroke-linecap="round"/>`).join('');
+  const marks = p.arrows ? arrowMarks(p).map(({ points }) =>
+    `<polygon points="${points}" fill="${ARROW_C}" stroke="#0d1120" stroke-width="0.03" `
+    + 'stroke-linejoin="round"/>').join('') : '';
   const dots = [];
   for (let i = 0; i < n * n; i++) {
     if (!p.cp[i]) continue;
@@ -180,6 +198,6 @@ export function miniPreviewSvg(p, path, color) {
     ? `<polyline points="${polyPoints(n, path)}" fill="none" stroke="${color}" stroke-width="0.09" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>` : '';
   return `<svg viewBox="${-PAD} ${-PAD} ${n + 2 * PAD} ${n + 2 * PAD}" class="mini-preview">
     <rect x="0" y="0" width="${n}" height="${n}" fill="none" stroke="#232a44" stroke-width="0.05"/>
-    ${pathLine}${lines}${dots.join('')}
+    ${pathLine}${lines}${marks}${dots.join('')}
   </svg>`;
 }

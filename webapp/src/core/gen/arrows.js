@@ -28,7 +28,8 @@ import { solve } from '../solver/solve.js';
 // trade-off).
 export const ARROW_CANDIDATES = { 5: 32, 6: 24, 7: 16, 8: 8, 9: 3 };
 const candidatesFor = n => ARROW_CANDIDATES[n] || 2;
-// The grid sizes the play app offers for this variant (it grows with the solver; see generateArrows).
+// The grid sizes the play app offers for this variant (it grows with the solver; see
+// generateArrows).
 export const ARROW_SIZES = Object.keys(ARROW_CANDIDATES).map(Number);
 export const ARROW_CAP_PER_CELL = 600;
 export const ARROW_MIN_CAP = 20000;
@@ -211,6 +212,22 @@ export function* refineArrows(p, uncertain, rnd, opts) {
     if (!todo.length || nodes >= budget) break;
   }
   return { removed, kept: current, left: todo, nodes };
+}
+
+// minimizeArrows(), then refineArrows() on the arrows it left undecided: the design app's Minimize
+// button uses it (generateArrows runs the two apart, because it refines only its best candidate).
+// opts: those of minimizeArrows, plus refineBudget (default 0 = no deeper look) and refineCapX
+// (default ARROW_REFINE_CAP_X, the passes' per-check caps as multiples of checkCap). Needs p
+// unique. Events as in minimizeArrows (the second look's also carry nodes and budget). Returns
+// { removed, kept, uncertain } (uncertain = the arrows still undecided), or what minimizeArrows
+// returns when `bound` aborted the run.
+export function* minimizeArrowsFully(p, order, rnd, checkCap, K, opts = {}) {
+  const first = yield* minimizeArrows(p, order, rnd, checkCap, K, opts);
+  const budget = opts.refineBudget ?? 0;
+  if (first.aborted || budget <= 0 || !first.uncertain.length) return first;
+  const caps = (opts.refineCapX ?? ARROW_REFINE_CAP_X).map(x => x * checkCap);
+  const r = yield* refineArrows(p, first.uncertain, rnd, { caps, budget, arrows: first.kept, K });
+  return { removed: first.removed + r.removed, kept: r.kept, uncertain: r.left };
 }
 
 // One attempt: path -> checkpoints -> arrows until unique. Returns the puzzle (with .path and

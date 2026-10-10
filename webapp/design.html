@@ -29,6 +29,7 @@
       <div class="segmented">
         <button id="modeNumber" class="seg active">Numbers</button>
         <button id="modeWall" class="seg">Walls <span id="wallModeTag" class="seg-count"></span></button>
+        <button id="modeArrow" class="seg" title="Click a gap to cycle: an arrow one way, the other way, none (the One way arrows variant)">Arrows <span id="arrowModeTag" class="seg-count"></span></button>
       </div>
     </div>
 
@@ -57,6 +58,21 @@
     <div class="field row">
       <button id="randWalls" title="Add random walls (never on the template path)">🧱 Random</button>
       <button id="minimizeWalls" title="Remove every wall that is not needed for a unique solution. A wall whose check reaches the search limit gets a deeper second look (up to 50 times the limit in nodes in total); any still undecided are reported.">✂️ Minimize</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="field">
+      <label>One way arrows</label>
+      <div class="field field-row">
+        <label for="arrowCandidates" title="Candidate puzzles the generator minimizes before it keeps the one with the fewest arrows. Empty = the Play app's number for this size (5-9; larger sizes are slow).">Candidates</label>
+        <input id="arrowCandidates" type="number" min="1" placeholder="auto">
+      </div>
+      <button id="randArrows" class="wide" title="Random puzzle with one-way arrows and no walls: exactly one solution, as few arrows as it finds. Max checkpoints is the number of checkpoints; the seed field applies.">➡️✓ Generate arrows</button>
+      <div class="field row">
+        <button id="minimizeArrows" title="Remove every arrow that is not needed for a unique solution (the puzzle must be unique first). An arrow whose check reaches the search limit gets a deeper second look; any still undecided are reported.">✂️ Minimize</button>
+        <button id="clearArrows" title="Remove every arrow (the puzzle becomes a standard one again)">Clear</button>
+      </div>
     </div>
 
     <div class="divider"></div>

@@ -1,5 +1,8 @@
 import { makePuzzle } from './model.js';
-import { edgeToKey, keyToEdge, wallIds, setWallId } from './edges.js';
+import {
+  edgeToKey, keyToEdge, wallIds, setWallId, hasWallId, edgeId, setArrowId, arrowDirId, arrowIds,
+  arrowMove,
+} from './edges.js';
 import { gridAdjacent, canStep } from './rules.js';
 
 export const MAX_N = 16;
@@ -30,30 +33,44 @@ export function commentTimes(text) {
   return out;
 }
 
+const cellKey = (n, cell) => `${(cell / n) | 0},${cell % n}`;
+
 // opts.path: optional current play-mode path (array of cell indices) to include as a `path` line.
 // opts.times: optional { generateMs, solveMs, playS }, written as comment lines (see timeComments).
 export function serialize(p, opts = {}) {
   const cps = [];
   for (let i = 0; i < p.n * p.n; i++) if (p.cp[i]) cps.push(`${(i / p.n) | 0},${i % p.n}=${p.cp[i]}`);
   const ws = wallIds(p).map(e => edgeToKey(p.n, e));
+  const as = p.arrows
+    ? arrowIds(p).map(e => {
+      const move = arrowMove(p.n, e, arrowDirId(p.arrows, e));
+      return move.map(cell => cellKey(p.n, cell)).join('>');
+    })
+    : null;
   const hs = [];
   if (p.holes) for (let i = 0; i < p.n * p.n; i++) if (p.holes[i]) hs.push(`${(i / p.n) | 0},${i % p.n}`);
   const lines = ['# Zip Puzzle — plain text format', '# size N', '# checkpoints r,c=n ...   (0-based row/col)',
     '# walls T,r,c ...        (T = H or V; H spans (r,c)-(r+1,c); V spans (r,c)-(r,c+1))'];
   if (hs.length) lines.push('# holes r,c ...           (cells that are not part of the board; Cutout variant)');
+  if (as) {
+    lines.push('# arrows r,c>r,c ...     (one-way edges: a step is allowed from the first cell to the'
+      + ' second only)');
+  }
   if (opts.path && opts.path.length) lines.push('# path r,c ...           (current play-mode line, in order, optional)');
   lines.push(...timeComments(opts.times));
   lines.push(`size ${p.n}`, cps.length ? 'checkpoints ' + cps.join(' ') : 'checkpoints', ws.length ? 'walls ' + ws.join(' ') : 'walls');
   if (hs.length) lines.push('holes ' + hs.join(' '));
+  if (as) lines.push(as.length ? 'arrows ' + as.join(' ') : 'arrows');
   if (opts.path && opts.path.length) lines.push('path ' + opts.path.map(cell => `${(cell / p.n) | 0},${cell % p.n}`).join(' '));
   return lines.join('\n');
 }
 
+// An `arrows` line (even an empty one) makes it a One way arrows puzzle: p.arrows (core/edges.js).
 // Throws Error with a user-readable message. Returns the puzzle; if the text had a `path` line,
 // the puzzle also carries `.path` (array of cell indices) — same convention as a generated puzzle's
 // solution path (see model.js).
 export function parse(text) {
-  let n = null; const cps = [], ws = [], hs = []; let pathCells = null;
+  let n = null; const cps = [], ws = [], hs = [], as = []; let pathCells = null, hasArrows = false;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim(); if (!line || line.startsWith('#')) continue;
     const parts = line.split(/\s+/), kw = parts[0].toLowerCase();
@@ -66,6 +83,13 @@ export function parse(text) {
       for (const t of parts.slice(1)) { const m = t.match(/^([HV]),(\d+),(\d+)$/i); if (!m) throw new Error(`Invalid wall: "${t}"`); ws.push([m[1].toUpperCase(), +m[2], +m[3]]); }
     } else if (kw === 'holes') {
       for (const t of parts.slice(1)) { const m = t.match(/^(\d+),(\d+)$/); if (!m) throw new Error(`Invalid hole: "${t}"`); hs.push([+m[1], +m[2]]); }
+    } else if (kw === 'arrows') {
+      hasArrows = true;
+      for (const t of parts.slice(1)) {
+        const m = t.match(/^(\d+),(\d+)>(\d+),(\d+)$/);
+        if (!m) throw new Error(`Invalid arrow: "${t}" (expected r,c>r,c)`);
+        as.push([+m[1], +m[2], +m[3], +m[4]]);
+      }
     } else if (kw === 'path') {
       pathCells = [];
       for (const t of parts.slice(1)) { const m = t.match(/^(\d+),(\d+)$/); if (!m) throw new Error(`Invalid path cell: "${t}"`); pathCells.push([+m[1], +m[2]]); }
@@ -91,6 +115,22 @@ export function parse(text) {
     if (t === 'V' && c >= n - 1) throw new Error(`Vertical wall out of range: ${t},${r},${c}`);
     if (t === 'H' && r >= n - 1) throw new Error(`Horizontal wall out of range: ${t},${r},${c}`);
     setWallId(p.walls, keyToEdge(n, `${t},${r},${c}`), true);
+  }
+  if (hasArrows) {
+    p.arrows = new Uint8Array(n * n);
+    for (const [r1, c1, r2, c2] of as) {
+      const label = `${r1},${c1}>${r2},${c2}`;
+      if (Math.max(r1, c1, r2, c2) >= n) throw new Error(`Arrow out of range: ${label}`);
+      const from = r1 * n + c1, to = r2 * n + c2;
+      if (!gridAdjacent(n, from, to)) throw new Error(`Arrow cells are not neighbours: ${label}`);
+      if (p.holes && (p.holes[from] || p.holes[to])) {
+        throw new Error(`Arrow next to a hole: ${label}`);
+      }
+      const e = edgeId(n, from, to);
+      if (hasWallId(p.walls, e)) throw new Error(`Arrow on a wall: ${label}`);
+      if (arrowDirId(p.arrows, e) !== 0) throw new Error(`Two arrows on one edge: ${label}`);
+      setArrowId(p.arrows, e, from < to ? 1 : -1);
+    }
   }
   if (pathCells) {
     const path = pathCells.map(([r, c]) => {

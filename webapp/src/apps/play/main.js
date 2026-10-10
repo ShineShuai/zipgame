@@ -433,7 +433,7 @@ function renderGame() {
             ${newPuzzleButton}
             <button class="btn secondary" id="resetPath">${t('game.reset')}</button>
             <button class="btn secondary" id="hintBtn" style="${hiddenUnlessDev}" ${hintDisabled}>Hint (${S.hintsUsed}/${cap})</button>
-            ${S.variant === 'arrows' ? '' : `<button class="btn secondary" id="exportBtn" style="${hiddenUnlessDev}">Export</button>`}
+            <button class="btn secondary" id="exportBtn" style="${hiddenUnlessDev}">Export</button>
           </div>
           ${solved}
           ${canShare ? '<p class="small share-msg" id="shareMsg"></p>' : ''}
