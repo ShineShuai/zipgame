@@ -2,6 +2,7 @@ import { maxNumber, startCell, endCell } from '../model.js';
 import { buildNeighbors, makeConnOk, makeNoDeadEnd, makePocketOk, segBlocker, legsCollide } from './prune.js';
 import { makePropagator } from './propagate.js';
 import { makeIncremental } from './incremental.js';
+import { solveDirected } from './solve-dir.js';
 
 // Hamiltonian-path search: start at checkpoint 1, hit the checkpoints in order, end on the last one,
 // and cover every cell exactly once.
@@ -46,6 +47,9 @@ import { makeIncremental } from './incremental.js';
 // Returns { count, exceeded, nodes, subNodes, paths?, decisionNodes?, maxDecisionDepth? }. Pure: no DOM, no
 // timers, no randomness.
 export function solve(p, opts = {}) {
+  // One-way arrows break the two-way-edge assumptions of everything below: own solver
+  // (solve-dir.js; there mustUse is the directed move a -> b).
+  if (p.arrows) return solveDirected(p, opts);
   const n = p.n;
   const T = n * n;
   // Holes (puzzle.holes, see model.js) are not part of the board: buildNeighbors gives them no edges, and the path covers the
