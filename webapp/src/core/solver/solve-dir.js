@@ -2,6 +2,7 @@ import { maxNumber, startCell, endCell } from '../model.js';
 import { arrowAllows } from '../edges.js';
 import { buildNeighbors } from './prune.js';
 import { makeDirPropagator } from './propagate-dir.js';
+import { makeDirIncremental } from './incremental-dir.js';
 
 // Solver for puzzles with one-way arrows (puzzle.arrows, see core/edges.js). solve() hands such
 // puzzles over here.
@@ -10,29 +11,34 @@ import { makeDirPropagator } from './propagate-dir.js';
 // only. The standard solver (solve.js) and its prunes assume every edge is two-way (degree 2 per
 // cell, undirected flood fills, ...), so none of them is reused. This is DFS with checks that are
 // sound for directed edges:
-//   - forced-edge propagation (propagate-dir.js, on by default): in/out and path-degree rules
+//   - forced-edge propagation (incremental-dir.js, on by default; propagate-dir.js is the same
+//     rules recomputed at every node): in/out and path-degree rules
+//   - the leg bound (legsFit below): the legs from the head through the remaining checkpoints
+//     have to exist and, at their shortest, fit into the cells left
 //   - every unvisited cell must be able to reach the end through unvisited cells (backwards flood
 //     fill from the end); without propagation also: be reachable from the head
 //   - Manhattan distance along the remaining checkpoints has to fit in the cells left
 //   - at the root, the parity of that distance (the grid is bipartite). Below the root it never
 //     fires: a move flips both sides of the comparison.
-// Measured on the work of minimising arrows (194 freed-edge checks, 8x8 and 9x9 puzzles, node
-// totals; a check is capped at 400000 nodes):
-//   plain DFS (prop: false)           43.8M nodes, 85 checks capped, 45 s
-//   propagation, directed rules only   1.80M nodes, 8.4 s
-//   propagation, all rules             0.97M nodes, 9.0 s (the path-degree rules halve the nodes
-//                                      but cost as much per node: 9.3 us against 4.7 us)
-//   without the backwards flood fill   2.79M nodes (x2.9)
-//   without the Manhattan bound        1.04M nodes (+7%)
+// Measured on the work of minimising arrows (194 freed-edge checks on 8x8 and 9x9 puzzles; a
+// check is capped at 400000 nodes; the times are from a slow shared machine, the ratios count):
+//   plain DFS (prop: false)              43.8M nodes, 85 checks capped, 80 s
+//   propagation recomputed (incr: false)  0.97M nodes, 16.2 s (16.7 us per node)
+//   propagation kept (incremental)        0.97M nodes,  4.2 s ( 4.3 us per node): the same nodes
+//   + leg bound                           0.19M nodes,  1.6 s ( 8.5 us per node)
+// Before the leg bound: without the backwards flood fill 2.9x the nodes, without the Manhattan
+// bound +7%. On the hardest checks of 9x9 and 10x10 puzzles the leg bound cut the nodes 6x.
 //
 // opts (a subset of solve()'s): limit (default 2), nodeCap (default 200000), capture, forced,
-// decisions, mustUse, prop (forced-edge propagation, propagate-dir.js; unlike in solve() on by
-// default, prop: false is the plain DFS of the checks above).
+// decisions, mustUse, prop (forced-edge propagation; unlike in solve() on by default, prop: false
+// is the plain DFS of the checks above), incr (default true: the propagation is kept from node to
+// node, incremental-dir.js; false: recomputed at every node, propagate-dir.js), legs (default
+// true with incr: the leg bound, see legsFit below).
 //   mustUse  [a, b]: only count solutions that walk the move a -> b (directed: b can only be
 //            entered from a, a only left to b). In solve() it is the edge a-b, either way; with
 //            arrows the direction matters.
-//   prune2, seg, pocket, parity, legCollide, incr, fast, lconn belong to solve.js and are ignored
-//   here: they only prune.
+//   prune2, seg, pocket, parity, legCollide, fast, lconn belong to solve.js and are ignored here:
+//   they only prune.
 // Returns { count, exceeded, nodes, subNodes, paths?, decisionNodes?, maxDecisionDepth? } like
 // solve(). Pure.
 
@@ -123,8 +129,12 @@ export function solveDirected(p, opts = {}) {
   const prefix = forced ? forced.length - 1 : 0;
   const DECISIONS = !!opts.decisions;
   const PROP = opts.prop !== false;
-  const prop = PROP ? makeDirPropagator(moves, end, vis, holes) : null;
-  const av = PROP ? prop.av : null; // av[head]: the head's possible moves, after prop.deduce()
+  const INCR = PROP && opts.incr !== false && start !== end;
+  const LEGS = INCR && opts.legs !== false;
+  const prop = PROP && !INCR ? makeDirPropagator(moves, end, vis, holes) : null;
+  const inc = INCR ? makeDirIncremental(moves, start, end, TC, holes) : null;
+  // av[head]: the head's possible moves, once the position has been propagated
+  const av = INCR ? inc.av : PROP ? prop.av : null;
   let stamp = 0;
   let nodes = 0;
   let found = 0;
@@ -175,9 +185,53 @@ export function solveDirected(p, opts = {}) {
     return reached;
   }
 
+  // Leg bound (with the incremental propagation, whose av is the moves left): the path has to run
+  // from the head to the next checkpoint, from there to the following one, and so on to the end,
+  // never entering a checkpoint it is not on its way to. A flood fill over the moves left finds
+  // each leg's shortest length, or that there is no way; the shortest legs have to fit into the
+  // `remaining` cells still to be visited.
+  const dist = new Int32Array(T);
+  const queue = new Int32Array(T);
+  function legsFit(head, needNext, remaining) {
+    let from = head;
+    let sum = 0;
+    for (let k = needNext; k <= K; k++) {
+      const target = pos[k];
+      if (from === target) continue;
+      stamp++;
+      let qHead = 0;
+      let qTail = 0;
+      queue[qTail++] = from;
+      seen[from] = stamp;
+      dist[from] = 0;
+      let length = -1;
+      while (qHead < qTail && length < 0) {
+        const u = queue[qHead++];
+        for (let d = 0; d < 4; d++) {
+          if (!((av[u] >> d) & 1)) continue;
+          const v = out[u * 4 + d];
+          if (seen[v] === stamp) continue;
+          if (v === target) {
+            length = dist[u] + 1;
+            break;
+          }
+          if (cp[v] !== 0) continue;
+          seen[v] = stamp;
+          dist[v] = dist[u] + 1;
+          queue[qTail++] = v;
+        }
+      }
+      if (length < 0) return false;
+      sum += length;
+      from = target;
+    }
+    return sum <= remaining;
+  }
+
   // The node's own check; `head` is on the path already, `count` cells are.
-  function feasible(head, count) {
+  function feasible(head, count, needNext) {
     const remaining = TC - count;
+    if (LEGS && !legsFit(head, needNext, remaining)) return false;
     if (reachTo() !== remaining) return false;
     return PROP || reachFrom(head) === remaining; // propagation makes the other test redundant
   }
@@ -215,7 +269,9 @@ export function solveDirected(p, opts = {}) {
       vis[cell] = 0;
       return;
     }
-    if (cell === end || !feasible(cell, count) || (PROP && !deduced(cell, count, used))) {
+    const stuck = cell === end || !feasible(cell, count, needNext)
+      || (prop && !deduced(cell, count, used));
+    if (stuck) {
       vis[cell] = 0; // (the end is entered last)
       return;
     }
@@ -260,12 +316,23 @@ export function solveDirected(p, opts = {}) {
     for (let i = 0; i < count2; i++) {
       const next = cand[base + i];
       const nowUsed = used || (cell === MA && next === MB) ? 1 : 0;
-      dfs(next, count + 1, needNext, depth + 1, nowUsed);
+      if (INCR) {
+        const token = inc.mark();
+        if (inc.move(cell, next)) {
+          dfs(next, count + 1, needNext, depth + 1, nowUsed);
+        } else {
+          nodes++; // a position whose propagation failed counts as a node
+        }
+        inc.undo(token);
+      } else {
+        dfs(next, count + 1, needNext, depth + 1, nowUsed);
+      }
       if (found >= limit || nodes - prefix > cap) break;
     }
     vis[cell] = 0;
   }
 
+  if (INCR && !inc.init(MA, MB)) return none;
   dfs(start, 1, 1, 0, 0);
   return {
     count: found,

@@ -1,5 +1,5 @@
 // Quality / time of the "One way arrows" generator per grid size (gen/arrows.js).
-//   node tools/bench-arrows.mjs [sizes=5,6,7,8,9] [seeds=6] [key=value ...]
+//   node tools/bench-arrows.mjs [sizes=5,6,7,8,9,10] [seeds=6] [key=value ...]
 // key=value: candidates=N, K=N, minArrows=N, capX=F, checkCapX=F, refineNodes=N, pathArrows=0|1,
 // freedEdge=0|1 (generateArrows options).
 import { generateArrows } from '../src/core/gen/arrows.js';
@@ -7,7 +7,7 @@ import { runSync } from '../src/core/run.js';
 import { arrowCount } from '../src/core/edges.js';
 
 const args = process.argv.slice(2);
-const sizes = (args[0] || '5,6,7,8,9').split(',').map(Number);
+const sizes = (args[0] || '5,6,7,8,9,10').split(',').map(Number);
 const seeds = +args[1] || 6;
 const opts = {};
 for (const kv of args.slice(2)) {

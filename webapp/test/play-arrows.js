@@ -41,7 +41,7 @@ export function playArrowsTests(t, ok, eq) {
     eq(sizesFor('arrows', all), ARROW_SIZES);
     ok(ARROW_SIZES.every(n => all.includes(n)), 'every arrows size is a play size');
     const near = size => nearestSize(size, ARROW_SIZES);
-    eq([near(12), near(7), near(4)], [9, 7, 5]);
+    eq([near(16), near(7), near(4)], [10, 7, 5]);
     eq(nearestSize(6.5, [5, 6, 7]), 6, 'the smaller one on a tie');
   });
 

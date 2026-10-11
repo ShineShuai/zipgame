@@ -26,14 +26,19 @@ import { solve } from '../solver/solve.js';
 // Candidate puzzles per grid size (the quality/time knob, see CANDIDATES in generate.js) and the
 // solver-node budgets, as multiples of the cell count (tools/bench-arrows.mjs prints the
 // trade-off).
-export const ARROW_CANDIDATES = { 5: 32, 6: 24, 7: 16, 8: 8, 9: 3 };
+export const ARROW_CANDIDATES = { 5: 32, 6: 32, 7: 24, 8: 12, 9: 4, 10: 2 };
 const candidatesFor = n => ARROW_CANDIDATES[n] || 2;
 // The grid sizes the play app offers for this variant (it grows with the solver; see
 // generateArrows).
 export const ARROW_SIZES = Object.keys(ARROW_CANDIDATES).map(Number);
+// From 9x9 on the checks are capped higher: with the low caps a 9x9 puzzle keeps about 2 arrows
+// too many (undecided ones), at 8x8 and below the result does not change with the caps.
 export const ARROW_CAP_PER_CELL = 600;
+export const ARROW_CAP_PER_CELL_BIG = 3000;
+export const ARROW_BIG_FROM = 9;
 export const ARROW_MIN_CAP = 20000;
 export const ARROW_CHECK_CAP_X = 0.2;
+export const ARROW_CHECK_CAP_X_BIG = 0.5;
 // Checkpoint count K ~ pickK(KMIN, KMAX) (see generate.js: it favours small K). Fewer checkpoints
 // need more arrows and are the hardest puzzles; with K as big as the standard generator uses,
 // small boards need almost no arrows at all (5x5: 0-2), which would not show the variant. K is
@@ -269,16 +274,20 @@ const fewest = candidates => (
 // ARROW_MIN_ARROWS); o.checkCapX scales the removal-check cap; o.pathArrows (default true): arrows
 // may sit on the solution's edges; o.freedEdge (default true): the removal check; o.refineNodes:
 // node budget of the second look (default ARROW_REFINE_NODES_PER_CELL * n^2, 0 = off); o.capX
-// scales the node caps. Limits: tuned for 5 <= n <= 9 (the solver is plain DFS plus propagation,
-// see solver/solve-dir.js); larger n works but slowly.
+// scales the node caps. Limits: tuned for 5 <= n <= 10 (about 5 s at 10x10 on a slow machine, see
+// tools/bench-arrows.mjs); 11x11 takes 20 to 50 s and keeps arrows it could not decide, larger
+// boards are not usable yet.
 export function* generateArrows(n, seed, o = {}) {
   const depth = o.retryDepth || 0;
   const cells = n * n;
   const freedEdge = o.freedEdge !== false;
   const wanted = o.candidates || candidatesFor(n);
   const rnd = makeRng(seed);
-  const nodeCap = Math.round(Math.max(ARROW_MIN_CAP, ARROW_CAP_PER_CELL * cells) * (o.capX ?? 1));
-  const checkCap = Math.max(1000, Math.floor(nodeCap * (o.checkCapX ?? ARROW_CHECK_CAP_X)));
+  const big = n >= ARROW_BIG_FROM;
+  const perCell = big ? ARROW_CAP_PER_CELL_BIG : ARROW_CAP_PER_CELL;
+  const nodeCap = Math.round(Math.max(ARROW_MIN_CAP, perCell * cells) * (o.capX ?? 1));
+  const checkX = o.checkCapX ?? (big ? ARROW_CHECK_CAP_X_BIG : ARROW_CHECK_CAP_X);
+  const checkCap = Math.max(1000, Math.floor(nodeCap * checkX));
   const [Kmin, Kmax] = kRange(cells);
   const K = o.K || pickK(Kmin, Kmax, rnd);
   const minArrows = o.minArrows ?? ARROW_MIN_ARROWS;
