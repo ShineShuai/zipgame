@@ -167,7 +167,7 @@ function luckyTipHtml(v) {
   const cells = rows.map(r => `<span class="${r.lucky ? 'win' : ''}"><b>${dayName(r)}</b><small>${peakText(r.peak)}</small></span>`);
   const winner = rows.find(r => r.lucky).day;
   return `<button type="button" class="tip-btn" id="luckyTip" aria-expanded="false" aria-label="${t('lucky.how')}">i</button>
-      <span class="tip-pop" id="luckyTipPop" role="tooltip"><b>${t('lucky.how')}</b><br>${t('lucky.howText')}<br>${t('lucky.week', luckyDate(rows[0].day), luckyDate(rows[6].day))}<span class="lucky-week">${cells.join('')}</span>${t('lucky.winner', luckyDate(winner))}</span>`;
+      <span class="tip-pop" id="luckyTipPop" role="tooltip"><b>${t('lucky.how')}</b><br>${t('lucky.howText')}<br>${t('lucky.week', luckyDate(rows[0].day), luckyDate(rows[6].day))}<span class="lucky-week">${cells.join('')}</span>${t('lucky.winner', luckyDate(winner))}<br>${t('unlock.tip.chance')} ${t('unlock.tip.streak', FREEZE_EVERY)}</span>`;
 }
 
 // A streak reward to claim: a replay chance or an unlock chance (only a replay once every variant is unlocked).
@@ -180,8 +180,9 @@ function rewardRowHtml(v) {
     </div>`;
 }
 
-// Top of the free-play card: a reward to claim, and the lucky game: open to everyone until the next lucky day; once
-// played, the date of the next one.
+// Top of the free-play card, one block: a streak reward to claim (replay or unlock chance), and the lucky game with the
+// unlock chances the player holds. The lucky game is open to everyone until the next lucky day; once played, the date of
+// the next one.
 function luckyBoxHtml() {
   const v = unlockView();
   if (!v) return '';
@@ -193,13 +194,16 @@ function luckyBoxHtml() {
       : t('lucky.used', v.daysToNext, luckyDate(v.nextLucky));
     const play = v.open ? `<button class="btn" id="playLucky">${t('lucky.play')}</button>` : '';
     rows.push(`
-    <div class="lucky-row${v.open ? ' ready' : ''}">
+    <div class="lucky-row">
       <span class="lucky-icon">${variantIcon('lucky')}</span>
-      <div class="lucky-text"><b>${t('lucky.title')}</b><small>${text}</small></div>
+      <div class="lucky-text">
+        <span class="lucky-head"><b>${t('lucky.title')}</b><span class="lucky-chances${v.tokens > 0 ? ' has' : ''}">${ICON.unlock}${t('lucky.chances', v.tokens)}</span></span>
+        <small>${text}</small>
+      </div>
       ${luckyTipHtml(v)}${play}
     </div>`);
   }
-  return rows.length ? `<div class="lucky-box">${rows.join('')}</div>` : '';
+  return rows.length ? `<div class="lucky-box${v.open && !v.allUnlocked ? ' ready' : ''}">${rows.join('')}</div>` : '';
 }
 
 // Under the game after a solve: what the lucky game unlocked (or why not), a streak reward to claim.
@@ -249,7 +253,7 @@ function gotdCardHtml() {
         </div>
         ${attemptNote}
         ${hintNote}
-        ${statusPanelHtml(chances, streak && streak.view(), unlockView())}
+        ${statusPanelHtml(chances, streak && streak.view())}
         ${BEHAVIOUR.enabled ? `<p class="small storage-note" id="behaviourNote" style="${S.showDev ? '' : 'display:none'}" title="For each solved game: the puzzle, your time and how many cells you took back. No name, no identifier. Games with a hint or a long time in a hidden tab are not sent.">Anonymous play stats: <a href="#" id="behaviourToggle">${S.behaviourOn ? 'on' : 'off'}</a></p>` : ''}
       </section>`;
 }
@@ -299,7 +303,6 @@ function renderMenu() {
       <p class="menu-intro">${t('menu.blurb')}</p>
       <div class="menu-grid">${gotdCardHtml()}${freePlayCardHtml()}
       </div>
-      ${menuStats()}
     </div>`;
 }
 
@@ -314,7 +317,7 @@ const ICON = {
   snow: '<svg class="freeze-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/></svg>',
 };
 const closeStatTips = () => document.querySelectorAll('.stat-item.open').forEach(b => b.classList.remove('open'));
-function statusPanelHtml(chances, sv, uv) { // sv: streak.view(), null before the streak is loaded; uv: unlock.view(), null before it is loaded
+function statusPanelHtml(chances, sv) { // sv: streak.view(), null before the streak is loaded
   const pips = (on, total, cls = '') => `<span class="pips ${cls}">${Array.from({ length: total }, (_, i) => `<i class="pip${i < on ? ' on' : ''}"></i>`).join('')}</span>`;
   const card = (cls, lines, body) => `
     <button type="button" class="stat-item ${cls}" aria-label="${lines.join(' ')}">
@@ -337,16 +340,7 @@ function statusPanelHtml(chances, sv, uv) { // sv: streak.view(), null before th
         ${pips(sv.streak > 0 ? ((sv.streak - 1) % FREEZE_EVERY) + 1 : 0, FREEZE_EVERY, 'week')}
         <span class="freezes">${Array.from({ length: FREEZE_MAX }, (_, i) => `<span class="freeze${i < sv.freezes ? ' on' : ''}">${ICON.snow}</span>`).join('')}</span>
       </span>`) : '';
-  // unlock chances: how many, and whether the lucky game is open; hidden once every variant is unlocked
-  const unlockLines = uv && [uv.open ? t('unlock.tip.open', luckyDate(uv.offerLast)) : t('unlock.tip.next', luckyDate(uv.nextLucky)),
-    t('unlock.tip.chance'), t('unlock.tip.streak', FREEZE_EVERY)];
-  const unlockCard = uv && !uv.allUnlocked ? card('stat-unlock' + (uv.open ? ' ready' : ''), unlockLines, `
-      ${ICON.unlock}
-      <span class="stat-main">
-        <span class="stat-top"><b>${uv.tokens}</b><small>${t('status.unlocks')}</small></span>
-        <small class="stat-sub">${uv.open ? t('status.luckyOpen') : t('status.luckyIn', uv.daysToNext)}</small>
-      </span>`) : '';
-  return `<div class="status-panel">${replayCard}${streakCard}${unlockCard}</div>`;
+  return `<div class="status-panel">${replayCard}${streakCard}</div>`;
 }
 
 // Replay screen (opened by the menu's Replay button): up to REPLAY_SHOW dates, each a button: the missed days (newest first), then old solved days to repeat (slowest first), each with its earlier time. Every row shows its grid size, read from the puzzle file (static,
@@ -400,52 +394,41 @@ function statCells(n) {
   };
 }
 
-const STATS_HEAD = ['stats.grid', 'stats.next', 'stats.solves', 'stats.avg', 'stats.sd', 'stats.best', 'menu.gotd']; // i18n keys
-
-// One row per size that has anything to show. On narrow screens each row becomes a small card, so the
-// cells carry their column name in data-label.
-function menuStats() {
-  const rows = SIZES.map(n => {
-    const hasData = store.total(n).n || store.gotdBest(n) || S.nextIdx[n];
-    if (!hasData) return '';
-    const c = statCells(n);
-    const values = [`${n}x${n}`, gameNo(n), c.solves, c.avg, c.sd, c.best, gotdText(n)];
-    const cells = values.map((value, i) => {
-      const shown = i === 0 ? value : `<b>${value}</b>`;
-      return `<td data-label="${t(STATS_HEAD[i])}">${shown}</td>`;
-    });
-    return `<tr>${cells.join('')}</tr>`;
-  }).join('');
-  if (!rows) return '';
-
-  const head = STATS_HEAD.map(key => `<th>${t(key)}</th>`).join('');
-  return `
-    <section class="card">
-      <h2 class="card-title">${t('stats.title')}</h2>
-      <p class="small">${t('stats.sub')}</p>
+// Stats are shown under the game being played, for its kind of puzzle (the menu shows none):
+//   a standard puzzle (random or shared local game): the local stats of every grid size;
+//   a Game of Day (live or replay): the Game of Day time of every grid size;
+//   a variant (Cutout, One way arrows, the lucky game): none yet.
+// On narrow screens each row becomes a small card, so the cells carry their column name in data-label.
+const statsTable = (title, sub, head, rows) => `
+    <section class="card play-stats">
+      <h2 class="card-title">${title}</h2>
+      <p class="small">${sub}</p>
       <div class="table-scroll">
-        <table class="responsive"><tr class="head-row">${head}</tr>${rows}</table>
+        <table class="responsive"><tr class="head-row">${head.map(key => `<th>${t(key)}</th>`).join('')}</tr>${rows}</table>
       </div>
     </section>`;
+const statsRow = (cells, keys, current) => `<tr${current ? ' class="current"' : ''}>${cells.map((value, i) =>
+  `<td data-label="${t(keys[i])}">${i === 0 ? value : `<b>${value}</b>`}</td>`).join('')}</tr>`;
+
+const LOCAL_HEAD = ['stats.grid', 'stats.next', 'stats.solves', 'stats.avg', 'stats.sd', 'stats.best']; // i18n keys
+function localStatsHtml() {
+  const rows = SIZES.filter(n => store.total(n).n || S.nextIdx[n] || n === S.puzzle.n).map(n => {
+    const c = statCells(n);
+    return statsRow([`${n}x${n}`, gameNo(n), c.solves, c.avg, c.sd, c.best], LOCAL_HEAD, n === S.puzzle.n);
+  }).join('');
+  return statsTable(t('stats.title'), t('stats.sub'), LOCAL_HEAD, rows);
 }
 
-function sizeStats(n) {
-  if (!store.total(n).n && !store.gotdBest(n)) return '';
-  const c = statCells(n);
-  const row = (label, value) => `<tr><td>${label}</td><td><b>${value}</b></td></tr>`;
-  return `
-    <section class="card">
-      <h2 class="card-title">${t('stats.titleN', n)}</h2>
-      <p class="small">${t('stats.subN')}</p>
-      <table>
-        ${row(t('stats.solves'), c.solves)}
-        ${row(t('stats.avgS'), c.avg)}
-        ${row(t('stats.sdS'), c.sd)}
-        ${row(t('stats.bestS'), c.best)}
-        ${row(t('menu.gotd'), gotdText(n))}
-      </table>
-    </section>`;
+const GOTD_HEAD = ['stats.grid', 'stats.date', 'stats.time'];
+function gotdStatsHtml() {
+  const rows = SIZES.filter(n => store.gotdBest(n) || n === S.puzzle.n).map(n => {
+    const best = store.gotdBest(n);
+    return statsRow([`${n}x${n}`, best ? dateLabel(best.date) : '-', best ? sec(best.time) : '-'], GOTD_HEAD, n === S.puzzle.n);
+  }).join('');
+  return statsTable(t('stats.gotdTitle'), t('stats.gotdSub'), GOTD_HEAD, rows);
 }
+
+const playStatsHtml = () => (S.variant ? '' : S.isGotd ? gotdStatsHtml() : localStatsHtml());
 
 // Always-visible grade badge (one word + one number, 0-5): the trap grade (core/trap.js). Nothing is
 // rendered when the puzzle couldn't be graded, rather than a misleading placeholder number.
@@ -518,9 +501,8 @@ function renderGame() {
           ${luckyGameHtml()}
           ${canShare ? '<p class="small share-msg" id="shareMsg"></p>' : ''}
         </section>
-        ${S.variant ? '' : sizeStats(p.n)}
       </div>
-    </div>`;
+    </div>${playStatsHtml()}`;
 }
 
 // ---------- handlers ----------

@@ -166,22 +166,27 @@ b { color: var(--heading); font-variant-numeric: tabular-nums; }
 @media (max-width: 560px) { .stat-item { flex-basis: 100%; } }
 
 /* ---------- unlock chances and the lucky game ---------- */
-.stat-unlock.ready { border-color: var(--orange); background: #fff8ea; }
-.stat-unlock.ready .stat-icon { color: #e8890c; }
 
-.lucky-box { display: flex; flex-direction: column; gap: 10px; margin: 0 0 18px; }
-.lucky-box .note { margin-top: 0; }
+.lucky-box { margin: 0 0 18px; border: 2px solid var(--line); border-radius: 16px; background: #fff; }
+.lucky-box.ready { border-color: var(--orange); background: #fff8ea; }
+.lucky-box .note { margin: 0; padding: 10px 12px; }
 .lucky-row {
   position: relative; /* anchors the (i) tip */
   display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; padding: 10px 12px;
-  border: 2px solid var(--line); border-radius: 16px; background: #fff;
 }
-.lucky-row.ready { border-color: var(--orange); background: #fff8ea; }
-.lucky-row.reward { border-color: var(--blue); background: var(--blue-soft); }
+.lucky-box > * + * { border-top: 1px solid var(--line); }
+.lucky-row.reward { background: var(--blue-soft); border-radius: 14px 14px 0 0; }
 .lucky-icon { flex: none; display: grid; place-items: center; }
 .lucky-icon .variant-icon { width: 40px; height: 40px; }
 .lucky-text { flex: 1 1 150px; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
 .lucky-text small { color: var(--muted); font-size: 0.85rem; }
+.lucky-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.lucky-chances {
+  display: inline-flex; align-items: center; gap: 4px; padding: 1px 9px; border-radius: 999px;
+  background: #eef1fb; color: var(--muted); font-size: 0.8rem; font-weight: 700; white-space: nowrap;
+}
+.lucky-chances.has { background: #fff1d6; color: #b86a00; }
+.lucky-chances .stat-icon { width: 14px; height: 14px; flex: none; }
 .lucky-row .tip-btn { flex: none; margin-left: 0; }
 .lucky-row > .btn { flex: 0 0 auto; }
 .reward-buttons { display: flex; flex-wrap: wrap; gap: 8px; flex: 1 1 100%; }
@@ -200,6 +205,10 @@ b { color: var(--heading); font-variant-numeric: tabular-nums; }
 .lucky-result.same { background: var(--blue-soft); color: var(--blue-dark); }
 .lucky-result .variant-icon { flex: none; width: 36px; height: 36px; }
 .side .lucky-row { margin-top: 14px; }
+
+/* Stats under the game (full width, below the board): the row of the grid being played is marked. */
+.play-stats { margin: 20px 0 0; }
+.play-stats tr.current td { background: var(--blue-soft); }
 
 /* ---------- replay screen ---------- */
 

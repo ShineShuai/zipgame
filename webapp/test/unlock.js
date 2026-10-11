@@ -222,12 +222,13 @@ export function unlockTests(t, ta, ok, eq) {
   });
 
   t('i18n: the unlock and lucky game texts exist in both languages', () => {
-    const keys = ['status.unlocks', 'status.luckyOpen', 'status.luckyIn', 'unlock.tip.open', 'unlock.tip.next',
-      'unlock.tip.chance', 'unlock.tip.streak', 'lucky.title', 'lucky.readyChance', 'lucky.readyFun', 'lucky.used',
-      'lucky.play', 'lucky.tag', 'lucky.onceChance', 'lucky.onceFun', 'lucky.unlocked', 'lucky.already',
-      'lucky.noChance', 'lucky.lostNote', 'lucky.how', 'lucky.howText', 'lucky.week', 'lucky.winner',
-      'reward.title', 'reward.pick', 'reward.replay', 'reward.unlock'];
+    const keys = ['lucky.chances', 'unlock.tip.chance', 'unlock.tip.streak', 'lucky.title', 'lucky.readyChance',
+      'lucky.readyFun', 'lucky.used', 'lucky.play', 'lucky.tag', 'lucky.onceChance', 'lucky.onceFun', 'lucky.unlocked',
+      'lucky.already', 'lucky.noChance', 'lucky.lostNote', 'lucky.how', 'lucky.howText', 'lucky.week', 'lucky.winner',
+      'reward.title', 'reward.pick', 'reward.replay', 'reward.unlock', 'stats.gotdTitle', 'stats.gotdSub', 'stats.date',
+      'stats.time'];
     for (const dict of [EN, ZH]) for (const key of keys) ok(dict[key], key);
+    ok(EN['lucky.chances'](1) === '1 unlock chance' && EN['lucky.chances'](0) === '0 unlock chances', 'plural');
     ok(EN['lucky.used'](1, 'Sat').includes('1 day)'), 'singular');
     ok(EN['lucky.used'](6, 'Sat').includes('6 days)'), 'plural');
   });
