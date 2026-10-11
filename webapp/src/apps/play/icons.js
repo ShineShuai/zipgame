@@ -43,11 +43,6 @@ function route(corners) {
     `<circle class="vi-dot" cx="${centre(endCol)}" cy="${centre(endRow)}" r="2.7"/>`;
 }
 
-// The puzzle types the menu always offers, and the ones it shows only while V is held (once picked,
-// a hidden type stays on offer until the page is reloaded).
-export const PUZZLE_TYPES = ['standard', 'cutout'];
-export const HIDDEN_TYPES = ['arrows'];
-
 // Arrows icon: the snake board with three one-way arrows on its edges (the first and last point the
 // way the snake goes, the middle one is a decoy). Each is [col, row, side, direction]: the edge sits
 // on the right ('r') or the bottom ('b') side of that cell, the direction is the unit step [dx, dy].
@@ -70,9 +65,10 @@ function arrowheads() {
   return heads.join('');
 }
 
-// variant: 'cutout', 'arrows' or anything else (= standard).
-// Class: variant-icon vi-standard | vi-cutout | vi-arrows.
+// variant: 'cutout', 'arrows', 'lucky' (the mystery of the lucky game) or anything else (= standard).
+// Class: variant-icon vi-standard | vi-cutout | vi-arrows | vi-lucky.
 export function variantIcon(variant) {
+  if (variant === 'lucky') return luckyIcon();
   const cutout = variant === 'cutout';
   const arrows = variant === 'arrows';
   const name = cutout ? 'cutout' : arrows ? 'arrows' : 'standard';
@@ -81,6 +77,17 @@ export function variantIcon(variant) {
   return `<svg class="variant-icon vi-${name}" viewBox="0 0 48 48" aria-hidden="true" ` +
     'focusable="false"><rect class="vi-bg" x="2" y="2" width="44" height="44" rx="11"/>' +
     `${board}${path}${arrows ? arrowheads() : ''}</svg>`;
+}
+
+// The mystery variant of the lucky game: a dimmed board under a question mark.
+function luckyIcon() {
+  const mark = 'M17.5 18.5C17.5 14.5 20.5 12.5 24 12.5S30.5 14.8 30.5 18.5c0 3.3-2.4 4.7-4.6 6.2' +
+    '-1.4 1-1.9 1.9-1.9 3.6';
+  return '<svg class="variant-icon vi-lucky" viewBox="0 0 48 48" aria-hidden="true" ' +
+    'focusable="false"><rect class="vi-bg" x="2" y="2" width="44" height="44" rx="11"/>' +
+    `<g opacity="0.55">${tiles(NO_HOLES)}</g>` +
+    `<path class="vi-q vi-halo" d="${mark}"/><circle class="vi-qdot vi-halo" cx="24" cy="34.2" r="2.3"/>` +
+    `<path class="vi-q" d="${mark}"/><circle class="vi-qdot" cx="24" cy="34.2" r="2.3"/></svg>`;
 }
 
 function star(cx, cy, outer, inner) {

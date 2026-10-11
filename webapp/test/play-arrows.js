@@ -5,8 +5,8 @@ import { edgeId, setArrowId, setWallId } from '../src/core/edges.js';
 import { solve } from '../src/core/solver/solve.js';
 import { runSync } from '../src/core/run.js';
 import { generateArrows, ARROW_SIZES } from '../src/core/gen/arrows.js';
-import { variantOf, sizesFor, nearestSize } from '../src/apps/play/variants.js';
-import { variantIcon, PUZZLE_TYPES, HIDDEN_TYPES } from '../src/apps/play/icons.js';
+import { variantOf, sizesFor, nearestSize, PLAY_VARIANTS } from '../src/apps/play/variants.js';
+import { variantIcon } from '../src/apps/play/icons.js';
 import { boardSvg } from '../src/apps/play/board.js';
 import { EN, ZH } from '../src/ui/i18n.js';
 import { encodeShare, decodeShare, VARIANTS } from '../src/core/share-code.js';
@@ -45,8 +45,8 @@ export function playArrowsTests(t, ok, eq) {
     eq(nearestSize(6.5, [5, 6, 7]), 6, 'the smaller one on a tie');
   });
 
-  t('play icons: the arrows type is hidden; its icon has 16 tiles and three arrowheads', () => {
-    eq([PUZZLE_TYPES, HIDDEN_TYPES], [['standard', 'cutout'], ['arrows']]);
+  t('play icons: the arrows variant is in the registry; its icon has 16 tiles and three arrowheads', () => {
+    eq(PLAY_VARIANTS.map(v => v.id), ['cutout', 'arrows']);
     const icon = variantIcon('arrows');
     eq((icon.match(/rx="1\.6"/g) || []).length, 16);
     eq((icon.match(/<polygon class="vi-arrow"/g) || []).length, 3);

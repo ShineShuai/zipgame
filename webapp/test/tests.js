@@ -58,11 +58,13 @@ import { proposeBoard, adjacency } from '../src/core/gen/shapes.js';
 import { backbiteHoles, pathCrossings, interleavedPath, layoutFor, placeCheckpoints, placementScore, LAYOUT } from '../src/core/gen/layout.js';
 import { ladder } from '../src/core/ladder.js';
 import { boardSvg } from '../src/apps/play/board.js';
-import { variantIcon, cardIcon, PUZZLE_TYPES } from '../src/apps/play/icons.js';
+import { variantIcon, cardIcon } from '../src/apps/play/icons.js';
+import { PLAY_VARIANTS } from '../src/apps/play/variants.js';
 import { VARIANTS } from '../src/core/share-code.js';
 import { directedTests } from './directed.js';
 import { arrowsGenTests } from './arrows-gen.js';
 import { playArrowsTests } from './play-arrows.js';
+import { unlockTests } from './unlock.js';
 import { designArrowsTests } from './design-arrows.js';
 
 // ---- mini harness ----
@@ -2359,11 +2361,12 @@ t('play icons: standard shows all 16 tiles, cutout a ring of 12; both variants d
     ok(svg.startsWith('<svg ') && svg.endsWith('</svg>'), svg.slice(0, 40));
     ok(svg.includes('aria-hidden="true"'));
   }
-  eq(PUZZLE_TYPES, ['standard', 'cutout']);
+  eq(variantIcon('lucky').includes('vi-lucky'), true, 'the mystery icon of the lucky game');
+  ok(variantIcon('lucky') !== standard && variantIcon('lucky').endsWith('</svg>'));
 });
 t('play menu i18n: every variant has a name and a tagline, the Game-of-Day card has its texts, in both languages', () => {
   for (const dict of [EN, ZH]) {
-    for (const mode of PUZZLE_TYPES) {
+    for (const mode of ['standard', ...PLAY_VARIANTS.map(v => v.id)]) {
       ok(dict['mode.' + mode], 'mode.' + mode);
       ok(dict['mode.' + mode + 'Tag'], 'mode.' + mode + 'Tag');
     }
@@ -3008,6 +3011,7 @@ t('share: a Cutout share record has the puzzle, a head line of its own, and is a
 directedTests(t, ok, eq);
 arrowsGenTests(t, ok, eq);
 playArrowsTests(t, ok, eq);
+unlockTests(t, ta, ok, eq);
 designArrowsTests(t, ok, eq);
 
 // ---------- behaviour rows (core/behaviour.js, platform/behaviour.js) ----------
