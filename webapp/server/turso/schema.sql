@@ -130,3 +130,46 @@ BEGIN
      OR strftime('%Y%m%d', d) <> printf('%08d', NEW.day)
      OR julianday(date('now')) - julianday(d) NOT BETWEEN -1 AND 91;
 END;
+
+-- ---------- Behaviour rows (src/core/behaviour.js, server/README.md "Behaviour rows") ----------
+-- One anonymous row per solved game: the puzzle (local games), the time and how many cells the player took back. No identifier, no index: the rows are
+-- read whole by tools/behaviour.mjs, never by the page. Columns = COLUMNS of src/core/behaviour.js (server/turso/schema.test.mjs checks that they agree).
+-- The browser token also needs `-p play:data_add`; nobody but you can delete (the pruning token: -p all:data_read -p play:data_delete, tools/behaviour.mjs).
+-- Adding a column later: ALTER TABLE play ADD COLUMN ... (tools/behaviour.mjs migrate); this file never alters a table that exists.
+CREATE TABLE IF NOT EXISTS play (
+  day  INTEGER NOT NULL,
+  ms   INTEGER NOT NULL,
+  u    INTEGER,
+  deep INTEGER,
+  s    INTEGER,
+  pz   BLOB,
+  ev   BLOB,
+  v    INTEGER NOT NULL DEFAULT 0
+);
+
+-- The ceiling and the off switch, changed by you with your own login (the browser token can only read it):
+--   UPDATE play_cfg SET cap = 0;         no row is accepted any more (stops every page at once, no deployment)
+--   UPDATE play_cfg SET cap = 3000000;   the default: rows are refused once the highest row id passes the cap
+-- It bounds what a public token can write: the storage, and the rows-written quota that the Game-of-Day submits share. The id of a deleted row is not
+-- reused below the highest one, so deleting some rows does not make room; after exporting everything, DELETE FROM play empties the table and restarts the ids.
+CREATE TABLE IF NOT EXISTS play_cfg (id INTEGER PRIMARY KEY CHECK (id = 1), cap INTEGER NOT NULL);
+INSERT OR IGNORE INTO play_cfg (id, cap) VALUES (1, 3000000);
+
+-- Same checks as validateRow() of src/core/behaviour.js. 'closed' (cap reached, or no config row) is a failure the page retries later;
+-- 'invalid' is final. max(rowid) is O(1); COUNT(*) would read the whole table on every insert.
+DROP TRIGGER IF EXISTS play_ai;
+CREATE TRIGGER play_ai AFTER INSERT ON play
+BEGIN
+  SELECT RAISE(ABORT, 'closed')
+  WHERE COALESCE((SELECT max(rowid) FROM play) > (SELECT cap FROM play_cfg WHERE id = 1), 1);
+  SELECT RAISE(ABORT, 'invalid')
+  WHERE typeof(NEW.day) <> 'integer'
+     OR NEW.day NOT BETWEEN CAST(strftime('%s', 'now') AS INTEGER) / 86400 - 91 AND CAST(strftime('%s', 'now') AS INTEGER) / 86400 + 1
+     OR typeof(NEW.ms) <> 'integer' OR NEW.ms NOT BETWEEN 500 AND 3600000
+     OR (NEW.u IS NOT NULL AND (typeof(NEW.u) <> 'integer' OR NEW.u NOT BETWEEN 0 AND 65535))
+     OR (NEW.deep IS NOT NULL AND (typeof(NEW.deep) <> 'integer' OR NEW.deep NOT BETWEEN 0 AND 65535))
+     OR (NEW.s IS NOT NULL AND (typeof(NEW.s) <> 'integer' OR NEW.s NOT BETWEEN 0 AND 255))
+     OR (NEW.pz IS NOT NULL AND (typeof(NEW.pz) <> 'blob' OR length(NEW.pz) NOT BETWEEN 4 AND 128))
+     OR (NEW.ev IS NOT NULL AND (typeof(NEW.ev) <> 'blob' OR length(NEW.ev) > 64))
+     OR typeof(NEW.v) <> 'integer' OR NEW.v NOT BETWEEN 0 AND 15;
+END;

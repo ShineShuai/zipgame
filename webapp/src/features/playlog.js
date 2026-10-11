@@ -11,7 +11,8 @@ import { serialize } from '../core/format.js';
 
 export const PLAYLOG_KEY = 'zip_playlog_v1', PLAYLOG_MAX = 500; // 500 puzzles of up to ~0.5 KB each stay far below the localStorage quota
 
-export const newTrace = () => ({ pushes: 0, undone: 0, maxUndone: 0, backtracks: 0, resets: 0, run: 0 });
+// hiddenMs: time the tab was hidden during the game (the timer keeps running then); the behaviour upload skips a game with much of it.
+export const newTrace = () => ({ pushes: 0, undone: 0, maxUndone: 0, backtracks: 0, resets: 0, run: 0, hiddenMs: 0 });
 
 // kind = what rules.step() returned ('push' | 'pop' | 'trunc' | 'reset' | null); before / after = path length around the move.
 export function traceStep(tr, kind, before, after) {

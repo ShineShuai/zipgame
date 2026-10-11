@@ -1,7 +1,5 @@
 import { serialize } from '../../core/format.js';
 import { generate, PLAY_SIZES } from '../../core/gen/generate.js';
-import { generateCutout, CUTOUT_MAX_MS } from '../../core/gen/cutout.js';
-import { generateArrows } from '../../core/gen/arrows.js';
 import { edgeId, arrowAllows } from '../../core/edges.js';
 import { isSolved, step, gridAdjacent } from '../../core/rules.js';
 import { statSummary } from '../../core/stats.js';
@@ -13,17 +11,21 @@ import { createReplay } from '../../features/replay.js';
 import { createStreak, FREEZE_EVERY, FREEZE_MAX } from '../../features/streak.js';
 import { ALGO_VERSION, maxNumber } from '../../core/model.js';
 import { dailySeed } from '../../core/rng.js';
-import { legsUndo, makeShareRecord, shareStatus, isPlayable, shareText, shareUrl, parseShareLink, stripText, dateLabel } from '../../features/share.js';
+import { legsUndo, makeShareRecord, shareStatus, isPlayable, shareText, shareUrl, parseShareLink, stripText, dateLabel, dayOfDate } from '../../features/share.js';
 import { REPLAY_DAYS } from '../../core/hist.js';
 import { maxHints, computeHint, solutionOf, penalizedTime, HINT_PENALTY_S } from '../../features/hints.js';
 import { cellAtPoint, pathD } from '../../view/geometry.js';
 import { bindModal, copyText } from '../../ui/modal.js';
 import { boardSvg, CELL, COLORS } from './board.js';
-import { variantIcon, cardIcon, PUZZLE_TYPES, HIDDEN_TYPES } from './icons.js';
-import { variantOf, sizesFor, nearestSize } from './variants.js';
+import { variantIcon, cardIcon } from './icons.js';
+import { PLAY_VARIANTS, variantById, variantOf, sizesFor, nearestSize, luckyDefs } from './variants.js';
+import { createUnlock } from '../../features/unlock.js';
+import { weekOf, weekTable } from '../../core/lucky.js';
 import { VERSION } from '../../version.js';
-import { LEADERBOARD } from '../../config.js';
+import { LEADERBOARD, BEHAVIOUR } from '../../config.js';
 import { createLeaderboard, backendsFromConfig, submitAttempt } from '../../platform/leaderboard.js';
+import { createBehaviour, sinksFromConfig } from '../../platform/behaviour.js';
+import { rowFromGame, skillBucket } from '../../core/behaviour.js';
 import { statsLine } from '../../core/hist.js';
 import { t, getLang, setLang } from '../../ui/i18n.js';
 import { PLAY_FLAGS_INT, flagsToHex } from '../../core/gen/flags.js';
@@ -33,7 +35,9 @@ import { sfxMove, sfxBack, sfxCheckpoint, sfxMoveAfterCheckpoint, sfxBlocked, sf
 
 const SIZES = PLAY_SIZES;
 const S = { screen: 'menu', mode: 'standard', variant: null, genMode: 'standard', size: 7, puzzle: null, path: [], elapsed: 0, startTime: 0, timerId: null, finished: false,
-  gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, isReplay: false, replayPick: null, gotdDate: null, gotdHint: null, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, arrowsUnlocked: false, difficulty: null,
+  gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, isReplay: false, replayPick: null, gotdDate: null, gotdHint: null, hintsUsed: 0,
+  penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, behaviourOn: false, difficulty: null,
+  lucky: false, luckyHolder: false, luckyResult: null, luckyNote: null,
   legs: [], gameDay: null, isShared: false, shared: null, sharedBad: false, sharedMsg: null };
 
 // Grade a puzzle right after generation, once, before it's shown (see core/grades.js playGradesFor):
@@ -51,7 +55,7 @@ function gradePuzzle(puzzle) {
     return { ok: false, trap: null, legacy: null };
   }
 }
-let storage, store, daily, replay, streak, modal, lb;
+let storage, store, daily, replay, streak, unlock, modal, lb;
 const replayPuzzles = new Map(), replayNoFile = new Set(); // date -> puzzle (the file of a past day never changes, so each is fetched once per page load); dates without a file
 const $ = id => document.getElementById(id), today = () => utcDateString(new Date()), dayNo = () => utcDayNumber(new Date()), sec = x => x.toFixed(1) + 's';
 const statsText = { everyone: (avg, n) => t('stats.everyone', avg, n), top: (k, avg) => t('stats.top', k, avg), beat: pct => t('stats.beat', pct) };
@@ -76,7 +80,8 @@ const GEN_SUB = { cutout: 'gen.subCutout', arrows: 'gen.subArrows' }; // the tex
 function renderGenerating() {
   const gen = S.gen;
   const percent = Math.round(gen.frac * 100);
-  const countKey = S.genMode === 'arrows' ? 'gen.arrows' : 'gen.walls';
+  const genVariant = variantById(S.genMode);
+  const countKey = genVariant ? genVariant.countKey : 'gen.walls';
   const walls = gen.walls == null ? t('gen.searching') : t(countKey, gen.walls);
   // Players see only the percentage and the bar; the walls count and K appear while V is held.
   const devInfo = ` — ${walls}${gen.K == null ? '' : ` · K ${gen.K}`}`;
@@ -85,7 +90,7 @@ function renderGenerating() {
       <section class="card">
         <div class="gen-icon">${variantIcon(S.genMode)}</div>
         <h2 class="card-title">${t('gen.title')}</h2>
-        <p class="small">${t(GEN_SUB[S.genMode] || 'gen.sub', S.size)}</p>
+        <p class="small">${t(genVariant ? genVariant.keys.gen : 'gen.sub', S.size)}</p>
         <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}">
           <div style="width:${percent}%"></div>
         </div>
@@ -112,25 +117,29 @@ async function refreshNext() {
 
 const gameNo = n => (S.nextIdx[n] == null ? '-' : '#' + (S.nextIdx[n] + 1));
 
-// Puzzle types (PUZZLE_TYPES, HIDDEN_TYPES in ./icons.js): 'standard', the Cutout variant (core/gen/cutout.js) and the One way
-// arrows variant (core/gen/arrows.js). A variant is random, with no daily sequence, no grade and no stats (yet); a shared
-// one carries its puzzle in the link. The menu offers them as icon tiles (variantPickerHtml), the arrows tile only after V
-// was held; the Game of Day is always a standard puzzle.
+// Puzzle types: 'standard' and the variants of ./variants.js (Cutout, core/gen/cutout.js; One way arrows,
+// core/gen/arrows.js). A variant is random, with no daily sequence, no grade and no stats (yet); a shared one carries
+// its puzzle in the link. A variant is hidden until the player has unlocked it (features/unlock.js: the lucky game);
+// hold V shows them all. The menu offers the shown ones as icon tiles (variantPickerHtml); the Game of Day is always
+// a standard puzzle.
 const todayText = () => (S.mode !== 'standard' ? '' : t('menu.today', gameNo(S.size)));
 const randomSeed = () => (globalThis.crypto && crypto.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 4294967296));
+const randomInt = n => Math.floor(randomSeed() / 4294967296 * n); // 0..n-1
 
-// Two radio tiles, each an icon of the board it plays (full square / square with holes), a name and a tagline.
+// Radio tiles, each an icon of the board it plays (full square, square with holes, ...), a name and a tagline.
 // Native radios: keyboard (arrows), screen readers and touch work without extra code; css/play.css draws the state.
-// A hidden type is in the markup from the start (setDevReveal shows it while V is held); once it has been picked it stays.
-const typeShown = mode => !HIDDEN_TYPES.includes(mode) || S.showDev || S.arrowsUnlocked || S.mode === mode;
+// A locked variant is in the markup from the start (setDevReveal shows it while V is held, dashed and marked with a
+// lock); once it has been picked it stays until the page is reloaded.
+const isUnlocked = mode => mode === 'standard' || Boolean(unlock && unlock.unlocked(mode));
+const typeShown = mode => isUnlocked(mode) || S.showDev || S.mode === mode;
 
 function variantPickerHtml() {
-  const tiles = [...PUZZLE_TYPES, ...HIDDEN_TYPES].map(mode => {
+  const tiles = ['standard', ...PLAY_VARIANTS.map(v => v.id)].map(mode => {
     const checked = mode === S.mode ? ' checked' : '';
-    const extra = HIDDEN_TYPES.includes(mode) ? ' variant-extra' : '';
+    const locked = isUnlocked(mode) ? '' : ' variant-locked';
     const style = typeShown(mode) ? '' : ' style="display:none"';
     return `
-        <label class="variant-opt${extra}" id="variantOpt-${mode}"${style}>
+        <label class="variant-opt${locked}" id="variantOpt-${mode}"${style}>
           <input type="radio" name="variant" value="${mode}"${checked}>
           <span class="variant-card">
             ${variantIcon(mode)}
@@ -145,6 +154,70 @@ function variantPickerHtml() {
         <div class="variant-options">${tiles.join('')}
         </div>
       </fieldset>`;
+}
+
+// ---------- unlockable variants: the lucky game (features/unlock.js, core/lucky.js) ----------
+const unlockView = () => (unlock ? unlock.view() : null);
+const luckyDate = day => { const d = dateOfDay(day); return `${weekday(d)} ${dateLabel(d)}`; };
+const peakText = n => new Intl.NumberFormat(getLang() === 'zh' ? 'zh-CN' : 'en', { notation: 'compact', maximumFractionDigits: 1 }).format(n);
+
+// The (i) next to the lucky game: how the lucky day is chosen, with the seven days of the week of the open offer (else of
+// the next lucky day), their Collatz peaks and the winner.
+function luckyTipHtml(v) {
+  const rows = weekTable(weekOf(v.open ? v.offer : v.nextLucky));
+  const dayName = r => { const d = dateOfDay(r.day); return `${weekday(d)} ${+d.slice(6)}`; };
+  const cells = rows.map(r => `<span class="${r.lucky ? 'win' : ''}"><b>${dayName(r)}</b><small>${peakText(r.peak)}</small></span>`);
+  const winner = rows.find(r => r.lucky).day;
+  return `<button type="button" class="tip-btn" id="luckyTip" aria-expanded="false" aria-label="${t('lucky.how')}">i</button>
+      <span class="tip-pop" id="luckyTipPop" role="tooltip"><b>${t('lucky.how')}</b><br>${t('lucky.howText')}<br>${t('lucky.week', luckyDate(rows[0].day), luckyDate(rows[6].day))}<span class="lucky-week">${cells.join('')}</span>${t('lucky.winner', luckyDate(winner))}<br>${t('unlock.tip.chance')} ${t('unlock.tip.streak', FREEZE_EVERY)}</span>`;
+}
+
+// A streak reward to claim: a replay chance or an unlock chance (only a replay once every variant is unlocked).
+function rewardRowHtml(v) {
+  const unlockButton = v.allUnlocked ? '' : `<button class="btn" id="rewardUnlock">${t('reward.unlock')}</button>`;
+  return `
+    <div class="lucky-row reward">
+      <div class="lucky-text"><b>${t('reward.title')}</b><small>${t('reward.pick')}</small></div>
+      <div class="reward-buttons"><button class="btn secondary" id="rewardReplay">${t('reward.replay')}</button>${unlockButton}</div>
+    </div>`;
+}
+
+// Top of the free-play card, one block: a streak reward to claim (replay or unlock chance), and the lucky game with the
+// unlock chances the player holds. The lucky game is open to everyone until the next lucky day; once played, the date of
+// the next one.
+function luckyBoxHtml() {
+  const v = unlockView();
+  if (!v) return '';
+  const rows = [];
+  if (S.luckyNote) rows.push(`<p class="note error">${t(S.luckyNote)}</p>`);
+  if (v.choices > 0) rows.push(rewardRowHtml(v));
+  if (!v.allUnlocked) {
+    const text = v.open ? t(v.tokens > 0 ? 'lucky.readyChance' : 'lucky.readyFun', luckyDate(v.offerLast))
+      : t('lucky.used', v.daysToNext, luckyDate(v.nextLucky));
+    const play = v.open ? `<button class="btn" id="playLucky">${t('lucky.play')}</button>` : '';
+    rows.push(`
+    <div class="lucky-row">
+      <span class="lucky-icon">${variantIcon('lucky')}</span>
+      <div class="lucky-text">
+        <span class="lucky-head"><b>${t('lucky.title')}</b><span class="lucky-chances${v.tokens > 0 ? ' has' : ''}">${ICON.unlock}${t('lucky.chances', v.tokens)}</span></span>
+        <small>${text}</small>
+      </div>
+      ${luckyTipHtml(v)}${play}
+    </div>`);
+  }
+  return rows.length ? `<div class="lucky-box${v.open && !v.allUnlocked ? ' ready' : ''}">${rows.join('')}</div>` : '';
+}
+
+// Under the game after a solve: what the lucky game unlocked (or why not), a streak reward to claim.
+function luckyGameHtml() {
+  if (!S.finished) return '';
+  const parts = [], r = S.luckyResult, v = unlockView();
+  if (r && r.solved) {
+    const key = r.newly ? 'lucky.unlocked' : unlock.unlocked(r.id) ? 'lucky.already' : 'lucky.noChance';
+    parts.push(`<div class="lucky-result${r.newly ? '' : ' same'}">${variantIcon(r.id)}<span>${t(key, t(variantById(r.id).keys.name))}</span></div>`);
+  }
+  if (v && v.choices > 0) parts.push(rewardRowHtml(v));
+  return parts.join('');
 }
 
 // Dedicated Game-of-Day card: today's date, one button, the result once played, replay chances and streak.
@@ -183,10 +256,11 @@ function gotdCardHtml() {
         ${attemptNote}
         ${hintNote}
         ${statusPanelHtml(chances, streak && streak.view())}
+        ${BEHAVIOUR.enabled ? `<p class="small storage-note" id="behaviourNote" style="${S.showDev ? '' : 'display:none'}" title="For each solved game: the puzzle, your time and how many cells you took back. No name, no identifier. Games with a hint or a long time in a hidden tab are not sent.">Anonymous play stats: <a href="#" id="behaviourToggle">${S.behaviourOn ? 'on' : 'off'}</a></p>` : ''}
       </section>`;
 }
 
-// Free-play card: pick the puzzle type (icon tiles) and the grid size, then play. Both types are always on offer.
+// Free-play card: pick the puzzle type (icon tiles) and the grid size, then play. Standard is always on offer, a variant once unlocked.
 // The grid sizes on offer for the picked puzzle type (sizesFor in ./variants.js); S.size moves to the nearest one on offer.
 function sizeOptionsHtml() {
   const sizes = sizesFor(S.mode, SIZES);
@@ -196,7 +270,9 @@ function sizeOptionsHtml() {
 
 function freePlayCardHtml() {
   const sizeOptions = sizeOptionsHtml();
-  const storageNote = `Storage: ${storage.name}${storage.shared ? '' : ' (local only)'}`;
+  const uv = unlockView();
+  const unlockDev = uv ? ` · unlock: ${uv.tokens} chance(s), lucky game ${uv.open ? 'open' : 'played'}, next lucky day in ${uv.daysToNext}` : '';
+  const storageNote = `Storage: ${storage.name}${storage.shared ? '' : ' (local only)'}${unlockDev}`;
   return `
       <section class="card">
         <header class="card-head">
@@ -206,6 +282,7 @@ function freePlayCardHtml() {
             <p class="card-sub">${t('menu.sub')}</p>
           </div>
         </header>
+        ${luckyBoxHtml()}
         ${variantPickerHtml()}
         <div class="field size-field">
           <label class="field-label" for="sizeSel">${t('menu.size')}</label>
@@ -228,7 +305,6 @@ function renderMenu() {
       <p class="menu-intro">${t('menu.blurb')}</p>
       <div class="menu-grid">${gotdCardHtml()}${freePlayCardHtml()}
       </div>
-      ${menuStats()}
     </div>`;
 }
 
@@ -239,6 +315,7 @@ const weekday = d => new Date(Date.UTC(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.sl
 const ICON = {
   replay: '<svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v5h-5"/></svg>',
   flame: '<svg class="stat-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c1 4 6 7 6 12a6 6 0 0 1-12 0c0-3 2-5 3-7 1 2 2 2 2 1 0-2-.5-4 1-6z"/></svg>',
+  unlock: '<svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 7.5-1.5"/></svg>',
   snow: '<svg class="freeze-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/></svg>',
 };
 const closeStatTips = () => document.querySelectorAll('.stat-item.open').forEach(b => b.classList.remove('open'));
@@ -257,15 +334,14 @@ function statusPanelHtml(chances, sv) { // sv: streak.view(), null before the st
         ${pips(step.done, step.total)}
         <small class="stat-sub">${t('status.toGo', toNext)}</small>
       </span>`);
-  if (!sv) return `<div class="status-panel">${replayCard}</div>`;
-  const lines = [sv.streak > 0 ? t('streak.line', sv.streak, sv.freezes) + (sv.today ? '' : ' ' + t('streak.keep')) : t('streak.none'), t('streak.help', FREEZE_EVERY, FREEZE_MAX)];
-  const streakCard = card('stat-streak' + (sv.streak > 0 ? (sv.today ? ' lit' : ' lit risk') : ''), lines, `
+  const lines = sv && [sv.streak > 0 ? t('streak.line', sv.streak, sv.freezes) + (sv.today ? '' : ' ' + t('streak.keep')) : t('streak.none'), t('streak.help', FREEZE_EVERY, FREEZE_MAX)];
+  const streakCard = sv ? card('stat-streak' + (sv.streak > 0 ? (sv.today ? ' lit' : ' lit risk') : ''), lines, `
       ${ICON.flame}
       <span class="stat-main">
         <span class="stat-top"><b>${sv.streak}</b><small>${t('status.streak')}</small></span>
         ${pips(sv.streak > 0 ? ((sv.streak - 1) % FREEZE_EVERY) + 1 : 0, FREEZE_EVERY, 'week')}
         <span class="freezes">${Array.from({ length: FREEZE_MAX }, (_, i) => `<span class="freeze${i < sv.freezes ? ' on' : ''}">${ICON.snow}</span>`).join('')}</span>
-      </span>`);
+      </span>`) : '';
   return `<div class="status-panel">${replayCard}${streakCard}</div>`;
 }
 
@@ -320,52 +396,41 @@ function statCells(n) {
   };
 }
 
-const STATS_HEAD = ['stats.grid', 'stats.next', 'stats.solves', 'stats.avg', 'stats.sd', 'stats.best', 'menu.gotd']; // i18n keys
-
-// One row per size that has anything to show. On narrow screens each row becomes a small card, so the
-// cells carry their column name in data-label.
-function menuStats() {
-  const rows = SIZES.map(n => {
-    const hasData = store.total(n).n || store.gotdBest(n) || S.nextIdx[n];
-    if (!hasData) return '';
-    const c = statCells(n);
-    const values = [`${n}x${n}`, gameNo(n), c.solves, c.avg, c.sd, c.best, gotdText(n)];
-    const cells = values.map((value, i) => {
-      const shown = i === 0 ? value : `<b>${value}</b>`;
-      return `<td data-label="${t(STATS_HEAD[i])}">${shown}</td>`;
-    });
-    return `<tr>${cells.join('')}</tr>`;
-  }).join('');
-  if (!rows) return '';
-
-  const head = STATS_HEAD.map(key => `<th>${t(key)}</th>`).join('');
-  return `
-    <section class="card">
-      <h2 class="card-title">${t('stats.title')}</h2>
-      <p class="small">${t('stats.sub')}</p>
+// Stats are shown under the game being played, for its kind of puzzle (the menu shows none):
+//   a standard puzzle (random or shared local game): the local stats of every grid size;
+//   a Game of Day (live or replay): the Game of Day time of every grid size;
+//   a variant (Cutout, One way arrows, the lucky game): none yet.
+// On narrow screens each row becomes a small card, so the cells carry their column name in data-label.
+const statsTable = (title, sub, head, rows) => `
+    <section class="card play-stats">
+      <h2 class="card-title">${title}</h2>
+      <p class="small">${sub}</p>
       <div class="table-scroll">
-        <table class="responsive"><tr class="head-row">${head}</tr>${rows}</table>
+        <table class="responsive"><tr class="head-row">${head.map(key => `<th>${t(key)}</th>`).join('')}</tr>${rows}</table>
       </div>
     </section>`;
+const statsRow = (cells, keys, current) => `<tr${current ? ' class="current"' : ''}>${cells.map((value, i) =>
+  `<td data-label="${t(keys[i])}">${i === 0 ? value : `<b>${value}</b>`}</td>`).join('')}</tr>`;
+
+const LOCAL_HEAD = ['stats.grid', 'stats.next', 'stats.solves', 'stats.avg', 'stats.sd', 'stats.best']; // i18n keys
+function localStatsHtml() {
+  const rows = SIZES.filter(n => store.total(n).n || S.nextIdx[n] || n === S.puzzle.n).map(n => {
+    const c = statCells(n);
+    return statsRow([`${n}x${n}`, gameNo(n), c.solves, c.avg, c.sd, c.best], LOCAL_HEAD, n === S.puzzle.n);
+  }).join('');
+  return statsTable(t('stats.title'), t('stats.sub'), LOCAL_HEAD, rows);
 }
 
-function sizeStats(n) {
-  if (!store.total(n).n && !store.gotdBest(n)) return '';
-  const c = statCells(n);
-  const row = (label, value) => `<tr><td>${label}</td><td><b>${value}</b></td></tr>`;
-  return `
-    <section class="card">
-      <h2 class="card-title">${t('stats.titleN', n)}</h2>
-      <p class="small">${t('stats.subN')}</p>
-      <table>
-        ${row(t('stats.solves'), c.solves)}
-        ${row(t('stats.avgS'), c.avg)}
-        ${row(t('stats.sdS'), c.sd)}
-        ${row(t('stats.bestS'), c.best)}
-        ${row(t('menu.gotd'), gotdText(n))}
-      </table>
-    </section>`;
+const GOTD_HEAD = ['stats.grid', 'stats.date', 'stats.time'];
+function gotdStatsHtml() {
+  const rows = SIZES.filter(n => store.gotdBest(n) || n === S.puzzle.n).map(n => {
+    const best = store.gotdBest(n);
+    return statsRow([`${n}x${n}`, best ? dateLabel(best.date) : '-', best ? sec(best.time) : '-'], GOTD_HEAD, n === S.puzzle.n);
+  }).join('');
+  return statsTable(t('stats.gotdTitle'), t('stats.gotdSub'), GOTD_HEAD, rows);
 }
+
+const playStatsHtml = () => (S.variant ? '' : S.isGotd ? gotdStatsHtml() : localStatsHtml());
 
 // Always-visible grade badge (one word + one number, 0-5): the trap grade (core/trap.js). Nothing is
 // rendered when the puzzle couldn't be graded, rather than a misleading placeholder number.
@@ -395,17 +460,17 @@ function renderGame() {
   const time = sec(S.elapsed);
   const cap = maxHints(p);
   const seedText = S.variant ? `${S.variant} · ${S.seed == null ? 'shared' : 'seed ' + S.seed}${p.shape ? ' · ' + p.shape : ''}` : `seed ${S.seed} · flags ${flagsToHex(PLAY_FLAGS_INT)}`;
-  const seedHint = S.variant ? (S.variant === 'arrows' ? 'generateArrows (core/gen/arrows.js)' : 'generateCutout (core/gen/cutout.js)') + ' is seeded, but the app seeds it at random; a shared game carries its puzzle in the link.' : "Design app's Generate uses these same algorithm choices, but generate() here also tries several candidates and keeps the cheapest, so pasting this seed+flags there is not guaranteed to reproduce this exact puzzle";
+  const seedHint = S.variant ? variantById(S.variant).source + ' is seeded, but the app seeds it at random; a shared game carries its puzzle in the link.' : "Design app's Generate uses these same algorithm choices, but generate() here also tries several candidates and keeps the cheapest, so pasting this seed+flags there is not guaranteed to reproduce this exact puzzle";
   const seedTag = `<span id="seedTag" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="${seedHint}">${seedText}</span>`;
   const shapeName = p.shape ? t('shape.' + p.shape) : '';
   const localTitle = S.variant
-    ? t(VARIANT_TITLE[S.variant][S.isShared ? 1 : 0], p.n, shapeName)
+    ? t(variantById(S.variant).keys[S.isShared ? 'sharedTitle' : 'title'], p.n, shapeName)
     : (S.isShared ? t('game.sharedTitle', p.n, S.gameIndex + 1, dateLabel(dateOfDay(S.gameDay))) : t('game.localTitle', p.n, S.gameIndex + 1));
   const title = S.isGotd ? t(S.isReplay ? 'game.replayTitle' : 'game.gotdTitle', S.gotdDate) : localTitle + seedTag;
   const canShare = S.finished && (S.isGotd || S.gameDay != null || S.variant);
   const shareButton = canShare ? `<button class="btn" id="shareBtn">${t('share.btn')}</button>` : '';
   const nextReplay = S.isReplay && S.finished && replay.chances() > 0 ? `<button class="btn" id="toReplay">${t('game.nextReplay', replay.chances())}</button>` : '';
-  const newPuzzleButton = S.isGotd ? '' : `<button class="btn secondary" id="newPuzzle">${t('game.new')}</button>`;
+  const newPuzzleButton = S.isGotd || S.lucky ? '' : `<button class="btn secondary" id="newPuzzle">${t('game.new')}</button>`;
   const hiddenUnlessDev = S.showDev ? '' : 'display:none';
   const hintDisabled = S.finished || S.hintsUsed >= cap ? 'disabled' : '';
   const gotdAttempt = S.isGotd ? store.attemptOn(S.gotdDate) : null; // today's record, or the replayed day's
@@ -417,11 +482,12 @@ function renderGame() {
     <div class="game-layout">
       <section class="card board-card">
         <div class="hud">
-          <div class="hud-title"><span class="hud-icon">${variantIcon(S.variant)}</span><span>${title}</span></div>
+          <div class="hud-title"><span class="hud-icon">${variantIcon(S.variant)}</span><span>${title}</span>${S.lucky ? `<span class="lucky-chip">${t('lucky.tag')}</span>` : ''}</div>
           ${difficultyBadgeHtml()}
           ${difficultyDevHtml()}
           <div class="hud-time">${t('game.time', `<b id="hudTime">${time}</b>`)}</div>
         </div>
+        ${S.lucky && !S.finished ? `<p class="note lucky-once">${t(S.luckyHolder ? 'lucky.onceChance' : 'lucky.onceFun')}</p>` : ''}
         <div class="grid-wrap" id="gridWrap">${boardSvg(S)}</div>
       </section>
       <div class="side">
@@ -436,11 +502,11 @@ function renderGame() {
             <button class="btn secondary" id="exportBtn" style="${hiddenUnlessDev}">Export</button>
           </div>
           ${solved}
+          ${luckyGameHtml()}
           ${canShare ? '<p class="small share-msg" id="shareMsg"></p>' : ''}
         </section>
-        ${S.variant ? '' : sizeStats(p.n)}
       </div>
-    </div>`;
+    </div>${playStatsHtml()}`;
 }
 
 // ---------- handlers ----------
@@ -451,13 +517,16 @@ function attachHandlers() {
   document.querySelectorAll('input[name="variant"]').forEach(input => {
     input.onchange = () => {
       S.mode = input.value;
-      if (S.mode === 'arrows') S.arrowsUnlocked = true;
       S.size = +$('sizeSel').value;
       $('sizeSel').innerHTML = sizeOptionsHtml();
       $('gameNo').textContent = todayText();
     };
   });
   on('playGotd', startGameOfDay);
+  on('playLucky', startLucky);
+  on('luckyTip', toggleLuckyTip);
+  on('rewardReplay', () => claimReward('replay'));
+  on('rewardUnlock', () => claimReward('unlock'));
   on('playShared', startShared);
   on('shareBtn', shareResult);
   on('shareTip', toggleShareTip);
@@ -466,9 +535,10 @@ function attachHandlers() {
   on('toReplay', () => openReplay());
   document.querySelectorAll('.replay-day').forEach(b => { b.onclick = () => startReplay(b.dataset.date); });
   document.querySelectorAll('.stat-item').forEach(b => { b.onclick = e => { e.stopPropagation(); const open = !b.classList.contains('open'); closeStatTips(); b.classList.toggle('open', open); }; });
-  on('backMenu2', () => { logPlay(false); stopTimer(); S.screen = 'menu'; render(); });
+  on('backMenu2', () => { logPlay(false); stopTimer(); leaveLucky(); S.screen = 'menu'; render(); });
   on('resetPath', () => { if (S.trace && !S.finished) traceClear(S.trace, S.path.length); if (!S.finished) legsUndo(S.legs, S.puzzle, S.path, 1); S.path = []; S.finished = false; S.hintCell = S.hintWrongCell = null; render(); });
   on('exportPlayLog', ev => { ev.preventDefault(); exportPlayLog(); });
+  on('behaviourToggle', async ev => { ev.preventDefault(); S.behaviourOn = !S.behaviourOn; await behaviour.setOn(S.behaviourOn); render(); });
   on('newPuzzle', () => { if (!S.isGotd) startLocal('skip', S.variant || 'standard'); });
   on('exportBtn', () => { $('exportText').value = serialize(S.puzzle); $('exportMsg').textContent = ''; modal.open(); setTimeout(() => $('exportText').focus(), 30); });
   on('hintBtn', () => {
@@ -545,12 +615,25 @@ function setupGridInput(svg) {
 }
 
 // Play log (features/playlog.js): one record per puzzle, on the solve or when the puzzle is left unsolved. Local only.
-let playlog = null;
+let playlog = null, behaviour = null;
 function logPlay(solved) {
   if (!playlog || !S.puzzle || S.variant || !S.trace || S.logged || S.screen !== 'game' || (!solved && S.trace.pushes < 2)) return;
   S.logged = true;
   const ms = S.timerId != null ? performance.now() - S.startTime : S.elapsed * 1000;
-  playlog.add(buildRecord(S.puzzle, S.trace, { ms, solved, hints: S.hintsUsed, mode: S.isGotd ? (S.isReplay ? 'replay' : 'gotd') : 'local' }));
+  const mode = S.isGotd ? (S.isReplay ? 'replay' : 'gotd') : 'local';
+  const history = playlog.all(); // asked before add(): the skill bucket of the upload must not count this game
+  playlog.add(buildRecord(S.puzzle, S.trace, { ms, solved, hints: S.hintsUsed, mode }));
+  if (solved) uploadBehaviour(history, ms, mode);
+}
+// The anonymous behaviour row of a solved game (core/behaviour.js decides whether it is sent at all; platform/behaviour.js sends it).
+// Everything of S is read now, before the await: the game state moves on. A Game of Day this device already solved is a repeat: not sent.
+function uploadBehaviour(history, ms, mode) {
+  if (!behaviour) return;
+  const attempt = S.isGotd ? store.attemptOn(S.gotdDate) : null;
+  const game = { puzzle: S.puzzle, mode, ms, hints: S.hintsUsed, hiddenMs: S.trace.hiddenMs, undone: S.trace.undone, maxUndone: S.trace.maxUndone,
+    day: S.isGotd ? dayOfDate(S.gotdDate) : S.gameDay ?? dayNo(), variant: S.variant, shared: S.isShared, known: Boolean(attempt && attempt.solved) };
+  history.then(h => { const row = rowFromGame({ ...game, skill: skillBucket(h) }, BEHAVIOUR); return row && behaviour.enqueue(row); })
+    .catch(e => console.warn('behaviour upload skipped:', e));
 }
 async function exportPlayLog() {
   const a = document.createElement('a'), url = URL.createObjectURL(new Blob([await playlog.exportJson()], { type: 'application/json' }));
@@ -559,12 +642,14 @@ async function exportPlayLog() {
 
 function onSolved() {
   logPlay(true); // before the hint penalty below: the log keeps the raw time
-  if (streak) streak.record().then(milestone => milestone && replay.addBonus()); // every 7th streak day: one more replay chance
+  if (streak) streak.record().then(milestone => milestone && onStreakMilestone()).catch(e => console.warn('streak record failed:', e)); // every 7th streak day: a reward
   S.finished = true; stopTimer(); sfxSolved();
+  if (S.lucky) finishLucky();
   if (!S.penaltyApplied) { S.elapsed = penalizedTime(S.elapsed, S.hintsUsed); S.penaltyApplied = true; } // once, even if the path is reset and re-solved
   if (S.isGotd) { const a = store.attemptOn(S.gotdDate); if (!(a && a.solved)) finishGotd(S.puzzle.n, S.gotdDate, S.elapsed, S.isReplay); } // a Game of Day (live or replay) counts once
   else if (!S.variant) { // no stats and no daily counter for a variant yet
-    const n = S.puzzle.n; store.recordSolve(n, dayNo(), S.elapsed); if (!S.isShared) daily.markSolved(n, S.gameIndex).then(refreshNext); }
+    const n = S.puzzle.n; store.recordSolve(n, dayNo(), S.elapsed);
+    if (!S.isShared) daily.markSolved(n, S.gameIndex).then(refreshNext); }
 }
 
 // Game of Day (live or replay): record locally, count it towards the next replay chance, then submit to the averages backend
@@ -574,6 +659,16 @@ async function finishGotd(n, date, time, isReplay) {
   await replay.addSolved();
   if (lb.enabled) await shareGotd(date);
 }
+// Unlock chances (features/unlock.js) come from the streak: every 7th streak day the player picks a replay chance or an unlock
+// chance (none left to unlock: a replay, as before).
+async function onStreakMilestone() {
+  if (unlock && !unlock.view().allUnlocked) await unlock.addChoice(); else await replay.addBonus();
+  if (S.screen === 'game' || S.screen === 'menu') render();
+}
+async function claimReward(kind) {
+  if (unlock && await unlock.takeChoice()) { if (kind === 'unlock') await unlock.addToken(); else await replay.addBonus(); }
+  render();
+}
 // One submit round (platform/leaderboard.js submitAttempt): the attempt record says which backends already hold the solve.
 async function shareGotd(date) {
   const saved = await submitAttempt(lb, store, date);
@@ -581,29 +676,58 @@ async function shareGotd(date) {
 }
 
 // ---------- game flow ----------
-function beginGame(puzzle, gotdDate, isReplay = false, isShared = false) {
+function beginGame(puzzle, gotdDate, isReplay = false, isShared = false, lucky = false) {
   logPlay(false); // a puzzle left unfinished is logged as abandoned
   const variant = variantOf(puzzle);
   const difficulty = variant ? null : gradePuzzle(puzzle); // a variant is not graded yet
-  Object.assign(S, { variant, trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
+  Object.assign(S, { variant, lucky, luckyResult: null, luckyNote: null, trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
   startTimer(); render();
 }
 function generatorFor(mode, n, seed) {
-  if (mode === 'cutout') return generateCutout(n, seed, { maxMs: CUTOUT_MAX_MS });
-  if (mode === 'arrows') return generateArrows(n, seed);
-  return generate(n, seed);
+  const variant = variantById(mode);
+  return variant ? variant.generate(n, seed) : generate(n, seed);
 }
 const generateShown = (n, seed, mode = 'standard') => runAsync(generatorFor(mode, n, seed), { onEvent: e => { S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls ?? e.arrows, K: e.K }; if (S.screen === 'generating') render(); } });
-async function startLocal(how, mode = 'standard') {
-  if (mode === 'arrows') S.size = nearestSize(S.size, sizesFor(mode, SIZES)); // e.g. after a shared 12x12 one // how: 'open' (Play local: current or next-if-solved) | 'skip' (New puzzle); a variant is always a new random one
+// how: 'open' (Play local: current or next-if-solved) | 'skip' (New puzzle); a variant is always a new random one.
+// lucky: the lucky game (startLucky): its chance is given back when the puzzle cannot be made.
+async function startLocal(how, mode = 'standard', lucky = false) {
+  if (mode !== 'standard') S.size = nearestSize(S.size, sizesFor(mode, SIZES)); // e.g. after a shared 12x12 one
   S.screen = 'generating'; S.genMode = mode; S.gen = { frac: 0, walls: null, K: null }; render();
   try {
     const { index, seed } = mode !== 'standard' ? { index: 0, seed: randomSeed() } : how === 'skip' ? await daily.skip(S.size) : await daily.open(S.size);
     const puzzle = await generateShown(S.size, seed, mode);
     S.gameIndex = index; S.seed = seed;
     S.gameDay = mode !== 'standard' ? null : [dayNo(), dayNo() - 1].find(d => dailySeed(d, S.size, index, ALGO_VERSION) === seed) ?? null; // the day this seed was made on: what a share link needs
-    beginGame(puzzle, null);
-  } catch (e) { console.error('startLocal failed:', e); S.screen = 'menu'; render(); alert(t('err.generate')); }
+    beginGame(puzzle, null, false, false, lucky);
+  } catch (e) {
+    console.error('startLocal failed:', e);
+    if (lucky) await unlock.refund();
+    S.screen = 'menu'; render(); alert(t('err.generate'));
+  }
+}
+// Lucky game: open to everyone, once per offer. Draws a variant (a locked one has a size of 7-10, features/unlock.js) and plays
+// it. With an unlock chance (spent now) solving it unlocks the variant; leaving the game (or reloading the page) loses the chance.
+async function startLucky() {
+  if (!unlock) return;
+  S.luckyNote = null;
+  const pick = await unlock.begin(randomInt);
+  if (!pick) return render();
+  S.size = pick.size; S.luckyHolder = pick.holder;
+  await startLocal('open', pick.id, true);
+}
+async function finishLucky() {
+  const r = await unlock.finish(true);
+  if (!r) return; // a re-solve after a reset: the first solve counted
+  S.luckyResult = r;
+  if (r.newly) S.mode = r.id; // the new tile is picked in the menu
+  if (S.screen === 'game') render();
+}
+// Back to the menu from a lucky game that was not solved: the chance is gone.
+function leaveLucky() {
+  if (!S.lucky) return;
+  S.lucky = false;
+  const active = unlock && unlock.view().active;
+  if (active) { unlock.finish(false); if (active.holder) S.luckyNote = 'lucky.lostNote'; }
 }
 async function startGameOfDay() {
   const date = today();
@@ -672,7 +796,7 @@ function sharedCardHtml() {
   if (!rec) return '';
   const state = sharedStatus(rec);
   const date = rec.variant ? '' : dateLabel(dateOfDay(rec.day));
-  const head = rec.kind === 'gotd' ? t('share.gotd', date) : rec.variant ? t(rec.variant === 'arrows' ? 'share.arrows' : 'share.cutout') + (rec.puzzle.shape ? ' · ' + t('shape.' + rec.puzzle.shape) : '') : t('share.local', rec.index + 1, date);
+  const head = rec.kind === 'gotd' ? t('share.gotd', date) : rec.variant ? t('share.' + rec.variant) + (rec.puzzle.shape ? ' · ' + t('shape.' + rec.puzzle.shape) : '') : t('share.local', rec.index + 1, date);
   const grade = rec.grade == null ? '' : ` · ${t('grade.' + rec.grade)} ${rec.grade}/5`;
   const row = [`<span>⏱ ${sec(rec.timeS)}</span>`];
   if (rec.pct != null) row.push(`<span>${t('share.beat', rec.pct)}</span>`);
@@ -712,6 +836,18 @@ function setShareTip(open) {
 function toggleShareTip(ev) {
   ev.stopPropagation();
   setShareTip(!$('shareTipPop').classList.contains('open'));
+}
+
+function setLuckyTip(open) {
+  const pop = $('luckyTipPop'), button = $('luckyTip');
+  if (!pop || !button) return;
+  pop.classList.toggle('open', open);
+  button.setAttribute('aria-expanded', String(open));
+  if (!open) button.blur();
+}
+function toggleLuckyTip(ev) {
+  ev.stopPropagation();
+  setLuckyTip(!$('luckyTipPop').classList.contains('open'));
 }
 
 async function loadSharedLink() {
@@ -840,19 +976,27 @@ function setDevReveal(on) {
   const h = $('hintBtn'); if (h) h.style.display = on ? '' : 'none';
   const x = $('exportBtn'); if (x) x.style.display = on ? '' : 'none';
   const sn = $('storageNote'); if (sn) sn.style.display = on ? '' : 'none';
+  const bn = $('behaviourNote'); if (bn) bn.style.display = on ? '' : 'none';
   const tag = $('seedTag'); if (tag) tag.style.display = on ? 'inline' : 'none';
   const d = $('difficultyDev'); if (d) d.style.display = on ? 'inline' : 'none';
   const g = $('genDev'); if (g) g.style.display = on ? 'inline' : 'none';
-  for (const type of HIDDEN_TYPES) { const tile = $('variantOpt-' + type); if (tile) tile.style.display = typeShown(type) ? '' : 'none'; }
+  for (const { id } of PLAY_VARIANTS) { const tile = $('variantOpt-' + id); if (tile) tile.style.display = typeShown(id) ? '' : 'none'; }
   const shown = S.screen === 'game' && S.isGotd ? store.attemptOn(S.gotdDate) : store.attempt(), st = shown && shown.stats;
   if (st) document.querySelectorAll('.gotd-stats').forEach(e => { e.textContent = statsLineT(st, on); });
+}
+// Time the tab is hidden during a game (the timer runs on): a game with much of it is not uploaded (BEHAVIOUR.hiddenMaxMs).
+let hiddenAt = null;
+function trackHidden() {
+  if (document.hidden) { hiddenAt = performance.now(); return; }
+  if (hiddenAt != null && S.trace && S.screen === 'game' && !S.finished) S.trace.hiddenMs += performance.now() - hiddenAt;
+  hiddenAt = null;
 }
 function installDevReveal() {
   const typing = t => t && t.tagName && (/^(input|textarea|select)$/i.test(t.tagName) || t.isContentEditable);
   addEventListener('keydown', e => { if ((e.key === 'v' || e.key === 'V') && !e.ctrlKey && !e.metaKey && !e.altKey && !typing(e.target)) setDevReveal(true); });
   addEventListener('keyup', e => { if (e.key === 'v' || e.key === 'V') setDevReveal(false); });
   addEventListener('blur', () => setDevReveal(false));
-  document.addEventListener('visibilitychange', () => { if (document.hidden) setDevReveal(false); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) setDevReveal(false); trackHidden(); });
 }
 
 // ---------- sound toggle (lives in the app bar, outside #app — wired once, not by render()) ----------
@@ -907,11 +1051,15 @@ async function initLang() {
   try { await replay.init(); } catch (e) { console.warn('replay init failed:', e); }
   streak = createStreak(storage, playlog);
   try { await streak.init(); } catch (e) { console.warn('streak init failed:', e); }
+  unlock = createUnlock(storage, luckyDefs(SIZES));
+  try { await unlock.init(); } catch (e) { console.warn('unlock init failed:', e); }
   if (lb.enabled) for (const { date } of await replay.unsent()) shareGotd(date); // today's and replayed days whose submit never got an answer
+  behaviour = createBehaviour({ storage, cfg: BEHAVIOUR, sinks: sinksFromConfig(BEHAVIOUR, LEADERBOARD) });
+  try { S.behaviourOn = await behaviour.isOn(); behaviour.flush().catch(() => {}); } catch (e) { console.warn('behaviour init failed:', e); } // rows left from an earlier page load
   try { for (const n of SIZES) S.nextIdx[n] = (await daily.peek(n)).index; } catch (e) { console.warn('daily counters failed:', e); }
   await loadSharedLink();
-  document.addEventListener('click', () => { setShareTip(false); closeStatTips(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { setShareTip(false); closeStatTips(); } });
+  document.addEventListener('click', () => { setShareTip(false); setLuckyTip(false); closeStatTips(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { setShareTip(false); setLuckyTip(false); closeStatTips(); } });
   modal = bindModal($('exportModal'));
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));
   installDevReveal(); await initSoundToggle(); await initLang(); render();

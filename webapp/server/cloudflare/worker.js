@@ -2,8 +2,13 @@
 // GET  /stats?from=YYYYMMDD&to=YYYYMMDD  ->  { days: [{ d, n, sum, bins: [[bin, n]], best: [ms], seeds: [ms] }] }  (read-only aggregates, <= 90 days)
 // POST /seed  Authorization: Bearer <SEED_PLAYERS_SECRET>  { d, ms: [ms], bins: [bin] }  ->  { status: 'ok', n, sum } | 409 { status: 'exists' }
 //   adds 1..SEED_MAX synthetic players to a day, once per day (tools/gotd-seed.mjs); a repeat changes nothing
+// POST /play  { day, ms, u, deep, s, pz, ev, v }  (pz / ev: base64url or null)  ->  200 { status: 'ok' } | 503 { status: 'closed' } | 400 { error: 'invalid' }
+//   one anonymous behaviour row (src/core/behaviour.js). 'closed' = the ceiling in play_cfg is reached or set to 0 (the off switch).
+// GET  /play-export?after=ID&limit=N  Authorization: Bearer <PLAY_ADMIN_SECRET>  ->  { rows: [{ id, ...columns }], next: ID | null, columns? }  (tools/behaviour.mjs)
+// POST /play-delete   Authorization: Bearer <PLAY_ADMIN_SECRET>  { ids: [row id] }  ->  { deleted: n }   (1..500 ids; the only way a row goes)
 // One D1 batch (= one transaction): 2 upserts + best-10 maintenance + reads. Constants mirror src/core/hist.js.
 import { NB, TOP_K, MIN_MS, MAX_MS, SEED_MAX, REPLAY_DAYS } from '../../src/core/hist.js';
+import { COLUMN_NAMES, INSERT_SQL, rowArgs, validateRow, fromWire, toB64u } from '../../src/core/behaviour.js';
 
 const DAY_MS = 86400000, isInt = Number.isInteger;
 const dayNumber = ymd => { // YYYYMMDD -> days since epoch, or null if not a real date
@@ -55,8 +60,8 @@ const seedStatements = ({ d, ms, bins }) => {
 
 // Authorization: Bearer <SEED_PLAYERS_SECRET>, compared as SHA-256 digests so the time taken does not reveal how many characters matched.
 const digest = async s => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
-export async function authorized(req, env) {
-  const secret = String(env.SEED_PLAYERS_SECRET || '').trim(); // stored from a file it may end in a newline; the client trims its copy too
+export async function authorized(req, env, name = 'SEED_PLAYERS_SECRET') {
+  const secret = String(env[name] || '').trim(); // stored from a file it may end in a newline; the client trims its copy too
   if (!secret) return false;
   const [a, b] = await Promise.all([digest(req.headers.get('authorization') || ''), digest('Bearer ' + secret)]);
   let diff = 0; for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
@@ -102,6 +107,36 @@ export async function seed(db, req) { // -> { status: 'ok', n, sum } | { status:
   }
 }
 
+// ---------- behaviour rows ----------
+const ROOM_SQL = 'SELECT COALESCE((SELECT cap FROM play_cfg WHERE id = 1), 0) - COALESCE((SELECT max(rowid) FROM play), 0) AS room'; // O(1); <= 0 = closed
+const asBuffer = v => (v instanceof Uint8Array ? v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength) : v); // D1 binds a BLOB as an ArrayBuffer
+// -> 'ok' | 'closed'. The row is already valid (validateRow). The check and the insert are two batches: the ceiling is soft by a row or two.
+export async function addPlay(db, row) {
+  const room = (await db.batch([db.prepare(ROOM_SQL).bind()]))[0].results[0];
+  if (!room || room.room <= 0) return 'closed';
+  await db.batch([db.prepare(INSERT_SQL).bind(...rowArgs(row).map(asBuffer))]);
+  return 'ok';
+}
+const blobOut = v => (v == null ? null : toB64u(Array.isArray(v) ? Uint8Array.from(v) : v instanceof ArrayBuffer ? new Uint8Array(v) : v)); // D1 reads a BLOB as an array of bytes
+// The rows with id > after, at most `limit`, in id order, and the table's real columns (`columns`, on the first page). A column of
+// src/core/behaviour.js that the table does not have yet (ALTER TABLE not run) comes out as null, so that tools/behaviour.mjs migrate can still read.
+export async function readPlay(db, { after, limit }) {
+  const columns = (await db.batch([db.prepare('PRAGMA table_info(play)').bind()]))[0].results.map(c => c.name), have = COLUMN_NAMES.filter(n => columns.includes(n));
+  const rows = (await db.batch([db.prepare(`SELECT rowid AS id, ${have.join(', ')} FROM play WHERE rowid > ?1 ORDER BY rowid LIMIT ?2`).bind(after, limit)]))[0].results
+    .map(r => Object.fromEntries([['id', r.id], ...COLUMN_NAMES.map(n => [n, n === 'pz' || n === 'ev' ? blobOut(r[n]) : r[n] === undefined ? null : r[n]])]));
+  const out = { rows, next: rows.length === limit ? rows[rows.length - 1].id : null };
+  if (after === 0) out.columns = columns;
+  return out;
+}
+const DELETE_CHUNK = 90; // D1 allows 100 bound values per statement
+const validIds = ids => Array.isArray(ids) && ids.length >= 1 && ids.length <= 500 && ids.every(i => Number.isInteger(i) && i >= 1);
+export async function deletePlay(db, ids) { // -> { deleted }: how many of the ids were rows
+  const chunks = []; for (let i = 0; i < ids.length; i += DELETE_CHUNK) chunks.push(ids.slice(i, i + DELETE_CHUNK));
+  const where = c => `FROM play WHERE rowid IN (${c.map((_, i) => '?' + (i + 1)).join(', ')})`;
+  const r = await db.batch([...chunks.map(c => db.prepare(`SELECT COUNT(*) AS c ${where(c)}`).bind(...c)), ...chunks.map(c => db.prepare(`DELETE ${where(c)}`).bind(...c))]);
+  return { deleted: r.slice(0, chunks.length).reduce((a, x) => a + Number(x.results[0].c), 0) };
+}
+
 export default {
   async fetch(req, env) {
     const cors = { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '86400', Vary: 'Origin' };
@@ -120,6 +155,26 @@ export default {
       const v = validateSeed(body);
       if (!v) return reply(400, { error: 'invalid' });
       try { const r = await seed(env.DB, v); return reply(r.status === 'exists' ? 409 : 200, r); } catch (e) { return reply(500, { error: 'db' }); }
+    }
+    if (req.method === 'POST' && pathname === '/play') {
+      if (Number(req.headers.get('content-length') || 0) > 512) return reply(400, { error: 'too large' });
+      let text = await req.text(), body; if (text.length > 512) return reply(400, { error: 'too large' });
+      try { body = JSON.parse(text); } catch { return reply(400, { error: 'bad json' }); }
+      const row = validateRow(fromWire(body));
+      if (!row) return reply(400, { error: 'invalid' });
+      try { const status = await addPlay(env.DB, row); return reply(status === 'ok' ? 200 : 503, { status }); } catch (e) { return reply(500, { error: 'db' }); }
+    }
+    if (pathname === '/play-export' || pathname === '/play-delete') {
+      if (req.method !== (pathname === '/play-export' ? 'GET' : 'POST')) return reply(404, { error: 'not found' });
+      if (!(await authorized(req, env, 'PLAY_ADMIN_SECRET'))) return reply(401, { error: 'unauthorized' });
+      if (pathname === '/play-export') {
+        const after = Number(searchParams.get('after') ?? 0), limit = Number(searchParams.get('limit') ?? 1000);
+        if (!Number.isInteger(after) || after < 0 || !Number.isInteger(limit) || limit < 1 || limit > 1000) return reply(400, { error: 'invalid' });
+        try { return reply(200, await readPlay(env.DB, { after, limit })); } catch (e) { return reply(500, { error: 'db' }); }
+      }
+      let body; try { body = JSON.parse(await req.text()); } catch { return reply(400, { error: 'bad json' }); }
+      if (!body || !validIds(body.ids)) return reply(400, { error: 'invalid' });
+      try { return reply(200, await deletePlay(env.DB, body.ids)); } catch (e) { return reply(500, { error: 'db' }); }
     }
     if (req.method !== 'POST' || pathname !== '/gotd') return reply(404, { error: 'not found' });
     if (Number(req.headers.get('content-length') || 0) > 256) return reply(400, { error: 'too large' });

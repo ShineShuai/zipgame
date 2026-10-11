@@ -5,6 +5,7 @@ compatibility_date = "2026-09-01"
 [vars]
 ALLOWED_ORIGIN = "https://shineshuai.github.io"   # origin only, no repo path
 # secret, not a var (authorises POST /seed): npx wrangler secret put SEED_PLAYERS_SECRET < FILE   (value read from stdin: not an argument, see server/README.md)
+# second secret (authorises GET /play-export and POST /play-delete, tools/behaviour.mjs): npx wrangler secret put PLAY_ADMIN_SECRET < FILE
 
 [[d1_databases]]
 binding = "DB"

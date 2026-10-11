@@ -4,11 +4,16 @@
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import { submit, read, seed } from '../cloudflare/worker.js';
+import worker, { submit, read, seed, addPlay } from '../cloudflare/worker.js';
 import { binOf, NB, MIN_MS, MAX_MS, REPLAY_DAYS } from '../../src/core/hist.js';
 import { binEdges, binEdgeBlock, blockOf, withBlock } from '../../tools/print-bin-edge.mjs';
 import { tursoBackend, createLeaderboard, TURSO_SQL } from '../../src/platform/leaderboard.js';
 import { parseDays } from '../../src/core/stats-merge.js';
+import { SINKS } from '../../src/platform/behaviour.js';
+import { COLUMNS, COLUMN_NAMES, INSERT_SQL, validateRow, packPuzzle, packS, utcDay } from '../../src/core/behaviour.js';
+import { parse, serialize } from '../../src/core/format.js';
+import { createAdmin, describe, dedupe, select, idsOf } from '../../tools/behaviour-lib.mjs';
+import { dateOfDay } from '../../src/features/daily.js';
 
 const tursoSchema = readFileSync(new URL('./schema.sql', import.meta.url), 'utf8');
 const cloudflareSchema = readFileSync(new URL('../cloudflare/schema.sql', import.meta.url), 'utf8');
@@ -30,17 +35,17 @@ const open = () => {
 const count = (db, table) => Number(db.prepare(`SELECT COUNT(*) c FROM ${table}`).get().c);
 
 // Stands for Turso's POST /v2/pipeline: runs every statement of the request on `db` and answers in the Hrana envelope (errors inside an HTTP 200).
-const hranaValue = v => (v === null ? { type: 'null' } : typeof v === 'bigint' || Number.isInteger(v) ? { type: 'integer', value: String(v) } : typeof v === 'number' ? { type: 'float', value: v } : { type: 'text', value: v });
+const hranaValue = v => (v === null ? { type: 'null' } : v instanceof Uint8Array ? { type: 'blob', base64: Buffer.from(v).toString('base64') } : typeof v === 'bigint' || Number.isInteger(v) ? { type: 'integer', value: String(v) } : typeof v === 'number' ? { type: 'float', value: v } : { type: 'text', value: v });
 const fakeTurso = (db, token = 'public-token') => async (url, init) => {
   assert.ok(url.endsWith('/v2/pipeline'), url);
   assert.equal(init.headers.Authorization, 'Bearer ' + token);
   const results = JSON.parse(init.body).requests.map(r => {
     if (r.type === 'close') return { type: 'ok', response: { type: 'close' } };
     try {
-      const args = r.stmt.args.map(a => (a.type === 'integer' ? BigInt(a.value) : a.value));
+      const args = r.stmt.args.map(a => (a.type === 'integer' ? BigInt(a.value) : a.type === 'blob' ? Buffer.from(a.base64, 'base64') : a.type === 'null' ? null : a.value));
       const stmt = db.prepare(r.stmt.sql);
       stmt.setReadBigInts(true);
-      if (!/^\s*(SELECT|WITH)/i.test(r.stmt.sql)) return { type: 'ok', response: { type: 'execute', result: { cols: [], rows: [], affected_row_count: Number(stmt.run(...args).changes) } } };
+      if (!/^\s*(SELECT|WITH|PRAGMA)/i.test(r.stmt.sql)) return { type: 'ok', response: { type: 'execute', result: { cols: [], rows: [], affected_row_count: Number(stmt.run(...args).changes) } } };
       const rows = stmt.all(...args);
       return { type: 'ok', response: { type: 'execute', result: { cols: stmt.columns().map(c => ({ name: c.name })), rows: rows.map(row => Object.values(row).map(hranaValue)), affected_row_count: 0 } } };
     } catch (e) {
@@ -71,7 +76,7 @@ const cloudflareDb = () => {
       prepare: sql => ({ bind: (...args) => ({ sql, args }) }),
       async batch(statements) {
         cloudflare.exec('BEGIN');
-        const out = statements.map(s => ({ results: cloudflare.prepare(s.sql).all(...s.args) }));
+        const out = statements.map(s => ({ results: cloudflare.prepare(s.sql).all(...s.args.map(a => (a instanceof ArrayBuffer ? new Uint8Array(a) : a))) })); // D1 binds a BLOB as an ArrayBuffer
         cloudflare.exec('COMMIT');
         return out;
       },
@@ -127,12 +132,12 @@ await test('bin_edge gives binOf(ms) for every accepted time', () => {
   }
 });
 
-await test('the trigger only reads and raises: the public token needs no write permission besides submit', () => {
+await test('the triggers only read and raise: the public token needs no write permission besides submit and play', () => {
   const db = open();
-  const sql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger'").all().map(r => r.sql).join('\n');
-  assert.match(sql, /RAISE\(ABORT, 'invalid'\)/);
-  assert.doesNotMatch(sql.slice(sql.indexOf('BEGIN')), /\b(INSERT|UPDATE|DELETE|REPLACE)\b/i, 'the body of the trigger (after its header AFTER INSERT ON)');
-  assert.equal(count(db, "sqlite_master WHERE type = 'trigger'"), 1);
+  const triggers = db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger'").all();
+  assert.deepEqual(triggers.map(t => t.name).sort(), ['play_ai', 'submit_ai']);
+  assert.match(triggers.map(t => t.sql).join('\n'), /RAISE\(ABORT, 'invalid'\)/);
+  for (const t of triggers) assert.doesNotMatch(t.sql.slice(t.sql.indexOf('BEGIN')), /\b(INSERT|UPDATE|DELETE|REPLACE)\b/i, `the body of ${t.name} (after its header AFTER INSERT ON)`);
 });
 
 await test('600 random solves + seeds: every reply and the stats are identical to worker.js', async () => {
@@ -232,6 +237,147 @@ await test('the adapter in the leaderboard flow: ok, rejected (invalid input) an
   };
   const denied = createLeaderboard({ always: backend, chain: [] }, { fetchFn: noInsertRight, timeoutMs: 1000 });
   assert.equal((await denied.submit(String(today), 42.5)).status, 'failed');
+});
+
+// ---------- behaviour rows ----------
+const PZ = packPuzzle(parse('size 7\ncheckpoints 0,1=2 0,6=1 1,3=3 2,2=5 2,5=4 3,1=7 3,5=9 4,3=8 5,3=6\nwalls V,4,3 H,5,4'));
+const row = (extra = {}) => ({ day: utcDay(), ms: 42130, u: 7, deep: 3, s: packS('local', 5), pz: PZ, ev: null, v: 0, ...extra });
+const sink = SINKS.turso({ url: 'https://zipgame-x.turso.io/', key: 'public-token' });
+// one row through the page's own sink: 'ok' | 'rejected'; throws like the page would see it (= failed)
+const sendPlay = async (db, r, token = 'public-token') => {
+  const { url, init } = sink.request(r);
+  const res = await fakeTurso(db, token)(url, init);
+  return sink.decode(res.status, await res.json());
+};
+const playRows = db => db.prepare('SELECT rowid AS id, day, ms, u, deep, s, hex(pz) AS pz, hex(ev) AS ev, v FROM play ORDER BY rowid').all();
+
+await test('play: the trigger accepts and rejects exactly what validateRow of src/core/behaviour.js does (one rule set, two implementations)', async () => {
+  const db = open(), d = utcDay();
+  const cases = {
+    ok: row(), 'ok: a Game of Day row (no puzzle, no counts)': row({ pz: null, u: null, deep: null, s: packS('gotd', 15) }), 'ok: ms at the lower limit': row({ ms: 500 }), 'ok: ms at the upper limit': row({ ms: 3600000 }),
+    'ok: the oldest replay day': row({ day: d - REPLAY_DAYS - 1 }), 'ok: tomorrow': row({ day: d + 1 }), 'ok: ev of 64 bytes': row({ ev: new Uint8Array(64) }), 'ok: pz of 128 bytes': row({ pz: new Uint8Array(128) }), 'ok: v 15': row({ v: 15 }),
+    'ms 499': row({ ms: 499 }), 'ms 3600001': row({ ms: 3600001 }), 'day too old': row({ day: d - REPLAY_DAYS - 2 }), 'day too new': row({ day: d + 2 }), 'u -1': row({ u: -1 }), 'u 65536': row({ u: 65536 }),
+    'deep 65536': row({ deep: 65536 }), 's 256': row({ s: 256 }), 'pz 3 bytes': row({ pz: PZ.slice(0, 3) }), 'pz 129 bytes': row({ pz: new Uint8Array(129) }), 'ev 65 bytes': row({ ev: new Uint8Array(65) }), 'v 16': row({ v: 16 }), 'v -1': row({ v: -1 }),
+  };
+  for (const [name, r] of Object.entries(cases)) {
+    const want = validateRow(r) ? 'ok' : 'rejected';
+    assert.equal(name.startsWith('ok') ? 'ok' : 'rejected', want, `${name}: validateRow disagrees with the case's own label`);
+    assert.equal(await sendPlay(db, r), want, name);
+  }
+  const accepted = Object.keys(cases).filter(k => k.startsWith('ok')).length;
+  assert.equal(count(db, 'play'), accepted, 'only the accepted rows are stored');
+  const raw = (...a) => db.prepare(INSERT_SQL).run(...a);
+  assert.throws(() => raw(utcDay(), 'abc', null, null, null, null, null, 0), /invalid/, 'text ms');
+  assert.throws(() => raw(utcDay(), 4000.5, null, null, null, null, null, 0), /invalid/, 'float ms');
+  assert.throws(() => raw(utcDay(), 4000, null, null, null, 'text', null, 0), /invalid/, 'a text pz');
+  assert.throws(() => raw(utcDay(), 4000, 'x', null, null, null, null, 0), /invalid/, 'text u');
+  assert.throws(() => raw(null, 4000, null, null, null, null, null, 0), /NOT NULL/, 'no day (never sent: the page validates first)');
+  assert.equal(count(db, 'play'), accepted);
+});
+
+await test('play: the Turso table and the Worker (D1) store the same row the same way', async () => {
+  const turso = open(), { cloudflare, d1 } = cloudflareDb();
+  for (const r of [row(), row({ pz: null, u: null, deep: null, s: packS('replay', 3), ms: 9999 }), row({ ev: Uint8Array.of(0, 1, 2, 255), v: 1 })]) {
+    assert.equal(await sendPlay(turso, r), 'ok'); assert.equal(await addPlay(d1, r), 'ok');
+  }
+  const q = db => db.prepare('SELECT rowid AS id, day, ms, u, deep, s, hex(pz) AS pz, hex(ev) AS ev, v FROM play ORDER BY rowid').all();
+  assert.deepEqual(q(cloudflare), playRows(turso));
+  assert.equal(playRows(turso)[0].pz, Buffer.from(PZ).toString('hex').toUpperCase(), 'the puzzle bytes arrive unchanged');
+  assert.equal(playRows(turso)[2].ev, '000102FF');
+});
+
+await test('play: the ceiling, the off switch and a missing config are failures the page retries (not rejections); a denied token is a failure too', async () => {
+  const db = open();
+  assert.equal(await sendPlay(db, row()), 'ok');
+  db.exec('UPDATE play_cfg SET cap = 1');
+  await assert.rejects(() => sendPlay(db, row()), /closed/, 'the highest id is at the cap');
+  assert.equal(count(db, 'play'), 1);
+  db.exec('UPDATE play_cfg SET cap = 2'); assert.equal(await sendPlay(db, row()), 'ok');
+  db.exec('UPDATE play_cfg SET cap = 0'); await assert.rejects(() => sendPlay(db, row()), /closed/, 'cap 0 = off');
+  db.exec('DELETE FROM play; UPDATE play_cfg SET cap = 3000000'); assert.equal(await sendPlay(db, row()), 'ok'); assert.equal(playRows(db)[0].id, 1);
+  db.exec('DELETE FROM play_cfg'); await assert.rejects(() => sendPlay(db, row()), /closed/, 'no config row: fail closed');
+  const reply = message => ({ results: [{ type: 'error', error: { message } }] });
+  assert.throws(() => sink.decode(200, reply('SQLite error: not authorized')), /not authorized/, 'a token without play:data_add: a failure, so the backup is tried');
+  assert.equal(sink.decode(200, reply('SQLite error: invalid')), 'rejected');
+  assert.throws(() => sink.decode(500, null), /HTTP 500/);
+});
+
+await test('play: schema.sql run twice keeps the rows and a changed cap; both schemas have exactly the COLUMNS of src/core/behaviour.js (name, type, NOT NULL, default)', () => {
+  const db = open(); db.prepare(INSERT_SQL).run(...COLUMN_NAMES.map(n => row()[n])); db.exec('UPDATE play_cfg SET cap = 77');
+  db.exec(tursoSchema);
+  assert.equal(count(db, 'play'), 1); assert.equal(Number(db.prepare('SELECT cap FROM play_cfg').get().cap), 77); assert.equal(count(db, 'play_cfg'), 1);
+  const cf = new DatabaseSync(':memory:'); cf.exec(cloudflareSchema);
+  for (const [name, handle] of [['turso', db], ['cloudflare', cf]]) {
+    const cols = handle.prepare('PRAGMA table_info(play)').all();
+    assert.deepEqual(cols.map(c => c.name), COLUMN_NAMES, name + ': column order');
+    for (const [i, c] of COLUMNS.entries()) {
+      assert.equal(cols[i].type, c.sql.split(' ')[0], `${name}.${c.name}: type`);
+      assert.equal(Boolean(cols[i].notnull), c.sql.includes('NOT NULL'), `${name}.${c.name}: NOT NULL`);
+      assert.equal(cols[i].dflt_value, c.sql.includes('DEFAULT') ? c.sql.split('DEFAULT ')[1] : null, `${name}.${c.name}: default`);
+    }
+  }
+  for (const c of COLUMNS.slice(2)) assert.ok(!c.sql.includes('NOT NULL') || c.sql.includes('DEFAULT'), `${c.name} could not be added by ALTER TABLE (a NOT NULL column needs a DEFAULT)`);
+});
+
+await test('play: a column added later (ALTER TABLE ADD COLUMN) leaves the old rows and the trigger working; an older page that does not send it still inserts', async () => {
+  const db = open(); assert.equal(await sendPlay(db, row()), 'ok');
+  db.exec('ALTER TABLE play ADD COLUMN extra INTEGER');
+  assert.equal(await sendPlay(db, row({ ms: 5000 })), 'ok');
+  assert.deepEqual(db.prepare('SELECT extra FROM play ORDER BY rowid').all().map(r => r.extra), [null, null]);
+});
+
+// tools/behaviour-lib.mjs against the real Turso table (through the fake HTTP API) and the real Worker, both on SQLite
+const PZ_B = packPuzzle(parse('size 6\ncheckpoints 0,0=1 5,5=2 2,3=3\nwalls'));
+const adminFor = (turso, d1, { secret = 'adm1n', token = 'owner-token' } = {}) => createAdmin({
+  turso: { url: 'https://zipgame-x.turso.io', token }, cloudflare: { url: 'https://w.example', secret },
+  fetchFn: (url, init) => (url.startsWith('https://w.example') ? worker.fetch(new Request(url, init), { DB: d1, PLAY_ADMIN_SECRET: 'adm1n' }) : fakeTurso(turso, token)(url, init)),
+});
+await test('tools/behaviour-lib: export reads both backends, delete removes exactly the chosen rows on the backend that holds them, a wrong secret changes nothing', async () => {
+  const turso = open(), { cloudflare, d1 } = cloudflareDb(), d = utcDay();
+  const put = async (db, r) => (db === turso ? sendPlay(turso, r) : addPlay(d1, r));
+  const A = row({ ms: 11000 }), A2 = row({ ms: 12000 }), B = row({ pz: PZ_B, ms: 13000 }), G = row({ pz: null, u: null, deep: null, s: packS('gotd', 4), ms: 14000, day: d - 1 }), R = { ...G, s: packS('replay', 4), ms: 15000 };
+  for (const r of [A, B, G]) await put(turso, r);
+  for (const r of [A, A2, R]) await put(cloudflare, r); // A is on both backends: one game stored twice
+  const admin = adminFor(turso, d1), { rows, columns } = await admin.exportRows();
+  assert.deepEqual(columns, { turso: COLUMN_NAMES, cloudflare: COLUMN_NAMES }); assert.equal(rows.length, 6);
+  assert.deepEqual(rows.map(r => `${r.where}:${r.id}`), ['turso:1', 'turso:2', 'turso:3', 'cloudflare:1', 'cloudflare:2', 'cloudflare:3']);
+  const { rows: unique, dropped } = dedupe(rows); assert.equal(dropped, 1);
+  const gotdText = 'size 5\ncheckpoints 0,0=1 4,4=2\nwalls', files = { [dateOfDay(d - 1)]: gotdText }, described = describe(unique, files);
+  assert.deepEqual(described.map(r => [r.kind, r.skill, r.bad, r.key === null]), [['local', 5, false, false], ['local', 5, false, false], ['gotd', 4, false, false], ['local', 5, false, false], ['replay', 4, false, false]]);
+  assert.equal(described[0].key, serialize(parse('size 7\ncheckpoints 0,1=2 0,6=1 1,3=3 2,2=5 2,5=4 3,1=7 3,5=9 4,3=8 5,3=6\nwalls V,4,3 H,5,4')));
+  assert.equal(described[2].key, gotdText); assert.equal(describe(unique)[2].key, null, 'a Game of Day without its file has no key');
+  assert.equal(describe([{ ...rows[0], pz: 'AAAA' }])[0].bad, true, 'a puzzle that does not decode is marked');
+  const puzzleA = 'size 7\ncheckpoints 0,1=2 0,6=1 1,3=3 2,2=5 2,5=4 3,1=7 3,5=9 4,3=8 5,3=6\nwalls V,4,3 H,5,4';
+  assert.deepEqual(select(rows, { puzzle: puzzleA }).map(r => `${r.where}:${r.id}`), ['turso:1', 'cloudflare:1', 'cloudflare:2'], 'every row of the puzzle, duplicates included');
+  assert.deepEqual(select(rows, { gotd: dateOfDay(d - 1).toString() }).map(r => `${r.where}:${r.id}`), ['turso:3', 'cloudflare:3'], 'Game of Day and replay rows of that day, not the local ones');
+  assert.equal(select(rows, { day: dateOfDay(d).toString() }).length, 4); assert.deepEqual(select(rows, { ids: ['turso:2', 'cloudflare:3', 'nope:1'] }).map(r => `${r.where}:${r.id}`), ['turso:2', 'cloudflare:3']);
+  assert.throws(() => select(rows, {}), /exactly one/); assert.throws(() => select(rows, { day: '20260101', gotd: '20260101' }), /exactly one/); assert.throws(() => select(rows, { day: '2026' }), /YYYYMMDD/);
+  assert.throws(() => select(rows, { puzzle: 'size 5\ncheckpoints 0,0=1\nwalls' }), /cannot be uploaded/);
+  await assert.rejects(() => adminFor(turso, d1, { secret: 'wrong' }).deleteRows({ cloudflare: [1] }), /HTTP 401/); assert.equal(count(cloudflare, 'play'), 3, 'a wrong secret deletes nothing');
+  const done = await admin.deleteRows(idsOf(select(rows, { puzzle: puzzleA })));
+  assert.deepEqual(done, { turso: 1, cloudflare: 2 }); assert.deepEqual(playRows(turso).map(r => r.id), [2, 3]); assert.deepEqual(cloudflare.prepare('SELECT rowid AS id FROM play').all().map(r => r.id), [3]);
+  assert.deepEqual(await admin.deleteRows({ turso: [999], cloudflare: [999] }), { turso: 0, cloudflare: 0 }, 'ids that are no rows');
+  const after = await admin.exportRows(); assert.deepEqual(after.rows.map(r => `${r.where}:${r.id}`), ['turso:2', 'turso:3', 'cloudflare:3']);
+  const many = open(); for (let i = 0; i < 250; i++) await sendPlay(many, row({ ms: 1000 + i }));
+  assert.deepEqual(await adminFor(many, d1).deleteRows({ turso: Array.from({ length: 200 }, (_, i) => i + 1) }), { turso: 200, cloudflare: 0 }, 'across chunks'); assert.equal(count(many, 'play'), 50);
+  assert.equal((await adminFor(many, d1).exportRows()).rows.filter(r => r.where === 'turso').length, 50);
+  const big = open(); for (let i = 0; i < 1005; i++) big.prepare(INSERT_SQL).run(...COLUMN_NAMES.map(n => row({ ms: 1000 + i })[n]));
+  assert.equal((await adminFor(big, d1).exportRows()).rows.filter(r => r.where === 'turso').length, 1005, 'more than one page of 1000');
+});
+
+await test('tools/behaviour-lib: migrate adds a missing column on Turso and prints the wrangler command for D1; a table behind the code can still be read; a NOT NULL column without DEFAULT is refused', async () => {
+  const turso = open(), { cloudflare, d1 } = cloudflareDb(); await sendPlay(turso, row()); await addPlay(d1, row());
+  turso.exec('DROP TRIGGER play_ai'); // (it names ev)
+  for (const db of [turso, cloudflare]) db.exec('ALTER TABLE play DROP COLUMN ev'); // the tables as they were before `ev` existed
+  const admin = adminFor(turso, d1), { rows, columns } = await admin.exportRows();
+  assert.deepEqual(columns.turso, COLUMN_NAMES.filter(n => n !== 'ev')); assert.deepEqual(columns.cloudflare, columns.turso);
+  assert.deepEqual(rows.map(r => r.ev), [null, null], 'a column that does not exist yet reads as null');
+  const out = await admin.migrate('my-d1');
+  assert.deepEqual(out.turso, ['ALTER TABLE play ADD COLUMN ev BLOB']); assert.deepEqual(out.cloudflare, ['npx wrangler d1 execute my-d1 --remote --command "ALTER TABLE play ADD COLUMN ev BLOB"']);
+  assert.deepEqual([...(await admin.columns()).turso].sort(), [...COLUMN_NAMES].sort(), 'the added column comes last in the table; the code always names its columns, so the order does not matter'); assert.deepEqual((await admin.migrate()).turso, [], 'run twice: nothing to add');
+  cloudflare.exec('ALTER TABLE play ADD COLUMN ev BLOB'); assert.deepEqual((await admin.migrate()), { turso: [], cloudflare: [] });
+  const bad = { name: 'zz_required', sql: 'INTEGER NOT NULL', ok: () => true }; COLUMNS.push(bad);
+  try { await assert.rejects(() => admin.migrate(), /NOT NULL without a DEFAULT/); } finally { COLUMNS.pop(); }
 });
 
 console.log(`${passed} passed`);

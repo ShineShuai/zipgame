@@ -165,6 +165,51 @@ b { color: var(--heading); font-variant-numeric: tabular-nums; }
 @media (hover: hover) { .stat-item:hover .stat-tip { display: block; } }
 @media (max-width: 560px) { .stat-item { flex-basis: 100%; } }
 
+/* ---------- unlock chances and the lucky game ---------- */
+
+.lucky-box { margin: 0 0 18px; border: 2px solid var(--line); border-radius: 16px; background: #fff; }
+.lucky-box.ready { border-color: var(--orange); background: #fff8ea; }
+.lucky-box .note { margin: 0; padding: 10px 12px; }
+.lucky-row {
+  position: relative; /* anchors the (i) tip */
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; padding: 10px 12px;
+}
+.lucky-box > * + * { border-top: 1px solid var(--line); }
+.lucky-row.reward { background: var(--blue-soft); border-radius: 14px 14px 0 0; }
+.lucky-icon { flex: none; display: grid; place-items: center; }
+.lucky-icon .variant-icon { width: 40px; height: 40px; }
+.lucky-text { flex: 1 1 150px; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.lucky-text small { color: var(--muted); font-size: 0.85rem; }
+.lucky-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.lucky-chances {
+  display: inline-flex; align-items: center; gap: 4px; padding: 1px 9px; border-radius: 999px;
+  background: #eef1fb; color: var(--muted); font-size: 0.8rem; font-weight: 700; white-space: nowrap;
+}
+.lucky-chances.has { background: #fff1d6; color: #b86a00; }
+.lucky-chances .stat-icon { width: 14px; height: 14px; flex: none; }
+.lucky-row .tip-btn { flex: none; margin-left: 0; }
+.lucky-row > .btn { flex: 0 0 auto; }
+.reward-buttons { display: flex; flex-wrap: wrap; gap: 8px; flex: 1 1 100%; }
+.reward-buttons .btn { flex: 1 1 130px; }
+.lucky-week { display: flex; gap: 4px; margin-top: 8px; }
+.lucky-week span { flex: 1 1 0; min-width: 0; padding: 3px 0; border-radius: 8px; background: rgba(255, 255, 255, 0.14); text-align: center; line-height: 1.25; }
+.lucky-week b, .lucky-week small { display: block; font-size: 0.72rem; }
+.lucky-week b { font-weight: 700; }
+.lucky-week .win { background: var(--orange); color: var(--heading); }
+.lucky-chip { margin-left: 8px; padding: 2px 10px; border-radius: 999px; background: #fff1d6; color: #b86a00; font-size: 0.75rem; font-weight: 800; }
+.lucky-once { margin: 12px 0 0; }
+.lucky-result {
+  display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 10px 14px; border-radius: 12px;
+  background: var(--green-soft); color: #17583b; font-weight: 700;
+}
+.lucky-result.same { background: var(--blue-soft); color: var(--blue-dark); }
+.lucky-result .variant-icon { flex: none; width: 36px; height: 36px; }
+.side .lucky-row { margin-top: 14px; }
+
+/* Stats under the game (full width, below the board): the row of the grid being played is marked. */
+.play-stats { margin: 20px 0 0; }
+.play-stats tr.current td { background: var(--blue-soft); }
+
 /* ---------- replay screen ---------- */
 
 .replay-stage { max-width: 960px; margin: 0 auto; } /* wider than the menu: three rows of date + status per line need ~250 px each */
@@ -270,13 +315,16 @@ select:focus { border-color: var(--blue); }
 .gotd-card .status-panel { margin-top: auto; padding-top: 12px; } /* replays and streak sit at the foot of the card */
 .gotd-card .card-badge { background: #fff1d6; color: #e8890c; }
 
-/* Puzzle type: big tiles (two, or three while the hidden one is shown), each showing the board it plays. The radio is stretched over its tile
-   (invisible), so a tap anywhere selects it; the selected tile gets a blue frame and a check mark. */
+/* Puzzle type: big tiles (Standard and the unlocked variants; hold V adds the locked ones), each showing the board it plays. The radio is
+   stretched over its tile (invisible), so a tap anywhere selects it; the selected tile gets a blue frame and a check mark. The grid
+   fits any number of tiles: two per row on a phone, more where the card is wider. */
 .variant-picker { min-width: 0; margin: 0 0 18px; padding: 0; border: 0; }
 .variant-picker legend { padding: 0; margin-bottom: 8px; }
-.variant-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.variant-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
 .variant-opt { position: relative; display: block; cursor: pointer; }
-.variant-extra { grid-column: 1 / -1; } /* the hidden type, when shown, takes a row of its own */
+/* a locked variant, shown only while V is held: dashed, with a lock */
+.variant-locked .variant-card { border-style: dashed; background: #fafbff; }
+.variant-locked .variant-name::after { content: " \1F512"; font-size: 0.8em; }
 .variant-opt input {
   position: absolute;
   inset: 0;
@@ -336,6 +384,11 @@ select:focus { border-color: var(--blue); }
 .vi-path { fill: none; stroke: #ffb020; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .vi-dot { fill: var(--blue); stroke: #fff; stroke-width: 1.2; }
 .vi-arrow { fill: #26324f; stroke: #fff; stroke-width: 0.8; stroke-linejoin: round; paint-order: stroke; }
+.vi-q { fill: none; stroke: #ffb020; stroke-width: 3.2; stroke-linecap: round; } /* the lucky game's question mark */
+.vi-qdot { fill: #ffb020; }
+.vi-halo { stroke: #fff; stroke-width: 6.4; fill: #fff; }
+.vi-q.vi-halo { fill: none; }
+.vi-qdot.vi-halo { stroke-width: 3; }
 
 .size-field { margin-bottom: 16px; }
 

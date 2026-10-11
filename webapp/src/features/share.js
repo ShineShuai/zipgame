@@ -103,7 +103,7 @@ export function parseShareLink(search) {
 export function shareText(rec, url, tr) {
   const head = rec.kind === 'gotd'
     ? tr('share.headGotd', dateLabel(dateOfDay(rec.day)), rec.n)
-    : rec.variant ? tr(rec.variant === 'arrows' ? 'share.headArrows' : 'share.headCutout', rec.n)
+    : rec.variant ? tr('share.head' + rec.variant[0].toUpperCase() + rec.variant.slice(1), rec.n)
       : tr('share.headLocal', rec.n, rec.index + 1);
   const grade = rec.grade == null ? '' : ` · ${tr('grade.' + rec.grade)} ${rec.grade}/5`;
   const result = [`⏱ ${rec.timeS.toFixed(1)}s`];

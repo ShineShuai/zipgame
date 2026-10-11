@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Smoke test of a Turso database set up with server/turso/schema.sql, using the browser token. It sends the SAME requests the page sends (they are built
 # and decoded by tursoBackend of src/platform/leaderboard.js, so this needs node), then tries writes the token must not be able to do.
-# It adds ONE solve (42 s) to today's stats: run it on a scratch database, not on the production one.
+# It adds ONE solve (42 s) to today's stats and TWO behaviour rows (ms 41999: one Game-of-Day style, one local with its puzzle as a blob): run it on a scratch
+# database, not on the production one. Remove the rows with your own login: DELETE FROM play WHERE ms = 41999.
 #   server/turso/smoke.sh HTTP_URL TOKEN_FILE [ORIGIN]
 #   HTTP_URL    https://<db>-<org>.<region>.turso.io      (turso db show <db> --http-url)
-#   TOKEN_FILE  file holding the browser token            (turso db tokens create <db> -e never -p all:data_read -p submit:data_add > FILE)
+#   TOKEN_FILE  file holding the browser token            (turso db tokens create <db> -e never -p all:data_read -p submit:data_add -p play:data_add > FILE)
 #   ORIGIN      the page's origin for the CORS check      (default https://shineshuai.github.io)
 # The write checks run only for a token whose signed permission list is exactly the browser token's, and they stop at the first write that is NOT denied.
 set -u
@@ -27,6 +28,12 @@ const { binOf } = await import(pathToFileURL(root + '/src/core/hist.js'));
 const be = tursoBackend({ url: 'https://unused.example', key: 'unused' });
 if (mode === 'submit-body') process.stdout.write(be.request({ u: a, d: +b, t: +c, b: d === undefined ? binOf(+c) : +d }).init.body);
 else if (mode === 'read-body') process.stdout.write(be.read({ from: +a, to: +b }).init.body);
+else if (mode === 'play-body' || mode === 'decode-play') { // the behaviour row (src/platform/behaviour.js): play-body DAYNUMBER MS WITH_PUZZLE / decode-play
+  const { SINKS } = await import(pathToFileURL(root + '/src/platform/behaviour.js')), { packPuzzle, packS } = await import(pathToFileURL(root + '/src/core/behaviour.js'));
+  const { parse } = await import(pathToFileURL(root + '/src/core/format.js')), sink = SINKS.turso({ url: 'https://unused.example', key: 'unused' });
+  if (mode === 'play-body') process.stdout.write(sink.request({ day: +a, ms: +b, u: 1, deep: 1, s: packS(c === '1' ? 'local' : 'gotd', 15), pz: c === '1' ? packPuzzle(parse('size 5\ncheckpoints 0,0=1 4,4=2\nwalls')) : null, ev: null, v: 0 }).init.body);
+  else { try { console.log(sink.decode(200, JSON.parse(readFileSync(0, 'utf8')))); } catch (e) { console.log('ERROR ' + e.message); } }
+}
 else {
   try { console.log(JSON.stringify(be.decode(mode === 'decode-read' ? 'read' : 'submit', JSON.parse(readFileSync(0, 'utf8'))))); } catch (e) { console.log('ERROR ' + e.message); }
 }
@@ -80,6 +87,24 @@ n1=$(field n "$decoded")
 [ "${n1:-0}" -eq $((n0 + 1)) ]
 check "insert + summary with the browser token (n $n0 -> ${n1:-0})  <-- the important one" $? "$decoded  $reply"
 
+# 2b. the page's own behaviour rows (src/platform/behaviour.js): one without a puzzle, one with its puzzle as a BLOB (the encoding that matters), the cap row readable
+daynum=$(( $(date -u +%s) / 86400 ))
+p0=$(first_value "$(sql "SELECT COUNT(*) FROM play WHERE ms = 41999")"); p0=${p0:-0}
+for with in 0 1; do
+  decoded=$(client decode-play <<<"$(post "$(client play-body "$daynum" 41999 "$with")")")
+  [ "$decoded" = "ok" ]
+  check "behaviour row (puzzle blob: $with) stored with the browser token  <-- needs play:data_add" $? "$decoded"
+done
+p1=$(first_value "$(sql "SELECT COUNT(*) FROM play WHERE ms = 41999")")
+[ "${p1:-0}" -eq $((p0 + 2)) ]
+check "both behaviour rows are in the table (${p0} -> ${p1:-0})" $? ""
+reply=$(sql "SELECT cap FROM play_cfg WHERE id = 1")
+[ -n "$(first_value "$reply")" ] && [ "$(first_value "$reply")" -ge 0 ]
+check "play_cfg readable (the ceiling: $(first_value "$reply"))" $? "$reply"
+decoded=$(client decode-play <<<"$(post "$(client play-body "$daynum" 100 0)")")
+[ "$decoded" = "rejected" ]
+check "behaviour row with ms 100 rejected by the trigger" $? "$decoded"
+
 # 3. a repeated uid changes nothing and still answers
 decoded=$(client decode-submit <<<"$(post "$(client submit-body "$uid" "$day" 42000)")")
 [ "$(field n "$decoded")" = "${n1:-x}" ]
@@ -103,17 +128,21 @@ if not perm:
     print("no permission list (full access)")
 else:
     have = {(",".join(e["t"]) if e.get("t") else "all", a) for e in perm for a in e["a"]}
-    print(", ".join(f"{t}:{a}" for t, a in sorted(have - {("all", "data_read"), ("submit", "data_add")})))' "$token" 2>/dev/null)
+    print(", ".join(f"{t}:{a}" for t, a in sorted(have - {("all", "data_read"), ("submit", "data_add"), ("play", "data_add")})))' "$token" 2>/dev/null)
 if [ -n "$extra" ]; then
-  check "token is the browser token (-p all:data_read -p submit:data_add)" 1 "not it: $extra. Write attempts skipped; a token like this must not go into config.js"
+  check "token is the browser token (-p all:data_read -p submit:data_add -p play:data_add)" 1 "not it: $extra. Write attempts skipped; a token like this must not go into config.js"
 else
-  check "token is the browser token (-p all:data_read -p submit:data_add)" 0 ""
+  check "token is the browser token (-p all:data_read -p submit:data_add -p play:data_add)" 0 ""
   # from harmless to destructive; stops at the first statement that is NOT denied (the database would not enforce the permissions)
   for stmt in \
     "CREATE TABLE smoke_denied (x)" \
     "INSERT INTO seed (day, ms) VALUES (19990101, '[1000]')" \
     "UPDATE submit SET ms = 1 WHERE uid = '$uid'" \
     "DELETE FROM submit WHERE uid = '$uid'" \
+    "UPDATE play SET ms = ms WHERE ms = 41999" \
+    "UPDATE play_cfg SET cap = cap" \
+    "DELETE FROM play WHERE ms = 41999" \
+    "DROP TABLE play_cfg" \
     "DROP TABLE seed"; do
     reply=$(sql "$stmt")
     grep -Eq '"type": *"error"' <<<"$reply"
