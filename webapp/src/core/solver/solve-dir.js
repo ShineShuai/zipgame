@@ -31,6 +31,12 @@ import { startMemo, ZOBRIST } from './memo-dir.js';
 //   propagation kept (incremental)        0.97M nodes,  3.3 s ( 3.4 us per node): the same nodes
 //   + leg bound                           0.19M nodes,  0.82 s ( 4.3 us per node)
 //   + table of dead positions             0.15M nodes,  0.71 s ( 4.8 us per node)
+// The leg bound was 56% of the time (a flood fill per leg at every node). The legs between two
+// checkpoints are now kept (see legsFit): the same nodes, 1.8x faster per node (50 of the 11x11
+// checks of the 150 hardest, 3.34M nodes: 25.6 s -> 14.1 s, 7.7 -> 4.2 us per node; 12x12
+// generation 23 s -> 11 s). Tried and not kept: a check that the checkpoints on chains of forced
+// moves follow one another (no node less), dropping the backwards flood fill now that the legs are
+// checked (+12% nodes, -4% time), Int32Array for every propagation array (no change).
 // On the 127 hardest checks (five 9x9 and two 10x10 puzzles) the leg bound cut the nodes 6x and
 // the table another 2.5x (1.63M -> 0.65M nodes, 7.8 s -> 3.5 s). Tried and not kept: a coverage
 // test for the legs (each cell within the slack of some leg: -30% nodes at 3-5x the cost per
@@ -211,42 +217,99 @@ export function solveDirected(p, opts = {}) {
   // never entering a checkpoint it is not on its way to. A flood fill over the moves left finds
   // each leg's shortest length, or that there is no way; the shortest legs have to fit into the
   // `remaining` cells still to be visited.
+  // The legs between two checkpoints do not start at the head, and a move of the search rarely
+  // touches one: the shortest path of such a leg is kept (legRef/legLen: its moves in legPool),
+  // and found again by a flood fill only when one of its moves is gone. The moves left only ever
+  // shrink along a search path, so a kept path that is still there is still a shortest one:
+  // the same lengths as flooding every leg at every node, a fraction of the work. The changes
+  // are on a trail, taken back when the search backs up.
   const dist = new Int32Array(T);
   const queue = new Int32Array(T);
-  function legsFit(head, needNext, remaining) {
-    let from = head;
-    let sum = 0;
-    for (let k = needNext; k <= K; k++) {
-      const target = pos[k];
-      if (from === target) continue;
-      stamp++;
-      let qHead = 0;
-      let qTail = 0;
-      queue[qTail++] = from;
-      seen[from] = stamp;
-      dist[from] = 0;
-      let length = -1;
-      while (qHead < qTail && length < 0) {
-        const u = queue[qHead++];
-        for (let d = 0; d < 4; d++) {
-          if (!((av[u] >> d) & 1)) continue;
-          const v = out[u * 4 + d];
-          if (seen[v] === stamp) continue;
-          if (v === target) {
-            length = dist[u] + 1;
-            break;
-          }
-          if (cp[v] !== 0) continue;
-          seen[v] = stamp;
-          dist[v] = dist[u] + 1;
-          queue[qTail++] = v;
-        }
+  const via = new Int32Array(T); // the move (cell * 4 + d) a flood fill reached the cell by
+  const legRef = new Int32Array(K + 1).fill(-1);
+  const legLen = new Int32Array(K + 1);
+  let legPool = new Int32Array(64 * T);
+  let poolTop = 0;
+  const legTrail = new Int32Array(3 * (K + 1) * (T + 1));
+  let legTrailTop = 0;
+
+  // Length of the shortest way from `from` to `target` over the moves left that enters no other
+  // checkpoint (-1: none); via[] holds the way.
+  function shortestLeg(from, target) {
+    stamp++;
+    let qHead = 0;
+    let qTail = 0;
+    queue[qTail++] = from;
+    seen[from] = stamp;
+    dist[from] = 0;
+    while (qHead < qTail) {
+      const u = queue[qHead++];
+      const bits = av[u];
+      for (let d = 0; d < 4; d++) {
+        if (!((bits >> d) & 1)) continue;
+        const v = out[u * 4 + d];
+        if (seen[v] === stamp) continue;
+        via[v] = u * 4 + d;
+        if (v === target) return dist[u] + 1;
+        if (cp[v] !== 0) continue;
+        seen[v] = stamp;
+        dist[v] = dist[u] + 1;
+        queue[qTail++] = v;
       }
-      if (length < 0) return false;
-      sum += length;
-      from = target;
     }
-    return sum <= remaining;
+    return -1;
+  }
+
+  function keepLeg(j, length) {
+    legTrail[legTrailTop++] = j;
+    legTrail[legTrailTop++] = legRef[j];
+    legTrail[legTrailTop++] = legLen[j];
+    if (poolTop + length > legPool.length) {
+      const bigger = new Int32Array(legPool.length * 2);
+      bigger.set(legPool);
+      legPool = bigger;
+    }
+    let v = pos[j + 1];
+    for (let i = length - 1; i >= 0; i--) {
+      const move = via[v];
+      legPool[poolTop + i] = move;
+      v = move >> 2;
+    }
+    legRef[j] = poolTop;
+    legLen[j] = length;
+    poolTop += length;
+  }
+
+  function undoLegs(trailMark, poolMark) {
+    while (legTrailTop > trailMark) {
+      const length = legTrail[--legTrailTop];
+      const ref = legTrail[--legTrailTop];
+      legLen[legTrail[--legTrailTop]] = length;
+      legRef[legTrail[legTrailTop]] = ref;
+    }
+    poolTop = poolMark;
+  }
+
+  function legsFit(head, needNext, remaining) {
+    if (needNext > K) return true;
+    let sum = shortestLeg(head, pos[needNext]);
+    if (sum < 0 || sum > remaining) return false;
+    for (let j = needNext; j < K; j++) {
+      let ref = legRef[j];
+      let length = legLen[j];
+      for (let i = 0; i < length && ref >= 0; i++) {
+        const move = legPool[ref + i];
+        if (!((av[move >> 2] >> (move & 3)) & 1)) ref = -1;
+      }
+      if (ref < 0) {
+        length = shortestLeg(pos[j], pos[j + 1]);
+        if (length < 0) return false;
+        keepLeg(j, length);
+      }
+      sum += length;
+      if (sum > remaining) return false;
+    }
+    return true;
   }
 
   // The node's own check; `head` is on the path already, `count` cells are.
@@ -290,9 +353,12 @@ export function solveDirected(p, opts = {}) {
       vis[cell] = 0;
       return;
     }
+    const legMark = legTrailTop;
+    const poolMark = poolTop;
     const stuck = cell === end || !feasible(cell, count, needNext)
       || (prop && !deduced(cell, count, used));
     if (stuck) {
+      undoLegs(legMark, poolMark);
       vis[cell] = 0; // (the end is entered last)
       return;
     }
@@ -308,6 +374,7 @@ export function solveDirected(p, opts = {}) {
       key2 = h2 ^ zh2[cell] ^ (used ? zu2 : 0);
       key3 = h3 ^ zh3[cell] ^ (used ? zu3 : 0);
       if (memo.has(key1, key2, key3)) {
+        undoLegs(legMark, poolMark);
         vis[cell] = 0;
         return;
       }
@@ -374,6 +441,7 @@ export function solveDirected(p, opts = {}) {
     }
     const searched = found === foundBefore && nodes - prefix <= cap; // all of it, no solution
     if (MEMO && searched && nodes - nodesBefore >= MIN_SUBTREE) memo.add(key1, key2, key3);
+    undoLegs(legMark, poolMark);
     vis[cell] = 0;
   }
 

@@ -25,12 +25,18 @@ import { solve } from '../solver/solve.js';
 
 // Candidate puzzles per grid size (the quality/time knob, see CANDIDATES in generate.js) and the
 // solver-node budgets, as multiples of the cell count (tools/bench-arrows.mjs prints the
-// trade-off).
-export const ARROW_CANDIDATES = { 5: 32, 6: 32, 7: 24, 8: 12, 9: 8, 10: 2 };
+// trade-off). From 10x10 on the first pass over the arrows is cheap (ARROW_CHECK_CAP_X_HUGE) and a
+// candidate that cannot beat the best so far is dropped part-way, so more candidates cost little:
+// 10x10 with 6 instead of 2: 13.5 arrows against 14.9 in 1.3 s against 1.2 s; 11x11 with 6: 17.0
+// against 20.3 in 3.2 s against 4.4 s (the same seeds, 8-10 per size).
+export const ARROW_CANDIDATES = { 5: 32, 6: 32, 7: 24, 8: 12, 9: 8, 10: 6, 11: 6, 12: 4 };
 const candidatesFor = n => ARROW_CANDIDATES[n] || 2;
 // The grid sizes the play app offers for this variant (it grows with the solver; see
-// generateArrows).
-export const ARROW_SIZES = Object.keys(ARROW_CANDIDATES).map(Number);
+// generateArrows). 12x12 is generated too (about 7 s) but not offered yet.
+export const ARROW_MAX_OFFERED = 11;
+export const ARROW_SIZES = Object.keys(ARROW_CANDIDATES)
+  .map(Number)
+  .filter(n => n <= ARROW_MAX_OFFERED);
 // From 9x9 on the first pass over the arrows uses a small check cap and the winner gets a big
 // budget for the arrows that pass left undecided: that finds as many unnecessary arrows as big
 // caps in every pass, in 40% less time (10x10, 6 seeds: 2.2 s against 3.7 s, the same 12.0
@@ -41,6 +47,12 @@ export const ARROW_BIG_FROM = 9;
 export const ARROW_MIN_CAP = 20000;
 export const ARROW_CHECK_CAP_X = 0.2;
 export const ARROW_CHECK_CAP_X_BIG = 0.05;
+// From 10x10 on, 0.01 is enough for the first pass: 11x11, 8 seeds: 2.9 s against 4.4 s, 20.5
+// arrows against 20.3; 10x10 with 0.01 is 40% faster for 0.5 arrows more (the leg-path cache of
+// solve-dir.js made every check about twice as cheap too). At 9x9 it costs 0.6 arrows more, so
+// 9x9 keeps 0.05.
+export const ARROW_HUGE_FROM = 10;
+export const ARROW_CHECK_CAP_X_HUGE = 0.01;
 // Checkpoint count K ~ pickK(KMIN, KMAX) (see generate.js: it favours small K). Fewer checkpoints
 // need more arrows and are the hardest puzzles; with K as big as the standard generator uses,
 // small boards need almost no arrows at all (5x5: 0-2), which would not show the variant. K is
@@ -280,8 +292,10 @@ const fewest = candidates => (
 // o.capX scales the node caps; o.seedFraction (default SEED_FRACTION, 0.4): the share of the edges
 // that start with an arrow. Fewer give fewer arrows at 9x9 (0.2: 9.8 against 10.6, 8 seeds, but
 // 65% more time) and more at 10x10 (15 against 12: the sparser puzzles' checks hit their caps).
-// Limits: tuned for 5 <= n <= 10 (2 to 5 s at 9x9 and 10x10 on a slow machine, see
-// tools/bench-arrows.mjs); 11x11 takes 15 to 30 s, larger boards are not usable yet.
+// Limits: tuned for 5 <= n <= 12 (about 1 s at 9x9 and 10x10, 3 s at 11x11 and 7 s at 12x12 on a
+// slow machine, see tools/bench-arrows.mjs); the time varies a lot between seeds (11x11: up to
+// about twice the mean), larger boards are not usable yet. The search time is the proof that no
+// second solution exists, which grows with the open middle of the board.
 export function* generateArrows(n, seed, o = {}) {
   const depth = o.retryDepth || 0;
   const cells = n * n;
@@ -291,7 +305,8 @@ export function* generateArrows(n, seed, o = {}) {
   const big = n >= ARROW_BIG_FROM;
   const perCell = big ? ARROW_CAP_PER_CELL_BIG : ARROW_CAP_PER_CELL;
   const nodeCap = Math.round(Math.max(ARROW_MIN_CAP, perCell * cells) * (o.capX ?? 1));
-  const checkX = o.checkCapX ?? (big ? ARROW_CHECK_CAP_X_BIG : ARROW_CHECK_CAP_X);
+  const checkX = o.checkCapX ?? (n >= ARROW_HUGE_FROM ? ARROW_CHECK_CAP_X_HUGE
+    : big ? ARROW_CHECK_CAP_X_BIG : ARROW_CHECK_CAP_X);
   const checkCap = Math.max(1000, Math.floor(nodeCap * checkX));
   const [Kmin, Kmax] = kRange(cells);
   const K = o.K || pickK(Kmin, Kmax, rnd);
