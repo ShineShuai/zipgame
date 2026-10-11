@@ -26,7 +26,7 @@ import { solve } from '../solver/solve.js';
 // Candidate puzzles per grid size (the quality/time knob, see CANDIDATES in generate.js) and the
 // solver-node budgets, as multiples of the cell count (tools/bench-arrows.mjs prints the
 // trade-off).
-export const ARROW_CANDIDATES = { 5: 32, 6: 32, 7: 24, 8: 12, 9: 4, 10: 2 };
+export const ARROW_CANDIDATES = { 5: 32, 6: 32, 7: 24, 8: 12, 9: 8, 10: 2 };
 const candidatesFor = n => ARROW_CANDIDATES[n] || 2;
 // The grid sizes the play app offers for this variant (it grows with the solver; see
 // generateArrows).
@@ -274,9 +274,8 @@ const fewest = candidates => (
 // ARROW_MIN_ARROWS); o.checkCapX scales the removal-check cap; o.pathArrows (default true): arrows
 // may sit on the solution's edges; o.freedEdge (default true): the removal check; o.refineNodes:
 // node budget of the second look (default ARROW_REFINE_NODES_PER_CELL * n^2, 0 = off); o.capX
-// scales the node caps. Limits: tuned for 5 <= n <= 10 (about 5 s at 10x10 on a slow machine, see
-// tools/bench-arrows.mjs); 11x11 takes 20 to 50 s and keeps arrows it could not decide, larger
-// boards are not usable yet.
+// scales the node caps. Limits: tuned for 5 <= n <= 10 (2 to 5 s at 9x9 and 10x10 on a slow
+// machine, see tools/bench-arrows.mjs); 11x11 takes 20 to 35 s, larger boards are not usable yet.
 export function* generateArrows(n, seed, o = {}) {
   const depth = o.retryDepth || 0;
   const cells = n * n;
