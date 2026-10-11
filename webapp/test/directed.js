@@ -12,6 +12,10 @@ import { canStep, step } from '../src/core/rules.js';
 import { solve } from '../src/core/solver/solve.js';
 import { buildMoves } from '../src/core/solver/solve-dir.js';
 import { makeDirPropagator } from '../src/core/solver/propagate-dir.js';
+import { makeDirIncremental } from '../src/core/solver/incremental-dir.js';
+import { startMemo } from '../src/core/solver/memo-dir.js';
+import { generateArrows } from '../src/core/gen/arrows.js';
+import { runSync } from '../src/core/run.js';
 import { makeRng, shuffle } from '../src/core/rng.js';
 import { backbite } from '../src/core/gen/hampath.js';
 import { randomCheckpoints } from '../src/core/gen/checkpoints.js';
@@ -84,6 +88,11 @@ function brute(p) {
   go(startCell(p), 1);
   return found.sort();
 }
+
+// The ways to run the directed solver: incremental propagation with the leg bound and the table of
+// dead positions (the default), without the table, without the leg bound, propagation recomputed
+// at every node, plain DFS.
+const MODES = [{}, { memo: false }, { legs: false }, { incr: false }, { prop: false }];
 
 const solved = (p, opts = {}) => solve(p, { limit: 1e9, capture: true, nodeCap: 5e6, ...opts });
 const joined = r => r.paths.map(x => x.join(',')).sort();
@@ -229,20 +238,20 @@ export function directedTests(t, ok, eq) {
       }
       const prefix = cells.slice(0, 4);
       const below = want.filter(x => x.startsWith(prefix.join(',') + ','));
-      for (const prop of [true, false]) {
-        const tag = `seed ${seed} n ${n} K ${K} prop ${prop}`;
-        const got = solved(p, { prop });
+      for (const mode of MODES) {
+        const tag = `seed ${seed} n ${n} K ${K} ${JSON.stringify(mode)}`;
+        const got = solved(p, mode);
         ok(!got.exceeded, `${tag}: not capped`);
         eq(joined(got), want, tag);
-        const lim = solve(p, { nodeCap: 5e6, prop });
+        const lim = solve(p, { nodeCap: 5e6, ...mode });
         eq(lim.count, Math.min(2, want.length), `${tag}: default limit 2`);
         if (!want.length) continue;
         for (const [a, b] of picks) {
           const using = want.filter(x => usesMove(x, a, b));
-          const r = solved(p, { mustUse: [a, b], prop });
+          const r = solved(p, { mustUse: [a, b], ...mode });
           eq(joined(r), using, `${tag}: mustUse ${a}->${b}`);
         }
-        eq(solved(p, { forced: prefix, prop }).count, below.length, `${tag}: forced ${prefix}`);
+        eq(solved(p, { forced: prefix, ...mode }).count, below.length, `${tag}: forced ${prefix}`);
       }
     }
     const enough = total >= cases.length / 2 && multi >= cases.length / 10;
@@ -309,6 +318,143 @@ export function directedTests(t, ok, eq) {
       off += b.nodes;
     }
     ok(on * 3 < off, `${on} nodes with propagation, ${off} without`);
+  });
+
+  t('incremental-dir: the same position as the recomputed propagation, move by move', () => {
+    let positions = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      const n = 4 + (seed % 3);
+      const p = plantedArrowPuzzle(900 + seed, n, 3 + (seed % 4), 0.1 + (seed % 5) * 0.07);
+      const sol = solve(p, { limit: 1, capture: true, prop: false, nodeCap: 5e6 }).paths[0];
+      const moves = buildMoves(p);
+      const start = sol[0];
+      const end = sol[sol.length - 1];
+      const inc = makeDirIncremental(moves, start, end, n * n);
+      ok(inc.init(), `seed ${seed}: the root fails`);
+      const vis = new Uint8Array(n * n);
+      const scratch = makeDirPropagator(moves, end, vis);
+      const root = Array.from(inc.av);
+      const marks = [];
+      vis[start] = 1;
+      for (let m = 1; m < sol.length; m++) {
+        const head = sol[m - 1];
+        marks.push(inc.mark());
+        ok(inc.move(head, sol[m]), `seed ${seed}: move ${m} of ${sol}`);
+        const next = sol[m];
+        vis[next] = 1;
+        if (next === end) break;
+        ok(scratch.deduce(next, sol.length - m), `seed ${seed}: recomputed position ${m}`);
+        eq(inc.av[next], scratch.av[next], `seed ${seed} move ${m}: the head's moves`);
+        positions++;
+      }
+      while (marks.length) inc.undo(marks.pop());
+      eq(Array.from(inc.av), root, `seed ${seed}: undo restores the root`);
+    }
+    ok(positions > 200, `${positions} positions compared`);
+  });
+
+  t('incremental-dir: a move that is a contradiction fails and undoes cleanly', () => {
+    const p = plantedArrowPuzzle(950, 5, 4, 0.2);
+    const sol = solve(p, { limit: 1, capture: true, prop: false, nodeCap: 5e6 }).paths[0];
+    const moves = buildMoves(p);
+    const inc = makeDirIncremental(moves, sol[0], sol[sol.length - 1], 25);
+    ok(inc.init());
+    const root = Array.from(inc.av);
+    let refused = 0;
+    for (let d = 0; d < 4; d++) {
+      const to = moves.out[sol[0] * 4 + d];
+      if (to < 0 || to === sol[1]) continue;
+      const token = inc.mark();
+      if (!inc.move(sol[0], to)) refused++;
+      inc.undo(token);
+      eq(Array.from(inc.av), root, `after a move to ${to} and its undo`);
+    }
+    ok(refused >= 0);
+    const token = inc.mark();
+    eq(inc.move(sol[0], 24 === sol[0] ? 23 : 24), false, 'a non-neighbour is no move');
+    inc.undo(token);
+    eq(Array.from(inc.av), root);
+  });
+
+  t('solve-dir: on the checks of minimizing, the leg bound visits far fewer nodes', () => {
+    let withLegs = 0;
+    let without = 0;
+    let checks = 0;
+    for (const seed of [81, 82]) {
+      const p = runSync(generateArrows(8, seed, { candidates: 1, refineNodes: 0 }));
+      for (const e of arrowIds(p)) {
+        const was = arrowDirId(p.arrows, e);
+        setArrowId(p.arrows, e, 0);
+        const freed = { limit: 1, nodeCap: 5e6, mustUse: arrowMove(8, e, -was) };
+        const a = solve(p, freed);
+        const b = solve(p, { ...freed, legs: false });
+        eq([a.count, a.exceeded], [b.count, b.exceeded], `seed ${seed} edge ${e}`);
+        setArrowId(p.arrows, e, was);
+        withLegs += a.nodes;
+        without += b.nodes;
+        checks++;
+      }
+    }
+    ok(checks >= 12, `${checks} checks`);
+    ok(withLegs * 3 < without, `${withLegs} nodes with the leg bound, ${without} without`);
+  });
+
+  t('solve-dir: incremental and recomputed propagation prune alike (same nodes)', () => {
+    for (let seed = 1; seed <= 15; seed++) {
+      const p = plantedArrowPuzzle(1200 + seed, 6, 6, 0.15);
+      const a = solved(p, { legs: false });
+      const b = solved(p, { incr: false });
+      eq([a.count, a.nodes], [b.count, b.nodes], `seed ${seed}`);
+    }
+  });
+
+  t('memo-dir: remembers positions within a search, forgets them in the next', () => {
+    const first = startMemo();
+    ok(!first.has(1, 2, 3));
+    first.add(1, 2, 3);
+    ok(first.has(1, 2, 3) && !first.has(1, 2, 4) && !first.has(2, 2, 3) && !first.has(1, 3, 3));
+    first.add(1, 2, 3); // twice is fine
+    const second = startMemo();
+    ok(!second.has(1, 2, 3), 'a new search starts empty');
+    second.add(7, 8, 9);
+    ok(second.has(7, 8, 9));
+  });
+
+  t('memo-dir: a full row overwrites; random positions are never mistaken', () => {
+    const memo = startMemo();
+    // five keys that land in the same row (the row index depends on a ^ (b << 5) ^ (c >>> 3))
+    const row = [];
+    for (let k = 0; k < 5; k++) row.push([k * (1 << 20), 11, 5]);
+    for (const [a, b, c] of row) memo.add(a, b, c);
+    ok(memo.has(...row[4]), 'the newest of a full row is kept');
+    ok(row.filter(([a, b, c]) => memo.has(a, b, c)).length >= 4, 'at most one was overwritten');
+    const rnd = makeRng(3);
+    const keys = [];
+    const word = () => (rnd() * 2 ** 32) | 0;
+    for (let i = 0; i < 2000; i++) keys.push([word(), word(), word()]);
+    for (const [a, b, c] of keys) memo.add(a, b, c);
+    const hits = keys.filter(([a, b, c]) => memo.has(a, b, c)).length;
+    ok(hits >= 1990, `${hits} of 2000 kept`);
+    let strangers = 0;
+    for (let i = 0; i < 20000; i++) {
+      if (memo.has(word(), word(), word())) strangers++;
+    }
+    eq(strangers, 0, 'no position that was never added');
+  });
+
+  t('solve-dir: the table of dead positions saves nodes; no search sees an earlier one', () => {
+    let withMemo = 0;
+    let without = 0;
+    for (let seed = 1; seed <= 12; seed++) {
+      const p = plantedArrowPuzzle(1300 + seed, 7, 7, 0.12);
+      const a = solved(p);
+      const b = solved(p, { memo: false });
+      eq(joined(a), joined(b), `seed ${seed}`);
+      eq(a.count, solved(p).count, `seed ${seed}: the same again`);
+      withMemo += a.nodes;
+      without += b.nodes;
+    }
+    ok(withMemo < without, `${withMemo} nodes with the table, ${without} without`);
   });
 
   t('solve-dir: decisions are counted; hopeless puzzles give 0 solutions at once', () => {

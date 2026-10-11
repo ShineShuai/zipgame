@@ -63,6 +63,15 @@ export function arrowsGenTests(t, ok, eq) {
     ok(withPath, 'by default some arrow sits on the solution (and points along it)');
   });
 
+  t('generateArrows: seedFraction is an option; any share of seeded edges ends unique', () => {
+    for (const [seedFraction, seed] of [[0, 91], [0.1, 92], [0.25, 93], [0.6, 94]]) {
+      const p = make(6, seed, { seedFraction });
+      const tag = `seedFraction ${seedFraction}`;
+      eq(solutions(p).count, 1, tag);
+      ok(arrowIds(p).length >= ARROW_MIN_ARROWS, `${tag}: arrows`);
+    }
+  });
+
   t('generateArrows: same seed, same puzzle; progress events behave', () => {
     const a = make(6, 41);
     const b = make(6, 41);

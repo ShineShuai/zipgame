@@ -207,7 +207,7 @@ export function unlockTests(t, ta, ok, eq) {
     }
     eq([variantById('standard'), variantById(null), sizesFor('standard', [5, 6])], [null, null, [5, 6]]);
     const lucky = luckyDefs(PLAY_SIZES);
-    eq(lucky.map(d => [d.id, d.locked]), [['cutout', [7, 8, 9, 10]], ['arrows', [7, 8, 9]]]); // arrows stop at 9
+    eq(lucky.map(d => [d.id, d.locked]), [['cutout', [7, 8, 9, 10]], ['arrows', [7, 8, 9, 10]]]);
     ok(lucky.every(d => d.locked.every(n => d.pool.includes(n))));
     eq(lucky.map(d => d.pool), PLAY_VARIANTS.map(v => sizesFor(v.id, PLAY_SIZES)));
     eq(luckyDefs([5, 6]).map(d => d.locked), [[5, 6], [5, 6]], 'a variant without such sizes falls back to all its sizes');

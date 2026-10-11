@@ -75,6 +75,8 @@ function devBadgeHtml() {
   return `<div id="versionBadge" class="dev-badge" style="display:${display}">Zip v${VERSION}</div>`;
 }
 
+const GEN_SUB = { cutout: 'gen.subCutout', arrows: 'gen.subArrows' }; // the texts under the title, per type
+
 function renderGenerating() {
   const gen = S.gen;
   const percent = Math.round(gen.frac * 100);
@@ -450,6 +452,8 @@ function difficultyDevHtml() {
   const body = t || g ? trapPart + legacyPart : 'ungraded';
   return `<span id="difficultyDev" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="trap: the badge score before it is cut into a grade, with its inputs (worst step's trap score, top-3 steps' sum, fraction of steps that have any wrong move, what-if guesses the technique ladder needed). decisionNodes: the previous badge grade (solver branch points per cell). B: backtrack overhead (nodes/cells - 1) from the same solve. cross: how many non-adjacent checkpoint-to-checkpoint segments geometrically cross, per segment. Each old grade is graded 0-5 with its own calibration; the trap grade is fit to hand ratings. The design app shows all of them.">${body}${t || g ? ' · <a href="#" id="exportPlayLog" title="Download the play log (what you did on each puzzle: time, cells drawn and taken back), local to this device, for tools/playlog-eval.mjs">play log</a>' : ''}</span>`;
 }
+
+const VARIANT_TITLE = { cutout: ['game.cutoutTitle', 'game.sharedCutoutTitle'], arrows: ['game.arrowsTitle', 'game.sharedArrowsTitle'] };
 
 function renderGame() {
   const p = S.puzzle;

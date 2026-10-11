@@ -2,6 +2,8 @@ import { maxNumber, startCell, endCell } from '../model.js';
 import { arrowAllows } from '../edges.js';
 import { buildNeighbors } from './prune.js';
 import { makeDirPropagator } from './propagate-dir.js';
+import { makeDirIncremental } from './incremental-dir.js';
+import { startMemo, ZOBRIST } from './memo-dir.js';
 
 // Solver for puzzles with one-way arrows (puzzle.arrows, see core/edges.js). solve() hands such
 // puzzles over here.
@@ -10,29 +12,43 @@ import { makeDirPropagator } from './propagate-dir.js';
 // only. The standard solver (solve.js) and its prunes assume every edge is two-way (degree 2 per
 // cell, undirected flood fills, ...), so none of them is reused. This is DFS with checks that are
 // sound for directed edges:
-//   - forced-edge propagation (propagate-dir.js, on by default): in/out and path-degree rules
+//   - forced-edge propagation (incremental-dir.js, on by default; propagate-dir.js is the same
+//     rules recomputed at every node): in/out and path-degree rules
+//   - the leg bound (legsFit below): the legs from the head through the remaining checkpoints
+//     have to exist and, at their shortest, fit into the cells left
+//   - a table of dead positions (memo-dir.js): a position (the cells on the path, the head, the
+//     must-use flag) that was searched without a solution is not searched again when another order
+//     of the same cells reaches it
 //   - every unvisited cell must be able to reach the end through unvisited cells (backwards flood
 //     fill from the end); without propagation also: be reachable from the head
 //   - Manhattan distance along the remaining checkpoints has to fit in the cells left
 //   - at the root, the parity of that distance (the grid is bipartite). Below the root it never
 //     fires: a move flips both sides of the comparison.
-// Measured on the work of minimising arrows (194 freed-edge checks, 8x8 and 9x9 puzzles, node
-// totals; a check is capped at 400000 nodes):
-//   plain DFS (prop: false)           43.8M nodes, 85 checks capped, 45 s
-//   propagation, directed rules only   1.80M nodes, 8.4 s
-//   propagation, all rules             0.97M nodes, 9.0 s (the path-degree rules halve the nodes
-//                                      but cost as much per node: 9.3 us against 4.7 us)
-//   without the backwards flood fill   2.79M nodes (x2.9)
-//   without the Manhattan bound        1.04M nodes (+7%)
+// Measured on the work of minimising arrows (194 freed-edge checks on 8x8 and 9x9 puzzles; a
+// check is capped at 400000 nodes; the times are from a slow shared machine, the ratios count):
+//   plain DFS (prop: false)              43.8M nodes, 85 checks capped, 53 s
+//   propagation recomputed (incr: false)  0.97M nodes, 11.0 s (11.3 us per node)
+//   propagation kept (incremental)        0.97M nodes,  3.3 s ( 3.4 us per node): the same nodes
+//   + leg bound                           0.19M nodes,  0.82 s ( 4.3 us per node)
+//   + table of dead positions             0.15M nodes,  0.71 s ( 4.8 us per node)
+// On the 127 hardest checks (five 9x9 and two 10x10 puzzles) the leg bound cut the nodes 6x and
+// the table another 2.5x (1.63M -> 0.65M nodes, 7.8 s -> 3.5 s). Tried and not kept: a coverage
+// test for the legs (each cell within the slack of some leg: -30% nodes at 3-5x the cost per
+// node), a cut-vertex test (-6%), and restarts with random tie-breaking for the searches that
+// find a solution (+70% nodes). Before the leg bound: without the backwards flood fill 2.9x the
+// nodes, without the Manhattan bound +7%.
 //
 // opts (a subset of solve()'s): limit (default 2), nodeCap (default 200000), capture, forced,
-// decisions, mustUse, prop (forced-edge propagation, propagate-dir.js; unlike in solve() on by
-// default, prop: false is the plain DFS of the checks above).
+// decisions, mustUse, prop (forced-edge propagation; unlike in solve() on by default, prop: false
+// is the plain DFS of the checks above), incr (default true: the propagation is kept from node to
+// node, incremental-dir.js; false: recomputed at every node, propagate-dir.js), legs (default
+// true with incr: the leg bound, see legsFit below), memo (default true unless `decisions` or
+// `forced` is given: the table of dead positions).
 //   mustUse  [a, b]: only count solutions that walk the move a -> b (directed: b can only be
 //            entered from a, a only left to b). In solve() it is the edge a-b, either way; with
 //            arrows the direction matters.
-//   prune2, seg, pocket, parity, legCollide, incr, fast, lconn belong to solve.js and are ignored
-//   here: they only prune.
+//   prune2, seg, pocket, parity, legCollide, fast, lconn belong to solve.js and are ignored here:
+//   they only prune.
 // Returns { count, exceeded, nodes, subNodes, paths?, decisionNodes?, maxDecisionDepth? } like
 // solve(). Pure.
 
@@ -123,8 +139,23 @@ export function solveDirected(p, opts = {}) {
   const prefix = forced ? forced.length - 1 : 0;
   const DECISIONS = !!opts.decisions;
   const PROP = opts.prop !== false;
-  const prop = PROP ? makeDirPropagator(moves, end, vis, holes) : null;
-  const av = PROP ? prop.av : null; // av[head]: the head's possible moves, after prop.deduce()
+  const INCR = PROP && opts.incr !== false && start !== end;
+  const LEGS = INCR && opts.legs !== false;
+  // Dead positions are remembered (memo-dir.js). Not with `decisions` (they count the whole tree)
+  // or `forced` (a prefix restricts the moves, so a position is not all there is to it).
+  const MEMO = opts.memo !== false && !opts.decisions && !opts.forced;
+  const memo = MEMO ? startMemo() : null;
+  const [zp1, zp2, zp3] = ZOBRIST.path;
+  const [zh1, zh2, zh3] = ZOBRIST.head;
+  const [zu1, zu2, zu3] = ZOBRIST.used;
+  let h1 = 0;
+  let h2 = 0;
+  let h3 = 0;
+  const MIN_SUBTREE = 4; // smaller subtrees are cheaper to search again than to remember
+  const prop = PROP && !INCR ? makeDirPropagator(moves, end, vis, holes) : null;
+  const inc = INCR ? makeDirIncremental(moves, start, end, TC, holes) : null;
+  // av[head]: the head's possible moves, once the position has been propagated
+  const av = INCR ? inc.av : PROP ? prop.av : null;
   let stamp = 0;
   let nodes = 0;
   let found = 0;
@@ -175,9 +206,53 @@ export function solveDirected(p, opts = {}) {
     return reached;
   }
 
+  // Leg bound (with the incremental propagation, whose av is the moves left): the path has to run
+  // from the head to the next checkpoint, from there to the following one, and so on to the end,
+  // never entering a checkpoint it is not on its way to. A flood fill over the moves left finds
+  // each leg's shortest length, or that there is no way; the shortest legs have to fit into the
+  // `remaining` cells still to be visited.
+  const dist = new Int32Array(T);
+  const queue = new Int32Array(T);
+  function legsFit(head, needNext, remaining) {
+    let from = head;
+    let sum = 0;
+    for (let k = needNext; k <= K; k++) {
+      const target = pos[k];
+      if (from === target) continue;
+      stamp++;
+      let qHead = 0;
+      let qTail = 0;
+      queue[qTail++] = from;
+      seen[from] = stamp;
+      dist[from] = 0;
+      let length = -1;
+      while (qHead < qTail && length < 0) {
+        const u = queue[qHead++];
+        for (let d = 0; d < 4; d++) {
+          if (!((av[u] >> d) & 1)) continue;
+          const v = out[u * 4 + d];
+          if (seen[v] === stamp) continue;
+          if (v === target) {
+            length = dist[u] + 1;
+            break;
+          }
+          if (cp[v] !== 0) continue;
+          seen[v] = stamp;
+          dist[v] = dist[u] + 1;
+          queue[qTail++] = v;
+        }
+      }
+      if (length < 0) return false;
+      sum += length;
+      from = target;
+    }
+    return sum <= remaining;
+  }
+
   // The node's own check; `head` is on the path already, `count` cells are.
-  function feasible(head, count) {
+  function feasible(head, count, needNext) {
     const remaining = TC - count;
+    if (LEGS && !legsFit(head, needNext, remaining)) return false;
     if (reachTo() !== remaining) return false;
     return PROP || reachFrom(head) === remaining; // propagation makes the other test redundant
   }
@@ -215,9 +290,27 @@ export function solveDirected(p, opts = {}) {
       vis[cell] = 0;
       return;
     }
-    if (cell === end || !feasible(cell, count) || (PROP && !deduced(cell, count, used))) {
+    const stuck = cell === end || !feasible(cell, count, needNext)
+      || (prop && !deduced(cell, count, used));
+    if (stuck) {
       vis[cell] = 0; // (the end is entered last)
       return;
+    }
+
+    // A position the search has been through without finding a solution has none now either.
+    let key1 = 0;
+    let key2 = 0;
+    let key3 = 0;
+    const foundBefore = found;
+    const nodesBefore = nodes;
+    if (MEMO) {
+      key1 = h1 ^ zh1[cell] ^ (used ? zu1 : 0);
+      key2 = h2 ^ zh2[cell] ^ (used ? zu2 : 0);
+      key3 = h3 ^ zh3[cell] ^ (used ? zu3 : 0);
+      if (memo.has(key1, key2, key3)) {
+        vis[cell] = 0;
+        return;
+      }
     }
 
     // Candidate moves, most constrained first (stable insertion sort by onward out-degree).
@@ -260,12 +353,34 @@ export function solveDirected(p, opts = {}) {
     for (let i = 0; i < count2; i++) {
       const next = cand[base + i];
       const nowUsed = used || (cell === MA && next === MB) ? 1 : 0;
-      dfs(next, count + 1, needNext, depth + 1, nowUsed);
+      h1 ^= zp1[next];
+      h2 ^= zp2[next];
+      h3 ^= zp3[next];
+      if (INCR) {
+        const token = inc.mark();
+        if (inc.move(cell, next)) {
+          dfs(next, count + 1, needNext, depth + 1, nowUsed);
+        } else {
+          nodes++; // a position whose propagation failed counts as a node
+        }
+        inc.undo(token);
+      } else {
+        dfs(next, count + 1, needNext, depth + 1, nowUsed);
+      }
+      h1 ^= zp1[next];
+      h2 ^= zp2[next];
+      h3 ^= zp3[next];
       if (found >= limit || nodes - prefix > cap) break;
     }
+    const searched = found === foundBefore && nodes - prefix <= cap; // all of it, no solution
+    if (MEMO && searched && nodes - nodesBefore >= MIN_SUBTREE) memo.add(key1, key2, key3);
     vis[cell] = 0;
   }
 
+  if (INCR && !inc.init(MA, MB)) return none;
+  h1 = zp1[start];
+  h2 = zp2[start];
+  h3 = zp3[start];
   dfs(start, 1, 1, 0, 0);
   return {
     count: found,
