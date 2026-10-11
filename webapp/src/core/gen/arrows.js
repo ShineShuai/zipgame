@@ -31,14 +31,16 @@ const candidatesFor = n => ARROW_CANDIDATES[n] || 2;
 // The grid sizes the play app offers for this variant (it grows with the solver; see
 // generateArrows).
 export const ARROW_SIZES = Object.keys(ARROW_CANDIDATES).map(Number);
-// From 9x9 on the checks are capped higher: with the low caps a 9x9 puzzle keeps about 2 arrows
-// too many (undecided ones), at 8x8 and below the result does not change with the caps.
+// From 9x9 on the first pass over the arrows uses a small check cap and the winner gets a big
+// budget for the arrows that pass left undecided: that finds as many unnecessary arrows as big
+// caps in every pass, in 40% less time (10x10, 6 seeds: 2.2 s against 3.7 s, the same 12.0
+// arrows). At 8x8 and below the result does not depend on the caps.
 export const ARROW_CAP_PER_CELL = 600;
 export const ARROW_CAP_PER_CELL_BIG = 3000;
 export const ARROW_BIG_FROM = 9;
 export const ARROW_MIN_CAP = 20000;
 export const ARROW_CHECK_CAP_X = 0.2;
-export const ARROW_CHECK_CAP_X_BIG = 0.5;
+export const ARROW_CHECK_CAP_X_BIG = 0.05;
 // Checkpoint count K ~ pickK(KMIN, KMAX) (see generate.js: it favours small K). Fewer checkpoints
 // need more arrows and are the hardest puzzles; with K as big as the standard generator uses,
 // small boards need almost no arrows at all (5x5: 0-2), which would not show the variant. K is
@@ -50,6 +52,7 @@ const kRange = cells => [
 // A puzzle needs at least this many arrows (a candidate minimized below it is not used).
 export const ARROW_MIN_ARROWS = 1;
 export const ARROW_REFINE_NODES_PER_CELL = 1500;
+export const ARROW_REFINE_NODES_PER_CELL_BIG = 8000;
 export const ARROW_REFINE_CAP_X = [4, 16];
 const ATTEMPTS_PER_CANDIDATE = 12;
 const BUILD_SHARE = 0.1;
@@ -273,9 +276,12 @@ const fewest = candidates => (
 // o.candidates overrides ARROW_CANDIDATES[n]; o.K fixes the checkpoint count; o.minArrows (default
 // ARROW_MIN_ARROWS); o.checkCapX scales the removal-check cap; o.pathArrows (default true): arrows
 // may sit on the solution's edges; o.freedEdge (default true): the removal check; o.refineNodes:
-// node budget of the second look (default ARROW_REFINE_NODES_PER_CELL * n^2, 0 = off); o.capX
-// scales the node caps. Limits: tuned for 5 <= n <= 10 (2 to 5 s at 9x9 and 10x10 on a slow
-// machine, see tools/bench-arrows.mjs); 11x11 takes 20 to 35 s, larger boards are not usable yet.
+// node budget of the second look (default ARROW_REFINE_NODES_PER_CELL[_BIG] * n^2, 0 = off);
+// o.capX scales the node caps; o.seedFraction (default SEED_FRACTION, 0.4): the share of the edges
+// that start with an arrow. Fewer give fewer arrows at 9x9 (0.2: 9.8 against 10.6, 8 seeds, but
+// 65% more time) and more at 10x10 (15 against 12: the sparser puzzles' checks hit their caps).
+// Limits: tuned for 5 <= n <= 10 (2 to 5 s at 9x9 and 10x10 on a slow machine, see
+// tools/bench-arrows.mjs); 11x11 takes 15 to 30 s, larger boards are not usable yet.
 export function* generateArrows(n, seed, o = {}) {
   const depth = o.retryDepth || 0;
   const cells = n * n;
@@ -296,7 +302,8 @@ export function* generateArrows(n, seed, o = {}) {
   const candidates = [];
   const maxAttempts = wanted * ATTEMPTS_PER_CANDIDATE;
   for (let attempt = 0; attempt < maxAttempts && candidates.length < wanted; attempt++) {
-    const events = tryGenerateArrows(n, K, rnd, nodeCap, SEED_FRACTION, attemptOpts);
+    const seeded = o.seedFraction ?? SEED_FRACTION;
+    const events = tryGenerateArrows(n, K, rnd, nodeCap, seeded, attemptOpts);
     const found = yield* tag(events, { arrows: fewest(candidates) });
     if (found) candidates.push(found);
     yield { frac: (BUILD_SHARE * candidates.length) / wanted, arrows: fewest(candidates), K };
@@ -308,7 +315,8 @@ export function* generateArrows(n, seed, o = {}) {
 
   // 2. Minimize every candidate; keep the one with the fewest arrows (the earliest on a tie).
   let shown = fewest(candidates);
-  const budget = o.refineNodes ?? ARROW_REFINE_NODES_PER_CELL * cells;
+  const refinePerCell = big ? ARROW_REFINE_NODES_PER_CELL_BIG : ARROW_REFINE_NODES_PER_CELL;
+  const budget = o.refineNodes ?? refinePerCell * cells;
   const refining = freedEdge && budget > 0;
   const minShare = 1 - BUILD_SHARE - (refining ? REFINE_SHARE : 0);
   let winner = null;

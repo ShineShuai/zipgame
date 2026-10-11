@@ -1,7 +1,7 @@
 // Quality / time of the "One way arrows" generator per grid size (gen/arrows.js).
 //   node tools/bench-arrows.mjs [sizes=5,6,7,8,9,10] [seeds=6] [key=value ...]
-// key=value: candidates=N, K=N, minArrows=N, capX=F, checkCapX=F, refineNodes=N, pathArrows=0|1,
-// freedEdge=0|1 (generateArrows options).
+// key=value: candidates=N, K=N, minArrows=N, capX=F, checkCapX=F, seedFraction=F, refineNodes=N,
+// pathArrows=0|1, freedEdge=0|1 (generateArrows options).
 import { generateArrows } from '../src/core/gen/arrows.js';
 import { runSync } from '../src/core/run.js';
 import { arrowCount } from '../src/core/edges.js';
