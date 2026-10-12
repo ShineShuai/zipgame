@@ -6,6 +6,7 @@ import { isSolved, step, gridAdjacent } from '../../core/rules.js';
 import { statSummary } from '../../core/stats.js';
 import { pickStorage } from '../../platform/storage.js';
 import { runAsync } from '../../platform/run.js';
+import { generateInWorker } from '../../platform/worker-run.js';
 import { createStore } from '../../features/stats-store.js';
 import { createPuzzleCache } from '../../features/puzzle-cache.js';
 import { createDaily, fetchGameOfDay, fetchGameOfDayFor, utcDateString, utcDayNumber, dateOfDay } from '../../features/daily.js';
@@ -692,7 +693,16 @@ function generatorFor(mode, n, seed) {
   const variant = variantById(mode);
   return variant ? variant.generate(n, seed) : generatePlay(n, seed);
 }
-const generateShown = (n, seed, mode = 'standard') => runAsync(generatorFor(mode, n, seed), { onEvent: e => { S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls ?? e.arrows, K: e.K }; if (S.screen === 'generating') render(); } });
+// A standard puzzle is searched for in a Web Worker (platform/worker-run.js: the page keeps repainting); where there is none, or it cannot
+// start, and for the variants (quick), the page's own thread does it in slices (platform/run.js). Same puzzle either way.
+const genProgress = e => { S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls ?? e.arrows, K: e.K }; if (S.screen === 'generating') render(); };
+async function generateShown(n, seed, mode = 'standard') {
+  if (mode === 'standard') {
+    const puzzle = await generateInWorker(n, seed, genProgress);
+    if (puzzle) return puzzle;
+  }
+  return runAsync(generatorFor(mode, n, seed), { onEvent: genProgress });
+}
 // how: 'open' (Play local: current or next-if-solved) | 'skip' (New puzzle); a variant is always a new random one.
 // lucky: the lucky game (startLucky): its chance is given back when the puzzle cannot be made.
 async function startLocal(how, mode = 'standard', lucky = false) {

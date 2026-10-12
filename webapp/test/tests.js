@@ -48,6 +48,8 @@ import { solutionPath, trapProfile, trapMetrics, trapGradeOf, trapPredict, capGr
 import { generateTargeted, targetBand, maxTargetGrade, missOf, proposalBudget, TARGET_CFG } from '../src/core/gen/target.js';
 import { generatePlay, generatePlayRun, PLAY_TARGET } from '../src/core/gen/play.js';
 import { createPuzzleCache, PUZZLE_CACHE_PREFIX } from '../src/features/puzzle-cache.js';
+import { handleGenerate, PROGRESS_MS } from '../src/core/gen/play-job.js';
+import { createWorkerRunner, generateInWorker, WorkerUnavailable } from '../src/platform/worker-run.js';
 import { mountDifficultyPanel } from '../src/apps/design/difficulty-panel.js';
 import { ratingKey, ratingFromSelection, leanOf, describeRating, toRatingsJson, parseRatingsJson, mergeRatings, parseRatingComment, ratingWeight, UNSURE_WEIGHT, symmetryKey, findDuplicateGroups, transformPuzzle, asciiPuzzle, keyDifference } from '../src/core/ratings-io.js';
 import { parsePairsJson, toPairsJson, mergePairs, pairAccuracy, impliedPairs, flipCmp, pairKeyOf } from '../src/core/pairs-io.js';
@@ -1530,6 +1532,75 @@ t('play: target:false (and a size without an entry) falls back to generate() unc
   ok(run.fallback === true && run.grade === null && run.hit === null);
   eq(serialize(run.puzzle), serialize(runSync(generate(7, 3))));
   eq(serialize(runSync(generatePlay(7, 3, { target: false }))), serialize(runSync(generate(7, 3))));
+});
+t('play-job: handleGenerate posts throttled progress, then the puzzle generatePlay makes; bad requests and a throwing generator come back as errors', () => {
+  const msgs = []; let clock = 0, total = 0;
+  runSync(generatePlayRun(6, 2), () => total++);
+  handleGenerate({ id: 7, type: 'play', n: 6, seed: 2 }, m => msgs.push(m), () => (clock += PROGRESS_MS / 2));
+  const done = msgs.at(-1), events = msgs.filter(m => m.type === 'event');
+  eq([done.type, done.id], ['done', 7]); eq(serialize(done.puzzle), serialize(runSync(generatePlay(6, 2))), 'the same puzzle as on this thread');
+  ok(events.length >= 1 && events.length <= Math.ceil(total / 2) + 1 && events.length < total, `throttled: ${events.length} of ${total} events`);
+  ok(events.every((m, i) => m.id === 7 && m.event.frac >= 0 && m.event.frac <= 1 && (i === 0 || m.event.frac >= events[i - 1].event.frac)), 'progress moves forward within 0..1');
+  for (const bad of [{ id: 1, type: 'play', n: 3, seed: 1 }, { id: 2, type: 'play', n: 6, seed: 1.5 }, { id: 3, type: 'nope', n: 6, seed: 1 }, null]) {
+    const out = []; handleGenerate(bad, m => out.push(m));
+    eq([out.length, out[0].type, out[0].message, out[0].id], [1, 'error', 'bad request', bad ? bad.id : undefined], JSON.stringify(bad));
+  }
+});
+// A Worker stand-in that runs the job on this thread: addEventListener / removeEventListener / postMessage / terminate, replies on a later tick.
+const fakeWorker = (log = [], { crash = false } = {}) => {
+  const L = { message: new Set(), error: new Set() }, w = {
+    terminated: false,
+    addEventListener: (type, f) => L[type].add(f), removeEventListener: (type, f) => L[type].delete(f),
+    postMessage(msg) {
+      log.push('post ' + msg.id);
+      setTimeout(() => {
+        if (crash) { for (const f of [...L.error]) f({ message: 'boom' }); return; }
+        handleGenerate(msg, reply => { if (reply.type !== 'event') log.push(reply.type + ' ' + reply.id); for (const f of [...L.message]) f({ data: reply }); });
+      }, 0);
+    },
+    terminate() { w.terminated = true; },
+  };
+  return w;
+};
+ta('worker-run: requests run one after the other and resolve with the puzzle; progress reaches the caller; a failing job rejects with an Error and the worker goes on', async () => {
+  const log = [], runner = createWorkerRunner(() => fakeWorker(log)), events = [];
+  const [a, b] = await Promise.all([runner.run(6, 2, e => events.push(e)), runner.run(6, 3)]);
+  eq([serialize(a), serialize(b)], [serialize(runSync(generatePlay(6, 2))), serialize(runSync(generatePlay(6, 3)))]);
+  eq(log, ['post 1', 'done 1', 'post 2', 'done 2'], 'the second request waited for the first');
+  ok(events.every(e => e.frac >= 0 && e.frac <= 1), 'events seen by the first caller');
+  let err = null; try { await runner.run(3, 1); } catch (e) { err = e; }
+  ok(err instanceof Error && !(err instanceof WorkerUnavailable) && err.message === 'bad request', 'a bad request is a plain error');
+  eq(serialize(await runner.run(6, 2)), serialize(a), 'and the worker still serves the next one');
+});
+ta('worker-run: a worker that cannot start or dies is WorkerUnavailable, once and for all (no retries)', async () => {
+  let made = 0; const w = fakeWorker([], { crash: true });
+  const runner = createWorkerRunner(() => { made++; return w; });
+  for (const attempt of [1, 2]) {
+    let err = null; try { await runner.run(6, 2); } catch (e) { err = e; }
+    ok(err instanceof WorkerUnavailable, `attempt ${attempt}`);
+  }
+  eq([made, w.terminated], [1, true], 'one worker made, then terminated, none made again');
+  let err = null; try { await createWorkerRunner(() => { throw new Error('SecurityError'); }).run(6, 2); } catch (e) { err = e; }
+  ok(err instanceof WorkerUnavailable && /SecurityError/.test(err.message), 'a worker that cannot be created');
+  eq(typeof Worker, 'undefined', 'no Worker in this runtime'); eq(await generateInWorker(6, 2, null), null, 'generateInWorker: null = do it on this thread');
+});
+ta('worker-run: in a real worker thread (node:worker_threads) the puzzle comes back intact: typed arrays, solution path, seed', async () => {
+  const { Worker } = await import('node:worker_threads');
+  const make = () => {
+    const w = new Worker(new URL('./play-worker-shim.mjs', import.meta.url)), map = new Map();
+    return {
+      addEventListener(type, f) { const g = type === 'message' ? data => f({ data }) : e => f({ message: e.message }); map.set(f, g); w.on(type, g); },
+      removeEventListener(type, f) { w.off(type, map.get(f)); map.delete(f); },
+      postMessage: m => w.postMessage(m), terminate: () => w.terminate(),
+    };
+  };
+  const runner = createWorkerRunner(make);
+  try {
+    const p = await runner.run(6, 2), q = runSync(generatePlay(6, 2));
+    eq(serialize(p), serialize(q));
+    ok(p.cp instanceof Uint16Array && p.walls instanceof Uint8Array && Array.isArray(p.path) && p.seed === 2 && isSolved(p, p.path), 'typed arrays, path and seed survive the copy');
+    eq(p.path, q.path, 'the same solution path');
+  } finally { runner.terminate(); }
 });
 t('play: GOLDEN_PLAY puzzles (generatePlay at the current grade model) are valid, unique and top-grade; after a grade refit run `npm run golden`', () => {
   for (const [n, seed, hash] of GOLDEN_PLAY) {

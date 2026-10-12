@@ -6,7 +6,8 @@
 // generateTargeted() (gen/target.js) does the work: every try starts from the best of `pool` fresh unique puzzles by trap score
 // (o.startPool) and climbs from it; the puzzle it keeps is wall-minimal already (every kept change is stripped of the walls it does
 // not need), so nothing is minimized afterwards and generate()'s CANDIDATES list is not used. Counts only, no clock: the same
-// (n, seed) gives the same puzzle on every device, as the daily seeds need.
+// (n, seed) gives the same puzzle on every device, as the daily seeds need. In the browser the Play app runs it in a Web Worker
+// (core/gen/play-job.js, platform/play-worker.js, platform/worker-run.js), so the page does not stall while it searches.
 //
 // PLAY_TARGET: per size, how many start puzzles a try samples (pool), how many tries a run may make (retries), how deep a try may climb
 // (effort, default 1: see proposalBudget in target.js) and the work budget of the technique ladder while searching (ladder, edge
