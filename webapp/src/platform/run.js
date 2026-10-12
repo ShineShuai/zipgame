@@ -1,4 +1,5 @@
-// Time-sliced driver for core generators: keeps the UI responsive without a Worker. Results are identical to runSync.
+// Time-sliced driver for core generators: keeps the UI responsive without a Worker (the Play app's standard puzzle search runs in one,
+// platform/worker-run.js, and falls back to this). Results are identical to runSync.
 // Wraps a generator so that `clock.ms` accumulates only the time spent inside gen.next(), i.e. the
 // algorithm's own compute time: not the setTimeout yields between slices, not the onEvent UI updates.
 // Yields and the return value pass through unchanged.

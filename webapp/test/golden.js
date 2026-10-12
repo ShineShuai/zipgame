@@ -20,3 +20,16 @@ export const GOLDEN = [
   [11, 1, '2977d67f'],
   [12, 1, 'f533be80'],
 ];
+
+// Golden puzzles of the Play app's generator: [size, seed, hash of serialize(generatePlay(size, seed))]. They depend on the grade model
+// (TRAP_MODEL, refitted by tools/fit-trap.mjs --write) as well as on the generators: after a refit, or an edit of gen/target.js or
+// gen/play.js (PLAY_TARGET), replace this list with the output of `npm run golden`. A refit needs no ALGO_VERSION bump: a game's puzzle
+// is stored on the device and carried in its share link, so only a rebuilt puzzle of an old seed differs.
+// Sizes 5-9: the larger ones take seconds each.
+export const GOLDEN_PLAY = [
+  [5, 1, '51d9f120'],
+  [6, 1, '4017bf71'],
+  [7, 2, '5e586f79'],
+  [8, 1, '31fbaec4'],
+  [9, 1, 'cb2c7b6b'],
+];

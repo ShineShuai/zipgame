@@ -37,17 +37,21 @@ import { wls, fitCandidate, predictH, dedupe, isMonotone, selectEntries, pickEnt
 import { barsSvg, linesSvg, histSvg, scatterSvg } from '../src/apps/stats/charts.js';
 import { fetchStats } from '../src/platform/stats-client.js';
 import { createLeaderboard, backendsFromConfig, cloudflareBackend, supabaseBackend, tursoBackend, afterSubmit, submitAttempt, MAX_ROUNDS } from '../src/platform/leaderboard.js';
-import { GOLDEN } from './golden.js';
+import { GOLDEN, GOLDEN_PLAY } from './golden.js';
 import { metricsFor, referenceSolve, backtrackOverhead, gradeOf, refNodeCap, REF_FLAGS } from '../src/core/difficulty.js';
 import { calibrate, calibrateAll, calibrateMetric, generateAtDifficulty, DEFAULT_THRESHOLDS, DEFAULT_THRESHOLDS_BY_METRIC, GRADED_METRICS, QUANTILES } from '../src/core/gen/calibration.js';
 import { checkpointPositions, segmentCrossCount, segmentOverlapCount, spatialMetrics } from '../src/core/spatial.js';
-import { gradesFor, gradesFromMetrics, playGradesFor, GRADE_ORDER } from '../src/core/grades.js';
+import { gradesFor, gradesFromMetrics, playGradesFor, GRADE_ORDER, PLAY_REF_CAP, BADGE_METRICS, medianGrade, badgeFrom } from '../src/core/grades.js';
 import { combinedScore, COMBINED_ZSCORE } from '../src/core/gen/calibration.js';
 import { ladder as ladderRun } from '../src/core/ladder.js';
 import { solutionPath, trapProfile, trapMetrics, trapGradeOf, trapPredict, capGradeBySize, SIZE_GRADE_CAP, ladderTrials, TRAP_CFG, TRAP_MODEL, withoutAltFrac, ARROWS_MODEL, modelFor } from '../src/core/trap.js';
 import { generateArrows } from '../src/core/gen/arrows.js';
 import { buildMoves } from '../src/core/solver/solve-dir.js';
 import { generateTargeted, targetBand, maxTargetGrade, missOf, proposalBudget, TARGET_CFG } from '../src/core/gen/target.js';
+import { generatePlay, generatePlayRun, PLAY_TARGET } from '../src/core/gen/play.js';
+import { createPuzzleCache, PUZZLE_CACHE_PREFIX } from '../src/features/puzzle-cache.js';
+import { handleGenerate, PROGRESS_MS } from '../src/core/gen/play-job.js';
+import { createWorkerRunner, generateInWorker, WorkerUnavailable } from '../src/platform/worker-run.js';
 import { mountDifficultyPanel } from '../src/apps/design/difficulty-panel.js';
 import { ratingKey, ratingFromSelection, leanOf, describeRating, toRatingsJson, parseRatingsJson, mergeRatings, parseRatingComment, ratingWeight, UNSURE_WEIGHT, symmetryKey, findDuplicateGroups, transformPuzzle, asciiPuzzle, keyDifference } from '../src/core/ratings-io.js';
 import { parsePairsJson, toPairsJson, mergePairs, pairAccuracy, impliedPairs, flipCmp, pairKeyOf } from '../src/core/pairs-io.js';
@@ -600,14 +604,14 @@ t('solver prune: overlay dead-end flag and solver noDeadEnd agree (random puzzle
     eq(noDeadEnd(head), !headAdjacentDead, `trial ${trial}: noDeadEnd(head) must disagree with the overlay only never`);
   }
 });
-t('generate: ALGO_VERSION 6 golden puzzles cover every play size below 16 and are valid and unique', () => {
-  eq(ALGO_VERSION, 6);
+t('generate: ALGO_VERSION 7 golden puzzles (of generate(), which the version bump left alone) cover every play size below 16 and are valid and unique', () => {
+  eq(ALGO_VERSION, 7);
   for (const n of PLAY_SIZES.filter(size => size < 16)) {
     ok(GOLDEN.some(([size]) => size === n), `no golden puzzle for play size ${n}`);
   }
   for (const [n, seed, hash] of GOLDEN) {
     const p = runSync(generate(n, seed));
-    eq(hashStr(serialize(p)), hash, `v6 n=${n} seed=${seed}`);
+    eq(hashStr(serialize(p)), hash, `v7 n=${n} seed=${seed}`);
     eq(validate(p).ok, true, `valid n=${n} seed=${seed}`);
     eq(isSolved(p, p.path), true, `anchor path n=${n} seed=${seed}`);
     eq(solve(p, { limit: 2, nodeCap: 5e6, prop: true }).count, 1, `unique n=${n} seed=${seed}`);
@@ -1172,12 +1176,26 @@ t('grades: hold-V still reveals the previous badge grade (decisionNodes) then B 
   eq(GRADE_ORDER.slice(0, 3), ['decisionNodes', 'B', 'crossPerSeg']);
   eq(GRADE_ORDER.length, 5, 'design app shows all five');
 });
-t('grades: playGradesFor = trap grade (badge) + unchanged legacy grades (hold-V)', () => {
+t('grades: playGradesFor = trap grade + legacy grades (hold-V) + the badge, their median', () => {
   const p = cachedSamples()[0], pg = playGradesFor(p);
   ok(pg.trap.ok && Number.isInteger(pg.trap.grade) && pg.trap.grade >= 0 && pg.trap.grade <= 5, 'trap grade 0..5');
-  eq(pg.trap.grade, trapMetrics(p).grade, 'badge grade is the trap grade');
-  eq(pg.legacy.grades, gradesFor(p).grades, 'legacy grades are exactly what gradesFor gave before');
+  eq(pg.trap.grade, trapMetrics(p).grade, 'the trap grade is the trap grade');
+  eq(pg.legacy.grades, gradesFor(p, PLAY_REF_CAP).grades, 'legacy grades are exactly what gradesFor gives at the play budget');
+  const parts = { trap: pg.trap.grade, decisionNodes: pg.legacy.grades.decisionNodes, B: pg.legacy.grades.B, crossPerSeg: pg.legacy.grades.crossPerSeg };
+  eq(pg.badge.parts, parts, 'the badge is made of the four grades the app shows');
+  eq(pg.badge.grade, capGradeBySize(medianGrade(BADGE_METRICS.map(id => parts[id])), p.n), 'the badge is their median');
   eq(playGradesFor(p, undefined).trap.predicted, pg.trap.predicted, 'deterministic');
+});
+t('grades: medianGrade = the lower middle grade of an even count; badgeFrom needs the trap grade, counts the geometry-only cross grade when the solve is capped, and keeps the size caps', () => {
+  eq([[], [3], [1, 5], [4, 1, 2, 3], [5, 4, 4, 4], [0, 0, 5, 5], [2, 5, 1]].map(medianGrade), [null, 3, 1, 2, 4, 0, 2]);
+  const p = cachedSamples()[0];
+  eq(badgeFrom(p, { ok: false }, null), null, 'no trap grade, no badge');
+  const capped = playGradesFor(p, 1);
+  eq(capped.legacy, null); eq(Object.keys(capped.badge.parts), ['trap', 'crossPerSeg'], 'capped: the trap grade and the geometry-only cross grade');
+  eq(capped.badge.grade, Math.min(capped.badge.parts.trap, capped.badge.parts.crossPerSeg), 'lower median of two = the lower one');
+  const all5 = { ok: true, grade: 5 }, legacy5 = { grades: { decisionNodes: 5, B: 5, crossPerSeg: 5 } };
+  eq([5, 6, 7].map(n => badgeFrom(makePuzzle(n), all5, legacy5).grade), [SIZE_GRADE_CAP[5], SIZE_GRADE_CAP[6], 5], 'size caps: 5x5 at most 2, 6x6 at most 3');
+  eq(badgeFrom(makePuzzle(8), { ok: true, grade: 5 }, { grades: { decisionNodes: 1, B: 2, crossPerSeg: 4 } }).grade, 2, 'one high metric (the searched-for trap grade) does not decide the badge');
 });
 t('grades: trap grade exists even when the reference solve is capped (legacy grades then null)', () => {
   const p = cachedSamples()[0];
@@ -1474,6 +1492,154 @@ t('target: the retry cap is a count (same arguments = same puzzle), more retries
   if (a.hit) eq(serialize(b.puzzle), serialize(a.puzzle), 'a run that hit in its first try is the same with more retries');
   const l = runSync(generateTargeted(7, 3, 5, { retries: Infinity, maxWalls: 12, maxCheckpoints: 8 }));
   ok(l.hit && l.walls <= 12 && l.K <= 8, `limits: ${l.walls} walls, ${l.K} checkpoints`);
+});
+t('target: startPool = the best of N start puzzles by score: deterministic, reports its progress, reaches the top grade in one try, and o.start wins', () => {
+  const ev = [], uniqueOk = q => { const r = solve(q, { limit: 2, nodeCap: 300000, ...REF_FLAGS }); return r.count === 1 && !r.exceeded; };
+  const a = runSync(generateTargeted(6, 3, 3, { startPool: 8, retries: 1 }), e => ev.push(e)), b = runSync(generateTargeted(6, 3, 3, { startPool: 8, retries: 1 }));
+  ok(a.puzzle && validate(a.puzzle).ok && uniqueOk(a.puzzle), 'a unique puzzle');
+  eq(serialize(a.puzzle), serialize(b.puzzle), 'same seed + pool = same puzzle');
+  const pools = ev.filter(e => e.pool != null).map(e => e.pool);
+  ok(pools.length > 0 && pools.every((v, i) => v > 0 && v <= 1 && (i === 0 || v >= pools[i - 1])), 'pool progress is in (0, 1] and only moves forward');
+  const c = runSync(generateTargeted(8, 5, 5, { startPool: 64, retries: 1 }));
+  ok(c.hit && c.grade === 5 && c.tries === 1 && uniqueOk(c.puzzle), `8x8, one try, best of 64 starts: grade ${c.grade}`);
+  let called = 0;
+  const own = function* (rnd, K0, cap) { called++; return yield* generateUnique(6, K0, rnd, { tries: 4, nodeCap: cap }); };
+  const d = runSync(generateTargeted(6, 2, 1, { startPool: 8, retries: 1, start: own }), e => { ok(e.pool == null, 'o.start: no pool events'); });
+  ok(called === 1 && d.puzzle, 'o.start supplies the start puzzle, startPool is ignored');
+});
+t('target: the freed-edge uniqueness check, the exact prefilter and the staged pool change nothing but the time (same puzzle, same number of changes)', () => {
+  const stats0 = runSync(generateTargeted(6, 3, 1, { retries: 2, freedEdge: false })).stats, stats1 = runSync(generateTargeted(6, 3, 1, { retries: 2 })).stats;
+  eq([stats0.changeRuns, stats0.changeWitnessSkips], [0, 0], 'freedEdge: false runs the plain check');
+  ok(stats1.changeRuns + stats1.changeWitnessSkips > 0, 'the freed-edge check decided some changes');
+  ok(stats1.changeWitnessSkips > 0, 'and the saved witnesses rejected some of them without a search');
+  for (const [n, g, seed] of [[6, 3, 1], [7, 4, 1]]) {
+    const run = o => { const r = runSync(generateTargeted(n, g, seed, { retries: 2, ...o })); return [serialize(r.puzzle), r.proposals, r.pred, r.grade]; };
+    const plain = run({ prefilter: false, freedEdge: false });
+    eq(run({ prefilter: 'exact', freedEdge: false }), plain, `${n}x${n}: exact prefilter`);
+    eq(run({ prefilter: 'exact' }), plain, `${n}x${n}: freed-edge check`);
+    eq(run({}), plain, `${n}x${n}: the defaults (tight prefilter) on this board`);
+  }
+  const a = runSync(generateTargeted(6, 3, 3, { startPool: 12, retries: 1, prefilter: false })), b = runSync(generateTargeted(6, 3, 3, { startPool: 12, retries: 1 }));
+  eq([serialize(a.puzzle), a.pred], [serialize(b.puzzle), b.pred], 'staged pool scoring picks the same start as scoring them all');
+});
+t('target: ladderWorkCap searches with lower-bound scores: the reported pred and grade are exact, and a hit is real', () => {
+  const full = runSync(generateTargeted(7, 5, 2, { startPool: 64, retries: 4 })), capped = runSync(generateTargeted(7, 5, 2, { startPool: 64, retries: 4, ladderWorkCap: 5000 }));
+  const exact = trapMetrics(capped.puzzle);
+  ok(Math.abs(capped.pred - exact.predicted) < 1e-9 && capped.grade === exact.grade, 'pred and grade are those of the full ladder budget');
+  ok(!capped.hit || exact.grade === 5, 'a hit is a top-grade puzzle');
+  ok(validate(capped.puzzle).ok && solve(capped.puzzle, { limit: 2, nodeCap: 5e6, prop: true }).count === 1, 'a unique puzzle');
+  eq(serialize(capped.puzzle), serialize(runSync(generateTargeted(7, 5, 2, { startPool: 64, retries: 4, ladderWorkCap: 5000 })).puzzle), 'deterministic');
+  ok(full.puzzle && full.grade >= 4, 'the full-budget run still works');
+});
+t('play: PLAY_TARGET has an entry for every play size below 16 (16 keeps generate()); generatePlay gives unique puzzles at the size\'s top grade, the same one for the same seed', () => {
+  for (const n of PLAY_SIZES) eq(Boolean(PLAY_TARGET[n]), n < 16, `play target for ${n}`);
+  for (const [n, seed] of [[5, 2], [6, 2], [7, 2]]) {
+    const ev = [], run = runSync(generatePlayRun(n, seed), e => ev.push(e)), again = runSync(generatePlay(n, seed)), p = run.puzzle;
+    ok(!run.fallback && run.puzzle === p && run.target === maxTargetGrade(n), `${n}x${n}: made by the targeted search`);
+    eq(serialize(p), serialize(again), `${n}x${n}: same seed, same puzzle`);
+    ok(validate(p).ok && isSolved(p, p.path) && solve(p, { limit: 2, nodeCap: 5e6, prop: true }).count === 1, `${n}x${n}: valid and unique`);
+    eq(trapMetrics(p).grade, run.grade, `${n}x${n}: the reported grade is the badge grade`);
+    ok(run.grade >= maxTargetGrade(n) - 1, `${n}x${n}: grade ${run.grade} of at most ${maxTargetGrade(n)}`);
+    eq(p.seed, seed);
+    let frac = 0; for (const e of ev) { ok(e.frac >= frac && e.frac <= 1, 'frac only moves forward'); frac = e.frac; }
+    eq(frac, 1, 'ends at 1');
+  }
+});
+t('play: target:false (and a size without an entry) falls back to generate() unchanged', () => {
+  const run = runSync(generatePlayRun(7, 3, { target: false }));
+  ok(run.fallback === true && run.grade === null && run.hit === null);
+  eq(serialize(run.puzzle), serialize(runSync(generate(7, 3))));
+  eq(serialize(runSync(generatePlay(7, 3, { target: false }))), serialize(runSync(generate(7, 3))));
+});
+t('play-job: handleGenerate posts throttled progress, then the puzzle generatePlay makes; bad requests and a throwing generator come back as errors', () => {
+  const msgs = []; let clock = 0, total = 0;
+  runSync(generatePlayRun(6, 2), () => total++);
+  handleGenerate({ id: 7, type: 'play', n: 6, seed: 2 }, m => msgs.push(m), () => (clock += PROGRESS_MS / 2));
+  const done = msgs.at(-1), events = msgs.filter(m => m.type === 'event');
+  eq([done.type, done.id], ['done', 7]); eq(serialize(done.puzzle), serialize(runSync(generatePlay(6, 2))), 'the same puzzle as on this thread');
+  ok(events.length >= 1 && events.length <= Math.ceil(total / 2) + 1 && events.length < total, `throttled: ${events.length} of ${total} events`);
+  ok(events.every((m, i) => m.id === 7 && m.event.frac >= 0 && m.event.frac <= 1 && (i === 0 || m.event.frac >= events[i - 1].event.frac)), 'progress moves forward within 0..1');
+  for (const bad of [{ id: 1, type: 'play', n: 3, seed: 1 }, { id: 2, type: 'play', n: 6, seed: 1.5 }, { id: 3, type: 'nope', n: 6, seed: 1 }, null]) {
+    const out = []; handleGenerate(bad, m => out.push(m));
+    eq([out.length, out[0].type, out[0].message, out[0].id], [1, 'error', 'bad request', bad ? bad.id : undefined], JSON.stringify(bad));
+  }
+});
+// A Worker stand-in that runs the job on this thread: addEventListener / removeEventListener / postMessage / terminate, replies on a later tick.
+const fakeWorker = (log = [], { crash = false } = {}) => {
+  const L = { message: new Set(), error: new Set() }, w = {
+    terminated: false,
+    addEventListener: (type, f) => L[type].add(f), removeEventListener: (type, f) => L[type].delete(f),
+    postMessage(msg) {
+      log.push('post ' + msg.id);
+      setTimeout(() => {
+        if (crash) { for (const f of [...L.error]) f({ message: 'boom' }); return; }
+        handleGenerate(msg, reply => { if (reply.type !== 'event') log.push(reply.type + ' ' + reply.id); for (const f of [...L.message]) f({ data: reply }); });
+      }, 0);
+    },
+    terminate() { w.terminated = true; },
+  };
+  return w;
+};
+ta('worker-run: requests run one after the other and resolve with the puzzle; progress reaches the caller; a failing job rejects with an Error and the worker goes on', async () => {
+  const log = [], runner = createWorkerRunner(() => fakeWorker(log)), events = [];
+  const [a, b] = await Promise.all([runner.run(6, 2, e => events.push(e)), runner.run(6, 3)]);
+  eq([serialize(a), serialize(b)], [serialize(runSync(generatePlay(6, 2))), serialize(runSync(generatePlay(6, 3)))]);
+  eq(log, ['post 1', 'done 1', 'post 2', 'done 2'], 'the second request waited for the first');
+  ok(events.every(e => e.frac >= 0 && e.frac <= 1), 'events seen by the first caller');
+  let err = null; try { await runner.run(3, 1); } catch (e) { err = e; }
+  ok(err instanceof Error && !(err instanceof WorkerUnavailable) && err.message === 'bad request', 'a bad request is a plain error');
+  eq(serialize(await runner.run(6, 2)), serialize(a), 'and the worker still serves the next one');
+});
+ta('worker-run: a worker that cannot start or dies is WorkerUnavailable, once and for all (no retries)', async () => {
+  let made = 0; const w = fakeWorker([], { crash: true });
+  const runner = createWorkerRunner(() => { made++; return w; });
+  for (const attempt of [1, 2]) {
+    let err = null; try { await runner.run(6, 2); } catch (e) { err = e; }
+    ok(err instanceof WorkerUnavailable, `attempt ${attempt}`);
+  }
+  eq([made, w.terminated], [1, true], 'one worker made, then terminated, none made again');
+  let err = null; try { await createWorkerRunner(() => { throw new Error('SecurityError'); }).run(6, 2); } catch (e) { err = e; }
+  ok(err instanceof WorkerUnavailable && /SecurityError/.test(err.message), 'a worker that cannot be created');
+  eq(typeof Worker, 'undefined', 'no Worker in this runtime'); eq(await generateInWorker(6, 2, null), null, 'generateInWorker: null = do it on this thread');
+});
+ta('worker-run: in a real worker thread (node:worker_threads) the puzzle comes back intact: typed arrays, solution path, seed', async () => {
+  const { Worker } = await import('node:worker_threads');
+  const make = () => {
+    const w = new Worker(new URL('./play-worker-shim.mjs', import.meta.url)), map = new Map();
+    return {
+      addEventListener(type, f) { const g = type === 'message' ? data => f({ data }) : e => f({ message: e.message }); map.set(f, g); w.on(type, g); },
+      removeEventListener(type, f) { w.off(type, map.get(f)); map.delete(f); },
+      postMessage: m => w.postMessage(m), terminate: () => w.terminate(),
+    };
+  };
+  const runner = createWorkerRunner(make);
+  try {
+    const p = await runner.run(6, 2), q = runSync(generatePlay(6, 2));
+    eq(serialize(p), serialize(q));
+    ok(p.cp instanceof Uint16Array && p.walls instanceof Uint8Array && Array.isArray(p.path) && p.seed === 2 && isSolved(p, p.path), 'typed arrays, path and seed survive the copy');
+    eq(p.path, q.path, 'the same solution path');
+  } finally { runner.terminate(); }
+});
+t('play: GOLDEN_PLAY puzzles (generatePlay at the current grade model) are valid, unique and top-grade; after a grade refit run `npm run golden`', () => {
+  for (const [n, seed, hash] of GOLDEN_PLAY) {
+    const p = runSync(generatePlay(n, seed));
+    eq(hashStr(serialize(p)), hash, `play n=${n} seed=${seed}`);
+    ok(validate(p).ok && isSolved(p, p.path) && solve(p, { limit: 2, nodeCap: 5e6, prop: true }).count === 1, `valid and unique n=${n}`);
+    eq(trapMetrics(p).grade, maxTargetGrade(n), `top grade n=${n}`);
+  }
+});
+ta('puzzle cache: a puzzle comes back for its seed only, with its solution path; corrupt or foreign values and a failing storage are misses', async () => {
+  const st = fakeStorage(), cache = createPuzzleCache(st), p = runSync(generatePlay(6, 4));
+  eq(await cache.get(6, 11), null, 'empty');
+  await cache.set(6, 11, p);
+  const back = await cache.get(6, 11);
+  eq([serialize(back), back.path, back.seed], [serialize(p), p.path, 11]);
+  eq(await cache.get(6, 12), null, 'another seed (a new day, game or ALGO_VERSION)'); eq(await cache.get(7, 11), null, 'another size');
+  for (const junk of ['not json', '{}', '{"seed":11}', JSON.stringify({ seed: 11, text: 'size 6\nfoo' }), JSON.stringify({ seed: 11, text: 'size 7\ncheckpoints 0,0=1 0,1=2\nwalls' }), JSON.stringify({ seed: 11, text: 'size 6\ncheckpoints 0,0=1 0,2=3\nwalls' })]) {
+    await st.set(PUZZLE_CACHE_PREFIX + 6, junk); eq(await cache.get(6, 11), null, junk.slice(0, 30));
+  }
+  const broken = createPuzzleCache({ async get() { throw new Error('x'); }, async set() { throw new Error('x'); } });
+  eq(await broken.get(6, 11), null); await broken.set(6, 11, p);
 });
 t('ladder: the incremental territory (distances kept per state, cut fields re-run, exact edge test skipped when nothing changed) = the from-scratch one', () => {
   const strip = r => JSON.stringify({ ...r, ms: 0 });
@@ -3039,6 +3205,43 @@ t('share: a Cutout share record has the puzzle, a head line of its own, and is a
   ok(shareText(rec, 'u', tr).startsWith('Zip Cutout · 6x6'));
   eq(shareStatus(rec, { today: 20000, replayDates: [], attempt: null, algo: ALGO_VERSION, sizes: PLAY_SIZES }), { status: 'ok' });
   eq(shareStatus({ ...rec, n: 3 }, { today: 20000, replayDates: [], attempt: null, algo: ALGO_VERSION, sizes: PLAY_SIZES }), { status: 'invalid' });
+});
+
+t('share-code: a local standard game carries its puzzle (frame 3): round trip, short codes, damaged codes rejected, a puzzle that does not fit falls back to the seed code', () => {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const mk = (p, extra = {}) => makeShareRecord({ gotdDate: null, n: p.n, grade: 5, timeS: 83.4, pct: null, day: 20738, index: 4, algo: ALGO_VERSION, legs: [0, 2, 3], K: maxNumber(p), puzzle: p, ...extra });
+  for (const p of [runSync(generate(7, 2)), randPuzzle(3, 12, 12, 0.12), randPuzzle(4, 16, 20, 0.2)]) {
+    const rec = mk(p), code = encodeShare(rec), back = decodeShare(code), n = p.n;
+    ok(rec.puzzle && rec.puzzle.cp !== p.cp && rec.algo === ALGO_VERSION && code && back, `${n}x${n}: a record with a puzzle encodes and decodes`);
+    eq([back.kind, back.n, back.grade, back.timeS, back.day, back.index, back.levels], [rec.kind, n, 5, 83.4, 20738, 4, rec.levels]);
+    eq([Array.from(back.puzzle.cp), Array.from(back.puzzle.walls)], [Array.from(p.cp), Array.from(p.walls)], `${n}x${n}: the puzzle`);
+    ok(back.algo === undefined && back.variant === undefined && back.holes === undefined, 'no algo (not needed), no variant');
+    eq(encodeShare(back), code, 're-encoding gives the same code');
+    for (const bad of [code.slice(0, -1), code + 'A', code.slice(0, 5), code + '=']) eq(decodeShare(bad), null, `${n}x${n}: ${bad.slice(-6)}`);
+    let tried = 0, accepted = 0;
+    for (let i = 0; i < code.length; i++) for (const ch of alphabet) { if (ch === code[i]) continue; tried++; if (decodeShare(code.slice(0, i) + ch + code.slice(i + 1))) accepted++; }
+    ok(accepted / tried < 0.02, `${n}x${n}: ${accepted}/${tried} single-character mistakes got through`);
+    eq(shareStatus(back, { today: 20000, replayDates: [], attempt: null, algo: ALGO_VERSION + 1, sizes: PLAY_SIZES }), { status: 'ok' }, 'playable whatever the app version: the puzzle is in the link');
+  }
+  ok(encodeShare(mk(runSync(generate(7, 2)))).length <= 60, 'a 7x7 game is short');
+  const old = encodeShare({ ...LOCAL_REC, algo: ALGO_VERSION - 1 });
+  eq(decodeShare(old), { ...LOCAL_REC, algo: ALGO_VERSION - 1 }, 'a version 1 (seed) code still decodes');
+  eq(shareStatus(decodeShare(old), { today: 20000, replayDates: [], attempt: null, algo: ALGO_VERSION, sizes: PLAY_SIZES }), { status: 'version' }, 'and is refused when from another app version');
+  // more than 255 walls do not fit the frame: the game is shared as the seed (version 1), or not at all without one
+  const big = randPuzzle(5, 16, 10, 0); allEdges(16).slice(0, 300).forEach(e => setWallId(big.walls, e, true));
+  const fall = decodeShare(encodeShare(mk(big)));
+  ok(fall && fall.puzzle === undefined && fall.algo === ALGO_VERSION && fall.index === 4, 'fallback: the seed code');
+  const noSeed = { ...mk(big) }; delete noSeed.algo;
+  eq(encodeShare(noSeed), null, 'no algo, no frame: refused');
+  // an unsound puzzle is never carried
+  const sound = randPuzzle(6, 7, 7, 0.1), bad = (f) => { const q = clonePuzzle(sound); f(q); const r = { ...mk(sound), puzzle: q }; delete r.algo; return encodeShare(r); };
+  eq(bad(q => { q.cp[q.cp.indexOf(7)] = 9; }), null, 'a gap in the numbering');
+  eq(bad(q => { q.walls[6] |= 1; }), null, 'a wall at the right border');
+  eq(bad(q => { q.walls[42] |= 2; }), null, 'a wall at the bottom border');
+  eq(bad(q => { q.holes = new Uint8Array(49); }), null, 'a board with holes is the Cutout');
+  eq(bad(q => { q.arrows = new Uint8Array(49); }), null, 'a board with arrows is the Arrows variant');
+  eq(bad(q => { q.cp.fill(0); q.cp[0] = 1; }), null, 'fewer than two checkpoints');
+  ok(bad(q => { void q; }) !== null, 'the same board, sound, is carried');
 });
 
 // ---------- One Way Arrows Puzzles ----------
