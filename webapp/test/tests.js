@@ -44,7 +44,9 @@ import { checkpointPositions, segmentCrossCount, segmentOverlapCount, spatialMet
 import { gradesFor, gradesFromMetrics, playGradesFor, GRADE_ORDER, PLAY_REF_CAP, BADGE_METRICS, medianGrade, badgeFrom } from '../src/core/grades.js';
 import { combinedScore, COMBINED_ZSCORE } from '../src/core/gen/calibration.js';
 import { ladder as ladderRun } from '../src/core/ladder.js';
-import { solutionPath, trapProfile, trapMetrics, trapGradeOf, trapPredict, capGradeBySize, SIZE_GRADE_CAP, ladderTrials, TRAP_CFG, TRAP_MODEL, withoutAltFrac } from '../src/core/trap.js';
+import { solutionPath, trapProfile, trapMetrics, trapGradeOf, trapPredict, capGradeBySize, SIZE_GRADE_CAP, ladderTrials, TRAP_CFG, TRAP_MODEL, withoutAltFrac, ARROWS_MODEL, modelFor } from '../src/core/trap.js';
+import { generateArrows } from '../src/core/gen/arrows.js';
+import { buildMoves } from '../src/core/solver/solve-dir.js';
 import { generateTargeted, targetBand, maxTargetGrade, missOf, proposalBudget, TARGET_CFG } from '../src/core/gen/target.js';
 import { generatePlay, generatePlayRun, PLAY_TARGET } from '../src/core/gen/play.js';
 import { createPuzzleCache, PUZZLE_CACHE_PREFIX } from '../src/features/puzzle-cache.js';
@@ -1331,6 +1333,22 @@ t('trap: metrics are deterministic, in range, and consistent with the profile', 
     eq(trapMetrics(p, TRAP_CFG, a.path).trapMax, a.trapMax, 'passing the path in skips the solve but gives the same answer');
   }
 });
+t('trap: One way arrows — wrong turns are the moves the arrows allow, no ladder, only trapMax and trapTop3 in the score; Cutout — no altFrac term; both graded by playGradesFor', () => {
+  for (const [n, seed] of [[6, 3], [7, 4], [8, 3]]) {
+    const pa = runSync(generateArrows(n, seed)), g = playGradesFor(pa), { out } = buildMoves(pa);
+    ok(g.trap.ok, 'graded'); eq(g.legacy, null, 'no old grades for a variant'); eq(g.trap.ladTrials, 0, 'the undirected ladder is not run');
+    const prof = trapProfile(pa, pa.path);
+    ok(prof.length > 0 && !prof.nonUnique, 'wrong turns, none a second solution');
+    ok(prof.every(w => [0, 1, 2, 3].some(d => out[pa.path[w.i] * 4 + d] === w.cell)), 'every wrong turn is a move the arrows allow');
+    const z = k => (g.trap[k] - TRAP_MODEL.mean[k]) / TRAP_MODEL.sd[k];
+    ok(Math.abs(g.trap.predicted - (TRAP_MODEL.b + TRAP_MODEL.w.trapMax * z('trapMax') + TRAP_MODEL.w.trapTop3 * z('trapTop3'))) < 1e-9, 'score = the two trap terms');
+    eq(g.trap.grade, trapMetrics(pa, TRAP_CFG, pa.path, ARROWS_MODEL).grade);
+    eq(playGradesFor({ ...pa, path: undefined }).trap.grade, g.trap.grade, 'a shared puzzle carries no path: the same grade');
+  }
+  const pc = runSync(generateCutout(7, 5, { boards: 1, effort: 0.1 })), gc = playGradesFor(pc);
+  eq(gc.legacy, null); eq(gc.trap.grade, trapMetrics(pc, TRAP_CFG, pc.path, CUTOUT_MODEL).grade); eq(gc.trap.grade, pc.score.grade, 'the grade the generator aimed at');
+  const ps = runSync(generate(5, 1)); eq(modelFor(ps), TRAP_MODEL); eq(modelFor(pc).w.altFrac, 0); eq(ARROWS_MODEL.w.lTr, 0); ok(TRAP_MODEL.w.lTr !== 0, 'the original model is not touched');
+});
 t('trap: cfg.pathCap is the node budget of the solve that finds the path; a puzzle carrying its path never needs it', () => {
   const p = cachedSamples()[0], bare = { ...p, path: null };
   eq(trapMetrics(bare, { ...TRAP_CFG, pathCap: 1 }).ok, false, 'a 1-node budget cannot find the path');
@@ -1998,6 +2016,22 @@ ta('stats-store: today resets each day, total accumulates, both persist', async 
   await S.recordSolve(5, 100, 10); await S.recordSolve(5, 100, 20); await S.recordSolve(5, 101, 30);
   eq([S.today(5, 100).n, S.today(5, 101).n, S.total(5).n], [0, 1, 3]); eq(S.today(5, 101).recent, [30]);
   const S2 = createStore(st, [5]); await S2.hydrate('20260919'); eq([S2.today(5, 101).n, S2.total(5).n], [1, 3]);
+});
+ta('daily: a variant counts its own games; the standard counter and keys are untouched', async () => {
+  const st = fakeStorage(), D = createDaily(st, atDay(19));
+  eq((await D.open(5, 'cutout')).index, 0); await D.markSolved(5, 0, 'cutout');
+  eq([(await D.peek(5, 'cutout')).index, (await D.peek(5)).index, (await D.peek(5, 'arrows')).index, (await D.peek(6, 'cutout')).index], [1, 0, 0, 0]);
+  eq((await D.skip(5, 'arrows')).index, 1); eq((await D.open(5)).index, 0, 'standard still at its first game');
+  eq([await st.get('zip_daily_index_cutout_5') !== null, await st.get('zip_daily_index_arrows_5') !== null, await st.get('zip_daily_index_5') !== null], [true, true, true]);
+  eq((await createDaily(fakeStorage(), atDay(19)).peek(5, 'cutout')).index, 0, 'a fresh storage starts at game 1');
+});
+ta('stats-store: a variant keeps its own stats per size; standard totals do not move; both persist', async () => {
+  const st = fakeStorage(), scopes = { cutout: [5, 6] }, S = createStore(st, [5], scopes); await S.hydrate('20260919');
+  await S.recordSolve(5, 100, 10, 'cutout'); await S.recordSolve(5, 100, 20, 'cutout'); await S.recordSolve(5, 100, 30);
+  eq([S.total(5, 'cutout').n, S.total(5).n, S.today(5, 100, 'cutout').n, S.total(6, 'cutout').n, S.total(5, 'arrows').n], [2, 1, 2, 0, 0]);
+  const S2 = createStore(st, [5], scopes); await S2.hydrate('20260919');
+  eq([S2.total(5, 'cutout').n, S2.today(5, 100, 'cutout').n, S2.today(5, 101, 'cutout').n, S2.total(5).n], [2, 2, 0, 1]);
+  eq([await st.get('zip_local_stats_cutout_5') !== null, await st.get('zip_today_stats_cutout_5') !== null, await st.get('zip_local_stats_5') !== null], [true, true, true]);
 });
 
 // ---- Game-of-Day averages: histogram math, backend failover (fake fetch), attempt record ----

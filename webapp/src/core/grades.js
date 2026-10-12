@@ -12,7 +12,7 @@
 import { metricsFor, gradeOf, refNodeCap } from './difficulty.js';
 import { spatialMetrics } from './spatial.js';
 import { GRADED_METRICS, DEFAULT_THRESHOLDS_BY_METRIC } from './gen/calibration.js';
-import { trapMetrics, capGradeBySize } from './trap.js';
+import { trapMetrics, modelFor, capGradeBySize } from './trap.js';
 
 // Order the calibrated (solver/geometry) grades are shown in. The play app's badge is the median of the TRAP grade
 // (core/trap.js) and the first three here (see BADGE_METRICS) — the old badge decisionNodes, then B and
@@ -79,7 +79,10 @@ export function badgeFrom(puzzle, trap, legacy) {
 //   legacy = gradesFor() — the previous calibrated grades (decisionNodes, B, crossPerSeg, ...), shown on hold-V;
 //            null when the reference solve is capped (nodeCap, default PLAY_REF_CAP).
 //   badge  = badgeFrom(): the median of the grades above (the badge the player sees); null without a trap grade.
+// A variant (Cutout, One way arrows) gets the trap grade only, with the score model that fits it (trap.js modelFor):
+// the old grades were calibrated on full-square boards with walls.
 export function playGradesFor(puzzle, nodeCap = PLAY_REF_CAP) {
-  const trap = trapMetrics(puzzle), legacy = gradesFor(puzzle, nodeCap);
+  const trap = trapMetrics(puzzle, undefined, null, modelFor(puzzle));
+  const legacy = puzzle.holes || puzzle.arrows ? null : gradesFor(puzzle, nodeCap);
   return { trap, legacy, badge: badgeFrom(puzzle, trap, legacy) };
 }
