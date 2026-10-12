@@ -61,7 +61,10 @@ export const dayOfDate = date => {
 
 // gotdDate ('YYYYMMDD') given = a Game of Day, else a local game
 // (day = UTC day of its seed, index 0-based). variant ('cutout' | 'arrows') = a game of that variant: random, so the record
-// carries the puzzle itself ({ n, shape, holes, cp, walls } | { n, cp, walls, arrows }) instead of day / index / algo.
+// carries the puzzle itself ({ n, shape, holes, cp, walls } | { n, cp, walls, arrows }) instead of day / index / algo. A standard local
+// game keeps day / index (the receiver's card names the game) and algo, and carries its puzzle { n, cp, walls } when one is given:
+// the Play app's puzzles come from a search that takes seconds and follows the grade model, so the receiver plays the sender's puzzle
+// instead of rebuilding one from the seed (a puzzle too big for the code is shared as the seed, see core/share-code.js).
 export function makeShareRecord({ gotdDate, n, grade, timeS, pct, day, index, algo, legs, K, variant, puzzle }) {
   const common = {
     n,
@@ -80,7 +83,8 @@ export function makeShareRecord({ gotdDate, n, grade, timeS, pct, day, index, al
     const { shape, holes, cp, walls } = puzzle;
     return { kind: 'local', ...common, variant, puzzle: { n, shape: shape || null, holes: holes.slice(), cp: cp.slice(), walls: walls.slice() } };
   }
-  return { kind: 'local', ...common, day, index, algo };
+  const carried = puzzle ? { puzzle: { n, cp: puzzle.cp.slice(), walls: puzzle.walls.slice() } } : {};
+  return { kind: 'local', ...common, day, index, algo, ...carried };
 }
 
 export function shareUrl(base, rec) {
@@ -118,14 +122,14 @@ export function shareText(rec, url, tr) {
 //          attempt: stored record of that date | null, algo: ALGO_VERSION, sizes: playable sizes }
 //   live    today's Game of Day, not played yet     -> the live game
 //   replay  a missed day inside the replay window   -> a replay (spends no chance)
-//   ok      local game of this app version          -> a local game
+//   ok      local game of this app version, or one that carries its puzzle  -> a local game
 //   played | old | future | version | invalid       -> not playable
 export function shareStatus(rec, ctx) {
   if (rec.kind === 'local') {
     if (!ctx.sizes.includes(rec.n)) {
       return { status: 'invalid' };
     }
-    if (rec.variant) {
+    if (rec.variant || rec.puzzle) {
       return { status: 'ok' }; // the puzzle is in the link: no app version to match
     }
     return { status: rec.algo === ctx.algo ? 'ok' : 'version' };

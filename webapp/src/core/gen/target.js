@@ -16,9 +16,11 @@
 // Two counts bound the search, no clock does: a TRY is one fresh start puzzle plus its hill-climb (cut short after `patience` changes
 // without progress and after at most `depth` changes), `retries` is how many tries a run may make (o.retries; Infinity = until the target
 // is met), and o.effort scales how deep each try may go. Both are counts, so the same arguments give the same puzzle on every machine.
-// Speed (both leave the result unchanged, o.prefilter / o.cache = false switch them off for tests): scoring a puzzle has a cheap part (one
-// solver run per wrong turn) and an expensive one (the ladder's what-if count lTr); the ladder only runs far enough to tell whether the
-// score can fall inside the window in which the change would be kept, and every score is remembered by puzzle.
+// Speed (these leave the result unchanged, o.prefilter = 'exact' / false and o.cache / o.freedEdge = false switch them off for tests): scoring a
+// puzzle has a cheap part (one solver run per wrong turn) and an expensive one (the ladder's what-if count lTr); the ladder only runs far enough
+// to tell whether the score can fall inside the window in which the change would be kept, and every score is remembered by puzzle. A wall remove
+// or move is checked for uniqueness through the freed edge only. By default the prefilter is also TIGHT (a guess, no longer provably the same
+// result: TARGET_CFG.lTrSlack); o.prefilter = 'exact' keeps only what it can prove.
 // Everything adapts to a refit of the grade (tools/fit-trap.mjs --write): the target band is read from TRAP_MODEL.cuts
 // and SIZE_GRADE_CAP at call time and the score is trapMetrics().predicted, so nothing here has to change when
 // tools/ratings.json does. `node tools/target-eval.mjs` shows whether every grade is still reachable after a refit.
@@ -31,7 +33,7 @@ import { makeRng } from '../rng.js';
 import { allEdges, edgeCells, hasWallId, setWallId, wallIds, pathEdgeIds } from '../edges.js';
 import { solve } from '../solver/solve.js';
 import { REF_FLAGS } from '../difficulty.js';
-import { trapProfile, trapMetricsFromProfile, ladderTrials, TRAP_MODEL, TRAP_CFG, SIZE_GRADE_CAP } from '../trap.js';
+import { trapProfile, trapMetrics, trapMetricsFromProfile, ladderTrials, TRAP_MODEL, TRAP_CFG, SIZE_GRADE_CAP } from '../trap.js';
 import { generateUnique } from './generate.js';
 
 export const TARGET_CFG = {
@@ -56,6 +58,11 @@ export const TARGET_CFG = {
   maxFailedStarts: 8,
   // Scores remembered per run (the memory is dropped when it is full).
   cacheMax: 50000,
+  // Tight prefilter: a change is judged on the cheap part of its score plus the ladder term of the puzzle it came from, raised by this much
+  // (log units of ladder trials). Measured over climbs at 8x8 and 9x9, a changed puzzle's ladder term differs from its parent's by 0.0 at
+  // the median, 0.1 at the 90th percentile and at most 2.3 (2.0 at 8x8) at the maximum, among the improving changes too; the exact bound
+  // (what the ladder could ever count, o.prefilter = 'exact') is about 9 units above.
+  lTrSlack: 2.5,
 };
 
 const cutsOf = model => model.cuts || [0.5, 1.5, 2.5, 3.5, 4.5]; // no cuts = the old round() rule (see trapGradeOf)
@@ -116,7 +123,7 @@ function cpCells(p) {
 }
 
 // One random change to a copy of p. Returns { q, check } (check = needs a uniqueness check) or null when the chosen
-// change does not exist (a proposal is still spent, which keeps the run deterministic).
+// change does not exist (a proposal is still spent, which keeps the run deterministic). `freed` = the wall a remove / move took out.
 function propose(p, ctx, rnd, up) {
   const { path, pos, free, Kmin, Kmax, maxWalls } = ctx;
   const q = clonePuzzle(p);
@@ -129,8 +136,9 @@ function propose(p, ctx, rnd, up) {
   if (move === 'add') return walls.length < maxWalls && addOne() ? { q, check: false } : null;
   if (move === 'remove') {
     if (!walls.length) return null;
-    setWallId(q.walls, pick(walls, rnd), false);
-    return { q, check: true };
+    const w = pick(walls, rnd);
+    setWallId(q.walls, w, false);
+    return { q, check: true, freed: w };
   }
   if (move === 'move') {
     if (!walls.length) return null;
@@ -141,9 +149,9 @@ function propose(p, ctx, rnd, up) {
     const second = ctx.guided && ctx.witness(q, w);
     if (second) {
       const at = pathEdgeIds(ctx.n, second).filter(e => ctx.freeSet.has(e) && !hasWallId(q.walls, e));
-      if (at.length) { setWallId(q.walls, pick(at, rnd), true); return { q, check: true }; }
+      if (at.length) { setWallId(q.walls, pick(at, rnd), true); return { q, check: true, freed: w }; }
     }
-    return addOne() ? { q, check: true } : null;
+    return addOne() ? { q, check: true, freed: w } : null;
   }
   const cells = cpCells(q), K = cells.length;
   if (move === 'shift') {
@@ -179,6 +187,33 @@ const OUT = Object.freeze({ out: true });
 const EPS = 1e-9;
 // The puzzle as a string: the walls and the checkpoints are all a score depends on (the solution path is fixed by them).
 const keyOf = q => String.fromCharCode(...q.cp) + '|' + String.fromCharCode(...q.walls);
+// o.startPool: the best of `pool` fresh unique puzzles by the trap score's distance from the band `band` (the first with distance 0 ends the
+// sampling). Yields { pool: share done }; returns what generateUnique() returns for the chosen one (or { unique: false } when none could be built).
+// Staged like the climb's score: the cheap part of a start's score (no ladder) and the most the ladder could add bound it, and a start that
+// cannot come nearer the band than the best so far is dropped without running the ladder (same choice, o.prefilter = false: all run).
+function* bestOfStarts(n, pool, rnd, K0, cap, band, model, cfg, refine, staged) {
+  const lCoef = model.features.includes('lTr') ? model.w.lTr / model.sd.lTr : 0, lTrMax = Math.log1p(cfg.ladderWorkCap + 1);
+  let best = null;
+  for (let i = 0; i < pool; i++) {
+    const s = yield* generateUnique(n, K0, rnd, { tries: TARGET_CFG.startTries, nodeCap: cap, refineNodes: refine ? undefined : 0 });
+    yield { pool: (i + 1) / pool };
+    const path = s.unique && s.puzzle.path;
+    if (!path) continue;
+    let m;
+    if (staged && best && lCoef > 0) {
+      const profile = trapProfile(s.puzzle, path, cfg);
+      if (profile.nonUnique) continue;
+      const low = trapMetricsFromProfile(s.puzzle, path, profile, cfg, 0, model).predicted, high = low + lCoef * lTrMax;
+      if ((low > band.b ? low - band.b : high < band.a ? band.a - high : 0) >= best.d) continue; // cannot come nearer than the best
+      m = { ok: true, ...trapMetricsFromProfile(s.puzzle, path, profile, cfg, undefined, model) };
+    } else m = trapMetrics(s.puzzle, cfg, path, model);
+    if (!m.ok) continue;
+    const d = missOf(m.predicted, band);
+    if (!best || d < best.d) best = { d, s };
+    if (d === 0) break;
+  }
+  return best ? best.s : { unique: false, puzzle: null };
+}
 
 // ---- the run ----
 
@@ -203,11 +238,26 @@ const keyOf = q => String.fromCharCode(...q.cp) + '|' + String.fromCharCode(...q
 //   o.start          a generator function (rnd, K0, nodeCap) -> { unique, puzzle } (puzzle.path = its solution) that supplies the start puzzle
 //                    of every try instead of a standard board (Cutout: the same holed board, fresh walls). Walls are never put on an edge
 //                    that touches a hole.
-// Events: { frac, proposals, restarts, tries, retries, pred, grade, target, phase: 'start' | 'search' }.
+//   o.ladderWorkCap  work budget of the technique ladder while searching (default TRAP_CFG.ladderWorkCap = 1e5 edge assignments). A smaller one
+//                    makes every score a LOWER bound (the ladder's trial count only grows with the budget and the model's weight on it is
+//                    positive), so a puzzle that reaches the band by it is in the band for real, and a hard puzzle costs the budget instead of
+//                    a few hundred ms; the puzzle returned is then scored once more with the full budget (pred, grade). Only safe for a target
+//                    with no upper end (the top grade: an exact score above the band's top would turn a hit into an overshoot).
+//   o.startRefine    with o.startPool: false skips the deeper look at the walls generateUnique()'s minimizing kept only because a check hit its node
+//                    cap, for each sampled start (default true). It is a quarter to a third of the time of building a start at 9-12, but
+//                    the starts keep more walls and score lower: at 11x11 it needed 1.5 tries instead of 1.0 and was slower overall.
+//   o.startPool      N > 1: every try starts from the best of N fresh unique puzzles (the one whose trap score is nearest to the target band; the
+//                    first one inside it ends the sampling) instead of from a single one. A start costs 0.01-0.04 s at 7-10 and 0.4 s at 12, a
+//                    changed puzzle in the climb 30-50 ms of which only 2-4% improve the score, and a plain start scores about 1.6 on the 0-5 scale
+//                    where the top grade begins at 3.1: sampling starts is the cheaper way up (8x8, one try: 1 of 8 runs reached grade 5 from a
+//                    single start, 8 of 8 from the best of 64). Counts only, so it stays deterministic. Ignored when o.start is given.
+// Events: { frac, proposals, restarts, tries, retries, pred, grade, target, phase: 'start' | 'search' } (pool = share of o.startPool sampled, on 'start' events).
 // Returns { puzzle, unique: true, grade, pred, target, requested, hit, inside, lo, hi, proposals, restarts, tries, retries, K, walls, stats }:
 //   target = the grade aimed at (`requested` clamped to what this size can show), grade / pred = what the best puzzle
 //   found has under the CURRENT trap model, hit = grade === target, inside = also clear of the band's edges,
-//   stats = how often the speed-ups worked ({ scored, cacheHits, filtered, ladderRuns, ladderAborts, uniqueRuns, uniqueHits, dropRuns, witnessSkips }).
+//   stats = how often the speed-ups worked ({ scored, cacheHits, filtered, tightFiltered, ladderRuns, ladderAborts, uniqueRuns, uniqueHits, dropRuns,
+//           witnessSkips, changeRuns, changeWitnessSkips }): tightFiltered = changes dropped by the tight prefilter, changeRuns / changeWitnessSkips = wall
+//           removes and moves decided by a search through the freed edge / by a saved witness alone.
 //   puzzle carries .path (the solution) and .seed. puzzle = null when no start puzzle could be built.
 export function* generateTargeted(n, grade, seed, o = {}) {
   const model = o.model || TRAP_MODEL;
@@ -219,12 +269,12 @@ export function* generateTargeted(n, grade, seed, o = {}) {
   if (o.maxCheckpoints > 0) { Kmax = Math.max(2, Math.floor(o.maxCheckpoints)); Kmin = Math.min(Kmin, Kmax); }
   const cap = Math.max(TARGET_CFG.uniqueCapFloor, TARGET_CFG.uniqueCapPerCell * T);
   const minimal = o.minimize !== false, t0 = performance.now();
-  const retries = Math.max(1, o.retries ?? TARGET_CFG.retries);
+  const retries = Math.max(1, o.retries ?? TARGET_CFG.retries), pool = !o.start && o.startPool > 1 ? Math.floor(o.startPool) : 0;
   const depth = proposalBudget(n, o.effort ?? 1), patience = Math.max(30, Math.round(depth * TARGET_CFG.patience));
   const hardWalls = o.maxWalls >= 0 ? Math.floor(o.maxWalls) : Infinity;
   const maxWalls = o.maxWalls >= 0 ? hardWalls : Math.max(2, Math.floor(TARGET_CFG.maxWallsPerCell * cells));
   const K0 = Math.max(Kmin, Math.min(Kmax, Math.round(Kmax - ((Kmax - Kmin) * band.grade) / 5))); // fewer checkpoints for harder targets
-  const stats = { scored: 0, cacheHits: 0, filtered: 0, ladderRuns: 0, ladderAborts: 0, uniqueRuns: 0, uniqueHits: 0, dropRuns: 0, witnessSkips: 0 };
+  const stats = { scored: 0, cacheHits: 0, filtered: 0, tightFiltered: 0, ladderRuns: 0, ladderAborts: 0, uniqueRuns: 0, uniqueHits: 0, dropRuns: 0, witnessSkips: 0, changeRuns: 0, changeWitnessSkips: 0 };
   const solveOnce = q => { const r = solve(q, { limit: 2, nodeCap: cap, ...REF_FLAGS }); return r.count === 1 && !r.exceeded; };
   const uniq = o.cache === false ? null : new Map(); // puzzle -> its uniqueness verdict (the same puzzle is proposed again and again)
   const isUnique = q => {
@@ -259,13 +309,34 @@ export function* generateTargeted(n, grade, seed, o = {}) {
     return wit;
   };
 
+  // Is the puzzle of a change `m` (m.freed set: a wall remove or move) still unique? It is the current puzzle, unique with its path as the only
+  // solution, with the wall m.freed taken out and, for a move, one more wall on an edge off the path. A second solution of it is also a solution
+  // of the current puzzle unless it walks the freed edge, so a search through that edge decides it (the same argument as in strip), and the
+  // witness the current puzzle holds for that wall (`wit`: a second solution of "current without the wall") settles most changes with a path
+  // walk: about 9 in 10 wall moves break uniqueness. Same verdicts as the plain check unless a node cap is hit (o.freedEdge = false: the plain check).
+  const isUniqueChange = (m, wit) => {
+    if (m.freed === undefined || o.freedEdge === false) return isUnique(m.q);
+    const key = uniq ? keyOf(m.q) : null, known = uniq ? uniq.get(key) : undefined;
+    if (known !== undefined) { stats.uniqueHits++; return known; }
+    let v;
+    const old = wit && wit.get(m.freed);
+    if (old && validPath(m.q, old)) { stats.changeWitnessSkips++; v = false; } else {
+      stats.changeRuns++;
+      const r = freedSearch(m.q, m.freed);
+      v = !r.exceeded && r.count === 0;
+    }
+    if (uniq) { if (uniq.size >= TARGET_CFG.cacheMax) uniq.clear(); uniq.set(key, v); }
+    return v;
+  };
+
   // Score of a puzzle: { pred, grade }, null when it is not valid (second solution, too many walls). pred = b + sum of terms, and the
   // ladder's term c * lTr (c > 0) is the only expensive one, with lTr = log(1 + ladder trials) >= 0. `win` = [lo, hi] is the window of
   // scores in which the change would be kept; a score outside it only has to be recognised as outside (OUT), so the cheap terms give
   // the lowest possible score (no trials) and the ladder runs with a trial cap that makes the score exceed hi.
   const lTrOn = model.features.includes('lTr'), lCoef = lTrOn ? model.w.lTr / model.sd.lTr : 0;
-  const staged = o.prefilter !== false && lCoef > 0;
-  const lTrMax = Math.log1p(TRAP_CFG.ladderWorkCap + 1); // every trial assigns an edge: at most workCap + 1 trials
+  const staged = o.prefilter !== false && lCoef > 0, tight = staged && o.prefilter !== 'exact';
+  const searchCfg = o.ladderWorkCap ? { ...TRAP_CFG, ladderWorkCap: o.ladderWorkCap } : TRAP_CFG; // the budget the search's ladder runs with
+  const lTrMax = Math.log1p(searchCfg.ladderWorkCap + 1); // every trial assigns an edge: at most workCap + 1 trials
   const cache = o.cache === false ? null : new Map();
   const score = (q, path, win) => {
     if (wallIds(q).length > hardWalls) return null;
@@ -279,19 +350,22 @@ export function* generateTargeted(n, grade, seed, o = {}) {
     const profile = trapProfile(q, path, TRAP_CFG);
     if (profile.nonUnique) return keep({ exact: null }).exact;
     if (!(staged && win)) {
-      const m = trapMetricsFromProfile(q, path, profile, TRAP_CFG, lTrOn ? undefined : 0, model);
-      return keep({ exact: { pred: m.predicted, grade: m.grade } }).exact;
+      const m = trapMetricsFromProfile(q, path, profile, searchCfg, lTrOn ? undefined : 0, model);
+      return keep({ exact: { pred: m.predicted, grade: m.grade, lTr: m.lTr } }).exact;
     }
     const low = trapMetricsFromProfile(q, path, profile, TRAP_CFG, 0, model).predicted; // lTr = 0: the lowest score the puzzle can have
     if (low > win.hi + EPS) { stats.filtered++; keep({ lb: low }); return OUT; }
     const high = low + lCoef * lTrMax;
     if (high < win.lo - EPS) { stats.filtered++; keep({ ub: high }); return OUT; }
+    // Tight: a change keeps the ladder term of its parent within lTrSlack (see TARGET_CFG), so one that cannot reach the window even then is
+    // dropped without the ladder (a guess, not a bound: nothing is remembered about it but its cheap part).
+    if (tight && win.lTr != null && low + lCoef * Math.min(lTrMax, win.lTr + TARGET_CFG.lTrSlack) < win.lo - EPS) { stats.tightFiltered++; keep({ lb: low }); return OUT; }
     const trialCap = Number.isFinite(win.hi) ? Math.ceil(Math.expm1(Math.max(0, (win.hi - low) / lCoef))) + 1 : Infinity;
     stats.ladderRuns++;
-    const trials = ladderTrials(q, TRAP_CFG, trialCap);
+    const trials = ladderTrials(q, searchCfg, trialCap);
     if (trials > trialCap) { stats.ladderAborts++; keep({ lb: low + lCoef * Math.log1p(trials) }); return OUT; } // more trials than the window allows
-    const m = trapMetricsFromProfile(q, path, profile, TRAP_CFG, trials, model);
-    return keep({ exact: { pred: m.predicted, grade: m.grade } }).exact;
+    const m = trapMetricsFromProfile(q, path, profile, searchCfg, trials, model);
+    return keep({ exact: { pred: m.predicted, grade: m.grade, lTr: m.lTr } }).exact;
   };
 
   let best = null, proposals = 0, restarts = 0, tries = 0, failedStarts = 0, tryProps = 0;
@@ -306,9 +380,14 @@ export function* generateTargeted(n, grade, seed, o = {}) {
     tries++;
     tryProps = 1;
     // 1. A fresh unique puzzle with its solution path.
-    const inner = o.start ? o.start(rnd, K0, cap) : generateUnique(n, K0, rnd, { tries: TARGET_CFG.startTries, nodeCap: cap });
+    const inner = o.start ? o.start(rnd, K0, cap) : pool ? bestOfStarts(n, pool, rnd, K0, cap, band, model, searchCfg, !minimal || o.startRefine !== false, o.prefilter !== false) : generateUnique(n, K0, rnd, { tries: TARGET_CFG.startTries, nodeCap: cap });
     let start;
-    for (let s = inner.next(); ; s = inner.next()) { if (s.done) { start = s.value; break; } yield event('start', null); }
+    for (let s = inner.next(); ; s = inner.next()) {
+      if (s.done) { start = s.value; break; }
+      const e = event('start', null);
+      if (s.value && s.value.pool != null) e.pool = s.value.pool;
+      yield e;
+    }
     proposals++;
     const path = start.unique && start.puzzle.path;
     let startWit = new Map();
@@ -338,8 +417,8 @@ export function* generateTargeted(n, grade, seed, o = {}) {
       proposals++; tryProps++;
       ctx.wit = cur.wit;
       const m = propose(cur.puzzle, ctx, rnd, cur.pred < band.a);
-      if (!m || (o.valid && !o.valid(m.q)) || (m.check && !isUnique(m.q))) { stale++; continue; }
-      const win = { lo: band.a - cur.d, hi: band.b + cur.d };
+      if (!m || (o.valid && !o.valid(m.q)) || (m.check && !isUniqueChange(m, cur.wit))) { stale++; continue; }
+      const win = { lo: band.a - cur.d, hi: band.b + cur.d, lTr: cur.lTr };
       let q = m.q, s = score(q, path, win);
       if (s === OUT) { stale++; yield event('search', cur); continue; }
       if (!s) { stale++; continue; }
@@ -365,9 +444,12 @@ export function* generateTargeted(n, grade, seed, o = {}) {
   const puzzle = best.puzzle;
   puzzle.seed = seed;
   yield { ...event('search', best), frac: 1 };
+  // With a smaller ladder budget the scores were lower bounds: report the exact one (never lower, so a hit stays a hit).
+  const exact = searchCfg === TRAP_CFG ? null : trapMetrics(puzzle, TRAP_CFG, puzzle.path, model);
+  const fin = exact && exact.ok ? { pred: exact.predicted, grade: exact.grade } : best;
   return {
-    puzzle, unique: true, grade: best.grade, pred: best.pred, target: band.grade, requested: grade,
-    hit: o.atLeast === true ? best.grade >= band.grade : best.grade === band.grade, inside: best.d === 0, lo: band.lo, hi: band.hi,
+    puzzle, unique: true, grade: fin.grade, pred: fin.pred, target: band.grade, requested: grade,
+    hit: o.atLeast === true ? fin.grade >= band.grade : fin.grade === band.grade, inside: best.d === 0, lo: band.lo, hi: band.hi,
     proposals, restarts, tries, retries, K: maxNumber(puzzle), walls: wallIds(puzzle).length, minimal, stats, elapsedMs: performance.now() - t0,
   };
 }

@@ -24,6 +24,14 @@
 //   | arrow count 8, then per arrow: edge id 9 + direction 1 (1 = it points to the lower cell index)
 //   | strip length 6, 2 bits per leg | check 8
 // A 7x7 one with 6 arrows is about 40 characters.
+//
+// A local standard game carries its puzzle too (frame id 3 of the same version 2: the Play app's puzzles come from a search whose result depends on the
+// grade model, so the receiver cannot be trusted to rebuild it from a seed, and the search takes seconds):
+//   version 3 (=2) | frame 4 (=3) | size 5 | grade 3 (7 = unknown) | time 17 | day 16 | game index 10
+//   | K 7, then K cell indices of checkpoints 1..K, 8 bits each
+//   | wall count 8, then 9 bits per wall (edge id) | strip length 6, 2 bits per leg | check 8
+// A 7x7 one with 8 walls is about 45 characters, a 12x12 one about 70. A puzzle with more than 255 walls does not fit: such a game is
+// shared as a version 1 code (day, index, ALGO_VERSION: the receiver rebuilds it).
 import { LABELS } from './gen/shapes.js';
 import { arrowProblem, arrowDirId } from './edges.js';
 
@@ -32,6 +40,7 @@ export const SHARE_VERSION_VARIANT = 2;
 export const VARIANTS = [null, 'cutout', 'arrows']; // variant id -> name
 export const VARIANT_SHAPES = LABELS; // shape id - 1 -> name
 export const VARIANT_MAX_N = 16;
+const FRAME_STANDARD = 3; // frame id of a local standard game that carries its puzzle (see above); VARIANTS has no entry for it
 export const MAX_LEGS = 63;
 export const MAX_TENTHS = 131071;
 
@@ -92,6 +101,26 @@ function isArrowsPuzzle(p) {
   return marks.length >= 2 && marks.length <= 127 && marks.every((v, i) => v === i + 1) && arrows <= 255;
 }
 
+// A standard puzzle { n, cp, walls }: numbered 1..K without gaps (2..127), walls only on edges between two cells, no holes and no arrows.
+function isStandardPuzzle(p) {
+  if (!p || !isInt(p.n, 2, VARIANT_MAX_N) || p.holes || p.arrows) return false;
+  const T = p.n * p.n, marks = [];
+  if (!p.cp || p.cp.length !== T || !p.walls || p.walls.length !== T) return false;
+  for (let i = 0; i < T; i++) {
+    if (p.cp[i]) marks.push(p.cp[i]);
+    if ((p.walls[i] & 1 && i % p.n === p.n - 1) || (p.walls[i] & 2 && i + p.n >= T) || p.walls[i] > 3) return false;
+  }
+  marks.sort((a, b) => a - b);
+  return marks.length >= 2 && marks.length <= 127 && marks.every((v, i) => v === i + 1);
+}
+
+// A local standard game with its puzzle in place of the seed (day and index stay: the receiver's card says "game #k of <date>").
+function isCarriedRecord(rec) {
+  return !!rec && rec.kind === 'local' && rec.variant == null && isInt(rec.n, 2, VARIANT_MAX_N) && !!rec.puzzle && rec.puzzle.n === rec.n && isStandardPuzzle(rec.puzzle)
+    && isInt(rec.day, 0, 65535) && isInt(rec.index, 0, 1023) && (rec.grade == null || isInt(rec.grade, 0, 5))
+    && rec.timeS > 0 && Number.isFinite(rec.timeS) && Array.isArray(rec.levels) && rec.levels.every(v => isInt(v, 0, 3));
+}
+
 const SOUND_PUZZLE = { cutout: isCutoutPuzzle, arrows: isArrowsPuzzle };
 
 function isEncodable(rec) {
@@ -114,6 +143,11 @@ function isEncodable(rec) {
 //           gotd: pct: 0..100 | null;  local: index (0-based), algo }
 // -> code, or null when a field is out of range.
 export function encodeShare(rec) {
+  if (rec && rec.puzzle && rec.variant == null && isCarriedRecord(rec) && encodedWalls(rec.puzzle) <= 255) {
+    const bits = [];
+    pushStandard(bits, rec, rec.levels.length <= MAX_LEGS ? rec.levels : []);
+    return bitsToCode(bits);
+  }
   if (!isEncodable(rec) || (rec.variant && encodedWalls(rec.puzzle) > 255)) {
     return null;
   }
@@ -175,6 +209,28 @@ function pushArrows(bits, rec, levels) {
     pushBits(bits, e, 9);
     pushBits(bits, arrowDirId(p.arrows, e) < 0 ? 1 : 0, 1);
   }
+  pushBits(bits, levels.length, 6);
+  for (const level of levels) pushBits(bits, level, 2);
+}
+
+// The frame of a local standard game with its puzzle (layout at the top).
+function pushStandard(bits, rec, levels) {
+  const p = rec.puzzle, T = p.n * p.n, cells = [], walls = [];
+  for (let i = 0; i < T; i++) {
+    if (p.cp[i]) cells[p.cp[i] - 1] = i;
+    for (let t = 0; t < 2; t++) if ((p.walls[i] >> t) & 1) walls.push(i * 2 + t);
+  }
+  pushBits(bits, SHARE_VERSION_VARIANT, 3);
+  pushBits(bits, FRAME_STANDARD, 4);
+  pushBits(bits, p.n, 5);
+  pushBits(bits, rec.grade == null ? NO_GRADE : rec.grade, 3);
+  pushBits(bits, Math.min(MAX_TENTHS, Math.round(rec.timeS * 10)), 17);
+  pushBits(bits, rec.day, 16);
+  pushBits(bits, rec.index, 10);
+  pushBits(bits, cells.length, 7);
+  for (const c of cells) pushBits(bits, c, 8);
+  pushBits(bits, walls.length, 8);
+  for (const e of walls) pushBits(bits, e, 9);
   pushBits(bits, levels.length, 6);
   for (const level of levels) pushBits(bits, level, 2);
 }
@@ -260,7 +316,9 @@ export function decodeShare(code) {
 
 // Version 2 body, after its 3-bit version. read(width) / pos() are decodeShare's cursor; null when anything is off.
 function readVariant(read, bits, code, pos) {
-  const variant = VARIANTS[read(4)];
+  const id = read(4);
+  if (id === FRAME_STANDARD) return readStandard(read, bits, code, pos);
+  const variant = VARIANTS[id];
   if (variant === 'arrows') return readArrows(read, bits, code, pos);
   if (variant !== 'cutout') {
     return null;
@@ -346,4 +404,44 @@ function readArrows(read, bits, code, pos) {
   const exactLength = code.length === Math.ceil(pos() / 6);
   const zeroPadding = bits.slice(pos()).every(b => b === 0);
   return exactLength && zeroPadding && isEncodable(rec) ? rec : null;
+}
+
+// The body of a local standard game with its puzzle, after its version and frame id (layout at the top).
+function readStandard(read, bits, code, pos) {
+  const n = read(5);
+  if (!isInt(n, 2, VARIANT_MAX_N)) {
+    return null;
+  }
+  const T = n * n, grade = read(3);
+  const rec = { kind: 'local', n, grade: grade === NO_GRADE ? null : grade, timeS: read(17) / 10, day: read(16), index: read(10) };
+  const puzzle = { n, cp: new Uint16Array(T), walls: new Uint8Array(T) };
+  const K = read(7);
+  for (let k = 1; k <= K; k++) {
+    const cell = read(8);
+    if (cell >= T || puzzle.cp[cell]) {
+      return null;
+    }
+    puzzle.cp[cell] = k;
+  }
+  const walls = read(8);
+  for (let i = 0; i < walls; i++) {
+    const e = read(9);
+    if ((e >> 1) >= T) {
+      return null;
+    }
+    puzzle.walls[e >> 1] |= 1 << (e & 1);
+  }
+  rec.puzzle = puzzle;
+  const legs = read(6);
+  rec.levels = [];
+  for (let i = 0; i < legs; i++) {
+    rec.levels.push(read(2));
+  }
+  const end = pos();
+  if (read(CHECK_BITS) !== checksum(bits, end)) {
+    return null;
+  }
+  const exactLength = code.length === Math.ceil(pos() / 6);
+  const zeroPadding = bits.slice(pos()).every(b => b === 0);
+  return exactLength && zeroPadding && isCarriedRecord(rec) ? rec : null;
 }

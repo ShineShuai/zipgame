@@ -1,11 +1,13 @@
 import { serialize } from '../../core/format.js';
-import { generate, PLAY_SIZES } from '../../core/gen/generate.js';
+import { PLAY_SIZES } from '../../core/gen/generate.js';
+import { generatePlay, PLAY_TARGET } from '../../core/gen/play.js';
 import { edgeId, arrowAllows } from '../../core/edges.js';
 import { isSolved, step, gridAdjacent } from '../../core/rules.js';
 import { statSummary } from '../../core/stats.js';
 import { pickStorage } from '../../platform/storage.js';
 import { runAsync } from '../../platform/run.js';
 import { createStore } from '../../features/stats-store.js';
+import { createPuzzleCache } from '../../features/puzzle-cache.js';
 import { createDaily, fetchGameOfDay, fetchGameOfDayFor, utcDateString, utcDayNumber, dateOfDay } from '../../features/daily.js';
 import { createReplay } from '../../features/replay.js';
 import { createStreak, FREEZE_EVERY, FREEZE_MAX } from '../../features/streak.js';
@@ -41,21 +43,22 @@ const S = { screen: 'menu', mode: 'standard', variant: null, genMode: 'standard'
   legs: [], gameDay: null, isShared: false, shared: null, sharedBad: false, sharedMsg: null };
 
 // Grade a puzzle right after generation, once, before it's shown (see core/grades.js playGradesFor):
-//   trap   - the main grade (badge): one capped solve per wrong turn along the solution, ~2-200 ms at
+//   trap   - the best single grade: one capped solve per wrong turn along the solution, ~2-200 ms at
 //            play sizes; needs no reference solve, so it exists even for puzzles the reference solve caps on.
+//   badge  - what the player sees: the median of the trap grade and the three old grades below (core/grades.js badgeFrom).
 //   legacy - the previous calibrated grades (decisionNodes, B, crossPerSeg), one reference solve() plus a
 //            free geometry pass; shown only on hold-V. null when that solve was capped (then hold-V says so).
 // Never throws: a failed grade just means "grade unknown" — the puzzle is still perfectly playable.
 function gradePuzzle(puzzle) {
   try {
-    const { trap, legacy } = playGradesFor(puzzle);
-    return { ok: trap.ok, trap: trap.ok ? trap : null, legacy };
+    const { trap, legacy, badge } = playGradesFor(puzzle);
+    return { ok: trap.ok, trap: trap.ok ? trap : null, legacy, badge };
   } catch (e) {
     console.warn('difficulty grading failed:', e);
     return { ok: false, trap: null, legacy: null };
   }
 }
-let storage, store, daily, replay, streak, unlock, modal, lb;
+let storage, store, daily, pzCache, replay, streak, unlock, modal, lb;
 const replayPuzzles = new Map(), replayNoFile = new Set(); // date -> puzzle (the file of a past day never changes, so each is fetched once per page load); dates without a file
 const $ = id => document.getElementById(id), today = () => utcDateString(new Date()), dayNo = () => utcDayNumber(new Date()), sec = x => x.toFixed(1) + 's';
 const statsText = { everyone: (avg, n) => t('stats.everyone', avg, n), top: (k, avg) => t('stats.top', k, avg), beat: pct => t('stats.beat', pct) };
@@ -432,12 +435,12 @@ function gotdStatsHtml() {
 
 const playStatsHtml = () => (S.variant ? '' : S.isGotd ? gotdStatsHtml() : localStatsHtml());
 
-// Always-visible grade badge (one word + one number, 0-5): the trap grade (core/trap.js). Nothing is
-// rendered when the puzzle couldn't be graded, rather than a misleading placeholder number.
+// Always-visible grade badge (one word + one number, 0-5): the median of the trap grade (core/trap.js) and the three old
+// grades (core/grades.js badgeFrom). Nothing is rendered when the puzzle couldn't be graded, rather than a misleading placeholder number.
 function difficultyBadgeHtml() {
   const d = S.difficulty;
-  if (!d || !d.ok) return '';
-  const g = d.trap.grade;
+  if (!d || !d.ok || !d.badge) return '';
+  const g = d.badge.grade;
   return `<span class="difficulty-badge" title="${t('game.badgeTip', g)}">${t('grade.' + g)} · ${g}/5</span>`;
 }
 // Hold-V block: the trap grade's raw inputs, then the previous grades as before — decisionNodes (the old
@@ -449,7 +452,9 @@ function difficultyDevHtml() {
   const legacyPart = g
     ? `decisionNodes ${g.grades.decisionNodes}/5 · B ${g.grades.B}/5 · cross ${g.grades.crossPerSeg}/5 · <span class="dev-raw">decisionNodes ${g.raw.decisionNodes} · B ${g.raw.B.toFixed(2)} · cross/seg ${g.raw.crossPerSeg.toFixed(2)}</span>`
     : 'old grades: ungraded (search capped)';
-  const body = t || g ? trapPart + legacyPart : 'ungraded';
+  const b = d && d.badge;
+  const badgePart = b ? `badge ${b.grade}/5 = median of ${Object.entries(b.parts).map(([id, v]) => `${id} ${v}`).join(' · ')} · ` : '';
+  const body = t || g ? badgePart + trapPart + legacyPart : 'ungraded';
   return `<span id="difficultyDev" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="trap: the badge score before it is cut into a grade, with its inputs (worst step's trap score, top-3 steps' sum, fraction of steps that have any wrong move, what-if guesses the technique ladder needed). decisionNodes: the previous badge grade (solver branch points per cell). B: backtrack overhead (nodes/cells - 1) from the same solve. cross: how many non-adjacent checkpoint-to-checkpoint segments geometrically cross, per segment. Each old grade is graded 0-5 with its own calibration; the trap grade is fit to hand ratings. The design app shows all of them.">${body}${t || g ? ' · <a href="#" id="exportPlayLog" title="Download the play log (what you did on each puzzle: time, cells drawn and taken back), local to this device, for tools/playlog-eval.mjs">play log</a>' : ''}</span>`;
 }
 
@@ -459,8 +464,8 @@ function renderGame() {
   const p = S.puzzle;
   const time = sec(S.elapsed);
   const cap = maxHints(p);
-  const seedText = S.variant ? `${S.variant} · ${S.seed == null ? 'shared' : 'seed ' + S.seed}${p.shape ? ' · ' + p.shape : ''}` : `seed ${S.seed} · flags ${flagsToHex(PLAY_FLAGS_INT)}`;
-  const seedHint = S.variant ? variantById(S.variant).source + ' is seeded, but the app seeds it at random; a shared game carries its puzzle in the link.' : "Design app's Generate uses these same algorithm choices, but generate() here also tries several candidates and keeps the cheapest, so pasting this seed+flags there is not guaranteed to reproduce this exact puzzle";
+  const seedText = S.variant ? `${S.variant} · ${S.seed == null ? 'shared' : 'seed ' + S.seed}${p.shape ? ' · ' + p.shape : ''}` : S.seed == null ? 'shared' : `seed ${S.seed} · ${PLAY_TARGET[p.n] ? 'hardest grade' : 'flags ' + flagsToHex(PLAY_FLAGS_INT)}`;
+  const seedHint = S.variant ? variantById(S.variant).source + ' is seeded, but the app seeds it at random; a shared game carries its puzzle in the link.' : (PLAY_TARGET[p.n] ? 'generatePlay (core/gen/play.js): the hardest grade this size can show, found by generateTargeted() from the best of several start puzzles; the Design app\'s targeted Generate with this seed does not reproduce it exactly. A shared game carries its puzzle in the link.' : "Design app's Generate uses these same algorithm choices, but generate() here also tries several candidates and keeps the cheapest, so pasting this seed+flags there is not guaranteed to reproduce this exact puzzle");
   const seedTag = `<span id="seedTag" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="${seedHint}">${seedText}</span>`;
   const shapeName = p.shape ? t('shape.' + p.shape) : '';
   const localTitle = S.variant
@@ -685,7 +690,7 @@ function beginGame(puzzle, gotdDate, isReplay = false, isShared = false, lucky =
 }
 function generatorFor(mode, n, seed) {
   const variant = variantById(mode);
-  return variant ? variant.generate(n, seed) : generate(n, seed);
+  return variant ? variant.generate(n, seed) : generatePlay(n, seed);
 }
 const generateShown = (n, seed, mode = 'standard') => runAsync(generatorFor(mode, n, seed), { onEvent: e => { S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls ?? e.arrows, K: e.K }; if (S.screen === 'generating') render(); } });
 // how: 'open' (Play local: current or next-if-solved) | 'skip' (New puzzle); a variant is always a new random one.
@@ -695,7 +700,12 @@ async function startLocal(how, mode = 'standard', lucky = false) {
   S.screen = 'generating'; S.genMode = mode; S.gen = { frac: 0, walls: null, K: null }; render();
   try {
     const { index, seed } = mode !== 'standard' ? { index: 0, seed: randomSeed() } : how === 'skip' ? await daily.skip(S.size) : await daily.open(S.size);
-    const puzzle = await generateShown(S.size, seed, mode);
+    // A standard puzzle is searched for (gen/play.js, seconds at the larger sizes): the one of this game, made before, comes from the cache.
+    let puzzle = mode === 'standard' ? await pzCache.get(S.size, seed) : null;
+    if (!puzzle) {
+      puzzle = await generateShown(S.size, seed, mode);
+      if (mode === 'standard') await pzCache.set(S.size, seed, puzzle);
+    }
     S.gameIndex = index; S.seed = seed;
     S.gameDay = mode !== 'standard' ? null : [dayNo(), dayNo() - 1].find(d => dailySeed(d, S.size, index, ALGO_VERSION) === seed) ?? null; // the day this seed was made on: what a share link needs
     beginGame(puzzle, null, false, false, lucky);
@@ -893,10 +903,10 @@ async function startShared() {
 }
 
 async function startSharedLocal(rec) {
-  if (rec.variant) { // the link carries the puzzle: nothing to generate
+  if (rec.puzzle) { // the link carries the puzzle: nothing to generate (a standard game keeps its day and index for the card and a new share)
     S.size = rec.n;
-    Object.assign(S, { gameIndex: 0, seed: null, gameDay: null });
-    beginGame({ ...rec.puzzle, shape: rec.puzzle.shape || undefined }, null, false, true);
+    Object.assign(S, rec.variant ? { gameIndex: 0, seed: null, gameDay: null } : { gameIndex: rec.index, seed: null, gameDay: rec.day });
+    beginGame(rec.variant ? { ...rec.puzzle, shape: rec.puzzle.shape || undefined } : rec.puzzle, null, false, true);
     clearSharedLink();
     return;
   }
@@ -920,12 +930,12 @@ async function startSharedLocal(rec) {
 }
 
 function currentShareRecord() {
-  const trap = S.difficulty && S.difficulty.ok ? S.difficulty.trap : null;
+  const badge = S.difficulty && S.difficulty.ok ? S.difficulty.badge : null;
   const attempt = S.isGotd ? store.attemptOn(S.gotdDate) : null;
   return makeShareRecord({
     gotdDate: S.isGotd ? S.gotdDate : null,
     n: S.puzzle.n,
-    grade: trap ? trap.grade : null,
+    grade: badge ? badge.grade : null,
     timeS: S.elapsed,
     pct: attempt && attempt.stats ? attempt.stats.pct : null,
     day: S.gameDay,
@@ -1044,7 +1054,7 @@ async function initLang() {
 
 // ---------- boot ----------
 (async function boot() {
-  storage = await pickStorage(); store = createStore(storage, SIZES); daily = createDaily(storage); playlog = createPlayLog(storage);
+  storage = await pickStorage(); store = createStore(storage, SIZES); daily = createDaily(storage); pzCache = createPuzzleCache(storage); playlog = createPlayLog(storage);
   try { await store.hydrate(today()); } catch (e) { console.warn('stats hydration failed:', e); }
   lb = createLeaderboard(backendsFromConfig(LEADERBOARD, new URLSearchParams(location.search).get('lb')));
   replay = createReplay(storage, store);
