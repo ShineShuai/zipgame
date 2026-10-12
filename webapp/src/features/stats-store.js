@@ -1,10 +1,12 @@
 import { newStat, updateStat } from '../core/stats.js';
+import { scopeKey } from './daily.js';
 
 // Persistent per-size stats (all-time "total" and per-UTC-day "today"), Game-of-Day best time and once-per-day attempt flag.
 // Total keys are unchanged from the old app; today's stats live under zip_today_stats_<n> = { day, stat }.
+// A puzzle variant keeps its own stats (`scopes` = { id: [sizes] }, keys zip_local_stats_<id>_<n>, zip_today_stats_<id>_<n>); `scope` is that id, '' = standard.
 // One attempt record per Game-of-Day date: { solved, time, sent?, stats? }. A date with no record is a date the player never played, i.e. one a replay may offer.
 export const attemptKey = date => 'zip_gotd_attempt_' + date;
-export function createStore(storage, sizes) {
+export function createStore(storage, sizes, scopes = {}) {
   const total = {}, today = {}, best = {}, attempts = {}; let attemptDate = null; // attempts: date -> record|null, every date loaded so far (today and replays)
   const get = async k => { try { const r = await storage.get(k); return r ? JSON.parse(r.value) : null; } catch { return null; } };
   const set = async (k, v) => { try { await storage.set(k, JSON.stringify(v)); } catch { /* ignore */ } };
@@ -13,14 +15,18 @@ export function createStore(storage, sizes) {
       await Promise.all(sizes.map(async n => {
         total[n] = (await get('zip_local_stats_' + n)) || newStat(); today[n] = await get('zip_today_stats_' + n); best[n] = await get('zip_gotd_best_' + n);
       }));
+      await Promise.all(Object.entries(scopes).flatMap(([id, ns]) => ns.map(async n => {
+        const k = scopeKey(n, id); total[k] = (await get('zip_local_stats_' + k)) || newStat(); today[k] = await get('zip_today_stats_' + k);
+      })));
       await store.hydrateAttempt(dateStr);
     },
-    total: n => total[n] || newStat(),
-    today: (n, day) => (today[n] && today[n].day === day ? today[n].stat : newStat()),
-    async recordSolve(n, day, time) {
-      total[n] = updateStat(total[n] || newStat(), time);
-      today[n] = { day, stat: updateStat(store.today(n, day), time) };
-      await Promise.all([set('zip_local_stats_' + n, total[n]), set('zip_today_stats_' + n, today[n])]);
+    total: (n, scope) => total[scopeKey(n, scope)] || newStat(),
+    today: (n, day, scope) => { const r = today[scopeKey(n, scope)]; return r && r.day === day ? r.stat : newStat(); },
+    async recordSolve(n, day, time, scope) {
+      const k = scopeKey(n, scope);
+      total[k] = updateStat(total[k] || newStat(), time);
+      today[k] = { day, stat: updateStat(store.today(n, day, scope), time) };
+      await Promise.all([set('zip_local_stats_' + k, total[k]), set('zip_today_stats_' + k, today[k])]);
     },
     gotdBest: n => best[n] || null,
     // pending: also submit to the averages backend (sent:false until it answers).

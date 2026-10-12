@@ -6,7 +6,7 @@ import { statSummary } from '../../core/stats.js';
 import { pickStorage } from '../../platform/storage.js';
 import { runAsync } from '../../platform/run.js';
 import { createStore } from '../../features/stats-store.js';
-import { createDaily, fetchGameOfDay, fetchGameOfDayFor, utcDateString, utcDayNumber, dateOfDay } from '../../features/daily.js';
+import { createDaily, scopeKey, fetchGameOfDay, fetchGameOfDayFor, utcDateString, utcDayNumber, dateOfDay } from '../../features/daily.js';
 import { createReplay } from '../../features/replay.js';
 import { createStreak, FREEZE_EVERY, FREEZE_MAX } from '../../features/streak.js';
 import { ALGO_VERSION, maxNumber } from '../../core/model.js';
@@ -44,7 +44,8 @@ const S = { screen: 'menu', mode: 'standard', variant: null, genMode: 'standard'
 //   trap   - the main grade (badge): one capped solve per wrong turn along the solution, ~2-200 ms at
 //            play sizes; needs no reference solve, so it exists even for puzzles the reference solve caps on.
 //   legacy - the previous calibrated grades (decisionNodes, B, crossPerSeg), one reference solve() plus a
-//            free geometry pass; shown only on hold-V. null when that solve was capped (then hold-V says so).
+//            free geometry pass; shown only on hold-V. null when that solve was capped (then hold-V says so), and for a
+//            variant (Cutout, One way arrows): it gets the trap grade only, scored by the model that fits it (core/trap.js modelFor).
 // Never throws: a failed grade just means "grade unknown" — the puzzle is still perfectly playable.
 function gradePuzzle(puzzle) {
   try {
@@ -107,22 +108,29 @@ function refreshAttemptIfStale() {
 }
 
 // "next game #" per size, from the per-size daily counters
-async function refreshNext() {
+// Keys of S.nextIdx: scopeKey(n, scope), scope '' = standard, else the variant id (each variant counts its own games).
+const scopes = () => ['', ...PLAY_VARIANTS.map(v => v.id)];
+const scopeSizes = scope => (scope ? sizesFor(scope, SIZES) : SIZES);
+async function peekNext() {
   const next = {};
-  for (const n of SIZES) next[n] = (await daily.peek(n)).index;
+  for (const scope of scopes()) for (const n of scopeSizes(scope)) next[scopeKey(n, scope)] = (await daily.peek(n, scope)).index;
+  return next;
+}
+async function refreshNext() {
+  const next = await peekNext();
   if (JSON.stringify(next) === JSON.stringify(S.nextIdx)) return;
   S.nextIdx = next;
   if (S.screen === 'menu') render();
 }
 
-const gameNo = n => (S.nextIdx[n] == null ? '-' : '#' + (S.nextIdx[n] + 1));
+const gameNo = (n, scope = '') => { const i = S.nextIdx[scopeKey(n, scope)]; return i == null ? '-' : '#' + (i + 1); };
 
 // Puzzle types: 'standard' and the variants of ./variants.js (Cutout, core/gen/cutout.js; One way arrows,
-// core/gen/arrows.js). A variant is random, with no daily sequence, no grade and no stats (yet); a shared one carries
-// its puzzle in the link. A variant is hidden until the player has unlocked it (features/unlock.js: the lucky game);
+// core/gen/arrows.js). A variant is random, with no daily sequence (its counter only counts the day's games); it has its own grade
+// (core/trap.js modelFor) and stats, per variant and size; a shared one carries its puzzle in the link. A variant is hidden until the player has unlocked it (features/unlock.js: the lucky game);
 // hold V shows them all. The menu offers the shown ones as icon tiles (variantPickerHtml); the Game of Day is always
 // a standard puzzle.
-const todayText = () => (S.mode !== 'standard' ? '' : t('menu.today', gameNo(S.size)));
+const todayText = () => t('menu.today', gameNo(S.size, S.mode === 'standard' ? '' : S.mode));
 const randomSeed = () => (globalThis.crypto && crypto.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 4294967296));
 const randomInt = n => Math.floor(randomSeed() / 4294967296 * n); // 0..n-1
 
@@ -381,9 +389,9 @@ const gotdText = n => {
 };
 
 // "today / total" cells for one size (today = current UTC day).
-function statCells(n) {
-  const total = store.total(n);
-  const today = store.today(n, dayNo());
+function statCells(n, scope = '') {
+  const total = store.total(n, scope);
+  const today = store.today(n, dayNo(), scope);
   const t = statSummary(total);
   const d = statSummary(today);
   const value = (summary, x) => (summary.n ? x.toFixed(1) : '-');
@@ -399,7 +407,7 @@ function statCells(n) {
 // Stats are shown under the game being played, for its kind of puzzle (the menu shows none):
 //   a standard puzzle (random or shared local game): the local stats of every grid size;
 //   a Game of Day (live or replay): the Game of Day time of every grid size;
-//   a variant (Cutout, One way arrows, the lucky game): none yet.
+//   a variant (Cutout, One way arrows, the lucky game): its own local stats, per grid size, with its own daily counter.
 // On narrow screens each row becomes a small card, so the cells carry their column name in data-label.
 const statsTable = (title, sub, head, rows) => `
     <section class="card play-stats">
@@ -413,12 +421,12 @@ const statsRow = (cells, keys, current) => `<tr${current ? ' class="current"' : 
   `<td data-label="${t(keys[i])}">${i === 0 ? value : `<b>${value}</b>`}</td>`).join('')}</tr>`;
 
 const LOCAL_HEAD = ['stats.grid', 'stats.next', 'stats.solves', 'stats.avg', 'stats.sd', 'stats.best']; // i18n keys
-function localStatsHtml() {
-  const rows = SIZES.filter(n => store.total(n).n || S.nextIdx[n] || n === S.puzzle.n).map(n => {
-    const c = statCells(n);
-    return statsRow([`${n}x${n}`, gameNo(n), c.solves, c.avg, c.sd, c.best], LOCAL_HEAD, n === S.puzzle.n);
+function localStatsHtml(scope = '') {
+  const rows = scopeSizes(scope).filter(n => store.total(n, scope).n || S.nextIdx[scopeKey(n, scope)] || n === S.puzzle.n).map(n => {
+    const c = statCells(n, scope);
+    return statsRow([`${n}x${n}`, gameNo(n, scope), c.solves, c.avg, c.sd, c.best], LOCAL_HEAD, n === S.puzzle.n);
   }).join('');
-  return statsTable(t('stats.title'), t('stats.sub'), LOCAL_HEAD, rows);
+  return statsTable(scope ? t('stats.variantTitle', t('mode.' + scope)) : t('stats.title'), t('stats.sub'), LOCAL_HEAD, rows);
 }
 
 const GOTD_HEAD = ['stats.grid', 'stats.date', 'stats.time'];
@@ -430,7 +438,7 @@ function gotdStatsHtml() {
   return statsTable(t('stats.gotdTitle'), t('stats.gotdSub'), GOTD_HEAD, rows);
 }
 
-const playStatsHtml = () => (S.variant ? '' : S.isGotd ? gotdStatsHtml() : localStatsHtml());
+const playStatsHtml = () => (S.isGotd ? gotdStatsHtml() : localStatsHtml(S.variant || ''));
 
 // Always-visible grade badge (one word + one number, 0-5): the trap grade (core/trap.js). Nothing is
 // rendered when the puzzle couldn't be graded, rather than a misleading placeholder number.
@@ -444,13 +452,13 @@ function difficultyBadgeHtml() {
 // badge), B and crossPerSeg, each bucketed with its own calibration — and the raw numbers behind them.
 // Hidden by default; same hold-to-reveal pattern as seedTag.
 function difficultyDevHtml() {
-  const d = S.difficulty, t = d && d.trap, g = d && d.legacy;
-  const trapPart = t ? `trap ${t.predicted.toFixed(2)} <span class="dev-raw">max ${t.trapMax} · top3 ${t.trapTop3} · alt ${t.altFrac.toFixed(2)} · ladder trials ${t.ladTrials}</span> · ` : '';
+  const d = S.difficulty, tm = d && d.trap, g = d && d.legacy, arrows = S.variant === 'arrows';
+  const trapPart = tm ? `trap ${tm.predicted.toFixed(2)} <span class="dev-raw">max ${tm.trapMax} · top3 ${tm.trapTop3}${arrows ? ' · max+top3 only, uncalibrated' : ` · alt ${tm.altFrac.toFixed(2)} · ladder trials ${tm.ladTrials}`}</span>` : '';
   const legacyPart = g
     ? `decisionNodes ${g.grades.decisionNodes}/5 · B ${g.grades.B}/5 · cross ${g.grades.crossPerSeg}/5 · <span class="dev-raw">decisionNodes ${g.raw.decisionNodes} · B ${g.raw.B.toFixed(2)} · cross/seg ${g.raw.crossPerSeg.toFixed(2)}</span>`
-    : 'old grades: ungraded (search capped)';
-  const body = t || g ? trapPart + legacyPart : 'ungraded';
-  return `<span id="difficultyDev" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="trap: the badge score before it is cut into a grade, with its inputs (worst step's trap score, top-3 steps' sum, fraction of steps that have any wrong move, what-if guesses the technique ladder needed). decisionNodes: the previous badge grade (solver branch points per cell). B: backtrack overhead (nodes/cells - 1) from the same solve. cross: how many non-adjacent checkpoint-to-checkpoint segments geometrically cross, per segment. Each old grade is graded 0-5 with its own calibration; the trap grade is fit to hand ratings. The design app shows all of them.">${body}${t || g ? ' · <a href="#" id="exportPlayLog" title="Download the play log (what you did on each puzzle: time, cells drawn and taken back), local to this device, for tools/playlog-eval.mjs">play log</a>' : ''}</span>`;
+    : S.variant ? '' : 'old grades: ungraded (search capped)';
+  const body = [trapPart, legacyPart].filter(Boolean).join(' · ') || 'ungraded';
+  return `<span id="difficultyDev" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="trap: the badge score before it is cut into a grade, with its inputs (worst step's trap score, top-3 steps' sum, fraction of steps that have any wrong move, what-if guesses the technique ladder needed). Cutout: the same score without the alt term; One way arrows: only the max and top-3 terms, wrong moves being the ones the arrows allow (a ranking, not fitted to hand ratings). decisionNodes: the previous badge grade (solver branch points per cell). B: backtrack overhead (nodes/cells - 1) from the same solve. cross: how many non-adjacent checkpoint-to-checkpoint segments geometrically cross, per segment. Each old grade is graded 0-5 with its own calibration; the trap grade is fit to hand ratings. The design app shows all of them.">${body}${tm || g ? ' · <a href="#" id="exportPlayLog" title="Download the play log (what you did on each puzzle: time, cells drawn and taken back), local to this device, for tools/playlog-eval.mjs">play log</a>' : ''}</span>`;
 }
 
 const VARIANT_TITLE = { cutout: ['game.cutoutTitle', 'game.sharedCutoutTitle'], arrows: ['game.arrowsTitle', 'game.sharedArrowsTitle'] };
@@ -647,9 +655,9 @@ function onSolved() {
   if (S.lucky) finishLucky();
   if (!S.penaltyApplied) { S.elapsed = penalizedTime(S.elapsed, S.hintsUsed); S.penaltyApplied = true; } // once, even if the path is reset and re-solved
   if (S.isGotd) { const a = store.attemptOn(S.gotdDate); if (!(a && a.solved)) finishGotd(S.puzzle.n, S.gotdDate, S.elapsed, S.isReplay); } // a Game of Day (live or replay) counts once
-  else if (!S.variant) { // no stats and no daily counter for a variant yet
-    const n = S.puzzle.n; store.recordSolve(n, dayNo(), S.elapsed);
-    if (!S.isShared) daily.markSolved(n, S.gameIndex).then(refreshNext); }
+  else { // stats and daily counter of the puzzle type (a variant has its own)
+    const n = S.puzzle.n, scope = S.variant || ''; store.recordSolve(n, dayNo(), S.elapsed, scope);
+    if (!S.isShared) daily.markSolved(n, S.gameIndex, scope).then(refreshNext); }
 }
 
 // Game of Day (live or replay): record locally, count it towards the next replay chance, then submit to the averages backend
@@ -679,7 +687,7 @@ async function shareGotd(date) {
 function beginGame(puzzle, gotdDate, isReplay = false, isShared = false, lucky = false) {
   logPlay(false); // a puzzle left unfinished is logged as abandoned
   const variant = variantOf(puzzle);
-  const difficulty = variant ? null : gradePuzzle(puzzle); // a variant is not graded yet
+  const difficulty = gradePuzzle(puzzle);
   Object.assign(S, { variant, lucky, luckyResult: null, luckyNote: null, trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
   startTimer(); render();
 }
@@ -694,7 +702,8 @@ async function startLocal(how, mode = 'standard', lucky = false) {
   if (mode !== 'standard') S.size = nearestSize(S.size, sizesFor(mode, SIZES)); // e.g. after a shared 12x12 one
   S.screen = 'generating'; S.genMode = mode; S.gen = { frac: 0, walls: null, K: null }; render();
   try {
-    const { index, seed } = mode !== 'standard' ? { index: 0, seed: randomSeed() } : how === 'skip' ? await daily.skip(S.size) : await daily.open(S.size);
+    const scope = mode === 'standard' ? '' : mode, game = how === 'skip' ? await daily.skip(S.size, scope) : await daily.open(S.size, scope);
+    const index = game.index, seed = scope ? randomSeed() : game.seed; // a variant is random: its counter only numbers the day's games
     const puzzle = await generateShown(S.size, seed, mode);
     S.gameIndex = index; S.seed = seed;
     S.gameDay = mode !== 'standard' ? null : [dayNo(), dayNo() - 1].find(d => dailySeed(d, S.size, index, ALGO_VERSION) === seed) ?? null; // the day this seed was made on: what a share link needs
@@ -929,7 +938,7 @@ function currentShareRecord() {
     timeS: S.elapsed,
     pct: attempt && attempt.stats ? attempt.stats.pct : null,
     day: S.gameDay,
-    index: S.gameIndex,
+    index: S.variant ? 0 : S.gameIndex, // a variant's game number is not shared
     algo: ALGO_VERSION,
     variant: S.variant,
     puzzle: S.puzzle,
@@ -1044,7 +1053,7 @@ async function initLang() {
 
 // ---------- boot ----------
 (async function boot() {
-  storage = await pickStorage(); store = createStore(storage, SIZES); daily = createDaily(storage); playlog = createPlayLog(storage);
+  storage = await pickStorage(); store = createStore(storage, SIZES, Object.fromEntries(PLAY_VARIANTS.map(v => [v.id, v.sizes(SIZES)]))); daily = createDaily(storage); playlog = createPlayLog(storage);
   try { await store.hydrate(today()); } catch (e) { console.warn('stats hydration failed:', e); }
   lb = createLeaderboard(backendsFromConfig(LEADERBOARD, new URLSearchParams(location.search).get('lb')));
   replay = createReplay(storage, store);
@@ -1056,7 +1065,7 @@ async function initLang() {
   if (lb.enabled) for (const { date } of await replay.unsent()) shareGotd(date); // today's and replayed days whose submit never got an answer
   behaviour = createBehaviour({ storage, cfg: BEHAVIOUR, sinks: sinksFromConfig(BEHAVIOUR, LEADERBOARD) });
   try { S.behaviourOn = await behaviour.isOn(); behaviour.flush().catch(() => {}); } catch (e) { console.warn('behaviour init failed:', e); } // rows left from an earlier page load
-  try { for (const n of SIZES) S.nextIdx[n] = (await daily.peek(n)).index; } catch (e) { console.warn('daily counters failed:', e); }
+  try { S.nextIdx = await peekNext(); } catch (e) { console.warn('daily counters failed:', e); }
   await loadSharedLink();
   document.addEventListener('click', () => { setShareTip(false); setLuckyTip(false); closeStatTips(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { setShareTip(false); setLuckyTip(false); closeStatTips(); } });

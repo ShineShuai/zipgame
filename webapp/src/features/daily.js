@@ -5,26 +5,31 @@ import { validate, ALGO_VERSION } from '../core/model.js';
 export const utcDayNumber = d => Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 86400000);
 export const utcDateString = d => '' + d.getUTCFullYear() + String(d.getUTCMonth() + 1).padStart(2, '0') + String(d.getUTCDate()).padStart(2, '0');
 
+// Storage / map key of a size within a scope: the plain size for standard (so the old keys stay), '<scope>_<n>' for a puzzle variant.
+export const scopeKey = (n, scope = '') => (scope ? scope + '_' + n : '' + n);
+
 // Per-size game counter for the current UTC day. Game #k of a size = generate(n, dailySeed(day, n, k-1)).
 // Counters are independent per size, so what you play in other sizes never shifts this size's sequence.
 // Record (same storage key as the old app): { day, index, solved }.
 //   open(n)  -> the game "Play local" starts: the current one, or the next one if the current one was solved.
 //   skip(n)  -> "New puzzle": always the next one.
 //   peek(n)  -> what open(n) would return, without changing anything.
+// A puzzle variant (cutout, arrows) has counters of its own (`scope` = its id, key zip_daily_index_<scope>_<n>), so playing it never
+// moves the standard sequence; its games are random, so there the counter only counts the day's games (its seed is not used).
 export function createDaily(storage, now = () => new Date()) {
-  const key = n => 'zip_daily_index_' + n;
-  const read = async n => {
+  const key = (n, scope) => 'zip_daily_index_' + scopeKey(n, scope);
+  const read = async (n, scope) => {
     const day = utcDayNumber(now());
-    try { const r = await storage.get(key(n)); const v = r && JSON.parse(r.value); if (v && v.day === day) return { day, index: v.index | 0, solved: !!v.solved }; } catch { /* fall through */ }
+    try { const r = await storage.get(key(n, scope)); const v = r && JSON.parse(r.value); if (v && v.day === day) return { day, index: v.index | 0, solved: !!v.solved }; } catch { /* fall through */ }
     return { day, index: 0, solved: false };
   };
-  const write = async (n, rec) => { try { await storage.set(key(n), JSON.stringify(rec)); } catch { /* ignore */ } };
+  const write = async (n, rec, scope) => { try { await storage.set(key(n, scope), JSON.stringify(rec)); } catch { /* ignore */ } };
   const game = (day, n, index) => ({ index, seed: dailySeed(day, n, index, ALGO_VERSION) }); // versioned: a new ALGO_VERSION never reuses seeds of the old puzzles
   return {
-    async peek(n) { const r = await read(n); return game(r.day, n, r.solved ? r.index + 1 : r.index); },
-    async open(n) { const r = await read(n), index = r.solved ? r.index + 1 : r.index; await write(n, { day: r.day, index, solved: false }); return game(r.day, n, index); },
-    async skip(n) { const r = await read(n), index = r.index + 1; await write(n, { day: r.day, index, solved: false }); return game(r.day, n, index); },
-    async markSolved(n, index) { const r = await read(n); if (r.index === index) await write(n, { day: r.day, index, solved: true }); },
+    async peek(n, scope) { const r = await read(n, scope); return game(r.day, n, r.solved ? r.index + 1 : r.index); },
+    async open(n, scope) { const r = await read(n, scope), index = r.solved ? r.index + 1 : r.index; await write(n, { day: r.day, index, solved: false }, scope); return game(r.day, n, index); },
+    async skip(n, scope) { const r = await read(n, scope), index = r.index + 1; await write(n, { day: r.day, index, solved: false }, scope); return game(r.day, n, index); },
+    async markSolved(n, index, scope) { const r = await read(n, scope); if (r.index === index) await write(n, { day: r.day, index, solved: true }, scope); },
   };
 }
 

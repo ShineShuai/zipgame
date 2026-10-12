@@ -28,6 +28,7 @@
 import { solve } from './solver/solve.js';
 import { ladder } from './ladder.js';
 import { buildNeighbors } from './solver/prune.js';
+import { buildMoves } from './solver/solve-dir.js';
 import { isSolved } from './rules.js';
 import { cellCount } from './model.js';
 import { REF_FLAGS } from './difficulty.js';
@@ -67,6 +68,17 @@ export const TRAP_MODEL = {
 // lTr (the ladder) look at the clues only. Same cuts, same other weights: a ranking, not a recalibrated grade.
 export const withoutAltFrac = (model = TRAP_MODEL) => ({ ...model, w: { ...model.w, altFrac: 0 } });
 
+// One way arrows: only the clue-reading terms, trapMax and trapTop3 (altFrac AND lTr held at their means). altFrac: arrows take moves
+// away like holes do (not measured). lTr: ladder.js is undirected, so on an arrows puzzle it counts guesses on a different puzzle.
+// Same cuts and weights, so a ranking with no hand ratings behind it: on standard puzzles this reduced score grades about 0.5-0.7 above the
+// full one (the dropped terms are mostly negative for easy puzzles). Refit once arrows ratings or solve times exist.
+export const withoutAltFracLadder = (model = TRAP_MODEL) => ({ ...model, w: { ...model.w, altFrac: 0, lTr: 0 } });
+export const ARROWS_MODEL = withoutAltFracLadder();
+
+// The score model that fits a board: Cutout (holes) drops altFrac, One way arrows keeps trapMax and trapTop3 only, the rest TRAP_MODEL.
+// The play app grades with it (grades.js playGradesFor); trapMetrics itself keeps TRAP_MODEL unless a model is passed.
+export const modelFor = p => (p.arrows ? ARROWS_MODEL : p.holes ? withoutAltFrac() : TRAP_MODEL);
+
 export function trapPredict(m, model = TRAP_MODEL) {
   let s = model.b;
   for (const k of model.features) s += model.w[k] * (m[k] - model.mean[k]) / model.sd[k];
@@ -89,8 +101,9 @@ export function solutionPath(p, cap = TRAP_CFG.pathCap) {
 
 // Every wrong turn along `path`: [{ i, cell, sub, capped }] — `sub` = nodes the solver needed below the
 // wrong move (0 = a local prune already rejected it), `capped` = it survived cfg.cap nodes.
+// On an arrows puzzle a wrong turn is a move the arrows allow (buildMoves().out), refuted by the directed solver.
 export function trapProfile(p, path, cfg = TRAP_CFG) {
-  const { nb } = buildNeighbors(p);
+  const nb = p.arrows ? buildMoves(p).out : buildNeighbors(p).nb;
   const seen = new Uint8Array(p.n * p.n), out = [];
   let nonUnique = false;
   // path.length = the cells to cover (n*n, fewer with holes)
@@ -116,7 +129,8 @@ const alternativePoints = (w, cfg) => w.capped ? cfg.points[3] : w.sub <= cfg.ob
 
 // All trap metrics from a profile. `steps` = per-step scores, worst first.
 // `ladTrials` (optional) = the ladder's probe-trial count when the caller already ran it; else it runs here.
-// `model` (optional) = the score model, TRAP_MODEL unless the board needs another (see withoutAltFrac).
+// `model` (optional) = the score model, TRAP_MODEL unless the board needs another (see modelFor).
+// An arrows puzzle never runs the (undirected) ladder: ladTrials is 0 there.
 export function trapMetricsFromProfile(p, path, profile, cfg = TRAP_CFG, ladTrials = undefined, model = TRAP_MODEL) {
   const T = cellCount(p), byStep = new Map();
   for (const w of profile) {
@@ -133,7 +147,7 @@ export function trapMetricsFromProfile(p, path, profile, cfg = TRAP_CFG, ladTria
     trapDeep: steps.filter(s => s.score >= cfg.points[3]).length,
     alternatives: profile.length, nonUnique: profile.nonUnique, steps,
   };
-  m.ladTrials = ladTrials ?? ladderTrials(p, cfg);
+  m.ladTrials = ladTrials ?? (p.arrows ? 0 : ladderTrials(p, cfg));
   m.lTr = Math.log1p(m.ladTrials);
   m.predicted = trapPredict(m, model);
   m.gradeUncapped = trapGradeOf(m.predicted, model);
