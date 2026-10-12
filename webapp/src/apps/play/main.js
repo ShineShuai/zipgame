@@ -463,6 +463,9 @@ function difficultyDevHtml() {
 
 const VARIANT_TITLE = { cutout: ['game.cutoutTitle', 'game.sharedCutoutTitle'], arrows: ['game.arrowsTitle', 'game.sharedArrowsTitle'] };
 
+// Hint button: free play shows it by default; a Game of the Day or the lucky game hides it unless V is held (setDevReveal).
+const hintShown = () => S.showDev || !(S.isGotd || S.lucky);
+
 function renderGame() {
   const p = S.puzzle;
   const time = sec(S.elapsed);
@@ -506,7 +509,7 @@ function renderGame() {
             <button class="btn secondary" id="backMenu2">${t('game.menu')}</button>
             ${newPuzzleButton}
             <button class="btn secondary" id="resetPath">${t('game.reset')}</button>
-            <button class="btn secondary" id="hintBtn" style="${hiddenUnlessDev}" ${hintDisabled}>Hint (${S.hintsUsed}/${cap})</button>
+            <button class="btn secondary" id="hintBtn" style="${hintShown() ? '' : 'display:none'}" ${hintDisabled}>Hint (${S.hintsUsed}/${cap})</button>
             <button class="btn secondary" id="exportBtn" style="${hiddenUnlessDev}">Export</button>
           </div>
           ${solved}
@@ -982,7 +985,7 @@ function stopTimer() { if (S.timerId) { clearInterval(S.timerId); S.timerId = nu
 function setDevReveal(on) {
   if (S.showDev === on) return; S.showDev = on;
   const b = $('versionBadge'); if (b) b.style.display = on ? 'block' : 'none';
-  const h = $('hintBtn'); if (h) h.style.display = on ? '' : 'none';
+  const h = $('hintBtn'); if (h) h.style.display = hintShown() ? '' : 'none';
   const x = $('exportBtn'); if (x) x.style.display = on ? '' : 'none';
   const sn = $('storageNote'); if (sn) sn.style.display = on ? '' : 'none';
   const bn = $('behaviourNote'); if (bn) bn.style.display = on ? '' : 'none';
