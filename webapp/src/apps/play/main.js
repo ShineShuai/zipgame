@@ -447,7 +447,7 @@ function difficultyBadgeHtml() {
   const d = S.difficulty;
   if (!d || !d.ok) return '';
   const g = d.trap.grade;
-  return `<span class="difficulty-badge" title="${t('game.badgeTip', g)}">${t('grade.' + g)} · ${g}/5</span>`;
+  return `<span class="difficulty-badge">${t('grade.' + g)} · ${g}/5</span>`;
 }
 // Hold-V block: the trap grade's raw inputs, then the previous grades as before — decisionNodes (the old
 // badge), B and crossPerSeg, each bucketed with its own calibration — and the raw numbers behind them.
