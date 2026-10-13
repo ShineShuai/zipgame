@@ -74,10 +74,18 @@ export const withoutAltFrac = (model = TRAP_MODEL) => ({ ...model, w: { ...model
 // full one (the dropped terms are mostly negative for easy puzzles). Refit once arrows ratings or solve times exist.
 export const withoutAltFracLadder = (model = TRAP_MODEL) => ({ ...model, w: { ...model.w, altFrac: 0, lTr: 0 } });
 export const ARROWS_MODEL = withoutAltFracLadder();
+// Exact: the same reduced model, for the same reasons (the ladder is about checkpoints in order,
+// not steps, and altFrac is a geometry measure the fit never saw without walls) and with the same
+// caveat: a ranking, no hand ratings behind it.
+export const EXACT_MODEL = withoutAltFracLadder();
 
 // The score model that fits a board: Cutout (holes) drops altFrac, One way arrows keeps trapMax and trapTop3 only, the rest TRAP_MODEL.
 // The play app grades with it (grades.js playGradesFor); trapMetrics itself keeps TRAP_MODEL unless a model is passed.
-export const modelFor = p => (p.arrows ? ARROWS_MODEL : p.holes ? withoutAltFrac() : TRAP_MODEL);
+export const modelFor = p => {
+  if (p.arrows) return ARROWS_MODEL;
+  if (p.exact) return EXACT_MODEL;
+  return p.holes ? withoutAltFrac() : TRAP_MODEL;
+};
 
 export function trapPredict(m, model = TRAP_MODEL) {
   let s = model.b;
@@ -130,7 +138,8 @@ const alternativePoints = (w, cfg) => w.capped ? cfg.points[3] : w.sub <= cfg.ob
 // All trap metrics from a profile. `steps` = per-step scores, worst first.
 // `ladTrials` (optional) = the ladder's probe-trial count when the caller already ran it; else it runs here.
 // `model` (optional) = the score model, TRAP_MODEL unless the board needs another (see modelFor).
-// An arrows puzzle never runs the (undirected) ladder: ladTrials is 0 there.
+// An arrows puzzle never runs the (undirected) ladder: ladTrials is 0 there, and so on an Exact
+// one (steps, not checkpoints).
 export function trapMetricsFromProfile(p, path, profile, cfg = TRAP_CFG, ladTrials = undefined, model = TRAP_MODEL) {
   const T = cellCount(p), byStep = new Map();
   for (const w of profile) {
@@ -147,7 +156,7 @@ export function trapMetricsFromProfile(p, path, profile, cfg = TRAP_CFG, ladTria
     trapDeep: steps.filter(s => s.score >= cfg.points[3]).length,
     alternatives: profile.length, nonUnique: profile.nonUnique, steps,
   };
-  m.ladTrials = ladTrials ?? (p.arrows ? 0 : ladderTrials(p, cfg));
+  m.ladTrials = ladTrials ?? (p.arrows || p.exact ? 0 : ladderTrials(p, cfg));
   m.lTr = Math.log1p(m.ladTrials);
   m.predicted = trapPredict(m, model);
   m.gradeUncapped = trapGradeOf(m.predicted, model);

@@ -1,4 +1,5 @@
 import { encodeShare, decodeShare, MAX_LEGS } from '../core/share-code.js';
+import { labelRanks } from '../core/model.js';
 import { dateOfDay } from './daily.js';
 
 // Sharing a finished game and playing a shared one.
@@ -20,16 +21,18 @@ export function levelOf(cells) {
 }
 
 // The cell at path index j belongs to leg (highest checkpoint on the path before it) - 1; the
-// cell that is checkpoint k+1 closes leg k. Index 0 (the start) belongs to no leg.
+// cell that is checkpoint k+1 closes leg k. Index 0 (the start) belongs to no leg. Checkpoints are
+// counted by rank (an Exact puzzle's numbers are steps, not 1..K).
 // legs: sparse count array to add to; prevPath: the path before the move;
 // keep: how many cells remain after it.
 export function legsUndo(legs, p, prevPath, keep) {
+  const rank = labelRanks(p);
   let hi = 0;
   for (let j = 0; j < prevPath.length; j++) {
     if (j >= keep && j > 0 && hi > 0) {
       legs[hi - 1] = (legs[hi - 1] || 0) + 1;
     }
-    hi = Math.max(hi, p.cp[prevPath[j]]);
+    hi = Math.max(hi, rank[prevPath[j]]);
   }
 }
 
@@ -60,17 +63,26 @@ export const dayOfDate = date => {
 };
 
 // gotdDate ('YYYYMMDD') given = a Game of Day, else a local game
-// (day = UTC day of its seed, index 0-based). variant ('cutout' | 'arrows') = a game of that variant: random, so the record
-// carries the puzzle itself ({ n, shape, holes, cp, walls } | { n, cp, walls, arrows }) instead of day / index / algo.
+// (day = UTC day of its seed, index 0-based). variant ('cutout' | 'arrows' | 'exact') = a game of
+// that variant: random, so the record carries the puzzle itself ({ n, shape, holes, cp, walls } |
+// { n, cp, walls, arrows } | { n, cp, walls, exact }) instead of day / index / algo. A variant's
+// record has no grade: the code has no room for one (the receiver grades the puzzle again), and a
+// record with one cannot be encoded.
+//
 export function makeShareRecord({ gotdDate, n, grade, timeS, pct, day, index, algo, legs, K, variant, puzzle }) {
   const common = {
     n,
-    grade: grade == null ? null : grade,
+    grade: variant || grade == null ? null : grade,
     timeS: Math.round(timeS * 10) / 10,
     levels: legLevels(legs, K),
   };
   if (gotdDate) {
     return { kind: 'gotd', ...common, day: dayOfDate(gotdDate), pct: pct == null ? null : pct };
+  }
+  if (variant === 'exact') {
+    const { cp, walls } = puzzle;
+    const exact = { n, cp: cp.slice(), walls: walls.slice(), exact: true };
+    return { kind: 'local', ...common, variant, puzzle: exact };
   }
   if (variant === 'arrows') {
     const { cp, walls, arrows } = puzzle;

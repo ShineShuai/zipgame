@@ -195,7 +195,7 @@ export function unlockTests(t, ta, ok, eq) {
   });
 
   t('variants: ids are known to the share link, every text exists in both languages, the lucky sizes are on offer', () => {
-    eq(PLAY_VARIANTS.map(v => v.id), ['cutout', 'arrows']);
+    eq(PLAY_VARIANTS.map(v => v.id), ['cutout', 'arrows', 'exact']);
     eq(LUCKY_SIZES, [7, 8, 9, 10]);
     for (const v of PLAY_VARIANTS) {
       ok(SHARE_VARIANTS.includes(v.id), `${v.id} is in core/share-code.js VARIANTS`);
@@ -207,10 +207,12 @@ export function unlockTests(t, ta, ok, eq) {
     }
     eq([variantById('standard'), variantById(null), sizesFor('standard', [5, 6])], [null, null, [5, 6]]);
     const lucky = luckyDefs(PLAY_SIZES);
-    eq(lucky.map(d => [d.id, d.locked]), [['cutout', [7, 8, 9, 10]], ['arrows', [7, 8, 9, 10]]]);
+    const sizes = [7, 8, 9, 10];
+    eq(lucky.map(d => [d.id, d.locked]), [['cutout', sizes], ['arrows', sizes], ['exact', sizes]]);
     ok(lucky.every(d => d.locked.every(n => d.pool.includes(n))));
     eq(lucky.map(d => d.pool), PLAY_VARIANTS.map(v => sizesFor(v.id, PLAY_SIZES)));
-    eq(luckyDefs([5, 6]).map(d => d.locked), [[5, 6], [5, 6]], 'a variant without such sizes falls back to all its sizes');
+    const fallback = luckyDefs([5, 6]).map(d => d.locked);
+    eq(fallback, [[5, 6], [5, 6], [5, 6]], 'a variant without such sizes falls back to all its sizes');
   });
 
   t('variants: each generator makes a puzzle that detect() and variantOf() assign to it', () => {

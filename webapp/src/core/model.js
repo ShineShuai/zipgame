@@ -64,6 +64,11 @@ export function exactRanks(p) {
   return { rank, steps };
 }
 
+// The checkpoint rank of every cell (1..K by ascending number, 0 = not numbered): the numbers of a
+// standard puzzle themselves, the ranks of an Exact puzzle's steps. What counts checkpoints rather
+// than steps (the legs of the colour strip, the pitch of the move sounds) reads it.
+export const labelRanks = p => (p.exact ? exactRanks(p).rank : p.cp);
+
 // null when every two neighbouring numbers of an Exact puzzle can be joined in exactly the steps
 // between them as far as distance and checkerboard go (Manhattan distance <= steps, same parity),
 // else a message. Walls and holes only make the real route longer, so this is a necessary

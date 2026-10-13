@@ -9,14 +9,14 @@ import { createStore } from '../../features/stats-store.js';
 import { createDaily, scopeKey, fetchGameOfDay, fetchGameOfDayFor, utcDateString, utcDayNumber, dateOfDay } from '../../features/daily.js';
 import { createReplay } from '../../features/replay.js';
 import { createStreak, FREEZE_EVERY, FREEZE_MAX } from '../../features/streak.js';
-import { ALGO_VERSION, maxNumber } from '../../core/model.js';
+import { ALGO_VERSION, cellCount, labelCount, labelRanks } from '../../core/model.js';
 import { dailySeed } from '../../core/rng.js';
 import { legsUndo, makeShareRecord, shareStatus, isPlayable, shareText, shareUrl, parseShareLink, stripText, dateLabel, dayOfDate } from '../../features/share.js';
 import { REPLAY_DAYS } from '../../core/hist.js';
 import { maxHints, computeHint, solutionOf, penalizedTime, HINT_PENALTY_S } from '../../features/hints.js';
 import { cellAtPoint, pathD } from '../../view/geometry.js';
 import { bindModal, copyText } from '../../ui/modal.js';
-import { boardSvg, CELL, COLORS } from './board.js';
+import { boardSvg, CELL, badgeColors, stepWrong } from './board.js';
 import { variantIcon, cardIcon } from './icons.js';
 import { PLAY_VARIANTS, variantById, variantOf, sizesFor, nearestSize, luckyDefs } from './variants.js';
 import { createUnlock } from '../../features/unlock.js';
@@ -452,13 +452,20 @@ function difficultyBadgeHtml() {
 // badge), B and crossPerSeg, each bucketed with its own calibration — and the raw numbers behind them.
 // Hidden by default; same hold-to-reveal pattern as seedTag.
 function difficultyDevHtml() {
-  const d = S.difficulty, tm = d && d.trap, g = d && d.legacy, arrows = S.variant === 'arrows';
-  const trapPart = tm ? `trap ${tm.predicted.toFixed(2)} <span class="dev-raw">max ${tm.trapMax} · top3 ${tm.trapTop3}${arrows ? ' · max+top3 only, uncalibrated' : ` · alt ${tm.altFrac.toFixed(2)} · ladder trials ${tm.ladTrials}`}</span>` : '';
+  const d = S.difficulty, tm = d && d.trap, g = d && d.legacy, reduced = S.variant === 'arrows' || S.variant === 'exact';
+  const trapPart = tm ? `trap ${tm.predicted.toFixed(2)} <span class="dev-raw">max ${tm.trapMax} · top3 ${tm.trapTop3}${reduced ? ' · max+top3 only, uncalibrated' : ` · alt ${tm.altFrac.toFixed(2)} · ladder trials ${tm.ladTrials}`}</span>` : '';
   const legacyPart = g
     ? `decisionNodes ${g.grades.decisionNodes}/5 · B ${g.grades.B}/5 · cross ${g.grades.crossPerSeg}/5 · <span class="dev-raw">decisionNodes ${g.raw.decisionNodes} · B ${g.raw.B.toFixed(2)} · cross/seg ${g.raw.crossPerSeg.toFixed(2)}</span>`
     : S.variant ? '' : 'old grades: ungraded (search capped)';
   const body = [trapPart, legacyPart].filter(Boolean).join(' · ') || 'ungraded';
   return `<span id="difficultyDev" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="trap: the badge score before it is cut into a grade, with its inputs (worst step's trap score, top-3 steps' sum, fraction of steps that have any wrong move, what-if guesses the technique ladder needed). Cutout: the same score without the alt term; One way arrows: only the max and top-3 terms, wrong moves being the ones the arrows allow (a ranking, not fitted to hand ratings). decisionNodes: the previous badge grade (solver branch points per cell). B: backtrack overhead (nodes/cells - 1) from the same solve. cross: how many non-adjacent checkpoint-to-checkpoint segments geometrically cross, per segment. Each old grade is graded 0-5 with its own calibration; the trap grade is fit to hand ratings. The design app shows all of them.">${body}${tm || g ? ' · <a href="#" id="exportPlayLog" title="Download the play log (what you did on each puzzle: time, cells drawn and taken back), local to this device, for tools/playlog-eval.mjs">play log</a>' : ''}</span>`;
+}
+
+// Exact: the step the head is on, out of all the cells (setupGridInput's setD keeps it current).
+function stepHudHtml(p) {
+  if (!p.exact) return '';
+  const now = `<b id="hudStep">${S.path.length}</b>`;
+  return `<div class="hud-step">${t('game.step', now, cellCount(p))}</div>`;
 }
 
 const VARIANT_TITLE = { cutout: ['game.cutoutTitle', 'game.sharedCutoutTitle'], arrows: ['game.arrowsTitle', 'game.sharedArrowsTitle'] };
@@ -493,6 +500,7 @@ function renderGame() {
           <div class="hud-title"><span class="hud-icon">${variantIcon(S.variant)}</span><span>${title}</span>${S.lucky ? `<span class="lucky-chip">${t('lucky.tag')}</span>` : ''}</div>
           ${difficultyBadgeHtml()}
           ${difficultyDevHtml()}
+          ${stepHudHtml(p)}
           <div class="hud-time">${t('game.time', `<b id="hudTime">${time}</b>`)}</div>
         </div>
         ${S.lucky && !S.finished ? `<p class="note lucky-once">${t(S.luckyHolder ? 'lucky.onceChance' : 'lucky.onceFun')}</p>` : ''}
@@ -565,14 +573,22 @@ function setupGridInput(svg) {
   // checkpoints are visited in ascending order this is just "how many crossed so far") — used to
   // pick a distinct, rising pitch for each post-checkpoint segment's moves. Recomputed from the
   // full path on every backtrack, since the head's own cell may not itself be a checkpoint.
-  const highestCp = path => { let hi = 0; for (const c of path) if (p.cp[c] > hi) hi = p.cp[c]; return hi; };
+  // (an Exact puzzle's numbers are steps, so the checkpoints are counted by rank)
+  const rank = labelRanks(p);
+  const highestCp = path => { let hi = 0; for (const c of path) if (rank[c] > hi) hi = rank[c]; return hi; };
   let segment = highestCp(S.path);
-  const setD = () => pathEl.setAttribute('d', S.path.length > 1 ? pathD(n, S.path, CELL) : '');
+  const setD = () => {
+    pathEl.setAttribute('d', S.path.length > 1 ? pathD(n, S.path, CELL) : '');
+    const stepNow = $('hudStep'); // Exact: the step the head is on
+    if (stepNow) stepNow.textContent = S.path.length;
+  };
   const fill = (i, visited) => {
     const badge = svg.querySelector(`[data-num-cell="${i}"]`);
     if (!badge) return;
-    badge.querySelector('circle').setAttribute('fill', visited ? COLORS.number : COLORS.numberFill);
-    badge.querySelector('text').setAttribute('fill', visited ? COLORS.numberVisitedText : COLORS.number);
+    const colors = badgeColors(visited, visited && stepWrong(p, S.path, i));
+    badge.querySelector('circle').setAttribute('fill', colors.fill);
+    badge.querySelector('circle').setAttribute('stroke', colors.stroke);
+    badge.querySelector('text').setAttribute('fill', colors.text);
   };
   const clearHint = () => { if (S.hintCell == null && S.hintWrongCell == null) return; S.hintCell = S.hintWrongCell = null; svg.querySelectorAll('[data-role="hint"],[data-role="hint-wrong"]').forEach(e => e.remove()); };
   const syncFills = () => { const on = new Set(S.path); svg.querySelectorAll('[data-num-cell]').forEach(g => fill(+g.dataset.numCell, on.has(+g.dataset.numCell))); };
@@ -602,7 +618,7 @@ function setupGridInput(svg) {
     if (kind === 'push') {
       const onCp = p.cp[cell] > 0;
       if (onCp) sfxCheckpoint(); else if (segment > 0) sfxMoveAfterCheckpoint(segment); else sfxMove();
-      if (onCp) segment = p.cp[cell];
+      if (onCp) segment = rank[cell];
     } else if (kind === 'pop' || kind === 'trunc' || kind === 'reset') {
       sfxBack();
       segment = highestCp(S.path);
@@ -695,7 +711,7 @@ function generatorFor(mode, n, seed) {
   const variant = variantById(mode);
   return variant ? variant.generate(n, seed) : generate(n, seed);
 }
-const generateShown = (n, seed, mode = 'standard') => runAsync(generatorFor(mode, n, seed), { onEvent: e => { S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls ?? e.arrows, K: e.K }; if (S.screen === 'generating') render(); } });
+const generateShown = (n, seed, mode = 'standard') => runAsync(generatorFor(mode, n, seed), { onEvent: e => { S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls ?? e.arrows ?? e.labels, K: e.K }; if (S.screen === 'generating') render(); } });
 // how: 'open' (Play local: current or next-if-solved) | 'skip' (New puzzle); a variant is always a new random one.
 // lucky: the lucky game (startLucky): its chance is given back when the puzzle cannot be made.
 async function startLocal(how, mode = 'standard', lucky = false) {
@@ -943,7 +959,7 @@ function currentShareRecord() {
     variant: S.variant,
     puzzle: S.puzzle,
     legs: S.legs,
-    K: maxNumber(S.puzzle),
+    K: labelCount(S.puzzle),
   });
 }
 

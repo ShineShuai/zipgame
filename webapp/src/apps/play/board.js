@@ -13,8 +13,22 @@ export const COLORS = {
   number: '#3b68ee',      // idle number: blue ring and text on white; visited: filled blue, white text
   numberFill: '#ffffff',
   numberVisitedText: '#ffffff',
+  numberWrong: '#e5484d', // an Exact number the path reached on the wrong step
   hintRing: '#ff9f1c',
   hintWrong: '#e5484d',
+};
+
+// The colours of a number badge: idle (white, blue ring), visited (filled blue) or visited on the
+// wrong step of an Exact puzzle (filled red).
+export function badgeColors(visited, wrong = false) {
+  if (!visited) return { fill: COLORS.numberFill, stroke: COLORS.number, text: COLORS.number };
+  const ink = wrong ? COLORS.numberWrong : COLORS.number;
+  return { fill: ink, stroke: ink, text: COLORS.numberVisitedText };
+}
+
+// An Exact number on the path (cell visited) is wrong unless the cell is the step its number says.
+export const stepWrong = (puzzle, path, cell) => {
+  return Boolean(puzzle.exact) && path[puzzle.cp[cell] - 1] !== cell;
 };
 
 // Widest the board gets on screen, in px: about 64 px per cell, at most 640. When the window is short
@@ -81,7 +95,7 @@ function arrowMarks(puzzle) {
   return marks.join('');
 }
 
-function numberBadges(puzzle, visited) {
+function numberBadges(puzzle, visited, path) {
   const n = puzzle.n;
   const badges = [];
   for (let cell = 0; cell < n * n; cell++) {
@@ -89,11 +103,14 @@ function numberBadges(puzzle, visited) {
     if (!number) continue;
     const [x, y] = cellCenter(n, cell, CELL);
     const isVisited = visited.has(cell);
+    const colors = badgeColors(isVisited, isVisited && stepWrong(puzzle, path, cell));
+    // an Exact number has up to 3 digits
+    const fontSize = Math.round(CELL * (number > 99 ? 0.24 : 0.32) * 10) / 10;
     badges.push(
       `<g data-num-cell="${cell}">` +
-      `<circle cx="${x}" cy="${y}" r="${CELL * 0.32}" fill="${isVisited ? COLORS.number : COLORS.numberFill}" stroke="${COLORS.number}" stroke-width="3"/>` +
-      `<text x="${x}" y="${y}" dy=".35em" text-anchor="middle" font-size="${CELL * 0.32}" font-weight="700" ` +
-      `fill="${isVisited ? COLORS.numberVisitedText : COLORS.number}">${number}</text></g>`
+      `<circle cx="${x}" cy="${y}" r="${CELL * 0.32}" fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="3"/>` +
+      `<text x="${x}" y="${y}" dy=".35em" text-anchor="middle" font-size="${fontSize}" font-weight="700" ` +
+      `fill="${colors.text}">${number}</text></g>`
     );
   }
   return badges.join('');
@@ -131,7 +148,7 @@ export function boardSvg(S) {
   svg += `<path data-role="path" d="${route}" stroke="${COLORS.path}" stroke-width="${CELL * 0.28}" fill="none" ` +
     `stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>`;
   if (p.arrows) svg += arrowMarks(p);
-  svg += numberBadges(p, visited);
+  svg += numberBadges(p, visited, S.path);
   if (S.hintWrongCell != null) svg += wrongMoveMark(n, S.hintWrongCell);
   if (S.hintCell != null) svg += correctMoveRing(n, S.hintCell);
   return svg + '</svg>';
