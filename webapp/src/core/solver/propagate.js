@@ -30,7 +30,6 @@ const POPCOUNT = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
 //     path has to use; deduce() fails when it cannot.
 // cells (default T): how many cells the path covers in all (T minus the holes of a Cutout puzzle).
 export function makePropagator(nb, T, end, vis, cells = T) {
-  const n = Math.round(Math.sqrt(T));
   // Per cell: av = still-open edge bits, fr = forced edge bits, dg / fd = popcount of av / fr.
   const av = new Uint8Array(T);
   const fr = new Uint8Array(T);
@@ -82,8 +81,6 @@ export function makePropagator(nb, T, end, vis, cells = T) {
   // which a path never has. Drop it. Only ends can have open edges, so this single pair is the
   // whole cycle-closing check.
   function dropClosingEdge(x, y) {
-    const gap = x > y ? x - y : y - x;
-    if (gap !== 1 && gap !== n) return true; // not grid neighbours: nothing to drop
     for (let d = 0; d < 4; d++) {
       if (nb[x * 4 + d] !== y || ((av[x] & ~fr[x]) >> d & 1) === 0) continue;
       av[x] &= ~(1 << d);

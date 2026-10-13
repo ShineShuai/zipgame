@@ -46,7 +46,7 @@ export function playArrowsTests(t, ok, eq) {
   });
 
   t('play icons: the arrows variant is in the registry; its icon has 16 tiles and three arrowheads', () => {
-    eq(PLAY_VARIANTS.map(v => v.id), ['cutout', 'arrows', 'exact']);
+    eq(PLAY_VARIANTS.map(v => v.id).slice(0, 3), ['cutout', 'arrows', 'exact']); // later ones append
     const icon = variantIcon('arrows');
     eq((icon.match(/rx="1\.6"/g) || []).length, 16);
     eq((icon.match(/<polygon class="vi-arrow"/g) || []).length, 3);
@@ -78,7 +78,7 @@ export function playArrowsTests(t, ok, eq) {
   });
 
   t('share-code: an arrows game round-trips with its puzzle; codes are short and checked', () => {
-    eq(VARIANTS, [null, 'cutout', 'arrows', 'exact']);
+    eq(VARIANTS.slice(0, 4), [null, 'cutout', 'arrows', 'exact']); // ids are fixed; later ones append
     const puzzles = [hand()];
     for (const n of [5, 7, 8]) {
       puzzles.push(runSync(generateArrows(n, 40 + n, { candidates: 1, refineNodes: 0 })));

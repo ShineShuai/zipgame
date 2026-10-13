@@ -14,9 +14,9 @@ import { dailySeed } from '../../core/rng.js';
 import { legsUndo, makeShareRecord, shareStatus, isPlayable, shareText, shareUrl, parseShareLink, stripText, dateLabel, dayOfDate } from '../../features/share.js';
 import { REPLAY_DAYS } from '../../core/hist.js';
 import { maxHints, computeHint, solutionOf, penalizedTime, HINT_PENALTY_S } from '../../features/hints.js';
-import { cellAtPoint, pathD } from '../../view/geometry.js';
+import { cellAtPoint, pathD, WRAP_PAD } from '../../view/geometry.js';
 import { bindModal, copyText } from '../../ui/modal.js';
-import { boardSvg, CELL, badgeColors, stepWrong } from './board.js';
+import { boardSvg, CELL, badgeColors, stepWrong, seamMarksSvg } from './board.js';
 import { variantIcon, cardIcon } from './icons.js';
 import { PLAY_VARIANTS, variantById, variantOf, sizesFor, nearestSize, luckyDefs } from './variants.js';
 import { createUnlock } from '../../features/unlock.js';
@@ -452,7 +452,7 @@ function difficultyBadgeHtml() {
 // badge), B and crossPerSeg, each bucketed with its own calibration — and the raw numbers behind them.
 // Hidden by default; same hold-to-reveal pattern as seedTag.
 function difficultyDevHtml() {
-  const d = S.difficulty, tm = d && d.trap, g = d && d.legacy, reduced = S.variant === 'arrows' || S.variant === 'exact';
+  const d = S.difficulty, tm = d && d.trap, g = d && d.legacy, reduced = ['arrows', 'exact', 'wrap'].includes(S.variant);
   const trapPart = tm ? `trap ${tm.predicted.toFixed(2)} <span class="dev-raw">max ${tm.trapMax} · top3 ${tm.trapTop3}${reduced ? ' · max+top3 only, uncalibrated' : ` · alt ${tm.altFrac.toFixed(2)} · ladder trials ${tm.ladTrials}`}</span>` : '';
   const legacyPart = g
     ? `decisionNodes ${g.grades.decisionNodes}/5 · B ${g.grades.B}/5 · cross ${g.grades.crossPerSeg}/5 · <span class="dev-raw">decisionNodes ${g.raw.decisionNodes} · B ${g.raw.B.toFixed(2)} · cross/seg ${g.raw.crossPerSeg.toFixed(2)}</span>`
@@ -568,6 +568,7 @@ function attachHandlers() {
 
 function setupGridInput(svg) {
   const p = S.puzzle, n = p.n, pathEl = svg.querySelector('[data-role="path"]');
+  const wrap = Boolean(p.wrap), pad = wrap ? WRAP_PAD : 0; // a wrap-around board has a margin
   let dragging = false, last = null, rect = svg.getBoundingClientRect();
   // Highest checkpoint number crossed anywhere along the current path (0 = none yet, since
   // checkpoints are visited in ascending order this is just "how many crossed so far") — used to
@@ -577,8 +578,10 @@ function setupGridInput(svg) {
   const rank = labelRanks(p);
   const highestCp = path => { let hi = 0; for (const c of path) if (rank[c] > hi) hi = rank[c]; return hi; };
   let segment = highestCp(S.path);
+  const seamEl = wrap ? svg.querySelector('[data-role="seam"]') : null;
   const setD = () => {
-    pathEl.setAttribute('d', S.path.length > 1 ? pathD(n, S.path, CELL) : '');
+    pathEl.setAttribute('d', S.path.length > 1 ? pathD(n, S.path, CELL, wrap) : '');
+    if (seamEl) seamEl.innerHTML = seamMarksSvg(n, S.path);
     const stepNow = $('hudStep'); // Exact: the step the head is on
     if (stepNow) stepNow.textContent = S.path.length;
   };
@@ -625,7 +628,9 @@ function setupGridInput(svg) {
     }
   }
   function move(x, y) { // interpolate so fast drags don't skip cells
-    const cell = (px, py) => cellAtPoint(n, px - rect.left, py - rect.top, rect.width, rect.height);
+    const cell = (px, py) => {
+      return cellAtPoint(n, px - rect.left, py - rect.top, rect.width, rect.height, pad, wrap);
+    };
     if (last) {
       const dx = x - last.x, dy = y - last.y, stepPx = Math.max(2, rect.width / n / 2), k = Math.max(1, Math.ceil(Math.hypot(dx, dy) / stepPx));
       for (let i = 1; i <= k; i++) walkTo(cell(last.x + dx * i / k, last.y + dy * i / k));
@@ -793,6 +798,7 @@ const sharedStatus = rec => shareStatus(rec, {
   attempt: rec.kind === 'gotd' ? store.attemptOn(dateOfDay(rec.day)) : null,
   algo: ALGO_VERSION,
   sizes: SIZES,
+  sizesOf: id => sizesFor(id, SIZES), // a variant may offer a size the app does not play otherwise
 });
 
 function sharedStateText(state) {

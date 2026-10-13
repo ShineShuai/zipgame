@@ -5,9 +5,14 @@ import { buildNeighbors, makeConnOk, makeNoDeadEnd, makePocketOk, segBlocker, le
 import { makePropagator } from './propagate.js';
 import { makeIncremental } from './incremental.js';
 import { solveDirected } from './solve-dir.js';
+import { distFn, bipartite } from '../geom.js';
 
 // Hamiltonian-path search: start at checkpoint 1, hit the checkpoints in order, end on the last one,
 // and cover every cell exactly once.
+//
+// A wrap-around puzzle (p.wrap, core/geom.js) is searched on the torus: the neighbours come from
+// buildNeighbors(), the distance bounds from geom.js (the shorter way round), and the parity rule
+// only on an even board (on an odd torus the cycles have odd length).
 //
 // An Exact puzzle (p.exact, model.js: the number of a cell is its step on the path) is searched on
 // the ranks of its numbers, the checkpoints 1..K of the search below, and each checkpoint also has
@@ -58,6 +63,9 @@ export function solve(p, opts = {}) {
   // One-way arrows break the two-way-edge assumptions of everything below: own solver
   // (solve-dir.js; there mustUse is the directed move a -> b).
   if (p.arrows && p.exact) throw new Error('solve: an Exact puzzle cannot have one-way arrows');
+  if (p.wrap && (p.arrows || p.exact)) {
+    throw new Error('solve: a wrap-around puzzle cannot have arrows or Exact numbers (yet)');
+  }
   if (p.arrows) return solveDirected(p, opts);
   if (!p.exact) return searchPaths(p, opts, null);
   const { rank, steps } = exactRanks(p);
@@ -157,20 +165,24 @@ function searchPaths(p, opts, steps) {
 
   // ---------- parity: bipartite slack check ----------
   //
-  // sufParity[k] = parity (0 or 1) of the sum of Manhattan distances along the remaining
-  // checkpoint chain pos[k] -> pos[k+1] -> ... -> pos[K]. Static (Manhattan ignores walls),
-  // computed once. Combined with manhattan(v, pos[need]) at each candidate, gives the parity of
+  // sufParity[k] = parity (0 or 1) of the sum of metric distances along the remaining
+  // checkpoint chain pos[k] -> pos[k+1] -> ... -> pos[K]. Static (the metric ignores walls),
+  // computed once. Combined with metric(v, pos[need]) at each candidate, gives the parity of
   // the total remaining path length after landing on v — which must match remaining-1 (cells left
   // to spend). A mismatch means no path length can possibly fit, regardless of feasibility
   // elsewhere, so it's checked before the pricier BFS-distance (prune2) and dead-end/connectivity
   // checks. See the callsite comment for why parity is additive across concatenated legs.
-  const PARITY = !!opts.parity;
+  // metric: the board distance (geom.js): Manhattan on the grid, the shorter way round
+  // on a wrap-around board.
+  const metric = distFn(n, !!p.wrap, row, col);
+  // Parity needs a bipartite board (geom.js): a wrap-around board with odd n is skipped.
+  const PARITY = !!opts.parity && bipartite(n, !!p.wrap);
   let sufParity = null;
   if (PARITY) {
     sufParity = new Int32Array(K + 2);
     for (let k = K - 1; k >= 1; k--) {
       const a = pos[k], b = pos[k + 1];
-      const d = a >= 0 && b >= 0 ? Math.abs(row[a] - row[b]) + Math.abs(col[a] - col[b]) : 0;
+      const d = a >= 0 && b >= 0 ? metric(a, b) : 0;
       sufParity[k] = (sufParity[k + 1] + d) & 1;
     }
   }
@@ -274,8 +286,12 @@ function searchPaths(p, opts, steps) {
     cardOpen = new Uint8Array(T * 8);
     for (let c = 0; c < T; c++) {
       for (let r = 0; r < 8; r++) {
-        const rr = row[c] + RING_DR[r];
-        const cc = col[c] + RING_DC[r];
+        let rr = row[c] + RING_DR[r];
+        let cc = col[c] + RING_DC[r];
+        if (p.wrap) { // the ring goes round through the seams
+          rr = (rr + n) % n;
+          cc = (cc + n) % n;
+        }
         if (rr >= 0 && rr < n && cc >= 0 && cc < n) ringCell[c * 8 + r] = rr * n + cc;
         if (RING_DIR[r] >= 0 && nb[c * 4 + RING_DIR[r]] >= 0) cardOpen[c * 8 + r] = 1;
       }
@@ -454,21 +470,21 @@ function searchPaths(p, opts, steps) {
       if (need <= K) {
         const target = pos[need];
         if (target >= 0) {
-          const manhattan = Math.abs(row[v] - row[target]) + Math.abs(col[v] - col[target]);
+          const gap = metric(v, target);
           // Exact: v is step depth + 2, the target is reached at its own step (not anywhere in the
           // cells left)
           const room = steps ? steps[need] - depth - 2 : remaining;
-          if (manhattan > room) continue;
-          // Parity: the grid is bipartite (checkerboard colour flips every move), so any actual
-          // path length between two cells always shares parity with their Manhattan distance.
+          if (gap > room) continue;
+          // Parity: a bipartite board (checkerboard colour flips every move), so any actual
+          // path length between two cells always shares parity with their metric distance.
           // That holds leg-by-leg and is additive across concatenated legs, so the TOTAL path
-          // length from v to the final checkpoint must share parity with the SUM of Manhattan
+          // length from v to the final checkpoint must share parity with the SUM of metric
           // distances over every remaining leg (v->pos[need], pos[need]->pos[need+1], ...,
           // pos[K-1]->pos[K]) — not just the next leg alone. sufParity precomputes that sum's
           // parity for legs pos[need]->...->pos[K] once per DFS node (not per candidate); adding
-          // manhattan(v,target)'s own parity gives the total. remaining-1 = cells left to spend
+          // metric(v,target)'s own parity gives the total. remaining-1 = cells left to spend
           // after this move, all the way to path end — an odd mismatch means no path length fits.
-          if (PARITY && (((remaining - 1 - manhattan - sufParity[need]) & 1) !== 0)) continue;
+          if (PARITY && (((remaining - 1 - gap - sufParity[need]) & 1) !== 0)) continue;
         }
         if (D) {
           const dist = D[need * T + v];

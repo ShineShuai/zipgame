@@ -31,13 +31,20 @@
 //   | K 7, then per number: cell index 8 + (step - 1) 8
 //   | strip length 6, 2 bits per leg (a leg = two neighbouring numbers) | check 8
 // A 7x7 one (5 numbers) is about 30 characters, a 12x12 one about 50.
+//
+// Wrap-around (variant id 4): the Cutout frame without shape and holes. The edges join across the
+// borders, so a wall id may be a seam edge (the last column's or row's own right / down edge):
+//   version 3 (=2) | variant 4 | size 5 | time 17
+//   | K 7, then K cell indices of checkpoints 1..K, 8 bits each
+//   | wall count 8, then 9 bits per wall (edge id) | strip length 6, 2 bits per leg | check 8
+// A 6x6 one with 6 walls is about 35 characters.
 import { LABELS } from './gen/shapes.js';
 import { arrowProblem, arrowDirId } from './edges.js';
 import { validate, labelCount, numberedCells } from './model.js';
 
 export const SHARE_VERSION = 1;
 export const SHARE_VERSION_VARIANT = 2;
-export const VARIANTS = [null, 'cutout', 'arrows', 'exact']; // variant id -> name
+export const VARIANTS = [null, 'cutout', 'arrows', 'exact', 'wrap']; // variant id -> name
 export const VARIANT_SHAPES = LABELS; // shape id - 1 -> name
 export const VARIANT_MAX_N = 16;
 export const MAX_LEGS = 63;
@@ -112,7 +119,24 @@ function isExactPuzzle(p) {
   return numbers >= 2 && numbers <= 127 && validate(p).ok;
 }
 
-const SOUND_PUZZLE = { cutout: isCutoutPuzzle, arrows: isArrowsPuzzle, exact: isExactPuzzle };
+// A wrap-around puzzle { n, cp, walls, wrap }: n from 3 (a 2 x 2 torus would have two edges between
+// the same cells), numbered 1..K without gaps, no holes, arrows or exact numbers, and valid.
+function isWrapPuzzle(p) {
+  if (!p || p.wrap !== true || !isInt(p.n, 3, VARIANT_MAX_N) || p.holes || p.arrows || p.exact) {
+    return false;
+  }
+  const T = p.n * p.n;
+  if (!p.cp || p.cp.length !== T || !p.walls || p.walls.length !== T) return false;
+  const marks = [];
+  for (let i = 0; i < T; i++) if (p.cp[i]) marks.push(p.cp[i]);
+  marks.sort((a, b) => a - b);
+  return marks.length >= 2 && marks.length <= 127 && marks.every((v, i) => v === i + 1)
+    && validate(p).ok;
+}
+
+const SOUND_PUZZLE = {
+  cutout: isCutoutPuzzle, arrows: isArrowsPuzzle, exact: isExactPuzzle, wrap: isWrapPuzzle,
+};
 
 function isEncodable(rec) {
   if (rec && rec.variant != null) {
@@ -217,7 +241,27 @@ function pushExact(bits, rec, levels) {
   for (const level of levels) pushBits(bits, level, 2);
 }
 
+// Wrap-around body (layout at the top): the cutout body without shape and holes.
+function pushWrap(bits, rec, levels) {
+  const p = rec.puzzle, T = p.n * p.n, cells = [], walls = [];
+  for (let i = 0; i < T; i++) {
+    if (p.cp[i]) cells[p.cp[i] - 1] = i;
+    for (let t = 0; t < 2; t++) if ((p.walls[i] >> t) & 1) walls.push(i * 2 + t);
+  }
+  pushBits(bits, SHARE_VERSION_VARIANT, 3);
+  pushBits(bits, VARIANTS.indexOf('wrap'), 4);
+  pushBits(bits, p.n, 5);
+  pushBits(bits, Math.min(MAX_TENTHS, Math.round(rec.timeS * 10)), 17);
+  pushBits(bits, cells.length, 7);
+  for (const c of cells) pushBits(bits, c, 8);
+  pushBits(bits, walls.length, 8);
+  for (const e of walls) pushBits(bits, e, 9);
+  pushBits(bits, levels.length, 6);
+  for (const level of levels) pushBits(bits, level, 2);
+}
+
 function pushVariant(bits, rec, levels) {
+  if (rec.variant === 'wrap') return pushWrap(bits, rec, levels);
   if (rec.variant === 'exact') return pushExact(bits, rec, levels);
   if (rec.variant === 'arrows') return pushArrows(bits, rec, levels);
   const p = rec.puzzle, T = p.n * p.n, cells = [], walls = [];
@@ -302,6 +346,7 @@ function readVariant(read, bits, code, pos) {
   const variant = VARIANTS[read(4)];
   if (variant === 'arrows') return readArrows(read, bits, code, pos);
   if (variant === 'exact') return readExact(read, bits, code, pos);
+  if (variant === 'wrap') return readWrap(read, bits, code, pos);
   if (variant !== 'cutout') {
     return null;
   }
@@ -345,6 +390,46 @@ function readVariant(read, bits, code, pos) {
   const exactLength = code.length === Math.ceil(pos() / 6);
   const zeroPadding = bits.slice(pos()).every(b => b === 0);
   return exactLength && zeroPadding && puzzle.shape !== false && isEncodable(rec) ? rec : null;
+}
+
+// The body of a wrap-around code, after its version and variant id (layout at the top).
+function readWrap(read, bits, code, pos) {
+  const n = read(5);
+  if (!isInt(n, 3, VARIANT_MAX_N)) {
+    return null;
+  }
+  const T = n * n;
+  const rec = { kind: 'local', variant: 'wrap', n, grade: null, timeS: read(17) / 10 };
+  const puzzle = { n, cp: new Uint16Array(T), walls: new Uint8Array(T), wrap: true };
+  const K = read(7);
+  for (let k = 1; k <= K; k++) {
+    const cell = read(8);
+    if (cell >= T || puzzle.cp[cell]) {
+      return null;
+    }
+    puzzle.cp[cell] = k;
+  }
+  const walls = read(8);
+  for (let i = 0; i < walls; i++) {
+    const e = read(9);
+    if ((e >> 1) >= T) {
+      return null;
+    }
+    puzzle.walls[e >> 1] |= 1 << (e & 1);
+  }
+  rec.puzzle = puzzle;
+  const legs = read(6);
+  rec.levels = [];
+  for (let i = 0; i < legs; i++) {
+    rec.levels.push(read(2));
+  }
+  const end = pos();
+  if (read(CHECK_BITS) !== checksum(bits, end)) {
+    return null;
+  }
+  const exactLength = code.length === Math.ceil(pos() / 6);
+  const zeroPadding = bits.slice(pos()).every(b => b === 0);
+  return exactLength && zeroPadding && isEncodable(rec) ? rec : null;
 }
 
 // The body of an Exact code, after its version and variant id (layout at the top).

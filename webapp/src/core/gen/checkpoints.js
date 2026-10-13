@@ -1,10 +1,12 @@
 import { hasWall } from '../edges.js';
+import { gridDist } from '../geom.js';
 import { shuffle } from '../rng.js';
 
 // Choose K path positions (sorted; includes first and last) so consecutive checkpoints sit ~targetGap apart in grid distance.
 // Deterministic (no rnd). Returns null if no feasible placement.
-export function gapCheckpoints(n, path, K) {
-  const man = (a, b) => Math.abs(((a / n) | 0) - ((b / n) | 0)) + Math.abs(a % n - b % n);
+// wrap: distances on the wrap-around board (geom.js).
+export function gapCheckpoints(n, path, K, wrap = false) {
+  const man = (a, b) => gridDist(n, wrap, a, b);
   const target = 0.65 * (path.length - 1) / (K - 1);
   const idx = [0, path.length - 1], chosen = new Set(idx);
   while (idx.length < K) {

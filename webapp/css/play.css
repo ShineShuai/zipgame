@@ -459,6 +459,8 @@ select:focus { border-color: var(--blue); }
 
 /* Cutout: the tiles carry the white and the outline, so the holes show the page behind them */
 .zip-svg.cutout { background: transparent; box-shadow: none; overflow: visible; }
+/* Wrap-around: the white square and its dashed outline are drawn in the svg (play/board.js); the margin around them is where the seam stubs are seen */
+.zip-svg.wrap { background: transparent; box-shadow: none; }
 /* One way arrows: a step against an arrow flashes it (the polygon gets .blocked, see flashBlockedArrow in main.js). */
 .arrow-mark polygon { transform-box: fill-box; transform-origin: center; }
 .arrow-mark polygon.blocked { animation: arrow-blocked 0.45s ease-out; }

@@ -1,6 +1,7 @@
 import { generateCutout, CUTOUT_MAX_MS } from '../../core/gen/cutout.js';
 import { generateArrows, ARROW_SIZES } from '../../core/gen/arrows.js';
 import { generateExact, EXACT_SIZES } from '../../core/gen/exact.js';
+import { generate, WRAP_SIZES } from '../../core/gen/generate.js';
 
 // The puzzle variants of the play app, one entry each. Everything that differs between variants
 // is read from here (the menu tiles, the generator, the texts, the lucky game), so a new variant
@@ -9,8 +10,10 @@ import { generateExact, EXACT_SIZES } from '../../core/gen/exact.js';
 //
 //   id         the name the app uses (S.mode, S.variant, the share record)
 //   detect     which puzzles belong to the variant
-//   sizes      the grid sizes on offer, out of all the sizes the app plays
-//              (the lucky game of a still locked variant draws its size from LUCKY_SIZES among them)
+//   sizes      the grid sizes on offer: all => sizes, `all` being the sizes the app plays (a
+//              variant may offer a size outside it, as Wrap-around does with 4)
+//   luckySizes (optional) the sizes of the lucky game while the variant is still locked, out of
+//              its sizes (default LUCKY_SIZES); once unlocked the lucky game draws from all sizes
 //   countKey   the progress text under the generating bar
 //   source     the generator, for the hold-V seed tag
 //   generate   (n, seed) -> generator function* (core/run.js, platform/run.js drive it)
@@ -49,6 +52,17 @@ export const PLAY_VARIANTS = [
     source: 'generateExact (core/gen/exact.js)',
     generate: (n, seed) => generateExact(n, seed),
   },
+  {
+    id: 'wrap',
+    detect: puzzle => Boolean(puzzle.wrap),
+    // The seams are hard to hold in mind: 4 to 8 in free play (4 is below the app's smallest size,
+    // so this list does not depend on `all`), and 4 to 6 in the lucky game of a locked variant.
+    sizes: () => WRAP_SIZES,
+    luckySizes: [4, 5, 6],
+    countKey: 'gen.walls',
+    source: 'generate with wrap (core/gen/generate.js)',
+    generate: (n, seed) => generate(n, seed, { wrap: true }),
+  },
 ].map(variant => ({ ...variant, keys: textKeys(variant.id) }));
 
 export const variantById = id => PLAY_VARIANTS.find(variant => variant.id === id) || null;
@@ -67,9 +81,11 @@ export const sizesFor = (mode, sizes) => {
 };
 
 // What the unlock feature (features/unlock.js) needs of each variant: the sizes of its lucky game
-// while it is locked (LUCKY_SIZES that the variant offers) and once it is unlocked (all of its sizes).
+// while it is locked (its luckySizes, default LUCKY_SIZES, that the variant offers) and once it is
+// unlocked (all of its sizes, the same as in free play).
 export const luckyDefs = sizes => PLAY_VARIANTS.map(variant => {
-  const pool = variant.sizes(sizes), locked = pool.filter(n => LUCKY_SIZES.includes(n));
+  const pool = variant.sizes(sizes), lucky = variant.luckySizes || LUCKY_SIZES;
+  const locked = pool.filter(n => lucky.includes(n));
   return { id: variant.id, locked: locked.length ? locked : pool, pool };
 });
 

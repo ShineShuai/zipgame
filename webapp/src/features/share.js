@@ -63,12 +63,11 @@ export const dayOfDate = date => {
 };
 
 // gotdDate ('YYYYMMDD') given = a Game of Day, else a local game
-// (day = UTC day of its seed, index 0-based). variant ('cutout' | 'arrows' | 'exact') = a game of
-// that variant: random, so the record carries the puzzle itself ({ n, shape, holes, cp, walls } |
-// { n, cp, walls, arrows } | { n, cp, walls, exact }) instead of day / index / algo. A variant's
-// record has no grade: the code has no room for one (the receiver grades the puzzle again), and a
-// record with one cannot be encoded.
-//
+// (day = UTC day of its seed, index 0-based). variant ('cutout' | 'arrows' | 'exact' | 'wrap') = a
+// game of that variant: random, so the record carries the puzzle itself ({ n, shape, holes, cp,
+// walls } | { n, cp, walls, arrows } | { n, cp, walls, exact } | { n, cp, walls, wrap }) instead of
+// day / index / algo. A variant's record has no grade: the code has no room for one (the receiver
+// grades the puzzle again), and a record with one cannot be encoded.
 export function makeShareRecord({ gotdDate, n, grade, timeS, pct, day, index, algo, legs, K, variant, puzzle }) {
   const common = {
     n,
@@ -78,6 +77,11 @@ export function makeShareRecord({ gotdDate, n, grade, timeS, pct, day, index, al
   };
   if (gotdDate) {
     return { kind: 'gotd', ...common, day: dayOfDate(gotdDate), pct: pct == null ? null : pct };
+  }
+  if (variant === 'wrap') {
+    const { cp, walls } = puzzle;
+    const wrapped = { n, cp: cp.slice(), walls: walls.slice(), wrap: true };
+    return { kind: 'local', ...common, variant, puzzle: wrapped };
   }
   if (variant === 'exact') {
     const { cp, walls } = puzzle;
@@ -127,14 +131,16 @@ export function shareText(rec, url, tr) {
 
 // What the receiver can do with a shared game.
 //   ctx: { today: UTC day number, replayDates: replay window ('YYYYMMDD'),
-//          attempt: stored record of that date | null, algo: ALGO_VERSION, sizes: playable sizes }
+//          attempt: stored record of that date | null, algo: ALGO_VERSION, sizes: playable sizes,
+//          sizesOf (optional): variant id -> the sizes that variant offers }
 //   live    today's Game of Day, not played yet     -> the live game
 //   replay  a missed day inside the replay window   -> a replay (spends no chance)
 //   ok      local game of this app version          -> a local game
 //   played | old | future | version | invalid       -> not playable
 export function shareStatus(rec, ctx) {
   if (rec.kind === 'local') {
-    if (!ctx.sizes.includes(rec.n)) {
+    const own = rec.variant && ctx.sizesOf ? ctx.sizesOf(rec.variant) : [];
+    if (!ctx.sizes.includes(rec.n) && !own.includes(rec.n)) {
       return { status: 'invalid' };
     }
     if (rec.variant) {

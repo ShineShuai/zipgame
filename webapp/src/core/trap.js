@@ -78,12 +78,16 @@ export const ARROWS_MODEL = withoutAltFracLadder();
 // not steps, and altFrac is a geometry measure the fit never saw without walls) and with the same
 // caveat: a ranking, no hand ratings behind it.
 export const EXACT_MODEL = withoutAltFracLadder();
+// Wrap-around: the same reduced model again, same caveat. The fit never saw a board without free
+// starts, and the ladder was calibrated on grids; refit once ratings of wrap-around puzzles exist.
+export const WRAP_MODEL = withoutAltFracLadder();
 
 // The score model that fits a board: Cutout (holes) drops altFrac, One way arrows keeps trapMax and trapTop3 only, the rest TRAP_MODEL.
 // The play app grades with it (grades.js playGradesFor); trapMetrics itself keeps TRAP_MODEL unless a model is passed.
 export const modelFor = p => {
   if (p.arrows) return ARROWS_MODEL;
   if (p.exact) return EXACT_MODEL;
+  if (p.wrap) return WRAP_MODEL;
   return p.holes ? withoutAltFrac() : TRAP_MODEL;
 };
 
@@ -139,7 +143,7 @@ const alternativePoints = (w, cfg) => w.capped ? cfg.points[3] : w.sub <= cfg.ob
 // `ladTrials` (optional) = the ladder's probe-trial count when the caller already ran it; else it runs here.
 // `model` (optional) = the score model, TRAP_MODEL unless the board needs another (see modelFor).
 // An arrows puzzle never runs the (undirected) ladder: ladTrials is 0 there, and so on an Exact
-// one (steps, not checkpoints).
+// one (steps, not checkpoints), and on a wrap-around one (the ladder is calibrated on grids).
 export function trapMetricsFromProfile(p, path, profile, cfg = TRAP_CFG, ladTrials = undefined, model = TRAP_MODEL) {
   const T = cellCount(p), byStep = new Map();
   for (const w of profile) {
@@ -156,7 +160,7 @@ export function trapMetricsFromProfile(p, path, profile, cfg = TRAP_CFG, ladTria
     trapDeep: steps.filter(s => s.score >= cfg.points[3]).length,
     alternatives: profile.length, nonUnique: profile.nonUnique, steps,
   };
-  m.ladTrials = ladTrials ?? (p.arrows || p.exact ? 0 : ladderTrials(p, cfg));
+  m.ladTrials = ladTrials ?? (p.arrows || p.exact || p.wrap ? 0 : ladderTrials(p, cfg));
   m.lTr = Math.log1p(m.ladTrials);
   m.predicted = trapPredict(m, model);
   m.gradeUncapped = trapGradeOf(m.predicted, model);
