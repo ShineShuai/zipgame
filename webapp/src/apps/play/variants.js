@@ -20,7 +20,7 @@ import { generate, WRAP_SIZES } from '../../core/gen/generate.js';
 export const LUCKY_SIZES = [7, 8, 9, 10]; // sizes of the lucky game for a locked variant: solvable, but not trivial
 const cap = id => id[0].toUpperCase() + id.slice(1);
 export const textKeys = id => ({
-  name: `mode.${id}`, tag: `mode.${id}Tag`, gen: `gen.sub${cap(id)}`,
+  name: `mode.${id}`, tag: `mode.${id}Tag`, rules: `mode.${id}Rules`, gen: `gen.sub${cap(id)}`,
   title: `game.${id}Title`, sharedTitle: `game.shared${cap(id)}Title`,
   share: `share.${id}`, shareHead: `share.head${cap(id)}`,
 });

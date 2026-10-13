@@ -17,7 +17,6 @@ import { maxHints, computeHint, solutionOf, penalizedTime, HINT_PENALTY_S } from
 import { cellAtPoint, pathD, WRAP_PAD } from '../../view/geometry.js';
 import { bindModal, copyText } from '../../ui/modal.js';
 import { boardSvg, CELL, badgeColors, stepWrong, seamMarksSvg } from './board.js';
-import { assistState, numberStates } from '../../features/assist.js';
 import { variantIcon, cardIcon } from './icons.js';
 import { PLAY_VARIANTS, variantById, variantOf, sizesFor, nearestSize, luckyDefs } from './variants.js';
 import { createUnlock } from '../../features/unlock.js';
@@ -149,12 +148,13 @@ function variantPickerHtml() {
     const style = typeShown(mode) ? '' : ' style="display:none"';
     return `
         <label class="variant-opt${locked}" id="variantOpt-${mode}"${style}>
-          <input type="radio" name="variant" value="${mode}"${checked}>
+          <input type="radio" name="variant" value="${mode}" aria-describedby="variantRules-${mode}"${checked}>
           <span class="variant-card">
             ${variantIcon(mode)}
             <span class="variant-name">${t('mode.' + mode)}</span>
             <span class="variant-tag">${t('mode.' + mode + 'Tag')}</span>
           </span>
+          <span class="variant-rules" id="variantRules-${mode}" role="tooltip">${t('mode.' + mode + 'Rules')}</span>
         </label>`;
   });
   return `
@@ -467,37 +467,7 @@ function stepHudHtml(p) {
   if (!p.exact) return '';
   const now = `<b id="hudStep">${S.path.length}</b>`;
   const step = `<div class="hud-step">${t('game.step', now, cellCount(p))}</div>`;
-  return step + assistHudHtml(p);
-}
-
-// Exact Assist: what the next number needs ("Next 20: 8 steps, 5 away"), in red when it cannot be
-// reached in time.
-function assistLine(state) {
-  if (state.status === 'ok') return t('assist.next', state.next, state.steps, state.away);
-  if (state.status === 'missed') return t('assist.missed', state.missed);
-  if (state.status !== 'doomed') return '';
-  if (state.away === null) return t('assist.cut', state.next);
-  return t('assist.far', state.next, state.steps, state.away);
-}
-
-function assistHudHtml(p) {
-  if (!p.exact || !S.assist) return '';
-  const state = assistState(p, S.path);
-  const doomed = state.status === 'doomed' || state.status === 'missed' ? ' doomed' : '';
-  return `<div class="hud-next${doomed}" id="hudNext">${assistLine(state)}</div>`;
-}
-
-// The Assist toggle (Exact games only), saved like the sound and language switches.
-function assistButtonHtml(p) {
-  if (!p.exact) return '';
-  const label = t(S.assist ? 'assist.on' : 'assist.off');
-  const tip = t('assist.tip');
-  const attrs = `id="assistBtn" aria-pressed="${S.assist}" title="${tip}"`;
-  return `<button class="btn secondary" ${attrs}>${label}</button>`;
-}
-async function initAssist() {
-  const saved = await storage.get('assist');
-  S.assist = Boolean(saved && saved.value === '1');
+  return step;
 }
 
 const VARIANT_TITLE = { cutout: ['game.cutoutTitle', 'game.sharedCutoutTitle'], arrows: ['game.arrowsTitle', 'game.sharedArrowsTitle'] };
@@ -549,7 +519,6 @@ function renderGame() {
             <button class="btn secondary" id="backMenu2">${t('game.menu')}</button>
             ${newPuzzleButton}
             <button class="btn secondary" id="resetPath">${t('game.reset')}</button>
-            ${assistButtonHtml(p)}
             <button class="btn secondary" id="hintBtn" style="${hintShown() ? '' : 'display:none'}" ${hintDisabled}>Hint (${S.hintsUsed}/${cap})</button>
             <button class="btn secondary" id="exportBtn" style="${hiddenUnlessDev}">Export</button>
           </div>
@@ -561,11 +530,31 @@ function renderGame() {
     </div>${playStatsHtml()}`;
 }
 
+// The rules tooltip of a puzzle type tile: shown on hover, keyboard focus or a tap, and moved sideways to stay
+// inside the window (a tile at the edge of the card). Esc or a tap elsewhere closes it.
+const closeRules = () => document.querySelectorAll('.variant-rules.show').forEach(pop => pop.classList.remove('show'));
+function showRules(opt) {
+  closeRules();
+  const pop = opt.querySelector('.variant-rules');
+  pop.style.transform = 'translateX(-50%)';
+  pop.classList.add('show');
+  const r = pop.getBoundingClientRect(), edge = 8;
+  const dx = Math.max(edge - r.left, Math.min(0, innerWidth - edge - r.right));
+  pop.style.transform = `translateX(calc(-50% + ${dx}px))`;
+}
+
 // ---------- handlers ----------
 function attachHandlers() {
   const on = (id, f) => { const e = $(id); if (e) e.onclick = f; };
   on('playLocal', () => { S.size = +$('sizeSel').value; startLocal('open', S.mode); });
   const sel = $('sizeSel'); if (sel) sel.onchange = () => { S.size = +sel.value; $('gameNo').textContent = todayText(); };
+  document.querySelectorAll('.variant-opt').forEach(opt => {
+    opt.addEventListener('mouseenter', () => showRules(opt));
+    opt.addEventListener('mouseleave', closeRules);
+    opt.addEventListener('focusin', () => showRules(opt));
+    opt.addEventListener('focusout', closeRules);
+    opt.addEventListener('click', e => { e.stopPropagation(); showRules(opt); }); // a tap on a phone
+  });
   document.querySelectorAll('input[name="variant"]').forEach(input => {
     input.onchange = () => {
       S.mode = input.value;
@@ -592,11 +581,6 @@ function attachHandlers() {
   on('exportPlayLog', ev => { ev.preventDefault(); exportPlayLog(); });
   on('behaviourToggle', async ev => { ev.preventDefault(); S.behaviourOn = !S.behaviourOn; await behaviour.setOn(S.behaviourOn); render(); });
   on('newPuzzle', () => { if (!S.isGotd) startLocal('skip', S.variant || 'standard'); });
-  on('assistBtn', () => {
-    S.assist = !S.assist;
-    storage.set('assist', S.assist ? '1' : '0');
-    render();
-  });
   on('exportBtn', () => { $('exportText').value = serialize(S.puzzle); $('exportMsg').textContent = ''; modal.open(); setTimeout(() => $('exportText').focus(), 30); });
   on('hintBtn', () => {
     if (S.finished || S.hintsUsed >= maxHints(S.puzzle)) return;
@@ -638,10 +622,9 @@ function setupGridInput(svg) {
   // (an Exact puzzle's badges can turn red on any move: the step of a number passes)
   const syncFills = () => {
     const on = new Set(S.path);
-    const states = numberStates(p, S.path);
     svg.querySelectorAll('[data-num-cell]').forEach(g => {
       const cell = +g.dataset.numCell;
-      fill(cell, on.has(cell), states.get(cell));
+      fill(cell, on.has(cell));
     });
   };
   // A step against a one-way arrow: that arrow flashes (the animation is in css/play.css).
@@ -1140,9 +1123,9 @@ async function initLang() {
   try { S.behaviourOn = await behaviour.isOn(); behaviour.flush().catch(() => {}); } catch (e) { console.warn('behaviour init failed:', e); } // rows left from an earlier page load
   try { S.nextIdx = await peekNext(); } catch (e) { console.warn('daily counters failed:', e); }
   await loadSharedLink();
-  document.addEventListener('click', () => { setShareTip(false); setLuckyTip(false); closeStatTips(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { setShareTip(false); setLuckyTip(false); closeStatTips(); } });
+  document.addEventListener('click', () => { setShareTip(false); setLuckyTip(false); closeStatTips(); closeRules(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { setShareTip(false); setLuckyTip(false); closeStatTips(); closeRules(); } });
   modal = bindModal($('exportModal'));
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));
-  installDevReveal(); await initSoundToggle(); await initAssist(); await initLang(); render();
+  installDevReveal(); await initSoundToggle(); await initLang(); render();
 })();

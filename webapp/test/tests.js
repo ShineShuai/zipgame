@@ -68,7 +68,6 @@ import { exactTests } from './exact.js';
 import { exactGenTests } from './exact-gen.js';
 import { playExactTests } from './play-exact.js';
 import { wrapAllTests } from './wrap-all.js';
-import { exactAssistTests } from './exact-assist.js';
 import { arrowsGenTests } from './arrows-gen.js';
 import { playArrowsTests } from './play-arrows.js';
 import { unlockTests } from './unlock.js';
@@ -2408,8 +2407,18 @@ t('play menu i18n: every variant has a name and a tagline, the Game-of-Day card 
     for (const mode of ['standard', ...PLAY_VARIANTS.map(v => v.id)]) {
       ok(dict['mode.' + mode], 'mode.' + mode);
       ok(dict['mode.' + mode + 'Tag'], 'mode.' + mode + 'Tag');
+      ok(dict['mode.' + mode + 'Rules'], 'mode.' + mode + 'Rules');
     }
     for (const key of ['menu.mode', 'menu.sub', 'gotd.play', 'gotd.blurb']) ok(dict[key], key);
+  }
+  for (const v of PLAY_VARIANTS) eq(v.keys.rules, 'mode.' + v.id + 'Rules');
+});
+t('play texts: nothing a player can read mentions the hidden hold-V reveal', () => {
+  for (const [lang, dict] of [['en', EN], ['zh', ZH]]) {
+    for (const [key, value] of Object.entries(dict)) {
+      const text = typeof value === 'function' ? [value(1), value(2)].join(' ') : value;
+      ok(!/\bhold\b.*\bv\b|\bv\b key|按住|长按|developer|开发/i.test(text), lang + ' ' + key + ': ' + text);
+    }
   }
 });
 t('daily: dateOfDay inverts utcDayNumber across month and year ends', () => {
@@ -3057,7 +3066,6 @@ designArrowsTests(t, ok, eq);
 exactTests(t, ok, eq);
 exactGenTests(t, ok, eq);
 playExactTests(t, ok, eq);
-exactAssistTests(t, ok, eq);
 
 // ---------- Wrap-around (torus) puzzles ----------
 wrapAllTests(t, ta, ok, eq);
