@@ -1,4 +1,5 @@
-// Icons of the play menu: one per puzzle variant (standard, cutout, arrows) and one per menu card.
+// Icons of the play menu: one per puzzle variant (standard, cutout, arrows, exact) and one per
+// menu card.
 // Plain SVG strings, no DOM. Colours come from css/play.css (.vi-*, currentColor), so the
 // icons follow the page theme and the same markup serves the picker, the HUD and the cards.
 
@@ -65,18 +66,34 @@ function arrowheads() {
   return heads.join('');
 }
 
-// variant: 'cutout', 'arrows', 'lucky' (the mystery of the lucky game) or anything else (= standard).
-// Class: variant-icon vi-standard | vi-cutout | vi-arrows | vi-lucky.
+// Exact icon: the snake board with four number badges that are steps along it (cells numbered row
+// * 4 + col; the snake reaches [col, row] = [0, 0] at step 1, [1, 1] at 7, [3, 2] at 12 and [0, 3]
+// at 16).
+const ICON_STEPS = [[0, 0, 1], [1, 1, 7], [3, 2, 12], [0, 3, 16]];
+
+function stepBadges() {
+  const badges = ICON_STEPS.map(([col, row, step]) => {
+    const x = centre(col);
+    const y = centre(row);
+    return `<circle class="vi-badge" cx="${x}" cy="${y}" r="4.1"/>` +
+      `<text class="vi-num" x="${x}" y="${y}" dy=".35em">${step}</text>`;
+  });
+  return badges.join('');
+}
+
+// variant: 'cutout', 'arrows', 'exact', 'lucky' (the mystery of the lucky game) or anything else
+// (= standard). Class: variant-icon vi-standard | vi-cutout | vi-arrows | vi-exact | vi-lucky.
 export function variantIcon(variant) {
   if (variant === 'lucky') return luckyIcon();
   const cutout = variant === 'cutout';
   const arrows = variant === 'arrows';
-  const name = cutout ? 'cutout' : arrows ? 'arrows' : 'standard';
+  const exact = variant === 'exact';
+  const name = cutout ? 'cutout' : arrows ? 'arrows' : exact ? 'exact' : 'standard';
   const board = tiles(cutout ? RING_HOLES : NO_HOLES);
   const path = route(cutout ? LAP : SNAKE);
   return `<svg class="variant-icon vi-${name}" viewBox="0 0 48 48" aria-hidden="true" ` +
     'focusable="false"><rect class="vi-bg" x="2" y="2" width="44" height="44" rx="11"/>' +
-    `${board}${path}${arrows ? arrowheads() : ''}</svg>`;
+    `${board}${path}${arrows ? arrowheads() : ''}${exact ? stepBadges() : ''}</svg>`;
 }
 
 // The mystery variant of the lucky game: a dimmed board under a question mark.

@@ -1,5 +1,6 @@
 import { generateCutout, CUTOUT_MAX_MS } from '../../core/gen/cutout.js';
 import { generateArrows, ARROW_SIZES } from '../../core/gen/arrows.js';
+import { generateExact, EXACT_SIZES } from '../../core/gen/exact.js';
 
 // The puzzle variants of the play app, one entry each. Everything that differs between variants
 // is read from here (the menu tiles, the generator, the texts, the lucky game), so a new variant
@@ -38,6 +39,15 @@ export const PLAY_VARIANTS = [
     countKey: 'gen.arrows',
     source: 'generateArrows (core/gen/arrows.js)',
     generate: (n, seed) => generateArrows(n, seed),
+  },
+  {
+    id: 'exact',
+    detect: puzzle => Boolean(puzzle.exact),
+    // The Exact generator is tuned for 5..12 (gen/exact.js).
+    sizes: all => all.filter(n => EXACT_SIZES.includes(n)),
+    countKey: 'gen.labels',
+    source: 'generateExact (core/gen/exact.js)',
+    generate: (n, seed) => generateExact(n, seed),
   },
 ].map(variant => ({ ...variant, keys: textKeys(variant.id) }));
 

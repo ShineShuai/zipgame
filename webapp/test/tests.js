@@ -64,6 +64,10 @@ import { variantIcon, cardIcon } from '../src/apps/play/icons.js';
 import { PLAY_VARIANTS } from '../src/apps/play/variants.js';
 import { VARIANTS } from '../src/core/share-code.js';
 import { directedTests } from './directed.js';
+import { exactTests } from './exact.js';
+import { exactGenTests } from './exact-gen.js';
+import { playExactTests } from './play-exact.js';
+import { exactAssistTests } from './exact-assist.js';
 import { arrowsGenTests } from './arrows-gen.js';
 import { playArrowsTests } from './play-arrows.js';
 import { unlockTests } from './unlock.js';
@@ -3019,7 +3023,7 @@ t('share-code: a Cutout game round-trips with its puzzle; 7x7 stays short; damag
   }
   ok(encodeShare(makeShareRecord({ n: 7, timeS: 9, legs: [], K: 7, variant: 'cutout', puzzle: runSync(generateCutout(7, 4, { boards: 1, effort: 0.1 })) })).length <= 64);
   eq(decodeShare(encodeShare(LOCAL_REC)), LOCAL_REC); eq(decodeShare(encodeShare(GOTD_REC)), GOTD_REC);
-  eq(VARIANTS, [null, 'cutout', 'arrows']);
+  eq(VARIANTS, [null, 'cutout', 'arrows', 'exact']);
 });
 t('share-code: a Cutout record is refused when its puzzle is unsound (unbalanced, checkpoint on a hole, wall at a hole, a gap in the numbers)', () => {
   const good = runSync(generateCutout(6, 8, { boards: 1, effort: 0.1 }));
@@ -3047,6 +3051,12 @@ arrowsGenTests(t, ok, eq);
 playArrowsTests(t, ok, eq);
 unlockTests(t, ta, ok, eq);
 designArrowsTests(t, ok, eq);
+
+// ---------- Exact (Hidato-style) puzzles ----------
+exactTests(t, ok, eq);
+exactGenTests(t, ok, eq);
+playExactTests(t, ok, eq);
+exactAssistTests(t, ok, eq);
 
 // ---------- behaviour rows (core/behaviour.js, platform/behaviour.js) ----------
 const BEH_TEXT = 'size 7\ncheckpoints 0,1=2 0,6=1 1,3=3 2,2=5 2,5=4 3,1=7 3,5=9 4,3=8 5,3=6\nwalls V,4,3 H,5,4';

@@ -1,4 +1,6 @@
-import { maxNumber, startCell, endCell } from '../model.js';
+import {
+  maxNumber, startCell, endCell, cellCount, exactRanks, exactLegProblem,
+} from '../model.js';
 import { buildNeighbors, makeConnOk, makeNoDeadEnd, makePocketOk, segBlocker, legsCollide } from './prune.js';
 import { makePropagator } from './propagate.js';
 import { makeIncremental } from './incremental.js';
@@ -6,6 +8,12 @@ import { solveDirected } from './solve-dir.js';
 
 // Hamiltonian-path search: start at checkpoint 1, hit the checkpoints in order, end on the last one,
 // and cover every cell exactly once.
+//
+// An Exact puzzle (p.exact, model.js: the number of a cell is its step on the path) is searched on
+// the ranks of its numbers, the checkpoints 1..K of the search below, and each checkpoint also has
+// to come at its own step: steps[rank] (see searchPaths()). Everything the options below say holds
+// for it too; the step of the next number replaces the cells left as the bound on the distance to
+// it.
 //
 // opts:
 //   limit     stop after this many solutions (default 2)
@@ -49,7 +57,22 @@ import { solveDirected } from './solve-dir.js';
 export function solve(p, opts = {}) {
   // One-way arrows break the two-way-edge assumptions of everything below: own solver
   // (solve-dir.js; there mustUse is the directed move a -> b).
+  if (p.arrows && p.exact) throw new Error('solve: an Exact puzzle cannot have one-way arrows');
   if (p.arrows) return solveDirected(p, opts);
+  if (!p.exact) return searchPaths(p, opts, null);
+  const { rank, steps } = exactRanks(p);
+  const K = steps.length - 2;
+  // The last number can only be on the last step, and numbers too far apart (or of the wrong
+  // parity) cannot be joined: nothing to search.
+  if (K < 1 || steps[K] !== cellCount(p) || exactLegProblem(p)) {
+    return { count: 0, exceeded: false, nodes: 0, paths: opts.capture ? [] : undefined };
+  }
+  return searchPaths({ ...p, cp: rank }, opts, steps);
+}
+
+// The search itself. steps: null for a standard puzzle; for an Exact one (p.cp then holds the
+// ranks 1..K) steps[k] = the step at which checkpoint k has to be reached.
+function searchPaths(p, opts, steps) {
   const n = p.n;
   const T = n * n;
   // Holes (puzzle.holes, see model.js) are not part of the board: buildNeighbors gives them no edges, and the path covers the
@@ -350,7 +373,7 @@ export function solve(p, opts = {}) {
     let need = needed;
     const marker = cp[cell];
     if (marker !== 0) {
-      if (marker !== need) {
+      if (marker !== need || (steps && steps[marker] !== depth + 1)) {
         leave(cell);
         return;
       }
@@ -422,6 +445,8 @@ export function solve(p, opts = {}) {
       if (MA >= 0 && !used && (cell === MA ? v !== MB : cell === MB && v !== MA)) continue;
       const marker2 = cp[v];
       if (marker2 !== 0 && marker2 !== need) continue;
+      // Exact: step depth + 2 is the next number's: its cell goes there, no other cell does
+      if (steps && need <= K && (marker2 !== 0) !== (steps[need] === depth + 2)) continue;
       // v is reserved for a later segment's own path — taking it now (as part of *this*
       // segment, since v isn't this segment's own target) would strand that segment.
       if (forcedUnion && forcedUnion.size && v !== pos[need] && forcedUnion.has(v)) continue;
@@ -430,7 +455,10 @@ export function solve(p, opts = {}) {
         const target = pos[need];
         if (target >= 0) {
           const manhattan = Math.abs(row[v] - row[target]) + Math.abs(col[v] - col[target]);
-          if (manhattan > remaining) continue;
+          // Exact: v is step depth + 2, the target is reached at its own step (not anywhere in the
+          // cells left)
+          const room = steps ? steps[need] - depth - 2 : remaining;
+          if (manhattan > room) continue;
           // Parity: the grid is bipartite (checkerboard colour flips every move), so any actual
           // path length between two cells always shares parity with their Manhattan distance.
           // That holds leg-by-leg and is additive across concatenated legs, so the TOTAL path
@@ -445,6 +473,7 @@ export function solve(p, opts = {}) {
         if (D) {
           const dist = D[need * T + v];
           if (dist < 0 || dist + suf[need] > remaining - 1) continue;
+          if (steps && dist > steps[need] - depth - 2) continue;
         }
       }
 

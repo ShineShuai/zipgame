@@ -56,21 +56,28 @@ export function serialize(p, opts = {}) {
     lines.push('# arrows r,c>r,c ...     (one-way edges: a step is allowed from the first cell to the'
       + ' second only)');
   }
+  if (p.exact) {
+    lines.push('# exact                   (a number is the step of its cell on the path: Exact variant)');
+  }
   if (opts.path && opts.path.length) lines.push('# path r,c ...           (current play-mode line, in order, optional)');
   lines.push(...timeComments(opts.times));
   lines.push(`size ${p.n}`, cps.length ? 'checkpoints ' + cps.join(' ') : 'checkpoints', ws.length ? 'walls ' + ws.join(' ') : 'walls');
   if (hs.length) lines.push('holes ' + hs.join(' '));
   if (as) lines.push(as.length ? 'arrows ' + as.join(' ') : 'arrows');
+  if (p.exact) lines.push('exact');
   if (opts.path && opts.path.length) lines.push('path ' + opts.path.map(cell => `${(cell / p.n) | 0},${cell % p.n}`).join(' '));
   return lines.join('\n');
 }
 
 // An `arrows` line (even an empty one) makes it a One way arrows puzzle: p.arrows (core/edges.js).
+// An `exact` line (no values) makes it an Exact puzzle: p.exact, the numbers are steps
+// (core/model.js).
 // Throws Error with a user-readable message. Returns the puzzle; if the text had a `path` line,
 // the puzzle also carries `.path` (array of cell indices) — same convention as a generated puzzle's
 // solution path (see model.js).
 export function parse(text) {
   let n = null; const cps = [], ws = [], hs = [], as = []; let pathCells = null, hasArrows = false;
+  let isExact = false;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim(); if (!line || line.startsWith('#')) continue;
     const parts = line.split(/\s+/), kw = parts[0].toLowerCase();
@@ -90,6 +97,9 @@ export function parse(text) {
         if (!m) throw new Error(`Invalid arrow: "${t}" (expected r,c>r,c)`);
         as.push([+m[1], +m[2], +m[3], +m[4]]);
       }
+    } else if (kw === 'exact') {
+      if (parts.length > 1) throw new Error('The "exact" line takes no values.');
+      isExact = true;
     } else if (kw === 'path') {
       pathCells = [];
       for (const t of parts.slice(1)) { const m = t.match(/^(\d+),(\d+)$/); if (!m) throw new Error(`Invalid path cell: "${t}"`); pathCells.push([+m[1], +m[2]]); }
@@ -131,6 +141,10 @@ export function parse(text) {
       if (arrowDirId(p.arrows, e) !== 0) throw new Error(`Two arrows on one edge: ${label}`);
       setArrowId(p.arrows, e, from < to ? 1 : -1);
     }
+  }
+  if (isExact) {
+    if (hasArrows) throw new Error('An Exact puzzle cannot have arrows.');
+    p.exact = true;
   }
   if (pathCells) {
     const path = pathCells.map(([r, c]) => {

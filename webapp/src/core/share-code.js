@@ -24,12 +24,20 @@
 //   | arrow count 8, then per arrow: edge id 9 + direction 1 (1 = it points to the lower cell index)
 //   | strip length 6, 2 bits per leg | check 8
 // A 7x7 one with 6 arrows is about 40 characters.
+//
+// Exact (variant id 3): the numbers are steps on the path (core/model.js), so each one is stored
+// with its step:
+//   version 3 (=2) | variant 4 | size 5 | time 17
+//   | K 7, then per number: cell index 8 + (step - 1) 8
+//   | strip length 6, 2 bits per leg (a leg = two neighbouring numbers) | check 8
+// A 7x7 one (5 numbers) is about 30 characters, a 12x12 one about 50.
 import { LABELS } from './gen/shapes.js';
 import { arrowProblem, arrowDirId } from './edges.js';
+import { validate, labelCount, numberedCells } from './model.js';
 
 export const SHARE_VERSION = 1;
 export const SHARE_VERSION_VARIANT = 2;
-export const VARIANTS = [null, 'cutout', 'arrows']; // variant id -> name
+export const VARIANTS = [null, 'cutout', 'arrows', 'exact']; // variant id -> name
 export const VARIANT_SHAPES = LABELS; // shape id - 1 -> name
 export const VARIANT_MAX_N = 16;
 export const MAX_LEGS = 63;
@@ -92,7 +100,19 @@ function isArrowsPuzzle(p) {
   return marks.length >= 2 && marks.length <= 127 && marks.every((v, i) => v === i + 1) && arrows <= 255;
 }
 
-const SOUND_PUZZLE = { cutout: isCutoutPuzzle, arrows: isArrowsPuzzle };
+// An Exact puzzle { n, cp, walls, exact }: no walls, holes or arrows, 2..127 numbers, and valid
+// (validate() in model.js: the last number is the cell count, every leg fits). Steps are at most
+// 256, so a step fits the 8 bits of the code.
+function isExactPuzzle(p) {
+  if (!p || p.exact !== true || !isInt(p.n, 2, VARIANT_MAX_N)) return false;
+  const T = p.n * p.n;
+  if (!p.cp || p.cp.length !== T || !p.walls || p.walls.length !== T) return false;
+  if (p.walls.some(w => w !== 0) || p.holes || p.arrows) return false;
+  const numbers = labelCount(p);
+  return numbers >= 2 && numbers <= 127 && validate(p).ok;
+}
+
+const SOUND_PUZZLE = { cutout: isCutoutPuzzle, arrows: isArrowsPuzzle, exact: isExactPuzzle };
 
 function isEncodable(rec) {
   if (rec && rec.variant != null) {
@@ -179,7 +199,26 @@ function pushArrows(bits, rec, levels) {
   for (const level of levels) pushBits(bits, level, 2);
 }
 
+// Exact body (see the layout at the top): the numbers in ascending order, each as its cell and its
+// step - 1.
+function pushExact(bits, rec, levels) {
+  const p = rec.puzzle;
+  const cells = numberedCells(p);
+  pushBits(bits, SHARE_VERSION_VARIANT, 3);
+  pushBits(bits, VARIANTS.indexOf('exact'), 4);
+  pushBits(bits, p.n, 5);
+  pushBits(bits, Math.min(MAX_TENTHS, Math.round(rec.timeS * 10)), 17);
+  pushBits(bits, cells.length, 7);
+  for (const cell of cells) {
+    pushBits(bits, cell, 8);
+    pushBits(bits, p.cp[cell] - 1, 8);
+  }
+  pushBits(bits, levels.length, 6);
+  for (const level of levels) pushBits(bits, level, 2);
+}
+
 function pushVariant(bits, rec, levels) {
+  if (rec.variant === 'exact') return pushExact(bits, rec, levels);
   if (rec.variant === 'arrows') return pushArrows(bits, rec, levels);
   const p = rec.puzzle, T = p.n * p.n, cells = [], walls = [];
   for (let i = 0; i < T; i++) {
@@ -262,6 +301,7 @@ export function decodeShare(code) {
 function readVariant(read, bits, code, pos) {
   const variant = VARIANTS[read(4)];
   if (variant === 'arrows') return readArrows(read, bits, code, pos);
+  if (variant === 'exact') return readExact(read, bits, code, pos);
   if (variant !== 'cutout') {
     return null;
   }
@@ -305,6 +345,39 @@ function readVariant(read, bits, code, pos) {
   const exactLength = code.length === Math.ceil(pos() / 6);
   const zeroPadding = bits.slice(pos()).every(b => b === 0);
   return exactLength && zeroPadding && puzzle.shape !== false && isEncodable(rec) ? rec : null;
+}
+
+// The body of an Exact code, after its version and variant id (layout at the top).
+function readExact(read, bits, code, pos) {
+  const n = read(5);
+  if (!isInt(n, 2, VARIANT_MAX_N)) {
+    return null;
+  }
+  const T = n * n;
+  const rec = { kind: 'local', variant: 'exact', n, grade: null, timeS: read(17) / 10 };
+  const puzzle = { n, cp: new Uint16Array(T), walls: new Uint8Array(T), exact: true };
+  const numbers = read(7);
+  for (let i = 0; i < numbers; i++) {
+    const cell = read(8);
+    const step = read(8) + 1;
+    if (cell >= T || puzzle.cp[cell]) {
+      return null;
+    }
+    puzzle.cp[cell] = step;
+  }
+  rec.puzzle = puzzle;
+  const legs = read(6);
+  rec.levels = [];
+  for (let i = 0; i < legs; i++) {
+    rec.levels.push(read(2));
+  }
+  const end = pos();
+  if (read(CHECK_BITS) !== checksum(bits, end)) {
+    return null;
+  }
+  const exactLength = code.length === Math.ceil(pos() / 6);
+  const zeroPadding = bits.slice(pos()).every(b => b === 0);
+  return exactLength && zeroPadding && isEncodable(rec) ? rec : null;
 }
 
 // The body of a One way arrows code, after its version and variant id (layout at the top).

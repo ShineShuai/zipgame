@@ -1,5 +1,6 @@
 import { wallSegments, cellCenter, pathD } from '../../view/geometry.js';
 import { arrowIds, arrowDirId, arrowMove } from '../../core/edges.js';
+import { assistState, numberStates } from '../../features/assist.js';
 
 export const CELL = 60; // logical units; on-screen size comes from viewBox scaling
 
@@ -13,9 +14,34 @@ export const COLORS = {
   number: '#3b68ee',      // idle number: blue ring and text on white; visited: filled blue, white text
   numberFill: '#ffffff',
   numberVisitedText: '#ffffff',
+  numberWrong: '#e5484d', // an Exact number the path reached on the wrong step
   hintRing: '#ff9f1c',
   hintWrong: '#e5484d',
 };
+
+// The colours of a number badge: idle (white, blue ring), visited (filled blue), and in an Exact
+// puzzle visited on the wrong step (filled red) or missed, its step passed without it (white,
+// red).
+export function badgeColors(visited, wrong = false, missed = false) {
+  if (missed && !visited) {
+    return { fill: COLORS.numberFill, stroke: COLORS.numberWrong, text: COLORS.numberWrong };
+  }
+  if (!visited) return { fill: COLORS.numberFill, stroke: COLORS.number, text: COLORS.number };
+  const ink = wrong ? COLORS.numberWrong : COLORS.number;
+  return { fill: ink, stroke: ink, text: COLORS.numberVisitedText };
+}
+
+// Assist (Exact): a red ring on the number the line can no longer reach in time (or has missed).
+// `state` is assistState() of features/assist.js.
+export function assistRing(puzzle, state) {
+  let cell = -1;
+  if (state.status === 'doomed') cell = state.nextCell;
+  if (state.status === 'missed') cell = state.cell;
+  if (cell < 0) return '';
+  const [x, y] = cellCenter(puzzle.n, cell, CELL);
+  return `<circle data-role="assist" class="assist-ring" cx="${x}" cy="${y}" r="${CELL * 0.42}" ` +
+    `fill="none" stroke="${COLORS.numberWrong}" stroke-width="4"/>`;
+}
 
 // Widest the board gets on screen, in px: about 64 px per cell, at most 640. When the window is short
 // (a laptop, a phone on its side) the board also shrinks so it fits without scrolling.
@@ -81,19 +107,24 @@ function arrowMarks(puzzle) {
   return marks.join('');
 }
 
-function numberBadges(puzzle, visited) {
+function numberBadges(puzzle, visited, path) {
   const n = puzzle.n;
+  const states = numberStates(puzzle, path);
   const badges = [];
   for (let cell = 0; cell < n * n; cell++) {
     const number = puzzle.cp[cell];
     if (!number) continue;
     const [x, y] = cellCenter(n, cell, CELL);
     const isVisited = visited.has(cell);
+    const state = states.get(cell);
+    const colors = badgeColors(isVisited, state === 'wrong', state === 'missed');
+    // an Exact number has up to 3 digits
+    const fontSize = Math.round(CELL * (number > 99 ? 0.24 : 0.32) * 10) / 10;
     badges.push(
       `<g data-num-cell="${cell}">` +
-      `<circle cx="${x}" cy="${y}" r="${CELL * 0.32}" fill="${isVisited ? COLORS.number : COLORS.numberFill}" stroke="${COLORS.number}" stroke-width="3"/>` +
-      `<text x="${x}" y="${y}" dy=".35em" text-anchor="middle" font-size="${CELL * 0.32}" font-weight="700" ` +
-      `fill="${isVisited ? COLORS.numberVisitedText : COLORS.number}">${number}</text></g>`
+      `<circle cx="${x}" cy="${y}" r="${CELL * 0.32}" fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="3"/>` +
+      `<text x="${x}" y="${y}" dy=".35em" text-anchor="middle" font-size="${fontSize}" font-weight="700" ` +
+      `fill="${colors.text}">${number}</text></g>`
     );
   }
   return badges.join('');
@@ -131,7 +162,8 @@ export function boardSvg(S) {
   svg += `<path data-role="path" d="${route}" stroke="${COLORS.path}" stroke-width="${CELL * 0.28}" fill="none" ` +
     `stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>`;
   if (p.arrows) svg += arrowMarks(p);
-  svg += numberBadges(p, visited);
+  svg += numberBadges(p, visited, S.path);
+  if (S.assist && p.exact) svg += assistRing(p, assistState(p, S.path));
   if (S.hintWrongCell != null) svg += wrongMoveMark(n, S.hintWrongCell);
   if (S.hintCell != null) svg += correctMoveRing(n, S.hintCell);
   return svg + '</svg>';

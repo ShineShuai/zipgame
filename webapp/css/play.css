@@ -384,6 +384,8 @@ select:focus { border-color: var(--blue); }
 .vi-path { fill: none; stroke: #ffb020; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .vi-dot { fill: var(--blue); stroke: #fff; stroke-width: 1.2; }
 .vi-arrow { fill: #26324f; stroke: #fff; stroke-width: 0.8; stroke-linejoin: round; paint-order: stroke; }
+.vi-badge { fill: #fff; stroke: var(--blue); stroke-width: 1; } /* the Exact icon's step numbers */
+.vi-num { fill: var(--blue); font: 700 4.6px system-ui, sans-serif; text-anchor: middle; }
 .vi-q { fill: none; stroke: #ffb020; stroke-width: 3.2; stroke-linecap: round; } /* the lucky game's question mark */
 .vi-qdot { fill: #ffb020; }
 .vi-halo { stroke: #fff; stroke-width: 6.4; fill: #fff; }
@@ -420,13 +422,22 @@ select:focus { border-color: var(--blue); }
   color: #1c7a4a;
   white-space: nowrap;
 }
-.hud-time {
+.hud-time,
+.hud-step {
   padding: 4px 14px;
   border-radius: 999px;
   background: var(--blue-soft);
   color: var(--blue-dark);
   font-weight: 600;
 }
+.hud-step { font-variant-numeric: tabular-nums; } /* Exact: the step of the head, "Step: 12/25" */
+.hud-next { padding: 4px 14px; border-radius: 999px; background: #fff; border: 1px solid var(--blue-soft); color: var(--blue-dark); font-weight: 600; }
+.hud-next:empty { display: none; }
+.hud-next.doomed { background: #fdecec; border-color: #e5484d; color: #b42318; } /* Exact Assist: out of reach */
+.assist-ring { animation: assist-pulse 1s ease-in-out infinite; }
+@keyframes assist-pulse { 50% { opacity: 0.35; } }
+.btn.secondary[aria-pressed="true"] { background: var(--blue-soft); border-color: var(--blue); }
+@media (prefers-reduced-motion: reduce) { .assist-ring { animation: none; } }
 
 .grid-wrap {
   display: flex;
