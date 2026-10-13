@@ -67,6 +67,7 @@ import { directedTests } from './directed.js';
 import { exactTests } from './exact.js';
 import { exactGenTests } from './exact-gen.js';
 import { playExactTests } from './play-exact.js';
+import { exactAssistTests } from './exact-assist.js';
 import { arrowsGenTests } from './arrows-gen.js';
 import { playArrowsTests } from './play-arrows.js';
 import { unlockTests } from './unlock.js';
@@ -3055,6 +3056,7 @@ designArrowsTests(t, ok, eq);
 exactTests(t, ok, eq);
 exactGenTests(t, ok, eq);
 playExactTests(t, ok, eq);
+exactAssistTests(t, ok, eq);
 
 // ---------- behaviour rows (core/behaviour.js, platform/behaviour.js) ----------
 const BEH_TEXT = 'size 7\ncheckpoints 0,1=2 0,6=1 1,3=3 2,2=5 2,5=4 3,1=7 3,5=9 4,3=8 5,3=6\nwalls V,4,3 H,5,4';
