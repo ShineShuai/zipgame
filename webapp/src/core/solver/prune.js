@@ -1,31 +1,29 @@
 import { hasWall } from '../edges.js';
 import { makePropagator } from './propagate.js';
+import { DR, DC, neighbourCell } from '../geom.js';
 
-// Direction order R,L,D,U. Solver generation depends on this exact order for tie-breaks
+// Direction order R,L,D,U (geom.js). Solver generation depends on this exact order for tie-breaks
 // (see ALGO_VERSION in solve.js) — do not reorder.
-export const DR = [0, 0, 1, -1];
-export const DC = [1, -1, 0, 0];
+export { DR, DC };
 
-// nb[cell * 4 + d] = neighbour of cell in direction d, or -1 for a wall / the border.
+// nb[cell * 4 + d] = neighbour of cell in direction d, or -1 for a wall / the border (on a
+// wrap-around board, the border is joined across: no -1 there).
 // row[cell] / col[cell] = grid coordinates. Shared by the solver and the connectivity overlay,
 // so both walk the exact same adjacency.
 export function buildNeighbors(p) {
   const n = p.n;
   const T = n * n;
+  const wrap = !!p.wrap;
   const holes = p.holes || null; // a hole has no edges, and no cell has an edge to it
   const nb = new Int32Array(T * 4).fill(-1);
   const row = new Int32Array(T);
   const col = new Int32Array(T);
   for (let i = 0; i < T; i++) {
-    const r = (i / n) | 0;
-    const c = i % n;
-    row[i] = r;
-    col[i] = c;
+    row[i] = (i / n) | 0;
+    col[i] = i % n;
     for (let d = 0; d < 4; d++) {
-      const rr = r + DR[d];
-      const cc = c + DC[d];
-      if (rr < 0 || rr >= n || cc < 0 || cc >= n) continue;
-      const j = rr * n + cc;
+      const j = neighbourCell(n, wrap, i, d);
+      if (j < 0) continue;
       if (!hasWall(p, i, j) && !(holes && (holes[i] || holes[j]))) nb[i * 4 + d] = j;
     }
   }

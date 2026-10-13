@@ -1,17 +1,41 @@
-// Edge id e = cell*2 + t.  t=0: edge between cell and cell+1 (text "V,r,c").  t=1: between cell and cell+n ("H,r,c").
-export const edgeId = (n, a, b) => a < b ? a * 2 + (b - a === 1 ? 0 : 1) : b * 2 + (a - b === 1 ? 0 : 1);
-export const edgeCells = (n, e) => { const a = e >> 1; return [a, e & 1 ? a + n : a + 1]; };
+import { neighbourCell } from './geom.js';
+
+// Edge id e = cell*2 + t.  t=0: edge between cell and its right neighbour (text "V,r,c").
+// t=1: between cell and the one below ("H,r,c"). On a wrap-around board (wrap = true, geom.js)
+// the right and below neighbours wrap around the borders: the last column's "V" edge joins the
+// first column, and the same for "H" and the rows. Only those seam edges need the flag.
+export const edgeId = (n, a, b, wrap = false) => {
+  if (wrap) {
+    if (neighbourCell(n, true, a, 0) === b) return a * 2;
+    if (neighbourCell(n, true, b, 0) === a) return b * 2;
+    return (neighbourCell(n, true, a, 2) === b ? a : b) * 2 + 1;
+  }
+  const lo = a < b ? a : b, gap = a < b ? b - a : a - b;
+  // A grid has no edge between these two cells: most likely a wrap-around board and a missing
+  // `wrap` argument. Without this check the id would silently belong to another edge.
+  if (gap !== n && !(gap === 1 && lo % n !== n - 1)) {
+    throw new Error(`edgeId: cells ${a} and ${b} are not neighbours on a grid (wrap-around: pass wrap)`);
+  }
+  return lo * 2 + (gap === 1 ? 0 : 1);
+};
+export const edgeCells = (n, e, wrap = false) => {
+  const a = e >> 1;
+  if (wrap) return [a, neighbourCell(n, true, a, e & 1 ? 2 : 0)];
+  return [a, e & 1 ? a + n : a + 1];
+};
 export const hasWallId = (w, e) => (w[e >> 1] >> (e & 1)) & 1;
 export const setWallId = (w, e, on) => { if (on) w[e >> 1] |= 1 << (e & 1); else w[e >> 1] &= ~(1 << (e & 1)); };
-export const hasWall = (p, a, b) => hasWallId(p.walls, edgeId(p.n, a, b));
-// All grid edges, in the legacy order (row-major; right edge before down edge). `holes` (optional, 1 = hole): edges touching a hole are left out.
-export function allEdges(n, holes = null) {
+export const hasWall = (p, a, b) => hasWallId(p.walls, edgeId(p.n, a, b, p.wrap));
+// All edges, in the legacy order (row-major; right edge before down edge). `holes` (optional,
+// 1 = hole): edges touching a hole are left out. wrap: a torus, so every cell has a right and a
+// down edge (the seam ones included).
+export function allEdges(n, holes = null, wrap = false) {
   const out = [];
-  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
-    const i = r * n + c;
+  for (let i = 0; i < n * n; i++) {
     if (holes && holes[i]) continue;
-    if (c + 1 < n && !(holes && holes[i + 1])) out.push(i * 2);
-    if (r + 1 < n && !(holes && holes[i + n])) out.push(i * 2 + 1);
+    const right = neighbourCell(n, wrap, i, 0), down = neighbourCell(n, wrap, i, 2);
+    if (right >= 0 && !(holes && holes[right])) out.push(i * 2);
+    if (down >= 0 && !(holes && holes[down])) out.push(i * 2 + 1);
   }
   return out;
 }
@@ -19,7 +43,11 @@ export const wallIds = p => { const o = []; for (let i = 0; i < p.n * p.n; i++) 
 export const wallCount = p => wallIds(p).length;
 export const edgeToKey = (n, e) => `${e & 1 ? 'H' : 'V'},${((e >> 1) / n) | 0},${(e >> 1) % n}`;
 export const keyToEdge = (n, k) => { const [t, r, c] = k.split(','); return (+r * n + +c) * 2 + (t === 'H' ? 1 : 0); };
-export const pathEdgeIds = (n, path) => { const o = []; for (let i = 1; i < path.length; i++) o.push(edgeId(n, path[i - 1], path[i])); return o; };
+export const pathEdgeIds = (n, path, wrap = false) => {
+  const o = [];
+  for (let i = 1; i < path.length; i++) o.push(edgeId(n, path[i - 1], path[i], wrap));
+  return o;
+};
 
 // One-way arrows (puzzle.arrows, Uint8Array(n*n); only the "One way arrows" variant has them).
 // They sit on the same edges as walls (edge ids above) and use arrows[cell] the same way, two

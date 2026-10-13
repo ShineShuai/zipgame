@@ -37,7 +37,6 @@ const POP = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
 // holes (optional Uint8Array, 1 = hole): cells that are not on the board; they are skipped. cells (default T): how many cells the
 // path covers in all.
 export function makeIncremental(nb, T, end, vis, holes = null, cells = T) {
-  const n = Math.round(Math.sqrt(T));
   const AV = 0, FR = T, FD = 2 * T, DG = 3 * T, OE = 4 * T, CN = 5 * T;
   const S = new Int32Array(6 * T);
   const nbm = new Uint8Array(T); // static open-edge mask (walls and borders excluded)
@@ -86,8 +85,6 @@ export function makeIncremental(nb, T, end, vis, holes = null, cells = T) {
 
   // x and y are the two ends of one forced chain: an open edge between them would close a cycle. Drop it.
   function dropClosingEdge(x, y) {
-    const gap = x > y ? x - y : y - x;
-    if (gap !== 1 && gap !== n) return true; // not grid neighbours: nothing to drop
     for (let d = 0; d < 4; d++) {
       if (nb[x * 4 + d] !== y || ((S[AV + x] & ~S[FR + x]) >> d & 1) === 0) continue;
       set(AV + x, S[AV + x] & ~(1 << d));

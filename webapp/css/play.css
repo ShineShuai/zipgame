@@ -315,14 +315,22 @@ select:focus { border-color: var(--blue); }
 .gotd-card .status-panel { margin-top: auto; padding-top: 12px; } /* replays and streak sit at the foot of the card */
 .gotd-card .card-badge { background: #fff1d6; color: #e8890c; }
 
-/* Puzzle type: big tiles (Standard and the unlocked variants; hold V adds the locked ones), each showing the board it plays. The radio is
+/* Puzzle type: big tiles (Standard and the unlocked variants), each showing the board it plays. The radio is
    stretched over its tile (invisible), so a tap anywhere selects it; the selected tile gets a blue frame and a check mark. The grid
    fits any number of tiles: two per row on a phone, more where the card is wider. */
 .variant-picker { min-width: 0; margin: 0 0 18px; padding: 0; border: 0; }
 .variant-picker legend { padding: 0; margin-bottom: 8px; }
 .variant-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
 .variant-opt { position: relative; display: block; cursor: pointer; }
-/* a locked variant, shown only while V is held: dashed, with a lock */
+/* the play rules of a type, in a tooltip under its tile (hover, keyboard focus or a tap); main.js keeps it inside the window */
+.variant-rules {
+  display: none; position: absolute; left: 50%; top: calc(100% + 6px); z-index: 5;
+  width: 230px; max-width: calc(100vw - 16px); padding: 10px 14px; border-radius: 12px;
+  background: var(--heading); color: #fff; box-shadow: var(--shadow); text-align: left;
+  font-size: 0.86rem; font-weight: 400; line-height: 1.45; pointer-events: none;
+}
+.variant-rules.show { display: block; }
+/* a locked variant (dev reveal only): dashed, with a lock */
 .variant-locked .variant-card { border-style: dashed; background: #fafbff; }
 .variant-locked .variant-name::after { content: " \1F512"; font-size: 0.8em; }
 .variant-opt input {
@@ -431,13 +439,6 @@ select:focus { border-color: var(--blue); }
   font-weight: 600;
 }
 .hud-step { font-variant-numeric: tabular-nums; } /* Exact: the step of the head, "Step: 12/25" */
-.hud-next { padding: 4px 14px; border-radius: 999px; background: #fff; border: 1px solid var(--blue-soft); color: var(--blue-dark); font-weight: 600; }
-.hud-next:empty { display: none; }
-.hud-next.doomed { background: #fdecec; border-color: #e5484d; color: #b42318; } /* Exact Assist: out of reach */
-.assist-ring { animation: assist-pulse 1s ease-in-out infinite; }
-@keyframes assist-pulse { 50% { opacity: 0.35; } }
-.btn.secondary[aria-pressed="true"] { background: var(--blue-soft); border-color: var(--blue); }
-@media (prefers-reduced-motion: reduce) { .assist-ring { animation: none; } }
 
 .grid-wrap {
   display: flex;
@@ -466,6 +467,8 @@ select:focus { border-color: var(--blue); }
 
 /* Cutout: the tiles carry the white and the outline, so the holes show the page behind them */
 .zip-svg.cutout { background: transparent; box-shadow: none; overflow: visible; }
+/* Wrap-around: the white square and its dashed outline are drawn in the svg (play/board.js); the margin around them is where the seam stubs are seen */
+.zip-svg.wrap { background: transparent; box-shadow: none; }
 /* One way arrows: a step against an arrow flashes it (the polygon gets .blocked, see flashBlockedArrow in main.js). */
 .arrow-mark polygon { transform-box: fill-box; transform-origin: center; }
 .arrow-mark polygon.blocked { animation: arrow-blocked 0.45s ease-out; }

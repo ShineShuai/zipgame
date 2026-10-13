@@ -3,8 +3,10 @@
 // Generated puzzles may carry extra fields: path (the unique solution), seed. A puzzle of the
 // "One way arrows" variant has `arrows` (Uint8Array(n*n), one-way edges, see core/edges.js) and no
 // walls; solve() then runs solver/solve-dir.js.
-// A puzzle of the "Exact" (Hidato-style) variant has `exact: true`: the number of a cell is its
-// step on the path (the cell numbered 8 is the 8th cell of the path), so the numbers are not 1..K
+// A wrap-around puzzle has `wrap: true` (its edges join across the borders, core/geom.js; no holes,
+// arrows or Exact numbers yet). A puzzle of the "Exact" (Hidato-style) variant has `exact: true`:
+// the number of a cell is its step on the path (the cell numbered 8 is the 8th cell of the path),
+// so the numbers are not 1..K
 // but any increasing steps, 1 and the cell count among them. solve() then searches with the steps
 // (see exactRanks below) and isSolved() compares every number with its step.
 import { arrowProblem } from './edges.js';
@@ -19,6 +21,7 @@ export const clonePuzzle = p => ({
   ...(p.holes ? { holes: p.holes.slice() } : {}),
   ...(p.arrows ? { arrows: p.arrows.slice() } : {}),
   ...(p.exact ? { exact: true } : {}),
+  ...(p.wrap ? { wrap: true } : {}),
 });
 // Cells the path has to cover: all n*n, minus the holes. A puzzle may carry `holes` (Uint8Array(n*n), 1 = hole): cells that are
 // not part of the board (no edges, no checkpoint, not drawn, not counted). Only the Cutout variant (gen/cutout.js) has them.
@@ -114,6 +117,17 @@ function validateExact(p, nums) {
 }
 export const endCell = p => { const m = maxNumber(p); return m ? p.cp.indexOf(m) : -1; };
 
+// A wrap-around (torus) puzzle: its edges join across the borders (core/geom.js). A 2 x 2 board
+// would put two edges between the same two cells, so n >= 3. Holes, arrows and Exact numbers do
+// not come with it yet (their checks still assume a grid).
+function wrapProblem(p) {
+  if (p.n < 3) return 'Invalid: a wrap-around board needs at least 3 x 3.';
+  if (p.holes || p.arrows || p.exact) {
+    return 'Invalid: a wrap-around puzzle cannot have holes, arrows or exact numbers (yet).';
+  }
+  return null;
+}
+
 export function validate(p) {
   const nums = [];
   for (const v of p.cp) if (v) nums.push(v);
@@ -122,6 +136,10 @@ export function validate(p) {
   if (set.size !== nums.length) return { ok: false, msg: 'Invalid: duplicate checkpoint numbers.' };
   if (!set.has(1)) return { ok: false, msg: 'Invalid: missing checkpoint 1 — numbering must start at 1.' };
   if (p.holes) for (let i = 0; i < p.cp.length; i++) if (p.holes[i] && p.cp[i]) return { ok: false, msg: 'Invalid: a checkpoint sits on a hole.' };
+  if (p.wrap) {
+    const problem = wrapProblem(p);
+    if (problem) return { ok: false, msg: problem };
+  }
   if (p.exact) return validateExact(p, nums);
   if (p.arrows) {
     const problem = arrowProblem(p);

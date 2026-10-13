@@ -4,6 +4,7 @@ import {
   arrowMove,
 } from './edges.js';
 import { gridAdjacent, canStep } from './rules.js';
+import { adjacent } from './geom.js';
 
 export const MAX_N = 16;
 
@@ -59,9 +60,15 @@ export function serialize(p, opts = {}) {
   if (p.exact) {
     lines.push('# exact                   (a number is the step of its cell on the path: Exact variant)');
   }
+  if (p.wrap) {
+    lines.push('# wrap                    (the edges join across the borders: a torus; Wrap-around)');
+  }
   if (opts.path && opts.path.length) lines.push('# path r,c ...           (current play-mode line, in order, optional)');
   lines.push(...timeComments(opts.times));
-  lines.push(`size ${p.n}`, cps.length ? 'checkpoints ' + cps.join(' ') : 'checkpoints', ws.length ? 'walls ' + ws.join(' ') : 'walls');
+  lines.push(`size ${p.n}`);
+  if (p.wrap) lines.push('wrap');
+  lines.push(cps.length ? 'checkpoints ' + cps.join(' ') : 'checkpoints',
+    ws.length ? 'walls ' + ws.join(' ') : 'walls');
   if (hs.length) lines.push('holes ' + hs.join(' '));
   if (as) lines.push(as.length ? 'arrows ' + as.join(' ') : 'arrows');
   if (p.exact) lines.push('exact');
@@ -77,7 +84,7 @@ export function serialize(p, opts = {}) {
 // solution path (see model.js).
 export function parse(text) {
   let n = null; const cps = [], ws = [], hs = [], as = []; let pathCells = null, hasArrows = false;
-  let isExact = false;
+  let isExact = false, isWrap = false;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim(); if (!line || line.startsWith('#')) continue;
     const parts = line.split(/\s+/), kw = parts[0].toLowerCase();
@@ -100,6 +107,9 @@ export function parse(text) {
     } else if (kw === 'exact') {
       if (parts.length > 1) throw new Error('The "exact" line takes no values.');
       isExact = true;
+    } else if (kw === 'wrap') {
+      if (parts.length > 1) throw new Error('The "wrap" line takes no values.');
+      isWrap = true;
     } else if (kw === 'path') {
       pathCells = [];
       for (const t of parts.slice(1)) { const m = t.match(/^(\d+),(\d+)$/); if (!m) throw new Error(`Invalid path cell: "${t}"`); pathCells.push([+m[1], +m[2]]); }
@@ -107,6 +117,13 @@ export function parse(text) {
   }
   if (n === null) throw new Error('Missing "size" line.');
   const p = makePuzzle(n);
+  if (isWrap) {
+    if (n < 3) throw new Error('A wrap-around board needs at least 3 x 3.');
+    if (hasArrows || isExact || hs.length) {
+      throw new Error('A wrap-around puzzle cannot have holes, arrows or exact numbers (yet).');
+    }
+    p.wrap = true;
+  }
   if (hs.length) {
     p.holes = new Uint8Array(n * n);
     for (const [r, c] of hs) {
@@ -122,8 +139,12 @@ export function parse(text) {
   }
   for (const [t, r, c] of ws) {
     if (r >= n || c >= n) throw new Error(`Wall out of range: ${t},${r},${c}`);
-    if (t === 'V' && c >= n - 1) throw new Error(`Vertical wall out of range: ${t},${r},${c}`);
-    if (t === 'H' && r >= n - 1) throw new Error(`Horizontal wall out of range: ${t},${r},${c}`);
+    if (t === 'V' && c >= n - 1 && !p.wrap) {
+      throw new Error(`Vertical wall out of range: ${t},${r},${c}`);
+    }
+    if (t === 'H' && r >= n - 1 && !p.wrap) {
+      throw new Error(`Horizontal wall out of range: ${t},${r},${c}`);
+    }
     setWallId(p.walls, keyToEdge(n, `${t},${r},${c}`), true);
   }
   if (hasArrows) {
@@ -153,7 +174,9 @@ export function parse(text) {
     });
     for (let i = 1; i < path.length; i++) {
       if (p.holes && (p.holes[path[i - 1]] || p.holes[path[i]])) throw new Error(`Path enters a hole at step ${i}: ${pathCells[i - 1].join(',')} -> ${pathCells[i].join(',')}`);
-      if (!gridAdjacent(n, path[i - 1], path[i])) throw new Error(`Path is not connected at step ${i}: ${pathCells[i - 1].join(',')} -> ${pathCells[i].join(',')}`);
+      if (!adjacent(n, !!p.wrap, path[i - 1], path[i])) {
+        throw new Error(`Path is not connected at step ${i}: ${pathCells[i - 1].join(',')} -> ${pathCells[i].join(',')}`);
+      }
       if (!canStep(p, path[i - 1], path[i])) throw new Error(`Path crosses a wall at step ${i}: ${pathCells[i - 1].join(',')} -> ${pathCells[i].join(',')}`);
     }
     if (new Set(path).size !== path.length) throw new Error('Path revisits a cell.');

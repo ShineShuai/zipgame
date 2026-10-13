@@ -5,10 +5,10 @@ import { shuffle } from '../rng.js';
 // Generators (function*) so callers can drive them synchronously (tests) or time-sliced (UI).
 // Yielded values are progress events { frac, walls, K }.
 
-// 0/1 lookup by edge id: which edges a path uses.
-function edgeMarks(n, path) {
+// 0/1 lookup by edge id: which edges a path uses (wrap: on the wrap-around board, seams included).
+function edgeMarks(n, path, wrap = false) {
   const marks = new Uint8Array(n * n * 2);
-  for (const e of pathEdgeIds(n, path)) marks[e] = 1;
+  for (const e of pathEdgeIds(n, path, wrap)) marks[e] = 1;
   return marks;
 }
 
@@ -26,9 +26,10 @@ export function* makeUnique(p, path, rnd, cfg) {
   const n = p.n;
   const { nodeCap, seedFraction, K, prop, legCollide, counts, flags } = cfg;
   const solveOpts = flags ? { ...flags } : { prop, legCollide };
-  const all = allEdges(n, p.holes); // no wall is ever put next to a hole
+  const wrap = !!p.wrap;
+  const all = allEdges(n, p.holes, wrap); // no wall is ever put next to a hole
   const maxWalls = cfg.wallBudget == null ? all.length : cfg.wallBudget;
-  const anchor = edgeMarks(n, path);
+  const anchor = edgeMarks(n, path, wrap);
   const pool = shuffle(all.filter(e => !anchor[e]), rnd); // walls we may still place, in random order
   const order = [];                                       // walls placed so far
   let next = 0;                                           // first pool index not handed out yet
@@ -52,10 +53,10 @@ export function* makeUnique(p, path, rnd, cfg) {
   // A random edge used by exactly one of the two solutions (never an anchor edge), or null.
   // Walling it rules that solution out.
   function distinguishingWall(pathA, pathB) {
-    const edgesA = pathEdgeIds(n, pathA);
-    const edgesB = pathEdgeIds(n, pathB);
-    const inA = edgeMarks(n, pathA);
-    const inB = edgeMarks(n, pathB);
+    const edgesA = pathEdgeIds(n, pathA, wrap);
+    const edgesB = pathEdgeIds(n, pathB, wrap);
+    const inA = edgeMarks(n, pathA, wrap);
+    const inB = edgeMarks(n, pathB, wrap);
     let diff = edgesA.filter(e => !inB[e] && !anchor[e]);
     if (diff.length === 0) diff = edgesB.filter(e => !inA[e] && !anchor[e]);
     if (diff.length === 0) return null;
@@ -117,7 +118,7 @@ export function tryRemoveWall(p, wall, cap, solveOpts, freedEdge, counts) {
   if (counts) counts.minimizeWalls++;
   let check;
   if (freedEdge) {
-    const [a, b] = edgeCells(p.n, wall);
+    const [a, b] = edgeCells(p.n, wall, p.wrap);
     check = solve(p, { limit: 1, nodeCap: cap, mustUse: [a, b], ...solveOpts });
   } else {
     check = solve(p, { limit: 2, nodeCap: cap, ...solveOpts });
@@ -183,7 +184,7 @@ export function* minimizeWalls(p, order, rnd, checkCap, K, opts = {}) {
 export function* refineWalls(p, uncertain, rnd, opts = {}) {
   const { counts, caps = [], budget = Infinity, K } = opts;
   const { solveOpts, freedEdge } = checkOptions(opts, true);
-  let current = opts.walls ?? allEdges(p.n).filter(e => hasWallId(p.walls, e)).length;
+  let current = opts.walls ?? allEdges(p.n, null, p.wrap).filter(e => hasWallId(p.walls, e)).length;
   let todo = shuffle([...uncertain], rnd);
   let nodes = 0;
   let removed = 0;

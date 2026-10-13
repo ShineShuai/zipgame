@@ -1,5 +1,5 @@
-// Icons of the play menu: one per puzzle variant (standard, cutout, arrows, exact) and one per
-// menu card.
+// Icons of the play menu: one per puzzle variant (standard, cutout, arrows, exact, wrap) and one
+// per menu card.
 // Plain SVG strings, no DOM. Colours come from css/play.css (.vi-*, currentColor), so the
 // icons follow the page theme and the same markup serves the picker, the HUD and the cards.
 
@@ -81,16 +81,36 @@ function stepBadges() {
   return badges.join('');
 }
 
-// variant: 'cutout', 'arrows', 'exact', 'lucky' (the mystery of the lucky game) or anything else
-// (= standard). Class: variant-icon vi-standard | vi-cutout | vi-arrows | vi-exact | vi-lucky.
+// Wrap-around icon: the path leaves the board on the left of the second row and comes back in on
+// its right (two stubs into the margin), then runs down the right column.
+const WRAP_OUT = [[2, 0], [2, 1], [0, 1]];
+const WRAP_IN = [[3, 1], [3, 3]];
+const STUB = 2.5; // how far the stubs reach out of the board, in viewBox units
+
+function wrapRoute() {
+  const at = ([col, row]) => `${centre(col)},${centre(row)}`;
+  const y = centre(1);
+  const out = [...WRAP_OUT.map(at), `${ORIGIN - STUB},${y}`];
+  const back = [`${ORIGIN + UNIT * CELLS + STUB},${y}`, ...WRAP_IN.map(at)];
+  const dot = ([col, row]) =>
+    `<circle class="vi-dot" cx="${centre(col)}" cy="${centre(row)}" r="2.7"/>`;
+  return `<polyline class="vi-path" points="${out.join(' ')}"/>` +
+    `<polyline class="vi-path" points="${back.join(' ')}"/>` +
+    `${dot(WRAP_OUT[0])}${dot(WRAP_IN[WRAP_IN.length - 1])}`;
+}
+
+// variant: 'cutout', 'arrows', 'exact', 'wrap', 'lucky' (the mystery of the lucky game) or anything
+// else (= standard). Class: variant-icon vi-standard | vi-cutout | vi-arrows | vi-exact | vi-wrap |
+// vi-lucky.
 export function variantIcon(variant) {
   if (variant === 'lucky') return luckyIcon();
   const cutout = variant === 'cutout';
   const arrows = variant === 'arrows';
   const exact = variant === 'exact';
-  const name = cutout ? 'cutout' : arrows ? 'arrows' : exact ? 'exact' : 'standard';
+  const wrap = variant === 'wrap';
+  const name = cutout ? 'cutout' : arrows ? 'arrows' : exact ? 'exact' : wrap ? 'wrap' : 'standard';
   const board = tiles(cutout ? RING_HOLES : NO_HOLES);
-  const path = route(cutout ? LAP : SNAKE);
+  const path = wrap ? wrapRoute() : route(cutout ? LAP : SNAKE);
   return `<svg class="variant-icon vi-${name}" viewBox="0 0 48 48" aria-hidden="true" ` +
     'focusable="false"><rect class="vi-bg" x="2" y="2" width="44" height="44" rx="11"/>' +
     `${board}${path}${arrows ? arrowheads() : ''}${exact ? stepBadges() : ''}</svg>`;

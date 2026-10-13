@@ -147,7 +147,7 @@ export function diagnosticsHtml(d) {
   }
   const gradeRows = GRADE_ORDER.map((id, i) => {
     const th = DEFAULT_THRESHOLDS_BY_METRIC[id];
-    const where = i < 3 ? 'Play app, hold V (decisionNodes was the badge before the trap grade)' : 'Design app only';
+    const where = i < 3 ? 'Previous grades (decisionNodes was the badge before the trap grade)' : 'Design app only';
     return row(GRADED_METRICS[id].label, `${d.grades[id]} / 5`,
       `${where}. Raw value ${fmt(d.raw[id])}, bucketed with its own calibrated cutpoints [${th.join(', ')}].`);
   }).join('');

@@ -10,7 +10,7 @@ import {
   variantOf, variantById, sizesFor, nearestSize, PLAY_VARIANTS,
 } from '../src/apps/play/variants.js';
 import { variantIcon } from '../src/apps/play/icons.js';
-import { boardSvg, badgeColors, COLORS } from '../src/apps/play/board.js';
+import { boardSvg, badgeColors, stepWrong, COLORS } from '../src/apps/play/board.js';
 import { EN, ZH } from '../src/ui/i18n.js';
 import { encodeShare, decodeShare, VARIANTS } from '../src/core/share-code.js';
 import {
@@ -245,6 +245,8 @@ export function playExactTests(t, ok, eq) {
     eq([badge(right, 0), badge(right, 2), badge(right, 8)], blue);
     const wrong = board(p, [0, 3, 4, 1, 2]); // number 3 reached on step 5
     eq([badge(wrong, 0), badge(wrong, 2)], [COLORS.number, COLORS.numberWrong]);
+    const flags = [[0, 1, 2], [0, 3, 4, 1, 2]].map(path => stepWrong(p, path, 2));
+    eq([...flags, stepWrong(makePuzzle(3), [0, 1, 2], 2)], [false, true, false]);
     const idle = { fill: COLORS.numberFill, stroke: COLORS.number, text: COLORS.number };
     eq(badgeColors(false), idle);
     eq(badgeColors(true).fill, COLORS.number);

@@ -14,6 +14,19 @@ import { solve } from '../solver/solve.js';
 export const CANDIDATES = { 5: 64, 6: 64, 7: 64, 8: 64, 9: 64, 10: 32, 11: 32, 12: 16, 16: 8 };
 export const PLAY_SIZES = Object.keys(CANDIDATES).map(Number);
 const candidatesFor = n => CANDIDATES[n] || 2;
+// The same for wrap-around puzzles (sizes 3 and up). Measured on 12 seeds: at n = 6 the average
+// wall count goes 9.8 (2 candidates), 6.4 (32), 6.2 (64), 5.7 (128), at about 4, 60, 120 and
+// 220 ms; beyond 64 the gain is small. A wrap-around puzzle needs 4 to 8 walls where the grid
+// needs 0 or 1 (no free starts).
+export const WRAP_CANDIDATES = { 3: 8, 4: 64, 5: 64, 6: 64, 7: 32, 8: 16 };
+// Humans find the seams hard to hold in mind, so the play app offers the smaller boards only.
+// 7 and 8 take about 0.3 and 0.5 s to generate (8 to 12 walls); the wall count hardly depends on
+// the candidate count there.
+export const WRAP_MIN_OFFERED = 4;
+export const WRAP_MAX_OFFERED = 8;
+export const WRAP_SIZES = Object.keys(WRAP_CANDIDATES)
+  .map(Number)
+  .filter(n => n >= WRAP_MIN_OFFERED && n <= WRAP_MAX_OFFERED);
 // Most attempts spent per candidate. Failed attempts (Warnsdorff dead ends) are cheap and 30-60% of
 // attempts succeed, so this only guards against an unlucky seed.
 const ATTEMPTS_PER_CANDIDATE = 12;
@@ -46,18 +59,24 @@ export function pickK(Kmin, Kmax, rnd) {
 
 // One attempt: path -> checkpoints -> walls until unique. Returns the puzzle (with .path and .order) or null.
 // o.path: 'warnsdorff' | 'backbite';  o.cps: 'gap' | 'random';  o.prop: solver propagation.
+// o.wrap: a wrap-around puzzle (core/geom.js): the path, the checkpoint gaps and the walls all
+// use the seams; the puzzle gets wrap: true. The grid attempt is unchanged by it.
 // o.legCollide: leg-collision pruning (see solve.js); o.flags: optional full build-phase solve()
 // opts (see gen/flags.js), overrides o.prop/o.legCollide when given, passed straight through to
 // makeUnique; o.counts: optional call-count accumulator, passed straight through to makeUnique.
 export function* tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, o = {}) {
+  const wrap = !!o.wrap;
   const findPath = o.path === 'backbite' ? backbite : warnsdorff;
-  const path = findPath(n, rnd);
+  const path = findPath(n, rnd, wrap);
   if (!path) return null;
 
-  const positions = o.cps === 'random' ? randomCheckpoints(path.length, K, rnd) : gapCheckpoints(n, path, K);
+  const positions = o.cps === 'random'
+    ? randomCheckpoints(path.length, K, rnd)
+    : gapCheckpoints(n, path, K, wrap);
   if (!positions) return null;
 
   const p = makePuzzle(n);
+  if (wrap) p.wrap = true;
   positions.forEach((q, i) => {
     p.cp[path[q]] = i + 1;
   });
@@ -70,8 +89,9 @@ export function* tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, o = {
 }
 
 // Last resort: every cell numbered along a Hamiltonian path.
-function numberEveryCell(n, path, seed) {
+function numberEveryCell(n, path, seed, wrap = false) {
   const p = makePuzzle(n);
+  if (wrap) p.wrap = true;
   path.forEach((cell, i) => {
     p.cp[cell] = i + 1;
   });
@@ -98,12 +118,15 @@ const fewestWalls = candidates => (
 //   (refineWalls in walls.js), within o.refineNodes solver nodes (default REFINE_NODES_PER_CELL * n^2; 0 = off).
 //   A node budget, not a clock, so the same seed still gives the same puzzle on every device.
 // Events: { frac|null, walls, K }. `walls` never increases: it is the fewest walls found so far.
+// o.wrap: a wrap-around puzzle (needs n >= 3; core/geom.js), candidates from WRAP_CANDIDATES.
 export function* generate(n, seed, o = {}) {
   const depth = o.retryDepth || 0;
   const cells = n * n;
+  const wrap = !!o.wrap;
+  if (wrap && n < 3) throw new Error('A wrap-around puzzle needs n >= 3');
   const prop = o.prop !== false;
   const freedEdge = o.freedEdge !== false;
-  const wanted = o.candidates || candidatesFor(n);
+  const wanted = o.candidates || (wrap ? WRAP_CANDIDATES[n] || 2 : candidatesFor(n));
   const rnd = makeRng(seed);
   const nodeCap = Math.round(Math.max(30000, 200 * cells) * (o.capX ?? (prop ? PROP_CAP_X : 1)));
   const fallbackCap = Math.min(2000000, Math.max(300000, 20 * nodeCap));
@@ -117,13 +140,13 @@ export function* generate(n, seed, o = {}) {
   const maxAttempts = wanted * ATTEMPTS_PER_CANDIDATE;
   for (let attempt = 0; attempt < maxAttempts && candidates.length < wanted; attempt++) {
     // The attempt's own wall counts jump around, so report the fewest found so far instead.
-    const attemptEvents = tryGenerate(n, K, rnd, nodeCap, cells, SEED_FRACTION, { prop });
+    const attemptEvents = tryGenerate(n, K, rnd, nodeCap, cells, SEED_FRACTION, { prop, wrap });
     const found = yield* tag(attemptEvents, { walls: fewestWalls(candidates) });
     if (found) candidates.push(found);
     yield { frac: (BUILD_SHARE * candidates.length) / wanted, walls: fewestWalls(candidates), K };
   }
   for (let fallback = 0; fallback < 4 && candidates.length === 0; fallback++) {
-    const attemptEvents = tryGenerate(n, K, rnd, fallbackCap, cells, SEED_FRACTION, { prop });
+    const attemptEvents = tryGenerate(n, K, rnd, fallbackCap, cells, SEED_FRACTION, { prop, wrap });
     const found = yield* tag(attemptEvents, { walls: fewestWalls(candidates) });
     if (found) candidates.push(found);
     yield { frac: BUILD_SHARE, walls: fewestWalls(candidates), K };
@@ -135,7 +158,7 @@ export function* generate(n, seed, o = {}) {
     }
     // Last resorts, bounded (no unbounded recursion): densest K, then "number every cell".
     const denseCap = Math.max(300000, 20 * nodeCap);
-    const dense = yield* tryGenerate(n, Kmax, rnd, denseCap, cells, 0, { prop });
+    const dense = yield* tryGenerate(n, Kmax, rnd, denseCap, cells, 0, { prop, wrap });
     if (dense) {
       if (dense.order.length) yield* minimizeWalls(dense, dense.order, rnd, nodeCap, Kmax, { prop, freedEdge });
       delete dense.order;
@@ -143,8 +166,8 @@ export function* generate(n, seed, o = {}) {
       return dense;
     }
     for (let x = 0; x < 11; x++) {
-      const path = warnsdorff(n, rnd);
-      if (path) return numberEveryCell(n, path, seed);
+      const path = warnsdorff(n, rnd, wrap);
+      if (path) return numberEveryCell(n, path, seed, wrap);
     }
     throw new Error('Puzzle generation failed: could not construct a Hamiltonian path for N=' + n);
   }
@@ -208,10 +231,11 @@ export function* generate(n, seed, o = {}) {
 // ---- Designer helpers (random, unseeded by design: caller supplies rnd) ----
 
 // Random Hamiltonian path + K random checkpoints along it, no walls.
-export function randomPathPuzzle(n, K, rnd) {
+export function randomPathPuzzle(n, K, rnd, wrap = false) {
   K = Math.max(2, Math.min(K, n * n));
-  const path = backbite(n, rnd);
+  const path = backbite(n, rnd, wrap);
   const p = makePuzzle(n);
+  if (wrap) p.wrap = true;
   randomCheckpoints(path.length, K, rnd).forEach((q, i) => {
     p.cp[path[q]] = i + 1;
   });
@@ -226,9 +250,9 @@ export const GENERATE_UNIQUE_REFINE_X = 10;
 
 // Share of the free edges a designer attempt pre-walls at random: SEED_FRACTION without a wall cap,
 // otherwise only as many walls as the cap allows, so the seeds never outgrow what the puzzle may keep.
-function designSeedFraction(n, maxWalls) {
+function designSeedFraction(n, maxWalls, wrap = false) {
   if (maxWalls == null) return SEED_FRACTION;
-  const freeEdges = n * (n - 1) * 2 - (n * n - 1);
+  const freeEdges = (wrap ? 2 * n * n : n * (n - 1) * 2) - (n * n - 1);
   return Math.min(SEED_FRACTION, maxWalls / freeEdges);
 }
 
@@ -256,6 +280,7 @@ function* tag(gen, extra) {
 // o.refineNodes (default GENERATE_UNIQUE_REFINE_X * 2 * nodeCap): solver-node budget per attempt for the deeper look at walls
 //   that minimizing kept only because a check hit its cap (minimizeFully in walls.js); 0 = minimize once, as before.
 //   An attempt with a wall cap skips it when even removing every undecided wall could not get under maxWalls.
+// o.wrap: a wrap-around puzzle (needs n >= 3; core/geom.js).
 // o.prop (default true): solver propagation (same solutions, far fewer nodes).
 // o.legCollide (default false): leg-collision pruning (see legsCollide() in solver/prune.js) —
 //   applied to every internal solve() call this makes (the makeUnique probe/search loop,
@@ -287,7 +312,9 @@ export function* generateUnique(n, K, rnd, o = {}) {
   const cpsAlgo = f ? f.cps : 'gap';
   const tries = o.tries || (unbounded ? 3 : CAPPED_TRIES);
   const wallBudget = unbounded ? null : Math.ceil(maxWalls * 2.5);
-  const seedFraction = designSeedFraction(n, maxWalls);
+  const wrap = !!o.wrap;
+  if (wrap && n < 3) throw new Error('A wrap-around puzzle needs n >= 3');
+  const seedFraction = designSeedFraction(n, maxWalls, wrap);
   const refineBudget = o.refineNodes ?? GENERATE_UNIQUE_REFINE_X * nodeCap * 2;
   const counts = { makeUnique: 0, minimizeWalls: 0, other: 0 };
   const withTotal = () => ({ ...counts, total: counts.makeUnique + counts.minimizeWalls + counts.other });
@@ -296,7 +323,9 @@ export function* generateUnique(n, K, rnd, o = {}) {
   let found = 0;
   for (let attempt = 0; attempt < tries; attempt++) {
     const extra = { attempt: attempt + 1, of: tries };
-    const gen = tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, { path: pathAlgo, cps: cpsAlgo, flags: buildFlags, counts });
+    const gen = tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, {
+      path: pathAlgo, cps: cpsAlgo, flags: buildFlags, counts, wrap,
+    });
     const p = yield* tag(gen, extra);
     if (p) {
       const before = p.order.length;
@@ -319,5 +348,6 @@ export function* generateUnique(n, K, rnd, o = {}) {
     yield { frac: (attempt + 1) / tries, walls: best ? best.walls : null, K, found, ...extra };
   }
   if (best) return { ...best, found, counts: withTotal() };
-  return { puzzle: randomPathPuzzle(n, K, rnd), unique: false, walls: 0, removed: 0, attempts: tries, found: 0, counts: withTotal() };
+  const puzzle = randomPathPuzzle(n, K, rnd, wrap);
+  return { puzzle, unique: false, walls: 0, removed: 0, attempts: tries, found: 0, counts: withTotal() };
 }
