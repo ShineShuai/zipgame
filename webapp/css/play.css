@@ -431,6 +431,13 @@ select:focus { border-color: var(--blue); }
   font-weight: 600;
 }
 .hud-step { font-variant-numeric: tabular-nums; } /* Exact: the step of the head, "Step: 12/25" */
+.hud-next { padding: 4px 14px; border-radius: 999px; background: #fff; border: 1px solid var(--blue-soft); color: var(--blue-dark); font-weight: 600; }
+.hud-next:empty { display: none; }
+.hud-next.doomed { background: #fdecec; border-color: #e5484d; color: #b42318; } /* Exact Assist: out of reach */
+.assist-ring { animation: assist-pulse 1s ease-in-out infinite; }
+@keyframes assist-pulse { 50% { opacity: 0.35; } }
+.btn.secondary[aria-pressed="true"] { background: var(--blue-soft); border-color: var(--blue); }
+@media (prefers-reduced-motion: reduce) { .assist-ring { animation: none; } }
 
 .grid-wrap {
   display: flex;

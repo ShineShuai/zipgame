@@ -68,6 +68,7 @@ import { exactTests } from './exact.js';
 import { exactGenTests } from './exact-gen.js';
 import { playExactTests } from './play-exact.js';
 import { wrapAllTests } from './wrap-all.js';
+import { exactAssistTests } from './exact-assist.js';
 import { arrowsGenTests } from './arrows-gen.js';
 import { playArrowsTests } from './play-arrows.js';
 import { unlockTests } from './unlock.js';
@@ -3056,6 +3057,7 @@ designArrowsTests(t, ok, eq);
 exactTests(t, ok, eq);
 exactGenTests(t, ok, eq);
 playExactTests(t, ok, eq);
+exactAssistTests(t, ok, eq);
 
 // ---------- Wrap-around (torus) puzzles ----------
 wrapAllTests(t, ta, ok, eq);

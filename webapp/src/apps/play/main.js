@@ -17,6 +17,7 @@ import { maxHints, computeHint, solutionOf, penalizedTime, HINT_PENALTY_S } from
 import { cellAtPoint, pathD, WRAP_PAD } from '../../view/geometry.js';
 import { bindModal, copyText } from '../../ui/modal.js';
 import { boardSvg, CELL, badgeColors, stepWrong, seamMarksSvg } from './board.js';
+import { assistState, numberStates } from '../../features/assist.js';
 import { variantIcon, cardIcon } from './icons.js';
 import { PLAY_VARIANTS, variantById, variantOf, sizesFor, nearestSize, luckyDefs } from './variants.js';
 import { createUnlock } from '../../features/unlock.js';
@@ -446,7 +447,7 @@ function difficultyBadgeHtml() {
   const d = S.difficulty;
   if (!d || !d.ok) return '';
   const g = d.trap.grade;
-  return `<span class="difficulty-badge" title="${t('game.badgeTip', g)}">${t('grade.' + g)} · ${g}/5</span>`;
+  return `<span class="difficulty-badge">${t('grade.' + g)} · ${g}/5</span>`;
 }
 // Hold-V block: the trap grade's raw inputs, then the previous grades as before — decisionNodes (the old
 // badge), B and crossPerSeg, each bucketed with its own calibration — and the raw numbers behind them.
@@ -465,10 +466,44 @@ function difficultyDevHtml() {
 function stepHudHtml(p) {
   if (!p.exact) return '';
   const now = `<b id="hudStep">${S.path.length}</b>`;
-  return `<div class="hud-step">${t('game.step', now, cellCount(p))}</div>`;
+  const step = `<div class="hud-step">${t('game.step', now, cellCount(p))}</div>`;
+  return step + assistHudHtml(p);
+}
+
+// Exact Assist: what the next number needs ("Next 20: 8 steps, 5 away"), in red when it cannot be
+// reached in time.
+function assistLine(state) {
+  if (state.status === 'ok') return t('assist.next', state.next, state.steps, state.away);
+  if (state.status === 'missed') return t('assist.missed', state.missed);
+  if (state.status !== 'doomed') return '';
+  if (state.away === null) return t('assist.cut', state.next);
+  return t('assist.far', state.next, state.steps, state.away);
+}
+
+function assistHudHtml(p) {
+  if (!p.exact || !S.assist) return '';
+  const state = assistState(p, S.path);
+  const doomed = state.status === 'doomed' || state.status === 'missed' ? ' doomed' : '';
+  return `<div class="hud-next${doomed}" id="hudNext">${assistLine(state)}</div>`;
+}
+
+// The Assist toggle (Exact games only), saved like the sound and language switches.
+function assistButtonHtml(p) {
+  if (!p.exact) return '';
+  const label = t(S.assist ? 'assist.on' : 'assist.off');
+  const tip = t('assist.tip');
+  const attrs = `id="assistBtn" aria-pressed="${S.assist}" title="${tip}"`;
+  return `<button class="btn secondary" ${attrs}>${label}</button>`;
+}
+async function initAssist() {
+  const saved = await storage.get('assist');
+  S.assist = Boolean(saved && saved.value === '1');
 }
 
 const VARIANT_TITLE = { cutout: ['game.cutoutTitle', 'game.sharedCutoutTitle'], arrows: ['game.arrowsTitle', 'game.sharedArrowsTitle'] };
+
+// Hint button: free play shows it by default; a Game of the Day or the lucky game hides it unless V is held (setDevReveal).
+const hintShown = () => S.showDev || !(S.isGotd || S.lucky);
 
 function renderGame() {
   const p = S.puzzle;
@@ -514,7 +549,8 @@ function renderGame() {
             <button class="btn secondary" id="backMenu2">${t('game.menu')}</button>
             ${newPuzzleButton}
             <button class="btn secondary" id="resetPath">${t('game.reset')}</button>
-            <button class="btn secondary" id="hintBtn" style="${hiddenUnlessDev}" ${hintDisabled}>Hint (${S.hintsUsed}/${cap})</button>
+            ${assistButtonHtml(p)}
+            <button class="btn secondary" id="hintBtn" style="${hintShown() ? '' : 'display:none'}" ${hintDisabled}>Hint (${S.hintsUsed}/${cap})</button>
             <button class="btn secondary" id="exportBtn" style="${hiddenUnlessDev}">Export</button>
           </div>
           ${solved}
@@ -556,6 +592,11 @@ function attachHandlers() {
   on('exportPlayLog', ev => { ev.preventDefault(); exportPlayLog(); });
   on('behaviourToggle', async ev => { ev.preventDefault(); S.behaviourOn = !S.behaviourOn; await behaviour.setOn(S.behaviourOn); render(); });
   on('newPuzzle', () => { if (!S.isGotd) startLocal('skip', S.variant || 'standard'); });
+  on('assistBtn', () => {
+    S.assist = !S.assist;
+    storage.set('assist', S.assist ? '1' : '0');
+    render();
+  });
   on('exportBtn', () => { $('exportText').value = serialize(S.puzzle); $('exportMsg').textContent = ''; modal.open(); setTimeout(() => $('exportText').focus(), 30); });
   on('hintBtn', () => {
     if (S.finished || S.hintsUsed >= maxHints(S.puzzle)) return;
@@ -594,7 +635,15 @@ function setupGridInput(svg) {
     badge.querySelector('text').setAttribute('fill', colors.text);
   };
   const clearHint = () => { if (S.hintCell == null && S.hintWrongCell == null) return; S.hintCell = S.hintWrongCell = null; svg.querySelectorAll('[data-role="hint"],[data-role="hint-wrong"]').forEach(e => e.remove()); };
-  const syncFills = () => { const on = new Set(S.path); svg.querySelectorAll('[data-num-cell]').forEach(g => fill(+g.dataset.numCell, on.has(+g.dataset.numCell))); };
+  // (an Exact puzzle's badges can turn red on any move: the step of a number passes)
+  const syncFills = () => {
+    const on = new Set(S.path);
+    const states = numberStates(p, S.path);
+    svg.querySelectorAll('[data-num-cell]').forEach(g => {
+      const cell = +g.dataset.numCell;
+      fill(cell, on.has(cell), states.get(cell));
+    });
+  };
   // A step against a one-way arrow: that arrow flashes (the animation is in css/play.css).
   function flashBlockedArrow(from, to) {
     if (!p.arrows || !gridAdjacent(n, from, to) || arrowAllows(p.arrows, n, from, to)) return;
@@ -615,7 +664,9 @@ function setupGridInput(svg) {
       }
       return;
     }
-    if (kind === 'push') fill(cell, true); else if (kind === 'pop') fill(prev, false); else syncFills();
+    if (p.exact || (kind !== 'push' && kind !== 'pop')) syncFills();
+    else if (kind === 'push') fill(cell, true);
+    else fill(prev, false);
     setD(); clearHint();
     if (kind === 'push' && isSolved(p, S.path)) { onSolved(); return; }
     if (kind === 'push') {
@@ -1004,7 +1055,7 @@ function stopTimer() { if (S.timerId) { clearInterval(S.timerId); S.timerId = nu
 function setDevReveal(on) {
   if (S.showDev === on) return; S.showDev = on;
   const b = $('versionBadge'); if (b) b.style.display = on ? 'block' : 'none';
-  const h = $('hintBtn'); if (h) h.style.display = on ? '' : 'none';
+  const h = $('hintBtn'); if (h) h.style.display = hintShown() ? '' : 'none';
   const x = $('exportBtn'); if (x) x.style.display = on ? '' : 'none';
   const sn = $('storageNote'); if (sn) sn.style.display = on ? '' : 'none';
   const bn = $('behaviourNote'); if (bn) bn.style.display = on ? '' : 'none';
@@ -1093,5 +1144,5 @@ async function initLang() {
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { setShareTip(false); setLuckyTip(false); closeStatTips(); } });
   modal = bindModal($('exportModal'));
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));
-  installDevReveal(); await initSoundToggle(); await initLang(); render();
+  installDevReveal(); await initSoundToggle(); await initAssist(); await initLang(); render();
 })();
