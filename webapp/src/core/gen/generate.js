@@ -1,7 +1,7 @@
 import { makePuzzle } from '../model.js';
 import { makeRng } from '../rng.js';
-import { warnsdorff, backbite } from './hampath.js';
-import { gapCheckpoints, randomCheckpoints } from './checkpoints.js';
+import { warnsdorff, backbite, ringPath } from './hampath.js';
+import { gapCheckpoints, randomCheckpoints, loopCheckpoints } from './checkpoints.js';
 import { makeUnique, minimizeWalls, refineWalls, minimizeFully, REFINE_CAP_X } from './walls.js';
 import { solve } from '../solver/solve.js';
 
@@ -19,6 +19,9 @@ const candidatesFor = n => CANDIDATES[n] || 2;
 // 220 ms; beyond 64 the gain is small. A wrap-around puzzle needs 4 to 8 walls where the grid
 // needs 0 or 1 (no free starts).
 export const WRAP_CANDIDATES = { 3: 8, 4: 64, 5: 64, 6: 64, 7: 32, 8: 16 };
+// The same for Loop puzzles (even sizes only: a ring needs an even number of cells). Set by
+// measuring, see gen/loop.js.
+export const LOOP_CANDIDATES = { 4: 64, 6: 32, 8: 16, 10: 8, 12: 4 };
 // Humans find the seams hard to hold in mind, so the play app offers the smaller boards only.
 // 7 and 8 take about 0.3 and 0.5 s to generate (8 to 12 walls); the wall count hardly depends on
 // the candidate count there.
@@ -61,22 +64,34 @@ export function pickK(Kmin, Kmax, rnd) {
 // o.path: 'warnsdorff' | 'backbite';  o.cps: 'gap' | 'random';  o.prop: solver propagation.
 // o.wrap: a wrap-around puzzle (core/geom.js): the path, the checkpoint gaps and the walls all
 // use the seams; the puzzle gets wrap: true. The grid attempt is unchanged by it.
+// o.loop: a Loop puzzle (n even): the path is a ring (ringPath), the puzzle gets loop: true and
+// the walls keep the closing edge free (walls.js).
 // o.legCollide: leg-collision pruning (see solve.js); o.flags: optional full build-phase solve()
 // opts (see gen/flags.js), overrides o.prop/o.legCollide when given, passed straight through to
 // makeUnique; o.counts: optional call-count accumulator, passed straight through to makeUnique.
 export function* tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, o = {}) {
   const wrap = !!o.wrap;
-  const findPath = o.path === 'backbite' ? backbite : warnsdorff;
-  const path = findPath(n, rnd, wrap);
-  if (!path) return null;
-
-  const positions = o.cps === 'random'
-    ? randomCheckpoints(path.length, K, rnd)
-    : gapCheckpoints(n, path, K, wrap);
-  if (!positions) return null;
+  const loop = !!o.loop;
+  let path;
+  let positions;
+  if (loop) {
+    // A ring, cut at cell 1, with the numbers short of the way round (loopCheckpoints).
+    const placed = loopCheckpoints(n, ringPath(n, rnd), K, rnd);
+    if (!placed) return null;
+    ({ path, positions } = placed);
+  } else {
+    const findPath = o.path === 'backbite' ? backbite : warnsdorff;
+    path = findPath(n, rnd, wrap);
+    if (!path) return null;
+    positions = o.cps === 'random'
+      ? randomCheckpoints(path.length, K, rnd)
+      : gapCheckpoints(n, path, K, wrap);
+    if (!positions) return null;
+  }
 
   const p = makePuzzle(n);
   if (wrap) p.wrap = true;
+  if (loop) p.loop = true;
   positions.forEach((q, i) => {
     p.cp[path[q]] = i + 1;
   });
@@ -89,9 +104,10 @@ export function* tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, o = {
 }
 
 // Last resort: every cell numbered along a Hamiltonian path.
-function numberEveryCell(n, path, seed, wrap = false) {
+function numberEveryCell(n, path, seed, wrap = false, loop = false) {
   const p = makePuzzle(n);
   if (wrap) p.wrap = true;
+  if (loop) p.loop = true;
   path.forEach((cell, i) => {
     p.cp[cell] = i + 1;
   });
@@ -123,10 +139,13 @@ export function* generate(n, seed, o = {}) {
   const depth = o.retryDepth || 0;
   const cells = n * n;
   const wrap = !!o.wrap;
+  const loop = !!o.loop;
   if (wrap && n < 3) throw new Error('A wrap-around puzzle needs n >= 3');
+  if (loop && (n % 2 || wrap)) throw new Error('A loop puzzle needs an even n, on a grid');
   const prop = o.prop !== false;
   const freedEdge = o.freedEdge !== false;
-  const wanted = o.candidates || (wrap ? WRAP_CANDIDATES[n] || 2 : candidatesFor(n));
+  const candidatesOf = () => (wrap ? WRAP_CANDIDATES[n] : loop ? LOOP_CANDIDATES[n] : candidatesFor(n));
+  const wanted = o.candidates || candidatesOf() || 2;
   const rnd = makeRng(seed);
   const nodeCap = Math.round(Math.max(30000, 200 * cells) * (o.capX ?? (prop ? PROP_CAP_X : 1)));
   const fallbackCap = Math.min(2000000, Math.max(300000, 20 * nodeCap));
@@ -140,13 +159,13 @@ export function* generate(n, seed, o = {}) {
   const maxAttempts = wanted * ATTEMPTS_PER_CANDIDATE;
   for (let attempt = 0; attempt < maxAttempts && candidates.length < wanted; attempt++) {
     // The attempt's own wall counts jump around, so report the fewest found so far instead.
-    const attemptEvents = tryGenerate(n, K, rnd, nodeCap, cells, SEED_FRACTION, { prop, wrap });
+    const attemptEvents = tryGenerate(n, K, rnd, nodeCap, cells, SEED_FRACTION, { prop, wrap, loop });
     const found = yield* tag(attemptEvents, { walls: fewestWalls(candidates) });
     if (found) candidates.push(found);
     yield { frac: (BUILD_SHARE * candidates.length) / wanted, walls: fewestWalls(candidates), K };
   }
   for (let fallback = 0; fallback < 4 && candidates.length === 0; fallback++) {
-    const attemptEvents = tryGenerate(n, K, rnd, fallbackCap, cells, SEED_FRACTION, { prop, wrap });
+    const attemptEvents = tryGenerate(n, K, rnd, fallbackCap, cells, SEED_FRACTION, { prop, wrap, loop });
     const found = yield* tag(attemptEvents, { walls: fewestWalls(candidates) });
     if (found) candidates.push(found);
     yield { frac: BUILD_SHARE, walls: fewestWalls(candidates), K };
@@ -158,13 +177,14 @@ export function* generate(n, seed, o = {}) {
     }
     // Last resorts, bounded (no unbounded recursion): densest K, then "number every cell".
     const denseCap = Math.max(300000, 20 * nodeCap);
-    const dense = yield* tryGenerate(n, Kmax, rnd, denseCap, cells, 0, { prop, wrap });
+    const dense = yield* tryGenerate(n, Kmax, rnd, denseCap, cells, 0, { prop, wrap, loop });
     if (dense) {
       if (dense.order.length) yield* minimizeWalls(dense, dense.order, rnd, nodeCap, Kmax, { prop, freedEdge });
       delete dense.order;
       dense.seed = seed;
       return dense;
     }
+    if (loop) return numberEveryCell(n, ringPath(n, rnd), seed, false, true);
     for (let x = 0; x < 11; x++) {
       const path = warnsdorff(n, rnd, wrap);
       if (path) return numberEveryCell(n, path, seed, wrap);

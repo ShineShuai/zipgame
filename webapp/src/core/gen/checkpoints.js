@@ -60,3 +60,18 @@ export function scatter(p, K, rnd) {
   const cp = new Uint16Array(T); order.forEach((c, i) => { cp[c] = i + 1; });
   return cp;
 }
+
+// Loop puzzle: the numbers on a ring (a closed Hamiltonian path, gen/hampath.js ringPath). The ring
+// is cut at a random cell, which becomes cell 1, and number K lies short of the way round: the last
+// LOOP_TAIL share of the ring (between K and cell 1) carries none, a random share in that range.
+// The numbers themselves are spread as in gapCheckpoints. Returns { path, positions } (the
+// ring from cell 1 on, and the K positions on it, the first 0) or null if there is no placement.
+export const LOOP_TAIL = [0.1, 0.4];
+export function loopCheckpoints(n, ring, K, rnd) {
+  const T = ring.length;
+  const cut = Math.floor(rnd() * T);
+  const path = ring.slice(cut).concat(ring.slice(0, cut));
+  const tail = Math.round(T * (LOOP_TAIL[0] + (LOOP_TAIL[1] - LOOP_TAIL[0]) * rnd()));
+  const positions = gapCheckpoints(n, path.slice(0, T - tail), K, false);
+  return positions ? { path, positions } : null;
+}
