@@ -1,4 +1,4 @@
-import { endCell, maxNumber } from './model.js';
+import { endCell, labelRanks } from './model.js';
 import { buildNeighbors, makeReachable, isDeadEnd, forcedEdges, legConflicts } from './solver/prune.js';
 
 // Live per-cell status from the current path head, for the design app's play-mode overlay.
@@ -85,12 +85,15 @@ export function boardLegCollide(p, path) {
   const head = path.length ? path[path.length - 1] : -1;
   if (head < 0) return { infeasible: false, conflicts: [] };
 
-  const K = maxNumber(p);
+  // Legs run between checkpoints in order: the numbers, or the ranks of an Exact puzzle's steps.
+  const rank = labelRanks(p);
+  let K = 0;
+  for (const v of rank) if (v > K) K = v;
   const pos = new Int32Array(K + 1).fill(-1);
-  for (let i = 0; i < T; i++) if (p.cp[i]) pos[p.cp[i]] = i;
+  for (let i = 0; i < T; i++) if (rank[i]) pos[rank[i]] = i;
 
   let need = 1;
-  for (const c of path) if (p.cp[c]) need = p.cp[c] + 1;
+  for (const c of path) if (rank[c]) need = rank[c] + 1;
   if (need > K) return { infeasible: false, conflicts: [] }; // already on the final checkpoint or past it
 
   const legs = [[head, pos[need]]];
