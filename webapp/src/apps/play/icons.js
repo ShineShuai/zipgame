@@ -1,4 +1,4 @@
-// Icons of the play menu: one per puzzle variant (standard, cutout, arrows, exact, wrap) and one
+// Icons of the play menu: one per puzzle variant (standard, cutout, arrows, exact, wrap, loop) and one
 // per menu card.
 // Plain SVG strings, no DOM. Colours come from css/play.css (.vi-*, currentColor), so the
 // icons follow the page theme and the same markup serves the picker, the HUD and the cards.
@@ -18,6 +18,10 @@ const RING_HOLES = new Set([5, 6, 9, 10]);
 // Solution paths as [col, row] corners: a snake over all 16 cells, a lap around the ring.
 const SNAKE = [[0, 0], [3, 0], [3, 1], [0, 1], [0, 2], [3, 2], [3, 3], [0, 3]];
 const LAP = [[0, 0], [3, 0], [3, 3], [0, 3], [0, 1]];
+// Loop icon: one closed ring through all 16 cells (it comes back to its start), with three
+// numbers on it in cyclic order.
+const RING = [[0, 0], [3, 0], [3, 1], [1, 1], [1, 2], [3, 2], [3, 3], [0, 3], [0, 0]];
+const ICON_RING_NUMBERS = [[0, 0, 1], [3, 1, 2], [1, 2, 3]];
 
 function tiles(holes) {
   const rects = [];
@@ -71,8 +75,8 @@ function arrowheads() {
 // at 16).
 const ICON_STEPS = [[0, 0, 1], [1, 1, 7], [3, 2, 12], [0, 3, 16]];
 
-function stepBadges() {
-  const badges = ICON_STEPS.map(([col, row, step]) => {
+function stepBadges(steps) {
+  const badges = steps.map(([col, row, step]) => {
     const x = centre(col);
     const y = centre(row);
     return `<circle class="vi-badge" cx="${x}" cy="${y}" r="4.1"/>` +
@@ -99,21 +103,23 @@ function wrapRoute() {
     `${dot(WRAP_OUT[0])}${dot(WRAP_IN[WRAP_IN.length - 1])}`;
 }
 
-// variant: 'cutout', 'arrows', 'exact', 'wrap', 'lucky' (the mystery of the lucky game) or anything
-// else (= standard). Class: variant-icon vi-standard | vi-cutout | vi-arrows | vi-exact | vi-wrap |
-// vi-lucky.
+// variant: 'cutout', 'arrows', 'exact', 'wrap', 'loop', 'lucky' (the mystery of the lucky game) or
+// anything else (= standard). Class: variant-icon vi-standard | vi-cutout | vi-arrows | vi-exact |
+// vi-wrap | vi-loop | vi-lucky.
 export function variantIcon(variant) {
   if (variant === 'lucky') return luckyIcon();
   const cutout = variant === 'cutout';
   const arrows = variant === 'arrows';
   const exact = variant === 'exact';
   const wrap = variant === 'wrap';
-  const name = cutout ? 'cutout' : arrows ? 'arrows' : exact ? 'exact' : wrap ? 'wrap' : 'standard';
+  const loop = variant === 'loop';
+  const name = cutout ? 'cutout' : arrows ? 'arrows' : exact ? 'exact' : wrap ? 'wrap' : loop ? 'loop' : 'standard';
   const board = tiles(cutout ? RING_HOLES : NO_HOLES);
-  const path = wrap ? wrapRoute() : route(cutout ? LAP : SNAKE);
+  const path = wrap ? wrapRoute() : route(cutout ? LAP : loop ? RING : SNAKE);
   return `<svg class="variant-icon vi-${name}" viewBox="0 0 48 48" aria-hidden="true" ` +
     'focusable="false"><rect class="vi-bg" x="2" y="2" width="44" height="44" rx="11"/>' +
-    `${board}${path}${arrows ? arrowheads() : ''}${exact ? stepBadges() : ''}</svg>`;
+    `${board}${path}${arrows ? arrowheads() : ''}${exact ? stepBadges(ICON_STEPS) : ''}` +
+    `${loop ? stepBadges(ICON_RING_NUMBERS) : ''}</svg>`;
 }
 
 // The mystery variant of the lucky game: a dimmed board under a question mark.
