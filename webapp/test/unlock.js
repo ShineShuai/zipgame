@@ -220,7 +220,8 @@ export function unlockTests(t, ta, ok, eq) {
 
   t('variants: each generator makes a puzzle that detect() and variantOf() assign to it', () => {
     for (const v of PLAY_VARIANTS) {
-      const puzzle = runSync(v.generate(5, 11));
+      const n = v.id === 'loop' ? 6 : 5; // a ring needs an even board
+      const puzzle = runSync(v.generate(n, 11));
       ok(v.detect(puzzle), `${v.id}: detect`);
       eq(variantOf(puzzle), v.id);
     }

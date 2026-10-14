@@ -63,10 +63,14 @@ export function serialize(p, opts = {}) {
   if (p.wrap) {
     lines.push('# wrap                    (the edges join across the borders: a torus; Wrap-around)');
   }
+  if (p.loop) {
+    lines.push('# loop                    (the last cell touches cell 1, a ring; numbers in cyclic order: Loop)');
+  }
   if (opts.path && opts.path.length) lines.push('# path r,c ...           (current play-mode line, in order, optional)');
   lines.push(...timeComments(opts.times));
   lines.push(`size ${p.n}`);
   if (p.wrap) lines.push('wrap');
+  if (p.loop) lines.push('loop');
   lines.push(cps.length ? 'checkpoints ' + cps.join(' ') : 'checkpoints',
     ws.length ? 'walls ' + ws.join(' ') : 'walls');
   if (hs.length) lines.push('holes ' + hs.join(' '));
@@ -78,13 +82,13 @@ export function serialize(p, opts = {}) {
 
 // An `arrows` line (even an empty one) makes it a One way arrows puzzle: p.arrows (core/edges.js).
 // An `exact` line (no values) makes it an Exact puzzle: p.exact, the numbers are steps
-// (core/model.js).
+// (core/model.js). A `loop` line (no values) makes it a Loop puzzle: p.loop, a ring.
 // Throws Error with a user-readable message. Returns the puzzle; if the text had a `path` line,
 // the puzzle also carries `.path` (array of cell indices) — same convention as a generated puzzle's
 // solution path (see model.js).
 export function parse(text) {
   let n = null; const cps = [], ws = [], hs = [], as = []; let pathCells = null, hasArrows = false;
-  let isExact = false, isWrap = false;
+  let isExact = false, isWrap = false, isLoop = false;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim(); if (!line || line.startsWith('#')) continue;
     const parts = line.split(/\s+/), kw = parts[0].toLowerCase();
@@ -110,6 +114,9 @@ export function parse(text) {
     } else if (kw === 'wrap') {
       if (parts.length > 1) throw new Error('The "wrap" line takes no values.');
       isWrap = true;
+    } else if (kw === 'loop') {
+      if (parts.length > 1) throw new Error('The "loop" line takes no values.');
+      isLoop = true;
     } else if (kw === 'path') {
       pathCells = [];
       for (const t of parts.slice(1)) { const m = t.match(/^(\d+),(\d+)$/); if (!m) throw new Error(`Invalid path cell: "${t}"`); pathCells.push([+m[1], +m[2]]); }
@@ -123,6 +130,12 @@ export function parse(text) {
       throw new Error('A wrap-around puzzle cannot have holes, arrows or exact numbers (yet).');
     }
     p.wrap = true;
+  }
+  if (isLoop) {
+    if (isWrap || hasArrows || isExact || hs.length) {
+      throw new Error('A loop puzzle cannot have holes, arrows, exact numbers or wrap-around (yet).');
+    }
+    p.loop = true;
   }
   if (hs.length) {
     p.holes = new Uint8Array(n * n);

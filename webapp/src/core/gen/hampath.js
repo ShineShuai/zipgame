@@ -45,3 +45,48 @@ export function backbite(n, rnd, wrap = false) {
   }
   return path;
 }
+
+// A random Hamiltonian cycle of the n x n grid (n even; a Loop puzzle's ring), as the list of its
+// cells: the last cell touches the first. Backbite moves from a fixed cycle (the first column is
+// the way back of a snake over the others), and the first state after enough moves in which the
+// two ends touch is the ring. When that does not happen within the move budget (it always has so
+// far), the fixed cycle is the answer, so it never fails.
+export const RING_MOVES_PER_CELL = 24;
+export const RING_EXTRA_MOVES_PER_CELL = 400;
+export function ringPath(n, rnd) {
+  if (n % 2) throw new Error('A ring needs an even board');
+  const T = n * n;
+  const path = [0];
+  for (let r = 0; r < n; r++) {
+    for (let k = 1; k < n; k++) path.push(r * n + (r % 2 ? n - k : k));
+  }
+  for (let r = n - 1; r >= 1; r--) path.push(r * n);
+  const base = path.slice();
+  const pos = new Int32Array(T);
+  path.forEach((cell, i) => {
+    pos[cell] = i;
+  });
+  const reverse = (from, to) => {
+    for (let a = from, b = to; a < b; a++, b--) {
+      const cell = path[a];
+      path[a] = path[b];
+      path[b] = cell;
+      pos[path[a]] = a;
+      pos[path[b]] = b;
+    }
+  };
+  const neighbours = cell => [3, 2, 1, 0].map(d => neighbourCell(n, false, cell, d)).filter(v => v >= 0);
+  const closed = () => neighbours(path[0]).includes(path[T - 1]);
+  const moves = T * RING_MOVES_PER_CELL;
+  for (let move = 0; move < moves + T * RING_EXTRA_MOVES_PER_CELL; move++) {
+    if (move >= moves && closed()) return path;
+    if (rnd() < 0.5) {
+      const options = neighbours(path[T - 1]).filter(v => pos[v] < T - 2);
+      if (options.length) reverse(pos[options[(rnd() * options.length) | 0]] + 1, T - 1);
+    } else {
+      const options = neighbours(path[0]).filter(v => pos[v] > 1);
+      if (options.length) reverse(0, pos[options[(rnd() * options.length) | 0]] - 1);
+    }
+  }
+  return base;
+}

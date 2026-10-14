@@ -5,6 +5,7 @@ import { buildNeighbors, makeConnOk, makeNoDeadEnd, makePocketOk, segBlocker, le
 import { makePropagator } from './propagate.js';
 import { makeIncremental } from './incremental.js';
 import { solveDirected } from './solve-dir.js';
+import { solveLoop } from './solve-loop.js';
 import { distFn, bipartite } from '../geom.js';
 
 // Hamiltonian-path search: start at checkpoint 1, hit the checkpoints in order, end on the last one,
@@ -13,6 +14,9 @@ import { distFn, bipartite } from '../geom.js';
 // A wrap-around puzzle (p.wrap, core/geom.js) is searched on the torus: the neighbours come from
 // buildNeighbors(), the distance bounds from geom.js (the shorter way round), and the parity rule
 // only on an even board (on an odd torus the cycles have odd length).
+//
+// A Loop puzzle (p.loop, model.js: the path closes into a ring) is searched by solve-loop.js: this
+// search once per possible last cell.
 //
 // An Exact puzzle (p.exact, model.js: the number of a cell is its step on the path) is searched on
 // the ranks of its numbers, the checkpoints 1..K of the search below, and each checkpoint also has
@@ -66,7 +70,11 @@ export function solve(p, opts = {}) {
   if (p.wrap && (p.arrows || p.exact)) {
     throw new Error('solve: a wrap-around puzzle cannot have arrows or Exact numbers (yet)');
   }
+  if (p.loop && (p.arrows || p.exact || p.wrap)) {
+    throw new Error('solve: a loop puzzle cannot have arrows, Exact numbers or wrap-around (yet)');
+  }
   if (p.arrows) return solveDirected(p, opts);
+  if (p.loop) return solveLoop(p, opts, (q, o) => searchPaths(q, o, null));
   if (!p.exact) return searchPaths(p, opts, null);
   const { rank, steps } = exactRanks(p);
   const K = steps.length - 2;

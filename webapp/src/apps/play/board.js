@@ -160,6 +160,10 @@ function correctMoveRing(n, cell) {
     `<animate attributeName="r" values="${small};${large};${small}" dur="1s" repeatCount="indefinite"/></circle>`;
 }
 
+// The cells the drawn line runs through: the path, and for a solved Loop puzzle back to cell 1, so
+// the ring is drawn closed.
+export const routeCells = (p, path, finished) => (p.loop && finished && path.length > 2 ? [...path, path[0]] : path);
+
 // Full SVG markup for the play board (S = play state). The svg itself has no border or padding, because
 // pointer positions are mapped to cells through its bounding box; the frame is the .grid-wrap around it.
 export function boardSvg(S) {
@@ -168,7 +172,8 @@ export function boardSvg(S) {
   const size = n * CELL;
   const visited = new Set(S.path);
   const wrap = Boolean(p.wrap);
-  const route = S.path.length > 1 ? pathD(n, S.path, CELL, wrap) : '';
+  const line = routeCells(p, S.path, S.finished);
+  const route = line.length > 1 ? pathD(n, line, CELL, wrap) : '';
   const pad = wrap ? WRAP_PAD : 0, margin = pad * CELL;
   const view = `${-margin} ${-margin} ${size + 2 * margin} ${size + 2 * margin}`;
 

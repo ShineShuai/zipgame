@@ -5,10 +5,11 @@ import { shuffle } from '../rng.js';
 // Generators (function*) so callers can drive them synchronously (tests) or time-sliced (UI).
 // Yielded values are progress events { frac, walls, K }.
 
-// 0/1 lookup by edge id: which edges a path uses (wrap: on the wrap-around board, seams included).
-function edgeMarks(n, path, wrap = false) {
+// 0/1 lookup by edge id: which edges a path uses (wrap: on the wrap-around board, seams included;
+// ring: a Loop puzzle's path also uses the edge from its last cell back to its first).
+function edgeMarks(n, path, wrap = false, ring = false) {
   const marks = new Uint8Array(n * n * 2);
-  for (const e of pathEdgeIds(n, path, wrap)) marks[e] = 1;
+  for (const e of pathEdgeIds(n, path, wrap, ring)) marks[e] = 1;
   return marks;
 }
 
@@ -27,9 +28,10 @@ export function* makeUnique(p, path, rnd, cfg) {
   const { nodeCap, seedFraction, K, prop, legCollide, counts, flags } = cfg;
   const solveOpts = flags ? { ...flags } : { prop, legCollide };
   const wrap = !!p.wrap;
+  const ring = !!p.loop;
   const all = allEdges(n, p.holes, wrap); // no wall is ever put next to a hole
   const maxWalls = cfg.wallBudget == null ? all.length : cfg.wallBudget;
-  const anchor = edgeMarks(n, path, wrap);
+  const anchor = edgeMarks(n, path, wrap, ring);
   const pool = shuffle(all.filter(e => !anchor[e]), rnd); // walls we may still place, in random order
   const order = [];                                       // walls placed so far
   let next = 0;                                           // first pool index not handed out yet
@@ -53,10 +55,10 @@ export function* makeUnique(p, path, rnd, cfg) {
   // A random edge used by exactly one of the two solutions (never an anchor edge), or null.
   // Walling it rules that solution out.
   function distinguishingWall(pathA, pathB) {
-    const edgesA = pathEdgeIds(n, pathA, wrap);
-    const edgesB = pathEdgeIds(n, pathB, wrap);
-    const inA = edgeMarks(n, pathA, wrap);
-    const inB = edgeMarks(n, pathB, wrap);
+    const edgesA = pathEdgeIds(n, pathA, wrap, ring);
+    const edgesB = pathEdgeIds(n, pathB, wrap, ring);
+    const inA = edgeMarks(n, pathA, wrap, ring);
+    const inB = edgeMarks(n, pathB, wrap, ring);
     let diff = edgesA.filter(e => !inB[e] && !anchor[e]);
     if (diff.length === 0) diff = edgesB.filter(e => !inA[e] && !anchor[e]);
     if (diff.length === 0) return null;

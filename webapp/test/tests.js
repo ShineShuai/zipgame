@@ -73,6 +73,9 @@ import { playArrowsTests } from './play-arrows.js';
 import { unlockTests } from './unlock.js';
 import { designArrowsTests } from './design-arrows.js';
 import { designVariantsTests } from './design-variants.js';
+import { loopTests } from './loop.js';
+import { loopGenTests } from './loop-gen.js';
+import { loopPlayTests } from './play-loop.js';
 
 // ---- mini harness ----
 const out = []; let pass = 0, fail = 0;
@@ -3071,6 +3074,11 @@ playExactTests(t, ok, eq);
 
 // ---------- Wrap-around (torus) puzzles ----------
 wrapAllTests(t, ta, ok, eq);
+
+// ---------- Loop (ring) puzzles ----------
+loopTests(t, ok, eq);
+loopGenTests(t, ok, eq);
+loopPlayTests(t, ta, ok, eq);
 
 // ---------- behaviour rows (core/behaviour.js, platform/behaviour.js) ----------
 const BEH_TEXT = 'size 7\ncheckpoints 0,1=2 0,6=1 1,3=3 2,2=5 2,5=4 3,1=7 3,5=9 4,3=8 5,3=6\nwalls V,4,3 H,5,4';
