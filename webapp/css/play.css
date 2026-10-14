@@ -330,6 +330,7 @@ select:focus { border-color: var(--blue); }
   font-size: 0.86rem; font-weight: 400; line-height: 1.45; pointer-events: none;
 }
 .variant-rules.show { display: block; }
+.variant-rules b { color: inherit; } /* the type's name above its rules (game screen): not the dark heading colour */
 /* a locked variant (dev reveal only): dashed, with a lock */
 .variant-locked .variant-card { border-style: dashed; background: #fafbff; }
 .variant-locked .variant-name::after { content: " \1F512"; font-size: 0.8em; }
@@ -414,7 +415,10 @@ select:focus { border-color: var(--blue); }
 .board-card { margin-bottom: 0; padding: 20px; }
 
 .hud { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
-.hud-title { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--heading); }
+.hud-title { position: relative; display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--heading); } /* anchors the rules tooltip */
+.hud-title .tip-btn { flex: none; margin-left: 0; }
+/* a finger needs a bigger target than a pointer */
+@media (pointer: coarse) { .hud-title .tip-btn { width: 34px; height: 34px; font-size: 1rem; } }
 .hud-icon .variant-icon { width: 38px; height: 38px; }
 .seed-tag { margin-left: 8px; font-size: 0.85rem; font-weight: 400; color: var(--muted); }
 /* Hold-V difficulty block is a flex child of .hud (not an inline tag inside the title), so it does

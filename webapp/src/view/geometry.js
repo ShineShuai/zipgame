@@ -54,6 +54,19 @@ export function seamMarks(n, path, s = 1) {
   }
   return marks;
 }
+// The straight line between the centres of cells a and b as segments [x1,y1,x2,y2]. On a grid it is
+// one segment. On a wrap-around board it takes the shorter way round each axis, so a line that
+// crosses a seam is two pieces: one leaving the board from a, one coming in to b (both reach into
+// the margin; a view clips them there).
+export function chordSegments(n, wrap, a, b, s = 1) {
+  const [ax, ay] = cellCenter(n, a, s), [bx, by] = cellCenter(n, b, s);
+  if (!wrap) return [[ax, ay, bx, by]];
+  const half = (n * s) / 2;
+  const shorter = d => (d > half ? d - n * s : d < -half ? d + n * s : d);
+  const dx = shorter(bx - ax), dy = shorter(by - ay);
+  if (dx === bx - ax && dy === by - ay) return [[ax, ay, bx, by]];
+  return [[ax, ay, ax + dx, ay + dy], [bx - dx, by - dy, bx, by]];
+}
 // Pointer position (relative to a w×h box) -> cell index or -1. pad: the margin around the board
 // in cells (WRAP_PAD). wrap: a point in the margin belongs to the cell on the opposite side (the
 // neighbour across the seam), so a drag can leave one side and enter the other.

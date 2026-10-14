@@ -39,6 +39,17 @@ export function allEdges(n, holes = null, wrap = false) {
   }
   return out;
 }
+// Remove the walls on seam edges (the last column's right edge, the last row's lower edge): only a
+// wrap-around board has them. Returns how many were removed.
+export function clearSeamWalls(p) {
+  const { n, walls } = p;
+  let removed = 0;
+  for (let i = 0; i < n * n; i++) {
+    if (i % n === n - 1 && hasWallId(walls, i * 2)) { setWallId(walls, i * 2, false); removed++; }
+    if (i >= n * (n - 1) && hasWallId(walls, i * 2 + 1)) { setWallId(walls, i * 2 + 1, false); removed++; }
+  }
+  return removed;
+}
 export const wallIds = p => { const o = []; for (let i = 0; i < p.n * p.n; i++) for (let t = 0; t < 2; t++) if ((p.walls[i] >> t) & 1) o.push(i * 2 + t); return o; };
 export const wallCount = p => wallIds(p).length;
 export const edgeToKey = (n, e) => `${e & 1 ? 'H' : 'V'},${((e >> 1) / n) | 0},${(e >> 1) % n}`;

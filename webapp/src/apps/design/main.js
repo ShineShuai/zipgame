@@ -1,6 +1,6 @@
-import { makePuzzle, validate, maxNumber } from '../../core/model.js';
+import { makePuzzle, validate, maxNumber, cellCount, labelCount } from '../../core/model.js';
 import {
-  allEdges, hasWallId, setWallId, wallIds, wallCount as countWalls, pathEdgeIds,
+  allEdges, hasWallId, setWallId, wallIds, wallCount as countWalls, pathEdgeIds, clearSeamWalls,
   arrowIds, arrowCount, arrowDirId, setArrowId,
 } from '../../core/edges.js';
 import { serialize, parse } from '../../core/format.js';
@@ -9,10 +9,12 @@ import { solve } from '../../core/solver/solve.js';
 import { step } from '../../core/rules.js';
 import { randomPathPuzzle, generateUnique, generate, CAPPED_TRIES } from '../../core/gen/generate.js';
 import { minimizeFully } from '../../core/gen/walls.js';
+import { generateExact, EXACT_CLIMB_PROPOSALS } from '../../core/gen/exact.js';
+import { EXACT_MODEL, TRAP_MODEL } from '../../core/trap.js';
 import { generateArrows, minimizeArrowsFully, ARROW_SIZES } from '../../core/gen/arrows.js';
 import { generateTargeted, targetBand, maxTargetGrade } from '../../core/gen/target.js';
 import { scatter } from '../../core/gen/checkpoints.js';
-import { cellAtPoint } from '../../view/geometry.js';
+import { cellAtPoint, WRAP_PAD } from '../../view/geometry.js';
 import { runAsync, measured } from '../../platform/run.js';
 import { bindModal, copyText } from '../../ui/modal.js';
 import { installHoldReveal } from '../../ui/hold-reveal.js';
@@ -123,7 +125,7 @@ function draw() {
   refs = renderBoard(boardEl, stageEl, view());
   $('wallModeTag').textContent = countWalls(P) ? `(${countWalls(P)})` : '';
   $('arrowModeTag').textContent = P.arrows && arrowCount(P) ? `(${arrowCount(P)})` : '';
-  syncArrowsUi();
+  syncVariantUi();
   if (playMode) paintPlayNow();
   updateValidity();
   renderTiming();
@@ -132,7 +134,7 @@ function setStatus(msg, type) { const s = $('status'); s.className = msg ? 'stat
 function nodeLimit() { const v = parseInt($('nodeLimit').value, 10); return Number.isFinite(v) && v >= 1000 ? v : DEFAULT_NODE_LIMIT; }
 function clearSolutions() { solutions = []; solVisible = []; lastAborted = false; lastNodes = 0; timing.solve = null; renderLegend(); setStatus(''); }
 function clearPreview() { if (preview) { preview = null; previewVisible = true; renderLegend(); } }
-const wallable = () => { const all = allEdges(P.n); if (!preview || preview.length < 2) return all; const pe = new Set(pathEdgeIds(P.n, preview)); return all.filter(e => !pe.has(e)); };
+const wallable = () => { const all = allEdges(P.n, null, !!P.wrap); if (!preview || preview.length < 2) return all; const pe = new Set(pathEdgeIds(P.n, preview, !!P.wrap)); return all.filter(e => !pe.has(e)); };
 function updateWallCapTag() {
   const cap = wallable().filter(e => !hasWallId(P.walls, e)).length + countWalls(P);
   $('wallCapTag').textContent = `(≤ ${cap})`; $('wallCount').max = cap;
@@ -141,30 +143,68 @@ function updateWallCapTag() {
 function setBusy(b) {
   busy = b;
   document.querySelectorAll('button').forEach(x => { x.disabled = b; });
-  syncArrowsUi();
+  $('variantSel').disabled = b;
+  syncVariantUi();
 }
 
-// ---------- One way arrows ----------
-// A puzzle with P.arrows (even an empty array) is a One way arrows puzzle; resetting the board or
-// importing a text without an `arrows` line makes it a standard one again. What assumes two-way
-// edges is switched off for it: Minimize walls (its freed-edge check is about the edge, either
-// way), the difficulty grade (fitted on walls) and the play highlights that flood-fill or count
-// degrees (connectivity, dead ends, forced edges, leg collisions; the checkpoint graph stays).
-const ARROW_OFF = [
-  'minimizeWalls', 'difficultyBtn', 'showConn', 'showDead', 'showProp', 'showLegCollide',
-];
-const ARROW_OFF_TITLE = 'Not available for One way arrows puzzles: it assumes two-way edges.';
-function syncArrowsUi() {
-  const on = !!P.arrows;
-  for (const id of ARROW_OFF) {
-    const el = $(id);
-    if (!el) continue;
-    el.disabled = on || (el.tagName === 'BUTTON' && busy);
-    if (el.dataset.title === undefined) el.dataset.title = el.title;
-    el.title = on ? ARROW_OFF_TITLE : el.dataset.title;
-    if (on && el.type === 'checkbox') el.checked = false;
+// ---------- Puzzle type: Standard / One way arrows / Wrap-around / Exact ----------
+// P.arrows (even an empty array): a One way arrows puzzle, an arrow can be crossed only in its
+// direction (core/edges.js), no walls. P.wrap: the edges join across the borders (a torus;
+// core/geom.js). P.exact: a number is the step of its cell on the path (Hidato-style; core/model.js),
+// no walls. The three exclude each other; a puzzle with none of them is a Standard one.
+// The type decides what the board shows and which tools are on offer: the Play app's generator of
+// the type is used (Generate / Path / Reproduce), and what does not belong to a type is hidden:
+// every element with data-variants="standard wrap ..." (design.html) is shown only for those types.
+const variantKey = p => (p.arrows ? 'arrows' : p.wrap ? 'wrap' : p.exact ? 'exact' : '');
+const VARIANT_NAME = { arrows: 'One way arrows', wrap: 'Wrap-around', exact: 'Exact' };
+const VARIANT_RULE = {
+  arrows: ' An arrow can be crossed only in its direction; there are no walls.',
+  wrap: ' Edges join across the borders.',
+  exact: ' A number is the step of its cell on the path: 1 first, the cell count last; there are no walls.',
+};
+// Give a board the puzzle type `key` ('' = standard): its marker, empty where it has content (arrows).
+function setTypeMarker(p, key) {
+  delete p.arrows; delete p.wrap; delete p.exact;
+  if (key === 'arrows') p.arrows = new Uint8Array(p.n * p.n);
+  else if (key) p[key] = true;
+}
+// Whether the tool in `mode` belongs to the puzzle type `key`.
+const TOOL_TYPES = { number: ['', 'arrows', 'wrap', 'exact'], wall: ['', 'wrap'], arrow: ['arrows'] };
+function syncVariantUi() {
+  const key = variantKey(P);
+  $('variantSel').value = key;
+  document.querySelectorAll('[data-variants]').forEach(el => {
+    el.style.display = el.dataset.variants.split(' ').includes(key || 'standard') ? '' : 'none';
+  });
+  // the A/B comparison is for the types that have it (design.html): off where it is hidden
+  if (compareMode() && $('compareToggle').closest('[data-variants]').style.display === 'none') {
+    $('compareToggle').checked = false;
+    $('compareToggle').onchange();
   }
-  if (on) showConn = showDead = showProp = showLegCollide = false;
+}
+// Switch the board to another type: it keeps its numbers (the validity line says what no longer
+// fits), drops the solutions and the template path, and loses what the new type cannot have.
+function setVariant(key) {
+  const had = variantKey(P);
+  if (key === had) return;
+  if (playMode) exitPlay();
+  const notes = [];
+  const lostArrows = P.arrows ? arrowCount(P) : 0;
+  if (lostArrows && key !== 'arrows') notes.push(`${plural(lostArrows, 'arrow')} removed`);
+  if (had === 'wrap' && key !== 'arrows' && key !== 'exact') {
+    const dropped = clearSeamWalls(P);
+    if (dropped) notes.push(`${plural(dropped, 'wall')} on the seams removed`);
+  }
+  if (key === 'arrows' || key === 'exact') { // no walls there
+    const walls = countWalls(P);
+    if (walls) { P.walls.fill(0); notes.push(`${plural(walls, 'wall')} removed`); }
+  }
+  setTypeMarker(P, key);
+  if (!TOOL_TYPES[mode].includes(key)) setMode('number');
+  preview = null; previewVisible = true; selected = -1; buffer = '';
+  refresh(); updateHint();
+  const extra = notes.length ? ` (${notes.join(', ')})` : '';
+  setStatus(`${key ? VARIANT_NAME[key] : 'Standard'} puzzle${extra}.${VARIANT_RULE[key] || ''}`, 'ok');
 }
 // Click on a gap: none -> an arrow right/down -> an arrow left/up -> none.
 function cycleArrow(e) {
@@ -173,7 +213,6 @@ function cycleArrow(e) {
       + 'not both).', 'warn');
     return;
   }
-  if (!P.arrows) P.arrows = new Uint8Array(P.n * P.n);
   const next = { 0: 1, 1: -1, '-1': 0 }[arrowDirId(P.arrows, e)];
   setArrowId(P.arrows, e, next);
   clearSolutions();
@@ -181,28 +220,33 @@ function cycleArrow(e) {
   draw();
 }
 function adopt(q) {
-  P = { n: q.n, cp: q.cp, walls: q.walls, ...(q.arrows ? { arrows: q.arrows } : {}) };
+  P = {
+    n: q.n, cp: q.cp, walls: q.walls, ...(q.arrows ? { arrows: q.arrows } : {}),
+    ...(q.wrap ? { wrap: true } : {}), ...(q.exact ? { exact: true } : {}),
+  };
   preview = q.path || null; previewVisible = true; selected = -1; buffer = '';
 }
 function setDefaults(n) { $('cpCount').max = n * n; $('cpCount').value = n; $('wallCount').value = n; updateWallCapTag(); updateTargetGrades(); } // max checkpoints / max walls default to the grid size
-function refresh() { clearSolutions(); draw(); renderLegend(); updateWallCapTag(); }
+function refresh() { clearSolutions(); draw(); renderLegend(); updateWallCapTag(); updateTargetGrades(); }
 
 // ---------- target grade generator ----------
 // A size caps the grade (core/trap.js SIZE_GRADE_CAP), so grades above it are not offered; the hover text shows the trap-score
 // band of the chosen grade, read from the current trap model (so it follows a refit).
 const fmtScore = x => (Number.isFinite(x) ? x.toFixed(2) : x > 0 ? '∞' : '-∞');
 function updateTargetGrades() {
-  const sel = $('targetGrade'), top = maxTargetGrade(P.n);
+  const model = P.exact ? EXACT_MODEL : TRAP_MODEL; // an Exact puzzle is graded by its own (reduced) model
+  const sel = $('targetGrade'), top = maxTargetGrade(P.n, model);
   [...sel.options].forEach(o => { o.disabled = +o.value > top; });
   if (+sel.value > top) sel.value = String(top);
-  const b = targetBand(+sel.value, P.n);
+  const b = targetBand(+sel.value, P.n, model);
   sel.title = `Grade ${b.grade} at ${P.n}×${P.n} = trap score from ${fmtScore(b.lo)} up to ${fmtScore(b.hi)} (the search aims at ${fmtScore(b.a)} to ${fmtScore(b.b)}). The highest grade offered for this size is ${top}.`;
 }
 
 function updateValidity() {
   const v = validate(P), el = $('validity');
   el.className = 'validity ' + (v.ok ? 'good' : 'bad');
-  el.textContent = v.ok ? `Checkpoints 1…${v.max} — valid ✓` : v.msg;
+  const ok = P.exact ? `${plural(v.max, 'number')} (steps up to ${cellCount(P)}) — valid ✓` : `Checkpoints 1…${v.max} — valid ✓`;
+  el.textContent = v.ok ? ok : v.msg;
 }
 function renderLegend() {
   const lg = $('legend'); lg.innerHTML = '';
@@ -215,10 +259,15 @@ function renderLegend() {
 }
 function updateHint() {
   setHintText($('hint'), playMode ? 'Drag from checkpoint 1 through every cell. Move back over the path to undo.'
-    : mode === 'number' ? 'Click a cell then type a number (Enter to confirm · Esc to cancel). Drag a numbered cell to move it to an empty cell. Press Delete or Backspace to clear the selected cell.'
+    : mode === 'number' ? (P.exact ? EXACT_NUMBER_HINT : 'Click a cell then type a number (Enter to confirm · Esc to cancel). Drag a numbered cell to move it to an empty cell. Press Delete or Backspace to clear the selected cell.')
       : mode === 'arrow' ? ARROW_HINT
-      : 'Click the gaps between cells to add or remove blocking walls.');
+      : P.wrap ? WRAP_WALL_HINT : 'Click the gaps between cells to add or remove blocking walls.');
 }
+const EXACT_NUMBER_HINT = 'Exact: a number is the step of its cell on the path (1 = start, '
+  + 'the cell count = end), so numbers are not 1, 2, 3...: click a cell and type its step '
+  + '(Enter to confirm · Esc to cancel). Drag a numbered cell to move it; Delete clears it.';
+const WRAP_WALL_HINT = 'Click the gaps between cells to add or remove blocking walls. '
+  + 'The gaps on the border are the seams: a wall there blocks the step from one side to the other.';
 const ARROW_HINT = 'Click a gap between cells to cycle it: an arrow one way, the other way, none. '
   + 'A one-way edge may only be walked in its arrow\'s direction; nothing has to cross it.';
 function setMode(m) {
@@ -231,7 +280,9 @@ function setMode(m) {
 }
 function resetBoard(n) {
   if (playMode) exitPlay();
-  P = makePuzzle(n); preview = null; previewVisible = true; selected = -1; buffer = ''; playPath = []; drawing = false;
+  const key = variantKey(P); // a reset keeps the puzzle type
+  P = makePuzzle(n); setTypeMarker(P, key);
+  preview = null; previewVisible = true; selected = -1; buffer = ''; playPath = []; drawing = false;
   $('cpCount').max = n * n; if (parseInt($('cpCount').value, 10) > n * n) $('cpCount').value = n * n;
   refresh(); updateHint();
 }
@@ -260,7 +311,10 @@ function commitBuffer() {
   if (buffer !== '' && v >= 1 && v <= P.n * P.n) { for (let i = 0; i < P.cp.length; i++) if (P.cp[i] === v) P.cp[i] = 0; P.cp[selected] = v; clearSolutions(); clearPreview(); }
   buffer = ''; draw();
 }
-const cellFromEvent = e => { const r = boardEl.getBoundingClientRect(); return cellAtPoint(P.n, e.clientX - r.left, e.clientY - r.top, r.width, r.height); };
+const cellFromEvent = e => {
+  const r = boardEl.getBoundingClientRect();
+  return cellAtPoint(P.n, e.clientX - r.left, e.clientY - r.top, r.width, r.height, P.wrap ? WRAP_PAD : 0, !!P.wrap);
+};
 const clearDrop = () => document.querySelectorAll('.cell.drop-target').forEach(el => el.classList.remove('drop-target'));
 function moveGhost(x, y) { if (dragGhost) { dragGhost.style.left = x + 'px'; dragGhost.style.top = y + 'px'; } }
 function endGhost() { if (dragGhost) { dragGhost.remove(); dragGhost = null; } }
@@ -362,9 +416,21 @@ function togglePause() {
   }
   syncPauseButton();
 }
+// The number the path has to reach next, 0 when there is none: the next checkpoint, or in an Exact
+// puzzle the lowest number above the current step.
+function nextNumber() {
+  if (P.exact) {
+    let best = 0;
+    for (const v of P.cp) if (v > playPath.length && (!best || v < best)) best = v;
+    return best;
+  }
+  let hi = 0;
+  for (const c of playPath) hi = Math.max(hi, P.cp[c]);
+  return hi + 1 <= maxNumber(P) ? hi + 1 : 0;
+}
 function paintPlayNow() {
   const { legConflicts } = paintPlay(refs, P.n, playPath, P, showConn, showDead, showProp, showLegCollide, showGraph);
-  const total = P.n * P.n, K = maxNumber(P), info = $('playInfo');
+  const total = cellCount(P), K = maxNumber(P), info = $('playInfo');
   if (!playPath.length) info.textContent = `Drag from checkpoint 1 to start. 0 / ${total} cells.`;
   else if (playPath.length === total) {
     info.textContent = '🎉 Solved! Every cell visited exactly once.';
@@ -382,9 +448,9 @@ function paintPlayNow() {
       syncPauseButton();
     }
   } else {
-    let hi = 0; for (const c of playPath) hi = Math.max(hi, P.cp[c]);
-    const last = playPath[playPath.length - 1], extra = K > 1 && P.cp[last] === K ? ' — final checkpoint reached but board not full.' : '';
-    info.textContent = `${playPath.length} / ${total} cells · next checkpoint: ${hi + 1 <= K ? '#' + (hi + 1) : '—'}${extra}`;
+    const last = playPath[playPath.length - 1], extra = !P.exact && K > 1 && P.cp[last] === K ? ' — final checkpoint reached but board not full.' : '';
+    const next = nextNumber();
+    info.textContent = `${playPath.length} / ${total} cells · next ${P.exact ? 'number' : 'checkpoint'}: ${next ? '#' + next : '—'}${extra}`;
     if (playFinished) { // rewound off the finished cell: resume timing
       timing.play = null;
       startPlayTimer();
@@ -398,8 +464,8 @@ function enterPlay(seedPath) {
   playMode = true; playPath = seedPath || []; drawing = false; solutions = []; solVisible = []; selected = -1; buffer = ''; endGhost(); numDrag = null;
   $('playBtn').classList.add('on'); $('playBtn').textContent = '■ Stop playing'; $('playInfo').style.display = '';
   $('connToggles').style.display = '';
-  syncArrowsUi();
-  playSeededSolved = Boolean(seedPath) && seedPath.length === P.n * P.n;
+  syncVariantUi();
+  playSeededSolved = Boolean(seedPath) && seedPath.length === cellCount(P);
   timing.play = null;
   startPlayTimer(); const pt = $('playTimer'); if (pt) pt.style.display = '';
   syncPauseButton();
@@ -532,9 +598,9 @@ async function doMinimizeArrows() {
 }
 $('minimizeArrows').onclick = doMinimizeArrows;
 $('clearArrows').onclick = () => {
-  delete P.arrows;
+  P.arrows.fill(0);
   clearSolutions(); clearPreview(); draw();
-  setStatus('Arrows removed: a standard puzzle again.', 'ok');
+  setStatus('All arrows removed.', 'ok');
 };
 $('randArrows').onclick = async () => {
   if (playMode) exitPlay();
@@ -615,6 +681,7 @@ $('modeNumber').onclick = () => setMode('number');
 $('modeWall').onclick = () => setMode('wall');
 $('modeArrow').onclick = () => setMode('arrow');
 $('sizeSel').onchange = () => { resetBoard(+$('sizeSel').value); setDefaults(P.n); };
+$('variantSel').onchange = () => setVariant($('variantSel').value);
 $('clearWalls').onclick = () => { P.walls.fill(0); clearSolutions(); clearPreview(); draw(); updateWallCapTag(); };
 $('clearAll').onclick = () => resetBoard(P.n);
 $('solveBtn').onclick = doSolve;
@@ -637,12 +704,17 @@ $('minimizeWalls').onclick = doMinimize;
 $('randScatter').onclick = () => {
   if (playMode) exitPlay();
   P.cp = scatter(P, K_(), rnd); P.walls.fill(0); preview = null; previewVisible = true; selected = -1; buffer = '';
-  refresh(); setStatus(`Scattered ${Math.min(K_(), P.n * P.n)} random checkpoints. Walls cleared.`, 'ok');
+  if (P.arrows) P.arrows.fill(0);
+  refresh(); setStatus(`Scattered ${Math.min(K_(), P.n * P.n)} random checkpoints. ${P.arrows ? 'Arrows' : 'Walls'} cleared.`, 'ok');
 };
 $('randPath').onclick = () => {
   if (playMode) exitPlay();
-  adopt(randomPathPuzzle(P.n, K_(), rnd)); refresh();
-  setStatus("Generated a random Hamiltonian path with checkpoints along it, no walls. The template is shown dashed — click Solve to check it, then add walls manually if it's not unique.", 'ok');
+  const key = variantKey(P);
+  adopt(randomPathPuzzle(P.n, K_(), rnd, !!P.wrap));
+  setTypeMarker(P, key); // the type stays (an arrows puzzle starts without arrows)
+  refresh();
+  const more = key === 'arrows' ? 'arrows' : 'walls';
+  setStatus(`Generated a random Hamiltonian path with checkpoints along it, no ${more}. The template is shown dashed — click Solve to check it, then add ${more} manually if it's not unique.`, 'ok');
 };
 $('randPathUnique').onclick = async () => {
   if (playMode) exitPlay();
@@ -654,7 +726,7 @@ $('randPathUnique').onclick = async () => {
     if (!compareMode()) {
       const flags = decodeFlags(flagsSingle.get());
       const clock = { ms: 0 };
-      const r = await runAsync(measured(generateUnique(P.n, K, makeRng(seed), { maxWalls: W, tries, hardest, flags }), clock), { onEvent: e => setStatus(`Generating… retry ${e.attempt}/${e.of}${hardest ? ` · ${plural(e.found, 'candidate')}` : ''}${e.walls != null ? ` · ${plural(e.walls, 'wall')} so far` : ''}`, '') });
+      const r = await runAsync(measured(generateUnique(P.n, K, makeRng(seed), { maxWalls: W, tries, hardest, flags, wrap: !!P.wrap }), clock), { onEvent: e => setStatus(`Generating… retry ${e.attempt}/${e.of}${hardest ? ` · ${plural(e.found, 'candidate')}` : ''}${e.walls != null ? ` · ${plural(e.walls, 'wall')} so far` : ''}`, '') });
       adopt(r.puzzle);
       if (r.unique) {
         setTiming('gen', clock.ms); // a failed run's wall-free fallback is not a generated puzzle
@@ -669,7 +741,7 @@ $('randPathUnique').onclick = async () => {
     // "same seed" guarantee actually extends once the two runs' solve() outcomes first diverge).
     const flagsAv = flagsA.get(), flagsBv = flagsB.get();
     const r = await runCompare({
-      n: P.n, K, maxWalls: W, tries, hardest, seed, flagsA: decodeFlags(flagsAv), flagsB: decodeFlags(flagsBv),
+      n: P.n, K, maxWalls: W, tries, hardest, seed, flagsA: decodeFlags(flagsAv), flagsB: decodeFlags(flagsBv), wrap: !!P.wrap,
       onEvent: (side, e) => setStatus(`Generating… (${side}) retry ${e.attempt}/${e.of}`, ''),
     });
     // Each run can independently succeed or fail (fall through to generateUnique's own non-unique,
@@ -702,11 +774,52 @@ $('randPathUnique').onclick = async () => {
     }
   } finally { setBusy(false); }
 };
+$('randExact').onclick = async () => {
+  if (playMode) exitPlay();
+  const seed = currentSeed(), floor = int_('exactFloor', 2, 2);
+  const candidates = int_('exactCandidates', 0, 1) || undefined;
+  setBusy(true); setStatus('Generating an Exact puzzle…', '');
+  $('compareResult').style.display = 'none';
+  try {
+    const clock = { ms: 0 };
+    const p = await runAsync(measured(generateExact(P.n, seed, { floor, candidates }), clock), {
+      onEvent: e => setStatus(`Generating an Exact puzzle… ${Math.round(e.frac * 100)}% · ${plural(e.labels, 'number')} so far`, ''),
+    });
+    adopt(p);
+    setTiming('gen', clock.ms);
+    refresh();
+    setStatus(`Generated an Exact puzzle: ${plural(labelCount(P), 'number')} (at least ${floor}), unique. `
+      + `Seed ${seed}. The template is shown dashed.`, 'ok');
+  } finally { setBusy(false); }
+};
+// Target grade of an Exact puzzle: generateExact's hill-climb (gen/exact.js), not the standard one.
+async function genTargetExact(grade, seed, effort, retries) {
+  const proposals = Math.max(10, Math.round(effort * (EXACT_CLIMB_PROPOSALS[P.n] ?? 20)));
+  setBusy(true); setStatus(`Searching for a grade ${grade} Exact puzzle…`, '');
+  $('compareResult').style.display = 'none';
+  try {
+    const clock = { ms: 0 };
+    const opts = { grade, atLeast: false, tries: retries, proposals };
+    const p = await runAsync(measured(generateExact(P.n, seed, opts), clock), {
+      onEvent: e => setStatus(`Searching for a grade ${grade} Exact puzzle… ${Math.round(e.frac * 100)}% · ${plural(e.labels, 'number')} · ${fmtMs(clock.ms)}`, ''),
+    });
+    adopt(p);
+    setTiming('gen', clock.ms);
+    refresh();
+    const sc = p.score, tries = `${sc.tries} ${sc.tries === 1 ? 'try' : 'tries'}`;
+    const found = `grade ${sc.grade} (trap score ${sc.predicted.toFixed(2)}) in ${fmtMs(clock.ms)}, ${tries}: `
+      + `${plural(sc.labels, 'number')}. Seed ${seed}, effort ${effort}, retries ${retries}. The template is shown dashed.`;
+    const clamped = sc.target !== grade ? ` (grade ${grade} is not possible at ${P.n}×${P.n}; aimed at ${sc.target})` : '';
+    if (sc.hit) setStatus(`Target reached${clamped}: ${found}`, 'ok');
+    else setStatus(`Target grade ${sc.target} not reached${clamped}. Closest: ${found} Raise Retries (or Search effort), or try another seed.`, 'warn');
+  } finally { setBusy(false); }
+}
 $('targetGrade').onchange = updateTargetGrades;
 $('genTarget').onclick = async () => {
   if (playMode) exitPlay();
   const grade = +$('targetGrade').value, seed = currentSeed(), effort = Math.max(0.1, parseFloat($('targetEffort').value) || 1);
   const retries = Math.max(1, Math.floor(parseFloat($('targetRetries').value)) || 1), minimize = $('targetMinimize').checked;
+  if (P.exact) return genTargetExact(grade, seed, effort, retries);
   setBusy(true); setStatus(`Searching for a grade ${grade} puzzle…`, '');
   $('compareResult').style.display = 'none';
   try {
@@ -735,12 +848,18 @@ $('reproducePlay').onclick = async () => {
     // cheapest) — structurally different from generateUnique() above, not just a different flags
     // value, so this calls it directly rather than routing through the flags panel/Max
     // checkpoints/Max walls, none of which apply here.
+    // A Wrap-around or Exact puzzle is the Play app's own generator of that type (apps/play/variants.js).
     const clock = { ms: 0 };
-    const p = await runAsync(measured(generate(P.n, seed), clock), { onEvent: e => setStatus(`Reproducing… ${plural(e.walls ?? 0, 'wall')} so far`, '') });
+    const gen = P.arrows ? generateArrows(P.n, seed) : P.exact ? generateExact(P.n, seed)
+      : generate(P.n, seed, P.wrap ? { wrap: true } : {});
+    const count = e => (e.labels != null ? plural(e.labels, 'number') : e.arrows != null ? plural(e.arrows, 'arrow') : plural(e.walls ?? 0, 'wall'));
+    const p = await runAsync(measured(gen, clock), { onEvent: e => setStatus(`Reproducing… ${count(e)} so far`, '') });
     adopt(p);
     setTiming('gen', clock.ms);
     refresh();
-    setStatus(`Reproduced generate()'s puzzle for seed ${seed} at ${P.n}×${P.n} (flags always ${flagsToHex(PLAY_FLAGS_INT)} — generate() has no flags of its own yet). The template is shown dashed.`, 'ok');
+    const kind = P.arrows ? 'generateArrows()' : P.exact ? 'generateExact()' : P.wrap ? 'generate() with wrap' : 'generate()';
+    const flagsNote = P.arrows || P.exact ? '' : ` (flags always ${flagsToHex(PLAY_FLAGS_INT)} — generate() has no flags of its own yet)`;
+    setStatus(`Reproduced ${kind}'s puzzle for seed ${seed} at ${P.n}×${P.n}${flagsNote}. The template is shown dashed.`, 'ok');
   } finally { setBusy(false); }
 };
 $('randWalls').onclick = () => {

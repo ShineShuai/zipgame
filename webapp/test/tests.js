@@ -72,6 +72,7 @@ import { arrowsGenTests } from './arrows-gen.js';
 import { playArrowsTests } from './play-arrows.js';
 import { unlockTests } from './unlock.js';
 import { designArrowsTests } from './design-arrows.js';
+import { designVariantsTests } from './design-variants.js';
 import { loopTests } from './loop.js';
 import { loopGenTests } from './loop-gen.js';
 import { loopPlayTests } from './play-loop.js';
@@ -3064,6 +3065,7 @@ arrowsGenTests(t, ok, eq);
 playArrowsTests(t, ok, eq);
 unlockTests(t, ta, ok, eq);
 designArrowsTests(t, ok, eq);
+designVariantsTests(t, ta, ok, eq);
 
 // ---------- Exact (Hidato-style) puzzles ----------
 exactTests(t, ok, eq);

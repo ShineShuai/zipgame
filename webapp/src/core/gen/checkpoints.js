@@ -1,5 +1,5 @@
 import { hasWall } from '../edges.js';
-import { gridDist } from '../geom.js';
+import { gridDist, neighbourCell } from '../geom.js';
 import { shuffle } from '../rng.js';
 
 // Choose K path positions (sorted; includes first and last) so consecutive checkpoints sit ~targetGap apart in grid distance.
@@ -31,7 +31,8 @@ export function randomCheckpoints(len, K, rnd) {
   return [0, ...shuffle(mid, rnd).slice(0, K - 2).sort((a, b) => a - b), len - 1];
 }
 
-// Scatter K random checkpoints, ordered by nearest-next (wall-aware BFS distance). Returns a new cp array.
+// Scatter K random checkpoints, ordered by nearest-next (wall-aware BFS distance; p.wrap: across the seams too).
+// Returns a new cp array.
 export function scatter(p, K, rnd) {
   const n = p.n, T = n * n;
   K = Math.max(2, Math.min(K, T));
@@ -40,10 +41,9 @@ export function scatter(p, K, rnd) {
     const seen = new Uint8Array(T); let fr = [src], d = 0; seen[src] = 1;
     while (fr.length) {
       d++; const nx = [];
-      for (const u of fr) for (const v of [u - n, u + n, u - 1, u + 1]) {
-        if (v < 0 || v >= T || seen[v]) continue;
-        if (Math.abs(v - u) === 1 && ((v / n) | 0) !== ((u / n) | 0)) continue;
-        if (hasWall(p, u, v)) continue;
+      for (const u of fr) for (const dir of [3, 2, 1, 0]) {
+        const v = neighbourCell(n, !!p.wrap, u, dir); // -1 = off the board (a torus has no such)
+        if (v < 0 || seen[v] || hasWall(p, u, v)) continue;
         if (v === dst) return d; seen[v] = 1; nx.push(v);
       }
       fr = nx;

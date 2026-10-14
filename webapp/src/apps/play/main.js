@@ -20,6 +20,7 @@ import { boardSvg, CELL, badgeColors, stepWrong, seamMarksSvg, routeCells } from
 import { variantIcon, cardIcon } from './icons.js';
 import { PLAY_VARIANTS, variantById, variantOf, sizesFor, nearestSize, luckyDefs } from './variants.js';
 import { createUnlock } from '../../features/unlock.js';
+import { createRulesSeen } from '../../features/rules-seen.js';
 import { weekOf, weekTable } from '../../core/lucky.js';
 import { VERSION } from '../../version.js';
 import { LEADERBOARD, BEHAVIOUR } from '../../config.js';
@@ -56,7 +57,7 @@ function gradePuzzle(puzzle) {
     return { ok: false, trap: null, legacy: null };
   }
 }
-let storage, store, daily, replay, streak, unlock, modal, lb;
+let storage, store, daily, replay, streak, unlock, rulesSeen, modal, lb;
 const replayPuzzles = new Map(), replayNoFile = new Set(); // date -> puzzle (the file of a past day never changes, so each is fetched once per page load); dates without a file
 const $ = id => document.getElementById(id), today = () => utcDateString(new Date()), dayNo = () => utcDayNumber(new Date()), sec = x => x.toFixed(1) + 's';
 const statsText = { everyone: (avg, n) => t('stats.everyone', avg, n), top: (k, avg) => t('stats.top', k, avg), beat: pct => t('stats.beat', pct) };
@@ -502,7 +503,7 @@ function renderGame() {
     <div class="game-layout">
       <section class="card board-card">
         <div class="hud">
-          <div class="hud-title"><span class="hud-icon">${variantIcon(S.variant)}</span><span>${title}</span>${S.lucky ? `<span class="lucky-chip">${t('lucky.tag')}</span>` : ''}</div>
+          <div class="hud-title rules-host" id="hudTitle"><span class="hud-icon">${variantIcon(S.variant)}</span><span>${title}</span>${S.lucky ? `<span class="lucky-chip">${t('lucky.tag')}</span>` : ''}${rulesTipHtml()}</div>
           ${difficultyBadgeHtml()}
           ${difficultyDevHtml()}
           ${stepHudHtml(p)}
@@ -530,8 +531,25 @@ function renderGame() {
     </div>${playStatsHtml()}`;
 }
 
-// The rules tooltip of a puzzle type tile: shown on hover, keyboard focus or a tap, and moved sideways to stay
+// The rules of the puzzle being played, as a small (i) after the title in the game screen: the same tooltip as the
+// type's tile in the menu (the text is the tile's), so a player can look the rules up while playing. The first time a
+// variant is played it opens by itself (maybeShowRules).
+function rulesTipHtml() {
+  const mode = S.variant || 'standard';
+  return `<button type="button" class="tip-btn rules-btn" id="rulesTip" aria-label="${t('game.rulesLabel')}" aria-describedby="rulesTipPop">i</button>`
+    + `<span class="variant-rules" id="rulesTipPop" role="tooltip"><b>${t('mode.' + mode)}</b><br>${t('mode.' + mode + 'Rules')}</span>`;
+}
+// The first game of a variant on this device shows its rules without being asked, once. It closes like any rules
+// tooltip: by a press anywhere else (the first press on the board starts the path), a tap, or Esc.
+function maybeShowRules() {
+  if (!S.variant || !rulesSeen || rulesSeen.seen(S.variant) || !$('hudTitle')) return;
+  rulesSeen.mark(S.variant);
+  showRules($('hudTitle'));
+}
+
+// The rules tooltip of a puzzle type tile (and of the game screen's title): shown on hover, keyboard focus or a tap, and moved sideways to stay
 // inside the window (a tile at the edge of the card). Esc or a tap elsewhere closes it.
+let lastPointer = 'mouse'; // pointerType of the last press: 'mouse', 'pen' or 'touch'
 const closeRules = () => document.querySelectorAll('.variant-rules.show').forEach(pop => pop.classList.remove('show'));
 function showRules(opt) {
   closeRules();
@@ -548,9 +566,10 @@ function attachHandlers() {
   const on = (id, f) => { const e = $(id); if (e) e.onclick = f; };
   on('playLocal', () => { S.size = +$('sizeSel').value; startLocal('open', S.mode); });
   const sel = $('sizeSel'); if (sel) sel.onchange = () => { S.size = +sel.value; $('gameNo').textContent = todayText(); };
-  document.querySelectorAll('.variant-opt').forEach(opt => {
+  document.querySelectorAll('.variant-opt, .rules-host').forEach(opt => {
     opt.addEventListener('mouseenter', () => showRules(opt));
-    opt.addEventListener('mouseleave', closeRules);
+    // a finger leaves no hover: the browser's emulated mouse moves off again right after a tap, which must not close it
+    opt.addEventListener('mouseleave', () => { if (lastPointer !== 'touch') closeRules(); });
     opt.addEventListener('focusin', () => showRules(opt));
     opt.addEventListener('focusout', closeRules);
     opt.addEventListener('click', e => { e.stopPropagation(); showRules(opt); }); // a tap on a phone
@@ -745,7 +764,7 @@ function beginGame(puzzle, gotdDate, isReplay = false, isShared = false, lucky =
   const variant = variantOf(puzzle);
   const difficulty = gradePuzzle(puzzle);
   Object.assign(S, { variant, lucky, luckyResult: null, luckyNote: null, trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
-  startTimer(); render();
+  startTimer(); render(); maybeShowRules();
 }
 function generatorFor(mode, n, seed) {
   const variant = variantById(mode);
@@ -1119,12 +1138,19 @@ async function initLang() {
   try { await streak.init(); } catch (e) { console.warn('streak init failed:', e); }
   unlock = createUnlock(storage, luckyDefs(SIZES));
   try { await unlock.init(); } catch (e) { console.warn('unlock init failed:', e); }
+  rulesSeen = createRulesSeen(storage, PLAY_VARIANTS.map(v => v.id));
+  await rulesSeen.init();
   if (lb.enabled) for (const { date } of await replay.unsent()) shareGotd(date); // today's and replayed days whose submit never got an answer
   behaviour = createBehaviour({ storage, cfg: BEHAVIOUR, sinks: sinksFromConfig(BEHAVIOUR, LEADERBOARD) });
   try { S.behaviourOn = await behaviour.isOn(); behaviour.flush().catch(() => {}); } catch (e) { console.warn('behaviour init failed:', e); } // rows left from an earlier page load
   try { S.nextIdx = await peekNext(); } catch (e) { console.warn('daily counters failed:', e); }
   await loadSharedLink();
   document.addEventListener('click', () => { setShareTip(false); setLuckyTip(false); closeStatTips(); closeRules(); });
+  // a press anywhere but on a rules tooltip's own host closes the tooltips, in the capture phase: the board takes its presses
+  document.addEventListener('pointerdown', e => {
+    lastPointer = e.pointerType;
+    if (!e.target.closest('.variant-opt, .rules-host')) closeRules();
+  }, true);
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { setShareTip(false); setLuckyTip(false); closeStatTips(); closeRules(); } });
   modal = bindModal($('exportModal'));
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));
