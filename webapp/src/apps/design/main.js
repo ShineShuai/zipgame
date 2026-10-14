@@ -9,7 +9,7 @@ import { solve } from '../../core/solver/solve.js';
 import { step } from '../../core/rules.js';
 import { randomPathPuzzle, generateUnique, generate, CAPPED_TRIES } from '../../core/gen/generate.js';
 import { minimizeFully } from '../../core/gen/walls.js';
-import { generateExact, randomExactPuzzle, EXACT_CLIMB_PROPOSALS } from '../../core/gen/exact.js';
+import { generateExact, EXACT_CLIMB_PROPOSALS } from '../../core/gen/exact.js';
 import { EXACT_MODEL, TRAP_MODEL } from '../../core/trap.js';
 import { generateArrows, minimizeArrowsFully, ARROW_SIZES } from '../../core/gen/arrows.js';
 import { generateTargeted, targetBand, maxTargetGrade } from '../../core/gen/target.js';
@@ -147,79 +147,64 @@ function setBusy(b) {
   syncVariantUi();
 }
 
-// ---------- One way arrows ----------
-// A puzzle with P.arrows (even an empty array) is a One way arrows puzzle; resetting the board or
-// importing a text without an `arrows` line makes it a standard one again. What assumes two-way
-// edges is switched off for it: Minimize walls (its freed-edge check is about the edge, either
-// way), the difficulty grade (fitted on walls) and the play highlights that flood-fill or count
-// degrees (connectivity, dead ends, forced edges, leg collisions; the checkpoint graph stays).
-const ARROW_OFF = [
-  'minimizeWalls', 'difficultyBtn', 'showConn', 'showDead', 'showProp', 'showLegCollide',
-];
-const ARROW_OFF_TITLE = 'Not available for One way arrows puzzles: it assumes two-way edges.';
-// ---------- Puzzle type: Standard / Wrap-around / Exact ----------
-// P.wrap: the edges join across the borders (a torus; core/geom.js). P.exact: a number is the step
-// of its cell on the path (Hidato-style; core/model.js). Neither has arrows, and they exclude each
-// other. A puzzle with none of the two is a Standard one (with or without one-way arrows).
-// What the type changes here: the board is drawn with a margin and wall handles on the seams (wrap),
-// Generate / Path / Random walls / Reproduce use the type's own generator, and what is only meant
-// for standard boards is switched off (reasonsOff below) or hidden ([data-variants] sections).
-const variantKey = p => (p.wrap ? 'wrap' : p.exact ? 'exact' : '');
-const VARIANT_NAME = { wrap: 'Wrap-around', exact: 'Exact' };
-const DIFF_OFF_TITLE = 'Not available for Wrap-around and Exact puzzles: the grades are fitted on '
-  + 'standard boards (the Play app shows a reduced trap grade for them).';
-const VARIANT_IDS = [...ARROW_OFF, 'modeArrow', 'randScatter'];
-// element id -> why it is switched off for the current puzzle (absent = available)
-function reasonsOff() {
-  const reasons = {};
-  const off = (ids, why) => ids.forEach(id => { reasons[id] = reasons[id] || why; });
-  if (P.arrows) off(ARROW_OFF, ARROW_OFF_TITLE);
-  if (P.wrap || P.exact) {
-    off(['difficultyBtn'], DIFF_OFF_TITLE);
-    off(['modeArrow'], 'One-way arrows are for standard puzzles only.');
-  }
-  if (P.exact) off(['randScatter'], 'A random placement has no valid step numbers: use Path or Generate exact.');
-  return reasons;
+// ---------- Puzzle type: Standard / One way arrows / Wrap-around / Exact ----------
+// P.arrows (even an empty array): a One way arrows puzzle, an arrow can be crossed only in its
+// direction (core/edges.js), no walls. P.wrap: the edges join across the borders (a torus;
+// core/geom.js). P.exact: a number is the step of its cell on the path (Hidato-style; core/model.js),
+// no walls. The three exclude each other; a puzzle with none of them is a Standard one.
+// The type decides what the board shows and which tools are on offer: the Play app's generator of
+// the type is used (Generate / Path / Reproduce), and what does not belong to a type is hidden:
+// every element with data-variants="standard wrap ..." (design.html) is shown only for those types.
+const variantKey = p => (p.arrows ? 'arrows' : p.wrap ? 'wrap' : p.exact ? 'exact' : '');
+const VARIANT_NAME = { arrows: 'One way arrows', wrap: 'Wrap-around', exact: 'Exact' };
+const VARIANT_RULE = {
+  arrows: ' An arrow can be crossed only in its direction; there are no walls.',
+  wrap: ' Edges join across the borders.',
+  exact: ' A number is the step of its cell on the path: 1 first, the cell count last; there are no walls.',
+};
+// Give a board the puzzle type `key` ('' = standard): its marker, empty where it has content (arrows).
+function setTypeMarker(p, key) {
+  delete p.arrows; delete p.wrap; delete p.exact;
+  if (key === 'arrows') p.arrows = new Uint8Array(p.n * p.n);
+  else if (key) p[key] = true;
 }
+// Whether the tool in `mode` belongs to the puzzle type `key`.
+const TOOL_TYPES = { number: ['', 'arrows', 'wrap', 'exact'], wall: ['', 'wrap'], arrow: ['arrows'] };
 function syncVariantUi() {
-  const reasons = reasonsOff();
-  for (const id of VARIANT_IDS) {
-    const el = $(id);
-    if (!el) continue;
-    const why = reasons[id];
-    el.disabled = Boolean(why) || (el.tagName === 'BUTTON' && busy);
-    if (el.dataset.title === undefined) el.dataset.title = el.title;
-    el.title = why || el.dataset.title;
-    if (why && el.type === 'checkbox') el.checked = false;
-  }
-  if (P.arrows) showConn = showDead = showProp = showLegCollide = false;
   const key = variantKey(P);
   $('variantSel').value = key;
   document.querySelectorAll('[data-variants]').forEach(el => {
     el.style.display = el.dataset.variants.split(' ').includes(key || 'standard') ? '' : 'none';
   });
+  // the A/B comparison is for the types that have it (design.html): off where it is hidden
+  if (compareMode() && $('compareToggle').closest('[data-variants]').style.display === 'none') {
+    $('compareToggle').checked = false;
+    $('compareToggle').onchange();
+  }
 }
-// Switch the board to another type: it keeps its numbers and walls (the validity line says what no
-// longer fits), drops the solutions and the template path, and loses what the new type cannot have.
+// Switch the board to another type: it keeps its numbers (the validity line says what no longer
+// fits), drops the solutions and the template path, and loses what the new type cannot have.
 function setVariant(key) {
   const had = variantKey(P);
   if (key === had) return;
   if (playMode) exitPlay();
   const notes = [];
-  if (key && P.arrows) { delete P.arrows; notes.push('the arrows were removed'); }
-  delete P.wrap; delete P.exact;
-  if (key) P[key] = true;
-  if (had === 'wrap') {
+  const lostArrows = P.arrows ? arrowCount(P) : 0;
+  if (lostArrows && key !== 'arrows') notes.push(`${plural(lostArrows, 'arrow')} removed`);
+  if (had === 'wrap' && key !== 'arrows' && key !== 'exact') {
     const dropped = clearSeamWalls(P);
     if (dropped) notes.push(`${plural(dropped, 'wall')} on the seams removed`);
   }
-  if (key && mode === 'arrow') setMode('number');
+  if (key === 'arrows' || key === 'exact') { // no walls there
+    const walls = countWalls(P);
+    if (walls) { P.walls.fill(0); notes.push(`${plural(walls, 'wall')} removed`); }
+  }
+  setTypeMarker(P, key);
+  if (!TOOL_TYPES[mode].includes(key)) setMode('number');
   preview = null; previewVisible = true; selected = -1; buffer = '';
   refresh(); updateHint();
-  const name = key ? VARIANT_NAME[key] : 'Standard';
   const extra = notes.length ? ` (${notes.join(', ')})` : '';
-  const rule = { wrap: ' Edges join across the borders.', exact: ' A number is the step of its cell on the path: 1 first, the cell count last.' }[key] || '';
-  setStatus(`${name} puzzle${extra}.${rule}`, 'ok');
+  setStatus(`${key ? VARIANT_NAME[key] : 'Standard'} puzzle${extra}.${VARIANT_RULE[key] || ''}`, 'ok');
 }
 // Click on a gap: none -> an arrow right/down -> an arrow left/up -> none.
 function cycleArrow(e) {
@@ -228,7 +213,6 @@ function cycleArrow(e) {
       + 'not both).', 'warn');
     return;
   }
-  if (!P.arrows) P.arrows = new Uint8Array(P.n * P.n);
   const next = { 0: 1, 1: -1, '-1': 0 }[arrowDirId(P.arrows, e)];
   setArrowId(P.arrows, e, next);
   clearSolutions();
@@ -296,8 +280,8 @@ function setMode(m) {
 }
 function resetBoard(n) {
   if (playMode) exitPlay();
-  const key = variantKey(P); // a reset keeps the puzzle type (not the arrows)
-  P = makePuzzle(n); if (key) P[key] = true;
+  const key = variantKey(P); // a reset keeps the puzzle type
+  P = makePuzzle(n); setTypeMarker(P, key);
   preview = null; previewVisible = true; selected = -1; buffer = ''; playPath = []; drawing = false;
   $('cpCount').max = n * n; if (parseInt($('cpCount').value, 10) > n * n) $('cpCount').value = n * n;
   refresh(); updateHint();
@@ -614,9 +598,9 @@ async function doMinimizeArrows() {
 }
 $('minimizeArrows').onclick = doMinimizeArrows;
 $('clearArrows').onclick = () => {
-  delete P.arrows;
+  P.arrows.fill(0);
   clearSolutions(); clearPreview(); draw();
-  setStatus('Arrows removed: a standard puzzle again.', 'ok');
+  setStatus('All arrows removed.', 'ok');
 };
 $('randArrows').onclick = async () => {
   if (playMode) exitPlay();
@@ -720,13 +704,17 @@ $('minimizeWalls').onclick = doMinimize;
 $('randScatter').onclick = () => {
   if (playMode) exitPlay();
   P.cp = scatter(P, K_(), rnd); P.walls.fill(0); preview = null; previewVisible = true; selected = -1; buffer = '';
-  refresh(); setStatus(`Scattered ${Math.min(K_(), P.n * P.n)} random checkpoints. Walls cleared.`, 'ok');
+  if (P.arrows) P.arrows.fill(0);
+  refresh(); setStatus(`Scattered ${Math.min(K_(), P.n * P.n)} random checkpoints. ${P.arrows ? 'Arrows' : 'Walls'} cleared.`, 'ok');
 };
 $('randPath').onclick = () => {
   if (playMode) exitPlay();
-  adopt(P.exact ? randomExactPuzzle(P.n, K_(), rnd) : randomPathPuzzle(P.n, K_(), rnd, !!P.wrap)); refresh();
-  const how = P.exact ? 'numbered by their steps' : 'numbered 1, 2, 3...';
-  setStatus(`Generated a random Hamiltonian path with cells ${how} along it, no walls. The template is shown dashed — click Solve to check it, then add ${P.exact ? 'numbers or ' : ''}walls manually if it's not unique.`, 'ok');
+  const key = variantKey(P);
+  adopt(randomPathPuzzle(P.n, K_(), rnd, !!P.wrap));
+  setTypeMarker(P, key); // the type stays (an arrows puzzle starts without arrows)
+  refresh();
+  const more = key === 'arrows' ? 'arrows' : 'walls';
+  setStatus(`Generated a random Hamiltonian path with checkpoints along it, no ${more}. The template is shown dashed — click Solve to check it, then add ${more} manually if it's not unique.`, 'ok');
 };
 $('randPathUnique').onclick = async () => {
   if (playMode) exitPlay();
@@ -862,13 +850,15 @@ $('reproducePlay').onclick = async () => {
     // checkpoints/Max walls, none of which apply here.
     // A Wrap-around or Exact puzzle is the Play app's own generator of that type (apps/play/variants.js).
     const clock = { ms: 0 };
-    const gen = P.exact ? generateExact(P.n, seed) : generate(P.n, seed, P.wrap ? { wrap: true } : {});
-    const p = await runAsync(measured(gen, clock), { onEvent: e => setStatus(`Reproducing… ${e.labels != null ? plural(e.labels, 'number') : plural(e.walls ?? 0, 'wall')} so far`, '') });
+    const gen = P.arrows ? generateArrows(P.n, seed) : P.exact ? generateExact(P.n, seed)
+      : generate(P.n, seed, P.wrap ? { wrap: true } : {});
+    const count = e => (e.labels != null ? plural(e.labels, 'number') : e.arrows != null ? plural(e.arrows, 'arrow') : plural(e.walls ?? 0, 'wall'));
+    const p = await runAsync(measured(gen, clock), { onEvent: e => setStatus(`Reproducing… ${count(e)} so far`, '') });
     adopt(p);
     setTiming('gen', clock.ms);
     refresh();
-    const kind = P.exact ? 'generateExact()' : P.wrap ? 'generate() with wrap' : 'generate()';
-    const flagsNote = P.exact ? '' : ` (flags always ${flagsToHex(PLAY_FLAGS_INT)} — generate() has no flags of its own yet)`;
+    const kind = P.arrows ? 'generateArrows()' : P.exact ? 'generateExact()' : P.wrap ? 'generate() with wrap' : 'generate()';
+    const flagsNote = P.arrows || P.exact ? '' : ` (flags always ${flagsToHex(PLAY_FLAGS_INT)} — generate() has no flags of its own yet)`;
     setStatus(`Reproduced ${kind}'s puzzle for seed ${seed} at ${P.n}×${P.n}${flagsNote}. The template is shown dashed.`, 'ok');
   } finally { setBusy(false); }
 };

@@ -352,12 +352,42 @@ export function legsCollide(nb, T, vis, legs) {
   return false;
 }
 
+// segBlocker for one-way moves (the `out` table of buildMoves() in solve-dir.js, in the place of nb):
+// the cells that every route from s to t over unvisited cells has to pass, a route being a walk of
+// allowed moves. A route here is also a route of the undirected board, so every cell segBlocker
+// forces is forced here too, plus the ones only an arrow turns into a bottleneck. Brute force
+// (one search per cell, O(T * (T + moves)) in all) because a one-shot overlay is the only caller.
+// Same contract as segBlocker: a Set of cells, never s or t; empty when t cannot be reached at all.
+export function segBlockerDir(out, T, vis, s, t) {
+  if (s === t) return new Set();
+  const reaches = skip => {
+    const seen = new Uint8Array(T);
+    const queue = [s];
+    seen[s] = 1;
+    for (let h = 0; h < queue.length; h++) {
+      const u = queue[h];
+      for (let d = 0; d < 4; d++) {
+        const v = out[u * 4 + d];
+        if (v < 0 || seen[v] || v === skip || (vis[v] && v !== t)) continue;
+        if (v === t) return true;
+        seen[v] = 1;
+        queue.push(v);
+      }
+    }
+    return false;
+  };
+  const forced = new Set();
+  if (!reaches(-1)) return forced; // not this function's job to report
+  for (let c = 0; c < T; c++) if (c !== s && c !== t && !vis[c] && !reaches(c)) forced.add(c);
+  return forced;
+}
+
 // Same test as legsCollide, but reports WHERE: every colliding leg pair with the forced cells they
 // both require (legs[i] / legs[j] are indices into `legs`). Not for the solver's hot loop (no early
 // exit, allocates); legsCollide(...) === (legConflicts(...).length > 0) is asserted in the tests.
 // Returns [{ i, j, cells: number[] }].
-export function legConflicts(nb, T, vis, legs) {
-  const blockers = legs.map(([s, t]) => segBlocker(nb, T, vis, s, t));
+export function legConflicts(nb, T, vis, legs, blocker = segBlocker) {
+  const blockers = legs.map(([s, t]) => blocker(nb, T, vis, s, t));
   const out = [];
   for (let i = 0; i < legs.length; i++) {
     for (let j = i + 1; j < legs.length; j++) {

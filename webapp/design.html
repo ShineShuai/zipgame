@@ -29,26 +29,28 @@
     </div>
 
     <div class="field field-row">
-      <label for="variantSel" title="Standard: checkpoints 1, 2, 3... in order, edges stop at the border. Wrap-around: the edges join across the borders (a torus), so a step can leave one side and come in on the opposite one. Exact: a number is the step of its cell on the path (the cell numbered 8 is the 8th cell), so the numbers are gaps-and-all, 1 and the cell count among them.">Puzzle type</label>
+      <label for="variantSel" title="Standard: checkpoints 1, 2, 3... in order, edges stop at the border, walls block. One way arrows: no walls, an arrow can be crossed only in its direction. Wrap-around: the edges join across the borders (a torus), so a step can leave one side and come in on the opposite one. Exact: a number is the step of its cell on the path (the cell numbered 8 is the 8th cell), so the numbers are gaps-and-all, 1 and the cell count among them.">Puzzle type</label>
       <select id="variantSel">
         <option value="">Standard</option>
+        <option value="arrows">One way arrows</option>
         <option value="wrap">Wrap-around</option>
         <option value="exact">Exact</option>
       </select>
     </div>
 
-    <div class="field">
+    <div class="field" data-variants="standard arrows wrap">
       <label>Tool</label>
       <div class="segmented">
         <button id="modeNumber" class="seg active">Numbers</button>
-        <button id="modeWall" class="seg">Walls <span id="wallModeTag" class="seg-count"></span></button>
-        <button id="modeArrow" class="seg" title="Click a gap to cycle: an arrow one way, the other way, none (the One way arrows variant)">Arrows <span id="arrowModeTag" class="seg-count"></span></button>
+        <button id="modeWall" class="seg" data-variants="standard wrap">Walls <span id="wallModeTag" class="seg-count"></span></button>
+        <button id="modeArrow" class="seg" data-variants="arrows" title="Click a gap to cycle: an arrow one way, the other way, none ">Arrows <span id="arrowModeTag" class="seg-count"></span></button>
       </div>
     </div>
 
     <div class="hint" id="hint"></div>
     <div class="validity" id="validity"></div>
 
+    <div data-variants="standard arrows wrap">
     <div class="divider"></div>
 
     <div class="field field-row">
@@ -57,10 +59,12 @@
     </div>
 
     <div class="field row">
-      <button id="randScatter" title="Random checkpoint placement (walls cleared)">🎲 Placement</button>
+      <button id="randScatter" title="Random checkpoint placement (walls and arrows cleared)">🎲 Placement</button>
       <button id="randPath" title="Random Hamiltonian path with checkpoints along it, no walls">🛤️ Path</button>
     </div>
+    </div>
 
+    <div data-variants="standard wrap">
     <div class="divider"></div>
 
     <div class="field field-row">
@@ -72,8 +76,9 @@
       <button id="randWalls" title="Add random walls (never on the template path)">🧱 Random</button>
       <button id="minimizeWalls" title="Remove every wall that is not needed for a unique solution. A wall whose check reaches the search limit gets a deeper second look (up to 50 times the limit in nodes in total); any still undecided are reported.">✂️ Minimize</button>
     </div>
+    </div>
 
-    <div data-variants="standard">
+    <div data-variants="arrows" style="display:none">
     <div class="divider"></div>
 
     <div class="field">
@@ -85,7 +90,7 @@
       <button id="randArrows" class="wide" title="Random puzzle with one-way arrows and no walls: exactly one solution, as few arrows as it finds. Max checkpoints is the number of checkpoints; the seed field applies.">➡️✓ Generate arrows</button>
       <div class="field row">
         <button id="minimizeArrows" title="Remove every arrow that is not needed for a unique solution (the puzzle must be unique first). An arrow whose check reaches the search limit gets a deeper second look; any still undecided are reported.">✂️ Minimize</button>
-        <button id="clearArrows" title="Remove every arrow (the puzzle becomes a standard one again)">Clear</button>
+        <button id="clearArrows" title="Remove every arrow (the puzzle stays a One way arrows one)">Clear</button>
       </div>
     </div>
     </div>
@@ -128,8 +133,8 @@
       <input id="exactCandidates" type="number" min="1" placeholder="auto">
     </div>
     <div class="hint">
-      Exact puzzles have no walls: the numbers alone make the path unique. The Max checkpoints, Max walls
-      and flags above do not apply; Max checkpoints still sets how many numbers Path puts on its random path.
+      Exact puzzles have no walls: the numbers alone make the path unique. The seed applies; the flags
+      above only drive Solve.
     </div>
     </div>
 
@@ -173,7 +178,7 @@
       checkpoints, fewer for harder targets; a Max checkpoints below the board size fixes it); the flags above do not apply. Grades 4 and 5 (and bigger boards) take longer. If the target is missed, the closest puzzle is shown
       with the grade it reached. The diagnostics are computed for the result, so it can be rated right away.
       An Exact puzzle is searched the same way by moving its numbers along the solution (Retries and Search
-      effort apply; Minimize walls, Max walls, Max checkpoints and the flags do not), graded by the reduced
+      effort apply; the flags do not), graded by the reduced
       Exact model, and has no diagnostics.
     </div>
     </div>
@@ -182,7 +187,7 @@
       <button id="reproducePlay" class="wide" title="Runs generate() itself, the same function the Play app uses for its daily/local puzzles — not the flags/Max checkpoints/Max walls above, which only apply to Generate. Use this to reproduce a puzzle seen in the Play app via its seed.">▶️↺ Reproduce Play puzzle</button>
     </div>
     <div class="hint">
-      A Wrap-around or Exact puzzle runs that type's own Play generator (seed only). For a standard puzzle,
+      A One way arrows, Wrap-around or Exact puzzle runs that type's own Play generator (seed only). For a standard puzzle,
       generate() has no flags of its own to set — currently it's always equivalent to
       <code id="playFlagsHex"></code> (path=warnsdorff, checkpoints=gap, propagation on), shown here
       only for reference. Paste a seed from the Play app's hold-V badge above and click this to get
@@ -192,7 +197,7 @@
     <div class="divider"></div>
 
     <div class="field">
-      <button id="clearWalls" class="wide">Clear all walls</button>
+      <button id="clearWalls" class="wide" data-variants="standard wrap">Clear all walls</button>
       <button id="clearAll" class="wide">Reset board</button>
     </div>
   </aside>
@@ -207,7 +212,7 @@
           <button id="seedMode" title="Toggle between a fixed seed you set and a fresh random seed each run">🎲 Random</button>
         </div>
       </div>
-      <div class="field field-row">
+      <div class="field field-row" data-variants="standard wrap exact">
         <label for="compareToggle" title="Set two algorithm flag configurations (A/B) and run Generate or Solve with both, at the same seed, to compare them">Compare A / B</label>
         <input id="compareToggle" type="checkbox">
       </div>
@@ -235,6 +240,7 @@
     <div class="hint">Uses the Score-phase flags set above the board (side A when comparing).</div>
     <button id="solveBtn" class="primary wide">Solve</button>
 
+    <div data-variants="standard">
     <div class="divider"></div>
 
     <div class="field">
@@ -250,6 +256,7 @@
       are still shown in Play on hold-V) and their raw metrics, all from one reference solve.
     </div>
     <div id="difficultyResult"></div>
+    </div>
   </aside>
 
   <aside class="panel side-right">

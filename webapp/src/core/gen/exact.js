@@ -1,7 +1,6 @@
 import { makePuzzle, clonePuzzle, labelCount } from '../model.js';
 import { makeRng, shuffle } from '../rng.js';
 import { backbite, warnsdorff } from './hampath.js';
-import { randomCheckpoints } from './checkpoints.js';
 import { solve } from '../solver/solve.js';
 import { trapMetrics, trapGradeOf, EXACT_MODEL } from '../trap.js';
 import { targetBand, maxTargetGrade, missOf, TARGET_CFG } from './target.js';
@@ -50,21 +49,6 @@ export function fullExactPuzzle(n, path) {
   p.exact = true;
   path.forEach((cell, i) => {
     p.cp[cell] = i + 1;
-  });
-  p.path = path;
-  return p;
-}
-
-// Designer helper (random, unseeded by design: the caller supplies rnd): a random Hamiltonian path
-// with K of its cells numbered by their steps (the start, the end and K - 2 random ones in
-// between), no walls. Unique only by luck: the designer solves it and adds numbers or walls.
-export function randomExactPuzzle(n, K, rnd) {
-  const path = backbite(n, rnd);
-  const p = makePuzzle(n);
-  p.exact = true;
-  const count = Math.max(2, Math.min(K, path.length));
-  randomCheckpoints(path.length, count, rnd).forEach(at => {
-    p.cp[path[at]] = at + 1;
   });
   p.path = path;
   return p;

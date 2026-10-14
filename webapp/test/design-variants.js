@@ -1,18 +1,23 @@
-// Tests of what the design app needs for the Wrap-around and Exact puzzle types: the seam geometry
-// (view/geometry.js chordSegments), the board previews, the designer helpers (random Exact path,
-// wrap-aware scatter, seam walls), the leg-collision check on Exact boards and the A/B compare on a
-// torus. Registered by tests.js: designVariantsTests(t, ta, ok, eq).
-import { makePuzzle, validate, labelCount } from '../src/core/model.js';
-import { setWallId, hasWallId, wallIds, clearSeamWalls, edgeId } from '../src/core/edges.js';
+// Tests of what the design app needs for the One way arrows, Wrap-around and Exact puzzle types: the
+// seam geometry (view/geometry.js chordSegments), the board previews, the designer helpers
+// (wrap-aware scatter, seam walls), the play-mode overlays (connectivity, forced edges, leg
+// collisions) on Exact boards and on one-way arrows, and the A/B compare on a torus. Registered by
+// tests.js: designVariantsTests(t, ta, ok, eq).
+import { makePuzzle } from '../src/core/model.js';
+import { setWallId, hasWallId, wallIds, clearSeamWalls, edgeId, setArrowId } from '../src/core/edges.js';
 import { solve } from '../src/core/solver/solve.js';
 import { runSync } from '../src/core/run.js';
 import { makeRng } from '../src/core/rng.js';
 import { chordSegments } from '../src/view/geometry.js';
 import { miniPreviewSvg } from '../src/apps/design/board.js';
-import { randomExactPuzzle, generateExact } from '../src/core/gen/exact.js';
+import { generateExact } from '../src/core/gen/exact.js';
 import { randomPathPuzzle, generateUnique } from '../src/core/gen/generate.js';
 import { scatter } from '../src/core/gen/checkpoints.js';
-import { boardLegCollide } from '../src/core/connectivity.js';
+import { boardConnectivity, boardPropagation, boardLegCollide } from '../src/core/connectivity.js';
+import { generateArrows } from '../src/core/gen/arrows.js';
+import { buildNeighbors, segBlocker, segBlockerDir } from '../src/core/solver/prune.js';
+import { buildMoves } from '../src/core/solver/solve-dir.js';
+import { neighbourCell } from '../src/core/geom.js';
 import { runCompare } from '../src/apps/design/compare.js';
 import { decodeFlags, DEFAULT_FLAGS_INT } from '../src/core/gen/flags.js';
 
@@ -41,20 +46,6 @@ export function designVariantsTests(t, ta, ok, eq) {
     eq(wallIds(p), [10, 11]);
     eq(clearSeamWalls(p), 0);
     ok(hasWallId(p.walls, 10) && hasWallId(p.walls, 11));
-  });
-
-  t('randomExactPuzzle: a path whose numbers are its steps, K numbers, start and end among them', () => {
-    for (const [n, K, seed] of [[5, 4, 1], [6, 7, 2], [7, 2, 3]]) {
-      const p = randomExactPuzzle(n, K, makeRng(seed));
-      ok(p.exact && !p.wrap && !p.arrows, 'an Exact puzzle');
-      eq(labelCount(p), K);
-      eq(p.cp[p.path[0]], 1);
-      eq(p.cp[p.path[n * n - 1]], n * n);
-      p.path.forEach((cell, i) => { if (p.cp[cell]) eq(p.cp[cell], i + 1, 'number = step'); });
-      ok(validate(p).ok, validate(p).msg);
-      ok(solve(p, { limit: 2, nodeCap: 5e6, prop: true }).count >= 1, 'its own path solves it');
-    }
-    eq(labelCount(randomExactPuzzle(5, 1, makeRng(4))), 2, 'at least the start and the end');
   });
 
   t('scatter: on a wrap-around board it numbers K cells 1..K and is deterministic', () => {
@@ -103,6 +94,79 @@ export function designVariantsTests(t, ta, ok, eq) {
     const exact = make(5);
     exact.exact = true;
     eq(boardLegCollide(exact, path), standard);
+  });
+
+  // 3x3, cells 0..8 row by row; arrows: [a, b] = the one move a -> b that the edge allows
+  const arrowBoard = (moves, cps = {}) => {
+    const p = makePuzzle(3);
+    p.arrows = new Uint8Array(9);
+    for (const [a, b] of moves) setArrowId(p.arrows, edgeId(3, a, b), a < b ? 1 : -1);
+    for (const [cell, k] of Object.entries(cps)) p.cp[cell] = k;
+    return p;
+  };
+
+  t('arrows overlays: a head that every arrow points at has nowhere to go (connectivity)', () => {
+    const p = arrowBoard([[1, 0], [3, 0]], { 0: 1, 8: 2 });
+    const r = boardConnectivity(p, [0]);
+    eq(r.reachable.size, 0);
+    eq([...r.unreachable].sort((a, b) => a - b), [1, 2, 3, 4, 5, 6, 7, 8]);
+    eq(r.connOk, false);
+    const open = makePuzzle(3);
+    open.cp[0] = 1; open.cp[8] = 2;
+    eq(boardConnectivity(open, [0]).connOk, true, 'the same board without arrows is connected');
+  });
+
+  t('arrows overlays: a cell that cannot be left is a dead end and is cut off from the end', () => {
+    // arrows 2 -> 1 and 4 -> 1: cell 1 can be entered from 0, 2 and 4 but only left back onto the head
+    const p = arrowBoard([[2, 1], [4, 1]], { 0: 1, 8: 2 });
+    const r = boardConnectivity(p, [0]);
+    eq([...r.deadEnd], [1]);
+    eq([...r.unreachable], [1], 'the others still reach the end');
+    eq(r.connOk, false);
+  });
+
+  t('arrows overlays: a one-way move that is the only one left is forced', () => {
+    const p = arrowBoard([[3, 0]], { 0: 1, 8: 2 }); // 3 -> 0 only: the head on 0 cannot go down
+    const r = boardPropagation(p, [0]);
+    eq(r.infeasible, false);
+    ok((r.dirs[0] & 1) !== 0 && (r.dirs[1] & 2) !== 0, 'the head must step right: 0 -> 1');
+    ok(r.forced.has(1));
+  });
+
+  t('segBlockerDir: arrows make a cell a bottleneck that a two-way board does not have', () => {
+    // only 1 -> 4 / 3 -> 4 can leave the top-left corner area: moves 1 -> 2 and 3 -> 6 are not allowed
+    const p = arrowBoard([[2, 1], [6, 3]], { 0: 1, 8: 2 });
+    const { out } = buildMoves(p), { nb } = buildNeighbors(p), vis = new Uint8Array(9);
+    vis[0] = 1;
+    eq([...segBlockerDir(out, 9, vis, 0, 8)], [4]);
+    eq([...segBlocker(nb, 9, vis, 0, 8)], [], 'two-way: other routes exist');
+    eq([...segBlockerDir(out, 9, new Uint8Array(9).fill(1), 0, 8)], [], 'nothing to pass when everything is visited');
+    const r = boardLegCollide(p, [0]);
+    eq(r.infeasible, false);
+  });
+
+  t('arrows overlays: nothing is flagged on any prefix of the real solution', () => {
+    for (const seed of [1, 2, 3]) {
+      const p = runSync(generateArrows(5, seed));
+      const path = solve(p, { limit: 2, nodeCap: 5e6, capture: true }).paths[0];
+      const next = new Map(path.map((c, i) => [c, path[i + 1]]));
+      const consecutive = (a, b) => next.get(a) === b || next.get(b) === a;
+      for (let len = 1; len < path.length; len++) {
+        const prefix = path.slice(0, len), at = `seed ${seed}, prefix ${len}`;
+        const conn = boardConnectivity(p, prefix);
+        ok(conn.connOk && conn.unreachable.size === 0 && conn.deadEnd.size === 0, `connectivity, ${at}`);
+        const prop = boardPropagation(p, prefix);
+        ok(!prop.infeasible, `propagation, ${at}`);
+        for (let u = 0; u < 25; u++) {
+          for (let d = 0; d < 4; d++) {
+            if (!((prop.dirs[u] >> d) & 1)) continue;
+            const v = neighbourCell(5, false, u, d);
+            ok(v >= 0 && consecutive(u, v), `forced edge ${u}-${v} is on the solution, ${at}`);
+          }
+        }
+        ok(!boardLegCollide(p, prefix).infeasible, `leg collision, ${at}`);
+      }
+    }
   });
 
   t('miniPreviewSvg: a wrap-around board draws its path as a path with seam stubs and a margin', () => {

@@ -6,6 +6,7 @@ import {
   activeOffers,
 } from '../src/core/lucky.js';
 import { createUnlock, sanitize, UNLOCK_KEY } from '../src/features/unlock.js';
+import { createRulesSeen, sanitize as sanitizeSeen, RULES_SEEN_KEY } from '../src/features/rules-seen.js';
 import {
   PLAY_VARIANTS, LUCKY_SIZES, variantById, variantOf, sizesFor, luckyDefs,
 } from '../src/apps/play/variants.js';
@@ -235,5 +236,46 @@ export function unlockTests(t, ta, ok, eq) {
     ok(EN['lucky.chances'](1) === '1 unlock chance' && EN['lucky.chances'](0) === '0 unlock chances', 'plural');
     ok(EN['lucky.used'](1, 'Sat').includes('1 day)'), 'singular');
     ok(EN['lucky.used'](6, 'Sat').includes('6 days)'), 'plural');
+  });
+
+  t('rules tooltip: every puzzle type has a name and rules in both languages, and the game screen label exists', () => {
+    for (const dict of [EN, ZH]) {
+      ok(dict['game.rulesLabel'], 'game.rulesLabel');
+      for (const id of ['standard', ...PLAY_VARIANTS.map(v => v.id)]) {
+        ok(dict['mode.' + id] && dict['mode.' + id + 'Rules'], id);
+      }
+    }
+  });
+
+  ta('rules seen: nothing is seen at first, marking persists, only variants of the app count', async () => {
+    const ids = PLAY_VARIANTS.map(v => v.id), store = memory();
+    const a = createRulesSeen(store, ids);
+    await a.init();
+    ok(ids.every(id => !a.seen(id)), 'a new player has seen nothing');
+    await a.mark('wrap');
+    await a.mark('nope'); // not a type of the app
+    ok(a.seen('wrap') && !a.seen('exact') && !a.seen('nope'));
+    eq(JSON.parse(store.map.get(RULES_SEEN_KEY)), { v: 1, seen: { wrap: true } });
+    const b = createRulesSeen(store, ids);
+    await b.init();
+    ok(b.seen('wrap') && !b.seen('arrows'), 'a reload remembers it');
+  });
+
+  ta('rules seen: a corrupt, foreign or outdated record is a fresh start; unknown ids are dropped', async () => {
+    const ids = ['arrows', 'wrap'];
+    for (const raw of ['{not json', '[]', 'null', '{"v":2,"seen":{"wrap":true}}', '{"v":1}', '{"v":1,"seen":7}']) {
+      const rs = createRulesSeen(memory({ [RULES_SEEN_KEY]: raw }), ids);
+      await rs.init();
+      ok(!rs.seen('wrap') && !rs.seen('arrows'), raw);
+    }
+    const rs = createRulesSeen(memory({ [RULES_SEEN_KEY]: '{"v":1,"seen":{"wrap":true,"gone":true,"arrows":1}}' }), ids);
+    await rs.init();
+    ok(rs.seen('wrap') && !rs.seen('arrows') && !rs.seen('gone'), 'only true values of known ids');
+    eq(sanitizeSeen({ v: 1, seen: { wrap: true, gone: true } }, ids), { v: 1, seen: { wrap: true } });
+    const broken = { async get() { throw new Error('no storage'); }, async set() { throw new Error('no storage'); } };
+    const safe = createRulesSeen(broken, ids);
+    await safe.init();
+    await safe.mark('wrap'); // must not throw
+    ok(safe.seen('wrap'), 'it still works for this page load');
   });
 }
