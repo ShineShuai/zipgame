@@ -63,9 +63,10 @@ export const dayOfDate = date => {
 };
 
 // gotdDate ('YYYYMMDD') given = a Game of Day, else a local game
-// (day = UTC day of its seed, index 0-based). variant ('cutout' | 'arrows' | 'exact' | 'wrap') = a
+// (day = UTC day of its seed, index 0-based). variant ('cutout' | 'arrows' | 'exact' | 'wrap' | 'loop') = a
 // game of that variant: random, so the record carries the puzzle itself ({ n, shape, holes, cp,
-// walls } | { n, cp, walls, arrows } | { n, cp, walls, exact } | { n, cp, walls, wrap }) instead of
+// walls } | { n, cp, walls, arrows } | { n, cp, walls, exact } | { n, cp, walls, wrap } | { n, cp,
+// walls, loop }) instead of
 // day / index / algo. A variant's record has no grade: the code has no room for one (the receiver
 // grades the puzzle again), and a record with one cannot be encoded.
 export function makeShareRecord({ gotdDate, n, grade, timeS, pct, day, index, algo, legs, K, variant, puzzle }) {
@@ -82,6 +83,11 @@ export function makeShareRecord({ gotdDate, n, grade, timeS, pct, day, index, al
     const { cp, walls } = puzzle;
     const wrapped = { n, cp: cp.slice(), walls: walls.slice(), wrap: true };
     return { kind: 'local', ...common, variant, puzzle: wrapped };
+  }
+  if (variant === 'loop') {
+    const { cp, walls } = puzzle;
+    const ring = { n, cp: cp.slice(), walls: walls.slice(), loop: true };
+    return { kind: 'local', ...common, variant, puzzle: ring };
   }
   if (variant === 'exact') {
     const { cp, walls } = puzzle;

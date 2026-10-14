@@ -43,10 +43,10 @@ export function gradesFromMetrics(metrics, spatial, thresholdsById = DEFAULT_THR
 //            so it exists even when the reference solve below is capped. { ok:false } if none is found.
 //   legacy = gradesFor() — the previous calibrated grades (decisionNodes, B, crossPerSeg, ...), kept for
 //            hold-V exactly as before; null when the reference solve is capped.
-// A variant (Cutout, One way arrows, Exact, Wrap-around) gets the trap grade only, with the score
+// A variant (Cutout, One way arrows, Exact, Wrap-around, Loop) gets the trap grade only, with the score
 // model that fits it (trap.js modelFor): the old grades were calibrated on full-square boards
 // with walls.
 export function playGradesFor(puzzle) {
-  const variant = puzzle.holes || puzzle.arrows || puzzle.exact || puzzle.wrap;
+  const variant = puzzle.holes || puzzle.arrows || puzzle.exact || puzzle.wrap || puzzle.loop;
   return { trap: trapMetrics(puzzle, undefined, null, modelFor(puzzle)), legacy: variant ? null : gradesFor(puzzle) };
 }

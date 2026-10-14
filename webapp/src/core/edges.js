@@ -43,9 +43,11 @@ export const wallIds = p => { const o = []; for (let i = 0; i < p.n * p.n; i++) 
 export const wallCount = p => wallIds(p).length;
 export const edgeToKey = (n, e) => `${e & 1 ? 'H' : 'V'},${((e >> 1) / n) | 0},${(e >> 1) % n}`;
 export const keyToEdge = (n, k) => { const [t, r, c] = k.split(','); return (+r * n + +c) * 2 + (t === 'H' ? 1 : 0); };
-export const pathEdgeIds = (n, path, wrap = false) => {
+// ring: the path is a ring (a Loop puzzle), so the edge from its last cell back to the first counts.
+export const pathEdgeIds = (n, path, wrap = false, ring = false) => {
   const o = [];
   for (let i = 1; i < path.length; i++) o.push(edgeId(n, path[i - 1], path[i], wrap));
+  if (ring && path.length > 2) o.push(edgeId(n, path[path.length - 1], path[0], wrap));
   return o;
 };
 

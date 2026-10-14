@@ -2,6 +2,7 @@ import { generateCutout, CUTOUT_MAX_MS } from '../../core/gen/cutout.js';
 import { generateArrows, ARROW_SIZES } from '../../core/gen/arrows.js';
 import { generateExact, EXACT_SIZES } from '../../core/gen/exact.js';
 import { generate, WRAP_SIZES } from '../../core/gen/generate.js';
+import { generateLoop, LOOP_SIZES } from '../../core/gen/loop.js';
 
 // The puzzle variants of the play app, one entry each. Everything that differs between variants
 // is read from here (the menu tiles, the generator, the texts, the lucky game), so a new variant
@@ -62,6 +63,15 @@ export const PLAY_VARIANTS = [
     countKey: 'gen.walls',
     source: 'generate with wrap (core/gen/generate.js)',
     generate: (n, seed) => generate(n, seed, { wrap: true }),
+  },
+  {
+    id: 'loop',
+    detect: puzzle => Boolean(puzzle.loop),
+    // A ring needs an even number of cells, so even sizes only (gen/loop.js).
+    sizes: all => all.filter(n => LOOP_SIZES.includes(n)),
+    countKey: 'gen.walls',
+    source: 'generateLoop (core/gen/loop.js)',
+    generate: (n, seed) => generateLoop(n, seed),
   },
 ].map(variant => ({ ...variant, keys: textKeys(variant.id) }));
 

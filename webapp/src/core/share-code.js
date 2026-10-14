@@ -38,13 +38,16 @@
 //   | K 7, then K cell indices of checkpoints 1..K, 8 bits each
 //   | wall count 8, then 9 bits per wall (edge id) | strip length 6, 2 bits per leg | check 8
 // A 6x6 one with 6 walls is about 35 characters.
+//
+// Loop (variant id 5): the same frame as Wrap-around (no shape, no holes); the numbers 1..K are
+// cells in cyclic order and a wall id is an ordinary edge of the grid.
 import { LABELS } from './gen/shapes.js';
 import { arrowProblem, arrowDirId } from './edges.js';
 import { validate, labelCount, numberedCells } from './model.js';
 
 export const SHARE_VERSION = 1;
 export const SHARE_VERSION_VARIANT = 2;
-export const VARIANTS = [null, 'cutout', 'arrows', 'exact', 'wrap']; // variant id -> name
+export const VARIANTS = [null, 'cutout', 'arrows', 'exact', 'wrap', 'loop']; // variant id -> name
 export const VARIANT_SHAPES = LABELS; // shape id - 1 -> name
 export const VARIANT_MAX_N = 16;
 export const MAX_LEGS = 63;
@@ -134,8 +137,24 @@ function isWrapPuzzle(p) {
     && validate(p).ok;
 }
 
+// A Loop puzzle { n, cp, walls, loop }: numbered 1..K without gaps, no holes, arrows, exact numbers
+// or wrap-around, and valid (validate() in model.js: an even board, at least 3 numbers).
+function isLoopPuzzle(p) {
+  if (!p || p.loop !== true || !isInt(p.n, 2, VARIANT_MAX_N) || p.holes || p.arrows || p.exact || p.wrap) {
+    return false;
+  }
+  const T = p.n * p.n;
+  if (!p.cp || p.cp.length !== T || !p.walls || p.walls.length !== T) return false;
+  const marks = [];
+  for (let i = 0; i < T; i++) if (p.cp[i]) marks.push(p.cp[i]);
+  marks.sort((a, b) => a - b);
+  return marks.length >= 3 && marks.length <= 127 && marks.every((v, i) => v === i + 1)
+    && validate(p).ok;
+}
+
 const SOUND_PUZZLE = {
   cutout: isCutoutPuzzle, arrows: isArrowsPuzzle, exact: isExactPuzzle, wrap: isWrapPuzzle,
+  loop: isLoopPuzzle,
 };
 
 function isEncodable(rec) {
@@ -241,7 +260,7 @@ function pushExact(bits, rec, levels) {
   for (const level of levels) pushBits(bits, level, 2);
 }
 
-// Wrap-around body (layout at the top): the cutout body without shape and holes.
+// Wrap-around and Loop body (layout at the top): the cutout body without shape and holes.
 function pushWrap(bits, rec, levels) {
   const p = rec.puzzle, T = p.n * p.n, cells = [], walls = [];
   for (let i = 0; i < T; i++) {
@@ -249,7 +268,7 @@ function pushWrap(bits, rec, levels) {
     for (let t = 0; t < 2; t++) if ((p.walls[i] >> t) & 1) walls.push(i * 2 + t);
   }
   pushBits(bits, SHARE_VERSION_VARIANT, 3);
-  pushBits(bits, VARIANTS.indexOf('wrap'), 4);
+  pushBits(bits, VARIANTS.indexOf(rec.variant), 4);
   pushBits(bits, p.n, 5);
   pushBits(bits, Math.min(MAX_TENTHS, Math.round(rec.timeS * 10)), 17);
   pushBits(bits, cells.length, 7);
@@ -261,7 +280,7 @@ function pushWrap(bits, rec, levels) {
 }
 
 function pushVariant(bits, rec, levels) {
-  if (rec.variant === 'wrap') return pushWrap(bits, rec, levels);
+  if (rec.variant === 'wrap' || rec.variant === 'loop') return pushWrap(bits, rec, levels);
   if (rec.variant === 'exact') return pushExact(bits, rec, levels);
   if (rec.variant === 'arrows') return pushArrows(bits, rec, levels);
   const p = rec.puzzle, T = p.n * p.n, cells = [], walls = [];
@@ -346,7 +365,7 @@ function readVariant(read, bits, code, pos) {
   const variant = VARIANTS[read(4)];
   if (variant === 'arrows') return readArrows(read, bits, code, pos);
   if (variant === 'exact') return readExact(read, bits, code, pos);
-  if (variant === 'wrap') return readWrap(read, bits, code, pos);
+  if (variant === 'wrap' || variant === 'loop') return readWrap(read, bits, code, pos, variant);
   if (variant !== 'cutout') {
     return null;
   }
@@ -392,15 +411,16 @@ function readVariant(read, bits, code, pos) {
   return exactLength && zeroPadding && puzzle.shape !== false && isEncodable(rec) ? rec : null;
 }
 
-// The body of a wrap-around code, after its version and variant id (layout at the top).
-function readWrap(read, bits, code, pos) {
+// The body of a wrap-around or Loop code, after its version and variant id (layout at the top).
+// variant: 'wrap' | 'loop', which is also the name of the flag the puzzle carries.
+function readWrap(read, bits, code, pos, variant) {
   const n = read(5);
-  if (!isInt(n, 3, VARIANT_MAX_N)) {
+  if (!isInt(n, variant === 'wrap' ? 3 : 2, VARIANT_MAX_N)) {
     return null;
   }
   const T = n * n;
-  const rec = { kind: 'local', variant: 'wrap', n, grade: null, timeS: read(17) / 10 };
-  const puzzle = { n, cp: new Uint16Array(T), walls: new Uint8Array(T), wrap: true };
+  const rec = { kind: 'local', variant, n, grade: null, timeS: read(17) / 10 };
+  const puzzle = { n, cp: new Uint16Array(T), walls: new Uint8Array(T), [variant]: true };
   const K = read(7);
   for (let k = 1; k <= K; k++) {
     const cell = read(8);

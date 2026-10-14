@@ -9,6 +9,9 @@
 // so the numbers are not 1..K
 // but any increasing steps, 1 and the cell count among them. solve() then searches with the steps
 // (see exactRanks below) and isSolved() compares every number with its step.
+// A puzzle of the "Loop" variant has `loop: true`: the path closes into a ring, so its last cell
+// touches cell 1 (through an open edge) and the numbers 1..K are met in cyclic order; K need not
+// be the last cell. solve() then runs solver/solve-loop.js (a standard search per possible last cell).
 import { arrowProblem } from './edges.js';
 
 export const ALGO_VERSION = 6; // bump when generator/solver output changes for a given seed. v2: solver propagation + scaled node caps in generate() (fewer walls, faster). v3: K ~ Normal peaked at 30% of range. v4: candidates seeded with 40% random walls; best of several minimized candidates (CANDIDATES). v5: solver propagation also drops cycle-closing edges (fewer nodes, so node-capped generation of the larger sizes changes). v6: wall minimizing tests each removal by searching only for solutions through the freed edge (fewer node-cap hits, fewer walls); the winning candidate also gets a deeper second look at the walls kept only because a check hit its node cap (refineWalls; fewer walls again, same ALGO_VERSION by choice, golden puzzles regenerated)
@@ -22,6 +25,7 @@ export const clonePuzzle = p => ({
   ...(p.arrows ? { arrows: p.arrows.slice() } : {}),
   ...(p.exact ? { exact: true } : {}),
   ...(p.wrap ? { wrap: true } : {}),
+  ...(p.loop ? { loop: true } : {}),
 });
 // Cells the path has to cover: all n*n, minus the holes. A puzzle may carry `holes` (Uint8Array(n*n), 1 = hole): cells that are
 // not part of the board (no edges, no checkpoint, not drawn, not counted). Only the Cutout variant (gen/cutout.js) has them.
@@ -128,6 +132,22 @@ function wrapProblem(p) {
   return null;
 }
 
+// A Loop puzzle: a ring needs an even number of cells (a grid is bipartite) and at least 3
+// numbers (with 2, the ring can be run either way round, so it never has one solution). Holes,
+// arrows, Exact numbers and wrap-around do not come with it yet.
+function loopProblem(p, count) {
+  if (p.holes || p.arrows || p.exact || p.wrap) {
+    return 'Invalid: a loop puzzle cannot have holes, arrows, exact numbers or wrap-around (yet).';
+  }
+  if (p.n % 2) {
+    return `Invalid: a ${p.n} x ${p.n} board has an odd number of cells, so no ring covers it.`;
+  }
+  if (count < 3) {
+    return 'Invalid: a loop needs at least 3 checkpoints (with 2 the ring runs either way round).';
+  }
+  return null;
+}
+
 export function validate(p) {
   const nums = [];
   for (const v of p.cp) if (v) nums.push(v);
@@ -138,6 +158,10 @@ export function validate(p) {
   if (p.holes) for (let i = 0; i < p.cp.length; i++) if (p.holes[i] && p.cp[i]) return { ok: false, msg: 'Invalid: a checkpoint sits on a hole.' };
   if (p.wrap) {
     const problem = wrapProblem(p);
+    if (problem) return { ok: false, msg: problem };
+  }
+  if (p.loop) {
+    const problem = loopProblem(p, nums.length);
     if (problem) return { ok: false, msg: problem };
   }
   if (p.exact) return validateExact(p, nums);
