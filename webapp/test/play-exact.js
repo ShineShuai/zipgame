@@ -6,6 +6,7 @@ import { isSolved } from '../src/core/rules.js';
 import { solve } from '../src/core/solver/solve.js';
 import { runSync } from '../src/core/run.js';
 import { generateExact, EXACT_SIZES } from '../src/core/gen/exact.js';
+import { generate } from '../src/core/gen/generate.js';
 import {
   variantOf, variantById, sizesFor, nearestSize, PLAY_VARIANTS,
 } from '../src/apps/play/variants.js';
@@ -126,54 +127,6 @@ export function playExactTests(t, ok, eq) {
     eq(refused({ cp: far }), true, 'a leg of the wrong parity');
   });
 
-  t('play exact: forged codes with an unsound puzzle are refused (they come from outside)', () => {
-    const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-    // the layout of core/share-code.js, written by hand: n, [cell, step - 1] per number
-    const forge = (n, numbers, tenths = 834) => {
-      const bits = [];
-      const push = (value, width) => {
-        for (let i = width - 1; i >= 0; i--) bits.push((value >>> i) & 1);
-      };
-      push(2, 3);
-      push(3, 4);
-      push(n, 5);
-      push(tenths, 17);
-      push(numbers.length, 7);
-      for (const [cell, step] of numbers) {
-        push(cell, 8);
-        push(step, 8);
-      }
-      push(0, 6);
-      let h = 0x811c9dc5;
-      for (const b of bits) h = Math.imul(h ^ b, 0x01000193);
-      h >>>= 0;
-      push((h ^ (h >>> 8) ^ (h >>> 16) ^ (h >>> 24)) & 0xff, 8);
-      let code = '';
-      for (let i = 0; i < bits.length; i += 6) {
-        let v = 0;
-        for (let j = 0; j < 6; j++) v = (v << 1) | (bits[i + j] || 0);
-        code += ALPHABET[v];
-      }
-      return code;
-    };
-    // 1 at the corner, 25 at the opposite one: 8 apart, 24 steps
-    const ok5 = forge(5, [[0, 0], [24, 24]]);
-    const rec = decodeShare(ok5);
-    const body = [rec.variant, rec.puzzle.cp[0], rec.puzzle.cp[24], rec.puzzle.exact];
-    eq(body, ['exact', 1, 25, true]);
-    eq(encodeShare(rec), ok5, 'the forged frame is the real one');
-    eq(decodeShare(forge(5, [[0, 0], [0, 24]])), null, 'two numbers on one cell');
-    eq(decodeShare(forge(5, [[0, 0], [25, 24]])), null, 'a cell outside the board');
-    eq(decodeShare(forge(5, [[0, 0], [24, 25]])), null, 'the last number is 26, board of 25');
-    eq(decodeShare(forge(5, [[0, 0], [24, 23]])), null, 'the last number is 24, not 25');
-    eq(decodeShare(forge(5, [[0, 0], [1, 2], [24, 24]])), null, '1 apart, 2 steps: wrong parity');
-    eq(decodeShare(forge(5, [[0, 0], [5, 0], [24, 24]])), null, 'two numbers on step 1');
-    eq(decodeShare(forge(5, [[0, 0]])), null, 'one number');
-    eq(decodeShare(forge(5, [])), null, 'no numbers');
-    eq(decodeShare(forge(1, [[0, 0], [0, 0]])), null, 'a 1x1 board');
-    eq(decodeShare(forge(5, [[0, 0], [24, 24]], 0)), null, 'a time of 0');
-  });
-
   t('play exact: a variant record never carries a grade, so a graded game still shares', () => {
     const exact = fast(6, 3);
     const arrows = runSync(generateArrows(5, 3, { candidates: 1, refineNodes: 0 }));
@@ -185,9 +138,10 @@ export function playExactTests(t, ok, eq) {
       eq(rec.grade, null, variant);
       ok(encodeShare(rec) !== null, `${variant}: encodes with a grade given`);
     }
-    const game = { n: 5, grade: 3, timeS: 1, legs: [], K: 3, day: 5, index: 1, algo: 2 };
-    const local = makeShareRecord(game);
+    const standard = runSync(generate(5, 3));
+    const local = makeShareRecord({ n: 5, grade: 3, timeS: 1, legs: [], K: labelCount(standard), puzzle: standard });
     eq(local.grade, 3, 'a standard game keeps its grade');
+    ok(encodeShare(local) !== null, 'and encodes with its puzzle');
   });
 
   t('play exact: shareText names the variant; legs are counted by rank, not by number', () => {

@@ -67,6 +67,7 @@ import { directedTests } from './directed.js';
 import { exactTests } from './exact.js';
 import { exactGenTests } from './exact-gen.js';
 import { playExactTests } from './play-exact.js';
+import { sharedGamesTests } from './shared-games.js';
 import { wrapAllTests } from './wrap-all.js';
 import { arrowsGenTests } from './arrows-gen.js';
 import { playArrowsTests } from './play-arrows.js';
@@ -2634,16 +2635,23 @@ ta('stats-store: a replay keeps today\'s record and the per-size Game-of-Day tim
 
 // ---- Share link: codec, color strip, receiver status, shared replay ----
 const GOTD_REC = { kind: 'gotd', n: 7, grade: 3, timeS: 72.4, day: dayOfDate('20261007'), pct: 83, levels: [0, 0, 1, 0, 3, 2, 0] };
-const LOCAL_REC = { kind: 'local', n: 12, grade: null, timeS: 1234.5, day: dayOfDate('20261007'), index: 41, algo: ALGO_VERSION, levels: [] };
+const LOCAL_PUZZLE = runSync(generate(5, 123)); // a standard 5x5 game: the record carries its puzzle
+const LOCAL_REC = { kind: 'local', variant: null, n: 5, grade: 2, timeS: 1234.5, levels: Array.from({ length: maxNumber(LOCAL_PUZZLE) - 1 }, (_, i) => i % 4), puzzle: LOCAL_PUZZLE };
+const sameRec = (a, b) => { const flat = r => JSON.stringify([r.kind, r.variant ?? null, r.n, r.grade, r.timeS, r.levels, [...r.puzzle.cp], [...r.puzzle.walls]]); return flat(a) === flat(b); };
 t('share-code: Game of Day and local records round-trip; codes are URL-safe and short', () => {
-  for (const rec of [GOTD_REC, LOCAL_REC, { ...GOTD_REC, pct: null, grade: null }, { ...GOTD_REC, pct: 0, grade: 0, n: 31 }, { ...LOCAL_REC, index: 1023, levels: Array(MAX_LEGS).fill(3) }]) {
+  for (const rec of [GOTD_REC, { ...GOTD_REC, pct: null, grade: null }, { ...GOTD_REC, pct: 0, grade: 0, n: 31 }]) {
     const code = encodeShare(rec);
     ok(/^[A-Za-z0-9_-]+$/.test(code), code);
     eq(decodeShare(code), rec);
   }
+  for (const rec of [LOCAL_REC, { ...LOCAL_REC, grade: null, levels: [] }]) {
+    const code = encodeShare(rec);
+    ok(/^[A-Za-z0-9_-]+$/.test(code), code);
+    ok(sameRec(decodeShare(code), rec), 'the puzzle comes back with the record');
+  }
   ok(encodeShare(GOTD_REC).length <= 14, 'a Game of Day with 7 legs is at most 14 characters');
-  ok(encodeShare(LOCAL_REC).length <= 16, 'a local game without strip is at most 16 characters');
-  ok(ALGO_VERSION <= 15 && SHARE_VERSION === 1, 'algo version must fit 4 bits: widen the field (and SHARE_VERSION) before bumping past 15');
+  ok(encodeShare(LOCAL_REC).length <= 16, 'a standard 5x5 game is at most 16 characters');
+  ok(SHARE_VERSION === 1, 'the Game of Day frame keeps version 1: its links stay valid');
 });
 t('share-code: time is kept in tenths, clamped at 13107.1 s; a strip longer than 63 legs is dropped', () => {
   eq(decodeShare(encodeShare({ ...GOTD_REC, timeS: 72.44 })).timeS, 72.4);
@@ -2652,7 +2660,7 @@ t('share-code: time is kept in tenths, clamped at 13107.1 s; a strip longer than
 });
 t('share-code: out-of-range fields are not encoded', () => {
   for (const bad of [{ n: 1 }, { n: 32 }, { grade: 6 }, { timeS: 0 }, { timeS: NaN }, { day: -1 }, { day: 65536 }, { pct: 101 }, { levels: [4] }, { kind: 'x' }]) eq(encodeShare({ ...GOTD_REC, ...bad }), null, JSON.stringify(bad));
-  for (const bad of [{ index: 1024 }, { algo: 16 }, { algo: -1 }]) eq(encodeShare({ ...LOCAL_REC, ...bad }), null, JSON.stringify(bad));
+  for (const bad of [{ grade: 6 }, { timeS: 0 }, { n: 6 }, { levels: [4] }]) eq(encodeShare({ ...LOCAL_REC, ...bad }), null, JSON.stringify(bad));
   eq(encodeShare(null), null);
 });
 t('share-code: damaged codes are rejected (empty, truncated, extended, foreign characters, mistyped character)', () => {
@@ -2702,24 +2710,25 @@ t('share: legsUndo agrees with the play trace (same moves through rules.step: to
 t('share: makeShareRecord -> shareUrl -> parseShareLink round trip; the text carries head, time, percent, strip and the link', () => {
   const legs = [0, 1, 7];
   const sorted = o => Object.fromEntries(Object.entries(o).sort()); // key order is not part of the contract
-  const g = makeShareRecord({ gotdDate: '20261007', n: 7, grade: 3, timeS: 72.44, pct: 83, day: null, index: 0, algo: ALGO_VERSION, legs, K: 4 });
+  const g = makeShareRecord({ gotdDate: '20261007', n: 7, grade: 3, timeS: 72.44, pct: 83, legs, K: 4 });
   eq(sorted(g), sorted({ kind: 'gotd', n: 7, grade: 3, timeS: 72.4, levels: [0, 1, 3], day: dayOfDate('20261007'), pct: 83 }));
   const url = shareUrl('https://x.example/zip/', g);
   ok(url.startsWith('https://x.example/zip/?s=') && !url.includes('%'), url);
   const parsed = parseShareLink(new URL(url).search);
   eq([sorted(parsed.rec), parsed.bad], [sorted(g), false]);
   eq(shareText(g, url, tr), `Zip · Game of Day 2026-10-07 · 7x7 · Hard 3/5\n⏱ 72.4s · beat 83%\n🟩🟨🟥\n${url}`);
-  const l = makeShareRecord({ gotdDate: null, n: 8, grade: null, timeS: 40, pct: null, day: 20700, index: 2, algo: ALGO_VERSION, legs: [], K: 1 });
-  eq(sorted(l), sorted({ kind: 'local', n: 8, grade: null, timeS: 40, levels: [], day: 20700, index: 2, algo: ALGO_VERSION }));
-  eq(shareText(l, 'U', tr), 'Zip · 8x8 · game #3\n⏱ 40.0s\nU');
+  const l = makeShareRecord({ gotdDate: null, n: 5, grade: null, timeS: 40, pct: null, legs: [], K: maxNumber(LOCAL_PUZZLE), puzzle: LOCAL_PUZZLE });
+  eq(sorted({ ...l, puzzle: null }), sorted({ kind: 'local', variant: null, n: 5, grade: null, timeS: 40, levels: Array(maxNumber(LOCAL_PUZZLE) - 1).fill(0), puzzle: null }));
+  ok(l.puzzle !== LOCAL_PUZZLE && l.puzzle.cp !== LOCAL_PUZZLE.cp, 'the record holds a copy of the puzzle');
+  eq(shareText(l, 'U', tr), 'Zip · 5x5\n⏱ 40.0s\n' + stripText(l.levels) + '\nU');
   eq(parseShareLink(''), { rec: null, bad: false });
   eq(parseShareLink('?s=garbage'), { rec: null, bad: true });
-  eq(sorted(parseShareLink('?lb=x&s=' + encodeShare(l)).rec), sorted(l));
+  ok(sameRec(parseShareLink('?lb=x&s=' + encodeShare(l)).rec, l));
   eq(dayOfDate(dateOfDay(20733)), 20733);
 });
 t('share: shareStatus = what the receiver may do (live / replay / ok) or why not', () => {
   const clock = atDay(19), today = utcDayNumber(clock()), window = Array.from({ length: REPLAY_DAYS }, (_, i) => dateOfDay(today - 1 - i));
-  const ctx = (attempt = null) => ({ today, replayDates: window, attempt, algo: ALGO_VERSION, sizes: PLAY_SIZES });
+  const ctx = (attempt = null) => ({ today, replayDates: window, attempt, sizes: PLAY_SIZES });
   const day = k => ({ ...GOTD_REC, day: today - k });
   eq(shareStatus(day(0), ctx()).status, 'live');
   eq(shareStatus(day(1), ctx()).status, 'replay');
@@ -2729,10 +2738,9 @@ t('share: shareStatus = what the receiver may do (live / replay / ok) or why not
   eq(shareStatus(day(0), ctx({ solved: true, time: 30 })).status, 'played');
   eq(shareStatus(day(3), ctx({ solved: false, time: null })).status, 'played');
   eq(shareStatus(day(-1), ctx({ solved: true, time: 30 })).status, 'future', 'a future date is refused before anything else');
-  eq(shareStatus({ ...LOCAL_REC, n: 7 }, ctx()).status, 'ok');
-  eq(shareStatus({ ...LOCAL_REC, n: 7, algo: ALGO_VERSION - 1 }, ctx()).status, 'version');
+  eq(shareStatus(LOCAL_REC, ctx()).status, 'ok');
   eq(shareStatus({ ...LOCAL_REC, n: 3 }, ctx()).status, 'invalid', 'a size the generator does not serve');
-  eq(['live', 'replay', 'ok', 'played', 'old', 'future', 'version', 'invalid'].map(status => isPlayable({ status })), [true, true, true, false, false, false, false, false]);
+  eq(['live', 'replay', 'ok', 'played', 'old', 'future', 'invalid'].map(status => isPlayable({ status })), [true, true, true, false, false, false, false]);
 });
 t('share: the local seed a link names is the seed the game was made with (day, size, index, version -> same puzzle)', () => {
   const day = 20733, n = 5, index = 3, seed = dailySeed(day, n, index, ALGO_VERSION);
@@ -3023,7 +3031,7 @@ t('cutout: boardSvg draws one tile per cell that is left, an outline, and nothin
   const std = boardSvg({ puzzle: randPuzzle(2, 5, 4, 0.1), path: [], hintCell: null, hintWrongCell: null });
   ok(!std.includes('cutout') && !std.includes('<rect '));
 });
-t('share-code: a Cutout game round-trips with its puzzle; 7x7 stays short; damaged codes are rejected; version 1 codes still decode', () => {
+t('share-code: a Cutout game round-trips with its puzzle; 7x7 stays short; damaged codes are rejected', () => {
   for (const n of [5, 8, 16]) {
     const p = runSync(generateCutout(n, 40 + n, { boards: 1, effort: 0.1 }));
     const rec = makeShareRecord({ n, timeS: 83.4, legs: [0, 2, 3], K: maxNumber(p), variant: 'cutout', puzzle: p }), code = encodeShare(rec);
@@ -3036,13 +3044,14 @@ t('share-code: a Cutout game round-trips with its puzzle; 7x7 stays short; damag
     ok(decodeShare(code.slice(0, 5) + (code[5] === 'A' ? 'B' : 'A') + code.slice(6)) === null || n === 8, 'a changed character is caught by the check');
     ok(parseShareLink('?s=' + code).rec.puzzle.n === n);
   }
-  ok(encodeShare(makeShareRecord({ n: 7, timeS: 9, legs: [], K: 7, variant: 'cutout', puzzle: runSync(generateCutout(7, 4, { boards: 1, effort: 0.1 })) })).length <= 64);
-  eq(decodeShare(encodeShare(LOCAL_REC)), LOCAL_REC); eq(decodeShare(encodeShare(GOTD_REC)), GOTD_REC);
+  const seven = runSync(generateCutout(7, 4, { boards: 1, effort: 0.1 }));
+  ok(encodeShare(makeShareRecord({ n: 7, timeS: 9, legs: [], K: maxNumber(seven), variant: 'cutout', puzzle: seven })).length <= 36);
+  eq(decodeShare(encodeShare(GOTD_REC)), GOTD_REC);
   eq(VARIANTS.slice(0, 4), [null, 'cutout', 'arrows', 'exact']); // ids are fixed; later ones append
 });
 t('share-code: a Cutout record is refused when its puzzle is unsound (unbalanced, checkpoint on a hole, wall at a hole, a gap in the numbers)', () => {
   const good = runSync(generateCutout(6, 8, { boards: 1, effort: 0.1 }));
-  const rec = puzzle => makeShareRecord({ n: 6, timeS: 5, legs: [], K: 2, variant: 'cutout', puzzle });
+  const rec = puzzle => makeShareRecord({ n: 6, timeS: 5, legs: [], K: Math.max(2, Object.values(puzzle.cp).filter(Boolean).length), variant: 'cutout', puzzle });
   ok(encodeShare(rec(good)) !== null);
   const flat = new Uint8Array(36), withCp = (a, b) => { const q = { ...good, holes: flat.slice(), cp: new Uint16Array(36), walls: new Uint8Array(36) }; q.cp[a] = 1; q.cp[b] = 2; return q; };
   ok(encodeShare(rec(withCp(0, 35))) !== null);
@@ -3056,9 +3065,12 @@ t('share: a Cutout share record has the puzzle, a head line of its own, and is a
   const rec = makeShareRecord({ n: 6, timeS: 12.5, legs: [], K: maxNumber(p), variant: 'cutout', puzzle: p });
   ok(rec.variant === 'cutout' && rec.kind === 'local' && rec.day === undefined && rec.puzzle.holes !== p.holes);
   ok(shareText(rec, 'u', tr).startsWith('Zip Cutout · 6x6'));
-  eq(shareStatus(rec, { today: 20000, replayDates: [], attempt: null, algo: ALGO_VERSION, sizes: PLAY_SIZES }), { status: 'ok' });
-  eq(shareStatus({ ...rec, n: 3 }, { today: 20000, replayDates: [], attempt: null, algo: ALGO_VERSION, sizes: PLAY_SIZES }), { status: 'invalid' });
+  eq(shareStatus(rec, { today: 20000, replayDates: [], attempt: null, sizes: PLAY_SIZES }), { status: 'ok' });
+  eq(shareStatus({ ...rec, n: 3 }, { today: 20000, replayDates: [], attempt: null, sizes: PLAY_SIZES }), { status: 'invalid' });
 });
+
+// ---------- Saved shared games, radix coder, puzzle frame of the share code ----------
+sharedGamesTests(t, ta, ok, eq);
 
 // ---------- One Way Arrows Puzzles ----------
 directedTests(t, ok, eq);
