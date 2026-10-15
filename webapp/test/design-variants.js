@@ -1,9 +1,9 @@
-// Tests of what the design app needs for the One way arrows, Wrap-around and Exact puzzle types: the
+// Tests of what the design app needs for the One way arrows, Wrap-around, Exact and Loop puzzle types: the
 // seam geometry (view/geometry.js chordSegments), the board previews, the designer helpers
 // (wrap-aware scatter, seam walls), the play-mode overlays (connectivity, forced edges, leg
 // collisions) on Exact boards and on one-way arrows, and the A/B compare on a torus. Registered by
 // tests.js: designVariantsTests(t, ta, ok, eq).
-import { makePuzzle } from '../src/core/model.js';
+import { makePuzzle, validate, labelCount } from '../src/core/model.js';
 import { setWallId, hasWallId, wallIds, clearSeamWalls, edgeId, setArrowId } from '../src/core/edges.js';
 import { solve } from '../src/core/solver/solve.js';
 import { runSync } from '../src/core/run.js';
@@ -15,6 +15,7 @@ import { randomPathPuzzle, generateUnique } from '../src/core/gen/generate.js';
 import { scatter } from '../src/core/gen/checkpoints.js';
 import { boardConnectivity, boardPropagation, boardLegCollide } from '../src/core/connectivity.js';
 import { generateArrows } from '../src/core/gen/arrows.js';
+import { generateLoop } from '../src/core/gen/loop.js';
 import { buildNeighbors, segBlocker, segBlockerDir } from '../src/core/solver/prune.js';
 import { buildMoves } from '../src/core/solver/solve-dir.js';
 import { neighbourCell } from '../src/core/geom.js';
@@ -167,6 +168,87 @@ export function designVariantsTests(t, ta, ok, eq) {
         ok(!boardLegCollide(p, prefix).infeasible, `leg collision, ${at}`);
       }
     }
+  });
+
+  const adjacent = (n, a, b) => Math.abs(((a / n) | 0) - ((b / n) | 0)) + Math.abs((a % n) - (b % n)) === 1;
+
+  t('randomPathPuzzle with loop: a ring cut at cell 1, at least 3 numbers in order, solvable', () => {
+    for (const [n, K, seed] of [[4, 4, 1], [6, 5, 2], [6, 2, 3]]) {
+      const p = randomPathPuzzle(n, K, makeRng(seed), false, true);
+      ok(p.loop && !p.wrap, 'a Loop puzzle');
+      eq(p.path.length, n * n);
+      ok(adjacent(n, p.path[0], p.path[n * n - 1]), 'the last cell touches the first: a ring');
+      eq(p.cp[p.path[0]], 1);
+      eq(labelCount(p), Math.max(3, Math.min(K, n * n)), 'K is at least 3');
+      const numbers = p.path.map(c => p.cp[c]).filter(Boolean);
+      eq(numbers, [...numbers].sort((a, b) => a - b), 'in order along the ring');
+      ok(validate(p).ok, validate(p).msg);
+      ok(solve(p, { limit: 2, nodeCap: 5e6, prop: true }).count >= 1, 'the ring solves it');
+    }
+  });
+
+  t('generateUnique with loop: a unique ring puzzle; an odd board is refused', () => {
+    const r = runSync(generateUnique(6, 6, makeRng(3), { maxWalls: 10, tries: 40, loop: true }));
+    ok(r.unique && r.puzzle.loop && validate(r.puzzle).ok);
+    eq(solve(r.puzzle, { limit: 2, nodeCap: 5e6, prop: true }).count, 1);
+    let thrown = false;
+    try { runSync(generateUnique(5, 5, makeRng(3), { loop: true })); } catch { thrown = true; }
+    ok(thrown, 'no ring on an odd board');
+  });
+
+  t('loop overlays: nothing is flagged on any prefix of the real ring', () => {
+    for (const [n, seed] of [[4, 1], [6, 2]]) {
+      const p = runSync(generateLoop(n, seed));
+      const path = solve(p, { limit: 2, nodeCap: 5e6, capture: true, prop: true }).paths[0];
+      const T = n * n, onRing = new Set();
+      path.forEach((c, i) => { const d = path[(i + 1) % T]; onRing.add(`${c}-${d}`); onRing.add(`${d}-${c}`); });
+      for (let len = 2; len < T; len++) {
+        const prefix = path.slice(0, len), at = `${n}x${n} seed ${seed}, prefix ${len}`;
+        const conn = boardConnectivity(p, prefix);
+        ok(conn.connOk && !conn.unreachable.size && !conn.deadEnd.size, `connectivity, ${at}`);
+        const prop = boardPropagation(p, prefix);
+        ok(!prop.infeasible, `propagation, ${at}`);
+        for (let u = 0; u < T; u++) {
+          for (let d = 0; d < 4; d++) {
+            if (!((prop.dirs[u] >> d) & 1)) continue;
+            const v = neighbourCell(n, false, u, d);
+            ok(v >= 0 && onRing.has(`${u}-${v}`), `forced edge ${u}-${v} is on the ring, ${at}`);
+          }
+        }
+        ok(!boardLegCollide(p, prefix).infeasible, `leg collision, ${at}`);
+      }
+    }
+  });
+
+  t('loop overlays: a ring that can no longer close is reported (cell 1 has no free neighbour)', () => {
+    const p = makePuzzle(4);
+    p.loop = true;
+    p.cp[0] = 1; p.cp[10] = 2; p.cp[15] = 3;
+    // cell 1's neighbours, 4 and 1, are both on the path in the middle: nothing can ever close the ring
+    const stuck = boardConnectivity(p, [0, 4, 8, 9, 5, 1, 2]);
+    ok(!stuck.connOk && stuck.unreachable.has(0), 'cell 1 is cut off');
+    ok(boardConnectivity(p, [0, 4, 8]).connOk, 'a healthy start');
+    eq(boardConnectivity(p, [0]).connOk, true, 'only cell 1 so far: nothing to say');
+  });
+
+  t('miniPreviewSvg: a Loop route is drawn closed', () => {
+    const p = makePuzzle(4);
+    p.loop = true;
+    p.cp[0] = 1; p.cp[3] = 2; p.cp[15] = 3;
+    const points = svg => svg.match(/<polyline points="([^"]*)"/)[1].split(' ');
+    const closed = points(miniPreviewSvg(p, [0, 1, 2, 3], '#fff'));
+    eq(closed.length, 5);
+    eq(closed[0], closed[4], 'back to the first cell');
+    p.loop = false;
+    eq(points(miniPreviewSvg(p, [0, 1, 2, 3], '#fff')).length, 4);
+  });
+
+  ta('compare A / B with loop: both runs build ring puzzles', async () => {
+    const flags = decodeFlags(DEFAULT_FLAGS_INT);
+    const r = await runCompare({
+      n: 6, K: 6, maxWalls: 10, tries: 40, hardest: false, seed: 3, flagsA: flags, flagsB: flags, loop: true,
+    });
+    ok(r.a.unique && r.b.unique && r.a.puzzle.loop && r.b.puzzle.loop);
   });
 
   t('miniPreviewSvg: a wrap-around board draws its path as a path with seam stubs and a margin', () => {
