@@ -3,7 +3,7 @@ import { generate, PLAY_SIZES } from '../../core/gen/generate.js';
 import { edgeId, arrowAllows } from '../../core/edges.js';
 import { isSolved, step, gridAdjacent } from '../../core/rules.js';
 import { statSummary } from '../../core/stats.js';
-import { pickStorage } from '../../platform/storage.js';
+import { pickStorage, usage } from '../../platform/storage.js';
 import { runAsync } from '../../platform/run.js';
 import { createStore } from '../../features/stats-store.js';
 import { createDaily, scopeKey, fetchGameOfDay, fetchGameOfDayFor, utcDateString, utcDayNumber, dateOfDay } from '../../features/daily.js';
@@ -280,11 +280,17 @@ function sizeOptionsHtml() {
   return sizes.map(n => `<option value="${n}"${n === S.size ? ' selected' : ''}>${n}x${n}</option>`).join('');
 }
 
-function freePlayCardHtml() {
-  const sizeOptions = sizeOptionsHtml();
+// The dev note (hold V): storage kind, what the app keeps on this device (measured when V is pressed; ~2 bytes a char), refused writes, unlock state.
+let storageUsed = '';
+function storageNoteText() {
   const uv = unlockView();
   const unlockDev = uv ? ` · unlock: ${uv.tokens} chance(s), lucky game ${uv.open ? 'open' : 'played'}, next lucky day in ${uv.daysToNext}` : '';
-  const storageNote = `Storage: ${storage.name}${storage.shared ? '' : ' (local only)'}${unlockDev}`;
+  const refused = storage.refused && storage.refused.size ? ` · writes refused: ${[...storage.refused].join(', ')}` : '';
+  return `Storage: ${storage.name}${storage.shared ? '' : ' (local only)'}${storageUsed}${refused}${unlockDev}`;
+}
+function freePlayCardHtml() {
+  const sizeOptions = sizeOptionsHtml();
+  const storageNote = storageNoteText();
   return `
       <section class="card">
         <header class="card-head">
@@ -1157,6 +1163,7 @@ function setDevReveal(on) {
   const h = $('hintBtn'); if (h) h.style.display = hintShown() ? '' : 'none';
   const x = $('exportBtn'); if (x) x.style.display = on ? '' : 'none';
   const sn = $('storageNote'); if (sn) sn.style.display = on ? '' : 'none';
+  if (on) usage(storage).then(u => { storageUsed = ` · ~${Math.max(1, Math.round(u.chars * 2 / 1024))} KB in ${u.keys} keys`; const n = $('storageNote'); if (n) n.textContent = storageNoteText(); }).catch(() => {});
   const bn = $('behaviourNote'); if (bn) bn.style.display = on ? '' : 'none';
   const tag = $('seedTag'); if (tag) tag.style.display = on ? 'inline' : 'none';
   const d = $('difficultyDev'); if (d) d.style.display = on ? 'inline' : 'none';

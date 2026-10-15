@@ -1412,12 +1412,28 @@ ta('playlog: a refused write of the converted value keeps the old one for the ne
   eq(await migrateKey(st, PLAYLOG_LEGACY_KEY, PLAYLOG_KEY, () => 'y'.repeat(500)), 'failed');
   ok(await st.get(PLAYLOG_LEGACY_KEY), 'the old value is still there');
 });
+ta('playlog: two tabs sharing the storage keep each other\'s records', async () => {
+  const st = fakeStorage(), A = createPlayLog(st), B = createPlayLog(st), p = makePuzzle(3), mk = i => buildRecord(p, { ms: 1000 * i, solved: true, at: i * 60000 });
+  await A.add(mk(1)); await B.add(mk(2)); await A.add(mk(3));
+  eq((await B.all()).map(r => r.ms), [1000, 2000, 3000], 'every record is there, in order, for either tab');
+  eq((await A.all()).length, 3);
+});
+ta('storage: a write refused in the end is logged once per key and listed in refused; a later success clears it', async () => {
+  const warns = [], warn = console.warn; console.warn = (...a) => warns.push(a.join(' '));
+  try {
+    const st = withEviction(fakeStorage(60)); await st.set('zip_streak', 's'.repeat(20));
+    eq([await st.set('zip_big', 'z'.repeat(200)), await st.set('zip_big', 'z'.repeat(300))], [false, false]);
+    eq([warns.length, [...st.refused]], [1, ['zip_big']], 'one warning for the key');
+    eq([await st.set('zip_big', 'ok'), st.refused.size], [true, 0]);
+  } finally { console.warn = warn; }
+});
 ta('storage: a refused write frees the play log (never stats or streak) and retries; usage counts keys and chars', async () => {
   const st = withEviction(fakeStorage(200));
   await st.set('zip_playlog_v2', 'p'.repeat(120)); await st.set('zip_streak', 's'.repeat(40));
   eq(await st.set('zip_stats_v2', 't'.repeat(100)), true, 'written after the play log was dropped');
   eq([await st.get('zip_playlog_v2'), (await st.get('zip_streak')).value.length], [null, 40]);
-  eq(await st.set('zip_big', 'z'.repeat(500)), false, 'nothing else may be evicted: the write is refused');
+  const warn = console.warn; console.warn = () => {}; // the refusal is logged (tested below)
+  try { eq(await st.set('zip_big', 'z'.repeat(500)), false, 'nothing else may be evicted: the write is refused'); } finally { console.warn = warn; }
   ok(await st.get('zip_streak') && await st.get('zip_stats_v2'), 'stats and streak survive');
   eq(await usage(st), { keys: 2, chars: 'zip_streak'.length + 40 + 'zip_stats_v2'.length + 100 });
 });

@@ -52,23 +52,29 @@ export const convertLegacy = text => {
 };
 
 // Persistent list of records (oldest dropped past `max`). `storage` = the platform port (platform/storage.js).
+// Every read and write goes through the stored value, so a second tab's records are kept; `base` only carries the old history of a refused
+// conversion (and, after a refused write, what could not be stored) until a write goes through.
 export function createPlayLog(storage, max = PLAYLOG_MAX) {
-  let list = null, loading = null;
+  let base = [], loading = null, chain = Promise.resolve();
+  const queued = fn => { const run = chain.then(fn); chain = run.catch(() => {}); return run; }; // one read-modify-write at a time
   const load = () => loading || (loading = (async () => {
     try {
       const status = await migrateKey(storage, PLAYLOG_LEGACY_KEY, PLAYLOG_KEY, convertLegacy);
-      // A refused conversion (quota) must not lose the old history: carry it in memory, the next add() writes it all in the compact form.
-      const r = status === 'failed' ? { value: convertLegacy((await storage.get(PLAYLOG_LEGACY_KEY)).value) } : await storage.get(PLAYLOG_KEY), v = r ? JSON.parse(r.value) : null;
-      list = v && v.v === 2 && Array.isArray(v.r) ? v.r.filter(valid) : [];
-    } catch { list = []; }
-    return list;
+      if (status === 'failed') base = JSON.parse(convertLegacy((await storage.get(PLAYLOG_LEGACY_KEY)).value)).r.filter(valid);
+    } catch { base = []; }
   })());
+  const current = async () => {
+    await load();
+    try { const r = await storage.get(PLAYLOG_KEY), v = r ? JSON.parse(r.value) : null; if (v && v.v === 2 && Array.isArray(v.r)) return v.r.filter(valid); } catch { /* corrupt: start over */ }
+    return base;
+  };
   return {
-    async add(rec) {
-      const l = await load(); l.push(pack(rec));
+    add: rec => queued(async () => {
+      const l = await current(); l.push(pack(rec));
       if (l.length > max) l.splice(0, l.length - max);
+      base = l;
       await storage.set(PLAYLOG_KEY, encode(l)); // best effort: a refused write only loses this log
-    },
-    async all() { return (await load()).map(unpack); },
+    }),
+    all: () => queued(async () => (await current()).map(unpack)),
   };
 }

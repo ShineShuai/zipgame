@@ -1,5 +1,7 @@
 // Storage port: async get(key) -> {value}|null, set(key, value) -> boolean (false = refused, e.g. quota), remove(key), keys(prefix) -> string[].
 // Swap the implementation per platform (wx.setStorage, native, ...). Callers may ignore the set() result: every write is best effort.
+// CONTRACT: all four are required. Without keys() and remove() the one-time conversions of old keys (stats, attempts, play log, ratings) are
+// skipped or never clean up, and the old data stays where it is; set() must return false, not throw, when it refuses a value.
 const mem = new Map();
 const memory = {
   name: 'memory', shared: false,
@@ -22,16 +24,21 @@ const local = {
 export const EVICT_ORDER = ['zip_playlog_v1', 'zip_playlog_v2'];
 
 // A port whose set() frees the EVICT_ORDER keys one by one (never the key being written) and retries, instead of losing the write.
+// A write that is refused in the end is logged once per key and listed in `refused` (shown in the menu's dev note).
 export function withEviction(base, order = EVICT_ORDER) {
+  const refused = new Set();
   return {
     ...base,
+    refused,
     async set(k, v) {
-      if (await base.set(k, v)) return true;
+      if (await base.set(k, v)) { refused.delete(k); return true; }
       for (const victim of order) {
         if (victim === k || !(await base.get(victim))) continue;
         await base.remove(victim);
-        if (await base.set(k, v)) return true;
+        if (await base.set(k, v)) { refused.delete(k); return true; }
       }
+      if (!refused.has(k)) console.warn(`storage: write refused for ${k} (${v.length} chars); the quota is probably full`);
+      refused.add(k);
       return false;
     },
   };
