@@ -17,7 +17,7 @@ import { REPLAY_DAYS } from '../../core/hist.js';
 import { maxHints, computeHint, solutionOf, penalizedTime, HINT_PENALTY_S } from '../../features/hints.js';
 import { cellAtPoint, pathD, WRAP_PAD } from '../../view/geometry.js';
 import { bindModal, copyText } from '../../ui/modal.js';
-import { boardSvg, CELL, badgeColors, stepWrong, seamMarksSvg, routeCells } from './board.js';
+import { boardSvg, CELL, badgeColors, stepWrong, seamMarksSvg, routeCells, loopOpen, loopOpenMarks } from './board.js';
 import { variantIcon, cardIcon } from './icons.js';
 import { PLAY_VARIANTS, variantById, variantOf, sizesFor, nearestSize, luckyDefs } from './variants.js';
 import { createUnlock } from '../../features/unlock.js';
@@ -466,6 +466,15 @@ function difficultyDevHtml() {
   return `<span id="difficultyDev" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="trap: the badge score before it is cut into a grade, with its inputs (worst step's trap score, top-3 steps' sum, fraction of steps that have any wrong move, what-if guesses the technique ladder needed). Cutout: the same score without the alt term; One way arrows: only the max and top-3 terms, wrong moves being the ones the arrows allow (a ranking, not fitted to hand ratings). decisionNodes: the previous badge grade (solver branch points per cell). B: backtrack overhead (nodes/cells - 1) from the same solve. cross: how many non-adjacent checkpoint-to-checkpoint segments geometrically cross, per segment. Each old grade is graded 0-5 with its own calibration; the trap grade is fit to hand ratings. The design app shows all of them.">${body}${tm || g ? ' · <a href="#" id="exportPlayLog" title="Download the play log (what you did on each puzzle: time, cells drawn and taken back), local to this device, for tools/playlog-eval.mjs">play log</a>' : ''}</span>`;
 }
 
+// Loop: the line under the board. It reminds of the rule, says so when every cell is visited but the ring is
+// not closed (the board also rings the two ends that should meet), and that the ring is closed once solved.
+const loopNoteKey = () => (S.finished ? 'game.loopClosed' : loopOpen(S.puzzle, S.path) ? 'game.loopOpen' : 'game.loopHint');
+function loopNoteHtml() {
+  if (!S.puzzle.loop) return '';
+  const open = !S.finished && loopOpen(S.puzzle, S.path);
+  return `<p class="note loop-note${open ? ' error' : ''}" id="loopNote" role="status" aria-live="polite">${t(loopNoteKey())}</p>`;
+}
+
 // Exact: the step the head is on, out of all the cells (setupGridInput's setD keeps it current).
 function stepHudHtml(p) {
   if (!p.exact) return '';
@@ -514,6 +523,7 @@ function renderGame() {
         </div>
         ${S.lucky && !S.finished ? `<p class="note lucky-once">${t(S.luckyHolder ? 'lucky.onceChance' : 'lucky.onceFun')}</p>` : ''}
         <div class="grid-wrap" id="gridWrap">${boardSvg(S)}</div>
+        ${loopNoteHtml()}
       </section>
       <div class="side">
         <section class="card">
@@ -638,10 +648,16 @@ function setupGridInput(svg) {
   const highestCp = path => { let hi = 0; for (const c of path) if (rank[c] > hi) hi = rank[c]; return hi; };
   let segment = highestCp(S.path);
   const seamEl = wrap ? svg.querySelector('[data-role="seam"]') : null;
+  const loopEl = p.loop ? svg.querySelector('[data-role="loop-open"]') : null;
   const setD = () => {
     const line = routeCells(p, S.path, S.finished); // a solved Loop puzzle is drawn closed
     pathEl.setAttribute('d', line.length > 1 ? pathD(n, line, CELL, wrap) : '');
     if (seamEl) seamEl.innerHTML = seamMarksSvg(n, S.path);
+    if (loopEl) { // Loop: the open ring's two ends, and the line under the board
+      loopEl.innerHTML = loopOpenMarks(p, S.path);
+      const note = $('loopNote');
+      if (note) { note.textContent = t(loopNoteKey()); note.classList.toggle('error', !S.finished && loopOpen(p, S.path)); }
+    }
     const stepNow = $('hudStep'); // Exact: the step the head is on
     if (stepNow) stepNow.textContent = S.path.length;
   };

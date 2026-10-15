@@ -1,7 +1,7 @@
 import { makePuzzle } from '../model.js';
 import { makeRng } from '../rng.js';
 import { warnsdorff, backbite, ringPath } from './hampath.js';
-import { gapCheckpoints, randomCheckpoints, loopCheckpoints } from './checkpoints.js';
+import { gapCheckpoints, randomCheckpoints, loopCheckpoints, LOOP_TAIL } from './checkpoints.js';
 import { makeUnique, minimizeWalls, refineWalls, minimizeFully, REFINE_CAP_X } from './walls.js';
 import { solve } from '../solver/solve.js';
 
@@ -251,12 +251,27 @@ export function* generate(n, seed, o = {}) {
 // ---- Designer helpers (random, unseeded by design: caller supplies rnd) ----
 
 // Random Hamiltonian path + K random checkpoints along it, no walls.
-export function randomPathPuzzle(n, K, rnd, wrap = false) {
-  K = Math.max(2, Math.min(K, n * n));
-  const path = backbite(n, rnd, wrap);
+// loop (n even, on a grid): a Loop puzzle: a random ring cut at a random cell, which is cell 1, and
+// the numbers on its first stretch, short of the way round as in loopCheckpoints; p.path is the ring
+// from cell 1 on (its last cell touches the first), and K is at least 3.
+export function randomPathPuzzle(n, K, rnd, wrap = false, loop = false) {
+  K = Math.max(loop ? 3 : 2, Math.min(K, n * n));
   const p = makePuzzle(n);
-  if (wrap) p.wrap = true;
-  randomCheckpoints(path.length, K, rnd).forEach((q, i) => {
+  let path;
+  let positions;
+  if (loop) {
+    const ring = ringPath(n, rnd);
+    const cut = Math.floor(rnd() * ring.length);
+    path = ring.slice(cut).concat(ring.slice(0, cut));
+    const tail = Math.round(path.length * (LOOP_TAIL[0] + (LOOP_TAIL[1] - LOOP_TAIL[0]) * rnd()));
+    positions = randomCheckpoints(path.length - tail, K, rnd);
+    p.loop = true;
+  } else {
+    path = backbite(n, rnd, wrap);
+    positions = randomCheckpoints(path.length, K, rnd);
+    if (wrap) p.wrap = true;
+  }
+  positions.forEach((q, i) => {
     p.cp[path[q]] = i + 1;
   });
   p.path = path;
@@ -270,9 +285,9 @@ export const GENERATE_UNIQUE_REFINE_X = 10;
 
 // Share of the free edges a designer attempt pre-walls at random: SEED_FRACTION without a wall cap,
 // otherwise only as many walls as the cap allows, so the seeds never outgrow what the puzzle may keep.
-function designSeedFraction(n, maxWalls, wrap = false) {
+function designSeedFraction(n, maxWalls, wrap = false, loop = false) {
   if (maxWalls == null) return SEED_FRACTION;
-  const freeEdges = (wrap ? 2 * n * n : n * (n - 1) * 2) - (n * n - 1);
+  const freeEdges = (wrap ? 2 * n * n : n * (n - 1) * 2) - (loop ? n * n : n * n - 1);
   return Math.min(SEED_FRACTION, maxWalls / freeEdges);
 }
 
@@ -301,6 +316,8 @@ function* tag(gen, extra) {
 //   that minimizing kept only because a check hit its cap (minimizeFully in walls.js); 0 = minimize once, as before.
 //   An attempt with a wall cap skips it when even removing every undecided wall could not get under maxWalls.
 // o.wrap: a wrap-around puzzle (needs n >= 3; core/geom.js).
+// o.loop: a Loop puzzle (n even, a grid; core/model.js): the ring path and numbers of tryGenerate (the
+//   o.flags path / cps choices do not apply), K at least 3.
 // o.prop (default true): solver propagation (same solutions, far fewer nodes).
 // o.legCollide (default false): leg-collision pruning (see legsCollide() in solver/prune.js) —
 //   applied to every internal solve() call this makes (the makeUnique probe/search loop,
@@ -318,7 +335,8 @@ function* tag(gen, extra) {
 // counts = { makeUnique, minimizeWalls, other, total } — solve() call counts by phase, for
 // comparing legCollide on vs off at the same rnd seed (see design app's Solver panel).
 export function* generateUnique(n, K, rnd, o = {}) {
-  K = Math.max(2, Math.min(K, n * n));
+  const loop = !!o.loop;
+  K = Math.max(loop ? 3 : 2, Math.min(K, n * n));
   const maxWalls = o.maxWalls == null ? null : Math.max(0, Math.floor(o.maxWalls));
   const unbounded = maxWalls == null;
   const nodeCap = o.nodeCap || 50000;
@@ -334,7 +352,8 @@ export function* generateUnique(n, K, rnd, o = {}) {
   const wallBudget = unbounded ? null : Math.ceil(maxWalls * 2.5);
   const wrap = !!o.wrap;
   if (wrap && n < 3) throw new Error('A wrap-around puzzle needs n >= 3');
-  const seedFraction = designSeedFraction(n, maxWalls, wrap);
+  if (loop && (n % 2 || wrap)) throw new Error('A loop puzzle needs an even n, on a grid');
+  const seedFraction = designSeedFraction(n, maxWalls, wrap, loop);
   const refineBudget = o.refineNodes ?? GENERATE_UNIQUE_REFINE_X * nodeCap * 2;
   const counts = { makeUnique: 0, minimizeWalls: 0, other: 0 };
   const withTotal = () => ({ ...counts, total: counts.makeUnique + counts.minimizeWalls + counts.other });
@@ -344,7 +363,7 @@ export function* generateUnique(n, K, rnd, o = {}) {
   for (let attempt = 0; attempt < tries; attempt++) {
     const extra = { attempt: attempt + 1, of: tries };
     const gen = tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, {
-      path: pathAlgo, cps: cpsAlgo, flags: buildFlags, counts, wrap,
+      path: pathAlgo, cps: cpsAlgo, flags: buildFlags, counts, wrap, loop,
     });
     const p = yield* tag(gen, extra);
     if (p) {
@@ -368,6 +387,6 @@ export function* generateUnique(n, K, rnd, o = {}) {
     yield { frac: (attempt + 1) / tries, walls: best ? best.walls : null, K, found, ...extra };
   }
   if (best) return { ...best, found, counts: withTotal() };
-  const puzzle = randomPathPuzzle(n, K, rnd, wrap);
+  const puzzle = randomPathPuzzle(n, K, rnd, wrap, loop);
   return { puzzle, unique: false, walls: 0, removed: 0, attempts: tries, found: 0, counts: withTotal() };
 }

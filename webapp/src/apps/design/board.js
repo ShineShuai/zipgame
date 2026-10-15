@@ -23,6 +23,8 @@ const poly = (pts, stroke, w, attrs = {}, tag = 'polyline') => {
 const route = (n, cells, wrap, stroke, w, attrs = {}) => (wrap
   ? poly(pathD(n, cells, 1, true), stroke, w, attrs, 'path')
   : poly(polyPoints(n, cells), stroke, w, attrs));
+// A Loop puzzle's route closes: from its last cell back to cell 1 (the ring). Other puzzles: as it is.
+const ringCells = (p, cells) => (p.loop && cells.length > 2 ? [...cells, cells[0]] : cells);
 // The in / out arrowheads of the seam steps of a wrap-around route (geometry.js seamMarks), in cell units.
 const MARK_LEN = 0.32, MARK_HALF = 0.2;
 function seamMarkEls(n, cells, color, opacity = 0.95) {
@@ -76,12 +78,12 @@ export function renderBoard(board, stage, V) {
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('class', 'pathlayer'); svg.setAttribute('viewBox', `${-pad} ${-pad} ${n + 2 * pad} ${n + 2 * pad}`); svg.style.width = svg.style.height = total + 'px';
   if (V.preview && V.previewVisible && !V.playMode) {
-    svg.appendChild(route(n, V.preview, wrap, TPL_C, 0.2, { 'stroke-dasharray': '0.28 0.22', opacity: 0.65 }));
+    svg.appendChild(route(n, ringCells(P, V.preview), wrap, TPL_C, 0.2, { 'stroke-dasharray': '0.28 0.22', opacity: 0.65 }));
     if (wrap) seamMarkEls(n, V.preview, TPL_C, 0.65).forEach(m => svg.appendChild(m));
   }
   V.solutions.forEach((sol, i) => {
     if (!V.solVisible[i]) return;
-    svg.appendChild(route(n, sol, wrap, SOL_C[i], 0.24, { opacity: 0.92, ...(i === 1 ? { 'stroke-dasharray': '0.34 0.24' } : {}) }));
+    svg.appendChild(route(n, ringCells(P, sol), wrap, SOL_C[i], 0.24, { opacity: 0.92, ...(i === 1 ? { 'stroke-dasharray': '0.34 0.24' } : {}) }));
     if (wrap) seamMarkEls(n, sol, SOL_C[i], 0.92).forEach(m => svg.appendChild(m));
   });
   const refs = {};
@@ -138,8 +140,9 @@ export function paintPlay(refs, n, path, P, showConn, showDead, showProp, showLe
   const out = { legConflicts: [] };
   if (!refs.line) return out;
   const done = path.length === cellCount(P), wrap = !!P.wrap;
-  if (wrap) refs.line.setAttribute('d', path.length > 1 ? pathD(n, path, 1, true) : '');
-  else refs.line.setAttribute('points', polyPoints(n, path));
+  const drawn = done ? ringCells(P, path) : path; // a solved Loop puzzle is drawn closed
+  if (wrap) refs.line.setAttribute('d', drawn.length > 1 ? pathD(n, drawn, 1, true) : '');
+  else refs.line.setAttribute('points', polyPoints(n, drawn));
   refs.line.style.display = path.length > 1 ? '' : 'none';
   if (refs.seamLayer) {
     refs.seamLayer.innerHTML = '';
@@ -266,6 +269,7 @@ export function miniPreviewSvg(p, path, color) {
   const look = `fill="none" stroke="${color}" stroke-width="0.09" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"`;
   let pathLine = '';
   if (path && path.length > 1) {
+    path = ringCells(p, path);
     pathLine = wrap ? `<path d="${pathD(n, path, 1, true)}" ${look}/>` : `<polyline points="${polyPoints(n, path)}" ${look}/>`;
   }
   return `<svg viewBox="${-PAD} ${-PAD} ${n + 2 * PAD} ${n + 2 * PAD}" class="mini-preview">

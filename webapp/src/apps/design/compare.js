@@ -9,16 +9,16 @@ import { runAsync, measured } from '../../platform/run.js';
 // the rnd sequence gets consumed can diverge too — an honest same-seed comparison up to the first
 // point they behave differently, not a guarantee every later attempt lines up between the two runs.
 //
-// o: { n, K, maxWalls, tries, hardest, seed, flagsA, flagsB, wrap, onEvent(side, event) }
+// o: { n, K, maxWalls, tries, hardest, seed, flagsA, flagsB, wrap, loop, onEvent(side, event) }
 // msA/msB are compute-only times (see measured() in platform/run.js).
 // Returns { seed, msA, msB, a, b } where a/b are generateUnique's own return shape.
 export async function runCompare(o) {
   const seed = o.seed;
   const clockA = { ms: 0 };
-  const a = await runAsync(measured(generateUnique(o.n, o.K, makeRng(seed), { maxWalls: o.maxWalls, tries: o.tries, hardest: o.hardest, flags: o.flagsA, wrap: !!o.wrap }), clockA),
+  const a = await runAsync(measured(generateUnique(o.n, o.K, makeRng(seed), { maxWalls: o.maxWalls, tries: o.tries, hardest: o.hardest, flags: o.flagsA, wrap: !!o.wrap, loop: !!o.loop }), clockA),
     { onEvent: e => o.onEvent && o.onEvent('A', e) });
   const clockB = { ms: 0 };
-  const b = await runAsync(measured(generateUnique(o.n, o.K, makeRng(seed), { maxWalls: o.maxWalls, tries: o.tries, hardest: o.hardest, flags: o.flagsB, wrap: !!o.wrap }), clockB),
+  const b = await runAsync(measured(generateUnique(o.n, o.K, makeRng(seed), { maxWalls: o.maxWalls, tries: o.tries, hardest: o.hardest, flags: o.flagsB, wrap: !!o.wrap, loop: !!o.loop }), clockB),
     { onEvent: e => o.onEvent && o.onEvent('B', e) });
   return { seed, msA: clockA.ms, msB: clockB.ms, a, b };
 }

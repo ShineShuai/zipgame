@@ -1,4 +1,4 @@
-import { endCell, labelRanks } from './model.js';
+import { endCell, labelRanks, maxNumber } from './model.js';
 import {
   buildNeighbors, makeReachable, isDeadEnd, forcedEdges, legConflicts, segBlockerDir,
 } from './solver/prune.js';
@@ -20,6 +20,10 @@ import { makeDirPropagator } from './solver/propagate-dir.js';
 //                 number of unvisited cells — false means the board has already split into pieces
 //                 the path can no longer stitch back together
 export function boardConnectivity(p, path) {
+  if (p.loop) {
+    if (path.length < 2) return { reachable: new Set(), deadEnd: new Set(), unreachable: new Set(), connOk: true };
+    return boardConnectivity(...openRest(p, path));
+  }
   if (p.arrows) return boardConnectivityDir(p, path);
   const { nb, T } = buildNeighbors(p);
   const vis = new Uint8Array(T);
@@ -55,6 +59,10 @@ export function boardConnectivity(p, path) {
 //                 (a stronger, later signal than connOk — connOk can still say "reachable" while
 //                 forced-edge deduction has already found a contradiction)
 export function boardPropagation(p, path) {
+  if (p.loop) {
+    if (path.length < 2) return { forced: new Set(), dirs: new Uint8Array(p.n * p.n), infeasible: false };
+    return boardPropagation(...openRest(p, path));
+  }
   if (p.arrows) return boardPropagationDir(p, path);
   const { nb, T } = buildNeighbors(p);
   const vis = new Uint8Array(T);
@@ -85,6 +93,9 @@ export function boardPropagation(p, path) {
 // pointer move, not something to run unconditionally per solver node (see prune.js for that
 // tradeoff if it's ever wired into solve()).
 export function boardLegCollide(p, path) {
+  if (p.loop) {
+    return path.length < 2 ? { infeasible: false, conflicts: [] } : boardLegCollide(...openRest(p, path));
+  }
   const { nb, T } = p.arrows ? { nb: buildMoves(p).out, T: p.n * p.n } : buildNeighbors(p);
   const vis = new Uint8Array(T);
   for (const c of path) vis[c] = 1;
@@ -181,4 +192,20 @@ function boardPropagationDir(p, path) {
     for (const c of [u, v]) if (c !== head) forced.add(c);
   }
   return { forced, dirs, infeasible: false };
+}
+
+// ---------- Loop ----------
+// A Loop puzzle's ring seen from the head: what is left to draw is a path from the head through every
+// unvisited cell back to cell 1. As an open puzzle: cell 1 is not visited any more but is the end (the
+// path before the head, without cell 1, is the visited part), and the numbers 2..K are the checkpoints
+// still to come, renumbered 1..K - 1, cell 1 being checkpoint K. The overlays above then apply to
+// it unchanged, and what they flag is flagged for the ring. (The head may step to cell 1 at any time
+// here, even right after the second cell, which the ring cannot do: that only ever makes them weaker.)
+// -> [the open puzzle, its path] for `path` of at least 2 cells (the first is cell 1).
+function openRest(p, path) {
+  const start = path[0], K = maxNumber(p);
+  const cp = p.cp.map(v => (v > 1 ? v - 1 : 0));
+  cp[start] = K;
+  const { loop, ...open } = p;
+  return [{ ...open, cp }, path.slice(1)];
 }

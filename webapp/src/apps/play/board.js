@@ -2,6 +2,8 @@ import {
   wallSegments, cellCenter, pathD, seamMarks, WRAP_PAD,
 } from '../../view/geometry.js';
 import { arrowIds, arrowDirId, arrowMove } from '../../core/edges.js';
+import { cellCount } from '../../core/model.js';
+import { isSolved } from '../../core/rules.js';
 
 export const CELL = 60; // logical units; on-screen size comes from viewBox scaling
 
@@ -160,6 +162,21 @@ function correctMoveRing(n, cell) {
     `<animate attributeName="r" values="${small};${large};${small}" dur="1s" repeatCount="indefinite"/></circle>`;
 }
 
+// A Loop puzzle whose path has visited every cell but does not close: its last cell does not touch cell 1
+// through an open edge (a wall, or just not next to it), so the ring is open and the puzzle is not solved.
+export const loopOpen = (p, path) => Boolean(p.loop) && path.length === cellCount(p) && !isSolved(p, path);
+
+// What shows that: a pulsing red ring on the last cell and one on cell 1, the two ends that should have met.
+export function loopOpenMarks(p, path) {
+  if (!loopOpen(p, path)) return '';
+  const small = CELL * 0.36, large = CELL * 0.44;
+  return [path[path.length - 1], path[0]].map(cell => {
+    const [x, y] = cellCenter(p.n, cell, CELL);
+    return `<circle cx="${x}" cy="${y}" r="${CELL * 0.4}" fill="none" stroke="${COLORS.hintWrong}" stroke-width="4" stroke-dasharray="6 4">` +
+      `<animate attributeName="r" values="${small};${large};${small}" dur="1s" repeatCount="indefinite"/></circle>`;
+  }).join('');
+}
+
 // The cells the drawn line runs through: the path, and for a solved Loop puzzle back to cell 1, so
 // the ring is drawn closed.
 export const routeCells = (p, path, finished) => (p.loop && finished && path.length > 2 ? [...path, path[0]] : path);
@@ -186,6 +203,7 @@ export function boardSvg(S) {
   if (wrap) svg += `<g data-role="seam">${seamMarksSvg(n, S.path)}</g>`;
   if (p.arrows) svg += arrowMarks(p);
   svg += numberBadges(p, visited, S.path);
+  if (p.loop) svg += `<g data-role="loop-open">${loopOpenMarks(p, S.path)}</g>`;
   if (S.hintWrongCell != null) svg += wrongMoveMark(n, S.hintWrongCell);
   if (S.hintCell != null) svg += correctMoveRing(n, S.hintCell);
   return svg + '</svg>';
