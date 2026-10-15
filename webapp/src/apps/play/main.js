@@ -11,7 +11,8 @@ import { createReplay } from '../../features/replay.js';
 import { createStreak, FREEZE_EVERY, FREEZE_MAX } from '../../features/streak.js';
 import { ALGO_VERSION, cellCount, labelCount, labelRanks } from '../../core/model.js';
 import { dailySeed } from '../../core/rng.js';
-import { legsUndo, makeShareRecord, shareStatus, isPlayable, shareText, shareUrl, parseShareLink, stripText, dateLabel, dayOfDate } from '../../features/share.js';
+import { legsUndo, makeShareRecord, shareStatus, isPlayable, isSpent, shareText, shareUrl, parseShareLink, stripText, dateLabel, dayOfDate } from '../../features/share.js';
+import { createSharedGames } from '../../features/shared-games.js';
 import { REPLAY_DAYS } from '../../core/hist.js';
 import { maxHints, computeHint, solutionOf, penalizedTime, HINT_PENALTY_S } from '../../features/hints.js';
 import { cellAtPoint, pathD, WRAP_PAD } from '../../view/geometry.js';
@@ -39,7 +40,8 @@ const S = { screen: 'menu', mode: 'standard', variant: null, genMode: 'standard'
   gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, isReplay: false, replayPick: null, gotdDate: null, gotdHint: null, hintsUsed: 0,
   penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, behaviourOn: false, difficulty: null,
   lucky: false, luckyHolder: false, luckyResult: null, luckyNote: null,
-  legs: [], gameDay: null, isShared: false, shared: null, sharedBad: false, sharedMsg: null };
+  legs: [], gameDay: null, isShared: false,
+  sharedGames: [], sharedFocus: null, sharedAll: false, sharedArmed: null, sharedNotice: null, sharedMsg: null };
 
 // Grade a puzzle right after generation, once, before it's shown (see core/grades.js playGradesFor):
 //   trap   - the main grade (badge): one capped solve per wrong turn along the solution, ~2-200 ms at
@@ -57,7 +59,7 @@ function gradePuzzle(puzzle) {
     return { ok: false, trap: null, legacy: null };
   }
 }
-let storage, store, daily, replay, streak, unlock, rulesSeen, modal, lb;
+let storage, store, daily, replay, streak, unlock, rulesSeen, shared, modal, lb;
 const replayPuzzles = new Map(), replayNoFile = new Set(); // date -> puzzle (the file of a past day never changes, so each is fetched once per page load); dates without a file
 const $ = id => document.getElementById(id), today = () => utcDateString(new Date()), dayNo = () => utcDayNumber(new Date()), sec = x => x.toFixed(1) + 's';
 const statsText = { everyone: (avg, n) => t('stats.everyone', avg, n), top: (k, avg) => t('stats.top', k, avg), beat: pct => t('stats.beat', pct) };
@@ -309,6 +311,7 @@ function freePlayCardHtml() {
 function renderMenu() {
   refreshAttemptIfStale();
   refreshNext();
+  pruneShared();
   return `
     <div class="menu-layout">
       ${sharedCardHtml()}
@@ -486,9 +489,9 @@ function renderGame() {
   const shapeName = p.shape ? t('shape.' + p.shape) : '';
   const localTitle = S.variant
     ? t(variantById(S.variant).keys[S.isShared ? 'sharedTitle' : 'title'], p.n, shapeName)
-    : (S.isShared ? t('game.sharedTitle', p.n, S.gameIndex + 1, dateLabel(dateOfDay(S.gameDay))) : t('game.localTitle', p.n, S.gameIndex + 1));
+    : (S.isShared ? t('game.sharedTitle', p.n) : t('game.localTitle', p.n, S.gameIndex + 1));
   const title = S.isGotd ? t(S.isReplay ? 'game.replayTitle' : 'game.gotdTitle', S.gotdDate) : localTitle + seedTag;
-  const canShare = S.finished && (S.isGotd || S.gameDay != null || S.variant);
+  const canShare = S.finished;
   const shareButton = canShare ? `<button class="btn" id="shareBtn">${t('share.btn')}</button>` : '';
   const nextReplay = S.isReplay && S.finished && replay.chances() > 0 ? `<button class="btn" id="toReplay">${t('game.nextReplay', replay.chances())}</button>` : '';
   const newPuzzleButton = S.isGotd || S.lucky ? '' : `<button class="btn secondary" id="newPuzzle">${t('game.new')}</button>`;
@@ -587,7 +590,19 @@ function attachHandlers() {
   on('luckyTip', toggleLuckyTip);
   on('rewardReplay', () => claimReward('replay'));
   on('rewardUnlock', () => claimReward('unlock'));
-  on('playShared', startShared);
+  document.querySelectorAll('.shared-play').forEach(b => {
+    b.onclick = () => startShared(b.dataset.key);
+  });
+  document.querySelectorAll('.shared-del').forEach(b => {
+    b.onclick = ev => {
+      ev.stopPropagation();
+      removeShared(b.dataset.key);
+    };
+  });
+  on('sharedMore', () => {
+    S.sharedAll = !S.sharedAll;
+    render();
+  });
   on('shareBtn', shareResult);
   on('shareTip', toggleShareTip);
   on('openReplay', () => openReplay());
@@ -761,6 +776,9 @@ async function shareGotd(date) {
 // ---------- game flow ----------
 function beginGame(puzzle, gotdDate, isReplay = false, isShared = false, lucky = false) {
   logPlay(false); // a puzzle left unfinished is logged as abandoned
+  // the menu's shared card starts afresh
+  S.sharedNotice = null;
+  S.sharedFocus = null;
   const variant = variantOf(puzzle);
   const difficulty = gradePuzzle(puzzle);
   Object.assign(S, { variant, lucky, luckyResult: null, luckyNote: null, trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
@@ -781,7 +799,7 @@ async function startLocal(how, mode = 'standard', lucky = false) {
     const index = game.index, seed = scope ? randomSeed() : game.seed; // a variant is random: its counter only numbers the day's games
     const puzzle = await generateShown(S.size, seed, mode);
     S.gameIndex = index; S.seed = seed;
-    S.gameDay = mode !== 'standard' ? null : [dayNo(), dayNo() - 1].find(d => dailySeed(d, S.size, index, ALGO_VERSION) === seed) ?? null; // the day this seed was made on: what a share link needs
+    S.gameDay = mode !== 'standard' ? null : [dayNo(), dayNo() - 1].find(d => dailySeed(d, S.size, index, ALGO_VERSION) === seed) ?? null; // the day this seed was made on (the behaviour log wants it)
     beginGame(puzzle, null, false, false, lucky);
   } catch (e) {
     console.error('startLocal failed:', e);
@@ -844,13 +862,16 @@ async function startReplay(date) {
   S.size = puzzle.n;
   beginGame(puzzle, date, true);
 }
-// ---------- sharing (features/share.js, core/share-code.js) ----------
-// Finished game -> link with the result packed into `?s=`; opening such a link makes the menu's "Shared game" button playable.
+// ---------- sharing (features/share.js, core/share-code.js, features/shared-games.js) ----------
+// A finished game -> a link with the game packed into `?s=`. Opening such a link saves the game in the player's collection of
+// shared games, which the menu lists (the card at its top) until the player removes a game. A Game of Day also leaves the list
+// once it is played or out of the replay window: it follows the replay scheme from then on.
+const SHARED_ROWS = 3; // rows of the card before "Show all"
+const SHARED_BAD = ['old', 'future', 'invalid'];
 const sharedStatus = rec => shareStatus(rec, {
   today: dayNo(),
   replayDates: replay.dates(),
   attempt: rec.kind === 'gotd' ? store.attemptOn(dateOfDay(rec.day)) : null,
-  algo: ALGO_VERSION,
   sizes: SIZES,
   sizesOf: id => sizesFor(id, SIZES), // a variant may offer a size the app does not play otherwise
 });
@@ -861,51 +882,83 @@ function sharedStateText(state) {
     case 'played': return state.attempt.solved ? t('share.st.played', sec(state.attempt.time)) : t('share.st.attempted');
     case 'old': return t('replay.unavailable');
     case 'future': return t('share.st.future');
-    case 'version': return t('share.st.version');
     case 'invalid': return t('share.invalid');
     default: return '';
   }
 }
 
-const SHARED_BAD = ['old', 'future', 'version', 'invalid'];
+// The saved games the card lists, with their state: the one just opened first, then what can be played, newest first, then the rest.
+function visibleShared() {
+  const rank = e => (e.key === S.sharedFocus ? 0 : isPlayable(e.state) ? 1 : 2);
+  return S.sharedGames
+    .map(entry => ({ ...entry, state: sharedStatus(entry.rec) }))
+    .filter(e => !isSpent(e.rec, e.state))
+    .sort((a, b) => rank(a) - rank(b) || b.added - a.added);
+}
 
-// First card of the menu, only for a page opened from a share link:
-//   eyebrow / title (what was shared) / one row: time, percent beaten, color strip + tip / reason or note | button
-function sharedCardHtml() {
-  if (S.sharedBad) {
-    return `<section class="card shared-card"><div class="shared-main">
-      <div class="shared-eyebrow">${t('share.title')}</div>
-      <p class="shared-state bad">${t('share.invalid')}</p></div></section>`;
+// Persists what the card already hides (a Game of Day played since, or out of the window).
+let pruning = false;
+function pruneShared() {
+  if (pruning || !shared || visibleShared().length === S.sharedGames.length) {
+    return;
   }
-  const rec = S.shared;
-  if (!rec) return '';
-  const state = sharedStatus(rec);
-  const date = rec.variant ? '' : dateLabel(dateOfDay(rec.day));
-  const head = rec.kind === 'gotd' ? t('share.gotd', date) : rec.variant ? t('share.' + rec.variant) + (rec.puzzle.shape ? ' · ' + t('shape.' + rec.puzzle.shape) : '') : t('share.local', rec.index + 1, date);
+  pruning = true;
+  shared.prune(e => !isSpent(e.rec, sharedStatus(e.rec)))
+    .then(() => { S.sharedGames = shared.list(); })
+    .finally(() => { pruning = false; });
+}
+
+function sharedItemHtml({ key, rec, state }) {
+  const shape = rec.puzzle && rec.puzzle.shape ? ' · ' + t('shape.' + rec.puzzle.shape) : '';
+  const head = rec.kind === 'gotd' ? t('share.gotd', dateLabel(dateOfDay(rec.day))) : rec.variant ? t('share.' + rec.variant) + shape : t('share.local');
   const grade = rec.grade == null ? '' : ` · ${t('grade.' + rec.grade)} ${rec.grade}/5`;
   const row = [`<span>⏱ ${sec(rec.timeS)}</span>`];
-  if (rec.pct != null) row.push(`<span>${t('share.beat', rec.pct)}</span>`);
-  if (rec.levels.length) {
-    row.push(`<span class="shared-strip-wrap"><span class="shared-strip">${stripText(rec.levels)}</span>
-      <button type="button" class="tip-btn" id="shareTip" aria-expanded="false" aria-label="${t('share.tipLabel')}">i</button>
-      <span class="tip-pop" id="shareTipPop" role="tooltip">${t('share.tip')}</span></span>`);
+  if (rec.pct != null) {
+    row.push(`<span>${t('share.beat', rec.pct)}</span>`);
   }
-  const text = S.sharedMsg ? t(S.sharedMsg) : sharedStateText(state);
-  const bad = Boolean(S.sharedMsg) || SHARED_BAD.includes(state.status);
-  const line = text ? `<p class="shared-state${bad ? ' bad' : ''}">${text}</p>` : '';
-  return `<section class="card shared-card">
-    <div class="shared-main">
-      <div class="shared-eyebrow">${t('share.title')}</div>
+  if (rec.levels.length) {
+    row.push(`<span class="shared-strip">${stripText(rec.levels)}</span>`);
+  }
+  const note = S.sharedMsg && S.sharedMsg.key === key ? t(S.sharedMsg.msg) : sharedStateText(state);
+  const bad = Boolean(S.sharedMsg && S.sharedMsg.key === key) || SHARED_BAD.includes(state.status);
+  const armed = S.sharedArmed === key;
+  return `<li class="shared-item${key === S.sharedFocus ? ' is-new' : ''}">
+    <div class="shared-info">
       <h2 class="shared-title">
         <span class="shared-icon">${variantIcon(rec.variant)}</span>
         <span>${head} · ${rec.n}x${rec.n}${grade}</span>
       </h2>
       <div class="shared-row">${row.join('')}</div>
-      ${line}
+      ${note ? `<p class="shared-state${bad ? ' bad' : ''}">${note}</p>` : ''}
     </div>
     <div class="shared-action">
-      <button class="btn" id="playShared"${isPlayable(state) ? '' : ' disabled'}>${t('share.play')}</button>
+      <button class="btn shared-play" data-key="${key}"${isPlayable(state) ? '' : ' disabled'}>${t('share.play')}</button>
+      <button class="btn secondary shared-del${armed ? ' armed' : ''}" data-key="${key}" aria-label="${t('share.removeLabel')}">${armed ? t('share.removeConfirm') : '✕'}</button>
     </div>
+  </li>`;
+}
+
+// First card of the menu, while there is a shared game or something to tell about the link just opened:
+//   eyebrow + count + color-strip tip / notice / one item per game (what was shared, time, percent beaten, strip, reason | Play, remove)
+function sharedCardHtml() {
+  const entries = visibleShared();
+  const notice = S.sharedNotice ? (S.sharedNotice.bad ? t('share.invalid') : sharedStateText(S.sharedNotice.state)) : '';
+  if (!entries.length && !notice) {
+    return '';
+  }
+  const tip = entries.some(e => e.rec.levels.length)
+    ? `<button type="button" class="tip-btn" id="shareTip" aria-expanded="false" aria-label="${t('share.tipLabel')}">i</button>
+      <span class="tip-pop" id="shareTipPop" role="tooltip">${t('share.tip')}</span>` : '';
+  const more = entries.length > SHARED_ROWS
+    ? `<button type="button" class="btn secondary shared-more" id="sharedMore">${S.sharedAll ? t('share.showLess') : t('share.showAll', entries.length)}</button>` : '';
+  const warn = S.sharedNotice && (S.sharedNotice.bad || SHARED_BAD.includes(S.sharedNotice.state.status));
+  return `<section class="card shared-card">
+    <div class="shared-head">
+      <span class="shared-eyebrow">${t('share.title')}</span>${entries.length ? `<span class="shared-count">${entries.length}</span>` : ''}${tip}
+    </div>
+    ${notice ? `<p class="shared-state${warn ? ' bad' : ''}">${notice}</p>` : ''}
+    <ul class="shared-list">${(S.sharedAll ? entries : entries.slice(0, SHARED_ROWS)).map(sharedItemHtml).join('')}</ul>
+    ${more}
   </section>`;
 }
 
@@ -935,73 +988,108 @@ function toggleLuckyTip(ev) {
   setLuckyTip(!$('luckyTipPop').classList.contains('open'));
 }
 
-async function loadSharedLink() {
+// Drops the `s` parameter from the address (the other parameters stay), so reloading does not save the game again.
+function stripShareParam() {
+  try {
+    const params = new URLSearchParams(location.search);
+    params.delete('s');
+    const query = params.toString();
+    history.replaceState(null, '', location.pathname + (query ? '?' + query : '') + location.hash);
+  } catch { /* ignore */ }
+}
+
+// At start: loads the saved games, then saves the game of the link the page was opened with. A Game of Day that is already
+// played or out of the window is not saved (it never could be played from the list): the card says why, for this visit.
+async function initShared() {
+  await shared.init();
   const { rec, bad } = parseShareLink(location.search);
-  S.shared = rec;
-  S.sharedBad = bad;
-  if (rec && rec.kind === 'gotd') {
-    await store.loadAttempt(dateOfDay(rec.day)); // so the menu can tell "already played" without waiting
+  const gotdDates = list => list.filter(r => r.kind === 'gotd').map(r => dateOfDay(r.day));
+  await Promise.all(gotdDates([...shared.list().map(e => e.rec), ...(rec ? [rec] : [])]).map(date => store.loadAttempt(date))); // so the menu can tell "already played" without waiting
+  if (bad) {
+    S.sharedNotice = { bad: true };
+  }
+  if (rec) {
+    const state = sharedStatus(rec);
+    if (isSpent(rec, state)) {
+      S.sharedNotice = { state };
+    } else {
+      S.sharedFocus = (await shared.add(rec)).key;
+    }
+  }
+  S.sharedGames = shared.list();
+  if (rec || bad) {
+    stripShareParam();
   }
 }
 
-function clearSharedLink() {
-  S.shared = null;
-  S.sharedBad = false;
-  S.sharedMsg = null;
-  try { history.replaceState(null, '', location.pathname); } catch { /* ignore */ }
+// Remove button: the first press arms it ("Remove?"), the second removes the game.
+async function removeShared(key) {
+  if (S.sharedArmed !== key) {
+    S.sharedArmed = key;
+    setTimeout(() => {
+      if (S.sharedArmed === key) {
+        S.sharedArmed = null;
+        if (S.screen === 'menu') {
+          render();
+        }
+      }
+    }, 4000);
+    render();
+    const button = [...document.querySelectorAll('.shared-del')].find(b => b.dataset.key === key);
+    if (button) {
+      button.focus();
+    }
+    return;
+  }
+  S.sharedArmed = null;
+  if (S.sharedFocus === key) {
+    S.sharedFocus = null;
+  }
+  await shared.remove(key);
+  S.sharedGames = shared.list();
+  render();
 }
 
-// Menu button. A Game of Day counts like the real thing: today's date = the live game (once per day), a missed day of the
-// replay window = a replay that spends no chance (the link is the ticket); both raise the Game-of-Day solve count.
-// A local game is a plain local game of that seed; it leaves today's per-size counters alone.
-async function startShared() {
-  const rec = S.shared;
-  if (!rec) return;
+// Play button of a saved game. A Game of Day counts like the real thing: today's date = the live game (once per day), a missed day of the
+// replay window = a replay that spends no chance (the link is the ticket); both raise the Game-of-Day solve count. Either way it is played
+// then, so it leaves the list. A local game is a plain local game of that puzzle; it leaves today's per-size counters alone and stays in the list.
+async function startShared(key) {
+  const entry = S.sharedGames.find(e => e.key === key);
+  if (!entry) {
+    return;
+  }
+  const { rec } = entry;
   const state = sharedStatus(rec);
-  if (!isPlayable(state)) return render();
+  if (!isPlayable(state)) {
+    return render();
+  }
   S.sharedMsg = null;
-  if (rec.kind === 'local') return startSharedLocal(rec);
+  if (rec.kind === 'local') {
+    return startSharedLocal(rec);
+  }
   if (state.status === 'live') {
     await startGameOfDay();
   } else {
     const date = dateOfDay(rec.day);
     const puzzle = replayPuzzles.get(date) || await fetchGameOfDayFor(date);
-    if (puzzle) replayPuzzles.set(date, puzzle);
+    if (puzzle) {
+      replayPuzzles.set(date, puzzle);
+    }
     if (!puzzle || !(await replay.beginShared(date))) {
-      S.sharedMsg = 'replay.unavailable';
+      S.sharedMsg = { key, msg: 'replay.unavailable' };
       return render();
     }
     S.size = puzzle.n;
     beginGame(puzzle, date, true);
   }
-  if (S.screen === 'game') clearSharedLink();
 }
 
-async function startSharedLocal(rec) {
-  if (rec.variant) { // the link carries the puzzle: nothing to generate
-    S.size = rec.n;
-    Object.assign(S, { gameIndex: 0, seed: null, gameDay: null });
-    beginGame({ ...rec.puzzle, shape: rec.puzzle.shape || undefined }, null, false, true);
-    clearSharedLink();
-    return;
-  }
-  S.screen = 'generating';
+// The link carries the puzzle: nothing to generate.
+function startSharedLocal(rec) {
+  const { shape, ...puzzle } = rec.puzzle;
   S.size = rec.n;
-  S.genMode = 'standard';
-  S.gen = { frac: 0, walls: null, K: null };
-  render();
-  try {
-    const seed = dailySeed(rec.day, rec.n, rec.index, rec.algo);
-    const puzzle = await generateShown(rec.n, seed);
-    Object.assign(S, { gameIndex: rec.index, seed, gameDay: rec.day });
-    beginGame(puzzle, null, false, true);
-    clearSharedLink();
-  } catch (e) {
-    console.error('startSharedLocal failed:', e);
-    S.screen = 'menu';
-    render();
-    alert(t('err.generate'));
-  }
+  Object.assign(S, { gameIndex: 0, seed: null, gameDay: null });
+  beginGame(shape ? { ...puzzle, shape } : puzzle, null, false, true);
 }
 
 function currentShareRecord() {
@@ -1013,9 +1101,6 @@ function currentShareRecord() {
     grade: trap ? trap.grade : null,
     timeS: S.elapsed,
     pct: attempt && attempt.stats ? attempt.stats.pct : null,
-    day: S.gameDay,
-    index: S.variant ? 0 : S.gameIndex, // a variant's game number is not shared
-    algo: ALGO_VERSION,
     variant: S.variant,
     puzzle: S.puzzle,
     legs: S.legs,
@@ -1140,11 +1225,12 @@ async function initLang() {
   try { await unlock.init(); } catch (e) { console.warn('unlock init failed:', e); }
   rulesSeen = createRulesSeen(storage, PLAY_VARIANTS.map(v => v.id));
   await rulesSeen.init();
+  shared = createSharedGames(storage);
   if (lb.enabled) for (const { date } of await replay.unsent()) shareGotd(date); // today's and replayed days whose submit never got an answer
   behaviour = createBehaviour({ storage, cfg: BEHAVIOUR, sinks: sinksFromConfig(BEHAVIOUR, LEADERBOARD) });
   try { S.behaviourOn = await behaviour.isOn(); behaviour.flush().catch(() => {}); } catch (e) { console.warn('behaviour init failed:', e); } // rows left from an earlier page load
   try { S.nextIdx = await peekNext(); } catch (e) { console.warn('daily counters failed:', e); }
-  await loadSharedLink();
+  await initShared();
   document.addEventListener('click', () => { setShareTip(false); setLuckyTip(false); closeStatTips(); closeRules(); });
   // a press anywhere but on a rules tooltip's own host closes the tooltips, in the capture phase: the board takes its presses
   document.addEventListener('pointerdown', e => {

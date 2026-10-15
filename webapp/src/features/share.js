@@ -62,14 +62,28 @@ export const dayOfDate = date => {
   return Date.UTC(+date.slice(0, 4), +date.slice(4, 6) - 1, +date.slice(6, 8)) / 86400000;
 };
 
-// gotdDate ('YYYYMMDD') given = a Game of Day, else a local game
-// (day = UTC day of its seed, index 0-based). variant ('cutout' | 'arrows' | 'exact' | 'wrap' | 'loop') = a
-// game of that variant: random, so the record carries the puzzle itself ({ n, shape, holes, cp,
-// walls } | { n, cp, walls, arrows } | { n, cp, walls, exact } | { n, cp, walls, wrap } | { n, cp,
-// walls, loop }) instead of
-// day / index / algo. A variant's record has no grade: the code has no room for one (the receiver
-// grades the puzzle again), and a record with one cannot be encoded.
-export function makeShareRecord({ gotdDate, n, grade, timeS, pct, day, index, algo, legs, K, variant, puzzle }) {
+// The puzzle a local record carries: a copy (the game goes on mutating its own) of what the code
+// holds, by variant.
+function puzzleCopy(variant, puzzle) {
+  const { n, cp, walls } = puzzle;
+  const copy = { n, cp: cp.slice(), walls: walls.slice() };
+  if (variant === 'cutout') {
+    return { ...copy, shape: puzzle.shape || null, holes: puzzle.holes.slice() };
+  }
+  if (variant === 'arrows') {
+    return { ...copy, arrows: puzzle.arrows.slice() };
+  }
+  return variant ? { ...copy, [variant]: true } : copy;
+}
+
+// gotdDate ('YYYYMMDD') given = a Game of Day, else a local game. A local game carries its puzzle
+// ({ n, cp, walls } plus shape + holes | arrows | exact | wrap | loop by variant; variant =
+// 'cutout' | 'arrows' | 'exact' | 'wrap' | 'loop', null for a standard game), so the receiver
+// needs no generator. Only a standard game has a grade: the receiver grades a variant's puzzle
+// again, and a record with a grade there cannot be encoded.
+export function makeShareRecord({
+  gotdDate, n, grade, timeS, pct, legs, K, variant = null, puzzle,
+}) {
   const common = {
     n,
     grade: variant || grade == null ? null : grade,
@@ -79,30 +93,49 @@ export function makeShareRecord({ gotdDate, n, grade, timeS, pct, day, index, al
   if (gotdDate) {
     return { kind: 'gotd', ...common, day: dayOfDate(gotdDate), pct: pct == null ? null : pct };
   }
-  if (variant === 'wrap') {
-    const { cp, walls } = puzzle;
-    const wrapped = { n, cp: cp.slice(), walls: walls.slice(), wrap: true };
-    return { kind: 'local', ...common, variant, puzzle: wrapped };
+  return { kind: 'local', ...common, variant, puzzle: puzzleCopy(variant, puzzle) };
+}
+
+// ---------- the player's collection of shared games (features/shared-games.js) ----------
+
+// What identifies a shared game: its code without what a player adds to it (time, strip, grade,
+// percent). The same Game of Day, or the same puzzle, gives the same key; null if not encodable.
+export const shareKey = rec => encodeShare({
+  ...rec, timeS: 0.1, levels: [], grade: null, pct: null,
+});
+
+// How hard the game fought back on the colour strip: [sum of the levels, sum of their squares].
+// The squares break a tie in favour of a spike (one red leg is worse than three yellow ones).
+export const stripBadness = levels => [
+  levels.reduce((sum, v) => sum + v, 0),
+  levels.reduce((sum, v) => sum + v * v, 0),
+];
+
+// Is strip a strictly worse than strip b?
+export function isWorseStrip(a, b) {
+  const [sumA, squaresA] = stripBadness(a);
+  const [sumB, squaresB] = stripBadness(b);
+  return sumA !== sumB ? sumA > sumB : squaresA > squaresB;
+}
+
+// Adds a received game to the entries [{ key, rec, added }]. The same game twice keeps the record
+// with the worse strip (a tie keeps the stored one), in the stored one's place.
+// -> { entries, key, outcome: 'added' | 'replaced' | 'kept' | 'invalid' }
+export function mergeShared(entries, rec, now) {
+  const key = encodeShare(rec) && shareKey(rec); // the record has to be encodable, not only its key
+  if (!key) {
+    return { entries, key: null, outcome: 'invalid' };
   }
-  if (variant === 'loop') {
-    const { cp, walls } = puzzle;
-    const ring = { n, cp: cp.slice(), walls: walls.slice(), loop: true };
-    return { kind: 'local', ...common, variant, puzzle: ring };
+  const at = entries.findIndex(e => e.key === key);
+  if (at < 0) {
+    return { entries: [...entries, { key, rec, added: now }], key, outcome: 'added' };
   }
-  if (variant === 'exact') {
-    const { cp, walls } = puzzle;
-    const exact = { n, cp: cp.slice(), walls: walls.slice(), exact: true };
-    return { kind: 'local', ...common, variant, puzzle: exact };
+  if (!isWorseStrip(rec.levels, entries[at].rec.levels)) {
+    return { entries, key, outcome: 'kept' };
   }
-  if (variant === 'arrows') {
-    const { cp, walls, arrows } = puzzle;
-    return { kind: 'local', ...common, variant, puzzle: { n, cp: cp.slice(), walls: walls.slice(), arrows: arrows.slice() } };
-  }
-  if (variant) {
-    const { shape, holes, cp, walls } = puzzle;
-    return { kind: 'local', ...common, variant, puzzle: { n, shape: shape || null, holes: holes.slice(), cp: cp.slice(), walls: walls.slice() } };
-  }
-  return { kind: 'local', ...common, day, index, algo };
+  const next = entries.slice();
+  next[at] = { ...entries[at], rec };
+  return { entries: next, key, outcome: 'replaced' };
 }
 
 export function shareUrl(base, rec) {
@@ -126,7 +159,7 @@ export function shareText(rec, url, tr) {
   const head = rec.kind === 'gotd'
     ? tr('share.headGotd', dateLabel(dateOfDay(rec.day)), rec.n)
     : rec.variant ? tr('share.head' + rec.variant[0].toUpperCase() + rec.variant.slice(1), rec.n)
-      : tr('share.headLocal', rec.n, rec.index + 1);
+      : tr('share.headLocal', rec.n);
   const grade = rec.grade == null ? '' : ` · ${tr('grade.' + rec.grade)} ${rec.grade}/5`;
   const result = [`⏱ ${rec.timeS.toFixed(1)}s`];
   if (rec.pct != null) {
@@ -137,22 +170,17 @@ export function shareText(rec, url, tr) {
 
 // What the receiver can do with a shared game.
 //   ctx: { today: UTC day number, replayDates: replay window ('YYYYMMDD'),
-//          attempt: stored record of that date | null, algo: ALGO_VERSION, sizes: playable sizes,
+//          attempt: stored record of that date | null, sizes: playable sizes,
 //          sizesOf (optional): variant id -> the sizes that variant offers }
 //   live    today's Game of Day, not played yet     -> the live game
 //   replay  a missed day inside the replay window   -> a replay (spends no chance)
-//   ok      local game of this app version          -> a local game
-//   played | old | future | version | invalid       -> not playable
+//   ok      local game (its puzzle is in the link)  -> a local game
+//   future  a Game of Day that is not out yet       -> not playable yet
+//   played | old | invalid                          -> not playable
 export function shareStatus(rec, ctx) {
   if (rec.kind === 'local') {
     const own = rec.variant && ctx.sizesOf ? ctx.sizesOf(rec.variant) : [];
-    if (!ctx.sizes.includes(rec.n) && !own.includes(rec.n)) {
-      return { status: 'invalid' };
-    }
-    if (rec.variant) {
-      return { status: 'ok' }; // the puzzle is in the link: no app version to match
-    }
-    return { status: rec.algo === ctx.algo ? 'ok' : 'version' };
+    return { status: ctx.sizes.includes(rec.n) || own.includes(rec.n) ? 'ok' : 'invalid' };
   }
   if (rec.day > ctx.today) {
     return { status: 'future' };
@@ -168,3 +196,8 @@ export function shareStatus(rec, ctx) {
 
 const PLAYABLE = ['live', 'replay', 'ok'];
 export const isPlayable = st => PLAYABLE.includes(st.status);
+
+// A saved Game of Day that is played or out of the replay window will never be playable from the
+// shared list again (it follows the replay scheme instead), so it leaves the list.
+export const isSpent = (rec, st) => rec.kind === 'gotd'
+  && (st.status === 'played' || st.status === 'old');
