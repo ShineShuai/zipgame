@@ -1,6 +1,6 @@
 // Design-app logs on this device: the rating log (one entry per rated puzzle) and the pair log (harder / easier verdicts). Both grow until cleared,
 // and used to store, per entry, the puzzle text, every metric name and long floats. Now:
-// Metric values are rounded to 6 significant digits.
+// Non-integer metric values are rounded to 6 significant digits (counts stay exact).
 //   rating log, zip-difficulty-rating-log-v2 = { v: 2, m: [metric names], e: [[key, human, lo, hi, unsure (0|1), [values by name] | null, extra?]] }
 //   pair log,   zip-difficulty-pair-log-v2   = { v: 2, m: [names], p: [[puzzle key, [values] | null]], q: [[a index, b index, cmp]] }
 // A puzzle that appears in several pairs is stored once, with the metrics of its latest pair (the pair table reads them the same way: last wins).
@@ -15,7 +15,7 @@ export const PAIR_KEY = 'zip-difficulty-pair-log-v2', PAIR_KEY_V1 = 'zip-difficu
 function namesOf(objs) { const names = []; for (const o of objs) if (o) for (const k of Object.keys(o)) if (!names.includes(k)) names.push(k); return names; }
 // Metric values are kept to 6 significant digits (a relative error of 5e-7: far below what a correlation or a ranking can see). They are
 // derived data: the design app regrades a puzzle from its text on import.
-const r6 = v => (typeof v === 'number' && Number.isFinite(v) ? Number(v.toPrecision(6)) : v);
+const r6 = v => (typeof v === 'number' && Number.isFinite(v) && !Number.isInteger(v) ? Number(v.toPrecision(6)) : v); // counts stay exact
 const row = (o, names) => (o ? names.map(k => (k in o ? r6(o[k]) : null)) : null);
 const rowBack = (vals, names) => (Array.isArray(vals) ? Object.fromEntries(names.flatMap((k, i) => (vals[i] === null || vals[i] === undefined ? [] : [[k, vals[i]]]))) : null);
 
@@ -39,13 +39,13 @@ export function unpackRatings(raw) {
 }
 
 export function packPairs(pairs) {
-  const m = namesOf(pairs.flatMap(q => [q.ma, q.mb])), index = new Map(), p = [];
+  const m = namesOf(pairs.flatMap(q => (q ? [q.ma, q.mb] : []))), index = new Map(), p = [];
   const at = (key, metrics) => {
     let i = index.get(key); if (i === undefined) { i = p.length; index.set(key, i); p.push([key, null]); }
     if (metrics) p[i][1] = row(metrics, m);
     return i;
   };
-  const q = pairs.map(x => [at(x.a, x.ma), at(x.b, x.mb), x.cmp]);
+  const q = pairs.filter(x => x && typeof x.a === 'string' && typeof x.b === 'string').map(x => [at(x.a, x.ma), at(x.b, x.mb), x.cmp]);
   return { v: 2, m, p, q };
 }
 export function unpackPairs(raw) {

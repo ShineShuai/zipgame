@@ -56,8 +56,9 @@ export function createPlayLog(storage, max = PLAYLOG_MAX) {
   let list = null, loading = null;
   const load = () => loading || (loading = (async () => {
     try {
-      await migrateKey(storage, PLAYLOG_LEGACY_KEY, PLAYLOG_KEY, convertLegacy);
-      const r = await storage.get(PLAYLOG_KEY), v = r ? JSON.parse(r.value) : null;
+      const status = await migrateKey(storage, PLAYLOG_LEGACY_KEY, PLAYLOG_KEY, convertLegacy);
+      // A refused conversion (quota) must not lose the old history: carry it in memory, the next add() writes it all in the compact form.
+      const r = status === 'failed' ? { value: convertLegacy((await storage.get(PLAYLOG_LEGACY_KEY)).value) } : await storage.get(PLAYLOG_KEY), v = r ? JSON.parse(r.value) : null;
       list = v && v.v === 2 && Array.isArray(v.r) ? v.r.filter(valid) : [];
     } catch { list = []; }
     return list;

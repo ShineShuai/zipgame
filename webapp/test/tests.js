@@ -1965,12 +1965,35 @@ ta('attempts: a refused conversion keeps reading the old keys (a played date nev
   await A.saveAttempt('20260920', { solved: false, time: null }); await B.saveAttempt('20260921', { solved: true, time: 5 });
   eq(Object.keys(JSON.parse((await st.get(GOTD_KEY)).value).a).sort(), ['20260919', '20260920', '20260921']);
 });
+ta('stats-store: overlapping recordSolve and recordGotd (the app does not await the first) keep both; a corrupt entry or a stat without `recent` does not block or lose data', async () => {
+  const st = fakeStorage(), S = createStore(st, [5]); await S.hydrate('20260919');
+  S.recordSolve(5, 100, 10); await S.recordGotd(5, '20260919', 10, false, false);
+  const b = JSON.parse((await st.get(STATS_KEY)).value); eq([b.t['5'][0], b.b['5']], [1, ['20260919', 10]], 'neither write was lost');
+  await st.set(STATS_KEY, JSON.stringify({ v: 2, t: {}, d: { 5: null }, b: {} }));
+  const S2 = createStore(st, [5]); await S2.hydrate('20260919'); await S2.recordSolve(5, 100, 10); eq(JSON.parse((await st.get(STATS_KEY)).value).t['5'][0], 1, 'a null entry is dropped, the write goes through');
+  const st3 = fakeStorage(); await st3.set('zip_local_stats_5', JSON.stringify({ n: 3, mean: 10, M2: 2 }));
+  const S3 = createStore(st3, [5]); await S3.hydrate('20260919'); eq([S3.total(5).n, S3.total(5).recent], [3, []], 'an old stat shape is kept');
+});
+ta('attempts: a stray or future-dated legacy key never wipes the replay window', async () => {
+  const st = fakeStorage(), rec = JSON.stringify({ solved: true, time: 5 });
+  for (const d of ['20260919', 'test', '20300101']) await st.set('zip_gotd_attempt_' + d, rec);
+  const S = createStore(st, [5]); await S.hydrate('20260919');
+  eq([!!S.attempt(), Object.keys(JSON.parse((await st.get(GOTD_KEY)).value).a).sort()], [true, ['20260919', '20300101']], 'the malformed key goes, today stays');
+});
+ta('playlog: a refused conversion keeps the old history in memory and the next add writes it all', async () => {
+  const st = fakeStorage(), old = JSON.stringify(Array.from({ length: 5 }, (_, i) => ({ n: 5, ms: 5000, solved: true, hints: 0, mode: 'local', at: 1.7e12 + i * 6e4 })));
+  await st.set(PLAYLOG_LEGACY_KEY, old);
+  let refuse = true; const port = { ...st, async set(k, v) { return refuse && k === PLAYLOG_KEY && v.length > 40 ? false : st.set(k, v); } };
+  const L = createPlayLog(port); eq((await L.all()).length, 5, 'history is available this session');
+  refuse = false; await L.add({ n: 5, ms: 1, solved: true, hints: 0, mode: 'local', at: 1.8e12 });
+  eq((await createPlayLog(st).all()).length, 6, 'all of it survives the next load');
+});
 ta('log-store: ratings and pairs round-trip through the compact format; the v1 keys are converted once and removed', async () => {
   const m1 = { 'grade: trap': 2.12346, decisionNodes: 4, B: 0.5 }, m2 = { 'grade: trap': 1, B: 0.25, extra: 7 };
   const ratings = [{ key: 'size 5\ncheckpoints\nwalls', human: 2.5, lo: 2, hi: 3, unsure: true, metrics: m1 }, { key: 'size 6\ncheckpoints\nwalls', human: 1, metrics: null }, { key: 'size 7', human: 3, lo: 3, hi: 3, metrics: m2, note: 'x' }];
   const sorted = v => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort()) : x));
   eq(sorted(unpackRatings(JSON.parse(JSON.stringify(packRatings(ratings))))), sorted(ratings), 'extra fields included');
-  eq(unpackRatings(packRatings([{ key: 'k', human: 1, metrics: { a: 1 / 3, b: 123456789 } }]))[0].metrics, { a: 0.333333, b: 123457000 }, 'metrics keep 6 significant digits');
+  eq(unpackRatings(packRatings([{ key: 'k', human: 1, metrics: { a: 1 / 3, b: 123456789, c: 1234.56789 } }]))[0].metrics, { a: 0.333333, b: 123456789, c: 1234.57 }, 'non-integer metrics keep 6 significant digits, counts stay exact');
   const pairs = [{ a: 'A', b: 'B', cmp: 'harder', ma: m1, mb: m2 }, { a: 'B', b: 'C', cmp: 'same', ma: m2, mb: null }];
   eq(unpackPairs(JSON.parse(JSON.stringify(packPairs(pairs)))), pairs, 'pairs share their puzzles');
   eq(unpackRatings(null), []); eq(unpackPairs({ v: 2, m: [], p: [], q: [[0, 1, 'same']] }), [], 'a dangling pair index is dropped');
