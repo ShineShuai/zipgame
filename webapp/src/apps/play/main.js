@@ -463,7 +463,7 @@ function difficultyDevHtml() {
     ? `decisionNodes ${g.grades.decisionNodes}/5 · B ${g.grades.B}/5 · cross ${g.grades.crossPerSeg}/5 · <span class="dev-raw">decisionNodes ${g.raw.decisionNodes} · B ${g.raw.B.toFixed(2)} · cross/seg ${g.raw.crossPerSeg.toFixed(2)}</span>`
     : S.variant ? '' : 'old grades: ungraded (search capped)';
   const body = [trapPart, legacyPart].filter(Boolean).join(' · ') || 'ungraded';
-  return `<span id="difficultyDev" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="trap: the badge score before it is cut into a grade, with its inputs (worst step's trap score, top-3 steps' sum, fraction of steps that have any wrong move, what-if guesses the technique ladder needed). Cutout: the same score without the alt term; One way arrows: only the max and top-3 terms, wrong moves being the ones the arrows allow (a ranking, not fitted to hand ratings). decisionNodes: the previous badge grade (solver branch points per cell). B: backtrack overhead (nodes/cells - 1) from the same solve. cross: how many non-adjacent checkpoint-to-checkpoint segments geometrically cross, per segment. Each old grade is graded 0-5 with its own calibration; the trap grade is fit to hand ratings. The design app shows all of them.">${body}${tm || g ? ' · <a href="#" id="exportPlayLog" title="Download the play log (what you did on each puzzle: time, cells drawn and taken back), local to this device, for tools/playlog-eval.mjs">play log</a>' : ''}</span>`;
+  return `<span id="difficultyDev" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="trap: the badge score before it is cut into a grade, with its inputs (worst step's trap score, top-3 steps' sum, fraction of steps that have any wrong move, what-if guesses the technique ladder needed). Cutout: the same score without the alt term; One way arrows: only the max and top-3 terms, wrong moves being the ones the arrows allow (a ranking, not fitted to hand ratings). decisionNodes: the previous badge grade (solver branch points per cell). B: backtrack overhead (nodes/cells - 1) from the same solve. cross: how many non-adjacent checkpoint-to-checkpoint segments geometrically cross, per segment. Each old grade is graded 0-5 with its own calibration; the trap grade is fit to hand ratings. The design app shows all of them.">${body}</span>`;
 }
 
 // Loop: the line under the board. It reminds of the rule, says so when every cell is visited but the ring is
@@ -622,7 +622,6 @@ function attachHandlers() {
   document.querySelectorAll('.stat-item').forEach(b => { b.onclick = e => { e.stopPropagation(); const open = !b.classList.contains('open'); closeStatTips(); b.classList.toggle('open', open); }; });
   on('backMenu2', () => { logPlay(false); stopTimer(); leaveLucky(); S.screen = 'menu'; render(); });
   on('resetPath', () => { if (S.trace && !S.finished) traceClear(S.trace, S.path.length); if (!S.finished) legsUndo(S.legs, S.puzzle, S.path, 1); S.path = []; S.finished = false; S.hintCell = S.hintWrongCell = null; render(); });
-  on('exportPlayLog', ev => { ev.preventDefault(); exportPlayLog(); });
   on('behaviourToggle', async ev => { ev.preventDefault(); S.behaviourOn = !S.behaviourOn; await behaviour.setOn(S.behaviourOn); render(); });
   on('newPuzzle', () => { if (!S.isGotd) startLocal('skip', S.variant || 'standard'); });
   on('exportBtn', () => { $('exportText').value = serialize(S.puzzle); $('exportMsg').textContent = ''; modal.open(); setTimeout(() => $('exportText').focus(), 30); });
@@ -736,7 +735,7 @@ function logPlay(solved) {
   const ms = S.timerId != null ? performance.now() - S.startTime : S.elapsed * 1000;
   const mode = S.isGotd ? (S.isReplay ? 'replay' : 'gotd') : 'local';
   const history = playlog.all(); // asked before add(): the skill bucket of the upload must not count this game
-  playlog.add(buildRecord(S.puzzle, S.trace, { ms, solved, hints: S.hintsUsed, mode }));
+  playlog.add(buildRecord(S.puzzle, { ms, solved, hints: S.hintsUsed, mode }));
   if (solved) uploadBehaviour(history, ms, mode);
 }
 // The anonymous behaviour row of a solved game (core/behaviour.js decides whether it is sent at all; platform/behaviour.js sends it).
@@ -748,10 +747,6 @@ function uploadBehaviour(history, ms, mode) {
     day: S.isGotd ? dayOfDate(S.gotdDate) : S.gameDay ?? dayNo(), variant: S.variant, shared: S.isShared, known: Boolean(attempt && attempt.solved) };
   history.then(h => { const row = rowFromGame({ ...game, skill: skillBucket(h) }, BEHAVIOUR); return row && behaviour.enqueue(row); })
     .catch(e => console.warn('behaviour upload skipped:', e));
-}
-async function exportPlayLog() {
-  const a = document.createElement('a'), url = URL.createObjectURL(new Blob([await playlog.exportJson()], { type: 'application/json' }));
-  a.href = url; a.download = 'playlog.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function onSolved() {

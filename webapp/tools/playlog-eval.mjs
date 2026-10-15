@@ -1,7 +1,6 @@
 // Correlate the grading metrics with what players actually did, using the play log (src/features/playlog.js).
 //   node tools/playlog-eval.mjs playlog.json [more.json ...] [--cap 1000000] [--min-solved 20]
-// Get the file in the play app: hold V, click "play log" (downloads playlog.json). Every puzzle you solve adds a record,
-// so this is a growing, objective label next to the hand ratings: no rating effort, no opinion drift.
+// The play app no longer exports its play log (the behaviour upload replaces it); this reads a playlog.json exported by an older version.
 // Labels (per solved puzzle, hints not used, because a hint changes time and path):
 //   effort = ln(seconds) minus what its size predicts (least-squares line of ln seconds on ln cells, over your own solves):
 //            0 = typical for its size, +0.69 = twice as slow as usual.

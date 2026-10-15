@@ -18,6 +18,7 @@ import { validate, maxNumber } from '../../core/model.js';
 import { spatialMetrics } from '../../core/spatial.js';
 import { trapMetrics, trapRoute, TRAP_CFG, TRAP_MODEL } from '../../core/trap.js';
 import { pickStorage } from '../../platform/storage.js';
+import { loadRatings, saveRatings, loadPairs, savePairs } from '../../core/log-store.js';
 import { parse } from '../../core/format.js';
 import { ratingKey, ratingFromSelection, leanOf, describeRating, toRatingsJson, parseRatingsJson, mergeRatings, symmetryKey, findDuplicateGroups, asciiPuzzle, UNSURE_WEIGHT } from '../../core/ratings-io.js';
 import { pairKeyOf, flipCmp, toPairsJson, parsePairsJson, mergePairs, pairAccuracy } from '../../core/pairs-io.js';
@@ -168,30 +169,22 @@ export function diagnosticsHtml(d) {
 // ---- rating log: lets the design app itself accumulate labeled (metric, human-rating) pairs and
 // show a running Pearson r per metric, instead of a one-off offline script. Persisted via
 // pickStorage() (same port the play app's stats use) so it survives reloads. ----
-const LOG_KEY = 'zip-difficulty-rating-log-v1';
-
+// Stored by core/log-store.js (compact v2 format; the v1 keys are converted on first load).
 async function loadLog() {
-  const storage = await pickStorage();
-  const rec = await storage.get(LOG_KEY);
-  if (!rec) return [];
-  let entries; try { entries = JSON.parse(rec.value); } catch { return []; }
+  const entries = await loadRatings();
   // Older logs keyed each puzzle by serialize(p), whose text starts with "# ..." comment lines. The shared ratings.json
   // format (core/ratings-io.js) uses the comment-free key, so normalise here: the same puzzle then matches an imported row.
   const byKey = new Map();
   for (const e of entries) { let key = e.key; try { key = ratingKey(e.key); } catch { /* keep an unparseable key as it is */ } byKey.set(key, { ...e, key }); }
   return [...byKey.values()];
 }
-async function saveLog(entries) {
-  const storage = await pickStorage();
-  await storage.set(LOG_KEY, JSON.stringify(entries));
-}
+const saveLog = saveRatings;
 
-const PAIR_KEY = 'zip-difficulty-pair-log-v1', PREV_KEY = 'zip-difficulty-prev-v1';
+const PREV_KEY = 'zip-difficulty-prev-v1';
 // Pair log: [{ a, b, cmp, ma?, mb? }] — cmp describes B relative to A; ma/mb cache the metrics of A/B when the pair was recorded
 // (used for the agreement table, never exported). Previous-puzzle record: { cur, prev } of { key, metrics, n, K }.
 async function loadJson(key, dflt) { const s = await pickStorage(), r = await s.get(key); if (!r) return dflt; try { return JSON.parse(r.value); } catch { return dflt; } }
 async function saveJson(key, v) { const s = await pickStorage(); await s.set(key, JSON.stringify(v)); }
-const loadPairs = () => loadJson(PAIR_KEY, []), savePairs = v => saveJson(PAIR_KEY, v);
 const loadPrev = () => loadJson(PREV_KEY, {}), savePrev = v => saveJson(PREV_KEY, v);
 const safeSym = key => { try { return symmetryKey(key); } catch { return null; } };
 const escHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
