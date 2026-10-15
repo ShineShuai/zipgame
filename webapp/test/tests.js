@@ -28,7 +28,7 @@ import { createStore } from '../src/features/stats-store.js';
 import { newTrace, traceStep, traceClear, buildRecord, createPlayLog, PLAYLOG_KEY, PLAYLOG_LEGACY_KEY } from '../src/features/playlog.js';
 import { loadRatings, saveRatings, loadPairs, savePairs, packRatings, unpackRatings, packPairs, unpackPairs, RATING_KEY, RATING_KEY_V1, PAIR_KEY, PAIR_KEY_V1 } from '../src/core/log-store.js';
 import { withEviction, migrateKey, usage } from '../src/platform/storage.js';
-import { STATS_KEY } from '../src/features/stats-store.js';
+import { STATS_KEY, GOTD_KEY, ATTEMPT_KEEP_DAYS } from '../src/features/stats-store.js';
 import { encodeShare, decodeShare, SHARE_VERSION, MAX_LEGS } from '../src/core/share-code.js';
 import { packPuzzle, unpackPuzzle, rowFromGame, validateRow, skillBucket, packS, unpackS, toWire, fromWire, toB64u, fromB64u, rowArgs, COLUMNS, COLUMN_NAMES, ROW_VERSION, UNKNOWN_SKILL, utcDay } from '../src/core/behaviour.js';
 import { createBehaviour, sinksFromConfig, SINKS, QUEUE_KEY, ON_KEY, QUEUE_MAX, MAX_ROUNDS as BEHAVIOUR_ROUNDS } from '../src/platform/behaviour.js';
@@ -1933,6 +1933,37 @@ ta('stats-store: the blob of a full device stays small (15 sizes x 6 variants)',
   const S = createStore(st, sizes, scopes); await S.hydrate('20260919');
   for (const n of sizes) for (const sc of ['', ...Object.keys(scopes)]) for (let i = 0; i < 25; i++) await S.recordSolve(n, 100, 12345.678912345 + i * 1111.1111, sc);
   const len = (await st.get(STATS_KEY)).value.length; ok(len < 60000, 'worst case, every scope played: ' + len + ' chars'); eq(S.total(15).recent.length, 20);
+});
+ta('attempts: legacy per-date keys are converted to one key; records are kept as they are; dates past the keep window go; a blob record wins', async () => {
+  const st = fakeStorage(), full = { solved: true, time: 41.2, sent: false, stats: { n: 3, mean: 30, top: null, pct: 50 }, statsFrom: 'cf', done: ['cf'], rounds: 1 };
+  await st.set('zip_gotd_attempt_20260919', JSON.stringify(full)); await st.set('zip_gotd_attempt_20260918', JSON.stringify({ solved: false, time: null }));
+  await st.set('zip_gotd_attempt_20250101', JSON.stringify({ solved: true, time: 9, sent: false })); // far outside any replay window
+  await st.set('zip_gotd_attempt_20260917', '{broken');
+  await st.set(GOTD_KEY, JSON.stringify({ v: 2, a: { 20260918: { solved: true, time: 7 } } }));
+  const S = createStore(st, [5]); await S.hydrate('20260919');
+  eq(S.attempt(), full, 'the full record, submit state included, reads back as before');
+  eq([await S.loadAttempt('20260918'), await S.loadAttempt('20260917'), await S.loadAttempt('20250101'), await S.loadAttempt('20260101')], [{ solved: true, time: 7 }, null, null, null]);
+  eq(await st.keys('zip_gotd_attempt_'), [], 'every old key is gone');
+  eq(Object.keys(JSON.parse((await st.get(GOTD_KEY)).value).a).sort(), ['20260918', '20260919']);
+});
+ta('attempts: only the last 120 days before the newest date are kept; 400 days of play stay in one small key', async () => {
+  const st = fakeStorage(), S = createStore(st, [5]); await S.hydrate('20260101');
+  const dateAt = i => new Date(Date.UTC(2025, 0, 1) + i * 86400000).toISOString().slice(0, 10).replace(/-/g, '');
+  for (let i = 0; i < 400; i++) await S.saveAttempt(dateAt(i), { solved: true, time: 30 + i / 7, sent: true, stats: { n: 120, mean: 31.123, top: 20.5, pct: 63 } });
+  const a = JSON.parse((await st.get(GOTD_KEY)).value).a;
+  eq([Object.keys(a).length, await S.loadAttempt(dateAt(399)) !== null, await S.loadAttempt(dateAt(399 - ATTEMPT_KEEP_DAYS)) !== null, await S.loadAttempt(dateAt(398 - ATTEMPT_KEEP_DAYS))], [ATTEMPT_KEEP_DAYS + 1, true, true, null]);
+  ok((await usage(st)).chars < 16000, 'chars: ' + (await usage(st)).chars);
+});
+ta('attempts: a refused conversion keeps reading the old keys (a played date never looks missed) and retries on the next load; two tabs keep each other\'s dates', async () => {
+  const st = fakeStorage(), rec = { solved: true, time: 12, sent: true, stats: null };
+  await st.set('zip_gotd_attempt_20260919', JSON.stringify(rec));
+  const refuse = { ...st, async set(k, v) { return k === GOTD_KEY ? false : st.set(k, v); } };
+  const S = createStore(refuse, [5]); await S.hydrate('20260919');
+  eq(await S.loadAttempt('20260919'), rec, 'read from the old key'); ok(await st.get('zip_gotd_attempt_20260919'), 'and it is not removed');
+  const S2 = createStore(st, [5]); await S2.hydrate('20260919'); eq([await S2.loadAttempt('20260919'), (await st.keys('zip_gotd_attempt_')).length], [rec, 0], 'the next load converts');
+  const A = createStore(st, [5]), B = createStore(st, [5]); await A.hydrate('20260919'); await B.hydrate('20260919');
+  await A.saveAttempt('20260920', { solved: false, time: null }); await B.saveAttempt('20260921', { solved: true, time: 5 });
+  eq(Object.keys(JSON.parse((await st.get(GOTD_KEY)).value).a).sort(), ['20260919', '20260920', '20260921']);
 });
 ta('log-store: ratings and pairs round-trip through the compact format; the v1 keys are converted once and removed', async () => {
   const m1 = { 'grade: trap': 2.12346, decisionNodes: 4, B: 0.5 }, m2 = { 'grade: trap': 1, B: 0.25, extra: 7 };

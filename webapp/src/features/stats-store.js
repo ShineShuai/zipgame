@@ -7,7 +7,18 @@ import { scopeKey } from './daily.js';
 // (zip_local_stats_<k>, zip_today_stats_<k>, zip_gotd_best_<n>); they are converted on the first load and removed.
 // A puzzle variant keeps its own stats (`scopes` = { id: [sizes] }, scopeKey = <id>_<n>); `scope` is that id, '' = standard.
 // One attempt record per Game-of-Day date: { solved, time, sent?, stats? }. A date with no record is a date the player never played, i.e. one a replay may offer.
+// The records live in ONE key, zip_gotd_v2 = { v: 2, a: { <date YYYYMMDD>: record } }, and only the last ATTEMPT_KEEP_DAYS days before the newest
+// date in it are kept: a replay offers the last REPLAY_DAYS (90) days and a submit is retried only for those, so older records can never be read again.
+// The old app kept one key per date forever (zip_gotd_attempt_<date>); they are converted on the first read (a record already in the blob wins).
 export const attemptKey = date => 'zip_gotd_attempt_' + date;
+export const GOTD_KEY = 'zip_gotd_v2', ATTEMPT_KEEP_DAYS = 120;
+const dayOf = date => Date.UTC(+date.slice(0, 4), +date.slice(4, 6) - 1, +date.slice(6, 8)) / 86400000;
+const isRecord = r => r && typeof r === 'object' && typeof r.solved === 'boolean';
+const parseGotd = text => { try { const b = JSON.parse(text); return b && b.v === 2 && b.a && typeof b.a === 'object' ? b : { v: 2, a: {} }; } catch { return { v: 2, a: {} }; } };
+function pruneAttempts(blob) {
+  const dates = Object.keys(blob.a).sort(), horizon = dates.length ? dayOf(dates.at(-1)) - ATTEMPT_KEEP_DAYS : 0;
+  for (const d of dates) if (!(dayOf(d) >= horizon)) delete blob.a[d]; // also drops a malformed date key
+}
 export const STATS_KEY = 'zip_stats_v2', LEGACY = { total: 'zip_local_stats_', today: 'zip_today_stats_', best: 'zip_gotd_best_' };
 // `recent` (seconds, shown with one decimal) is kept to the millisecond; mean and M2 stay exact so the running statistics do not drift.
 const ms3 = x => Math.round(x * 1000) / 1000;
@@ -42,6 +53,7 @@ export function createStore(storage, sizes, scopes = {}) {
   const set = async (k, v) => { try { await storage.set(k, JSON.stringify(v)); } catch { /* ignore */ } };
   // Read-modify-write of the blob, so a second tab's other scopes are not overwritten.
   const patch = async fn => { try { const r = await storage.get(STATS_KEY), b = r ? parseBlob(r.value) : emptyBlob(); fn(b); await storage.set(STATS_KEY, JSON.stringify(b)); } catch { /* ignore */ } };
+  const patchGotd = async fn => { try { const r = await storage.get(GOTD_KEY), b = r ? parseGotd(r.value) : { v: 2, a: {} }; fn(b); await storage.set(GOTD_KEY, JSON.stringify(b)); } catch { /* ignore */ } };
   const allKeys = () => [...sizes.map(n => scopeKey(n, '')), ...Object.entries(scopes).flatMap(([id, ns]) => ns.map(n => scopeKey(n, id)))];
   // The conversion window (until 2026-10-29 or later): legacy keys -> blob, merged under what the blob already holds; the legacy keys go once it is read back.
   async function migrate() {
@@ -56,6 +68,28 @@ export function createStore(storage, sizes, scopes = {}) {
     if (!back || back.value !== text || !storage.remove) return;
     for (const name of names) await storage.remove(LEGACY[name.slice(0, name.indexOf(':'))] + name.slice(name.indexOf(':') + 1));
   }
+  // The conversion window (until 2026-10-29 or later): zip_gotd_attempt_<date> keys -> the blob. `converted` stays false when the write was refused:
+  // reads then fall back to the old keys, so a played date never looks missed, and the next page load tries again.
+  let converting = null, converted = false;
+  const convertAttempts = () => converting || (converting = (async () => {
+    try {
+      if (!storage.keys) return;
+      const names = await storage.keys('zip_gotd_attempt_');
+      if (!names.length) { converted = true; return; }
+      const r = await storage.get(GOTD_KEY), blob = r ? parseGotd(r.value) : { v: 2, a: {} };
+      for (const name of names) {
+        const date = name.slice('zip_gotd_attempt_'.length), rec = await get(name);
+        if (isRecord(rec) && !(date in blob.a)) blob.a[date] = rec;
+      }
+      pruneAttempts(blob);
+      const text = JSON.stringify(blob);
+      if (!(await storage.set(GOTD_KEY, text))) return;
+      const back = await storage.get(GOTD_KEY);
+      if (!back || back.value !== text || !storage.remove) return;
+      for (const name of names) await storage.remove(name);
+      converted = true;
+    } catch { /* the old keys stay and are read as before */ }
+  })());
   const store = {
     async hydrate(dateStr) {
       await migrate();
@@ -82,9 +116,17 @@ export function createStore(storage, sizes, scopes = {}) {
     },
     attempt: () => attempts[attemptDate] || null, attemptDate: () => attemptDate, // today's record (as of the last hydrateAttempt)
     attemptOn: date => attempts[date] || null,                                     // any loaded date's record
-    async loadAttempt(date) { attempts[date] = await get(attemptKey(date)); return attempts[date]; },
+    async loadAttempt(date) {
+      await convertAttempts();
+      const r = await storage.get(GOTD_KEY), rec = r ? parseGotd(r.value).a[date] : null;
+      attempts[date] = isRecord(rec) ? rec : converted ? null : await get(attemptKey(date));
+      return attempts[date];
+    },
     async hydrateAttempt(date) { await store.loadAttempt(date); attemptDate = date; },
-    async saveAttempt(date, a) { attempts[date] = a; await set(attemptKey(date), a); },
+    async saveAttempt(date, a) {
+      attempts[date] = a; await convertAttempts();
+      await patchGotd(b => { b.a[date] = a; pruneAttempts(b); }); // read-modify-write: another tab's dates stay
+    },
   };
   return store;
 }
