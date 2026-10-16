@@ -8,7 +8,7 @@ import { utcDayNumber } from './daily.js';
 // for good (nothing changes when it was unlocked already); failing it, leaving it or reloading the
 // page loses the chance. A player without a chance plays for fun and unlocks nothing.
 //
-// Chances come from the streak: every 7th streak day the player picks a replay or an unlock chance
+// Chances come from the streak: with every streak reward the player picks a replay or an unlock chance
 // (the app: addChoice, then takeChoice + addToken, or the replay).
 // State, under UNLOCK_KEY: { v, unlocked: { id: day }, tokens (unlock chances), choices (streak
 //   rewards still to pick), played: [offers started, by lucky day, the latest few], active: null |

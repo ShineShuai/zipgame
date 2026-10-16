@@ -8,7 +8,7 @@ import { runAsync } from '../../platform/run.js';
 import { createStore } from '../../features/stats-store.js';
 import { createDaily, scopeKey, fetchGameOfDay, fetchGameOfDayFor, utcDateString, utcDayNumber, dateOfDay } from '../../features/daily.js';
 import { createReplay } from '../../features/replay.js';
-import { createStreak, FREEZE_EVERY, FREEZE_MAX } from '../../features/streak.js';
+import { createStreak, FREEZE_EVERY, FREEZE_MAX, HEAL_DAYS, RAMP } from '../../features/streak.js';
 import { ALGO_VERSION, cellCount, labelCount, labelRanks } from '../../core/model.js';
 import { dailySeed } from '../../core/rng.js';
 import { legsUndo, makeShareRecord, shareStatus, isPlayable, isSpent, shareText, shareUrl, parseShareLink, stripText, dateLabel, dayOfDate } from '../../features/share.js';
@@ -42,7 +42,7 @@ const SIZES = PLAY_SIZES;
 const S = { screen: 'menu', mode: 'standard', variant: null, genMode: 'standard', size: 7, puzzle: null, path: [], elapsed: 0, startTime: 0, timerId: null, finished: false,
   gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, isReplay: false, replayPick: null, gotdDate: null, gotdHint: null, hintsUsed: 0,
   penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, behaviourOn: false, difficulty: null,
-  lucky: false, luckyHolder: false, luckyResult: null, luckyNote: null,
+  lucky: false, luckyHolder: false, luckyResult: null, luckyNote: null, healed: false,
   legs: [], gameDay: null, isShared: false,
   sharedGames: [], sharedFocus: null, sharedAll: false, sharedArmed: null, sharedNotice: null, sharedMsg: null };
 
@@ -184,7 +184,7 @@ function luckyTipHtml(v) {
   const cells = rows.map(r => `<span class="${r.lucky ? 'win' : ''}"><b>${dayName(r)}</b><small>${peakText(r.peak)}</small></span>`);
   const winner = rows.find(r => r.lucky).day;
   return `<button type="button" class="tip-btn" id="luckyTip" aria-expanded="false" aria-label="${t('lucky.how')}">i</button>
-      <span class="tip-pop" id="luckyTipPop" role="tooltip"><b>${t('lucky.how')}</b><br>${t('lucky.howText')}<br>${t('lucky.week', luckyDate(rows[0].day), luckyDate(rows[6].day))}<span class="lucky-week">${cells.join('')}</span>${t('lucky.winner', luckyDate(winner))}<br>${t('unlock.tip.chance')} ${t('unlock.tip.streak', FREEZE_EVERY)}</span>`;
+      <span class="tip-pop" id="luckyTipPop" role="tooltip"><b>${t('lucky.how')}</b><br>${t('lucky.howText')}<br>${t('lucky.week', luckyDate(rows[0].day), luckyDate(rows[6].day))}<span class="lucky-week">${cells.join('')}</span>${t('lucky.winner', luckyDate(winner))}<br>${t('unlock.tip.chance')} ${t('unlock.tip.streak')}</span>`;
 }
 
 // A streak reward to claim: a replay chance or an unlock chance (only a replay once every variant is unlocked).
@@ -231,6 +231,7 @@ function luckyGameHtml() {
     const key = r.newly ? 'lucky.unlocked' : unlock.unlocked(r.id) ? 'lucky.already' : 'lucky.noChance';
     parts.push(`<div class="lucky-result${r.newly ? '' : ' same'}">${variantIcon(r.id)}<span>${t(key, t(variantById(r.id).keys.name))}</span></div>`);
   }
+  if (S.healed) parts.push(`<div class="lucky-result heal"><span>${t('streak.healed')}</span></div>`);
   if (v && v.choices > 0) parts.push(rewardRowHtml(v));
   return parts.join('');
 }
@@ -356,12 +357,14 @@ function statusPanelHtml(chances, sv) { // sv: streak.view(), null before the st
         ${pips(step.done, step.total)}
         <small class="stat-sub">${t('status.toGo', toNext)}</small>
       </span>`);
-  const lines = sv && [sv.streak > 0 ? t('streak.line', sv.streak, sv.freezes) + (sv.today ? '' : ' ' + t('streak.keep')) : t('streak.none'), t('streak.help', FREEZE_EVERY, FREEZE_MAX)];
+  const heals = streak ? streak.healable().length : 0, pg = sv && streak.progress();
+  const lines = sv && [sv.streak > 0 ? t('streak.line', sv.streak, sv.freezes) + (sv.today ? '' : ' ' + t('streak.keep')) : t('streak.none'),
+    t('streak.next', pg.left), ...(heals ? [t('streak.repair', heals)] : []), t('streak.help', RAMP.join(','), FREEZE_EVERY, FREEZE_MAX, HEAL_DAYS)];
   const streakCard = sv ? card('stat-streak' + (sv.streak > 0 ? (sv.today ? ' lit' : ' lit risk') : ''), lines, `
       ${ICON.flame}
       <span class="stat-main">
         <span class="stat-top"><b>${sv.streak}</b><small>${t('status.streak')}</small></span>
-        ${pips(sv.streak > 0 ? ((sv.streak - 1) % FREEZE_EVERY) + 1 : 0, FREEZE_EVERY, 'week')}
+        ${pips(pg.on, pg.total, 'week')}
         <span class="freezes">${Array.from({ length: FREEZE_MAX }, (_, i) => `<span class="freeze${i < sv.freezes ? ' on' : ''}">${ICON.snow}</span>`).join('')}</span>
       </span>`) : '';
   return `<div class="status-panel">${replayCard}${streakCard}</div>`;
@@ -369,8 +372,8 @@ function statusPanelHtml(chances, sv) { // sv: streak.view(), null before the st
 
 // Replay screen (opened by the menu's Replay button): up to REPLAY_SHOW dates, each a button: the missed days (newest first), then old solved days to repeat (slowest first), each with its earlier time. Every row shows its grid size, read from the puzzle file (static,
 // cached per page load). One column on phones, as many 250 px columns as fit on a desktop (css/play.css). Row text is made of small chips that wrap as units.
-function replayRowHtml({ date, puzzle, attempt }, canPlay) { // attempt: the stored record, null = missed (else abandoned, or solved = a day to repeat)
-  const chips = [`${puzzle.n}x${puzzle.n}`, ...(attempt ? [attempt.solved ? t('replay.prev', sec(attempt.time)) : t('replay.abandoned')] : [])];
+function replayRowHtml({ date, puzzle, attempt, heal }, canPlay) { // attempt: the stored record, null = missed (else abandoned, or solved = a day to repeat); heal: heals the streak
+  const chips = [`${puzzle.n}x${puzzle.n}`, ...(heal ? [`<b class="replay-heal">${t('replay.heal')}</b>`] : []), ...(attempt ? [attempt.solved ? t('replay.prev', sec(attempt.time)) : t('replay.abandoned')] : [])];
   return `
     <button class="replay-day" type="button" data-date="${date}"${canPlay ? '' : ' disabled'}>
       <span class="replay-top"><span class="replay-date">${dateLabel(date)} <small>${weekday(date)}</small></span><span class="replay-go">${t('replay.play')}</span></span>
@@ -769,7 +772,7 @@ function uploadBehaviour(history, ms, mode) {
 
 function onSolved() {
   logPlay(true); // before the hint penalty below: the log keeps the raw time
-  if (streak) streak.record().then(milestone => milestone && onStreakMilestone()).catch(e => console.warn('streak record failed:', e)); // every 7th streak day: a reward
+  if (streak) streak.record().then(milestone => milestone && onStreakMilestone()).catch(e => console.warn('streak record failed:', e)); // a streak reward earned: a replay or unlock chance
   S.finished = true; stopTimer(); sfxSolved();
   if (S.lucky) finishLucky();
   if (!S.penaltyApplied) { S.elapsed = penalizedTime(S.elapsed, S.hintsUsed); S.penaltyApplied = true; } // once, even if the path is reset and re-solved
@@ -783,10 +786,23 @@ function onSolved() {
 // (stats are stored in the attempt record, so no refetch is needed). A replay is submitted like the live game: it counts in that day's averages.
 async function finishGotd(n, date, time, isReplay) {
   await store.recordGotd(n, date, time, lb.enabled, isReplay);
+  if (isReplay) await healStreak(date);
   await replay.addSolved();
   if (lb.enabled) await shareGotd(date);
 }
-// Unlock chances (features/unlock.js) come from the streak: every 7th streak day the player picks a replay chance or an unlock
+// A replayed Game of Day heals its day for the streak (features/streak.js): the day counts, a spent freeze comes back, a broken
+// streak is joined again; any freeze + reward days reached that way are granted like a milestone. onSolved has recorded today's solve by now.
+async function healStreak(date) {
+  if (!streak) return;
+  try {
+    const healed = await streak.heal(dayOfDate(date));
+    if (!healed) return;
+    S.healed = true;
+    for (let i = 0; i < healed.rewards; i++) await onStreakMilestone();
+    if (S.screen === 'game') render();
+  } catch (e) { console.warn('streak heal failed:', e); }
+}
+// Unlock chances (features/unlock.js) come from the streak: with every streak reward the player picks a replay chance or an unlock
 // chance (none left to unlock: a replay, as before).
 async function onStreakMilestone() {
   if (unlock && !unlock.view().allUnlocked) await unlock.addChoice(); else await replay.addBonus();
@@ -810,7 +826,7 @@ function beginGame(puzzle, gotdDate, isReplay = false, isShared = false, lucky =
   S.sharedFocus = null;
   const variant = variantOf(puzzle);
   const difficulty = gradePuzzle(puzzle);
-  Object.assign(S, { variant, lucky, luckyResult: null, luckyNote: null, trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
+  Object.assign(S, { variant, lucky, luckyResult: null, luckyNote: null, healed: false, trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
   startTimer(); render(); maybeShowRules();
 }
 function generatorFor(mode, n, seed) {
@@ -881,7 +897,8 @@ async function replayFile(date) {
 async function openReplay(msg = null) {
   const id = ++replayLoad;
   Object.assign(S, { screen: 'replay', replayPick: { loading: true, list: [], msg } }); render();
-  const list = (await replay.pick(async date => !!(await replayFile(date)))).map(d => ({ ...d, puzzle: replayPuzzles.get(d.date) }));
+  const pin = streak ? streak.healable().map(dateOfDay) : []; // missed days whose replay heals the streak
+  const list = (await replay.pick(async date => !!(await replayFile(date)), pin)).map(d => ({ ...d, puzzle: replayPuzzles.get(d.date) }));
   if (id !== replayLoad || S.screen !== 'replay') return; // superseded, or the player left the screen meanwhile
   S.replayPick = { loading: false, list, msg }; render();
 }

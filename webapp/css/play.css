@@ -203,6 +203,8 @@ b { color: var(--heading); font-variant-numeric: tabular-nums; }
   background: var(--green-soft); color: #17583b; font-weight: 700;
 }
 .lucky-result.same { background: var(--blue-soft); color: var(--blue-dark); }
+.lucky-result.heal { background: #fff3e6; color: #9a3412; }
+.replay-heal { color: #c2410c; font-weight: 600; }
 .lucky-result .variant-icon { flex: none; width: 36px; height: 36px; }
 .side .lucky-row { margin-top: 14px; }
 

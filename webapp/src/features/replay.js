@@ -2,7 +2,7 @@ import { REPLAY_DAYS } from '../core/hist.js';
 import { utcDayNumber, dateOfDay } from './daily.js';
 import { dayOfDate } from './share.js';
 
-// Replay of a Game of Day: a player earns replay chances by solving Game-of-Day puzzles (the live one or a replay) and by every 7th streak day; one chance buys one date of the last
+// Replay of a Game of Day: a player earns replay chances by solving Game-of-Day puzzles (the live one or a replay) and by every streak reward; one chance buys one date of the last
 // REPLAY_DAYS days (today excluded). Local games and abandoned attempts earn nothing.
 // Chances come at a rising price: the 1st after 1 solve, the 2nd after 2 more, the 3rd after 3 more, then one every CHANCE_STEP (5) more.
 //   chances = earned(solved) + bonus - used      (bonus: chances from streak milestones, features/streak.js)
@@ -48,7 +48,8 @@ export function createReplay(storage, store, now = () => new Date()) {
     // Solved window dates old enough to repeat, in the order they are offered.
     async repeats() { return repeatsOf(await replay.days()); },
     // The picker's list: [{ date, attempt }] (attempt null = missed), at most REPLAY_SHOW. hasFile: async date -> whether that day's puzzle file exists.
-    async pick(hasFile) {
+    // pin = dates that heal the streak (streak.healable): offered first, unplayed ones only, marked heal: true; the rest follows as before.
+    async pick(hasFile, pin = []) {
       const days = await replay.days();
       const take = async (list, max) => { // the first `max` of list with a file; files are checked in parallel batches of the number still needed
         const out = []; let i = 0;
@@ -59,9 +60,13 @@ export function createReplay(storage, store, now = () => new Date()) {
         }
         return out;
       };
-      const missed = await take(days.filter(d => !d.attempt), REPLAY_SHOW);
-      const abandoned = missed.length ? [] : await take(days.filter(d => d.attempt && !d.attempt.solved), 1);
-      return [...missed, ...abandoned, ...await take(repeatsOf(days), REPLAY_SHOW - missed.length - abandoned.length)];
+      const pinned = await take(days.filter(d => pin.includes(d.date) && !(d.attempt && d.attempt.solved)), REPLAY_SHOW);
+      const rest = days.filter(d => !pinned.includes(d));
+      const missed = await take(rest.filter(d => !d.attempt), REPLAY_SHOW - pinned.length);
+      const first = [...pinned, ...missed];
+      const abandoned = first.length ? [] : await take(rest.filter(d => d.attempt && !d.attempt.solved), 1);
+      const room = REPLAY_SHOW - first.length - abandoned.length;
+      return [...pinned.map(d => ({ ...d, heal: true })), ...missed, ...abandoned, ...await take(repeatsOf(rest), room)];
     },
     // Today's and the window's solved attempts the averages backend has not acknowledged yet (sent === false): to be submitted again.
     async unsent() {
@@ -87,7 +92,7 @@ export function createReplay(storage, store, now = () => new Date()) {
       await store.saveAttempt(date, { solved: false, time: null });
       return true;
     },
-    // A streak milestone (every 7th streak day) earns one more chance.
+    // A streak reward earns one more chance.
     async addBonus() { if (!credit) return; credit.bonus++; await save(); },
     // A Game of Day was solved for the first time (live or replay).
     async addSolved() { if (!credit) return; credit.solved++; await save(); },
