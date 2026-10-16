@@ -81,6 +81,7 @@ import { loopOpenTests } from './loop-open.js';
 import { loopTests } from './loop.js';
 import { loopGenTests } from './loop-gen.js';
 import { loopPlayTests } from './play-loop.js';
+import { surfaceTests } from './surface.js';
 import { teleportTests } from './teleport.js';
 import { teleportGenTests } from './teleport-gen.js';
 import { teleportPlayTests } from './play-teleport.js';
@@ -3245,6 +3246,9 @@ wrapAllTests(t, ta, ok, eq);
 loopTests(t, ok, eq);
 loopGenTests(t, ok, eq);
 loopPlayTests(t, ta, ok, eq);
+
+// ---------- Surface (tetrahedron, cube) puzzles ----------
+surfaceTests(t, ok, eq);
 
 // ---------- Teleport pairs (linked portal cells) ----------
 teleportTests(t, ok, eq);
