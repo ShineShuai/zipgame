@@ -32,22 +32,28 @@
 //   undo(mark, h)  roll back to `mark`; h = the head to restore (the cell the path was at before step())
 //   forcedBits(u)  forced edge bits of u
 // }
-const POP = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
+const POP = Array.from({ length: 64 }, (_, mask) => {
+  let bits = 0;
+  for (let m = mask; m; m &= m - 1) bits++;
+  return bits;
+});
 
 // holes (optional Uint8Array, 1 = hole): cells that are not on the board; they are skipped. cells (default T): how many cells the
 // path covers in all.
 export function makeIncremental(nb, T, end, vis, holes = null, cells = T) {
+  const W = (nb.length / T) | 0; // direction slots per cell: 4, or 6 with a portal
   const AV = 0, FR = T, FD = 2 * T, DG = 3 * T, OE = 4 * T, CN = 5 * T;
   const S = new Int32Array(6 * T);
-  const nbm = new Uint8Array(T); // static open-edge mask (walls and borders excluded)
+  // static open-edge mask (walls and borders excluded; the portal edge included)
+  const nbm = new Uint8Array(T);
   for (let i = 0; i < T; i++) {
     let mask = 0;
-    for (let d = 0; d < 4; d++) if (nb[i * 4 + d] >= 0) mask |= 1 << d;
+    for (let d = 0; d < W; d++) if (nb[i * W + d] >= 0) mask |= 1 << d;
     nbm[i] = mask;
   }
   let tr = new Int32Array(1 << 12); // trail: (index into S, old value) pairs
   let tp = 0;
-  const pq = new Int32Array(4 * T + 8); // cells whose open degree just reached what they need
+  const pq = new Int32Array(W * T + 8); // cells whose open degree just reached what they need
   let qt = 0;
   let hd = -1;    // head cell
   let pneed = 0;  // cells a head -> end chain has to contain
@@ -68,9 +74,9 @@ export function makeIncremental(nb, T, end, vis, holes = null, cells = T) {
   // u has all the edges it needs, so its other open edges are unusable.
   function dropEdges(u) {
     const unforced = S[AV + u] & ~S[FR + u];
-    for (let d = 0; d < 4; d++) {
+    for (let d = 0; d < W; d++) {
       if (((unforced >> d) & 1) === 0) continue;
-      const w = nb[u * 4 + d];
+      const w = nb[u * W + d];
       set(AV + u, S[AV + u] & ~(1 << d));
       set(AV + w, S[AV + w] & ~(1 << (d ^ 1)));
       set(DG + u, S[DG + u] - 1);
@@ -85,8 +91,8 @@ export function makeIncremental(nb, T, end, vis, holes = null, cells = T) {
 
   // x and y are the two ends of one forced chain: an open edge between them would close a cycle. Drop it.
   function dropClosingEdge(x, y) {
-    for (let d = 0; d < 4; d++) {
-      if (nb[x * 4 + d] !== y || ((S[AV + x] & ~S[FR + x]) >> d & 1) === 0) continue;
+    for (let d = 0; d < W; d++) {
+      if (nb[x * W + d] !== y || ((S[AV + x] & ~S[FR + x]) >> d & 1) === 0) continue;
       set(AV + x, S[AV + x] & ~(1 << d));
       set(AV + y, S[AV + y] & ~(1 << (d ^ 1)));
       const dx = S[DG + x] - 1;
@@ -106,7 +112,7 @@ export function makeIncremental(nb, T, end, vis, holes = null, cells = T) {
   // Force the edge u -> direction d. Returns false if that makes the branch infeasible.
   function force(u, d) {
     if ((S[FR + u] >> d) & 1) return true;
-    const v = nb[u * 4 + d];
+    const v = nb[u * W + d];
     set(FR + u, S[FR + u] | (1 << d));
     set(FR + v, S[FR + v] | (1 << (d ^ 1)));
     const fu = S[FD + u] + 1;
@@ -138,7 +144,7 @@ export function makeIncremental(nb, T, end, vis, holes = null, cells = T) {
   function drain() {
     for (let h = 0; h < qt; h++) {
       const u = pq[h];
-      for (let d = 0; d < 4; d++) {
+      for (let d = 0; d < W; d++) {
         const open = ((S[AV + u] & ~S[FR + u]) >> d) & 1;
         if (open && !force(u, d)) return false;
       }
@@ -166,7 +172,7 @@ export function makeIncremental(nb, T, end, vis, holes = null, cells = T) {
     }
     if (mustA >= 0) {
       let dir = -1;
-      for (let d = 0; d < 4; d++) if (nb[mustA * 4 + d] === mustB) dir = d;
+      for (let d = 0; d < W; d++) if (nb[mustA * W + d] === mustB) dir = d;
       if (dir < 0 || ((S[AV + mustA] >> dir) & 1) === 0 || !force(mustA, dir)) return false;
     }
     const ok = drain();
@@ -182,8 +188,8 @@ export function makeIncremental(nb, T, end, vis, holes = null, cells = T) {
     const fh = S[FR + h]; // h had one edge to give, so this is 0 or the single forced edge
 
     // h leaves the graph: take its edges away from its neighbours.
-    for (let d = 0; d < 4; d++) {
-      const w = nb[h * 4 + d];
+    for (let d = 0; d < W; d++) {
+      const w = nb[h * W + d];
       if (w < 0 || (w !== v && vis[w])) continue; // off the grid, or a cell already behind us
       const bit = 1 << (d ^ 1); // w's edge towards h
       const aw = S[AV + w];

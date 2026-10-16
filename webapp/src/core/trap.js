@@ -85,6 +85,12 @@ export const WRAP_MODEL = withoutAltFracLadder();
 // (ladder.js), a ring has no such end, and the fit never saw a puzzle whose last cell has to touch
 // cell 1; refit once ratings of Loop puzzles exist.
 export const LOOP_MODEL = withoutAltFracLadder();
+// Teleport pairs: the same reduced model, same caveat. A portal adds a wrong turn the fit never
+// saw (taking it, or
+// walking past it, at the wrong moment) which trapProfile() does count, and the ladder is
+// undirected over the grid
+// only; refit once ratings of Teleport puzzles exist.
+export const TELEPORT_MODEL = withoutAltFracLadder();
 
 // The score model that fits a board: Cutout (holes) drops altFrac, One way arrows keeps trapMax and trapTop3 only, the rest TRAP_MODEL.
 // The play app grades with it (grades.js playGradesFor); trapMetrics itself keeps TRAP_MODEL unless a model is passed.
@@ -93,6 +99,7 @@ export const modelFor = p => {
   if (p.exact) return EXACT_MODEL;
   if (p.wrap) return WRAP_MODEL;
   if (p.loop) return LOOP_MODEL;
+  if (p.portals) return TELEPORT_MODEL;
   return p.holes ? withoutAltFrac() : TRAP_MODEL;
 };
 
@@ -121,13 +128,15 @@ export function solutionPath(p, cap = TRAP_CFG.pathCap) {
 // On an arrows puzzle a wrong turn is a move the arrows allow (buildMoves().out), refuted by the directed solver.
 export function trapProfile(p, path, cfg = TRAP_CFG) {
   const nb = p.arrows ? buildMoves(p).out : buildNeighbors(p).nb;
+  // direction slots per cell: 4, or 6 with a portal (the jump is a move too)
+  const W = (nb.length / (p.n * p.n)) | 0;
   const seen = new Uint8Array(p.n * p.n), out = [];
   let nonUnique = false;
   // path.length = the cells to cover (n*n, fewer with holes)
   for (let i = 0; i < path.length - 1; i++) {
     seen[path[i]] = 1;
-    for (let d = 0; d < 4; d++) {
-      const v = nb[path[i] * 4 + d];
+    for (let d = 0; d < W; d++) {
+      const v = nb[path[i] * W + d];
       if (v < 0 || seen[v] || v === path[i + 1]) continue;
       const r = solve(p, { limit: 1, nodeCap: cfg.cap, forced: path.slice(0, i + 1).concat(v), ...REF_FLAGS });
       if (r.count > 0) { nonUnique = true; continue; } // a second solution, not a trap
@@ -149,7 +158,8 @@ const alternativePoints = (w, cfg) => w.capped ? cfg.points[3] : w.sub <= cfg.ob
 // `model` (optional) = the score model, TRAP_MODEL unless the board needs another (see modelFor).
 // An arrows puzzle never runs the (undirected) ladder: ladTrials is 0 there, and so on an Exact
 // one (steps, not checkpoints), on a wrap-around one (the ladder is calibrated on grids) and on a
-// Loop one (the ladder ends on checkpoint K).
+// Loop one (the ladder ends on checkpoint K), and on a Teleport one (the ladder knows no portal
+// edges).
 export function trapMetricsFromProfile(p, path, profile, cfg = TRAP_CFG, ladTrials = undefined, model = TRAP_MODEL) {
   const T = cellCount(p), byStep = new Map();
   for (const w of profile) {
@@ -166,7 +176,8 @@ export function trapMetricsFromProfile(p, path, profile, cfg = TRAP_CFG, ladTria
     trapDeep: steps.filter(s => s.score >= cfg.points[3]).length,
     alternatives: profile.length, nonUnique: profile.nonUnique, steps,
   };
-  m.ladTrials = ladTrials ?? (p.arrows || p.exact || p.wrap || p.loop ? 0 : ladderTrials(p, cfg));
+  const noLadder = p.arrows || p.exact || p.wrap || p.loop || p.portals;
+  m.ladTrials = ladTrials ?? (noLadder ? 0 : ladderTrials(p, cfg));
   m.lTr = Math.log1p(m.ladTrials);
   m.predicted = trapPredict(m, model);
   m.gradeUncapped = trapGradeOf(m.predicted, model);

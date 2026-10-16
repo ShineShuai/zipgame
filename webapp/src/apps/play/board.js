@@ -4,6 +4,8 @@ import {
 import { arrowIds, arrowDirId, arrowMove } from '../../core/edges.js';
 import { cellCount } from '../../core/model.js';
 import { isSolved } from '../../core/rules.js';
+import { isPortalPair, portalPartner } from '../../core/geom.js';
+import { portalIcon, portalColor, portalShape } from '../../view/portal-icons.js';
 
 export const CELL = 60; // logical units; on-screen size comes from viewBox scaling
 
@@ -181,6 +183,95 @@ export function loopOpenMarks(p, path) {
 // the ring is drawn closed.
 export const routeCells = (p, path, finished) => (p.loop && finished && path.length > 2 ? [...path, path[0]] : path);
 
+// Every portal of a Teleport puzzle, both cells of a pair with the same icon (data-portal-cell =
+// the cell).
+export function portalIconsSvg(p) {
+  if (!p.portals) return '';
+  return p.portals.map((pair, index) => pair.map(cell => {
+    const [x, y] = cellCenter(p.n, cell, CELL);
+    const icon = portalIcon(portalShape(index), portalColor(index), x, y);
+    return `<g class="portal" data-portal-cell="${cell}" data-pair="${index}">${icon}</g>`;
+  }).join('')).join('');
+}
+
+// The drawn line of the path. A jump over a portal pair is not drawn as a line across the board
+// (it would cross
+// cells the path does not visit): the line stops at one portal and starts again at the other, and
+// the jump is
+// shown by jumpMarksSvg. Other puzzles: pathD() as before.
+export function routeD(p, line) {
+  if (!p.portals) return pathD(p.n, line, CELL, Boolean(p.wrap));
+  return line.map((cell, k) => {
+    const [x, y] = cellCenter(p.n, cell, CELL);
+    return (k && !isPortalPair(p.portals, line[k - 1], cell) ? 'L' : 'M') + x + ' ' + y;
+  }).join(' ');
+}
+
+// What shows a jump: for every jump the path has made, a dotted arc from the portal it left to the
+// one it entered,
+// with an arrowhead at the end; and, while the head stands on a portal whose partner is free, a
+// pulsing ring on
+// that partner, which says "tap it to jump". The play input replaces the content of the
+// data-role="jump" group
+// on every move.
+export function jumpMarksSvg(p, path, finished = false) {
+  if (!p.portals || !path.length) return '';
+  const n = p.n;
+  const num = v => +v.toFixed(2);
+  const marks = [];
+  for (let k = 1; k < path.length; k++) {
+    if (!isPortalPair(p.portals, path[k - 1], path[k])) continue;
+    const [x1, y1] = cellCenter(n, path[k - 1], CELL);
+    const [x2, y2] = cellCenter(n, path[k], CELL);
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.hypot(dx, dy) || 1;
+    const bend = Math.min(CELL * 1.2, len * 0.22);
+    const cx = (x1 + x2) / 2 - (dy / len) * bend;
+    const cy = (y1 + y2) / 2 + (dx / len) * bend;
+    // the arrowhead sits a bit before the end, along the curve's end tangent
+    const ex = x2 - cx;
+    const ey = y2 - cy;
+    const el = Math.hypot(ex, ey) || 1;
+    const ux = ex / el;
+    const uy = ey / el;
+    const tipX = x2 - ux * CELL * 0.3;
+    const tipY = y2 - uy * CELL * 0.3;
+    const back = CELL * 0.17;
+    const half = CELL * 0.12;
+    const pts = [
+      [tipX, tipY],
+      [tipX - ux * back - uy * half, tipY - uy * back + ux * half],
+      [tipX - ux * back + uy * half, tipY - uy * back - ux * half],
+    ].map(([px, py]) => `${num(px)},${num(py)}`).join(' ');
+    const curve = `M${num(x1)} ${num(y1)} Q${num(cx)} ${num(cy)} ${num(x2)} ${num(y2)}`;
+    marks.push(
+      `<path data-mark="jump" d="${curve}" fill="none" stroke="${COLORS.path}" ` +
+      `stroke-width="${CELL * 0.1}" stroke-linecap="round" ` +
+      `stroke-dasharray="1 ${num(CELL * 0.16)}"/>` +
+      `<polygon data-mark="jump-end" points="${pts}" fill="${COLORS.path}" stroke="#fff" ` +
+      'stroke-width="2.5" paint-order="stroke" stroke-linejoin="round"/>'
+    );
+  }
+  if (!finished) {
+    const head = path[path.length - 1];
+    const partner = portalPartner(p.portals, head);
+    if (partner >= 0 && !path.includes(partner)) {
+      const [x, y] = cellCenter(n, partner, CELL);
+      const small = CELL * 0.38;
+      const large = CELL * 0.46;
+      const color = portalColor(p.portals.findIndex(pair => pair.includes(head)));
+      marks.push(
+        `<circle data-mark="jump-ready" cx="${num(x)}" cy="${num(y)}" r="${CELL * 0.42}" ` +
+        `fill="none" stroke="${color}" stroke-width="4" stroke-dasharray="6 4">` +
+        `<animate attributeName="r" values="${small};${large};${small}" dur="1s" ` +
+        'repeatCount="indefinite"/></circle>'
+      );
+    }
+  }
+  return marks.join('');
+}
+
 // Full SVG markup for the play board (S = play state). The svg itself has no border or padding, because
 // pointer positions are mapped to cells through its bounding box; the frame is the .grid-wrap around it.
 export function boardSvg(S) {
@@ -190,17 +281,20 @@ export function boardSvg(S) {
   const visited = new Set(S.path);
   const wrap = Boolean(p.wrap);
   const line = routeCells(p, S.path, S.finished);
-  const route = line.length > 1 ? pathD(n, line, CELL, wrap) : '';
+  const route = line.length > 1 ? routeD(p, line) : '';
   const pad = wrap ? WRAP_PAD : 0, margin = pad * CELL;
   const view = `${-margin} ${-margin} ${size + 2 * margin} ${size + 2 * margin}`;
 
   let svg = `<svg viewBox="${view}" class="zip-svg${p.holes ? ' cutout' : ''}` +
-    `${p.arrows ? ' arrows' : ''}${wrap ? ' wrap' : ''}" style="${maxBoardCss(n, pad)}">`;
+    `${p.arrows ? ' arrows' : ''}${wrap ? ' wrap' : ''}${p.portals ? ' teleport' : ''}" ` +
+    `style="${maxBoardCss(n, pad)}">`;
   svg += p.holes ? cutoutLayers(p) : wrap ? wrapLayers(size) : gridLines(size);
   svg += wallLines(p);
+  svg += portalIconsSvg(p);
   svg += `<path data-role="path" d="${route}" stroke="${COLORS.path}" stroke-width="${CELL * 0.28}" fill="none" ` +
     `stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>`;
   if (wrap) svg += `<g data-role="seam">${seamMarksSvg(n, S.path)}</g>`;
+  if (p.portals) svg += `<g data-role="jump">${jumpMarksSvg(p, S.path, S.finished)}</g>`;
   if (p.arrows) svg += arrowMarks(p);
   svg += numberBadges(p, visited, S.path);
   if (p.loop) svg += `<g data-role="loop-open">${loopOpenMarks(p, S.path)}</g>`;

@@ -4,7 +4,7 @@ import {
   arrowMove,
 } from './edges.js';
 import { gridAdjacent, canStep } from './rules.js';
-import { adjacent } from './geom.js';
+import { adjacent, isPortalPair, gridDist } from './geom.js';
 
 export const MAX_N = 16;
 
@@ -36,6 +36,13 @@ export function commentTimes(text) {
 
 const cellKey = (n, cell) => `${(cell / n) | 0},${cell % n}`;
 
+// The portal pairs in canonical order: the lower cell of each pair first, the pairs by their lower
+// cell.
+// (Two puzzles that differ only in the order of the pairs have one text, so one rating key.)
+export const portalPairs = p => (p.portals || [])
+  .map(([a, b]) => (a < b ? [a, b] : [b, a]))
+  .sort((x, y) => x[0] - y[0]);
+
 // opts.path: optional current play-mode path (array of cell indices) to include as a `path` line.
 // opts.times: optional { generateMs, solveMs, playS }, written as comment lines (see timeComments).
 export function serialize(p, opts = {}) {
@@ -66,6 +73,10 @@ export function serialize(p, opts = {}) {
   if (p.loop) {
     lines.push('# loop                    (the last cell touches cell 1, a ring; numbers in cyclic order: Loop)');
   }
+  const portals = portalPairs(p);
+  if (p.portals) {
+    lines.push('# portals r,c~r,c ...     (pairs of linked cells; a step between them is a move)');
+  }
   if (opts.path && opts.path.length) lines.push('# path r,c ...           (current play-mode line, in order, optional)');
   lines.push(...timeComments(opts.times));
   lines.push(`size ${p.n}`);
@@ -76,10 +87,18 @@ export function serialize(p, opts = {}) {
   if (hs.length) lines.push('holes ' + hs.join(' '));
   if (as) lines.push(as.length ? 'arrows ' + as.join(' ') : 'arrows');
   if (p.exact) lines.push('exact');
+  if (p.portals) {
+    const pairs = portals.map(pair => pair.map(cell => cellKey(p.n, cell)).join('~'));
+    lines.push(('portals ' + pairs.join(' ')).trim());
+  }
   if (opts.path && opts.path.length) lines.push('path ' + opts.path.map(cell => `${(cell / p.n) | 0},${cell % p.n}`).join(' '));
   return lines.join('\n');
 }
 
+// A `portals` line (pairs written r,c~r,c; even an empty one) makes it a Teleport puzzle:
+// p.portals (core/geom.js),
+// in canonical order (see portalPairs). Without a pair it is not valid yet (validate), as in the
+// design app.
 // An `arrows` line (even an empty one) makes it a One way arrows puzzle: p.arrows (core/edges.js).
 // An `exact` line (no values) makes it an Exact puzzle: p.exact, the numbers are steps
 // (core/model.js). A `loop` line (no values) makes it a Loop puzzle: p.loop, a ring.
@@ -87,8 +106,9 @@ export function serialize(p, opts = {}) {
 // the puzzle also carries `.path` (array of cell indices) — same convention as a generated puzzle's
 // solution path (see model.js).
 export function parse(text) {
-  let n = null; const cps = [], ws = [], hs = [], as = []; let pathCells = null, hasArrows = false;
-  let isExact = false, isWrap = false, isLoop = false;
+  let n = null; const cps = [], ws = [], hs = [], as = [], ps = [];
+  let pathCells = null, hasArrows = false;
+  let isExact = false, isWrap = false, isLoop = false, isPortals = false;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim(); if (!line || line.startsWith('#')) continue;
     const parts = line.split(/\s+/), kw = parts[0].toLowerCase();
@@ -117,6 +137,14 @@ export function parse(text) {
     } else if (kw === 'loop') {
       if (parts.length > 1) throw new Error('The "loop" line takes no values.');
       isLoop = true;
+    } else if (kw === 'portals') {
+      // even an empty line: a Teleport puzzle without a pair yet (the design app's, not yet valid)
+      isPortals = true;
+      for (const t of parts.slice(1)) {
+        const m = t.match(/^(\d+),(\d+)~(\d+),(\d+)$/);
+        if (!m) throw new Error(`Invalid portal pair: \"${t}\" (expected r,c~r,c)`);
+        ps.push([+m[1], +m[2], +m[3], +m[4], t]);
+      }
     } else if (kw === 'path') {
       pathCells = [];
       for (const t of parts.slice(1)) { const m = t.match(/^(\d+),(\d+)$/); if (!m) throw new Error(`Invalid path cell: "${t}"`); pathCells.push([+m[1], +m[2]]); }
@@ -180,6 +208,27 @@ export function parse(text) {
     if (hasArrows) throw new Error('An Exact puzzle cannot have arrows.');
     p.exact = true;
   }
+  if (isPortals) {
+    if (isWrap || isLoop || isExact || hasArrows || hs.length) {
+      throw new Error('A Teleport puzzle cannot have holes, arrows, exact numbers, wrap-around '
+        + 'or a loop (yet).');
+    }
+    const used = new Set();
+    p.portals = ps.map(([r1, c1, r2, c2, label]) => {
+      if (Math.max(r1, c1, r2, c2) >= n) throw new Error(`Portal out of range: ${label}`);
+      const a = r1 * n + c1, b = r2 * n + c2;
+      if (a === b) throw new Error(`A portal pair needs two different cells: ${label}`);
+      if (gridDist(n, false, a, b) === 1) {
+        throw new Error(`Portal cells are neighbours already: ${label}`);
+      }
+      for (const cell of [a, b]) {
+        if (used.has(cell)) throw new Error(`A cell is in two portal pairs: ${label}`);
+        used.add(cell);
+      }
+      return [a, b];
+    });
+    p.portals = portalPairs(p);
+  }
   if (pathCells) {
     const path = pathCells.map(([r, c]) => {
       if (r >= n || c >= n) throw new Error(`Path cell out of range: ${r},${c}`);
@@ -187,7 +236,8 @@ export function parse(text) {
     });
     for (let i = 1; i < path.length; i++) {
       if (p.holes && (p.holes[path[i - 1]] || p.holes[path[i]])) throw new Error(`Path enters a hole at step ${i}: ${pathCells[i - 1].join(',')} -> ${pathCells[i].join(',')}`);
-      if (!adjacent(n, !!p.wrap, path[i - 1], path[i])) {
+      const [from, to] = [path[i - 1], path[i]];
+      if (!isPortalPair(p.portals, from, to) && !adjacent(n, !!p.wrap, from, to)) {
         throw new Error(`Path is not connected at step ${i}: ${pathCells[i - 1].join(',')} -> ${pathCells[i].join(',')}`);
       }
       if (!canStep(p, path[i - 1], path[i])) throw new Error(`Path crosses a wall at step ${i}: ${pathCells[i - 1].join(',')} -> ${pathCells[i].join(',')}`);

@@ -14,13 +14,20 @@
 // Cost per deduce() call: O(U * alpha(U)) for U unvisited cells. Space: O(T), allocated once per
 // makePropagator() call (the solver makes one per solve(); the overlay one per repaint).
 
-// Number of set bits in a 4-bit direction mask.
-const POPCOUNT = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
+// Number of set bits in a direction mask (4 bits for the grid directions, 6 on a Teleport board:
+// slots 4 and 5
+// hold the portal edge, see buildNeighbors() in prune.js).
+const POPCOUNT = Array.from({ length: 64 }, (_, mask) => {
+  let bits = 0;
+  for (let m = mask; m; m &= m - 1) bits++;
+  return bits;
+});
 
 // nb: neighbour table (see buildNeighbors), T: cell count, end: the end cell,
 // vis: Uint8Array, truthy at cells on the path (the caller keeps it up to date).
 // Returns { av, fr, nbm, deduce }:
-//   av[u]  still-open edge bits of u (bit d = direction d, order R,L,D,U), fr[u] = forced edge bits.
+// av[u]  still-open edge bits of u (bit d = direction d, order R,L,D,U, then the portal edge: slot
+// 4 or 5), fr[u] = forced edge bits.
 //          Valid after a deduce() call that returned true; av[head] = the head's possible moves.
 //   nbm[u] static open-edge mask of u (walls and borders excluded).
 //   deduce(cur, count, ul, un, vm, mustA = -1, mustB = -1) -> false when this position cannot be completed.
@@ -30,13 +37,14 @@ const POPCOUNT = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
 //     path has to use; deduce() fails when it cannot.
 // cells (default T): how many cells the path covers in all (T minus the holes of a Cutout puzzle).
 export function makePropagator(nb, T, end, vis, cells = T) {
+  const W = (nb.length / T) | 0; // direction slots per cell: 4, or 6 with a portal
   // Per cell: av = still-open edge bits, fr = forced edge bits, dg / fd = popcount of av / fr.
   const av = new Uint8Array(T);
   const fr = new Uint8Array(T);
   const fd = new Uint8Array(T);
   const dg = new Uint8Array(T);
   // The work queue of cells that just became forced.
-  const pq = new Int32Array(T);
+  const pq = new Int32Array(2 * T + 8);
   // Forced edges form chains (paths). For a chain END x: oe[x] = the chain's other end (a lone cell is its
   // own other end) and cn[x] = the number of cells in the chain. Both are only read at chain ends, which are
   // the only cells that can still have an open edge, so no union-find is needed: two ends are in one chain
@@ -46,8 +54,8 @@ export function makePropagator(nb, T, end, vis, cells = T) {
   const nbm = new Uint8Array(T);
   for (let i = 0; i < T; i++) {
     let mask = 0;
-    for (let d = 0; d < 4; d++) {
-      if (nb[i * 4 + d] >= 0) mask |= 1 << d;
+    for (let d = 0; d < W; d++) {
+      if (nb[i * W + d] >= 0) mask |= 1 << d;
     }
     nbm[i] = mask;
   }
@@ -63,9 +71,9 @@ export function makePropagator(nb, T, end, vis, cells = T) {
   // u has all the edges it needs, so its other open edges are unusable.
   function dropEdges(u) {
     const unforced = av[u] & ~fr[u];
-    for (let d = 0; d < 4; d++) {
+    for (let d = 0; d < W; d++) {
       if (((unforced >> d) & 1) === 0) continue;
-      const w = nb[u * 4 + d];
+      const w = nb[u * W + d];
       av[u] &= ~(1 << d);
       av[w] &= ~(1 << (d ^ 1));
       dg[u]--;
@@ -81,8 +89,8 @@ export function makePropagator(nb, T, end, vis, cells = T) {
   // which a path never has. Drop it. Only ends can have open edges, so this single pair is the
   // whole cycle-closing check.
   function dropClosingEdge(x, y) {
-    for (let d = 0; d < 4; d++) {
-      if (nb[x * 4 + d] !== y || ((av[x] & ~fr[x]) >> d & 1) === 0) continue;
+    for (let d = 0; d < W; d++) {
+      if (nb[x * W + d] !== y || ((av[x] & ~fr[x]) >> d & 1) === 0) continue;
       av[x] &= ~(1 << d);
       av[y] &= ~(1 << (d ^ 1));
       dg[x]--;
@@ -100,7 +108,7 @@ export function makePropagator(nb, T, end, vis, cells = T) {
   // Force the edge u -> direction d. Returns false if that makes the branch infeasible.
   function force(u, d) {
     if ((fr[u] >> d) & 1) return true;
-    const v = nb[u * 4 + d];
+    const v = nb[u * W + d];
     fr[u] |= 1 << d;
     fr[v] |= 1 << (d ^ 1);
     fd[u]++;
@@ -150,8 +158,8 @@ export function makePropagator(nb, T, end, vis, cells = T) {
     oe[cur] = cur;
 
     // The head still counts as an open neighbour of the unvisited cells next to it.
-    for (let d = 0; d < 4; d++) {
-      const u = nb[cur * 4 + d];
+    for (let d = 0; d < W; d++) {
+      const u = nb[cur * W + d];
       if (u >= 0 && !vis[u]) av[u] |= 1 << (d ^ 1);
     }
 
@@ -170,12 +178,12 @@ export function makePropagator(nb, T, end, vis, cells = T) {
 
     if (mustA >= 0) {
       let dir = -1;
-      for (let d = 0; d < 4; d++) if (nb[mustA * 4 + d] === mustB) dir = d;
+      for (let d = 0; d < W; d++) if (nb[mustA * W + d] === mustB) dir = d;
       if (dir < 0 || ((av[mustA] >> dir) & 1) === 0 || !force(mustA, dir)) return false;
     }
     for (let h = 0; h < qt; h++) {
       const u = pq[h];
-      for (let d = 0; d < 4; d++) {
+      for (let d = 0; d < W; d++) {
         const open = ((av[u] & ~fr[u]) >> d) & 1;
         if (open && !force(u, d)) return false;
       }

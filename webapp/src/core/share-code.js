@@ -32,6 +32,14 @@
 //             cells, in edge id order; a wrap-around board's include the seams)
 //   arrows:   a subset of the edges, then 1 bit per arrow (1 = it points to the lower cell index)
 //   strip: 1 flag, then K - 1 levels of 2 bits (no strip when K - 1 > MAX_LEGS)
+// A Teleport puzzle (portal pairs, core/model.js) has a code of its own version,
+// SHARE_VERSION_PORTAL: the layout
+// above as a standard puzzle (type 0, walls), then
+// portals:  how many pairs - 1 (count() up to cells / 2 - 1), then the pairs' cells, lower cell of
+// a pair first,
+//             pairs by lower cell: distinct picks among all cells
+// before the strip. The type field keeps its radix 6, so every code made before this version reads
+// as before.
 // A 7x7 standard puzzle is about 20 characters, a 12x12 one about 45.
 import { LABELS } from './gen/shapes.js';
 import { allEdges, arrowProblem, arrowDirId, arrowIds, wallIds } from './edges.js';
@@ -40,6 +48,8 @@ import { RadixWriter, RadixReader, bitLength } from './radix-code.js';
 
 export const SHARE_VERSION = 1;
 export const SHARE_VERSION_PUZZLE = 3;
+export const SHARE_VERSION_PORTAL = 4; // a puzzle with portal pairs (variant name TELEPORT)
+export const TELEPORT = 'teleport';
 // puzzle type id -> variant name (null = a standard puzzle)
 export const VARIANTS = [null, 'cutout', 'arrows', 'exact', 'wrap', 'loop'];
 export const VARIANT_SHAPES = LABELS; // shape id - 1 -> name
@@ -86,7 +96,7 @@ const marksOf = p => {
 };
 const isNumbered = marks => marks.length >= 2 && marks.every((v, i) => v === i + 1);
 
-const FLAGS = ['holes', 'arrows', 'exact', 'wrap', 'loop'];
+const FLAGS = ['holes', 'arrows', 'exact', 'wrap', 'loop', 'portals'];
 // The variant markers of a puzzle: only `own` (null: none, a standard puzzle).
 const onlyFlag = (p, own) => FLAGS.every(flag => (flag === own ? Boolean(p[flag]) : !p[flag]));
 const isBoard = (p, smallest = 2) => Boolean(p) && isInt(p.n, smallest, VARIANT_MAX_N);
@@ -171,6 +181,17 @@ const isLoopPuzzle = p =>
   isNumbered(marksOf(p)) &&
   validate(p).ok;
 
+// A Teleport puzzle: a standard one with portal pairs, written in canonical order (lower cell of a
+// pair first,
+// pairs by lower cell), so that one puzzle has one code.
+const isTeleportPuzzle = p =>
+  isBoard(p, 4) &&
+  onlyFlag(p, 'portals') &&
+  hasLayers(p) &&
+  isNumbered(marksOf(p)) &&
+  validate(p).ok &&
+  p.portals.every(([a, b], i) => a < b && (i === 0 || p.portals[i - 1][0] < a));
+
 // by puzzle type id (index in VARIANTS)
 const SOUND_PUZZLE = [
   isStandardPuzzle,
@@ -183,13 +204,19 @@ const SOUND_PUZZLE = [
 
 // A local game: { kind: 'local', variant: name | null (standard), n, grade (standard only), timeS,
 // levels: [] or K - 1 levels, puzzle }
+const typeId = rec => (rec.variant === TELEPORT ? 0 : VARIANTS.indexOf(rec.variant ?? null));
+
 function isEncodablePuzzleRecord(rec) {
-  const id = VARIANTS.indexOf(rec.variant ?? null);
+  const id = typeId(rec);
+  const teleport = rec.variant === TELEPORT;
   const p = rec.puzzle;
-  if (id < 0 || rec.kind !== 'local' || !p || p.n !== rec.n || !SOUND_PUZZLE[id](p)) {
+  const sound = teleport ? isTeleportPuzzle : SOUND_PUZZLE[id];
+  if (id < 0 || rec.kind !== 'local' || !p || p.n !== rec.n || !sound(p)) {
     return false;
   }
-  const gradeOk = id === 0 ? rec.grade == null || isInt(rec.grade, 0, 5) : rec.grade == null;
+  const gradeOk = id === 0 && !teleport
+    ? rec.grade == null || isInt(rec.grade, 0, 5)
+    : rec.grade == null;
   const K = labelCount(p);
   const levelsOk =
     Array.isArray(rec.levels) &&
@@ -269,7 +296,7 @@ function writeHoles(w, p) {
 
 function packPuzzleRecord(rec) {
   const p = rec.puzzle;
-  const id = VARIANTS.indexOf(rec.variant ?? null);
+  const id = typeId(rec);
   const T = p.n * p.n;
   const w = new RadixWriter();
   w.uint(id, VARIANTS.length);
@@ -313,6 +340,10 @@ function packPuzzleRecord(rec) {
       edges.length,
     );
   }
+  if (rec.variant === TELEPORT) {
+    w.count(p.portals.length - 1, (T >> 1) - 1);
+    w.distinct(p.portals.flat(), T);
+  }
   w.uint(rec.levels.length ? 1 : 0, 2);
   for (const level of rec.levels) {
     w.uint(level, 4);
@@ -355,7 +386,8 @@ function encodePuzzle(rec) {
     throw e;
   }
   const head = [];
-  pushBits(head, SHARE_VERSION_PUZZLE, VERSION_BITS);
+  const version = rec.variant === TELEPORT ? SHARE_VERSION_PORTAL : SHARE_VERSION_PUZZLE;
+  pushBits(head, version, VERSION_BITS);
   const width = puzzleCodeLength(packed.capacity) * 6 - VERSION_BITS - CHECK_BITS;
   const body = [...packed.value.toString(2).padStart(width, '0')].map(Number);
   const bits = [...head];
@@ -376,8 +408,8 @@ export function decodeShare(code) {
     pushBits(bits, ALPHABET.indexOf(ch), 6);
   }
   const version = bits[0] * 4 + bits[1] * 2 + bits[2];
-  if (version === SHARE_VERSION_PUZZLE) {
-    return decodePuzzle(bits, code);
+  if (version === SHARE_VERSION_PUZZLE || version === SHARE_VERSION_PORTAL) {
+    return decodePuzzle(bits, code, version === SHARE_VERSION_PORTAL);
   }
   return version === SHARE_VERSION ? decodeGotd(bits, code) : null;
 }
@@ -441,11 +473,20 @@ function readHoles(r, n) {
 }
 
 // The packed number of a puzzle code (layout at the top); throws RangeError when it is not one.
-function unpackPuzzleRecord(r) {
+function unpackPuzzleRecord(r, teleport = false) {
   const variant = VARIANTS[r.uint(VARIANTS.length)];
+  if (teleport && variant !== null) {
+    throw new RangeError('a Teleport code has the standard type');
+  }
   const n = r.uint(VARIANT_MAX_N - 1) + 2;
   const T = n * n;
-  const rec = { kind: 'local', variant, n, grade: null, timeS: (r.count(MAX_TENTHS - 1) + 1) / 10 };
+  const rec = {
+    kind: 'local',
+    variant: teleport ? TELEPORT : variant,
+    n,
+    grade: null,
+    timeS: (r.count(MAX_TENTHS - 1) + 1) / 10,
+  };
   const p = { n, cp: new Uint16Array(T), walls: new Uint8Array(T) };
   if (variant === null) {
     const grade = r.uint(7);
@@ -479,6 +520,11 @@ function unpackPuzzleRecord(r) {
   if (variant === 'exact' || variant === 'wrap' || variant === 'loop') {
     p[variant] = true;
   }
+  if (teleport) {
+    const pairs = r.count((T >> 1) - 1) + 1;
+    const picks = r.distinct(T, 2 * pairs);
+    p.portals = Array.from({ length: pairs }, (_, i) => [picks[2 * i], picks[2 * i + 1]]);
+  }
   rec.levels = [];
   if (r.uint(2) === 1) {
     for (let i = 1; i < count; i++) {
@@ -489,7 +535,7 @@ function unpackPuzzleRecord(r) {
   return rec;
 }
 
-function decodePuzzle(bits, code) {
+function decodePuzzle(bits, code, teleport = false) {
   const head = bits.slice(0, VERSION_BITS);
   const body = bits.slice(VERSION_BITS + CHECK_BITS);
   if (!body.length) {
@@ -502,7 +548,7 @@ function decodePuzzle(bits, code) {
   }
   const reader = new RadixReader(BigInt('0b' + body.join('')));
   try {
-    const rec = unpackPuzzleRecord(reader);
+    const rec = unpackPuzzleRecord(reader, teleport);
     const canonical = reader.done && code.length === puzzleCodeLength(reader.capacity);
     return canonical && isEncodablePuzzleRecord(rec) ? rec : null;
   } catch (e) {

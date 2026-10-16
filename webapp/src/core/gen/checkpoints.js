@@ -5,14 +5,21 @@ import { shuffle } from '../rng.js';
 // Choose K path positions (sorted; includes first and last) so consecutive checkpoints sit ~targetGap apart in grid distance.
 // Deterministic (no rnd). Returns null if no feasible placement.
 // wrap: distances on the wrap-around board (geom.js).
-export function gapCheckpoints(n, path, K, wrap = false) {
-  const man = (a, b) => gridDist(n, wrap, a, b);
+// teleport: { dist (a, b) -> the real distance, skip: Set of cells that may not be numbered } for
+// a Teleport board
+// (a portal makes two far cells close, so the Manhattan distance would be too long there; a portal
+// cell carries no
+// number). The path's first and last cell are numbered whatever `skip` says: the caller keeps them
+// off the portals.
+export function gapCheckpoints(n, path, K, wrap = false, teleport = null) {
+  const man = teleport ? teleport.dist : (a, b) => gridDist(n, wrap, a, b);
+  const skip = teleport ? teleport.skip : null;
   const target = 0.65 * (path.length - 1) / (K - 1);
   const idx = [0, path.length - 1], chosen = new Set(idx);
   while (idx.length < K) {
     let bestP = -1, bestS = Infinity, bestAt = -1;
     for (let p = 0; p < path.length; p++) {
-      if (chosen.has(p)) continue;
+      if (chosen.has(p) || (skip && skip.has(path[p]))) continue;
       let lo = 0; while (lo < idx.length && idx[lo] < p) lo++;
       const pr = idx[lo - 1], sc = idx[lo], mp = man(path[pr], path[p]), ms = man(path[p], path[sc]);
       if (mp > p - pr || ms > sc - p) continue;
