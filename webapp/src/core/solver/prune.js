@@ -1,13 +1,17 @@
 import { hasWall } from '../edges.js';
 import { makePropagator } from './propagate.js';
-import { DR, DC, neighbourCell } from '../geom.js';
+import { DR, DC, neighbourCell, PORTAL_SLOTS } from '../geom.js';
 
 // Direction order R,L,D,U (geom.js). Solver generation depends on this exact order for tie-breaks
 // (see ALGO_VERSION in solve.js) — do not reorder.
 export { DR, DC };
 
-// nb[cell * 4 + d] = neighbour of cell in direction d, or -1 for a wall / the border (on a
-// wrap-around board, the border is joined across: no -1 there).
+// nb[cell * W + d] = neighbour of cell in direction d, or -1 for a wall / the border (on a
+// wrap-around board, the border is joined across: no -1 there). W = 4 slots per cell, or 6 on a
+// Teleport board (W = nb.length / T; the solver's loops use it): slots 4 and 5 hold the portal
+// edge of the cell, the lower cell of a pair in slot 4 and its partner in slot 5, so that d ^ 1
+// is the same edge seen from the other end, as for the four grid directions. A wall is never on
+// a portal edge.
 // row[cell] / col[cell] = grid coordinates. Shared by the solver and the connectivity overlay,
 // so both walk the exact same adjacency.
 export function buildNeighbors(p) {
@@ -15,7 +19,8 @@ export function buildNeighbors(p) {
   const T = n * n;
   const wrap = !!p.wrap;
   const holes = p.holes || null; // a hole has no edges, and no cell has an edge to it
-  const nb = new Int32Array(T * 4).fill(-1);
+  const W = p.portals ? PORTAL_SLOTS : 4;
+  const nb = new Int32Array(T * W).fill(-1);
   const row = new Int32Array(T);
   const col = new Int32Array(T);
   for (let i = 0; i < T; i++) {
@@ -24,10 +29,18 @@ export function buildNeighbors(p) {
     for (let d = 0; d < 4; d++) {
       const j = neighbourCell(n, wrap, i, d);
       if (j < 0) continue;
-      if (!hasWall(p, i, j) && !(holes && (holes[i] || holes[j]))) nb[i * 4 + d] = j;
+      if (!hasWall(p, i, j) && !(holes && (holes[i] || holes[j]))) nb[i * W + d] = j;
     }
   }
-  return { nb, row, col, T };
+  if (p.portals) {
+    for (const [x, y] of p.portals) {
+      const lo = Math.min(x, y);
+      const hi = Math.max(x, y);
+      nb[lo * W + 4] = hi;
+      nb[hi * W + 5] = lo;
+    }
+  }
+  return { nb, row, col, T, W };
 }
 
 // The unvisited region must be one connected blob of the size still needed.
@@ -48,6 +61,7 @@ export function makeConnOk(nb, T, vis) {
 // Shared scratch (stamped Int32Array, no per-call allocation) so this stays cheap enough for the
 // solver's hot path; `into` is the only allocating option, and only the overlay passes it.
 export function makeReachable(nb, T, vis) {
+  const W = (nb.length / T) | 0;
   const seen = new Int32Array(T);
   const stack = new Int32Array(T);
   let stamp = 0;
@@ -60,8 +74,8 @@ export function makeReachable(nb, T, vis) {
     seen[cur] = stamp;
     while (sp > 0) {
       const u = stack[--sp];
-      for (let d = 0; d < 4; d++) {
-        const v = nb[u * 4 + d];
+      for (let d = 0; d < W; d++) {
+        const v = nb[u * W + d];
         if (v < 0 || vis[v] || seen[v] === stamp) continue;
         seen[v] = stamp;
         cnt++;
@@ -79,9 +93,10 @@ export function makeReachable(nb, T, vis) {
 // Returns a noDeadEnd(cur) closure — only cur's own neighbours need checking, since entering cur
 // is the only thing that can have changed any cell's degree since the last check.
 export function makeNoDeadEnd(nb, vis, end) {
+  const W = (nb.length / vis.length) | 0;
   return function noDeadEnd(cur) {
-    for (let d = 0; d < 4; d++) {
-      const u = nb[cur * 4 + d];
+    for (let d = 0; d < W; d++) {
+      const u = nb[cur * W + d];
       if (u < 0 || vis[u]) continue;
       const free = freeNeighbors(nb, vis, cur, u);
       if (free === 0) return false;
@@ -94,9 +109,10 @@ export function makeNoDeadEnd(nb, vis, end) {
 // Shared inner loop for both isDeadEnd and noDeadEnd: how many free (unvisited-or-head, unwalled)
 // neighbours does `cell` have, counting `head` as free even though it's on the path.
 function freeNeighbors(nb, vis, head, cell) {
+  const W = (nb.length / vis.length) | 0;
   let free = 0;
-  for (let d = 0; d < 4; d++) {
-    const v = nb[cell * 4 + d];
+  for (let d = 0; d < W; d++) {
+    const v = nb[cell * W + d];
     if (v < 0) continue;
     if (vis[v] && v !== head) continue;
     free++;
@@ -132,6 +148,7 @@ export function isDeadEnd(nb, vis, head, cell) {
 // Returns a pocketOk(cur) closure: true if none of cur's neighbours leads into a single-entrance
 // pocket that lacks a still-needed checkpoint.
 export function makePocketOk(nb, T, vis, needCp) {
+  const W = (nb.length / T) | 0;
   const seen = new Int32Array(T);   // per-component stamp: which flood-fill last touched this cell
   const claimed = new Int32Array(T); // per-call epoch: which pocketOk() call already assigned this cell to some component
   const stack = new Int32Array(T);
@@ -140,8 +157,8 @@ export function makePocketOk(nb, T, vis, needCp) {
 
   return function pocketOk(cur) {
     epoch++;
-    for (let d0 = 0; d0 < 4; d0++) {
-      const seed = nb[cur * 4 + d0];
+    for (let d0 = 0; d0 < W; d0++) {
+      const seed = nb[cur * W + d0];
       if (seed < 0 || vis[seed] || claimed[seed] === epoch) continue; // already swept earlier this call
       // Flood-fill the component containing `seed`, with `cur` treated as an obstacle (so the
       // fill can't leak back out through cur), tracking whether it holds a needed checkpoint.
@@ -152,8 +169,8 @@ export function makePocketOk(nb, T, vis, needCp) {
       claimed[seed] = epoch;
       while (sp > 0) {
         const u = stack[--sp];
-        for (let d = 0; d < 4; d++) {
-          const v = nb[u * 4 + d];
+        for (let d = 0; d < W; d++) {
+          const v = nb[u * W + d];
           if (v < 0 || vis[v] || v === cur || seen[v] === stamp) continue;
           seen[v] = stamp;
           claimed[v] = epoch;
@@ -164,8 +181,8 @@ export function makePocketOk(nb, T, vis, needCp) {
       // Count cur's own entrances into this exact component (cheap: cur has only 4 edges, and
       // membership in the just-computed component is an O(1) stamp check).
       let entrances = 0;
-      for (let d = 0; d < 4; d++) {
-        const v = nb[cur * 4 + d];
+      for (let d = 0; d < W; d++) {
+        const v = nb[cur * W + d];
         if (v >= 0 && !vis[v] && seen[v] === stamp) entrances++;
       }
       if (entrances === 1 && !hasNeed) return false;
@@ -190,6 +207,7 @@ export function makePocketOk(nb, T, vis, needCp) {
 // single cell is forced (either s/t disconnected — connOk/noDeadEnd already handle that case
 // elsewhere — or there are >=2 vertex-disjoint routes).
 export function segBlocker(nb, T, vis, s, t) {
+  const W = (nb.length / T) | 0;
   if (s === t) return new Set();
 
   // 1) forward/backward reachability restricted to unvisited cells (s, t themselves are "live"
@@ -200,8 +218,8 @@ export function segBlocker(nb, T, vis, s, t) {
   fwd[s] = 1;
   for (let h = 0; h < qf.length; h++) {
     const u = qf[h];
-    for (let d = 0; d < 4; d++) {
-      const v = nb[u * 4 + d];
+    for (let d = 0; d < W; d++) {
+      const v = nb[u * W + d];
       if (v < 0 || fwd[v] || (vis[v] && v !== t)) continue;
       fwd[v] = 1;
       qf.push(v);
@@ -213,8 +231,8 @@ export function segBlocker(nb, T, vis, s, t) {
   bwd[t] = 1;
   for (let h = 0; h < qb.length; h++) {
     const u = qb[h];
-    for (let d = 0; d < 4; d++) {
-      const v = nb[u * 4 + d];
+    for (let d = 0; d < W; d++) {
+      const v = nb[u * W + d];
       if (v < 0 || bwd[v] || (vis[v] && v !== s)) continue;
       bwd[v] = 1;
       qb.push(v);
@@ -254,8 +272,8 @@ export function segBlocker(nb, T, vis, s, t) {
     const u = stackNode[sp - 1];
     let d = stackDir[sp - 1];
     let recursed = false;
-    for (; d < 4; d++) {
-      const v = nb[u * 4 + d];
+    for (; d < W; d++) {
+      const v = nb[u * W + d];
       if (v < 0 || !inC[v] || v === parent[u]) continue;
       if (disc[v] === -1) {
         parent[v] = u;
@@ -272,7 +290,7 @@ export function segBlocker(nb, T, vis, s, t) {
       }
     }
     if (recursed) continue;
-    if (d >= 4) {
+    if (d >= W) {
       // done with u — pop, propagate low-link to parent, test articulation condition
       sp--;
       const pu = parent[u];
@@ -302,8 +320,8 @@ export function segBlocker(nb, T, vis, s, t) {
     while (stack.length) {
       const u = stack.pop();
       if (u === t) { reachedT = true; break; }
-      for (let d = 0; d < 4; d++) {
-        const w = nb[u * 4 + d];
+      for (let d = 0; d < W; d++) {
+        const w = nb[u * W + d];
         if (w < 0 || w === v || !inC[w] || seen[w]) continue;
         seen[w] = 1;
         stack.push(w);
@@ -416,6 +434,7 @@ export function legConflicts(nb, T, vis, legs, blocker = segBlocker) {
 //                 cycle-closing edge — or a forced head-to-end chain that doesn't yet cover every
 //                 uncovered cell)
 export function forcedEdges(nb, T, vis, head, end) {
+  const W = (nb.length / T) | 0;
   const none = infeasible => ({ forced: new Set(), dirs: new Uint8Array(T), infeasible });
   if (head < 0 || head === end) return none(false);
   // The end cell is already on the path but the head is elsewhere (possible in the design app's free-play mode):
@@ -431,8 +450,8 @@ export function forcedEdges(nb, T, vis, head, end) {
       ul[un++] = c;
       continue;
     }
-    for (let d = 0; d < 4; d++) {
-      const w = nb[c * 4 + d];
+    for (let d = 0; d < W; d++) {
+      const w = nb[c * W + d];
       if (w >= 0) vm[w] |= 1 << (d ^ 1);
     }
   }

@@ -82,6 +82,9 @@ import { loopTests } from './loop.js';
 import { loopGenTests } from './loop-gen.js';
 import { loopPlayTests } from './play-loop.js';
 import { surfaceTests } from './surface.js';
+import { teleportTests } from './teleport.js';
+import { teleportGenTests } from './teleport-gen.js';
+import { teleportPlayTests } from './play-teleport.js';
 
 // ---- mini harness ----
 const out = []; let pass = 0, fail = 0;
@@ -3246,6 +3249,11 @@ loopPlayTests(t, ta, ok, eq);
 
 // ---------- Surface (tetrahedron, cube) puzzles ----------
 surfaceTests(t, ok, eq);
+
+// ---------- Teleport pairs (linked portal cells) ----------
+teleportTests(t, ok, eq);
+teleportGenTests(t, ok, eq);
+teleportPlayTests(t, ta, ok, eq);
 
 // ---------- behaviour rows (core/behaviour.js, platform/behaviour.js) ----------
 const BEH_TEXT = 'size 7\ncheckpoints 0,1=2 0,6=1 1,3=3 2,2=5 2,5=4 3,1=7 3,5=9 4,3=8 5,3=6\nwalls V,4,3 H,5,4';

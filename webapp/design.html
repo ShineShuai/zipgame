@@ -29,29 +29,31 @@
     </div>
 
     <div class="field field-row">
-      <label for="variantSel" title="Standard: checkpoints 1, 2, 3... in order, edges stop at the border, walls block. One way arrows: no walls, an arrow can be crossed only in its direction. Wrap-around: the edges join across the borders (a torus), so a step can leave one side and come in on the opposite one. Exact: a number is the step of its cell on the path (the cell numbered 8 is the 8th cell), so the numbers are gaps-and-all, 1 and the cell count among them. Loop: the path is a ring, its last cell touches cell 1 (even sizes only), the numbers 1..K are met in cyclic order and K need not be the last cell.">Puzzle type</label>
+      <label for="variantSel" title="Standard: checkpoints 1, 2, 3... in order, edges stop at the border, walls block. One way arrows: no walls, an arrow can be crossed only in its direction. Wrap-around: the edges join across the borders (a torus), so a step can leave one side and come in on the opposite one. Exact: a number is the step of its cell on the path (the cell numbered 8 is the 8th cell), so the numbers are gaps-and-all, 1 and the cell count among them. Loop: the path is a ring, its last cell touches cell 1 (even sizes only), the numbers 1..K are met in cyclic order and K need not be the last cell. Teleport pairs: pairs of linked cells (the same icon on both); a step from one to the other is a move, no wall stands on it, and each cell is still visited once.">Puzzle type</label>
       <select id="variantSel">
         <option value="">Standard</option>
         <option value="arrows">One way arrows</option>
         <option value="wrap">Wrap-around</option>
         <option value="exact">Exact</option>
         <option value="loop">Loop</option>
+        <option value="teleport">Teleport pairs</option>
       </select>
     </div>
 
-    <div class="field" data-variants="standard arrows wrap loop">
+    <div class="field" data-variants="standard arrows wrap loop teleport">
       <label>Tool</label>
       <div class="segmented">
         <button id="modeNumber" class="seg active">Numbers</button>
-        <button id="modeWall" class="seg" data-variants="standard wrap loop">Walls <span id="wallModeTag" class="seg-count"></span></button>
+        <button id="modeWall" class="seg" data-variants="standard wrap loop teleport">Walls <span id="wallModeTag" class="seg-count"></span></button>
         <button id="modeArrow" class="seg" data-variants="arrows" title="Click a gap to cycle: an arrow one way, the other way, none ">Arrows <span id="arrowModeTag" class="seg-count"></span></button>
+        <button id="modePortal" class="seg" data-variants="teleport" title="Click a cell, then its partner: a pair of linked portals. Click a portal to remove its pair.">Portals <span id="portalModeTag" class="seg-count"></span></button>
       </div>
     </div>
 
     <div class="hint" id="hint"></div>
     <div class="validity" id="validity"></div>
 
-    <div data-variants="standard arrows wrap loop">
+    <div data-variants="standard arrows wrap loop teleport">
     <div class="divider"></div>
 
     <div class="field field-row">
@@ -65,7 +67,7 @@
     </div>
     </div>
 
-    <div data-variants="standard wrap loop">
+    <div data-variants="standard wrap loop teleport">
     <div class="divider"></div>
 
     <div class="field field-row">
@@ -96,8 +98,13 @@
     </div>
     </div>
 
-    <div data-variants="standard wrap loop">
+    <div data-variants="standard wrap loop teleport">
     <div class="divider"></div>
+
+    <div class="field field-row" data-variants="teleport" style="display:none">
+      <label for="pairCount" title="How many pairs of portals the Path and Generate buttons make (at least 1; at most what fits the board with Max checkpoints). The Play app makes 1 pair on 5 and 6, 1 or 2 from 7. Empty = that rule, for Reproduce Play puzzle.">Portal pairs</label>
+      <input id="pairCount" type="number" min="1" value="1">
+    </div>
 
     <div class="field">
       <label>Unique puzzle generator</label>
@@ -188,7 +195,7 @@
       <button id="reproducePlay" class="wide" title="Runs generate() itself, the same function the Play app uses for its daily/local puzzles — not the flags/Max checkpoints/Max walls above, which only apply to Generate. Use this to reproduce a puzzle seen in the Play app via its seed.">▶️↺ Reproduce Play puzzle</button>
     </div>
     <div class="hint">
-      A One way arrows, Wrap-around, Exact or Loop puzzle runs that type's own Play generator (seed only). For a standard puzzle,
+      A One way arrows, Wrap-around, Exact, Loop or Teleport puzzle runs that type's own Play generator (seed only; for Teleport the Portal pairs field, if filled, sets the number of pairs). For a standard puzzle,
       generate() has no flags of its own to set — currently it's always equivalent to
       <code id="playFlagsHex"></code> (path=warnsdorff, checkpoints=gap, propagation on), shown here
       only for reference. Paste a seed from the Play app's hold-V badge above and click this to get
@@ -198,7 +205,7 @@
     <div class="divider"></div>
 
     <div class="field">
-      <button id="clearWalls" class="wide" data-variants="standard wrap loop">Clear all walls</button>
+      <button id="clearWalls" class="wide" data-variants="standard wrap loop teleport">Clear all walls</button>
       <button id="clearAll" class="wide">Reset board</button>
     </div>
   </aside>

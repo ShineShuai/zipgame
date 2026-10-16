@@ -7,9 +7,12 @@ import { shuffle } from '../rng.js';
 
 // 0/1 lookup by edge id: which edges a path uses (wrap: on the wrap-around board, seams included;
 // ring: a Loop puzzle's path also uses the edge from its last cell back to its first).
-function edgeMarks(n, path, wrap = false, ring = false) {
-  const marks = new Uint8Array(n * n * 2);
-  for (const e of pathEdgeIds(n, path, wrap, ring)) marks[e] = 1;
+// portals: a Teleport puzzle's pairs; a jump over a pair is marked at its portal edge id (edges.js
+// portalEdgeId),
+// which lies after the grid edges, and no wall is ever put there.
+function edgeMarks(n, path, wrap = false, ring = false, portals = null) {
+  const marks = new Uint8Array(n * n * 2 + (portals ? portals.length : 0));
+  for (const e of pathEdgeIds(n, path, wrap, ring, portals)) marks[e] = 1;
   return marks;
 }
 
@@ -31,7 +34,8 @@ export function* makeUnique(p, path, rnd, cfg) {
   const ring = !!p.loop;
   const all = allEdges(n, p.holes, wrap); // no wall is ever put next to a hole
   const maxWalls = cfg.wallBudget == null ? all.length : cfg.wallBudget;
-  const anchor = edgeMarks(n, path, wrap, ring);
+  const portals = p.portals || null;
+  const anchor = edgeMarks(n, path, wrap, ring, portals);
   const pool = shuffle(all.filter(e => !anchor[e]), rnd); // walls we may still place, in random order
   const order = [];                                       // walls placed so far
   let next = 0;                                           // first pool index not handed out yet
@@ -55,12 +59,15 @@ export function* makeUnique(p, path, rnd, cfg) {
   // A random edge used by exactly one of the two solutions (never an anchor edge), or null.
   // Walling it rules that solution out.
   function distinguishingWall(pathA, pathB) {
-    const edgesA = pathEdgeIds(n, pathA, wrap, ring);
-    const edgesB = pathEdgeIds(n, pathB, wrap, ring);
-    const inA = edgeMarks(n, pathA, wrap, ring);
-    const inB = edgeMarks(n, pathB, wrap, ring);
-    let diff = edgesA.filter(e => !inB[e] && !anchor[e]);
-    if (diff.length === 0) diff = edgesB.filter(e => !inA[e] && !anchor[e]);
+    const edgesA = pathEdgeIds(n, pathA, wrap, ring, portals);
+    const edgesB = pathEdgeIds(n, pathB, wrap, ring, portals);
+    const inA = edgeMarks(n, pathA, wrap, ring, portals);
+    const inB = edgeMarks(n, pathB, wrap, ring, portals);
+    // a portal edge (id beyond the grid edges) cannot be walled, so it cannot tell the two
+    // solutions apart
+    const wallable = e => e < 2 * n * n;
+    let diff = edgesA.filter(e => wallable(e) && !inB[e] && !anchor[e]);
+    if (diff.length === 0) diff = edgesB.filter(e => wallable(e) && !inA[e] && !anchor[e]);
     if (diff.length === 0) return null;
     return diff[Math.floor(rnd() * diff.length)];
   }

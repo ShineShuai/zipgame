@@ -73,12 +73,17 @@ function puzzleCopy(variant, puzzle) {
   if (variant === 'arrows') {
     return { ...copy, arrows: puzzle.arrows.slice() };
   }
+  if (variant === 'teleport') {
+    return { ...copy, portals: puzzle.portals.map(pair => pair.slice()) };
+  }
   return variant ? { ...copy, [variant]: true } : copy;
 }
 
 // gotdDate ('YYYYMMDD') given = a Game of Day, else a local game. A local game carries its puzzle
-// ({ n, cp, walls } plus shape + holes | arrows | exact | wrap | loop by variant; variant =
-// 'cutout' | 'arrows' | 'exact' | 'wrap' | 'loop', null for a standard game), so the receiver
+// ({ n, cp, walls } plus shape + holes | arrows | exact | wrap | loop | portals by variant;
+// variant =
+// 'cutout' | 'arrows' | 'exact' | 'wrap' | 'loop' | 'teleport', null for a standard game), so the
+// receiver
 // needs no generator. Only a standard game has a grade: the receiver grades a variant's puzzle
 // again, and a record with a grade there cannot be encoded.
 export function makeShareRecord({

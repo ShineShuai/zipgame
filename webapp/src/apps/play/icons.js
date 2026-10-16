@@ -1,4 +1,5 @@
-// Icons of the play menu: one per puzzle variant (standard, cutout, arrows, exact, wrap, loop) and one
+// Icons of the play menu: one per puzzle variant (standard, cutout, arrows, exact, wrap, loop,
+// teleport) and one
 // per menu card.
 // Plain SVG strings, no DOM. Colours come from css/play.css (.vi-*, currentColor), so the
 // icons follow the page theme and the same markup serves the picker, the HUD and the cards.
@@ -103,9 +104,35 @@ function wrapRoute() {
     `${dot(WRAP_OUT[0])}${dot(WRAP_IN[WRAP_IN.length - 1])}`;
 }
 
-// variant: 'cutout', 'arrows', 'exact', 'wrap', 'loop', 'lucky' (the mystery of the lucky game) or
+// Teleport icon: the path walks into a portal on the top row, and carries on from its partner two
+// rows down
+// (a dotted arc between them); both portals are rings. Cells are [col, row].
+const PORTAL_A = [1, 0];
+const PORTAL_B = [2, 2];
+const PORTAL_ICON_COLOR_CLASS = 'vi-portal';
+
+function teleportRoute() {
+  const at = ([col, row]) => `${centre(col)},${centre(row)}`;
+  const first = [[0, 0], PORTAL_A].map(at).join(' ');
+  const second = [PORTAL_B, [3, 2], [3, 3]].map(at).join(' ');
+  const [ax, ay] = [centre(PORTAL_A[0]), centre(PORTAL_A[1])];
+  const [bx, by] = [centre(PORTAL_B[0]), centre(PORTAL_B[1])];
+  const arc = `M${ax} ${ay}Q${num((ax + bx) / 2 + 7)} ${num((ay + by) / 2 - 3)} ${bx} ${by}`;
+  const ring = ([x, y]) => {
+    const at = `cx="${centre(x)}" cy="${centre(y)}"`;
+    return `<circle class="${PORTAL_ICON_COLOR_CLASS}" ${at} r="3.9"/>` +
+      `<circle class="${PORTAL_ICON_COLOR_CLASS} vi-portal-core" ${at} r="1.5"/>`;
+  };
+  const dot = ([x, y]) => `<circle class="vi-dot" cx="${centre(x)}" cy="${centre(y)}" r="2.7"/>`;
+  return `<polyline class="vi-path" points="${first}"/><path class="vi-jump" d="${arc}"/>` +
+    `<polyline class="vi-path" points="${second}"/>${ring(PORTAL_A)}${ring(PORTAL_B)}` +
+    `${dot([0, 0])}${dot([3, 3])}`;
+}
+
+// variant: 'cutout', 'arrows', 'exact', 'wrap', 'loop', 'teleport', 'lucky' (the mystery of the
+// lucky game) or
 // anything else (= standard). Class: variant-icon vi-standard | vi-cutout | vi-arrows | vi-exact |
-// vi-wrap | vi-loop | vi-lucky.
+// vi-wrap | vi-loop | vi-teleport | vi-lucky.
 export function variantIcon(variant) {
   if (variant === 'lucky') return luckyIcon();
   const cutout = variant === 'cutout';
@@ -113,9 +140,12 @@ export function variantIcon(variant) {
   const exact = variant === 'exact';
   const wrap = variant === 'wrap';
   const loop = variant === 'loop';
-  const name = cutout ? 'cutout' : arrows ? 'arrows' : exact ? 'exact' : wrap ? 'wrap' : loop ? 'loop' : 'standard';
+  const teleport = variant === 'teleport';
+  const name = cutout ? 'cutout' : arrows ? 'arrows' : exact ? 'exact' : wrap ? 'wrap'
+    : loop ? 'loop' : teleport ? 'teleport' : 'standard';
   const board = tiles(cutout ? RING_HOLES : NO_HOLES);
-  const path = wrap ? wrapRoute() : route(cutout ? LAP : loop ? RING : SNAKE);
+  const path = wrap ? wrapRoute()
+    : teleport ? teleportRoute() : route(cutout ? LAP : loop ? RING : SNAKE);
   return `<svg class="variant-icon vi-${name}" viewBox="0 0 48 48" aria-hidden="true" ` +
     'focusable="false"><rect class="vi-bg" x="2" y="2" width="44" height="44" rx="11"/>' +
     `${board}${path}${arrows ? arrowheads() : ''}${exact ? stepBadges(ICON_STEPS) : ''}` +

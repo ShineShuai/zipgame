@@ -1,6 +1,9 @@
 import { makePuzzle } from '../model.js';
-import { makeRng } from '../rng.js';
+import { makeRng, shuffle } from '../rng.js';
 import { warnsdorff, backbite, ringPath } from './hampath.js';
+import {
+  pairCount, pickPortals, teleportPath, teleportCheckpointRules, maxPortalPairs,
+} from './portals.js';
 import { gapCheckpoints, randomCheckpoints, loopCheckpoints, LOOP_TAIL } from './checkpoints.js';
 import { makeUnique, minimizeWalls, refineWalls, minimizeFully, REFINE_CAP_X } from './walls.js';
 import { solve } from '../solver/solve.js';
@@ -22,6 +25,14 @@ export const WRAP_CANDIDATES = { 3: 8, 4: 64, 5: 64, 6: 64, 7: 32, 8: 16 };
 // The same for Loop puzzles (even sizes only: a ring needs an even number of cells). Set by
 // measuring, see gen/loop.js.
 export const LOOP_CANDIDATES = { 4: 64, 6: 32, 8: 16, 10: 8, 12: 4 };
+// The same for Teleport puzzles (sizes 4 and up; gen/teleport.js offers 5 to 9). A portal edge
+// cannot be walled,
+// so a Teleport puzzle needs a few walls more than a standard one: the counts stay low enough to
+// keep the
+// generating time of the standard sizes. Set by measuring, see test/teleport-gen.js.
+export const TELEPORT_CANDIDATES = {
+  4: 32, 5: 64, 6: 64, 7: 48, 8: 32, 9: 32, 10: 16, 11: 16, 12: 8,
+};
 // Humans find the seams hard to hold in mind, so the play app offers the smaller boards only.
 // 7 and 8 take about 0.3 and 0.5 s to generate (8 to 12 walls); the wall count hardly depends on
 // the candidate count there.
@@ -66,15 +77,36 @@ export function pickK(Kmin, Kmax, rnd) {
 // use the seams; the puzzle gets wrap: true. The grid attempt is unchanged by it.
 // o.loop: a Loop puzzle (n even): the path is a ring (ringPath), the puzzle gets loop: true and
 // the walls keep the closing edge free (walls.js).
+// o.pairs: a Teleport puzzle with that many portal pairs (gen/portals.js): the path runs through
+// every pair, the
+// numbers keep off the portal cells, and the puzzle gets portals. Not with wrap / loop.
 // o.legCollide: leg-collision pruning (see solve.js); o.flags: optional full build-phase solve()
 // opts (see gen/flags.js), overrides o.prop/o.legCollide when given, passed straight through to
 // makeUnique; o.counts: optional call-count accumulator, passed straight through to makeUnique.
 export function* tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, o = {}) {
   const wrap = !!o.wrap;
   const loop = !!o.loop;
+  const pairs = o.pairs || 0;
   let path;
   let positions;
-  if (loop) {
+  let portals = null;
+  if (pairs) {
+    // A Teleport puzzle: the pairs first, then a path through all of them, numbers off the portal
+    // cells.
+    portals = pickPortals(n, pairs, rnd);
+    if (!portals) return null;
+    path = teleportPath(n, portals, rnd);
+    if (!path) return null;
+    const rules = teleportCheckpointRules(n, portals);
+    if (o.cps === 'random') {
+      const open = [];
+      for (let i = 1; i < path.length - 1; i++) if (!rules.skip.has(path[i])) open.push(i);
+      positions = [0, ...shuffle(open, rnd).slice(0, K - 2).sort((a, b) => a - b), path.length - 1];
+    } else {
+      positions = gapCheckpoints(n, path, K, false, rules);
+    }
+    if (!positions) return null;
+  } else if (loop) {
     // A ring, cut at cell 1, with the numbers short of the way round (loopCheckpoints).
     const placed = loopCheckpoints(n, ringPath(n, rnd), K, rnd);
     if (!placed) return null;
@@ -92,6 +124,7 @@ export function* tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, o = {
   const p = makePuzzle(n);
   if (wrap) p.wrap = true;
   if (loop) p.loop = true;
+  if (portals) p.portals = portals;
   positions.forEach((q, i) => {
     p.cp[path[q]] = i + 1;
   });
@@ -135,16 +168,24 @@ const fewestWalls = candidates => (
 //   A node budget, not a clock, so the same seed still gives the same puzzle on every device.
 // Events: { frac|null, walls, K }. `walls` never increases: it is the fewest walls found so far.
 // o.wrap: a wrap-around puzzle (needs n >= 3; core/geom.js), candidates from WRAP_CANDIDATES.
+// o.teleport: a Teleport puzzle (needs n >= 4; gen/teleport.js), candidates from
+// TELEPORT_CANDIDATES; o.pairs
+//   the number of portal pairs (default pairCount(), which reads o.difficulty, 0..5).
 export function* generate(n, seed, o = {}) {
   const depth = o.retryDepth || 0;
   const cells = n * n;
   const wrap = !!o.wrap;
   const loop = !!o.loop;
+  const teleport = !!o.teleport;
   if (wrap && n < 3) throw new Error('A wrap-around puzzle needs n >= 3');
   if (loop && (n % 2 || wrap)) throw new Error('A loop puzzle needs an even n, on a grid');
+  if (teleport && (n < 4 || wrap || loop)) {
+    throw new Error('A Teleport puzzle needs n >= 4, on a grid');
+  }
   const prop = o.prop !== false;
   const freedEdge = o.freedEdge !== false;
-  const candidatesOf = () => (wrap ? WRAP_CANDIDATES[n] : loop ? LOOP_CANDIDATES[n] : candidatesFor(n));
+  const candidatesOf = () => (teleport ? TELEPORT_CANDIDATES[n]
+    : wrap ? WRAP_CANDIDATES[n] : loop ? LOOP_CANDIDATES[n] : candidatesFor(n));
   const wanted = o.candidates || candidatesOf() || 2;
   const rnd = makeRng(seed);
   const nodeCap = Math.round(Math.max(30000, 200 * cells) * (o.capX ?? (prop ? PROP_CAP_X : 1)));
@@ -153,19 +194,26 @@ export function* generate(n, seed, o = {}) {
   const Kmin = Math.max(4, n);
   const Kmax = Math.max(Kmin + 1, Math.round(cells / 4));
   const K = pickK(Kmin, Kmax, rnd);
+  // Teleport: how many pairs (1 on 5 and 6, 1 or 2 from 7: gen/portals.js), drawn after K so that
+  // no other variant's stream changes.
+  const pairs = teleport ? (o.pairs ?? pairCount(n, rnd, o.difficulty)) : 0;
 
   // 1. Build candidates.
   const candidates = [];
   const maxAttempts = wanted * ATTEMPTS_PER_CANDIDATE;
   for (let attempt = 0; attempt < maxAttempts && candidates.length < wanted; attempt++) {
     // The attempt's own wall counts jump around, so report the fewest found so far instead.
-    const attemptEvents = tryGenerate(n, K, rnd, nodeCap, cells, SEED_FRACTION, { prop, wrap, loop });
+    const attemptEvents = tryGenerate(
+      n, K, rnd, nodeCap, cells, SEED_FRACTION, { prop, wrap, loop, pairs },
+    );
     const found = yield* tag(attemptEvents, { walls: fewestWalls(candidates) });
     if (found) candidates.push(found);
     yield { frac: (BUILD_SHARE * candidates.length) / wanted, walls: fewestWalls(candidates), K };
   }
   for (let fallback = 0; fallback < 4 && candidates.length === 0; fallback++) {
-    const attemptEvents = tryGenerate(n, K, rnd, fallbackCap, cells, SEED_FRACTION, { prop, wrap, loop });
+    const attemptEvents = tryGenerate(
+      n, K, rnd, fallbackCap, cells, SEED_FRACTION, { prop, wrap, loop, pairs },
+    );
     const found = yield* tag(attemptEvents, { walls: fewestWalls(candidates) });
     if (found) candidates.push(found);
     yield { frac: BUILD_SHARE, walls: fewestWalls(candidates), K };
@@ -177,13 +225,14 @@ export function* generate(n, seed, o = {}) {
     }
     // Last resorts, bounded (no unbounded recursion): densest K, then "number every cell".
     const denseCap = Math.max(300000, 20 * nodeCap);
-    const dense = yield* tryGenerate(n, Kmax, rnd, denseCap, cells, 0, { prop, wrap, loop });
+    const dense = yield* tryGenerate(n, Kmax, rnd, denseCap, cells, 0, { prop, wrap, loop, pairs });
     if (dense) {
       if (dense.order.length) yield* minimizeWalls(dense, dense.order, rnd, nodeCap, Kmax, { prop, freedEdge });
       delete dense.order;
       dense.seed = seed;
       return dense;
     }
+    if (teleport) throw new Error('Puzzle generation failed: no Teleport puzzle found for N=' + n);
     if (loop) return numberEveryCell(n, ringPath(n, rnd), seed, false, true);
     for (let x = 0; x < 11; x++) {
       const path = warnsdorff(n, rnd, wrap);
@@ -251,15 +300,33 @@ export function* generate(n, seed, o = {}) {
 // ---- Designer helpers (random, unseeded by design: caller supplies rnd) ----
 
 // Random Hamiltonian path + K random checkpoints along it, no walls.
+// pairs > 0 (n >= 4): a Teleport puzzle with that many portal pairs (fewer if they do not fit),
+// the path through all
+// of them, the checkpoints off the portal cells.
 // loop (n even, on a grid): a Loop puzzle: a random ring cut at a random cell, which is cell 1, and
 // the numbers on its first stretch, short of the way round as in loopCheckpoints; p.path is the ring
 // from cell 1 on (its last cell touches the first), and K is at least 3.
-export function randomPathPuzzle(n, K, rnd, wrap = false, loop = false) {
+export function randomPathPuzzle(n, K, rnd, wrap = false, loop = false, pairs = 0) {
   K = Math.max(loop ? 3 : 2, Math.min(K, n * n));
   const p = makePuzzle(n);
   let path;
   let positions;
-  if (loop) {
+  if (pairs > 0) {
+    // pairs: a Teleport puzzle (n >= 4): the pairs, a path through all of them, the numbers off
+    // the portal cells.
+    // Fewer pairs when that many do not fit.
+    let portals = null;
+    for (let want = Math.min(pairs, maxPortalPairs(n, K)); want >= 1 && !path; want--) {
+      portals = pickPortals(n, want, rnd);
+      path = portals && teleportPath(n, portals, rnd);
+    }
+    if (!path) throw new Error('No Teleport board found for N=' + n);
+    const rules = teleportCheckpointRules(n, portals);
+    const open = [];
+    for (let i = 1; i < path.length - 1; i++) if (!rules.skip.has(path[i])) open.push(i);
+    positions = [0, ...shuffle(open, rnd).slice(0, K - 2).sort((a, b) => a - b), path.length - 1];
+    p.portals = portals;
+  } else if (loop) {
     const ring = ringPath(n, rnd);
     const cut = Math.floor(rnd() * ring.length);
     path = ring.slice(cut).concat(ring.slice(0, cut));
@@ -316,6 +383,9 @@ function* tag(gen, extra) {
 //   that minimizing kept only because a check hit its cap (minimizeFully in walls.js); 0 = minimize once, as before.
 //   An attempt with a wall cap skips it when even removing every undecided wall could not get under maxWalls.
 // o.wrap: a wrap-around puzzle (needs n >= 3; core/geom.js).
+// o.pairs: a Teleport puzzle with that many portal pairs (at most maxPortalPairs; n >= 4, a grid;
+// gen/portals.js),
+//   the path through every pair, the numbers off the portal cells.
 // o.loop: a Loop puzzle (n even, a grid; core/model.js): the ring path and numbers of tryGenerate (the
 //   o.flags path / cps choices do not apply), K at least 3.
 // o.prop (default true): solver propagation (same solutions, far fewer nodes).
@@ -336,6 +406,10 @@ function* tag(gen, extra) {
 // comparing legCollide on vs off at the same rnd seed (see design app's Solver panel).
 export function* generateUnique(n, K, rnd, o = {}) {
   const loop = !!o.loop;
+  const pairs = o.pairs > 0 ? Math.min(Math.floor(o.pairs), maxPortalPairs(n, K)) : 0;
+  if (pairs && (n < 4 || o.wrap || loop)) {
+    throw new Error('A Teleport puzzle needs n >= 4, on a grid');
+  }
   K = Math.max(loop ? 3 : 2, Math.min(K, n * n));
   const maxWalls = o.maxWalls == null ? null : Math.max(0, Math.floor(o.maxWalls));
   const unbounded = maxWalls == null;
@@ -363,7 +437,7 @@ export function* generateUnique(n, K, rnd, o = {}) {
   for (let attempt = 0; attempt < tries; attempt++) {
     const extra = { attempt: attempt + 1, of: tries };
     const gen = tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, {
-      path: pathAlgo, cps: cpsAlgo, flags: buildFlags, counts, wrap, loop,
+      path: pathAlgo, cps: cpsAlgo, flags: buildFlags, counts, wrap, loop, pairs,
     });
     const p = yield* tag(gen, extra);
     if (p) {
@@ -387,6 +461,6 @@ export function* generateUnique(n, K, rnd, o = {}) {
     yield { frac: (attempt + 1) / tries, walls: best ? best.walls : null, K, found, ...extra };
   }
   if (best) return { ...best, found, counts: withTotal() };
-  const puzzle = randomPathPuzzle(n, K, rnd, wrap, loop);
+  const puzzle = randomPathPuzzle(n, K, rnd, wrap, loop, pairs);
   return { puzzle, unique: false, walls: 0, removed: 0, attempts: tries, found: 0, counts: withTotal() };
 }

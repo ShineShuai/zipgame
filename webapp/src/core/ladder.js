@@ -24,6 +24,12 @@ const FIELDS = ['es', 'din', 'dopen', 'other', 'sz', 'cnt', 'lo', 'hi', 'near', 
 const CAP = { cap: true };
 
 export function ladder(p, o = {}) {
+  // The ladder reasons over the four grid directions of a cell; a portal edge would be missed, so
+  // it would grade
+  // another puzzle. (trap.js does not run it on a Teleport puzzle either.)
+  if (p.portals) {
+    return { error: 'not available for a Teleport puzzle (no portal edges in its reasoning)' };
+  }
   const t0 = performance.now();
   const pdMax = o.probeDepth ?? 2;
   const workCap = o.workCap ?? 3e6;

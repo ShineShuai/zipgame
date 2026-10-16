@@ -1,14 +1,16 @@
 import { startCell, endCell, maxNumber, cellCount } from './model.js';
 import { hasWall, arrowAllows } from './edges.js';
-import { adjacent } from './geom.js';
+import { adjacent, isPortalPair } from './geom.js';
 
 export const gridAdjacent = (n, a, b) => Math.abs(((a / n) | 0) - ((b / n) | 0)) + Math.abs(a % n - b % n) === 1;
 // One-way arrows (p.arrows) allow a step in their own direction only. Undoing a step (see step()
 // below) is not a step, so it stays free.
-export const canStep = (p, a, b) => adjacent(p.n, p.wrap, a, b)
+// A portal pair (Teleport puzzle, core/geom.js) is an edge like any other, except that no wall
+// stands on it.
+export const canStep = (p, a, b) => isPortalPair(p.portals, a, b) || (adjacent(p.n, p.wrap, a, b)
   && !hasWall(p, a, b)
   && !(p.holes && (p.holes[a] || p.holes[b]))
-  && !(p.arrows && !arrowAllows(p.arrows, p.n, a, b));
+  && !(p.arrows && !arrowAllows(p.arrows, p.n, a, b)));
 
 // Full-board solved check: covers every cell, starts at 1, ends on the max checkpoint, checkpoints visited in ascending order.
 // Loop puzzle: no fixed end; the last cell has to touch cell 1 through an open edge (the ring closes).

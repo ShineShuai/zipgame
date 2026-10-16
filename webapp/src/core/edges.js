@@ -1,4 +1,4 @@
-import { neighbourCell } from './geom.js';
+import { neighbourCell, isPortalPair } from './geom.js';
 
 // Edge id e = cell*2 + t.  t=0: edge between cell and its right neighbour (text "V,r,c").
 // t=1: between cell and the one below ("H,r,c"). On a wrap-around board (wrap = true, geom.js)
@@ -55,9 +55,18 @@ export const wallCount = p => wallIds(p).length;
 export const edgeToKey = (n, e) => `${e & 1 ? 'H' : 'V'},${((e >> 1) / n) | 0},${(e >> 1) % n}`;
 export const keyToEdge = (n, k) => { const [t, r, c] = k.split(','); return (+r * n + +c) * 2 + (t === 'H' ? 1 : 0); };
 // ring: the path is a ring (a Loop puzzle), so the edge from its last cell back to the first counts.
-export const pathEdgeIds = (n, path, wrap = false, ring = false) => {
+// portals: a Teleport puzzle's pairs (puzzle.portals). A step from one cell of a pair to the other
+// has no grid edge; its id is portalEdgeId(n, index of the pair), which lies beyond every grid
+// edge
+// id (so a wall, which only ever has a grid edge id, never meets it).
+export const portalEdgeId = (n, index) => 2 * n * n + index;
+export const pathEdgeIds = (n, path, wrap = false, ring = false, portals = null) => {
   const o = [];
-  for (let i = 1; i < path.length; i++) o.push(edgeId(n, path[i - 1], path[i], wrap));
+  for (let i = 1; i < path.length; i++) {
+    const [from, to] = [path[i - 1], path[i]];
+    const at = portals ? portals.findIndex(pair => isPortalPair([pair], from, to)) : -1;
+    o.push(at >= 0 ? portalEdgeId(n, at) : edgeId(n, path[i - 1], path[i], wrap));
+  }
   if (ring && path.length > 2) o.push(edgeId(n, path[path.length - 1], path[0], wrap));
   return o;
 };

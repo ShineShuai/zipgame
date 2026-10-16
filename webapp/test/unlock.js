@@ -11,7 +11,7 @@ import {
   PLAY_VARIANTS, LUCKY_SIZES, variantById, variantOf, sizesFor, luckyDefs,
 } from '../src/apps/play/variants.js';
 import { PLAY_SIZES } from '../src/core/gen/generate.js';
-import { VARIANTS as SHARE_VARIANTS } from '../src/core/share-code.js';
+import { VARIANTS as SHARE_VARIANTS, TELEPORT } from '../src/core/share-code.js';
 import { runSync } from '../src/core/run.js';
 import { EN, ZH } from '../src/ui/i18n.js';
 
@@ -52,7 +52,8 @@ export function unlockTests(t, ta, ok, eq) {
       [[31108, false], [93328, false], [20740, false], [62224, false], [46672, false], [189268, true], [20744, false]]);
   });
 
-  t('lucky: lastLucky / nextLucky / isLucky agree; the next lucky day after Oct 10 2026 is Oct 17', () => {
+  t('lucky: lastLucky / nextLucky / isLucky agree; the next lucky day '
+    + 'after Oct 10 2026 is Oct 17', () => {
     eq([lastLucky(20736), nextLucky(20736), isLucky(20736), isLucky(MON)], [MON, 20743, false, true]);
     eq([lastLucky(MON), nextLucky(MON)], [MON, 20743]); // on a lucky day: it is today, the next is after it
     for (let d = 20000; d < 20000 + 1500; d++) {
@@ -72,7 +73,8 @@ export function unlockTests(t, ta, ok, eq) {
     for (let d = 20000; d < 20000 + 365 * 75; d += 3) ok(d - lastLucky(d) <= 13, `day ${d}`);
   });
 
-  t('lucky: every weekday wins in 10-20% of the weeks; the dates are not the same every year', () => {
+  t('lucky: every weekday wins in 10-20% of the weeks; the dates are not '
+    + 'the same every year', () => {
     const count = Array(7).fill(0), from = weekOf(20000), to = weekOf(20000 + 365 * 75);
     for (let w = from; w < to; w++) count[(luckyDayOf(w) - 4) % 7]++;
     const total = to - from;
@@ -106,7 +108,8 @@ export function unlockTests(t, ta, ok, eq) {
     eq(createUnlock(memory(), defs, at(20736)).view(), null, 'null before init');
   });
 
-  ta('unlock: without a chance the game is played for fun: nothing unlocks; the offer is used up', async () => {
+  ta('unlock: without a chance the game is played for fun: nothing '
+    + 'unlocks; the offer is used up', async () => {
     const st = memory(), u = createUnlock(st, defs, at(MON)); await u.init();
     const game = await u.begin(pick(1, 0)); // variant b, its only locked size 9
     eq(game, { id: 'b', size: 9, isNew: true, holder: false });
@@ -121,7 +124,8 @@ export function unlockTests(t, ta, ok, eq) {
     eq([later.view().open, later.view().offer], [true, 20743], 'the next lucky day brings a new offer');
   });
 
-  ta('unlock: a holder spends the chance by starting; solving unlocks the variant, once', async () => {
+  ta('unlock: a holder spends the chance by starting; solving unlocks the '
+    + 'variant, once', async () => {
     const st = memory(); let u = createUnlock(st, defs, at(MON)); await u.init(); await give(u); await give(u);
     eq(u.view().tokens, 2);
     const game = await u.begin(pick(0, 1)); // variant a, the locked size at index 1
@@ -138,7 +142,8 @@ export function unlockTests(t, ta, ok, eq) {
     eq([u.view().tokens, u.unlocked('a'), u.unlocked('b')], [0, true, false]);
   });
 
-  ta('unlock: failing, leaving or reloading loses the chance and the offer; a failed start gives both back', async () => {
+  ta('unlock: failing, leaving or reloading loses the chance and the '
+    + 'offer; a failed start gives both back', async () => {
     const st = memory(); let u = createUnlock(st, defs, at(MON)); await u.init(); await give(u); await give(u);
     await u.begin(pick(0, 0));
     eq(await u.finish(false), { id: 'a', solved: false, holder: true, newly: false });
@@ -180,7 +185,8 @@ export function unlockTests(t, ta, ok, eq) {
     eq(await done.begin(pick(0, 0)), null);
   });
 
-  ta('unlock: a corrupt, foreign or hostile record is replaced; old records convert; storage errors are harmless', async () => {
+  ta('unlock: a corrupt, foreign or hostile record is replaced; old '
+    + 'records convert; storage errors are harmless', async () => {
     for (const junk of ['not json', '{}', '[]', 'null', '{"v":2}', '{"v":1,"unlocked":{},"tokens":-1,"choices":0}',
       '{"v":1,"unlocked":{},"tokens":1.5,"choices":0}', '{"v":1,"unlocked":5,"tokens":0,"choices":0}',
       '{"v":1,"unlocked":{},"tokens":0,"choices":0,"played":["x"]}']) {
@@ -195,11 +201,15 @@ export function unlockTests(t, ta, ok, eq) {
     eq(u.view().tokens, 1);
   });
 
-  t('variants: ids are known to the share link, every text exists in both languages, the lucky sizes are on offer', () => {
+  t('variants: ids are known to the share link, every text exists in '
+    + 'both languages, the lucky sizes are on offer', () => {
     eq(PLAY_VARIANTS.map(v => v.id).slice(0, 3), ['cutout', 'arrows', 'exact']); // later ones append
     eq(LUCKY_SIZES, [7, 8, 9, 10]);
     for (const v of PLAY_VARIANTS) {
-      ok(SHARE_VARIANTS.includes(v.id), `${v.id} is in core/share-code.js VARIANTS`);
+      // Teleport has a link version of its own (SHARE_VERSION_PORTAL), so that the type field of
+      // the older links stays as it was
+      ok(SHARE_VARIANTS.includes(v.id) || v.id === TELEPORT,
+        `${v.id} is in core/share-code.js VARIANTS (or is TELEPORT)`);
       for (const dict of [EN, ZH]) {
         for (const key of Object.values(v.keys)) ok(dict[key], `${v.id}: ${key}`);
         eq(typeof dict[v.countKey] === 'function' || typeof dict[v.countKey] === 'string', true, v.countKey);
@@ -239,7 +249,8 @@ export function unlockTests(t, ta, ok, eq) {
     ok(EN['lucky.used'](6, 'Sat').includes('6 days)'), 'plural');
   });
 
-  t('rules tooltip: every puzzle type has a name and rules in both languages, and the game screen label exists', () => {
+  t('rules tooltip: every puzzle type has a name and rules in both '
+    + 'languages, and the game screen label exists', () => {
     for (const dict of [EN, ZH]) {
       ok(dict['game.rulesLabel'], 'game.rulesLabel');
       for (const id of ['standard', ...PLAY_VARIANTS.map(v => v.id)]) {
@@ -248,7 +259,8 @@ export function unlockTests(t, ta, ok, eq) {
     }
   });
 
-  ta('rules seen: nothing is seen at first, marking persists, only variants of the app count', async () => {
+  ta('rules seen: nothing is seen at first, marking persists, only '
+    + 'variants of the app count', async () => {
     const ids = PLAY_VARIANTS.map(v => v.id), store = memory();
     const a = createRulesSeen(store, ids);
     await a.init();
@@ -262,7 +274,8 @@ export function unlockTests(t, ta, ok, eq) {
     ok(b.seen('wrap') && !b.seen('arrows'), 'a reload remembers it');
   });
 
-  ta('rules seen: a corrupt, foreign or outdated record is a fresh start; unknown ids are dropped', async () => {
+  ta('rules seen: a corrupt, foreign or outdated record is a fresh start; '
+    + 'unknown ids are dropped', async () => {
     const ids = ['arrows', 'wrap'];
     for (const raw of ['{not json', '[]', 'null', '{"v":2,"seen":{"wrap":true}}', '{"v":1}', '{"v":1,"seen":7}']) {
       const rs = createRulesSeen(memory({ [RULES_SEEN_KEY]: raw }), ids);

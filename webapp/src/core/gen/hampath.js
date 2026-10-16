@@ -1,4 +1,4 @@
-import { neighbourCell } from '../geom.js';
+import { neighbourCell, portalPartner } from '../geom.js';
 
 // Randomised Warnsdorff walk (legacy generator; rnd consumption order is part of the seeded contract). Returns null on dead end.
 // wrap: walk on the wrap-around board (core/geom.js); the grid walk is unchanged by it.
@@ -89,4 +89,61 @@ export function ringPath(n, rnd) {
     }
   }
   return base;
+}
+
+// Backbite on the grid plus portal edges (a Teleport board, core/geom.js): the same end reversals
+// as
+// backbite(), with two changes that make a path through every portal likely instead of a third of
+// all
+// paths per pair: a path end may also join the cell its portal links it to, and takes that edge
+// half of the
+// time it can; and a reversal that would remove a portal edge from the path is not made, so a
+// portal that is
+// in stays in. Starts from the serpentine, which uses no portal. The caller still checks the
+// result
+// (gen/teleport.js teleportPath). Never fails. Its own function, so that backbite() above keeps
+// its random
+// stream: the seeded generators of the other variants depend on it.
+export const PORTAL_TAKE = 0.5;
+export function backbitePortals(n, rnd, portals) {
+  const T = n * n, path = [];
+  for (let r = 0; r < n; r++) {
+    for (let k = 0; k < n; k++) path.push(r * n + (r % 2 ? n - 1 - k : k));
+  }
+  const pos = new Int32Array(T);
+  path.forEach((v, i) => { pos[v] = i; });
+  // up, down, left, right
+  const nbrs = i => [3, 2, 1, 0].map(d => neighbourCell(n, false, i, d)).filter(v => v >= 0);
+  const portal = (a, b) => portalPartner(portals, a) === b;
+  const rev = (a, b) => {
+    for (; a < b; a++, b--) {
+      [path[a], path[b]] = [path[b], path[a]];
+      pos[path[a]] = a;
+      pos[path[b]] = b;
+    }
+  };
+  // the cell to join: the end's portal partner when allowed (half the time), else a random one of
+  // `c`
+  const pick = (end, c, partner) => {
+    if (partner >= 0 && c.includes(partner) && rnd() < PORTAL_TAKE) return partner;
+    return c[(rnd() * c.length) | 0];
+  };
+  for (let it = 0; it < T * 24; it++) {
+    if (rnd() < 0.5) {
+      // tail joins v: the edge v - next(v) leaves the path
+      const tail = path[T - 1];
+      const partner = portalPartner(portals, tail);
+      const c = nbrs(tail).concat(partner >= 0 ? [partner] : [])
+        .filter(v => pos[v] < T - 2 && !portal(v, path[pos[v] + 1]));
+      if (c.length) rev(pos[pick(tail, c, partner)] + 1, T - 1);
+    } else {
+      // head joins v: the edge prev(v) - v leaves the path
+      const head = path[0];
+      const partner = portalPartner(portals, head);
+      const c = nbrs(head).concat(partner >= 0 ? [partner] : [])
+        .filter(v => pos[v] > 1 && !portal(v, path[pos[v] - 1]));
+      if (c.length) rev(0, pos[pick(head, c, partner)] - 1);
+    }
+  }
+  return path;
 }

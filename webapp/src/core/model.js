@@ -12,7 +12,13 @@
 // A puzzle of the "Loop" variant has `loop: true`: the path closes into a ring, so its last cell
 // touches cell 1 (through an open edge) and the numbers 1..K are met in cyclic order; K need not
 // be the last cell. solve() then runs solver/solve-loop.js (a standard search per possible last cell).
+// A puzzle of the "Teleport pairs" variant has `portals: [[a, b], ...]`: pairs of linked cells; a
+// step
+// from one cell of a pair to the other counts as a move (no wall ever stands on it, see
+// core/geom.js
+// and the solver's buildNeighbors()). Everything else is a standard puzzle.
 import { arrowProblem } from './edges.js';
+import { gridDist } from './geom.js';
 
 export const ALGO_VERSION = 6; // bump when generator/solver output changes for a given seed. v2: solver propagation + scaled node caps in generate() (fewer walls, faster). v3: K ~ Normal peaked at 30% of range. v4: candidates seeded with 40% random walls; best of several minimized candidates (CANDIDATES). v5: solver propagation also drops cycle-closing edges (fewer nodes, so node-capped generation of the larger sizes changes). v6: wall minimizing tests each removal by searching only for solutions through the freed edge (fewer node-cap hits, fewer walls); the winning candidate also gets a deeper second look at the walls kept only because a check hit its node cap (refineWalls; fewer walls again, same ALGO_VERSION by choice, golden puzzles regenerated)
 
@@ -26,6 +32,7 @@ export const clonePuzzle = p => ({
   ...(p.exact ? { exact: true } : {}),
   ...(p.wrap ? { wrap: true } : {}),
   ...(p.loop ? { loop: true } : {}),
+  ...(p.portals ? { portals: p.portals.map(pair => pair.slice()) } : {}),
 });
 // Cells the path has to cover: all n*n, minus the holes. A puzzle may carry `holes` (Uint8Array(n*n), 1 = hole): cells that are
 // not part of the board (no edges, no checkpoint, not drawn, not counted). Only the Cutout variant (gen/cutout.js) has them.
@@ -148,6 +155,57 @@ function loopProblem(p, count) {
   return null;
 }
 
+// A Teleport puzzle: pairs of two different cells on the board, no cell in two pairs, no pair of
+// cells that are neighbours already (that would be a second edge between them), no portal on a
+// numbered cell (a badge and a portal icon in one cell are unreadable), and none of the other
+// variants' extras (yet).
+export function portalProblem(p) {
+  const { n, portals } = p;
+  if (!Array.isArray(portals) || !portals.length) {
+    return 'Invalid: a Teleport puzzle needs at least one pair of portals.';
+  }
+  if (p.holes || p.arrows || p.exact || p.wrap || p.loop) {
+    return 'Invalid: a Teleport puzzle cannot have holes, arrows, exact numbers, wrap-around or '
+      + 'a loop (yet).';
+  }
+  const used = new Set();
+  for (const pair of portals) {
+    if (!Array.isArray(pair) || pair.length !== 2) return 'Invalid: a portal pair has two cells.';
+    const [a, b] = pair;
+    for (const cell of pair) {
+      if (!Number.isInteger(cell) || cell < 0 || cell >= n * n) {
+        return 'Invalid: a portal lies outside the board.';
+      }
+      if (used.has(cell)) return 'Invalid: a cell cannot be in two portal pairs.';
+      used.add(cell);
+      if (p.cp[cell]) return 'Invalid: a portal cannot sit on a checkpoint.';
+    }
+    if (a === b) return 'Invalid: a portal pair needs two different cells.';
+    if (gridDist(n, false, a, b) === 1) {
+      return 'Invalid: the two cells of a portal pair are neighbours already.';
+    }
+  }
+  return null;
+}
+
+// Why the cells a and b cannot be a new portal pair of p (null = they can): the design app checks
+// a click with it.
+// Same rules as portalProblem, for one more pair.
+export function portalPairProblem(p, a, b) {
+  const { n } = p;
+  if (a === b) return 'A portal pair needs two different cells.';
+  if (gridDist(n, false, a, b) === 1) {
+    return 'Those two cells are neighbours already: a portal between them would be a second edge.';
+  }
+  for (const cell of [a, b]) {
+    if (p.cp[cell]) return 'A portal cannot sit on a checkpoint.';
+    if ((p.portals || []).some(pair => pair.includes(cell))) {
+      return 'That cell already has a portal.';
+    }
+  }
+  return null;
+}
+
 export function validate(p) {
   const nums = [];
   for (const v of p.cp) if (v) nums.push(v);
@@ -162,6 +220,10 @@ export function validate(p) {
   }
   if (p.loop) {
     const problem = loopProblem(p, nums.length);
+    if (problem) return { ok: false, msg: problem };
+  }
+  if (p.portals) {
+    const problem = portalProblem(p);
     if (problem) return { ok: false, msg: problem };
   }
   if (p.exact) return validateExact(p, nums);
