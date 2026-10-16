@@ -524,6 +524,14 @@ export function sharedGamesTests(t, ta, ok, eq) {
     },
   );
 
+  ta('shared-games: past the cap the oldest games are dropped', async () => {
+    const st = fakeStorage(), games = PUZZLES().slice(0, 3).map(([variant, puzzle]) => recordOf(variant, puzzle, { grade: variant ? null : 2 }));
+    let clock = 1; const g = createSharedGames(st, () => clock++, 2); await g.init();
+    const keys = []; for (const rec of games) keys.push((await g.add(rec)).key);
+    eq(g.list().map(e => e.key), keys.slice(1), 'the first game was the oldest');
+    const again = createSharedGames(st, () => clock++, 2); await again.init(); eq(again.list().map(e => e.key), keys.slice(1), 'and it is gone from the store');
+  });
+
   ta('shared-games: two instances taking turns lose nothing; prune drops entries', async () => {
     const st = fakeStorage(),
       games = PUZZLES().map(([variant, puzzle]) =>

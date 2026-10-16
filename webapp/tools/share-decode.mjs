@@ -6,8 +6,21 @@
 import { decodeShare, encodeShare } from '../src/core/share-code.js';
 import { dateOfDay } from '../src/features/daily.js';
 import { stripText } from '../src/features/share.js';
+import { readFileSync } from 'node:fs';
 
 const [first, second] = process.argv.slice(2);
+
+// --encode accepts inline JSON or a path to a .json file
+function parseJsonArg(arg) {
+  let text = arg;
+  try {
+    text = readFileSync(arg, 'utf8');
+  } catch (e) {
+    if (e.code !== 'ENOENT' && e.code !== 'EISDIR') throw e;   // real IO problem
+    // not a path — assume it's inline JSON
+  }
+  return JSON.parse(text);
+}
 
 function codeOf(arg) {
   const query = arg.includes('?') ? arg.slice(arg.indexOf('?')) : arg;
@@ -25,14 +38,14 @@ const typed = rec => {
 };
 
 if (first === '--encode') {
-  const code = encodeShare(typed(JSON.parse(second)));
+  const code = encodeShare(typed(parseJsonArg(second)));
   if (!code) {
     console.error('record out of range');
     process.exit(1);
   }
   console.log(code);
 } else if (!first) {
-  console.error('usage: share-decode.mjs <code | link>   |   --encode \'<json>\'');
+  console.error("usage: share-decode.mjs <code | link>   |   --encode '<json>' | <file.json>");
   process.exit(2);
 } else {
   const rec = decodeShare(codeOf(first));

@@ -7,12 +7,10 @@
 // ONE log, shared by both apps (same storage key) — a puzzle rated in the play app while playing
 // and a puzzle rated in the design app while editing land in the same place, so the running
 // correlation and the export always reflect everything rated anywhere, not just one app's session.
-import { pickStorage } from '../platform/storage.js';
+import { loadRatings, saveRatings } from './log-store.js';
 import { serialize } from './format.js';
 import { metricsFor, refNodeCap } from './difficulty.js';
 import { spatialMetrics } from './spatial.js';
-
-const LOG_KEY = 'zip-difficulty-rating-log-v1';
 
 // All metrics captured per entry — this is the single source of truth for both apps' displays and
 // for the export/import format, so they can't silently drift out of sync with each other.
@@ -36,16 +34,7 @@ export function computeMetrics(puzzle, nodeCap = refNodeCap(puzzle.n)) {
   return Object.fromEntries(METRIC_DEFS.map(([id, get]) => [id, get(d)]));
 }
 
-async function loadLog() {
-  const storage = await pickStorage();
-  const rec = await storage.get(LOG_KEY);
-  if (!rec) return [];
-  try { const arr = JSON.parse(rec.value); return Array.isArray(arr) ? arr : []; } catch { return []; }
-}
-async function saveLog(entries) {
-  const storage = await pickStorage();
-  await storage.set(LOG_KEY, JSON.stringify(entries));
-}
+const loadLog = loadRatings, saveLog = saveRatings; // core/log-store.js: the compact v2 format
 
 // Adds/updates one rated entry. `source` is just a label ('play'|'design') so an exported log shows
 // where each rating came from — it doesn't affect logging logic. Re-rating the same puzzle (by its

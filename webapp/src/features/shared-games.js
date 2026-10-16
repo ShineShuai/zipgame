@@ -7,8 +7,11 @@ import { mergeShared } from './share.js';
 // Kept per device, under SHARED_GAMES_KEY: { v, items: [{ c: share code, a: added at, ms }] }. The
 // code is the record in its own checked format (core/share-code.js), so an entry needs no schema of
 // its own and a damaged one is simply dropped.
+// At most SHARED_MAX games are kept: past it the oldest go (a received game costs ~50 bytes, so the cap only matters for a device that
+// collects thousands of links).
 export const SHARED_GAMES_KEY = 'zip_shared_games',
-  VERSION = 1;
+  VERSION = 1,
+  SHARED_MAX = 200;
 
 // A stored record -> entries [{ key, rec, added }], newest last; invalid items are dropped and
 // duplicates collapse as they do in mergeShared.
@@ -33,7 +36,7 @@ export const serialize = entries =>
   });
 
 // storage: { get(key) -> { value } | null, set(key, value) } (platform/storage.js).
-export function createSharedGames(storage, now = Date.now) {
+export function createSharedGames(storage, now = Date.now, max = SHARED_MAX) {
   let entries = [];
   // Every change reads the stored list first, so two tabs do not overwrite each other's games.
   const load = async () => {
@@ -69,7 +72,7 @@ export function createSharedGames(storage, now = Date.now) {
       change(async () => {
         const merged = mergeShared(entries, rec, now());
         if (merged.outcome === 'added' || merged.outcome === 'replaced') {
-          entries = merged.entries;
+          entries = merged.entries.slice(-max);
           await save();
         }
         return { key: merged.key, outcome: merged.outcome };
