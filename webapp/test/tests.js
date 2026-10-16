@@ -81,6 +81,7 @@ import { loopOpenTests } from './loop-open.js';
 import { loopTests } from './loop.js';
 import { loopGenTests } from './loop-gen.js';
 import { loopPlayTests } from './play-loop.js';
+import { surfaceTests } from './surface.js';
 
 // ---- mini harness ----
 const out = []; let pass = 0, fail = 0;
@@ -3242,6 +3243,9 @@ wrapAllTests(t, ta, ok, eq);
 loopTests(t, ok, eq);
 loopGenTests(t, ok, eq);
 loopPlayTests(t, ta, ok, eq);
+
+// ---------- Surface (tetrahedron, cube) puzzles ----------
+surfaceTests(t, ok, eq);
 
 // ---------- behaviour rows (core/behaviour.js, platform/behaviour.js) ----------
 const BEH_TEXT = 'size 7\ncheckpoints 0,1=2 0,6=1 1,3=3 2,2=5 2,5=4 3,1=7 3,5=9 4,3=8 5,3=6\nwalls V,4,3 H,5,4';
