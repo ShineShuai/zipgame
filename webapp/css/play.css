@@ -395,6 +395,12 @@ select:focus { border-color: var(--blue); }
 .vi-arrow { fill: #26324f; stroke: #fff; stroke-width: 0.8; stroke-linejoin: round; paint-order: stroke; }
 .vi-badge { fill: #fff; stroke: var(--blue); stroke-width: 1; } /* the Exact icon's step numbers */
 .vi-num { fill: var(--blue); font: 700 4.6px system-ui, sans-serif; text-anchor: middle; }
+/* the Teleport icon: portals are rings with a core, the jump between them is dotted */
+.vi-portal { fill: #fff; stroke: #8b5cf6; stroke-width: 1.3; }
+.vi-portal-core { fill: #8b5cf6; stroke: none; }
+.vi-jump {
+  fill: none; stroke: #ffb020; stroke-width: 1.7; stroke-linecap: round; stroke-dasharray: 0.1 3;
+}
 .vi-q { fill: none; stroke: #ffb020; stroke-width: 3.2; stroke-linecap: round; } /* the lucky game's question mark */
 .vi-qdot { fill: #ffb020; }
 .vi-halo { stroke: #fff; stroke-width: 6.4; fill: #fff; }

@@ -181,6 +181,9 @@ export function transformPuzzle(p, k, reverse) { // k = 0..7: (k & 3) quarter-tu
   };
   for (let i = 0; i < n * n; i++) if (p.cp[i]) q.cp[map(i)] = reverse ? K + 1 - p.cp[i] : p.cp[i];
   for (const e of wallIds(p)) { const [a, b] = edgeCells(n, e); setWallId(q.walls, edgeId(n, map(a), map(b)), true); }
+  // Teleport pairs travel with the board (without them, puzzles that differ only by their portals
+  // would look alike)
+  if (p.portals) q.portals = p.portals.map(([a, b]) => [map(a), map(b)]);
   return q;
 }
 // Smallest key over the 16 variants: equal for puzzles that are the same up to the symmetries above.

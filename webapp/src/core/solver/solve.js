@@ -6,7 +6,7 @@ import { makePropagator } from './propagate.js';
 import { makeIncremental } from './incremental.js';
 import { solveDirected } from './solve-dir.js';
 import { solveLoop } from './solve-loop.js';
-import { distFn, bipartite } from '../geom.js';
+import { distFn, bipartite, graphDistances, portalsBipartite } from '../geom.js';
 
 // Hamiltonian-path search: start at checkpoint 1, hit the checkpoints in order, end on the last one,
 // and cover every cell exactly once.
@@ -14,6 +14,16 @@ import { distFn, bipartite } from '../geom.js';
 // A wrap-around puzzle (p.wrap, core/geom.js) is searched on the torus: the neighbours come from
 // buildNeighbors(), the distance bounds from geom.js (the shorter way round), and the parity rule
 // only on an even board (on an odd torus the cycles have odd length).
+//
+// A Teleport puzzle (p.portals, model.js: pairs of linked cells) is searched on the grid plus the
+// portal
+// edges: the neighbour table has the two extra slots of buildNeighbors() (W = 6 slots per cell),
+// the distance
+// bounds come from a breadth-first table over that graph (the Manhattan distance is no lower bound
+// once a portal
+// shortens a route), the parity rule runs only when every pair joins cells of different
+// checkerboard colour (the
+// graph is then still bipartite), and the local-connectivity shortcut (lconn) is off.
 //
 // A Loop puzzle (p.loop, model.js: the path closes into a ring) is searched by solve-loop.js: this
 // search once per possible last cell.
@@ -73,6 +83,10 @@ export function solve(p, opts = {}) {
   if (p.loop && (p.arrows || p.exact || p.wrap)) {
     throw new Error('solve: a loop puzzle cannot have arrows, Exact numbers or wrap-around (yet)');
   }
+  if (p.portals && (p.arrows || p.exact || p.wrap || p.loop || p.holes)) {
+    throw new Error('solve: a Teleport puzzle cannot have holes, arrows, Exact numbers, '
+      + 'wrap-around or a loop (yet)');
+  }
   if (p.arrows) return solveDirected(p, opts);
   if (p.loop) return solveLoop(p, opts, (q, o) => searchPaths(q, o, null));
   if (!p.exact) return searchPaths(p, opts, null);
@@ -111,7 +125,8 @@ function searchPaths(p, opts, steps) {
 
   // ---------- static geometry ----------
 
-  const { nb, row, col } = buildNeighbors(p);
+  // W = direction slots per cell: 4, or 6 with a portal
+  const { nb, row, col, W } = buildNeighbors(p);
 
   // pos[k] = cell that holds checkpoint k.
   const pos = new Int32Array(K + 1).fill(-1);
@@ -126,8 +141,8 @@ function searchPaths(p, opts, steps) {
     out[offset + source] = 0;
     for (let head = 0; head < queue.length; head++) {
       const u = queue[head];
-      for (let d = 0; d < 4; d++) {
-        const v = nb[u * 4 + d];
+      for (let d = 0; d < W; d++) {
+        const v = nb[u * W + d];
         if (v >= 0 && out[offset + v] < 0) {
           out[offset + v] = out[offset + u] + 1;
           queue.push(v);
@@ -139,8 +154,8 @@ function searchPaths(p, opts, steps) {
   // ---------- search state ----------
 
   const vis = new Uint8Array(T);        // 1 = cell is on the current path
-  const cand = new Int32Array(T * 4);   // per-depth candidate moves
-  const cdeg = new Int32Array(T * 4);   // onward degree of each candidate (for ordering)
+  const cand = new Int32Array(T * W);   // per-depth candidate moves
+  const cdeg = new Int32Array(T * W);   // onward degree of each candidate (for ordering)
   const pathBuf = new Int32Array(T);    // current path
   const paths = opts.capture ? [] : null;
   let nodes = 0;
@@ -182,9 +197,13 @@ function searchPaths(p, opts, steps) {
   // checks. See the callsite comment for why parity is additive across concatenated legs.
   // metric: the board distance (geom.js): Manhattan on the grid, the shorter way round
   // on a wrap-around board.
-  const metric = distFn(n, !!p.wrap, row, col);
-  // Parity needs a bipartite board (geom.js): a wrap-around board with odd n is skipped.
-  const PARITY = !!opts.parity && bipartite(n, !!p.wrap);
+  // Teleport board: the breadth-first distance over grid and portal edges (walls ignored) instead.
+  const portalDist = p.portals ? graphDistances(n, false, p.portals) : null;
+  const metric = portalDist ? (a, b) => portalDist[a * T + b] : distFn(n, !!p.wrap, row, col);
+  // Parity needs a bipartite board (geom.js): a wrap-around board with odd n is skipped, and so is
+  // a
+  // Teleport board with a portal between two cells of one checkerboard colour.
+  const PARITY = !!opts.parity && bipartite(n, !!p.wrap) && portalsBipartite(n, p.portals);
   let sufParity = null;
   if (PARITY) {
     sufParity = new Int32Array(K + 2);
@@ -211,7 +230,8 @@ function searchPaths(p, opts, steps) {
   // would recompute that same fixpoint (the forced edge head -> child was already part of it; only the head's
   // role moves one cell on), so the child reuses it and just drops the edge back to where it came from.
   const FAST = ONESHOT && opts.fast !== false;
-  const ONE_BIT = [0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]; // 1 when the 4-bit mask has exactly one bit
+  // 1 when the mask has exactly one bit
+  const ONE_BIT = Array.from({ length: 64 }, (_, mask) => (mask && !(mask & (mask - 1)) ? 1 : 0));
   const inc = INC ? makeIncremental(nb, T, end, vis, holes, TC) : null;
   const prop = ONESHOT ? makePropagator(nb, T, end, vis, TC) : null;
   const av = INC ? inc.S : ONESHOT ? prop.av : null; // av[cell]: the head's possible moves (bit d = direction d)
@@ -230,8 +250,8 @@ function searchPaths(p, opts, steps) {
   function enter(c) {
     vis[c] = 1;
     if (!ONESHOT) return;
-    for (let d = 0; d < 4; d++) {
-      const w = nb[c * 4 + d];
+    for (let d = 0; d < W; d++) {
+      const w = nb[c * W + d];
       if (w >= 0) vm[w] |= 1 << (d ^ 1);
     }
     // swap c to the end of the unvisited list, then shrink it
@@ -248,8 +268,8 @@ function searchPaths(p, opts, steps) {
     vis[c] = 0;
     if (!ONESHOT) return;
     un++;
-    for (let d = 0; d < 4; d++) {
-      const w = nb[c * 4 + d];
+    for (let d = 0; d < W; d++) {
+      const w = nb[c * W + d];
       if (w >= 0) vm[w] &= ~(1 << (d ^ 1));
     }
   }
@@ -281,7 +301,8 @@ function searchPaths(p, opts, steps) {
   // through the 8-cell ring, that is certain, so no flood fill is needed. When the ring cannot prove it
   // (the neighbours may still be linked further away) this returns false and the caller runs connOk() as
   // before, so the verdict is always exactly connOk's.
-  const LCONN = opts.lconn !== false;
+  // the 8-cell ring knows only the four grid neighbours of a cell, so it is off with a portal
+  const LCONN = opts.lconn !== false && !p.portals;
   let ringCell = null;  // ringCell[c * 8 + r]: the r-th cell around c (NW N NE E SE S SW W), -1 off the grid
   let ringLink = null;  // 1 when ring slots r and r+1 of c are grid-adjacent with no wall between them
   let cardOpen = null;  // 1 when ring slot r (a cardinal one: N E S W) is joined to c by an open edge
@@ -301,13 +322,13 @@ function searchPaths(p, opts, steps) {
           cc = (cc + n) % n;
         }
         if (rr >= 0 && rr < n && cc >= 0 && cc < n) ringCell[c * 8 + r] = rr * n + cc;
-        if (RING_DIR[r] >= 0 && nb[c * 4 + RING_DIR[r]] >= 0) cardOpen[c * 8 + r] = 1;
+        if (RING_DIR[r] >= 0 && nb[c * W + RING_DIR[r]] >= 0) cardOpen[c * 8 + r] = 1;
       }
       for (let r = 0; r < 8; r++) {
         const a = ringCell[c * 8 + r];
         const b = ringCell[c * 8 + ((r + 1) & 7)];
         if (a < 0 || b < 0) continue;
-        for (let d = 0; d < 4; d++) if (nb[a * 4 + d] === b) ringLink[c * 8 + r] = 1;
+        for (let d = 0; d < W; d++) if (nb[a * W + d] === b) ringLink[c * 8 + r] = 1;
       }
     }
   }
@@ -361,8 +382,8 @@ function searchPaths(p, opts, steps) {
     bStamp++;
     let first = -1;
     let left = 0;
-    for (let d = 0; d < 4; d++) {
-      const w = nb[c * 4 + d];
+    for (let d = 0; d < W; d++) {
+      const w = nb[c * W + d];
       if (w < 0 || (vis[w] && w !== v)) continue;
       if (first < 0) first = w;
       else { bTarget[w] = bStamp; left++; }
@@ -373,8 +394,8 @@ function searchPaths(p, opts, steps) {
     bSeen[first] = bStamp;
     while (sp > 0) {
       const u = bStack[--sp];
-      for (let d = 0; d < 4; d++) {
-        const x = nb[u * 4 + d];
+      for (let d = 0; d < W; d++) {
+        const x = nb[u * W + d];
         if (x < 0 || (vis[x] && x !== v) || bSeen[x] === bStamp) continue;
         bSeen[x] = bStamp;
         if (bTarget[x] === bStamp && --left === 0) return true;
@@ -423,7 +444,7 @@ function searchPaths(p, opts, steps) {
     if (skip) {
       // the fixpoint was computed with the previous cell as head: that edge is behind us now
       const from = pathBuf[depth - 1];
-      for (let d = 0; d < 4; d++) if (nb[cell * 4 + d] === from) av[cell] &= ~(1 << d);
+      for (let d = 0; d < W; d++) if (nb[cell * W + d] === from) av[cell] &= ~(1 << d);
     }
     let feasible = noDeadEnd(cell)
       && (LCONN && depth > 0 ? localConn(prev, cell) || neighboursConnected(prev, cell) : connOk(cell, remaining))
@@ -458,10 +479,10 @@ function searchPaths(p, opts, steps) {
     }
 
     // Candidate moves, most constrained first (stable insertion sort by onward degree).
-    const base = depth * 4;
+    const base = depth * W;
     let count2 = 0;
-    for (let d = 0; d < 4; d++) {
-      const v = nb[cell * 4 + d];
+    for (let d = 0; d < W; d++) {
+      const v = nb[cell * W + d];
       if (v < 0 || vis[v]) continue;
       if (forced && depth < prefix && v !== forced[depth + 1]) continue;
       if (PROP && !((av[cell] >> d) & 1)) continue;
@@ -502,8 +523,8 @@ function searchPaths(p, opts, steps) {
       }
 
       let degree = 0;
-      for (let e = 0; e < 4; e++) {
-        const w = nb[v * 4 + e];
+      for (let e = 0; e < W; e++) {
+        const w = nb[v * W + e];
         if (w >= 0 && !vis[w]) degree++;
       }
       let slot = count2++;

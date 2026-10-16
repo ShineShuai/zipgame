@@ -15,9 +15,12 @@ import { legsUndo, makeShareRecord, shareStatus, isPlayable, isSpent, shareText,
 import { createSharedGames } from '../../features/shared-games.js';
 import { REPLAY_DAYS } from '../../core/hist.js';
 import { maxHints, computeHint, solutionOf, penalizedTime, HINT_PENALTY_S } from '../../features/hints.js';
-import { cellAtPoint, pathD, WRAP_PAD } from '../../view/geometry.js';
+import { cellAtPoint, WRAP_PAD } from '../../view/geometry.js';
 import { bindModal, copyText } from '../../ui/modal.js';
-import { boardSvg, CELL, badgeColors, stepWrong, seamMarksSvg, routeCells, loopOpen, loopOpenMarks } from './board.js';
+import {
+  boardSvg, CELL, badgeColors, stepWrong, seamMarksSvg, routeCells, routeD, jumpMarksSvg, loopOpen,
+  loopOpenMarks,
+} from './board.js';
 import { variantIcon, cardIcon } from './icons.js';
 import { PLAY_VARIANTS, variantById, variantOf, sizesFor, nearestSize, luckyDefs } from './variants.js';
 import { createUnlock } from '../../features/unlock.js';
@@ -457,7 +460,8 @@ function difficultyBadgeHtml() {
 // badge), B and crossPerSeg, each bucketed with its own calibration — and the raw numbers behind them.
 // Hidden by default; same hold-to-reveal pattern as seedTag.
 function difficultyDevHtml() {
-  const d = S.difficulty, tm = d && d.trap, g = d && d.legacy, reduced = ['arrows', 'exact', 'wrap', 'loop'].includes(S.variant);
+  const d = S.difficulty, tm = d && d.trap, g = d && d.legacy;
+  const reduced = ['arrows', 'exact', 'wrap', 'loop', 'teleport'].includes(S.variant);
   const trapPart = tm ? `trap ${tm.predicted.toFixed(2)} <span class="dev-raw">max ${tm.trapMax} · top3 ${tm.trapTop3}${reduced ? ' · max+top3 only, uncalibrated' : ` · alt ${tm.altFrac.toFixed(2)} · ladder trials ${tm.ladTrials}`}</span>` : '';
   const legacyPart = g
     ? `decisionNodes ${g.grades.decisionNodes}/5 · B ${g.grades.B}/5 · cross ${g.grades.crossPerSeg}/5 · <span class="dev-raw">decisionNodes ${g.raw.decisionNodes} · B ${g.raw.B.toFixed(2)} · cross/seg ${g.raw.crossPerSeg.toFixed(2)}</span>`
@@ -469,6 +473,10 @@ function difficultyDevHtml() {
 // Loop: the line under the board. It reminds of the rule, says so when every cell is visited but the ring is
 // not closed (the board also rings the two ends that should meet), and that the ring is closed once solved.
 const loopNoteKey = () => (S.finished ? 'game.loopClosed' : loopOpen(S.puzzle, S.path) ? 'game.loopOpen' : 'game.loopHint');
+// Teleport: the line under the board, the rule in one sentence (the way to jump is not something
+// to guess).
+const teleportNoteHtml = () => (S.puzzle.portals
+  ? `<p class="note teleport-note" id="teleportNote">${t('game.teleportHint')}</p>` : '');
 function loopNoteHtml() {
   if (!S.puzzle.loop) return '';
   const open = !S.finished && loopOpen(S.puzzle, S.path);
@@ -524,6 +532,7 @@ function renderGame() {
         ${S.lucky && !S.finished ? `<p class="note lucky-once">${t(S.luckyHolder ? 'lucky.onceChance' : 'lucky.onceFun')}</p>` : ''}
         <div class="grid-wrap" id="gridWrap">${boardSvg(S)}</div>
         ${loopNoteHtml()}
+        ${teleportNoteHtml()}
       </section>
       <div class="side">
         <section class="card">
@@ -649,10 +658,13 @@ function setupGridInput(svg) {
   let segment = highestCp(S.path);
   const seamEl = wrap ? svg.querySelector('[data-role="seam"]') : null;
   const loopEl = p.loop ? svg.querySelector('[data-role="loop-open"]') : null;
+  const jumpEl = p.portals ? svg.querySelector('[data-role="jump"]') : null;
   const setD = () => {
     const line = routeCells(p, S.path, S.finished); // a solved Loop puzzle is drawn closed
-    pathEl.setAttribute('d', line.length > 1 ? pathD(n, line, CELL, wrap) : '');
+    pathEl.setAttribute('d', line.length > 1 ? routeD(p, line) : '');
     if (seamEl) seamEl.innerHTML = seamMarksSvg(n, S.path);
+    // Teleport: the jumps, and the portal to tap next
+    if (jumpEl) jumpEl.innerHTML = jumpMarksSvg(p, S.path, S.finished);
     if (loopEl) { // Loop: the open ring's two ends, and the line under the board
       loopEl.innerHTML = loopOpenMarks(p, S.path);
       const note = $('loopNote');

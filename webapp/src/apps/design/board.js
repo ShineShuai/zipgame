@@ -1,6 +1,7 @@
 import { maxNumber, checkpointCells, cellCount } from '../../core/model.js';
 import { hasWallId } from '../../core/edges.js';
-import { neighbourCell } from '../../core/geom.js';
+import { neighbourCell, isPortalPair, portalPartner } from '../../core/geom.js';
+import { portalIcon, portalColor, portalShape } from '../../view/portal-icons.js';
 import {
   polyPoints, wallSegments, cellCenter, arrowSegment, arrowMarks, pathD, seamMarks, chordSegments,
   WRAP_PAD,
@@ -23,6 +24,61 @@ const poly = (pts, stroke, w, attrs = {}, tag = 'polyline') => {
 const route = (n, cells, wrap, stroke, w, attrs = {}) => (wrap
   ? poly(pathD(n, cells, 1, true), stroke, w, attrs, 'path')
   : poly(polyPoints(n, cells), stroke, w, attrs));
+// A route through cells of a Teleport puzzle: the line is broken at every jump over a portal pair
+// (it would cross
+// cells the route does not visit), and the jump is a dotted arc from one portal to the other. d:
+// the broken line.
+export const portalD = (n, cells, portals) => cells.map((cell, k) => {
+  const [x, y] = cellCenter(n, cell, 1);
+  const jump = k > 0 && isPortalPair(portals, cells[k - 1], cell);
+  return (k && !jump ? 'L' : 'M') + +x.toFixed(3) + ' ' + +y.toFixed(3);
+}).join(' ');
+// The dotted arcs of the jumps of `cells` as svg elements, in cell units.
+function jumpArcs(n, cells, portals, stroke, width, opacity = 0.95) {
+  const arcs = [];
+  const round = v => +v.toFixed(3);
+  for (let k = 1; k < cells.length; k++) {
+    if (!isPortalPair(portals, cells[k - 1], cells[k])) continue;
+    const [x1, y1] = cellCenter(n, cells[k - 1], 1);
+    const [x2, y2] = cellCenter(n, cells[k], 1);
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.hypot(dx, dy) || 1;
+    const bend = Math.min(1.2, len * 0.22);
+    const cx = (x1 + x2) / 2 - (dy / len) * bend;
+    const cy = (y1 + y2) / 2 + (dx / len) * bend;
+    const curve = `M${x1} ${y1} Q${round(cx)} ${round(cy)} ${x2} ${y2}`;
+    const dots = { 'stroke-dasharray': '0.03 0.17', opacity };
+    arcs.push(poly(curve, stroke, width * 0.5, dots, 'path'));
+    // the arrowhead, a little before the end of the arc
+    const ex = x2 - cx;
+    const ey = y2 - cy;
+    const el = Math.hypot(ex, ey) || 1;
+    const ux = ex / el;
+    const uy = ey / el;
+    const tx = x2 - ux * 0.3;
+    const ty = y2 - uy * 0.3;
+    const back = 0.17;
+    const half = 0.12;
+    const corners = [
+      [tx, ty],
+      [tx - ux * back - uy * half, ty - uy * back + ux * half],
+      [tx - ux * back + uy * half, ty - uy * back - ux * half],
+    ];
+    const points = corners.map(q => q.map(round).join(',')).join(' ');
+    const tri = document.createElementNS(NS, 'polygon');
+    for (const [a, v] of Object.entries({ points, fill: stroke, opacity })) tri.setAttribute(a, v);
+    arcs.push(tri);
+  }
+  return arcs;
+}
+// route() for a Teleport puzzle: a group with the broken line and the arcs.
+function portalRoute(n, cells, portals, stroke, w, attrs = {}) {
+  const g = document.createElementNS(NS, 'g');
+  g.appendChild(poly(portalD(n, cells, portals), stroke, w, attrs, 'path'));
+  jumpArcs(n, cells, portals, stroke, w, attrs.opacity ?? 0.95).forEach(e => g.appendChild(e));
+  return g;
+}
 // A Loop puzzle's route closes: from its last cell back to cell 1 (the ring). Other puzzles: as it is.
 const ringCells = (p, cells) => (p.loop && cells.length > 2 ? [...cells, cells[0]] : cells);
 // The in / out arrowheads of the seam steps of a wrap-around route (geometry.js seamMarks), in cell units.
@@ -77,19 +133,54 @@ export function renderBoard(board, stage, V) {
 
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('class', 'pathlayer'); svg.setAttribute('viewBox', `${-pad} ${-pad} ${n + 2 * pad} ${n + 2 * pad}`); svg.style.width = svg.style.height = total + 'px';
+  if (P.portals) {
+    // the portals, under the lines; a pair has its own colour and shape (view/portal-icons.js)
+    P.portals.forEach((pair, index) => pair.forEach(cell => {
+      const g = document.createElementNS(NS, 'g');
+      const [cx, cy] = cellCenter(n, cell, 1);
+      g.setAttribute('class', 'portal');
+      g.setAttribute('data-portal-cell', cell);
+      g.innerHTML = portalIcon(portalShape(index), portalColor(index), cx, cy, 1);
+      svg.appendChild(g);
+    }));
+    if (V.pending >= 0 && !V.playMode) {
+      // the first cell of a pair being placed: waiting for its partner
+      const ring = document.createElementNS(NS, 'circle');
+      const [cx, cy] = cellCenter(n, V.pending, 1);
+      const look = {
+        cx, cy, r: 0.4, fill: 'none', stroke: portalColor(P.portals.length),
+        'stroke-width': 0.07, 'stroke-dasharray': '0.18 0.12',
+      };
+      for (const [k, v] of Object.entries(look)) ring.setAttribute(k, v);
+      svg.appendChild(ring);
+    }
+  }
   if (V.preview && V.previewVisible && !V.playMode) {
-    svg.appendChild(route(n, ringCells(P, V.preview), wrap, TPL_C, 0.2, { 'stroke-dasharray': '0.28 0.22', opacity: 0.65 }));
+    const dashed = { 'stroke-dasharray': '0.28 0.22', opacity: 0.65 };
+    svg.appendChild(P.portals ? portalRoute(n, V.preview, P.portals, TPL_C, 0.2, dashed)
+      : route(n, ringCells(P, V.preview), wrap, TPL_C, 0.2, dashed));
     if (wrap) seamMarkEls(n, V.preview, TPL_C, 0.65).forEach(m => svg.appendChild(m));
   }
   V.solutions.forEach((sol, i) => {
     if (!V.solVisible[i]) return;
-    svg.appendChild(route(n, ringCells(P, sol), wrap, SOL_C[i], 0.24, { opacity: 0.92, ...(i === 1 ? { 'stroke-dasharray': '0.34 0.24' } : {}) }));
+    const look = { opacity: 0.92, ...(i === 1 ? { 'stroke-dasharray': '0.34 0.24' } : {}) };
+    svg.appendChild(P.portals ? portalRoute(n, sol, P.portals, SOL_C[i], 0.24, look)
+      : route(n, ringCells(P, sol), wrap, SOL_C[i], 0.24, look));
     if (wrap) seamMarkEls(n, sol, SOL_C[i], 0.92).forEach(m => svg.appendChild(m));
   });
   const refs = {};
   if (V.playMode) {
-    refs.line = route(n, [], wrap, PLAY_C, 0.3, { opacity: 0.95 }); svg.appendChild(refs.line);
-    for (const [k, cls] of [['graphLayer', 'graphlayer'], ['propLayer', 'proplayer'], ['legLayer', 'leglayer'], ['seamLayer', 'seamlayer']]) {
+    // a Teleport route is a path, broken at the jumps (portalD), with the arcs of the jumps in a
+    // layer of their own
+    const lookPlay = { opacity: 0.95 };
+    refs.line = P.portals ? poly('', PLAY_C, 0.3, lookPlay, 'path')
+      : route(n, [], wrap, PLAY_C, 0.3, lookPlay);
+    svg.appendChild(refs.line);
+    const layers = [
+      ['graphLayer', 'graphlayer'], ['propLayer', 'proplayer'], ['legLayer', 'leglayer'],
+      ['seamLayer', 'seamlayer'], ['jumpLayer', 'jumplayer'],
+    ];
+    for (const [k, cls] of layers) {
       refs[k] = document.createElementNS(NS, 'g'); refs[k].setAttribute('class', cls); svg.appendChild(refs[k]);
     }
     refs.head = document.createElementNS(NS, 'circle');
@@ -141,7 +232,14 @@ export function paintPlay(refs, n, path, P, showConn, showDead, showProp, showLe
   if (!refs.line) return out;
   const done = path.length === cellCount(P), wrap = !!P.wrap;
   const drawn = done ? ringCells(P, path) : path; // a solved Loop puzzle is drawn closed
-  if (wrap) refs.line.setAttribute('d', drawn.length > 1 ? pathD(n, drawn, 1, true) : '');
+  if (P.portals) {
+    refs.line.setAttribute('d', drawn.length > 1 ? portalD(n, drawn, P.portals) : '');
+    if (refs.jumpLayer) {
+      refs.jumpLayer.innerHTML = '';
+      const arcs = jumpArcs(n, drawn, P.portals, done ? '#3ddc97' : PLAY_C);
+      arcs.forEach(e => refs.jumpLayer.appendChild(e));
+    }
+  } else if (wrap) refs.line.setAttribute('d', drawn.length > 1 ? pathD(n, drawn, 1, true) : '');
   else refs.line.setAttribute('points', polyPoints(n, drawn));
   refs.line.style.display = path.length > 1 ? '' : 'none';
   if (refs.seamLayer) {
@@ -181,6 +279,11 @@ export function paintPlay(refs, n, path, P, showConn, showDead, showProp, showLe
       if (!mask) continue;
       // dir order R,L,D,U (see prune.js DR/DC) — only draw R and D to avoid double-drawing each
       // edge from both endpoints (its reverse direction on the neighbour is the same segment).
+      if (P.portals && (mask & 16)) { // a forced portal edge (slot 4 of the lower cell of its pair)
+        const [x1, y1] = cellCenter(n, i, 1);
+        const [x2, y2] = cellCenter(n, portalPartner(P.portals, i), 1);
+        refs.propLayer.appendChild(seg(x1, y1, x2, y2));
+      }
       for (const [bit, dir] of [[1, 0], [4, 2]]) {
         if (!(mask & bit)) continue;
         const next = neighbourCell(n, !!P.wrap, i, dir);
@@ -268,12 +371,18 @@ export function miniPreviewSvg(p, path, color) {
   }
   const look = `fill="none" stroke="${color}" stroke-width="0.09" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"`;
   let pathLine = '';
-  if (path && path.length > 1) {
+  const rings = (p.portals || []).map((pair, i) => pair.map(cell => {
+    const [cx, cy] = cellCenter(n, cell, 1);
+    return portalIcon(portalShape(i), portalColor(i), cx, cy, 1);
+  }).join('')).join('');
+  if (path && path.length > 1 && p.portals) {
+    pathLine = `<path d="${portalD(n, path, p.portals)}" ${look}/>`;
+  } else if (path && path.length > 1) {
     path = ringCells(p, path);
     pathLine = wrap ? `<path d="${pathD(n, path, 1, true)}" ${look}/>` : `<polyline points="${polyPoints(n, path)}" ${look}/>`;
   }
   return `<svg viewBox="${-PAD} ${-PAD} ${n + 2 * PAD} ${n + 2 * PAD}" class="mini-preview">
     <rect x="0" y="0" width="${n}" height="${n}" fill="none" stroke="#232a44" stroke-width="0.05"/>
-    ${pathLine}${lines}${marks}${dots.join('')}
+    ${rings}${pathLine}${lines}${marks}${dots.join('')}
   </svg>`;
 }
