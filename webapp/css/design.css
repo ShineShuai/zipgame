@@ -225,18 +225,16 @@ button.playbtn.on{background:linear-gradient(135deg,#b3344f,#e0526f);}
 
 /* ---- surface boards: the flat net of a tetrahedron or cube (src/apps/design/surface-board.js) ---- */
 .sf-svg{display:block;max-width:100%;height:auto;touch-action:none;user-select:none;-webkit-user-select:none;}
-.sf-cell{stroke:#2a3252;stroke-width:1;}
-.sf-f0{fill:#18213a;}
-.sf-f1{fill:#1f1d38;}
-.sf-f2{fill:#15262f;}
-.sf-f3{fill:#232130;}
-.sf-f4{fill:#172435;}
-.sf-f5{fill:#1d2133;}
+.sf-cell{stroke:#34406a;stroke-width:1;}
 .sf-board:not(.playmode) .sf-cell{cursor:pointer;}
 .sf-board:not(.playmode) .sf-cell:hover{filter:brightness(1.5);}
+.sf-board.solid{cursor:grab;}
+.sf-board.solid.playmode{cursor:crosshair;}
+.sf-mini{position:absolute;top:8px;right:8px;width:230px;background:rgba(13,17,32,.85);border-radius:8px;box-shadow:0 0 0 1px #232a44;}
+.sf-mini,.sf-mini *{pointer-events:none;}
+.sf-mini .sf-svg{width:100%;height:auto;}
 .sf-board.wallmode:not(.playmode) .sf-cell{cursor:crosshair;}
 .sf-board.playmode{cursor:crosshair;}
-.sf-cell.visited{fill:#25336a;}
 .sf-sel{fill:none;stroke:#5b7cfa;stroke-width:3;pointer-events:none;}
 .sf-wall{stroke:#7d88c9;stroke-linecap:round;pointer-events:none;}
 .sf-cut{stroke:#c9a14a;stroke-width:1.5;stroke-dasharray:4 3;pointer-events:none;}
@@ -250,6 +248,8 @@ button.playbtn.on{background:linear-gradient(135deg,#b3344f,#e0526f);}
 .sf-badge.visited{opacity:.55;}
 .sf-badge text,.sf-tag text{text-anchor:middle;dominant-baseline:central;font-weight:700;fill:#e7e9f3;}
 .sf-badge.pending text{font-style:italic;fill:#a9bcff;}
+.sf-arrow{stroke:#0d1120;stroke-width:1;stroke-linejoin:round;pointer-events:none;}
+.sf-cross{fill:#ffd98a;font-weight:700;text-anchor:middle;dominant-baseline:central;pointer-events:none;}
 .sf-tag{pointer-events:none;}
 .sf-tag circle{fill:#2a2412;stroke:#c9a14a;stroke-width:1.5;}
 .sf-tag text{fill:#ffd98a;}

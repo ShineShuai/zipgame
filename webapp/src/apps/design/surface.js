@@ -17,6 +17,15 @@ import {
 import { solveSurface } from '../../core/surface/solve.js';
 import { defaultK, generateSurfaceWithin, minimizeSurfaceWalls } from '../../core/surface/gen.js';
 import { buildNet, pickSide, slotBetween } from '../../view/surface-net.js';
+import {
+  IDENTITY,
+  buildView,
+  cellDirection,
+  orbit,
+  overview,
+  turn,
+  turnToward,
+} from '../../view/proj.js';
 import { runAsync, measured } from '../../platform/run.js';
 import { setHintText } from '../../ui/hint-popover.js';
 import { surfaceSvg } from './surface-board.js';
@@ -28,11 +37,26 @@ const DEFAULT_SIZE = { tetra: 4, cube: 3 };
 // Puzzles Generate makes (new seeds in turn) while looking for one within Max walls.
 const GEN_TRIES = 20;
 const PLAY_STEP = { strictOrder: true };
+// The 3D view: pixels of a drag per radian, the pixels a click may move before it is a drag, the
+// radians of an arrow key, and follow-head: the share of the way the solid turns per animation
+// frame, and how near to the viewer (z of the direction of the head) it stops.
+const ORBIT_SPEED = 0.01;
+const ORBIT_SLOP = 6;
+const ARROW_TURN = {
+  ArrowLeft: [-0.15, 0],
+  ArrowRight: [0.15, 0],
+  ArrowUp: [0, -0.15],
+  ArrowDown: [0, 0.15],
+};
+const FOLLOW_SPEED = 0.25;
+const FOLLOW_DONE = 0.9995;
 
 const NUMBER_HINT = 'Click a cell then type a number (Enter to confirm · Esc to cancel). '
   + 'Delete or Backspace clears the cell. The numbers go 1, 2, 3... along the path.';
 const WALL_HINT = 'Click a cell near one of its sides to add or remove a wall there. A side on '
   + 'the border of the net is glued to the side with the same letter: its wall shows on both.';
+const ORBIT_HINT = ' Turn the solid: right-drag, two fingers, drag the background, or the arrow '
+  + 'keys. The small net shows the whole board.';
 const PLAY_HINT = 'Drag from checkpoint 1 through every cell, or tap the next cell. A side with '
   + 'a letter on the border continues at the same letter. Move back over the path to undo.';
 
@@ -96,6 +120,13 @@ export function createSurfaceController(ctx) {
   let seededSolved = false;
   let working = false;
   let over = -1; // the cell the pointer was over at the previous sample of a drag
+  let viewMode = 'net'; // 'net': the solid cut open, '3d': the solid itself
+  let rotation = IDENTITY; // the 3D view
+  let layout = null; // what is drawn now: the net, or the solid seen from `rotation`
+  const pointers = new Map(); // pointer id -> [clientX, clientY], the pointers that are down
+  let orbiting = null; // { start, last, active } while a drag turns the solid
+  let suppressClick = false;
+  let animation = null;
 
   const topology = () => surfaceTopology(P.surface, P.n);
 
@@ -169,8 +200,9 @@ export function createSurfaceController(ctx) {
   }
 
   function draw() {
-    const net = buildNet(topology());
-    const picture = surfaceSvg(net, {
+    const top = topology();
+    layout = viewMode === '3d' ? buildView(top, rotation) : buildNet(top);
+    const state = {
       P,
       selected,
       buffer,
@@ -179,12 +211,17 @@ export function createSurfaceController(ctx) {
       template: templateVisible ? template : null,
       solutions,
       visible,
-    });
+    };
+    const picture = surfaceSvg(layout, state);
     frame = picture.frame;
-    host.innerHTML = picture.markup;
+    // the 3D view has the whole board as a small net in a corner
+    const overall = surfaceSvg(buildNet(top), { ...state, selected: -1 }).markup;
+    const mini = viewMode === '3d' ? `<div class="sf-mini">${overall}</div>` : '';
+    host.innerHTML = picture.markup + mini;
     stage.style.setProperty('--board-size', `${frame.width}px`);
     host.classList.toggle('wallmode', tool === 'wall' && !playing);
     host.classList.toggle('playmode', playing);
+    host.classList.toggle('solid', viewMode === '3d');
     $('sfWallTag').textContent = wallCount(P) ? `(${wallCount(P)})` : '';
     paintValidity();
     if (playing) {
@@ -193,8 +230,51 @@ export function createSurfaceController(ctx) {
     ctx.renderTiming();
   }
 
+  function stopAnimation() {
+    if (animation !== null) {
+      cancelAnimationFrame(animation);
+      animation = null;
+    }
+  }
+
+  function setView(mode) {
+    viewMode = mode;
+    stopAnimation();
+    $('sfViewNet').classList.toggle('active', mode === 'net');
+    $('sfView3d').classList.toggle('active', mode === '3d');
+    updateHint();
+    draw();
+  }
+
+  // 3D view in play: when the head of the path or one of the cells it can step to is turned away,
+  // the solid turns (a few frames) to face the head, so the next cells are on the front.
+  function followHead() {
+    if (viewMode !== '3d' || !playing || !path.length || !$('sfFollow').checked) {
+      return;
+    }
+    const top = topology();
+    const head = path[path.length - 1];
+    let turnedAway = layout.hidden[head];
+    for (let k = 0; k < top.deg[head]; k++) {
+      const next = top.nb[head * SLOTS + k];
+      turnedAway = turnedAway || (layout.hidden[next] && !path.includes(next));
+    }
+    if (!turnedAway) {
+      return;
+    }
+    const direction = cellDirection(top, head);
+    stopAnimation();
+    const tick = () => {
+      rotation = turnToward(rotation, direction, FOLLOW_SPEED);
+      draw();
+      animation = turn(rotation, direction)[2] < FOLLOW_DONE ? requestAnimationFrame(tick) : null;
+    };
+    animation = requestAnimationFrame(tick);
+  }
+
   function updateHint() {
-    setHintText($('hint'), playing ? PLAY_HINT : tool === 'wall' ? WALL_HINT : NUMBER_HINT);
+    const base = playing ? PLAY_HINT : tool === 'wall' ? WALL_HINT : NUMBER_HINT;
+    setHintText($('hint'), viewMode === '3d' ? base + ORBIT_HINT : base);
   }
 
   function setTool(name) {
@@ -233,6 +313,7 @@ export function createSurfaceController(ctx) {
     visible = [];
     selected = -1;
     buffer = '';
+    rotation = overview(topology());
     fillSizes(P.n);
     renderLegend();
   }
@@ -268,6 +349,9 @@ export function createSurfaceController(ctx) {
   }
 
   function leave() {
+    stopAnimation();
+    pointers.clear();
+    orbiting = null;
     if (playing) {
       exitPlay();
     }
@@ -295,8 +379,7 @@ export function createSurfaceController(ctx) {
   }
 
   function toggleWall(cell, event) {
-    const net = buildNet(topology());
-    const slot = pickSide(net, cell, ...netPoint(event));
+    const slot = pickSide(layout, cell, ...netPoint(event));
     const edge = topology().edgeAt[cell * SLOTS + slot];
     P.walls[edge] ^= 1;
     touched();
@@ -304,7 +387,7 @@ export function createSurfaceController(ctx) {
   }
 
   host.addEventListener('click', event => {
-    if (!kind || playing || working) {
+    if (!kind || playing || working || suppressClick) {
       return;
     }
     const polygon = event.target.closest('[data-cell]');
@@ -337,8 +420,16 @@ export function createSurfaceController(ctx) {
   }
 
   document.addEventListener('keydown', event => {
+    const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(event.target?.tagName ?? '');
+    if (ARROW_TURN[event.key] && kind && viewMode === '3d' && !ctx.modalOpen() && !typing) {
+      event.preventDefault();
+      stopAnimation();
+      rotation = orbit(rotation, ...ARROW_TURN[event.key]);
+      draw();
+      return;
+    }
     const blocked = !kind || ctx.modalOpen() || playing || working || tool !== 'number';
-    if (blocked || selected < 0 || /^(INPUT|SELECT|TEXTAREA)$/.test(event.target?.tagName ?? '')) {
+    if (blocked || selected < 0 || typing) {
       return;
     }
     if (/^[0-9]$/.test(event.key)) {
@@ -408,6 +499,7 @@ export function createSurfaceController(ctx) {
   }
 
   function exitPlay() {
+    stopAnimation();
     playing = false;
     drawing = false;
     paused = false;
@@ -438,31 +530,77 @@ export function createSurfaceController(ctx) {
     syncPlayUi();
   }
 
-  host.addEventListener('pointerdown', event => {
-    if (!kind || !playing || paused || working) {
-      return;
-    }
-    const cell = cellUnder(event);
-    if (cell < 0) {
-      return;
-    }
-    event.preventDefault();
-    host.setPointerCapture(event.pointerId);
-    over = cell;
+  // The press on `cell` in play: the first cell, a rewind to a cell of the path, or one step.
+  function pressCell(cell) {
+    stopAnimation(); // a turn towards the old head; followHead decides again on release
     if (!path.length) {
       if (P.cp[cell] !== 1) {
         $('playInfo').textContent = 'Start at checkpoint 1.';
-        return;
+        return false;
       }
       path = [cell];
     } else if (path.includes(cell)) {
       path = path.slice(0, path.indexOf(cell) + 1);
     } else if (!step(P, path, cell, PLAY_STEP)) {
-      return;
+      return false;
     }
     drawing = true;
     draw();
+    return true;
+  }
+
+  const pointerCentre = () => {
+    const all = [...pointers.values()];
+    return [0, 1].map(axis => all.reduce((sum, point) => sum + point[axis], 0) / all.length);
+  };
+
+  host.addEventListener('pointerdown', event => {
+    if (!kind || working) {
+      return;
+    }
+    pointers.set(event.pointerId, [event.clientX, event.clientY]);
+    const solid = viewMode === '3d';
+    if (solid && (pointers.size >= 2 || event.button === 2)) {
+      // right button or two fingers: turn the solid at once
+      stopAnimation();
+      drawing = false;
+      host.setPointerCapture(event.pointerId);
+      orbiting = { start: pointerCentre(), last: pointerCentre(), active: true };
+      return;
+    }
+    const cell = cellUnder(event);
+    if (playing && !paused && cell >= 0) {
+      event.preventDefault();
+      host.setPointerCapture(event.pointerId);
+      over = cell;
+      if (pressCell(cell)) {
+        return;
+      }
+    }
+    if (solid) {
+      // anything else turns the solid once the pointer has moved a little, a click stays a click
+      orbiting = { start: pointerCentre(), last: pointerCentre(), active: false };
+    }
   });
+
+  function turnSolid(event) {
+    const [x, y] = pointerCentre();
+    if (!orbiting.active) {
+      if (Math.hypot(x - orbiting.start[0], y - orbiting.start[1]) < ORBIT_SLOP) {
+        return;
+      }
+      orbiting.active = true;
+      stopAnimation();
+      host.setPointerCapture(event.pointerId);
+    }
+    rotation = orbit(
+      rotation,
+      (x - orbiting.last[0]) * ORBIT_SPEED,
+      (y - orbiting.last[1]) * ORBIT_SPEED,
+    );
+    orbiting.last = [x, y];
+    draw();
+  }
 
   // The drag reached `cell`, coming from `from`: one step on the path, or one back. A cell drawn
   // right beside the head counts only when the pointer came from the head (so a drag over a
@@ -475,14 +613,24 @@ export function createSurfaceController(ctx) {
     }
     const top = topology();
     const slot = slotBetween(top, head, cell);
-    if (slot < 0 || (buildNet(top).glued[head * SLOTS + slot] && from !== head)) {
+    if (slot < 0 || (layout.glued[head * SLOTS + slot] && from !== head)) {
       return false;
     }
     return step(P, path, cell, PLAY_STEP) !== null;
   }
 
   host.addEventListener('pointermove', event => {
-    if (!kind || !playing || !drawing) {
+    if (!kind) {
+      return;
+    }
+    if (pointers.has(event.pointerId)) {
+      pointers.set(event.pointerId, [event.clientX, event.clientY]);
+    }
+    if (orbiting) {
+      turnSolid(event);
+      return;
+    }
+    if (!playing || !drawing) {
       return;
     }
     // a fast drag reaches the page as one event per frame: follow the positions in between too
@@ -498,11 +646,28 @@ export function createSurfaceController(ctx) {
     }
   });
 
-  const stopDrawing = () => {
-    drawing = false;
+  const release = event => {
+    pointers.delete(event.pointerId);
+    if (orbiting) {
+      // the click that follows a turn is not a click
+      suppressClick = orbiting.active;
+      orbiting = null;
+      setTimeout(() => {
+        suppressClick = false;
+      }, 50);
+    }
+    if (drawing) {
+      drawing = false;
+      followHead();
+    }
   };
-  host.addEventListener('pointerup', stopDrawing);
-  host.addEventListener('pointercancel', stopDrawing);
+  host.addEventListener('pointerup', release);
+  host.addEventListener('pointercancel', release);
+  host.addEventListener('contextmenu', event => {
+    if (viewMode === '3d') {
+      event.preventDefault();
+    }
+  });
 
   // ---------- solve, generate, minimize ----------
   function solve() {
@@ -674,6 +839,8 @@ export function createSurfaceController(ctx) {
     draw();
     ctx.setStatus('');
   };
+  $('sfViewNet').onclick = () => setView('net');
+  $('sfView3d').onclick = () => setView('3d');
   $('sfNumber').onclick = () => setTool('number');
   $('sfWall').onclick = () => setTool('wall');
   $('sfGenerate').onclick = generate;

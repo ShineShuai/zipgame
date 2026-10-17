@@ -44,7 +44,24 @@ import {
 import { makeRng, shuffle } from '../src/core/rng.js';
 import { runSync } from '../src/core/run.js';
 import { commentTimes } from '../src/core/format.js';
-import { buildNet, cellAt, pickSide, routePieces, slotBetween } from '../src/view/surface-net.js';
+import {
+  buildNet,
+  cellAt,
+  pickSide,
+  routePieces,
+  routeCrossings,
+  slotBetween,
+} from '../src/view/surface-net.js';
+import {
+  IDENTITY,
+  buildView,
+  cellDirection,
+  facing,
+  orbit,
+  overview,
+  turn,
+  turnToward,
+} from '../src/view/proj.js';
 import { surfaceSvg, netFrame } from '../src/apps/design/surface-board.js';
 
 const slow = typeof process !== 'undefined' && Boolean(process.env.SURFACE_SLOW);
@@ -672,6 +689,142 @@ export function surfaceTests(t, ok, eq) {
     eq(slotBetween(top, 0, 53), -1);
   });
 
+  t('surface net: crossings of a route give an out and an in mark with the cut letter', () => {
+    const top = surfaceTopology('cube', 3);
+    const net = buildNet(top);
+    for (let cell = 0; cell < top.T; cell++) {
+      for (let k = 0; k < 4; k++) {
+        const letter = net.letterAt.get(cell * SLOTS + k);
+        eq(letter === undefined, net.glued[cell * SLOTS + k] === 1, 'a letter on every cut side');
+        if (letter !== undefined) {
+          const other = top.nb[cell * SLOTS + k];
+          const back = top.rev[cell * SLOTS + k];
+          eq(net.letterAt.get(other * SLOTS + back), letter, 'same both ways');
+        }
+      }
+    }
+    let glued = null;
+    let cut = null;
+    for (let cell = 0; cell < top.T; cell++) {
+      for (let k = 0; k < 4; k++) {
+        const pair = [cell, top.nb[cell * SLOTS + k]];
+        glued = glued || (net.glued[cell * SLOTS + k] ? pair : null);
+        cut = cut || (net.glued[cell * SLOTS + k] ? null : pair);
+      }
+    }
+    eq(routeCrossings(net, glued), [], 'no mark beside a fold');
+    eq(routeCrossings(net, [cut[0]]), []);
+    const marks = routeCrossings(net, cut);
+    const slot = slotBetween(top, cut[0], cut[1]);
+    eq(marks.map(m => m.kind), ['out', 'in']);
+    eq(marks[0], { kind: 'out', cell: cut[0], slot, letter: net.letterAt.get(cut[0] * 4 + slot) });
+    eq(marks[1].cell, cut[1]);
+    eq(marks[1].slot, top.rev[cut[0] * 4 + slot]);
+    eq(marks[1].letter, marks[0].letter);
+    const hidden = { ...net, hidden: top.faceOf.map(face => face === top.faceOf[cut[1]]) };
+    eq(routeCrossings(hidden, cut).map(m => m.kind), ['out'], 'a hidden cell has no mark');
+    eq(routePieces(hidden, cut).length, 1, 'and no piece');
+    eq(routePieces(hidden, [cut[1], cut[0]]).length, 1);
+    eq(routePieces(hidden, [cut[1], cut[1]]), [], 'nothing of cells that are all hidden');
+  });
+
+  t('proj: turns stay rotations; a drag turns the front its way; turnToward faces', () => {
+    const right = turn(orbit(IDENTITY, 0.3, 0), [0, 0, 1]);
+    ok(right[0] > 0.29 && Math.abs(right[1]) < 1e-12, 'drag right: the front goes right');
+    const down = turn(orbit(IDENTITY, 0, 0.3), [0, 0, 1]);
+    ok(down[1] < -0.29 && Math.abs(down[0]) < 1e-12, 'drag down: the front goes down');
+    const rnd = makeRng(3);
+    let R = IDENTITY;
+    for (let i = 0; i < 500; i++) {
+      R = orbit(R, rnd() - 0.5, rnd() - 0.5);
+    }
+    const rows = [R.slice(0, 3), R.slice(3, 6), R.slice(6, 9)];
+    const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    rows.forEach((a, i) => rows.forEach((b, j) => {
+      ok(Math.abs(dot(a, b) - (i === j ? 1 : 0)) < 1e-9, `rows ${i} ${j} orthonormal`);
+    }));
+    const [a, b, c] = rows;
+    const bc = [b[1] * c[2] - b[2] * c[1], b[2] * c[0] - b[0] * c[2], b[0] * c[1] - b[1] * c[0]];
+    const triple = dot(a, bc);
+    ok(Math.abs(triple - 1) < 1e-9, 'a rotation, not a mirror');
+    const d = [1, 2, 3];
+    const unit = v => v.map(x => x / Math.hypot(...v));
+    const full = turnToward(R, d);
+    ok(Math.abs(unit(turn(full, d))[2] - 1) < 1e-9, 'faces the viewer');
+    const half = turnToward(R, d, 0.5);
+    const angle = r => Math.acos(unit(turn(r, d))[2]);
+    ok(Math.abs(angle(half) - angle(R) / 2) < 1e-9, 'half of the way');
+    ok(turn(turnToward(IDENTITY, [0, 0, -1]), [0, 0, -1])[2] > 0.999, 'from the back');
+    eq(turnToward(IDENTITY, [0, 0, 1]), IDENTITY, 'already facing');
+  });
+
+  t('proj view: three faces from a corner, counter-clockwise, the box never moves', () => {
+    const area = poly => poly.reduce((sum, [x, y], i) => {
+      const [nx, ny] = poly[(i + 1) % poly.length];
+      return sum + (x * ny - nx * y) / 2;
+    }, 0);
+    for (const [kind, n] of [['tetra', 3], ['cube', 3], ['cube', 2]]) {
+      const top = surfaceTopology(kind, n);
+      const view = buildView(top, overview(top));
+      eq(view.hidden.filter(h => !h).length, 3 * n * n, `${kind} ${n}: three faces`);
+      for (let cell = 0; cell < top.T; cell++) {
+        const turned = view.hidden[cell] || area(view.polys[cell]) > 0;
+        ok(turned, `${kind} ${n}: ${cell} counter-clockwise`);
+        ok(view.depth[cell] > -0.05 || area(view.polys[cell]) < 0, `${kind} ${n}: ${cell} behind`);
+      }
+      eq(buildView(top, orbit(overview(top), 0.7, 0.4)).box, view.box);
+      eq(view.maxSidePx, Infinity);
+      eq(view.cuts, []);
+      eq(facing(turnToward(overview(top), cellDirection(top, 5)), top, 5) > 0.999, true);
+    }
+  });
+
+  t('proj view: a route is drawn where seen, with marks where it goes behind and returns', () => {
+    const g = generateSurface('tetra', 4, 2);
+    const top = surfaceTopology('tetra', 4);
+    const view = buildView(top, overview(top));
+    const marks = routeCrossings(view, g.path);
+    let outs = 0;
+    let ins = 0;
+    let runs = 0;
+    g.path.forEach((cell, i) => {
+      const before = i > 0 && view.hidden[g.path[i - 1]];
+      outs += i > 0 && !before && view.hidden[cell] ? 1 : 0;
+      ins += i > 0 && before && !view.hidden[cell] ? 1 : 0;
+      runs += !view.hidden[cell] && (i === 0 || before) ? 1 : 0;
+    });
+    ok(outs + ins > 0, 'the route goes behind');
+    eq(marks.filter(m => m.kind === 'out').length, outs);
+    eq(marks.filter(m => m.kind === 'in').length, ins);
+    eq(routePieces(view, g.path).length, runs, 'one piece per run of seen cells');
+    ok(marks.every(m => m.letter === '' && !view.hidden[m.cell]), 'no letters, seen cells');
+  });
+
+  t('surface board: the solid shows the cells that are seen, shaded by face, without cuts', () => {
+    const g = generateSurface('tetra', 3, 1);
+    const top = surfaceTopology('tetra', 3);
+    const view = buildView(top, overview(top));
+    const state = {
+      P: g.puzzle,
+      selected: -1,
+      buffer: '',
+      playing: false,
+      path: [],
+      template: g.path,
+      solutions: [],
+      visible: [],
+    };
+    const { markup, frame } = surfaceSvg(view, state);
+    const seen = view.hidden.filter(h => !h).length;
+    eq((markup.match(/<polygon class="sf-cell/g) || []).length, seen);
+    ok(!/sf-cut|sf-tag/.test(markup), 'no cuts, no letters');
+    eq(new Set(markup.match(/fill="rgb\([^"]+\)"/g)).size, 3, 'a colour for each face seen');
+    const numbered = g.puzzle.cp.filter((number, cell) => number && !view.hidden[cell]).length;
+    eq((markup.match(/class="sf-badge/g) || []).length, numbered);
+    const turned = surfaceSvg(buildView(top, orbit(overview(top), 1, 1)), state).frame;
+    eq([turned.width, turned.height], [frame.width, frame.height], 'the picture keeps its size');
+  });
+
   t('surface board: a polygon per cell, walls on both copies of a cut, the letters', () => {
     const g = generateSurface('cube', 2, 1);
     const net = buildNet(surfaceTopology('cube', 2));
@@ -690,7 +843,8 @@ export function surfaceTests(t, ok, eq) {
     eq((markup.match(/class="sf-badge/g) || []).length, g.K);
     eq((markup.match(/class="sf-tag"/g) || []).length, 14);
     for (const letter of 'ABCDEFG') {
-      eq((markup.match(new RegExp(`>${letter}</text>`, 'g')) || []).length, 2, letter);
+      const tag = new RegExp(`class="sf-tag"><circle[^>]*/><text[^>]*>${letter}</text>`, 'g');
+      eq((markup.match(tag) || []).length, 2, letter);
     }
     const top = surfaceTopology('cube', 2);
     let expected = 0;
@@ -704,10 +858,16 @@ export function surfaceTests(t, ok, eq) {
     eq((markup.match(/class="sf-wall"/g) || []).length, expected);
     ok(expected > wallEdges(g.puzzle).length - 1, 'a wall on a cut is drawn twice');
     ok(/class="sf-path"/.test(markup));
+    const crossings = routeCrossings(net, g.path).length;
+    ok(crossings > 0, 'the path crosses a cut');
+    eq((markup.match(/class="sf-arrow"/g) || []).length, 2 * crossings, 'template and solution');
+    eq((markup.match(/class="sf-cross"/g) || []).length, 2 * crossings, 'a letter beside each');
     const play = surfaceSvg(net, { ...view, playing: true, path: g.path.slice(0, 3) }).markup;
     ok(!/stroke-dasharray/.test(play), 'no template while playing');
     eq((play.match(/class="sf-cell[^"]* visited"/g) || []).length, 3);
     ok(/class="sf-head"/.test(play));
+    const early = routeCrossings(net, g.path.slice(0, 3)).length;
+    eq((play.match(/class="sf-arrow"/g) || []).length, early);
     const [x, y] = frame.toPixels([net.box.minX, net.box.maxY]);
     const [nx, ny] = frame.toNet(x, y);
     ok(Math.abs(nx - net.box.minX) < 0.05 && Math.abs(ny - net.box.maxY) < 0.05, 'toNet inverts');

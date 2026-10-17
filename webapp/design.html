@@ -54,6 +54,17 @@
         <button id="sfWall" class="seg" title="Click a cell near one of its sides to add or remove a wall">Walls <span id="sfWallTag" class="seg-count"></span></button>
       </div>
     </div>
+    <div class="field">
+      <label>View</label>
+      <div class="segmented">
+        <button id="sfViewNet" class="seg active" title="The solid cut open and laid flat">Net</button>
+        <button id="sfView3d" class="seg" title="The solid itself: turn it with a right-drag, two fingers, a drag on the background or the arrow keys">3D</button>
+      </div>
+    </div>
+    <div class="field field-row">
+      <label for="sfFollow" title="3D view, in play: turn the solid to the head of the path when it nears the edge of the view">Follow head</label>
+      <input id="sfFollow" type="checkbox" checked>
+    </div>
     </div>
 
     <div class="field" data-variants="standard arrows wrap loop teleport">

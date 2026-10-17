@@ -4,23 +4,33 @@
 // The click and drag logic is in surface.js; the colours of the classes are in css/design.css.
 import { SLOTS } from '../../core/surface/topology.js';
 import { maxNumber } from '../../core/surface/puzzle.js';
-import { buildNet, routePieces } from '../../view/surface-net.js';
+import { routePieces, routeCrossings } from '../../view/surface-net.js';
 import { TPL_C, PLAY_C, SOL_C } from './board.js';
 
 const MAX_WIDTH = 620;
 const MAX_HEIGHT = 560;
 const MAX_SIDE_PX = 60;
+// The fill of the cells of each face, and of a cell the path has been through.
+const FACE_TINT = ['#18213a', '#1f1d38', '#15262f', '#232130', '#172435', '#1d2133'];
+const VISITED_TINT = '#25336a';
 
 const round = value => Math.round(value * 100) / 100;
+
+// A colour '#rrggbb' made darker: factor 1 leaves it, 0 is black.
+function darker(hex, factor) {
+  const channel = at => Math.round(parseInt(hex.slice(at, at + 2), 16) * factor);
+  return `rgb(${channel(1)},${channel(3)},${channel(5)})`;
+}
 
 // How the net maps to the picture: net units to pixels (y flipped), and back.
 export function netFrame(net) {
   const { box, side } = net;
   const width = box.maxX - box.minX;
   const height = box.maxY - box.minY;
-  const scale = Math.min(MAX_WIDTH / width, MAX_HEIGHT / height, MAX_SIDE_PX / side);
-  // room around the net for the letters of the cuts
-  const margin = Math.ceil(side * scale * 0.95);
+  const sideCap = net.maxSidePx ?? MAX_SIDE_PX;
+  const scale = Math.min(MAX_WIDTH / width, MAX_HEIGHT / height, sideCap / side);
+  // room around the net for the letters of the cuts, or for the arrows at the edge of a solid
+  const margin = Math.ceil(side * scale * (net.tags.length ? 0.95 : 0.4));
   return {
     scale,
     width: round(width * scale + 2 * margin),
@@ -38,6 +48,8 @@ export function netFrame(net) {
 //   playing, path      the path walked in play mode
 //   template           the dashed path of the generator, or null
 //   solutions, visible the solutions of Solve and which of them to show
+// `net` is the flat net (view/surface-net.js) or the solid in a view (view/proj.js): a cell with
+// net.hidden[cell] is not drawn, and net.depth[cell] (how much it faces the viewer) shades it.
 // Returns { markup, frame }.
 export function surfaceSvg(net, V) {
   const { top } = net;
@@ -47,13 +59,21 @@ export function surfaceSvg(net, V) {
   const points = poly => poly.map(corner => frame.toPixels(corner).join(',')).join(' ');
   const parts = [];
 
+  const seen = cell => !net.hidden || !net.hidden[cell];
+  // how much a cell faces the viewer: it is darker when turned away, smaller marks on it
+  const facing = cell => (net.depth ? Math.min(1, Math.max(0, net.depth[cell])) : 1);
   const visited = new Set(V.playing ? V.path : []);
   for (let cell = 0; cell < top.T; cell++) {
+    if (!seen(cell)) {
+      continue;
+    }
     const classes = ['sf-cell', `sf-f${top.faceOf[cell]}`];
     if (visited.has(cell)) {
       classes.push('visited');
     }
-    parts.push(`<polygon class="${classes.join(' ')}" data-cell="${cell}" `
+    const tint = visited.has(cell) ? VISITED_TINT : FACE_TINT[top.faceOf[cell] % FACE_TINT.length];
+    const fill = darker(tint, 0.6 + 0.4 * facing(cell));
+    parts.push(`<polygon class="${classes.join(' ')}" data-cell="${cell}" fill="${fill}" `
       + `points="${points(net.polys[cell])}"/>`);
   }
 
@@ -74,7 +94,7 @@ export function surfaceSvg(net, V) {
     for (let slot = 0; slot < top.deg[cell]; slot++) {
       const other = top.nb[cell * SLOTS + slot];
       const shown = !net.glued[cell * SLOTS + slot] || cell < other;
-      if (shown && P.walls[top.edgeAt[cell * SLOTS + slot]]) {
+      if (shown && (seen(cell) || seen(other)) && P.walls[top.edgeAt[cell * SLOTS + slot]]) {
         const poly = net.polys[cell];
         const [a, b] = [poly[slot], poly[(slot + 1) % poly.length]].map(frame.toPixels);
         parts.push(`<line class="sf-wall" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" `
@@ -83,7 +103,33 @@ export function surfaceSvg(net, V) {
     }
   }
 
-  const route = (cells, color, extra = '', thickness = 0.13) => {
+  // An arrow on the side a route leaves by (pointing out) or enters by (pointing in), with the
+  // letter of the cut beside it: the route goes on at the same letter.
+  const arrow = (mark, color) => {
+    const poly = net.polys[mark.cell].map(corner => frame.toPixels(corner));
+    const [a, b] = [poly[mark.slot], poly[(mark.slot + 1) % poly.length]];
+    const [cx, cy] = frame.toPixels(net.centers[mark.cell]);
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const along = [(b[0] - a[0]) / length, (b[1] - a[1]) / length];
+    const sign = (mid[0] - cx) * along[1] - (mid[1] - cy) * along[0] > 0 ? 1 : -1;
+    const out = [along[1] * sign, -along[0] * sign];
+    const size = px * 0.2;
+    const at = (lift, spread) => [
+      round(mid[0] + out[0] * lift * size + along[0] * spread * size),
+      round(mid[1] + out[1] * lift * size + along[1] * spread * size),
+    ];
+    const [tip, left, right] = mark.kind === 'out'
+      ? [at(0.9, 0), at(-0.4, 0.55), at(-0.4, -0.55)]
+      : [at(-0.5, 0), at(0.9, 0.55), at(0.9, -0.55)];
+    parts.push(`<polygon class="sf-arrow" points="${tip} ${left} ${right}" fill="${color}"/>`);
+    if (mark.letter) {
+      const [x, y] = at(1.9, 0);
+      parts.push(`<text class="sf-cross" x="${x}" y="${y}" font-size="${round(px * 0.26)}">`
+        + `${mark.letter}</text>`);
+    }
+  };
+  const route = (cells, color, extra = '', thickness = net.depth ? 0.1 : 0.13) => {
     const width = round(px * thickness);
     for (const piece of routePieces(net, cells)) {
       if (piece.length > 1) {
@@ -92,6 +138,7 @@ export function surfaceSvg(net, V) {
           + `stroke="${color}" stroke-width="${width}" ${extra}/>`);
       }
     }
+    routeCrossings(net, cells).forEach(mark => arrow(mark, color));
   };
   if (V.template && !V.playing) {
     route(V.template, TPL_C, `stroke-dasharray="${round(px * 0.2)} ${round(px * 0.14)}"`, 0.07);
@@ -105,14 +152,20 @@ export function surfaceSvg(net, V) {
   }
   if (V.playing && V.path.length) {
     route(V.path, PLAY_C);
-    const [x, y] = frame.toPixels(net.centers[V.path[V.path.length - 1]]);
-    parts.push(`<circle class="sf-head" cx="${x}" cy="${y}" r="${round(px * 0.17)}"/>`);
+    const head = V.path[V.path.length - 1];
+    if (seen(head)) {
+      const [x, y] = frame.toPixels(net.centers[head]);
+      parts.push(`<circle class="sf-head" cx="${x}" cy="${y}" r="${round(px * 0.17)}"/>`);
+    }
   }
 
   // numbers
   const K = maxNumber(P);
-  const fontFor = text => round(px * (String(text).length > 2 ? 0.26 : 0.34));
+  const fontFor = (text, lean) => round(px * lean * (String(text).length > 2 ? 0.26 : 0.34));
   for (let cell = 0; cell < top.T; cell++) {
+    if (!seen(cell)) {
+      continue;
+    }
     const pending = cell === V.selected && !V.playing && V.buffer !== '';
     const number = pending ? V.buffer : P.cp[cell];
     if (!number) {
@@ -130,12 +183,13 @@ export function surfaceSvg(net, V) {
       classes.push('visited');
     }
     const [x, y] = frame.toPixels(net.centers[cell]);
-    const radius = round(px * (top.deg[cell] === 3 ? 0.25 : 0.36));
+    const lean = 0.6 + 0.4 * facing(cell);
+    const radius = round(px * lean * (top.deg[cell] === 3 ? 0.25 : 0.36));
     parts.push(`<g class="${classes.join(' ')}"><circle cx="${x}" cy="${y}" r="${radius}"/>`
-      + `<text x="${x}" y="${y}" font-size="${fontFor(number)}">${number}</text></g>`);
+      + `<text x="${x}" y="${y}" font-size="${fontFor(number, lean)}">${number}</text></g>`);
   }
 
-  if (V.selected >= 0 && !V.playing) {
+  if (V.selected >= 0 && !V.playing && seen(V.selected)) {
     parts.push(`<polygon class="sf-sel" points="${points(net.polys[V.selected])}"/>`);
   }
 

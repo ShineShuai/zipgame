@@ -127,6 +127,7 @@ export function slotBetween(top, a, b) {
 // Which sides are glued, the cuts and their letters.
 function findCuts(top, polys) {
   const glued = new Uint8Array(top.T * SLOTS);
+  const letterAt = new Map();
   const cuts = new Map();
   for (let cell = 0; cell < top.T; cell++) {
     for (let k = 0; k < top.deg[cell]; k++) {
@@ -145,6 +146,7 @@ function findCuts(top, polys) {
       if (!cuts.has(key)) {
         cuts.set(key, { letter: String.fromCharCode(65 + cuts.size), faces, copies: new Map() });
       }
+      letterAt.set(cell * SLOTS + k, cuts.get(key).letter);
       const copies = cuts.get(key).copies;
       const face = top.faceOf[cell];
       if (!copies.has(face)) {
@@ -153,7 +155,7 @@ function findCuts(top, polys) {
       copies.get(face).push({ cell, slot: k });
     }
   }
-  return { glued, cuts: [...cuts.values()] };
+  return { glued, letterAt, cuts: [...cuts.values()] };
 }
 
 // One letter tag per copy of a cut: on the middle side of the copy, pushed outwards.
@@ -180,6 +182,7 @@ const nets = new WeakMap();
 //   polys[cell]   the corners of the cell, in the order of top.ring
 //   centers[cell] the mean of the corners
 //   glued[cell * SLOTS + slot]  1 where the neighbour across that side is drawn right beside it
+//   letterAt      Map(cell * SLOTS + slot -> letter) for the sides on a cut
 //   cuts          [{ letter, faces, copies: Map(face -> [{ cell, slot }]) }]
 //   tags          [{ letter, x, y, dx, dy, cell, slot }]: where each copy of a cut is labelled
 //   box           { minX, minY, maxX, maxY }
@@ -224,12 +227,13 @@ export function buildNet(top) {
       box.maxY = Math.max(box.maxY, y);
     }
   }
-  const { glued, cuts } = findCuts(top, polys);
+  const { glued, letterAt, cuts } = findCuts(top, polys);
   const net = {
     top,
     polys,
     centers,
     glued,
+    letterAt,
     cuts,
     box,
     side: Math.hypot(polys[0][0][0] - polys[0][1][0], polys[0][0][1] - polys[0][1][1]),
@@ -277,35 +281,75 @@ export function pickSide(net, cell, x, y) {
   return best;
 }
 
+const shown = (net, cell) => !net.hidden || !net.hidden[cell];
+
+// How a route goes from cell `from` to its neighbour `cell`: null when they are no neighbours,
+// { joined: true } when both are drawn side by side, else the sides on both ends.
+function stepOver(net, from, cell) {
+  const slot = slotBetween(net.top, from, cell);
+  if (slot < 0) {
+    return null;
+  }
+  if (net.glued[from * SLOTS + slot] && shown(net, from) && shown(net, cell)) {
+    return { joined: true };
+  }
+  return { joined: false, slot, back: net.top.rev[from * SLOTS + slot] };
+}
+
 // A route through cells as pieces of polyline (lists of [x, y]). A step between cells drawn
 // side by side is a straight line between their centres. A step over a cut is two stubs: out
 // of the cell to the middle of its side, and from the middle of the other cell's side into it.
+// (A drawing may hide cells, net.hidden[cell]: a route is drawn only where it is shown.)
 export function routePieces(net, cells) {
   const pieces = [];
   let piece = [];
+  const flush = () => {
+    if (piece.length) {
+      pieces.push(piece);
+    }
+    piece = [];
+  };
   cells.forEach((cell, i) => {
+    const start = shown(net, cell) ? [net.centers[cell]] : [];
     if (i === 0) {
-      piece = [net.centers[cell]];
+      piece = start;
       return;
     }
     const from = cells[i - 1];
-    const slot = slotBetween(net.top, from, cell);
-    if (slot < 0) {
-      pieces.push(piece);
-      piece = [net.centers[cell]];
-      return;
-    }
-    if (net.glued[from * SLOTS + slot]) {
+    const over = stepOver(net, from, cell);
+    if (!over) {
+      flush();
+      piece = start;
+    } else if (over.joined) {
       piece.push(net.centers[cell]);
-      return;
+    } else {
+      if (shown(net, from)) {
+        piece.push(midpoint(sideOf(net, from, over.slot)));
+      }
+      flush();
+      piece = shown(net, cell) ? [midpoint(sideOf(net, cell, over.back)), net.centers[cell]] : [];
     }
-    const back = net.top.rev[from * SLOTS + slot];
-    piece.push(midpoint(sideOf(net, from, slot)));
-    pieces.push(piece);
-    piece = [midpoint(sideOf(net, cell, back)), net.centers[cell]];
   });
-  if (piece.length) {
-    pieces.push(piece);
-  }
+  flush();
   return pieces;
+}
+
+// The places where a route leaves the picture and where it comes back: for every step over a
+// cut, { kind: 'out', cell, slot, letter } on the side it leaves by and { kind: 'in', ... } on
+// the side it enters by; `letter` is the letter of the cut (the same on both copies).
+export function routeCrossings(net, cells) {
+  const marks = [];
+  for (let i = 1; i < cells.length; i++) {
+    const over = stepOver(net, cells[i - 1], cells[i]);
+    if (over && !over.joined) {
+      const letter = net.letterAt.get(cells[i - 1] * SLOTS + over.slot) ?? '';
+      if (shown(net, cells[i - 1])) {
+        marks.push({ kind: 'out', cell: cells[i - 1], slot: over.slot, letter });
+      }
+      if (shown(net, cells[i])) {
+        marks.push({ kind: 'in', cell: cells[i], slot: over.back, letter });
+      }
+    }
+  }
+  return marks;
 }
