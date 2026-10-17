@@ -4,14 +4,14 @@ import { generateExact, EXACT_SIZES } from '../../core/gen/exact.js';
 import { generate, WRAP_SIZES } from '../../core/gen/generate.js';
 import { generateLoop, LOOP_SIZES } from '../../core/gen/loop.js';
 import { generateTeleport, TELEPORT_SIZES } from '../../core/gen/teleport.js';
+import { generateTwoPaths, TWOPATHS_SIZES } from '../../core/gen/twopaths.js';
 
 // The puzzle variants of the play app, one entry each. Everything that differs between variants
 // is read from here (the menu tiles, the generator, the texts, the lucky game), so a new variant
 // is: a generator module, an icon (icons.js), one entry below, and its texts (ui/i18n.js; the
 // keys follow textKeys). Also add its id to VARIANTS in core/share-code.js (the share link);
-// Teleport is the one
-// exception: its link has a version of its own (SHARE_VERSION_PORTAL), so that the older links
-// keep reading.
+// Teleport and Two paths are the exceptions: their link has a version of its own
+// (SHARE_VERSION_PORTAL, SHARE_VERSION_SPLIT), so that the older links keep reading.
 //
 //   id         the name the app uses (S.mode, S.variant, the share record)
 //   detect     which puzzles belong to the variant
@@ -88,6 +88,16 @@ export const PLAY_VARIANTS = [
     countKey: 'gen.walls',
     source: 'generateTeleport (core/gen/teleport.js)',
     generate: (n, seed) => generateTeleport(n, seed),
+  },
+  {
+    id: 'twopaths',
+    detect: puzzle => Boolean(puzzle.split),
+    // Planning the split of the board is the game, so the small boards (gen/twopaths.js).
+    sizes: all => all.filter(n => TWOPATHS_SIZES.includes(n)),
+    luckySizes: [5, 6, 7],
+    countKey: 'gen.walls',
+    source: 'generateTwoPaths (core/gen/twopaths.js)',
+    generate: (n, seed) => generateTwoPaths(n, seed),
   },
 ].map(variant => ({ ...variant, keys: textKeys(variant.id) }));
 

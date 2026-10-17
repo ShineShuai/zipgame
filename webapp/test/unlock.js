@@ -11,7 +11,7 @@ import {
   PLAY_VARIANTS, LUCKY_SIZES, variantById, variantOf, sizesFor, luckyDefs,
 } from '../src/apps/play/variants.js';
 import { PLAY_SIZES } from '../src/core/gen/generate.js';
-import { VARIANTS as SHARE_VARIANTS, TELEPORT } from '../src/core/share-code.js';
+import { VARIANTS as SHARE_VARIANTS, TELEPORT, TWO_PATHS } from '../src/core/share-code.js';
 import { runSync } from '../src/core/run.js';
 import { EN, ZH } from '../src/ui/i18n.js';
 
@@ -206,10 +206,10 @@ export function unlockTests(t, ta, ok, eq) {
     eq(PLAY_VARIANTS.map(v => v.id).slice(0, 3), ['cutout', 'arrows', 'exact']); // later ones append
     eq(LUCKY_SIZES, [7, 8, 9, 10]);
     for (const v of PLAY_VARIANTS) {
-      // Teleport has a link version of its own (SHARE_VERSION_PORTAL), so that the type field of
-      // the older links stays as it was
-      ok(SHARE_VARIANTS.includes(v.id) || v.id === TELEPORT,
-        `${v.id} is in core/share-code.js VARIANTS (or is TELEPORT)`);
+      // Teleport and Two paths have a link version of their own (SHARE_VERSION_PORTAL,
+      // SHARE_VERSION_SPLIT), so that the type field of the older links stays as it was
+      ok(SHARE_VARIANTS.includes(v.id) || v.id === TELEPORT || v.id === TWO_PATHS,
+        `${v.id} is in core/share-code.js VARIANTS (or has a version of its own)`);
       for (const dict of [EN, ZH]) {
         for (const key of Object.values(v.keys)) ok(dict[key], `${v.id}: ${key}`);
         eq(typeof dict[v.countKey] === 'function' || typeof dict[v.countKey] === 'string', true, v.countKey);

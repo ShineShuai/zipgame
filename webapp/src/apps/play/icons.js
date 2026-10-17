@@ -1,5 +1,5 @@
 // Icons of the play menu: one per puzzle variant (standard, cutout, arrows, exact, wrap, loop,
-// teleport) and one
+// teleport, twopaths) and one
 // per menu card.
 // Plain SVG strings, no DOM. Colours come from css/play.css (.vi-*, currentColor), so the
 // icons follow the page theme and the same markup serves the picker, the HUD and the cards.
@@ -129,10 +129,26 @@ function teleportRoute() {
     `${dot([0, 0])}${dot([3, 3])}`;
 }
 
-// variant: 'cutout', 'arrows', 'exact', 'wrap', 'loop', 'teleport', 'lucky' (the mystery of the
-// lucky game) or
+// Two paths icon: a red path over the top two rows and a blue one under it, each with a dot at
+// both ends. Corners are [col, row].
+const RED_ROUTE = [[0, 0], [3, 0], [3, 1], [0, 1]];
+const BLUE_ROUTE = [[3, 3], [0, 3], [0, 2], [3, 2]];
+
+function twoPathsRoutes() {
+  const one = (corners, colour) => {
+    const at = ([col, row]) => `${centre(col)},${centre(row)}`;
+    const dot = ([col, row]) =>
+      `<circle class="vi-dot vi-dot-${colour}" cx="${centre(col)}" cy="${centre(row)}" r="2.7"/>`;
+    return `<polyline class="vi-path vi-path-${colour}" points="${corners.map(at).join(' ')}"/>` +
+      `${dot(corners[0])}${dot(corners[corners.length - 1])}`;
+  };
+  return one(RED_ROUTE, 'red') + one(BLUE_ROUTE, 'blue');
+}
+
+// variant: 'cutout', 'arrows', 'exact', 'wrap', 'loop', 'teleport', 'twopaths', 'lucky' (the
+// mystery of the lucky game) or
 // anything else (= standard). Class: variant-icon vi-standard | vi-cutout | vi-arrows | vi-exact |
-// vi-wrap | vi-loop | vi-teleport | vi-lucky.
+// vi-wrap | vi-loop | vi-teleport | vi-twopaths | vi-lucky.
 export function variantIcon(variant) {
   if (variant === 'lucky') return luckyIcon();
   const cutout = variant === 'cutout';
@@ -141,10 +157,11 @@ export function variantIcon(variant) {
   const wrap = variant === 'wrap';
   const loop = variant === 'loop';
   const teleport = variant === 'teleport';
+  const twopaths = variant === 'twopaths';
   const name = cutout ? 'cutout' : arrows ? 'arrows' : exact ? 'exact' : wrap ? 'wrap'
-    : loop ? 'loop' : teleport ? 'teleport' : 'standard';
+    : loop ? 'loop' : teleport ? 'teleport' : twopaths ? 'twopaths' : 'standard';
   const board = tiles(cutout ? RING_HOLES : NO_HOLES);
-  const path = wrap ? wrapRoute()
+  const path = wrap ? wrapRoute() : twopaths ? twoPathsRoutes()
     : teleport ? teleportRoute() : route(cutout ? LAP : loop ? RING : SNAKE);
   return `<svg class="variant-icon vi-${name}" viewBox="0 0 48 48" aria-hidden="true" ` +
     'focusable="false"><rect class="vi-bg" x="2" y="2" width="44" height="44" rx="11"/>' +

@@ -18,10 +18,13 @@ import { maxHints, computeHint, solutionOf, penalizedTime, HINT_PENALTY_S } from
 import { cellAtPoint, WRAP_PAD } from '../../view/geometry.js';
 import { bindModal, copyText } from '../../ui/modal.js';
 import {
-  boardSvg, CELL, badgeColors, stepWrong, seamMarksSvg, routeCells, routeD, jumpMarksSvg, loopOpen,
-  loopOpenMarks,
+  boardSvg, CELL, badgeColors, badgeColorsTwo, stepWrong, seamMarksSvg, routeCells, routeD,
+  jumpMarksSvg, loopOpen, loopOpenMarks,
 } from './board.js';
 import { variantIcon, cardIcon } from './icons.js';
+import {
+  newPaths, pickColour, walkColour, solvedPaths, reached, legsUndoTwo, hintTwo,
+} from '../../features/twopaths-play.js';
 import { PLAY_VARIANTS, variantById, variantOf, sizesFor, nearestSize, luckyDefs } from './variants.js';
 import { createUnlock } from '../../features/unlock.js';
 import { createRulesSeen } from '../../features/rules-seen.js';
@@ -43,7 +46,7 @@ const S = { screen: 'menu', mode: 'standard', variant: null, genMode: 'standard'
   gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, isReplay: false, replayPick: null, gotdDate: null, gotdHint: null, hintsUsed: 0,
   penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, behaviourOn: false, difficulty: null,
   lucky: false, luckyHolder: false, luckyResult: null, luckyNote: null, healed: false,
-  legs: [], gameDay: null, isShared: false,
+  legs: [], paths: [[], []], colour: 0, gameDay: null, isShared: false,
   sharedGames: [], sharedFocus: null, sharedAll: false, sharedArmed: null, sharedNotice: null, sharedMsg: null };
 
 // Grade a puzzle right after generation, once, before it's shown (see core/grades.js playGradesFor):
@@ -470,7 +473,7 @@ function difficultyBadgeHtml() {
 // Hidden by default; same hold-to-reveal pattern as seedTag.
 function difficultyDevHtml() {
   const d = S.difficulty, tm = d && d.trap, g = d && d.legacy;
-  const reduced = ['arrows', 'exact', 'wrap', 'loop', 'teleport'].includes(S.variant);
+  const reduced = ['arrows', 'exact', 'wrap', 'loop', 'teleport', 'twopaths'].includes(S.variant);
   const trapPart = tm ? `trap ${tm.predicted.toFixed(2)} <span class="dev-raw">max ${tm.trapMax} · top3 ${tm.trapTop3}${reduced ? ' · max+top3 only, uncalibrated' : ` · alt ${tm.altFrac.toFixed(2)} · ladder trials ${tm.ladTrials}`}</span>` : '';
   const legacyPart = g
     ? `decisionNodes ${g.grades.decisionNodes}/5 · B ${g.grades.B}/5 · cross ${g.grades.crossPerSeg}/5 · <span class="dev-raw">decisionNodes ${g.raw.decisionNodes} · B ${g.raw.B.toFixed(2)} · cross/seg ${g.raw.crossPerSeg.toFixed(2)}</span>`
@@ -486,6 +489,24 @@ const loopNoteKey = () => (S.finished ? 'game.loopClosed' : loopOpen(S.puzzle, S
 // to guess).
 const teleportNoteHtml = () => (S.puzzle.portals
   ? `<p class="note teleport-note" id="teleportNote">${t('game.teleportHint')}</p>` : '');
+// Two paths: how far each colour is, the one drawn now marked, and the rule in one sentence. The
+// legend is kept current while drawing (refreshTwoLegend).
+function twoLegendHtml() {
+  const p = S.puzzle, done = reached(p, S.paths), total = [p.split, labelCount(p) - p.split];
+  const chip = (c, name) => {
+    const active = S.colour === c ? ' active' : '';
+    return `<span class="two-chip two-${name}${active}"><i class="two-dot"></i>`
+      + `${t('game.twopaths' + name[0].toUpperCase() + name.slice(1), done[c], total[c])}</span>`;
+  };
+  return chip(0, 'red') + chip(1, 'blue');
+}
+function refreshTwoLegend() {
+  const legend = $('twoLegend');
+  if (legend) legend.innerHTML = twoLegendHtml();
+}
+const twoPathsNoteHtml = () => (S.puzzle.split
+  ? `<div class="two-legend" id="twoLegend">${twoLegendHtml()}</div>`
+    + `<p class="note two-note" id="twoNote">${t('game.twopathsHint')}</p>` : '');
 function loopNoteHtml() {
   if (!S.puzzle.loop) return '';
   const open = !S.finished && loopOpen(S.puzzle, S.path);
@@ -542,6 +563,7 @@ function renderGame() {
         <div class="grid-wrap" id="gridWrap">${boardSvg(S)}</div>
         ${loopNoteHtml()}
         ${teleportNoteHtml()}
+        ${twoPathsNoteHtml()}
       </section>
       <div class="side">
         <section class="card">
@@ -551,7 +573,7 @@ function renderGame() {
             <button class="btn secondary" id="backMenu2">${t('game.menu')}</button>
             ${newPuzzleButton}
             <button class="btn secondary" id="resetPath">${t('game.reset')}</button>
-            <button class="btn secondary" id="hintBtn" style="${hintShown() ? '' : 'display:none'}" ${hintDisabled}>Hint (${S.hintsUsed}/${cap})</button>
+            <button class="btn secondary" id="hintBtn" style="${hintShown() ? '' : 'display:none'}" ${hintDisabled}>${t('game.hint', S.hintsUsed, cap)}</button>
             <button class="btn secondary" id="exportBtn" style="${hiddenUnlessDev}">Export</button>
           </div>
           ${solved}
@@ -593,6 +615,22 @@ function showRules(opt) {
 }
 
 // ---------- handlers ----------
+// Reset path: nothing is drawn any more (a Two paths puzzle: neither colour).
+function resetPaths() {
+  const two = Boolean(S.puzzle.split);
+  if (!S.finished) {
+    const drawn = two ? S.paths[0].length + S.paths[1].length : S.path.length;
+    if (S.trace) traceClear(S.trace, drawn);
+    if (two) S.paths.forEach((path, colour) => legsUndoTwo(S.legs, S.puzzle, colour, path, 1));
+    else legsUndo(S.legs, S.puzzle, S.path, 1);
+  }
+  S.paths = newPaths();
+  S.colour = 0;
+  S.path = two ? S.paths[0] : [];
+  S.finished = false;
+  S.hintCell = S.hintWrongCell = null;
+  render();
+}
 function attachHandlers() {
   const on = (id, f) => { const e = $(id); if (e) e.onclick = f; };
   on('playLocal', () => { S.size = +$('sizeSel').value; startLocal('open', S.mode); });
@@ -639,14 +677,17 @@ function attachHandlers() {
   document.querySelectorAll('.replay-day').forEach(b => { b.onclick = () => startReplay(b.dataset.date); });
   document.querySelectorAll('.stat-item').forEach(b => { b.onclick = e => { e.stopPropagation(); const open = !b.classList.contains('open'); closeStatTips(); b.classList.toggle('open', open); }; });
   on('backMenu2', () => { logPlay(false); stopTimer(); leaveLucky(); S.screen = 'menu'; render(); });
-  on('resetPath', () => { if (S.trace && !S.finished) traceClear(S.trace, S.path.length); if (!S.finished) legsUndo(S.legs, S.puzzle, S.path, 1); S.path = []; S.finished = false; S.hintCell = S.hintWrongCell = null; render(); });
+  on('resetPath', resetPaths);
   on('behaviourToggle', async ev => { ev.preventDefault(); S.behaviourOn = !S.behaviourOn; await behaviour.setOn(S.behaviourOn); render(); });
   on('newPuzzle', () => { if (!S.isGotd) startLocal('skip', S.variant || 'standard'); });
   on('exportBtn', () => { $('exportText').value = serialize(S.puzzle); $('exportMsg').textContent = ''; modal.open(); setTimeout(() => $('exportText').focus(), 30); });
   on('hintBtn', () => {
     if (S.finished || S.hintsUsed >= maxHints(S.puzzle)) return;
-    const { correctCell, wrongCell } = computeHint(solutionOf(S.puzzle), S.path);
+    const two = Boolean(S.puzzle.split);
+    const { colour, correctCell, wrongCell } = two
+      ? hintTwo(S.puzzle, S.paths, S.colour) : computeHint(solutionOf(S.puzzle), S.path);
     if (correctCell == null) return;
+    if (two) { S.colour = colour; S.path = S.paths[colour]; } // the hint is for that colour
     S.hintsUsed++; S.hintCell = correctCell; S.hintWrongCell = wrongCell; render();
   });
   const svg = document.querySelector('#gridWrap svg'); if (svg) setupGridInput(svg);
@@ -654,6 +695,9 @@ function attachHandlers() {
 
 function setupGridInput(svg) {
   const p = S.puzzle, n = p.n, pathEl = svg.querySelector('[data-role="path"]');
+  // Two paths: one path element per colour (S.paths); S.path is the path of the colour drawn now
+  const two = Boolean(p.split);
+  const pathEls = [...svg.querySelectorAll('[data-role="path"]')];
   const wrap = Boolean(p.wrap), pad = wrap ? WRAP_PAD : 0; // a wrap-around board has a margin
   let dragging = false, last = null, rect = svg.getBoundingClientRect();
   // Highest checkpoint number crossed anywhere along the current path (0 = none yet, since
@@ -668,8 +712,15 @@ function setupGridInput(svg) {
   const loopEl = p.loop ? svg.querySelector('[data-role="loop-open"]') : null;
   const jumpEl = p.portals ? svg.querySelector('[data-role="jump"]') : null;
   const setD = () => {
-    const line = routeCells(p, S.path, S.finished); // a solved Loop puzzle is drawn closed
-    pathEl.setAttribute('d', line.length > 1 ? routeD(p, line) : '');
+    if (two) {
+      S.paths.forEach((path, colour) => {
+        pathEls[colour].setAttribute('d', path.length > 1 ? routeD(p, path) : '');
+      });
+      refreshTwoLegend();
+    } else {
+      const line = routeCells(p, S.path, S.finished); // a solved Loop puzzle is drawn closed
+      pathEl.setAttribute('d', line.length > 1 ? routeD(p, line) : '');
+    }
     if (seamEl) seamEl.innerHTML = seamMarksSvg(n, S.path);
     // Teleport: the jumps, and the portal to tap next
     if (jumpEl) jumpEl.innerHTML = jumpMarksSvg(p, S.path, S.finished);
@@ -684,15 +735,18 @@ function setupGridInput(svg) {
   const fill = (i, visited) => {
     const badge = svg.querySelector(`[data-num-cell="${i}"]`);
     if (!badge) return;
-    const colors = badgeColors(visited, visited && stepWrong(p, S.path, i));
-    badge.querySelector('circle').setAttribute('fill', colors.fill);
-    badge.querySelector('circle').setAttribute('stroke', colors.stroke);
+    const colors = two
+      ? badgeColorsTwo(+badge.dataset.colour, visited)
+      : badgeColors(visited, visited && stepWrong(p, S.path, i));
+    const shape = badge.querySelector(two ? '.num-shape' : 'circle'); // Two paths: circle or square
+    shape.setAttribute('fill', colors.fill);
+    shape.setAttribute('stroke', colors.stroke);
     badge.querySelector('text').setAttribute('fill', colors.text);
   };
   const clearHint = () => { if (S.hintCell == null && S.hintWrongCell == null) return; S.hintCell = S.hintWrongCell = null; svg.querySelectorAll('[data-role="hint"],[data-role="hint-wrong"]').forEach(e => e.remove()); };
   // (an Exact puzzle's badges can turn red on any move: the step of a number passes)
   const syncFills = () => {
-    const on = new Set(S.path);
+    const on = new Set(two ? [...S.paths[0], ...S.paths[1]] : S.path);
     svg.querySelectorAll('[data-num-cell]').forEach(g => {
       const cell = +g.dataset.numCell;
       fill(cell, on.has(cell));
@@ -708,9 +762,13 @@ function setupGridInput(svg) {
   }
   function walkTo(cell) {
     if (cell < 0 || S.finished || (p.holes && p.holes[cell])) return; // a hole is not part of the board
-    const prev = S.path[S.path.length - 1], before = S.path.length, prevPath = S.path.slice(), kind = step(p, S.path, cell);
+    const prev = S.path[S.path.length - 1], before = S.path.length, prevPath = S.path.slice();
+    const kind = two ? walkColour(p, S.paths, S.colour, cell) : step(p, S.path, cell);
     if (kind && S.trace) traceStep(S.trace, kind, before, S.path.length);
-    if (kind && kind !== 'push') legsUndo(S.legs, p, prevPath, S.path.length);
+    if (kind && kind !== 'push') {
+      if (two) legsUndoTwo(S.legs, p, S.colour, prevPath, S.path.length);
+      else legsUndo(S.legs, p, prevPath, S.path.length);
+    }
     if (!kind) {
       if (prev != null && cell !== prev) {
         sfxBlocked();
@@ -722,7 +780,8 @@ function setupGridInput(svg) {
     else if (kind === 'push') fill(cell, true);
     else fill(prev, false);
     setD(); clearHint();
-    if (kind === 'push' && isSolved(p, S.path)) { onSolved(); setD(); return; }
+    const solved = kind === 'push' && (two ? solvedPaths(p, S.paths) : isSolved(p, S.path));
+    if (solved) { onSolved(); setD(); return; }
     if (kind === 'push') {
       const onCp = p.cp[cell] > 0;
       if (onCp) sfxCheckpoint(); else if (segment > 0) sfxMoveAfterCheckpoint(segment); else sfxMove();
@@ -731,6 +790,15 @@ function setupGridInput(svg) {
       sfxBack();
       segment = highestCp(S.path);
     }
+  }
+  // Two paths: a press picks the colour it draws (a path's own cell, a 1, or the head it continues)
+  function chooseColour(x, y) {
+    const cell = cellAtPoint(n, x - rect.left, y - rect.top, rect.width, rect.height, pad, wrap);
+    if (cell < 0) return;
+    S.colour = pickColour(p, S.paths, cell, S.colour);
+    S.path = S.paths[S.colour];
+    segment = highestCp(S.path);
+    refreshTwoLegend();
   }
   function move(x, y) { // interpolate so fast drags don't skip cells
     const cell = (px, py) => {
@@ -742,7 +810,12 @@ function setupGridInput(svg) {
     } else walkTo(cell(x, y));
     last = { x, y };
   }
-  svg.addEventListener('pointerdown', e => { e.preventDefault(); dragging = true; last = null; rect = svg.getBoundingClientRect(); try { svg.setPointerCapture(e.pointerId); } catch { /* ignore */ } move(e.clientX, e.clientY); });
+  svg.addEventListener('pointerdown', e => {
+    e.preventDefault(); dragging = true; last = null; rect = svg.getBoundingClientRect();
+    try { svg.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    if (two) chooseColour(e.clientX, e.clientY);
+    move(e.clientX, e.clientY);
+  });
   svg.addEventListener('pointermove', e => { if (!dragging) return; e.preventDefault(); move(e.clientX, e.clientY); });
   const up = e => { if (!dragging) return; dragging = false; last = null; try { svg.releasePointerCapture(e.pointerId); } catch { /* ignore */ } render(); };
   svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', up);
@@ -827,6 +900,10 @@ function beginGame(puzzle, gotdDate, isReplay = false, isShared = false, lucky =
   const variant = variantOf(puzzle);
   const difficulty = gradePuzzle(puzzle);
   Object.assign(S, { variant, lucky, luckyResult: null, luckyNote: null, healed: false, trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
+  // Two paths: the red and the blue path, and the colour drawn now (S.path is that colour's path)
+  S.paths = newPaths();
+  S.colour = 0;
+  if (puzzle.split) S.path = S.paths[0];
   startTimer(); render(); maybeShowRules();
 }
 function generatorFor(mode, n, seed) {
