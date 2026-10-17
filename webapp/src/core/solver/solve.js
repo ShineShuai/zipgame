@@ -6,6 +6,7 @@ import { makePropagator } from './propagate.js';
 import { makeIncremental } from './incremental.js';
 import { solveDirected } from './solve-dir.js';
 import { solveLoop } from './solve-loop.js';
+import { solveTwo } from './solve-two.js';
 import { distFn, bipartite, graphDistances, portalsBipartite } from '../geom.js';
 
 // Hamiltonian-path search: start at checkpoint 1, hit the checkpoints in order, end on the last one,
@@ -27,6 +28,10 @@ import { distFn, bipartite, graphDistances, portalsBipartite } from '../geom.js'
 //
 // A Loop puzzle (p.loop, model.js: the path closes into a ring) is searched by solve-loop.js: this
 // search once per possible last cell.
+//
+// A Two paths puzzle (p.split, model.js: two paths, red 1..split and blue split+1..K, cover the board)
+// is searched by solve-two.js: this search on the numbers 1..K with a bridge edge, a portal that the
+// path must use, from the last red checkpoint to the first blue one.
 //
 // An Exact puzzle (p.exact, model.js: the number of a cell is its step on the path) is searched on
 // the ranks of its numbers, the checkpoints 1..K of the search below, and each checkpoint also has
@@ -56,7 +61,9 @@ import { distFn, bipartite, graphDistances, portalsBipartite } from '../geom.js'
 //             effect) and the deepest one's depth/T fraction — see difficulty.js. Purely additive
 //             bookkeeping (a comparison + two counters), so it never changes which nodes are
 //             visited; only opt-in because unused fields cost nothing to skip, not to avoid bias.
-//   mustUse   [a, b]: only count solutions whose path walks the grid edge a-b (a and b adjacent cells). Searches
+//   mustUse   [a, b] or a list [[a, b], [c, d], ...]: only count solutions whose path walks the grid edge a-b (a and b
+//             adjacent cells), and every other edge of the list too (a Two paths puzzle adds its bridge to the
+//             freed edge of a wall check, solver/solve-two.js; solve-loop.js and solve-dir.js take one edge only). Searches
 //             the same tree as without it but refuses every move that leaves a or b by any other edge, and, with
 //             prop, forces the edge during propagation. gen/walls.js uses it (freedEdge) to test a just-removed
 //             wall: the puzzle stays unique iff no solution crosses the freed edge (limit 1, count 0).
@@ -88,6 +95,7 @@ export function solve(p, opts = {}) {
       + 'wrap-around or a loop (yet)');
   }
   if (p.arrows) return solveDirected(p, opts);
+  if (p.split) return solveTwo(p, opts, (q, o) => searchPaths(q, o, null));
   if (p.loop) return solveLoop(p, opts, (q, o) => searchPaths(q, o, null));
   if (!p.exact) return searchPaths(p, opts, null);
   const { rank, steps } = exactRanks(p);
@@ -112,9 +120,24 @@ function searchPaths(p, opts, steps) {
   if (holes) for (let i = 0; i < T; i++) if (holes[i]) TC--;
   const cp = p.cp;
   const limit = opts.limit ?? 2;
-  const MUST = opts.mustUse || null;
-  const MA = MUST ? MUST[0] : -1;
-  const MB = MUST ? MUST[1] : -1;
+  // The edges the path must use: none, or one [a, b], or a list of them (see opts.mustUse above).
+  // `used` in dfs() is a bit mask over this list; ALL = every one of them is on the path (0 when
+  // there is none, which is dfs()'s `used` from the start).
+  const mustList = !opts.mustUse ? [] : Array.isArray(opts.mustUse[0]) ? opts.mustUse : [opts.mustUse];
+  const NM = mustList.length;
+  const MUST_A = Int32Array.from(mustList, edge => edge[0]);
+  const MUST_B = Int32Array.from(mustList, edge => edge[1]);
+  const ALL = (1 << NM) - 1;
+  // the flat list [a, b, ...] of the edges not in `used` yet, as propagation takes it (cached per mask)
+  const unusedFlat = new Array(1 << NM);
+  const unusedOf = used => {
+    if (!unusedFlat[used]) {
+      const flat = [];
+      for (let i = 0; i < NM; i++) if (!((used >> i) & 1)) flat.push(MUST_A[i], MUST_B[i]);
+      unusedFlat[used] = flat;
+    }
+    return unusedFlat[used];
+  };
   const cap = opts.nodeCap || 200000;
   const K = maxNumber(p);
   const start = startCell(p);
@@ -407,7 +430,7 @@ function searchPaths(p, opts, steps) {
 
   // ---------- search ----------
 
-  // used: the must-use edge (opts.mustUse) is already on the path. skip: the parent's prop fixpoint is reused.
+  // used: bit i = must-use edge i (opts.mustUse) is already on the path. skip: the parent's prop fixpoint is reused.
   function dfs(cell, count, needed, depth, used, skip) {
     nodes++;
     if (nodes - prefix > cap || found >= limit) return;
@@ -426,7 +449,7 @@ function searchPaths(p, opts, steps) {
     }
 
     if (count === TC) {
-      if (cell === end && need === K + 1 && (MA < 0 || used)) {
+      if (cell === end && need === K + 1 && used === ALL) {
         found++;
         if (paths) paths.push(Array.from(pathBuf.subarray(0, TC))); // pathBuf is T long, a board with holes has fewer cells
       }
@@ -449,8 +472,8 @@ function searchPaths(p, opts, steps) {
     let feasible = noDeadEnd(cell)
       && (LCONN && depth > 0 ? localConn(prev, cell) || neighboursConnected(prev, cell) : connOk(cell, remaining))
       && (!PROP || (INC
-        ? (depth === 0 ? inc.init(cell, count, MA, MB) : inc.step(prev, cell, count))
-        : skip || (MA >= 0 && !used ? prop.deduce(cell, count, ul, un, vm, MA, MB) : prop.deduce(cell, count, ul, un, vm))))
+        ? (depth === 0 ? inc.init(cell, count, NM ? unusedOf(0) : null) : inc.step(prev, cell, count))
+        : skip || prop.deduce(cell, count, ul, un, vm, used === ALL ? null : unusedOf(used))))
       && (!POCKET || pocketOk(cell));
     if (feasible && LEG_COLLIDE && need <= K) {
       const legs = [[cell, pos[need]]];
@@ -478,6 +501,16 @@ function searchPaths(p, opts, steps) {
       }
     }
 
+    let onlyTo = -1;
+    if (used !== ALL) {
+      for (let i = 0; i < NM; i++) {
+        if ((used >> i) & 1) continue;
+        const to = cell === MUST_A[i] ? MUST_B[i] : cell === MUST_B[i] ? MUST_A[i] : -1;
+        if (to < 0) continue;
+        onlyTo = onlyTo === -1 || onlyTo === to ? to : -2;
+      }
+    }
+
     // Candidate moves, most constrained first (stable insertion sort by onward degree).
     const base = depth * W;
     let count2 = 0;
@@ -486,8 +519,9 @@ function searchPaths(p, opts, steps) {
       if (v < 0 || vis[v]) continue;
       if (forced && depth < prefix && v !== forced[depth + 1]) continue;
       if (PROP && !((av[cell] >> d) & 1)) continue;
-      // an end of the must-use edge can only be left by that edge
-      if (MA >= 0 && !used && (cell === MA ? v !== MB : cell === MB && v !== MA)) continue;
+      // an end of a must-use edge not used yet can only be left by that edge (-2: the head is an end of
+      // two of them, so it has no move)
+      if (onlyTo !== -1 && v !== onlyTo) continue;
       const marker2 = cp[v];
       if (marker2 !== 0 && marker2 !== need) continue;
       // Exact: step depth + 2 is the next number's: its cell goes there, no other cell does
@@ -547,7 +581,14 @@ function searchPaths(p, opts, steps) {
     const reuse = FAST && count2 === 1 && ONE_BIT[av[cell]] === 1;
     for (let i = 0; i < count2; i++) {
       const next = cand[base + i];
-      const nowUsed = used || (cell === MA && next === MB) || (cell === MB && next === MA) ? 1 : 0;
+      let nowUsed = used;
+      if (used !== ALL) {
+        for (let i = 0; i < NM; i++) {
+          if ((cell === MUST_A[i] && next === MUST_B[i]) || (cell === MUST_B[i] && next === MUST_A[i])) {
+            nowUsed |= 1 << i;
+          }
+        }
+      }
       dfs(next, count + 1, need, depth + 1, nowUsed, reuse && next !== end ? 1 : 0);
       if (found >= limit || nodes - prefix > cap) break;
     }

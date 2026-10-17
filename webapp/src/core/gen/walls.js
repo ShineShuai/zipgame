@@ -1,6 +1,7 @@
 import { solve } from '../solver/solve.js';
 import { allEdges, hasWallId, setWallId, pathEdgeIds, edgeCells } from '../edges.js';
 import { shuffle } from '../rng.js';
+import { bridgeCells } from '../twopaths.js';
 
 // Generators (function*) so callers can drive them synchronously (tests) or time-sliced (UI).
 // Yielded values are progress events { frac, walls, K }.
@@ -34,7 +35,8 @@ export function* makeUnique(p, path, rnd, cfg) {
   const ring = !!p.loop;
   const all = allEdges(n, p.holes, wrap); // no wall is ever put next to a hole
   const maxWalls = cfg.wallBudget == null ? all.length : cfg.wallBudget;
-  const portals = p.portals || null;
+  // a Two paths path crosses its bridge like a jump over a portal pair: an edge id no wall has
+  const portals = p.portals || (p.split ? [bridgeCells(p)] : null);
   const anchor = edgeMarks(n, path, wrap, ring, portals);
   const pool = shuffle(all.filter(e => !anchor[e]), rnd); // walls we may still place, in random order
   const order = [];                                       // walls placed so far

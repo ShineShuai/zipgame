@@ -3,6 +3,7 @@ import {
 } from '../../view/geometry.js';
 import { arrowIds, arrowDirId, arrowMove } from '../../core/edges.js';
 import { cellCount } from '../../core/model.js';
+import { colourOfCell, colourNumber } from '../../core/twopaths.js';
 import { isSolved } from '../../core/rules.js';
 import { isPortalPair, portalPartner } from '../../core/geom.js';
 import { portalIcon, portalColor, portalShape } from '../../view/portal-icons.js';
@@ -22,6 +23,8 @@ export const COLORS = {
   numberWrong: '#e5484d', // an Exact number the path reached on the wrong step
   hintRing: '#ff9f1c',
   hintWrong: '#e5484d',
+  // Two paths: the two colours of a path and of its numbers (a ring when idle, filled when visited)
+  twoPath: ['#e5484d', '#3b68ee'],
 };
 
 // The colours of a number badge: idle (white, blue ring), visited (filled blue), and in an Exact
@@ -30,6 +33,15 @@ export function badgeColors(visited, wrong = false) {
   if (!visited) return { fill: COLORS.numberFill, stroke: COLORS.number, text: COLORS.number };
   const ink = wrong ? COLORS.numberWrong : COLORS.number;
   return { fill: ink, stroke: ink, text: COLORS.numberVisitedText };
+}
+
+// Two paths: the colours of a number badge of `colour` (0 red, 1 blue): idle (white, coloured ring)
+// or visited (filled with the colour).
+export function badgeColorsTwo(colour, visited) {
+  const ink = COLORS.twoPath[colour];
+  return visited
+    ? { fill: ink, stroke: ink, text: COLORS.numberVisitedText }
+    : { fill: COLORS.numberFill, stroke: ink, text: ink };
 }
 
 // An Exact number on the path (cell visited) is wrong unless the cell is the step its number says.
@@ -146,6 +158,42 @@ function numberBadges(puzzle, visited, path) {
   }
   return badges.join('');
 }
+
+// Two paths: the number badges. A red number is a circle, a blue one a rounded square (so that the
+// colours differ by more than a hue), and the blue numbers count again from 1. class num-shape =
+// the shape that main.js recolours when the cell is visited or left.
+function twoNumberBadges(p, visited) {
+  const n = p.n;
+  const badges = [];
+  for (let cell = 0; cell < n * n; cell++) {
+    const colour = colourOfCell(p, cell);
+    if (colour < 0) continue;
+    const [x, y] = cellCenter(n, cell, CELL);
+    const colors = badgeColorsTwo(colour, visited.has(cell));
+    const number = colourNumber(p, p.cp[cell]);
+    const fontSize = Math.round(CELL * 0.32 * 10) / 10;
+    const half = CELL * 0.29;
+    const shape = colour === 0
+      ? `<circle class="num-shape" cx="${x}" cy="${y}" r="${CELL * 0.32}" `
+      : `<rect class="num-shape" x="${x - half}" y="${y - half}" width="${2 * half}" ` +
+        `height="${2 * half}" rx="${CELL * 0.1}" `;
+    badges.push(
+      `<g data-num-cell="${cell}" data-colour="${colour}">` +
+      `${shape}fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="3"/>` +
+      `<text x="${x}" y="${y}" dy=".35em" text-anchor="middle" font-size="${fontSize}" ` +
+      `font-weight="700" fill="${colors.text}">${number}</text></g>`
+    );
+  }
+  return badges.join('');
+}
+
+// Two paths: the drawn line of each colour, one path element each (data-colour 0 = red, 1 = blue).
+export const twoPathsSvg = (p, paths) => paths.map((path, colour) => {
+  const d = path.length > 1 ? routeD(p, path) : '';
+  return `<path data-role="path" data-colour="${colour}" d="${d}" ` +
+    `stroke="${COLORS.twoPath[colour]}" stroke-width="${CELL * 0.28}" fill="none" ` +
+    'stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>';
+}).join('');
 
 // Red cross on the first wrong move of a hint.
 function wrongMoveMark(n, cell) {
@@ -272,13 +320,19 @@ export function jumpMarksSvg(p, path, finished = false) {
   return marks.join('');
 }
 
+// The drawn line of a puzzle with one path (`route` = its svg path data).
+const singlePathSvg = route => `<path data-role="path" d="${route}" stroke="${COLORS.path}" ` +
+  `stroke-width="${CELL * 0.28}" fill="none" stroke-linecap="round" stroke-linejoin="round" ` +
+  'opacity="0.95"/>';
+
 // Full SVG markup for the play board (S = play state). The svg itself has no border or padding, because
 // pointer positions are mapped to cells through its bounding box; the frame is the .grid-wrap around it.
 export function boardSvg(S) {
   const p = S.puzzle;
   const n = p.n;
   const size = n * CELL;
-  const visited = new Set(S.path);
+  const two = Boolean(p.split);
+  const visited = new Set(two ? [...S.paths[0], ...S.paths[1]] : S.path);
   const wrap = Boolean(p.wrap);
   const line = routeCells(p, S.path, S.finished);
   const route = line.length > 1 ? routeD(p, line) : '';
@@ -286,17 +340,17 @@ export function boardSvg(S) {
   const view = `${-margin} ${-margin} ${size + 2 * margin} ${size + 2 * margin}`;
 
   let svg = `<svg viewBox="${view}" class="zip-svg${p.holes ? ' cutout' : ''}` +
-    `${p.arrows ? ' arrows' : ''}${wrap ? ' wrap' : ''}${p.portals ? ' teleport' : ''}" ` +
+    `${p.arrows ? ' arrows' : ''}${wrap ? ' wrap' : ''}${p.portals ? ' teleport' : ''}` +
+    `${two ? ' twopaths' : ''}" ` +
     `style="${maxBoardCss(n, pad)}">`;
   svg += p.holes ? cutoutLayers(p) : wrap ? wrapLayers(size) : gridLines(size);
   svg += wallLines(p);
   svg += portalIconsSvg(p);
-  svg += `<path data-role="path" d="${route}" stroke="${COLORS.path}" stroke-width="${CELL * 0.28}" fill="none" ` +
-    `stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>`;
+  svg += two ? twoPathsSvg(p, S.paths) : singlePathSvg(route);
   if (wrap) svg += `<g data-role="seam">${seamMarksSvg(n, S.path)}</g>`;
   if (p.portals) svg += `<g data-role="jump">${jumpMarksSvg(p, S.path, S.finished)}</g>`;
   if (p.arrows) svg += arrowMarks(p);
-  svg += numberBadges(p, visited, S.path);
+  svg += two ? twoNumberBadges(p, visited) : numberBadges(p, visited, S.path);
   if (p.loop) svg += `<g data-role="loop-open">${loopOpenMarks(p, S.path)}</g>`;
   if (S.hintWrongCell != null) svg += wrongMoveMark(n, S.hintWrongCell);
   if (S.hintCell != null) svg += correctMoveRing(n, S.hintCell);

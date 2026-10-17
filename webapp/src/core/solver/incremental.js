@@ -25,7 +25,8 @@
 //                                         caller; at step(h, v) both h and v are already marked)
 //   S              the state array; S[cell] is the AV block, so S[head] is the head's still-possible moves
 //   init(cur, count, mustA, mustB)   state for the root node (only `cur` on the path); true unless infeasible.
-//                                    mustA/mustB: optional edge the path must use (solve.js mustUse)
+//                                    must: optional flat list [a0, b0, a1, b1, ...] of edges the path must use
+//                                    (solve.js mustUse)
 //   mark()         trail position; pass it back to undo()
 //   step(h, v, count)   the path moves h -> v (count = path length including v); true unless infeasible.
 //                       Mutates the state even when it returns false: undo() afterwards either way.
@@ -152,7 +153,7 @@ export function makeIncremental(nb, T, end, vis, holes = null, cells = T) {
     return true;
   }
 
-  function init(cur, count, mustA = -1, mustB = -1) {
+  function init(cur, count, must = null) {
     if (cur === end) return false;
     S.fill(0);
     tp = 0;
@@ -170,10 +171,14 @@ export function makeIncremental(nb, T, end, vis, holes = null, cells = T) {
       if (degree < need) return false;
       if (degree === need) pq[qt++] = u;
     }
-    if (mustA >= 0) {
-      let dir = -1;
-      for (let d = 0; d < W; d++) if (nb[mustA * W + d] === mustB) dir = d;
-      if (dir < 0 || ((S[AV + mustA] >> dir) & 1) === 0 || !force(mustA, dir)) return false;
+    if (must) {
+      for (let i = 0; i < must.length; i += 2) {
+        const mustA = must[i];
+        const mustB = must[i + 1];
+        let dir = -1;
+        for (let d = 0; d < W; d++) if (nb[mustA * W + d] === mustB) dir = d;
+        if (dir < 0 || ((S[AV + mustA] >> dir) & 1) === 0 || !force(mustA, dir)) return false;
+      }
     }
     const ok = drain();
     tp = 0; // the root state is permanent: nothing to roll back below it

@@ -5,6 +5,7 @@ import {
   pairCount, pickPortals, teleportPath, teleportCheckpointRules, maxPortalPairs,
 } from './portals.js';
 import { gapCheckpoints, randomCheckpoints, loopCheckpoints, LOOP_TAIL } from './checkpoints.js';
+import { twoPathsLayout } from './twopaths-layout.js';
 import { makeUnique, minimizeWalls, refineWalls, minimizeFully, REFINE_CAP_X } from './walls.js';
 import { solve } from '../solver/solve.js';
 
@@ -36,6 +37,9 @@ export const TELEPORT_CANDIDATES = {
 // Humans find the seams hard to hold in mind, so the play app offers the smaller boards only.
 // 7 and 8 take about 0.3 and 0.5 s to generate (8 to 12 walls); the wall count hardly depends on
 // the candidate count there.
+// The same for Two paths puzzles (sizes 4 and up; gen/twopaths.js offers 5 to 8). The standard counts, kept
+// for 4 to 8: measured with tools/twopaths-bench.mjs (a puzzle takes about twice as long as a standard one).
+export const TWOPATHS_CANDIDATES = { 4: 64, 5: 64, 6: 64, 7: 48, 8: 32, 9: 16, 10: 8 };
 export const WRAP_MIN_OFFERED = 4;
 export const WRAP_MAX_OFFERED = 8;
 export const WRAP_SIZES = Object.keys(WRAP_CANDIDATES)
@@ -87,9 +91,11 @@ export function* tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, o = {
   const wrap = !!o.wrap;
   const loop = !!o.loop;
   const pairs = o.pairs || 0;
+  const twopaths = !!o.twopaths;
   let path;
   let positions;
   let portals = null;
+  let split = 0;
   if (pairs) {
     // A Teleport puzzle: the pairs first, then a path through all of them, numbers off the portal
     // cells.
@@ -111,6 +117,11 @@ export function* tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, o = {
     const placed = loopCheckpoints(n, ringPath(n, rnd), K, rnd);
     if (!placed) return null;
     ({ path, positions } = placed);
+  } else if (twopaths) {
+    // A Two paths puzzle: a path cut in two (red, then blue), numbers along each piece.
+    const layout = twoPathsLayout(n, K, rnd, o.cps);
+    if (!layout) return null;
+    ({ path, positions, split } = layout);
   } else {
     const findPath = o.path === 'backbite' ? backbite : warnsdorff;
     path = findPath(n, rnd, wrap);
@@ -125,6 +136,7 @@ export function* tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, o = {
   if (wrap) p.wrap = true;
   if (loop) p.loop = true;
   if (portals) p.portals = portals;
+  if (split) p.split = split;
   positions.forEach((q, i) => {
     p.cp[path[q]] = i + 1;
   });
@@ -177,14 +189,18 @@ export function* generate(n, seed, o = {}) {
   const wrap = !!o.wrap;
   const loop = !!o.loop;
   const teleport = !!o.teleport;
+  const twopaths = !!o.twopaths;
   if (wrap && n < 3) throw new Error('A wrap-around puzzle needs n >= 3');
   if (loop && (n % 2 || wrap)) throw new Error('A loop puzzle needs an even n, on a grid');
   if (teleport && (n < 4 || wrap || loop)) {
     throw new Error('A Teleport puzzle needs n >= 4, on a grid');
   }
+  if (twopaths && (n < 4 || wrap || loop || teleport)) {
+    throw new Error('A Two paths puzzle needs n >= 4, on a grid');
+  }
   const prop = o.prop !== false;
   const freedEdge = o.freedEdge !== false;
-  const candidatesOf = () => (teleport ? TELEPORT_CANDIDATES[n]
+  const candidatesOf = () => (teleport ? TELEPORT_CANDIDATES[n] : twopaths ? TWOPATHS_CANDIDATES[n]
     : wrap ? WRAP_CANDIDATES[n] : loop ? LOOP_CANDIDATES[n] : candidatesFor(n));
   const wanted = o.candidates || candidatesOf() || 2;
   const rnd = makeRng(seed);
@@ -204,7 +220,7 @@ export function* generate(n, seed, o = {}) {
   for (let attempt = 0; attempt < maxAttempts && candidates.length < wanted; attempt++) {
     // The attempt's own wall counts jump around, so report the fewest found so far instead.
     const attemptEvents = tryGenerate(
-      n, K, rnd, nodeCap, cells, SEED_FRACTION, { prop, wrap, loop, pairs },
+      n, K, rnd, nodeCap, cells, SEED_FRACTION, { prop, wrap, loop, pairs, twopaths },
     );
     const found = yield* tag(attemptEvents, { walls: fewestWalls(candidates) });
     if (found) candidates.push(found);
@@ -212,7 +228,7 @@ export function* generate(n, seed, o = {}) {
   }
   for (let fallback = 0; fallback < 4 && candidates.length === 0; fallback++) {
     const attemptEvents = tryGenerate(
-      n, K, rnd, fallbackCap, cells, SEED_FRACTION, { prop, wrap, loop, pairs },
+      n, K, rnd, fallbackCap, cells, SEED_FRACTION, { prop, wrap, loop, pairs, twopaths },
     );
     const found = yield* tag(attemptEvents, { walls: fewestWalls(candidates) });
     if (found) candidates.push(found);
@@ -225,7 +241,7 @@ export function* generate(n, seed, o = {}) {
     }
     // Last resorts, bounded (no unbounded recursion): densest K, then "number every cell".
     const denseCap = Math.max(300000, 20 * nodeCap);
-    const dense = yield* tryGenerate(n, Kmax, rnd, denseCap, cells, 0, { prop, wrap, loop, pairs });
+    const dense = yield* tryGenerate(n, Kmax, rnd, denseCap, cells, 0, { prop, wrap, loop, pairs, twopaths });
     if (dense) {
       if (dense.order.length) yield* minimizeWalls(dense, dense.order, rnd, nodeCap, Kmax, { prop, freedEdge });
       delete dense.order;
@@ -233,6 +249,7 @@ export function* generate(n, seed, o = {}) {
       return dense;
     }
     if (teleport) throw new Error('Puzzle generation failed: no Teleport puzzle found for N=' + n);
+    if (twopaths) throw new Error('Puzzle generation failed: no Two paths puzzle found for N=' + n);
     if (loop) return numberEveryCell(n, ringPath(n, rnd), seed, false, true);
     for (let x = 0; x < 11; x++) {
       const path = warnsdorff(n, rnd, wrap);

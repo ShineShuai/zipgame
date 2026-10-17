@@ -12,6 +12,11 @@
 // A puzzle of the "Loop" variant has `loop: true`: the path closes into a ring, so its last cell
 // touches cell 1 (through an open edge) and the numbers 1..K are met in cyclic order; K need not
 // be the last cell. solve() then runs solver/solve-loop.js (a standard search per possible last cell).
+// A puzzle of the "Two paths" variant has `split: k` (2 <= k <= K - 2): two paths, red and blue,
+// cover the board and share no cell. The numbers are still one list 1..K, the red path takes 1..k
+// (start 1, end k) and the blue path k+1..K (start k+1, end K); the board shows the blue ones as
+// 1..K-k. solve() then runs solver/solve-two.js, and a solution path is the red path followed by
+// the blue one (core/twopaths.js).
 // A puzzle of the "Teleport pairs" variant has `portals: [[a, b], ...]`: pairs of linked cells; a
 // step
 // from one cell of a pair to the other counts as a move (no wall ever stands on it, see
@@ -32,6 +37,7 @@ export const clonePuzzle = p => ({
   ...(p.exact ? { exact: true } : {}),
   ...(p.wrap ? { wrap: true } : {}),
   ...(p.loop ? { loop: true } : {}),
+  ...(p.split ? { split: p.split } : {}),
   ...(p.portals ? { portals: p.portals.map(pair => pair.slice()) } : {}),
 });
 // Cells the path has to cover: all n*n, minus the holes. A puzzle may carry `holes` (Uint8Array(n*n), 1 = hole): cells that are
@@ -206,6 +212,19 @@ export function portalPairProblem(p, a, b) {
   return null;
 }
 
+// A Two paths puzzle: each colour has at least 2 numbers (a path has a start and an end), and none of
+// the other variants' extras comes with it (yet).
+function twoPathsProblem(p, count) {
+  if (p.holes || p.arrows || p.exact || p.wrap || p.loop || p.portals) {
+    return 'Invalid: a Two paths puzzle cannot have holes, arrows, exact numbers, wrap-around, '
+      + 'a loop or portals (yet).';
+  }
+  if (!Number.isInteger(p.split) || p.split < 2 || p.split > count - 2) {
+    return `Invalid: the red path needs 2 numbers or more and so does the blue one (split ${p.split} of ${count}).`;
+  }
+  return null;
+}
+
 export function validate(p) {
   const nums = [];
   for (const v of p.cp) if (v) nums.push(v);
@@ -224,6 +243,10 @@ export function validate(p) {
   }
   if (p.portals) {
     const problem = portalProblem(p);
+    if (problem) return { ok: false, msg: problem };
+  }
+  if (p.split) {
+    const problem = twoPathsProblem(p, nums.length);
     if (problem) return { ok: false, msg: problem };
   }
   if (p.exact) return validateExact(p, nums);

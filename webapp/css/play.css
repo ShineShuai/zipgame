@@ -394,6 +394,11 @@ select:focus { border-color: var(--blue); }
 .vi-tile { fill: #fff; stroke: #a9bcf5; stroke-width: 0.7; }
 .vi-path { fill: none; stroke: #ffb020; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .vi-dot { fill: var(--blue); stroke: #fff; stroke-width: 1.2; }
+/* the Two paths icon: a red and a blue path */
+.vi-path-red { stroke: #e5484d; }
+.vi-path-blue { stroke: #3b68ee; }
+.vi-dot-red { fill: #e5484d; }
+.vi-dot-blue { fill: #3b68ee; }
 .vi-arrow { fill: #26324f; stroke: #fff; stroke-width: 0.8; stroke-linejoin: round; paint-order: stroke; }
 .vi-badge { fill: #fff; stroke: var(--blue); stroke-width: 1; } /* the Exact icon's step numbers */
 .vi-num { fill: var(--blue); font: 700 4.6px system-ui, sans-serif; text-anchor: middle; }
@@ -443,6 +448,19 @@ select:focus { border-color: var(--blue); }
   white-space: nowrap;
 }
 .hud-time,
+/* Two paths: how far each colour is, a circle for red and a square for blue like the numbers */
+.two-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.two-chip {
+  display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px;
+  border: 2px solid transparent; border-radius: 999px; background: var(--blue-soft);
+  font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.two-chip.active { border-color: currentColor; }
+.two-red { color: #e5484d; }
+.two-blue { color: #3b68ee; }
+.two-dot { display: inline-block; width: 14px; height: 14px; background: currentColor; }
+.two-red .two-dot { border-radius: 50%; }
+.two-blue .two-dot { border-radius: 3px; }
 .hud-step {
   padding: 4px 14px;
   border-radius: 999px;
