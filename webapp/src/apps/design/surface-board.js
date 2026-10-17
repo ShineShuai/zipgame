@@ -49,7 +49,8 @@ export function netFrame(net) {
 //   template           the dashed path of the generator, or null
 //   solutions, visible the solutions of Solve and which of them to show
 // `net` is the flat net (view/surface-net.js) or the solid in a view (view/proj.js): a cell with
-// net.hidden[cell] is not drawn, and net.depth[cell] (how much it faces the viewer) shades it.
+// net.hidden[cell] is not drawn, net.depth[cell] (how much it faces the viewer) shades it, and
+// net.frameOf(cell) lays its number and the head marker into the plane of the cell.
 // Returns { markup, frame }.
 export function surfaceSvg(net, V) {
   const { top } = net;
@@ -58,9 +59,19 @@ export function surfaceSvg(net, V) {
   const px = net.side * frame.scale;
   const points = poly => poly.map(corner => frame.toPixels(corner).join(',')).join(' ');
   const parts = [];
+  // A mark centred on a cell at pixel (x, y): drawn at (x, y), or in a 3D view at the origin of a
+  // matrix that lays it into the plane of the cell and moves it to (x, y).
+  // Returns [cx, cy, transform].
+  const placed = (cell, x, y) => {
+    if (!net.frameOf) {
+      return [x, y, ''];
+    }
+    const [a, b, c, d] = net.frameOf(cell).map(value => Math.round(value * 1e4) / 1e4);
+    return [0, 0, ` transform="matrix(${a} ${b} ${c} ${d} ${x} ${y})"`];
+  };
 
   const seen = cell => !net.hidden || !net.hidden[cell];
-  // how much a cell faces the viewer: it is darker when turned away, smaller marks on it
+  // how much a cell faces the viewer: it is darker when turned away
   const facing = cell => (net.depth ? Math.min(1, Math.max(0, net.depth[cell])) : 1);
   const visited = new Set(V.playing ? V.path : []);
   for (let cell = 0; cell < top.T; cell++) {
@@ -155,13 +166,14 @@ export function surfaceSvg(net, V) {
     const head = V.path[V.path.length - 1];
     if (seen(head)) {
       const [x, y] = frame.toPixels(net.centers[head]);
-      parts.push(`<circle class="sf-head" cx="${x}" cy="${y}" r="${round(px * 0.17)}"/>`);
+      const [cx, cy, at] = placed(head, x, y);
+      parts.push(`<circle class="sf-head" cx="${cx}" cy="${cy}" r="${round(px * 0.17)}"${at}/>`);
     }
   }
 
   // numbers
   const K = maxNumber(P);
-  const fontFor = (text, lean) => round(px * lean * (String(text).length > 2 ? 0.26 : 0.34));
+  const fontFor = text => round(px * (String(text).length > 2 ? 0.26 : 0.34));
   for (let cell = 0; cell < top.T; cell++) {
     if (!seen(cell)) {
       continue;
@@ -183,10 +195,10 @@ export function surfaceSvg(net, V) {
       classes.push('visited');
     }
     const [x, y] = frame.toPixels(net.centers[cell]);
-    const lean = 0.6 + 0.4 * facing(cell);
-    const radius = round(px * lean * (top.deg[cell] === 3 ? 0.25 : 0.36));
-    parts.push(`<g class="${classes.join(' ')}"><circle cx="${x}" cy="${y}" r="${radius}"/>`
-      + `<text x="${x}" y="${y}" font-size="${fontFor(number, lean)}">${number}</text></g>`);
+    const radius = round(px * (top.deg[cell] === 3 ? 0.25 : 0.36));
+    const [cx, cy, at] = placed(cell, x, y);
+    parts.push(`<g class="${classes.join(' ')}"${at}><circle cx="${cx}" cy="${cy}" r="${radius}"/>`
+      + `<text x="${cx}" y="${cy}" font-size="${fontFor(number)}">${number}</text></g>`);
   }
 
   if (V.selected >= 0 && !V.playing && seen(V.selected)) {

@@ -56,6 +56,8 @@ import {
   IDENTITY,
   buildView,
   cellDirection,
+  cellNormal,
+  faceFrame,
   facing,
   orbit,
   overview,
@@ -758,6 +760,35 @@ export function surfaceTests(t, ok, eq) {
     eq(turnToward(IDENTITY, [0, 0, 1]), IDENTITY, 'already facing');
   });
 
+  t('proj: a mark lies in the plane of its cell, squeezed with it, as upright as possible', () => {
+    const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 1e-9);
+    const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const cube = surfaceTopology('cube', 3);
+    const front = turnToward(IDENTITY, cellDirection(cube, 4));
+    ok(near(faceFrame(front, cube, 4), [1, 0, 0, 1]), 'facing the viewer: as flat');
+    for (const [kind, n] of [['tetra', 3], ['cube', 3]]) {
+      const top = surfaceTopology(kind, n);
+      let R = overview(top);
+      for (const turned of [[0, 0], [0.4, 0.2], [1.3, -0.5], [2.4, 0.9]]) {
+        R = orbit(R, ...turned);
+        const view = buildView(top, R);
+        for (let cell = 0; cell < top.T; cell++) {
+          if (view.hidden[cell]) {
+            continue;
+          }
+          const [a, b, c, d] = view.frameOf(cell);
+          ok(Math.abs(a * d - b * c - view.depth[cell]) < 1e-9, 'area seen = z of the normal');
+          ok(d >= -1e-9, 'up does not point down the screen');
+          // the two axes of the mark are unit vectors, at right angles, in the plane of the cell
+          const normal = turn(R, cellNormal(top, cell));
+          const right = [a, -b, -(normal[0] * a - normal[1] * b) / normal[2]];
+          const up = [-c, d, -(-normal[0] * c + normal[1] * d) / normal[2]];
+          ok(near([dot(right, right), dot(up, up), dot(right, up)], [1, 1, 0]), 'a true frame');
+        }
+      }
+    }
+  });
+
   t('proj view: three faces from a corner, counter-clockwise, the box never moves', () => {
     const area = poly => poly.reduce((sum, [x, y], i) => {
       const [nx, ny] = poly[(i + 1) % poly.length];
@@ -821,6 +852,11 @@ export function surfaceTests(t, ok, eq) {
     eq(new Set(markup.match(/fill="rgb\([^"]+\)"/g)).size, 3, 'a colour for each face seen');
     const numbered = g.puzzle.cp.filter((number, cell) => number && !view.hidden[cell]).length;
     eq((markup.match(/class="sf-badge/g) || []).length, numbered);
+    eq((markup.match(/<g class="sf-badge[^>]* transform="matrix\(/g) || []).length, numbered);
+    const flat = surfaceSvg(buildNet(top), state).markup;
+    ok(!/transform=/.test(flat), 'the net has its numbers flat');
+    const head = { ...state, playing: true, path: [g.path.find(cell => !view.hidden[cell])] };
+    ok(/class="sf-head"[^>]* transform="matrix\(/.test(surfaceSvg(view, head).markup), 'the head');
     const turned = surfaceSvg(buildView(top, orbit(overview(top), 1, 1)), state).frame;
     eq([turned.width, turned.height], [frame.width, frame.height], 'the picture keeps its size');
   });

@@ -111,8 +111,24 @@ function solidOf(top) {
   return solid;
 }
 
+// The outward unit normal of a cell.
+export const cellNormal = (top, cell) => solidOf(top).normals[cell];
+
 // The direction (from the middle of the solid) of the centre of a cell.
 export const cellDirection = (top, cell) => solidOf(top).directions[cell];
+
+// How a mark lying on a cell is drawn in view R: [a, b, c, d] of an SVG matrix(a b c d e f), where
+// (e, f) is the centre of the cell on the screen. The mark is drawn upright in the plane of the
+// cell (x to the right, y down, in the units of the screen); the matrix lays it into the plane,
+// so it is squeezed with the cell as the solid turns away. Its "up" is the way the plane rises
+// on the screen, so numbers stay as upright as the plane allows. For a cell facing the viewer it
+// is [1, 0, 0, 1]; its determinant is the z of the normal, the share of its area that is seen.
+export function faceFrame(R, top, cell) {
+  const n = turn(R, solidOf(top).normals[cell]);
+  const up = unit([-n[1] * n[0], 1 - n[1] * n[1], -n[1] * n[2]]);
+  const right = cross(up, n);
+  return [right[0], -right[1], -up[0], up[1]];
+}
 
 // How well the cell faces the viewer in view R: 1 straight at, 0 on the horizon, < 0 behind.
 export const facing = (R, top, cell) => turn(R, solidOf(top).directions[cell])[2];
@@ -124,8 +140,8 @@ const EMPTY_LETTERS = new Map();
 
 // The solid in view R, in the shape of view/surface-net.js buildNet(): polys[cell] (the corners
 // of the cell, counter-clockwise when it is seen), centers, glued (every side: there are no
-// cuts), hidden[cell] (1 when the cell is turned away), depth[cell] (the z of its normal), box
-// (the same for every view, so the picture does not jump), side.
+// cuts), hidden[cell] (1 when the cell is turned away), depth[cell] (the z of its normal),
+// frameOf(cell) (faceFrame), box (the same for every view, so the picture does not jump), side.
 export function buildView(top, R) {
   const solid = solidOf(top);
   const polys = [];
@@ -156,6 +172,7 @@ export function buildView(top, R) {
     tags: [],
     hidden,
     depth,
+    frameOf: cell => faceFrame(R, top, cell),
     box: { minX: -r, minY: -r, maxX: r, maxY: r },
     side: solid.side,
     maxSidePx: Infinity,
