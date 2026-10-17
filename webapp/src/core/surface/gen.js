@@ -6,8 +6,9 @@
 // What is left is a puzzle with a unique solution and few walls. The fewer numbers, the more
 // walls are needed; K is the knob (defaultK gives a starting point).
 import { makeRng, shuffle } from '../rng.js';
+import { runSync } from '../run.js';
 import { SLOTS, surfaceTopology } from './topology.js';
-import { makeSurfacePuzzle, wallCount } from './puzzle.js';
+import { makeSurfacePuzzle, wallCount, wallEdges } from './puzzle.js';
 import { makePrunes, openSlots, solveSurface } from './solve.js';
 
 export const GEN_CFG = {
@@ -88,17 +89,41 @@ export function numberAlongPath(p, path, K, rnd) {
   });
 }
 
-const isUnique = (p, nodeCap) => {
-  const result = solveSurface(p, { limit: 2, nodeCap });
-  return !result.capped && result.count === 1;
-};
+// Takes walls away from a uniquely solvable puzzle, in random order, as long as the solution stays
+// the only one (a check that hits the node cap counts as "not unique": the wall stays).
+// A generator: it yields { phase: 'walls', done, total } after every wall.
+// Returns { removed, kept, undecided }: undecided = walls kept only because their check was capped
+// (not proven necessary).
+export function* minimizeSurfaceWalls(puzzle, rnd, nodeCap, attempt = 1) {
+  const walls = shuffle(wallEdges(puzzle), rnd);
+  let removed = 0;
+  let undecided = 0;
+  for (let i = 0; i < walls.length; i++) {
+    puzzle.walls[walls[i]] = 0;
+    const result = solveSurface(puzzle, { limit: 2, nodeCap });
+    if (!result.capped && result.count === 1) {
+      removed++;
+    } else {
+      puzzle.walls[walls[i]] = 1;
+      if (result.capped) {
+        undecided++;
+      }
+    }
+    yield { phase: 'walls', done: i + 1, total: walls.length, attempt };
+  }
+  return { removed, kept: walls.length - removed, undecided };
+}
 
-// Returns { puzzle, path, K, walls, nodes } or throws when no Hamiltonian path was found.
-// `nodes` is the cost of proving the final puzzle unique: the difficulty measure.
-export function generateSurface(kind, n, seed, opts = {}) {
+// The steps of generateSurface (below) as a generator, for the time-sliced runner of the apps:
+// it yields progress objects, { phase: 'path' } and then { phase: 'walls', done, total }.
+// Returns { puzzle, path, K, walls, nodes, undecided } or throws when no Hamiltonian path was
+// found. `nodes` is the cost of proving the final puzzle unique: the difficulty measure.
+export function* generateSurfaceSteps(kind, n, seed, opts = {}) {
   const cfg = { ...GEN_CFG, ...opts.cfg };
+  const attempt = opts.attempt ?? 1;
   const top = surfaceTopology(kind, n);
   const rnd = makeRng(seed);
+  yield { phase: 'path', attempt };
   const path = randomHamiltonianPath(top, rnd, cfg);
   if (!path) {
     throw new Error(`no Hamiltonian path found for ${kind} ${n} (seed ${seed})`);
@@ -114,19 +139,39 @@ export function generateSurface(kind, n, seed, opts = {}) {
       }
     }
   }
-  const unused = [];
   for (let edge = 0; edge < top.E; edge++) {
-    if (!used[edge]) {
-      unused.push(edge);
-      puzzle.walls[edge] = 1;
-    }
+    puzzle.walls[edge] = used[edge] ? 0 : 1;
   }
-  for (const edge of shuffle(unused, rnd)) {
-    puzzle.walls[edge] = 0;
-    if (!isUnique(puzzle, cfg.checkNodeCap)) {
-      puzzle.walls[edge] = 1;
-    }
-  }
+  const { undecided } = yield* minimizeSurfaceWalls(puzzle, rnd, cfg.checkNodeCap, attempt);
   const final = solveSurface(puzzle, { limit: 2, nodeCap: 0 });
-  return { puzzle, path, K, walls: wallCount(puzzle), nodes: final.nodes };
+  return { puzzle, path, K, walls: wallCount(puzzle), nodes: final.nodes, undecided };
 }
+
+// Up to opts.tries puzzles (seeds seed, seed + 1, ...) until one needs at most opts.maxWalls
+// walls; when none does, the one with the fewest. Returns that result of generateSurfaceSteps plus
+// { attempts, hit }: the puzzles made, and whether the wall limit was met.
+export function* generateSurfaceWithin(kind, n, seed, opts = {}) {
+  const tries = Math.max(1, opts.tries ?? 1);
+  const maxWalls = opts.maxWalls ?? Infinity;
+  let best = null;
+  let attempts = 0;
+  while (attempts < tries) {
+    const made = yield* generateSurfaceSteps(kind, n, (seed + attempts) >>> 0, {
+      ...opts,
+      attempt: attempts + 1,
+    });
+    attempts++;
+    if (!best || made.walls < best.walls) {
+      best = made;
+    }
+    if (made.walls <= maxWalls) {
+      break;
+    }
+  }
+  return { ...best, attempts, hit: best.walls <= maxWalls };
+}
+
+// Returns { puzzle, path, K, walls, nodes, undecided } or throws when no Hamiltonian path was
+// found.
+export const generateSurface = (kind, n, seed, opts = {}) =>
+  runSync(generateSurfaceSteps(kind, n, seed, opts));

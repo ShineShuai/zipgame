@@ -32,6 +32,8 @@ import { renderCompareHtml } from './compare-view.js';
 import { DEFAULT_FLAGS_INT, PLAY_FLAGS_INT, decodeFlags, flagsToHex } from '../../core/gen/flags.js';
 import { mountDifficultyPanel } from './difficulty-panel.js';
 import { initHints, setHintText } from '../../ui/hint-popover.js';
+import { looksLikeSurface, parseSurface } from '../../core/surface/puzzle.js';
+import { createSurfaceController } from './surface.js';
 
 // Minimize: walls whose check hits the search limit get a deeper second look, within this many times the limit in nodes in total.
 const REFINE_BUDGET_X = 50;
@@ -54,9 +56,12 @@ const playStep = { truncate: true, strictOrder: true }, modal = bindModal($('mod
 //   solve - time of the Solve button's solve() (side as above)
 //   play  - time of a finished hand-played solve in Play mode
 const timing = { gen: null, solve: null, play: null };
-const puzzleText = () => serialize(P);
+const puzzleText = () => (surface.active ? surface.text() : serialize(P));
 function setTiming(kind, ms, side = '') {
   timing[kind] = { text: puzzleText(), ms, side };
+}
+function clearTiming(kind) {
+  timing[kind] = null;
 }
 function currentTiming(kind) {
   const entry = timing[kind];
@@ -165,6 +170,9 @@ function setBusy(b) {
 // the type is used (Generate / Path / Reproduce), and what does not belong to a type is hidden:
 // every element with data-variants="standard wrap ..." (design.html) is shown only for those types.
 const variantKey = p => (p.arrows ? 'arrows' : p.wrap ? 'wrap' : p.exact ? 'exact' : p.loop ? 'loop' : p.portals ? 'teleport' : '');
+// The type shown: a surface type (Tetrahedron, Cube) while surface.js owns the board.
+const currentKey = () => (surface.active ? surface.kind : variantKey(P));
+const isSurfaceKey = key => key === 'tetra' || key === 'cube';
 const VARIANT_NAME = {
   arrows: 'One way arrows', wrap: 'Wrap-around', exact: 'Exact', loop: 'Loop',
   teleport: 'Teleport pairs',
@@ -192,7 +200,7 @@ const TOOL_TYPES = {
   portal: ['teleport'],
 };
 function syncVariantUi() {
-  const key = variantKey(P);
+  const key = currentKey();
   $('variantSel').value = key;
   document.querySelectorAll('[data-variants]').forEach(el => {
     el.style.display = el.dataset.variants.split(' ').includes(key || 'standard') ? '' : 'none';
@@ -208,8 +216,20 @@ function syncVariantUi() {
 // Switch the board to another type: it keeps its numbers (the validity line says what no longer
 // fits), drops the solutions and the template path, and loses what the new type cannot have.
 function setVariant(key) {
+  if (isSurfaceKey(key)) {
+    if (!(surface.active && surface.kind === key)) enterSurface(key);
+    return;
+  }
+  const wasSurface = surface.active;
+  if (wasSurface) leaveSurface();
   const had = variantKey(P);
-  if (key === had) return;
+  if (key === had) {
+    if (wasSurface) { // back on the flat board it had before
+      refresh(); updateHint();
+      setStatus(`${key ? VARIANT_NAME[key] : 'Standard'} puzzle.${VARIANT_RULE[key] || ''}`, 'ok');
+    }
+    return;
+  }
   if (playMode) exitPlay();
   const notes = [];
   const lostPortals = P.portals ? P.portals.length : 0;
@@ -239,6 +259,18 @@ function setVariant(key) {
   refresh(); updateHint();
   const extra = notes.length ? ` (${notes.join(', ')})` : '';
   setStatus(`${key ? VARIANT_NAME[key] : 'Standard'} puzzle${extra}.${VARIANT_RULE[key] || ''}`, 'ok');
+}
+// Surface types (Tetrahedron, Cube): surface.js owns the board and its tools; the shared buttons
+// (Solve, Play, Pause, Export, Import, Reset) are handed over to it while one is active.
+function enterSurface(kind, q = null) {
+  if (playMode) exitPlay();
+  selected = -1; buffer = ''; pending = -1; numDrag = null; endGhost();
+  surface.enter(kind, q);
+  syncVariantUi();
+}
+function leaveSurface() {
+  surface.leave();
+  syncVariantUi();
 }
 // Click on a gap: none -> an arrow right/down -> an arrow left/up -> none.
 function cycleArrow(e) {
@@ -567,6 +599,7 @@ function exitPlay() {
 
 // ---------- tools ----------
 function doSolve() {
+  if (surface.active) { surface.solve(); return; }
   if (playMode) exitPlay();
   const v = validate(P); if (!v.ok) { clearSolutions(); setStatus(v.msg, 'error'); return; }
   previewVisible = false;
@@ -721,7 +754,10 @@ $('randArrows').onclick = async () => {
 };
 
 // ---------- import / export / modal ----------
-function exportText() { return serialize(P, { path: $('includePath').checked ? playPath : null, times: exportTimes() }); }
+function exportText() {
+  if (surface.active) return surface.exportText($('includePath').checked);
+  return serialize(P, { path: $('includePath').checked ? playPath : null, times: exportTimes() });
+}
 // Cheap detection of a `path` line without surfacing parse errors — used only to enable/disable
 // the "also load path" checkbox live as the import text is edited/pasted.
 function textHasPathLine(text) { return /^\s*path\s+\S/mi.test(text); }
@@ -736,8 +772,9 @@ function openModal(m) {
   modalMode = m; $('modalMsg').textContent = ''; $('modalMsg').className = 'modal-msg';
   $('modalTitle').textContent = m === 'export' ? 'Export Puzzle' : 'Import Puzzle';
   const row = $('includePathRow'), box = $('includePath');
-  const hasPath = playPath.length > 1;
-  row.style.display = m === 'export' && playMode ? '' : 'none';
+  const walking = surface.active ? surface.playing : playMode;
+  const hasPath = (surface.active ? surface.playPath : playPath).length > 1;
+  row.style.display = m === 'export' && walking ? '' : 'none';
   box.disabled = !hasPath;
   if (!hasPath) box.checked = false;
   $('includePathHint').textContent = hasPath ? '' : '(walk a path on the board first)';
@@ -755,7 +792,16 @@ $('modalOk').onclick = async () => {
   const msg = $('modalMsg');
   if (modalMode === 'export') return copyText($('modalText'), msg);
   try {
+    if (looksLikeSurface($('modalText').value)) {
+      const surfaceQ = parseSurface($('modalText').value);
+      const surfacePath = $('importPath').checked && surfaceQ.path ? surfaceQ.path.slice() : null;
+      enterSurface(surfaceQ.surface, surfaceQ);
+      msg.textContent = 'Puzzle imported ✓'; msg.className = 'modal-msg ok'; setTimeout(modal.close, 400);
+      if (surfacePath) surface.togglePlay(surfacePath);
+      return;
+    }
     const q = parse($('modalText').value);
+    if (surface.active) leaveSurface();
     const loadPath = $('importPath').checked && q.path ? q.path.slice() : null;
     if (playMode) exitPlay();
     adopt(q); preview = loadPath ? null : (q.path || null); previewVisible = true; playPath = []; drawing = false;
@@ -767,6 +813,13 @@ $('modalOk').onclick = async () => {
   } catch (err) { msg.textContent = err.message; msg.className = 'modal-msg'; }
 };
 
+// ---------- surface types: the controller (surface.js) gets what it shares with this page ----------
+const surface = createSurfaceController({
+  $, plural, setStatus, setBusy, currentSeed, nodeLimit, renderTiming, exportTimes, clearTiming,
+  setTiming: (kind, ms) => setTiming(kind, ms),
+  modalOpen: () => modal.isOpen(),
+});
+
 // ---------- bindings ----------
 $('modeNumber').onclick = () => setMode('number');
 $('modeWall').onclick = () => setMode('wall');
@@ -775,7 +828,7 @@ $('modePortal').onclick = () => setMode('portal');
 $('sizeSel').onchange = () => { resetBoard(+$('sizeSel').value); setDefaults(P.n); };
 $('variantSel').onchange = () => setVariant($('variantSel').value);
 $('clearWalls').onclick = () => { P.walls.fill(0); clearSolutions(); clearPreview(); draw(); updateWallCapTag(); };
-$('clearAll').onclick = () => resetBoard(P.n);
+$('clearAll').onclick = () => (surface.active ? surface.reset() : resetBoard(P.n));
 $('solveBtn').onclick = doSolve;
 // onShowPath: the difficulty panel's trap rows draw "solution up to a step + the wrong move" as the dashed (template) path.
 const difficultyPanel = mountDifficultyPanel($('difficultyResult'), () => P, nodeLimit, cells => {
@@ -784,8 +837,12 @@ const difficultyPanel = mountDifficultyPanel($('difficultyResult'), () => P, nod
   preview = cells; previewVisible = true; renderLegend(); draw();
 });
 $('difficultyBtn').onclick = () => { if (playMode) exitPlay(); difficultyPanel.run(); };
-$('playBtn').onclick = () => (playMode ? exitPlay() : enterPlay());
-$('pauseBtn').onclick = togglePause;
+$('playBtn').onclick = () => {
+  if (surface.active) surface.togglePlay();
+  else if (playMode) exitPlay();
+  else enterPlay();
+};
+$('pauseBtn').onclick = () => (surface.active ? surface.togglePause() : togglePause());
 $('showConn').onclick = () => { showConn = $('showConn').checked; if (playMode) paintPlayNow(); };
 $('showDead').onclick = () => { showDead = $('showDead').checked; if (playMode) paintPlayNow(); };
 $('showProp').onclick = () => { showProp = $('showProp').checked; if (playMode) paintPlayNow(); };
