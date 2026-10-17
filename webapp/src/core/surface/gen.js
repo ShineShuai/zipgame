@@ -19,10 +19,11 @@ export const GEN_CFG = {
 };
 
 // Roughly the share of the cells that carry a number: tetra needs fewer than a cube, whose
-// numbers would otherwise have to be replaced by walls.
+// numbers would otherwise have to be replaced by walls. A ball is like a tetra: its cells have
+// 3 to 5 neighbours, and the many triangles force the path by themselves.
 export const defaultK = (kind, n) => {
   const cells = surfaceTopology(kind, n).T;
-  const share = kind === 'tetra' ? 0.2 : 0.15;
+  const share = kind === 'cube' ? 0.15 : 0.2;
   return Math.max(3, Math.round(cells * share));
 };
 
