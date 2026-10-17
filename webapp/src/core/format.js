@@ -9,7 +9,7 @@ import { adjacent, isPortalPair, gridDist } from './geom.js';
 export const MAX_N = 16;
 
 // `# name value` comment lines for measured times (parse() skips them). Only the given times are written.
-function timeComments({ generateMs, solveMs, playS } = {}) {
+export function timeComments({ generateMs, solveMs, playS } = {}) {
   const lines = [];
   if (generateMs != null) {
     lines.push(`# generate_time_ms ${generateMs.toFixed(1)}`);

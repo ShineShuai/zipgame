@@ -13,7 +13,7 @@
   <aside class="panel">
     <h1><span class="dot"></span>Zip Puzzle Designer</h1>
 
-    <div class="field field-row">
+    <div class="field field-row" data-variants="standard arrows wrap exact loop teleport">
       <label for="sizeSel">Grid size</label>
       <select id="sizeSel">
         <option value="4">4 × 4</option>
@@ -29,7 +29,7 @@
     </div>
 
     <div class="field field-row">
-      <label for="variantSel" title="Standard: checkpoints 1, 2, 3... in order, edges stop at the border, walls block. One way arrows: no walls, an arrow can be crossed only in its direction. Wrap-around: the edges join across the borders (a torus), so a step can leave one side and come in on the opposite one. Exact: a number is the step of its cell on the path (the cell numbered 8 is the 8th cell), so the numbers are gaps-and-all, 1 and the cell count among them. Loop: the path is a ring, its last cell touches cell 1 (even sizes only), the numbers 1..K are met in cyclic order and K need not be the last cell. Teleport pairs: pairs of linked cells (the same icon on both); a step from one to the other is a move, no wall stands on it, and each cell is still visited once.">Puzzle type</label>
+      <label for="variantSel" title="Standard: checkpoints 1, 2, 3... in order, edges stop at the border, walls block. One way arrows: no walls, an arrow can be crossed only in its direction. Wrap-around: the edges join across the borders (a torus), so a step can leave one side and come in on the opposite one. Exact: a number is the step of its cell on the path (the cell numbered 8 is the 8th cell), so the numbers are gaps-and-all, 1 and the cell count among them. Loop: the path is a ring, its last cell touches cell 1 (even sizes only), the numbers 1..K are met in cyclic order and K need not be the last cell. Teleport pairs: pairs of linked cells (the same icon on both); a step from one to the other is a move, no wall stands on it, and each cell is still visited once. Tetrahedron, Cube: the board is the surface of a solid (4 faces of triangles, 6 faces of squares) shown as its flat net; the sides marked with the same letter touch when the net is folded.">Puzzle type</label>
       <select id="variantSel">
         <option value="">Standard</option>
         <option value="arrows">One way arrows</option>
@@ -37,7 +37,34 @@
         <option value="exact">Exact</option>
         <option value="loop">Loop</option>
         <option value="teleport">Teleport pairs</option>
+        <option value="tetra">Tetrahedron</option>
+        <option value="cube">Cube</option>
       </select>
+    </div>
+
+    <div data-variants="tetra cube" style="display:none">
+    <div class="field field-row">
+      <label for="sfSize" title="Cells along a side of a face: a tetrahedron has 4 faces of n × n triangles, a cube 6 faces of n × n squares.">Size</label>
+      <select id="sfSize"></select>
+    </div>
+    <div class="field">
+      <label>Tool</label>
+      <div class="segmented">
+        <button id="sfNumber" class="seg active">Numbers</button>
+        <button id="sfWall" class="seg" title="Click a cell near one of its sides to add or remove a wall">Walls <span id="sfWallTag" class="seg-count"></span></button>
+      </div>
+    </div>
+    <div class="field">
+      <label>View</label>
+      <div class="segmented">
+        <button id="sfViewNet" class="seg active" title="The solid cut open and laid flat">Net</button>
+        <button id="sfView3d" class="seg" title="The solid itself: turn it with a right-drag, two fingers, a drag on the background or the arrow keys">3D</button>
+      </div>
+    </div>
+    <div class="field field-row">
+      <label for="sfFollow" title="3D view, in play: turn the solid to the head of the path when it nears the edge of the view">Follow head</label>
+      <input id="sfFollow" type="checkbox" checked>
+    </div>
     </div>
 
     <div class="field" data-variants="standard arrows wrap loop teleport">
@@ -52,6 +79,31 @@
 
     <div class="hint" id="hint"></div>
     <div class="validity" id="validity"></div>
+
+    <div data-variants="tetra cube" style="display:none">
+    <div class="divider"></div>
+    <div class="field field-row">
+      <label for="sfK" title="How many numbers the generator lays along the path (the first and the last included). The size's own default is shown. Fewer numbers need more walls.">Checkpoints</label>
+      <input id="sfK" type="number" min="2" value="12">
+    </div>
+    <div class="field field-row">
+      <label for="sfWalls" title="Empty: the first puzzle is kept. A number: up to 20 puzzles (seed, seed + 1, ...) are made until one needs at most that many walls; else the one with the fewest is kept.">Max walls</label>
+      <input id="sfWalls" type="number" min="0" placeholder="any">
+    </div>
+    <div class="field">
+      <label>Unique puzzle generator</label>
+      <button id="sfGenerate" class="wide" title="Random path through every cell with numbers along it; walls on the sides it does not use, then every wall that is not needed for a unique solution is taken away">🛤️✓ Generate</button>
+    </div>
+    <div class="field row">
+      <button id="sfMinimize" title="Remove every wall that is not needed for a unique solution (the puzzle must be unique first). A check that reaches the search limit keeps its wall.">Minimize walls</button>
+      <button id="sfClearWalls" title="Remove every wall">Clear walls</button>
+    </div>
+    <div class="hint">
+      The generator draws a random path through every cell, numbers it, walls every side the path
+      does not use and takes walls away again while the solution stays unique. A tetrahedron
+      needs few or no walls, a cube needs them. The seed above applies; the algorithm flags do not.
+    </div>
+    </div>
 
     <div data-variants="standard arrows wrap loop teleport">
     <div class="divider"></div>
@@ -190,6 +242,7 @@
       Exact model, and has no diagnostics.
     </div>
     </div>
+    <div data-variants="standard arrows wrap exact loop teleport">
     <div class="divider"></div>
     <div class="field">
       <button id="reproducePlay" class="wide" title="Runs generate() itself, the same function the Play app uses for its daily/local puzzles — not the flags/Max checkpoints/Max walls above, which only apply to Generate. Use this to reproduce a puzzle seen in the Play app via its seed.">▶️↺ Reproduce Play puzzle</button>
@@ -200,6 +253,7 @@
       <code id="playFlagsHex"></code> (path=warnsdorff, checkpoints=gap, propagation on), shown here
       only for reference. Paste a seed from the Play app's hold-V badge above and click this to get
       its exact puzzle; the flags panel and Max checkpoints/Max walls above don't apply to it.
+    </div>
     </div>
 
     <div class="divider"></div>
@@ -224,13 +278,16 @@
         <label for="compareToggle" title="Set two algorithm flag configurations (A/B) and run Generate or Solve with both, at the same seed, to compare them">Compare A / B</label>
         <input id="compareToggle" type="checkbox">
       </div>
-      <div id="flagsSingle" class="flags-panel"></div>
-      <div id="flagsCompare" class="flags-compare" style="display:none">
-        <div class="flags-panel flags-panel-ab" data-side="A"></div>
-        <div class="flags-panel flags-panel-ab" data-side="B"></div>
+      <div data-variants="standard arrows wrap exact loop teleport">
+        <div id="flagsSingle" class="flags-panel"></div>
+        <div id="flagsCompare" class="flags-compare" style="display:none">
+          <div class="flags-panel flags-panel-ab" data-side="A"></div>
+          <div class="flags-panel flags-panel-ab" data-side="B"></div>
+        </div>
       </div>
     </div>
-    <div id="board" class="board"></div>
+    <div id="board" class="board" data-variants="standard arrows wrap exact loop teleport"></div>
+    <div id="sfBoard" class="board sf-board" data-variants="tetra cube" style="display:none"></div>
     <div id="legend" class="legend"></div>
     <div id="status" class="status status-below"></div>
     <div id="timing" class="timing" style="display:none" title="Compute time of the algorithm run that produced this exact puzzle. Hidden once the board is edited by hand."></div>
@@ -245,7 +302,15 @@
       <label for="nodeLimit">Search limit (nodes)</label>
       <input id="nodeLimit" type="number" min="1000" step="1000" value="300000">
     </div>
-    <div class="hint">Uses the Score-phase flags set above the board (side A when comparing).</div>
+    <div data-variants="standard arrows wrap exact loop teleport">
+      <div class="hint">Uses the Score-phase flags set above the board (side A when comparing).</div>
+    </div>
+    <div data-variants="tetra cube" style="display:none">
+      <div class="hint">
+        Counts the solutions (at most 2) with dead-end, connectivity and distance prunes. The
+        nodes it needs are the difficulty of the puzzle; the search limit stops it.
+      </div>
+    </div>
     <button id="solveBtn" class="primary wide">Solve</button>
 
     <div data-variants="standard">
