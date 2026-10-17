@@ -98,6 +98,9 @@ button.playbtn.on{background:linear-gradient(135deg,#b3344f,#e0526f);}
 .badge-inner.start{border-color:#3ddc97;color:#8ff5c9;box-shadow:0 0 12px rgba(61,220,151,.35);}
 .badge-inner.end{border-color:#ff6b8a;color:#ffb3c2;box-shadow:0 0 12px rgba(255,107,138,.35);}
 .badge-inner.pending{border-color:#5b7cfa;color:#a9bcff;font-style:italic;}
+.badge-inner.red{border-color:#ff6b73;color:#ffb3b8;}
+/* Two paths: a red number is a circle, a blue one a rounded square */
+.badge-inner.blue{border-color:#6f8fff;color:#b4c4ff;border-radius:22%;}
 .badge-inner.visited{opacity:.55;}
 .badge-inner.dragging{opacity:.25;}
 .cell.conn-dead{background:rgba(255,183,3,.22);box-shadow:inset 0 0 0 1px rgba(255,183,3,.55);}

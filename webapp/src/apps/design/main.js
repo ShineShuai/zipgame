@@ -15,8 +15,9 @@ import { minimizeFully } from '../../core/gen/walls.js';
 import { generateExact, EXACT_CLIMB_PROPOSALS } from '../../core/gen/exact.js';
 import { generateLoop } from '../../core/gen/loop.js';
 import { generateTeleport } from '../../core/gen/teleport.js';
+import { generateTwoPaths } from '../../core/gen/twopaths.js';
 import { maxPortalPairs } from '../../core/gen/portals.js';
-import { EXACT_MODEL, TRAP_MODEL, TELEPORT_MODEL } from '../../core/trap.js';
+import { EXACT_MODEL, TRAP_MODEL, TELEPORT_MODEL, TWOPATHS_MODEL } from '../../core/trap.js';
 import { generateArrows, minimizeArrowsFully, ARROW_SIZES } from '../../core/gen/arrows.js';
 import { generateTargeted, targetBand, maxTargetGrade } from '../../core/gen/target.js';
 import { scatter } from '../../core/gen/checkpoints.js';
@@ -25,7 +26,16 @@ import { runAsync, measured } from '../../platform/run.js';
 import { bindModal, copyText } from '../../ui/modal.js';
 import { installHoldReveal } from '../../ui/hold-reveal.js';
 import { VERSION } from '../../version.js';
-import { renderBoard, paintPlay, cellSizeFor, TPL_C, SOL_C, legName } from './board.js';
+import {
+  renderBoard, paintPlay, paintPlayTwo, cellSizeFor, TPL_C, SOL_C, legName,
+} from './board.js';
+import {
+  bridgeCells, colourOfCell, colourNumberOf, colourProblems, markTwoPaths, setColourNumber,
+  splitPath,
+} from '../../core/twopaths.js';
+import {
+  newPaths, pickColour, walkColour, solvedPaths, reached,
+} from '../../features/twopaths-play.js';
 import { mountFlagsPanel } from './flags-panel.js';
 import { runCompare } from './compare.js';
 import { renderCompareHtml } from './compare-view.js';
@@ -47,6 +57,9 @@ let preview = null, previewVisible = true, playMode = false, playPath = [], draw
 let playStartTime = 0, playElapsed = 0, playTimerId = null, playFinished = false, playPaused = false, playSeededSolved = false;
 const sec = x => x.toFixed(1) + 's';
 const playStep = { truncate: true, strictOrder: true }, modal = bindModal($('modalBackdrop'));
+// Two paths: the colour the number tool types (0 red, 1 blue), and in Play mode the two drawn paths
+// and the colour drawn now (playPath is that colour's path)
+let numColour = 0, playPaths = newPaths(), playColour = 0;
 
 // ---------- algorithm timings (shown under the board, written to the export as comments) ----------
 // A time belongs to the exact puzzle it was measured on: each entry stores that puzzle's plain text.
@@ -131,7 +144,12 @@ $('compareToggle').onchange = () => {
 $('playFlagsHex').textContent = flagsToHex(PLAY_FLAGS_INT);
 
 // ---------- helpers ----------
-const view = () => ({ P, cellSize: cellSizeFor(P.n), mode, selected, pending, buffer, playMode, playPath, preview, previewVisible, solutions, solVisible, dragSrc: numDrag && numDrag.dragging ? numDrag.src : -1 });
+const view = () => ({
+  P, cellSize: cellSizeFor(P.n), mode, selected, pending, buffer, numColour, playMode,
+  playPath: P.split ? [...playPaths[0], ...playPaths[1]] : playPath, // two: both (badges)
+  preview, previewVisible, solutions, solVisible,
+  dragSrc: numDrag && numDrag.dragging ? numDrag.src : -1,
+});
 function draw() {
   refs = renderBoard(boardEl, stageEl, view());
   $('wallModeTag').textContent = countWalls(P) ? `(${countWalls(P)})` : '';
@@ -146,7 +164,15 @@ function setStatus(msg, type) { const s = $('status'); s.className = msg ? 'stat
 function nodeLimit() { const v = parseInt($('nodeLimit').value, 10); return Number.isFinite(v) && v >= 1000 ? v : DEFAULT_NODE_LIMIT; }
 function clearSolutions() { solutions = []; solVisible = []; lastAborted = false; lastNodes = 0; timing.solve = null; renderLegend(); setStatus(''); }
 function clearPreview() { if (preview) { preview = null; previewVisible = true; renderLegend(); } }
-const wallable = () => { const all = allEdges(P.n, null, !!P.wrap); if (!preview || preview.length < 2) return all; const pe = new Set(pathEdgeIds(P.n, preview, !!P.wrap, !!P.loop, P.portals)); return all.filter(e => !pe.has(e)); };
+// The links of a path that are not steps over a grid edge: the portal pairs, and the bridge between
+// the two paths of a Two paths puzzle (no wall stands on either).
+const linksOf = p => p.portals || (p.split ? [bridgeCells(p)] : null);
+const wallable = () => {
+  const all = allEdges(P.n, null, !!P.wrap);
+  if (!preview || preview.length < 2) return all;
+  const pe = new Set(pathEdgeIds(P.n, preview, !!P.wrap, !!P.loop, linksOf(P)));
+  return all.filter(e => !pe.has(e));
+};
 function updateWallCapTag() {
   const cap = wallable().filter(e => !hasWallId(P.walls, e)).length + countWalls(P);
   $('wallCapTag').textContent = `(≤ ${cap})`; $('wallCount').max = cap;
@@ -164,18 +190,20 @@ function setBusy(b) {
 // direction (core/edges.js), no walls. P.wrap: the edges join across the borders (a torus;
 // core/geom.js). P.exact: a number is the step of its cell on the path (Hidato-style; core/model.js),
 // no walls. P.loop: the path is a ring, its last cell touches cell 1 (core/model.js; even sizes only,
-// walls as in a standard puzzle). The five exclude each other (Teleport pairs: P.portals, pairs of
-// linked cells, core/geom.js); a puzzle with none is a Standard one.
+// walls as in a standard puzzle). The six exclude each other (Teleport pairs: P.portals, pairs of
+// linked cells, core/geom.js; Two paths: P.split, how many numbers are red, core/twopaths.js); a
+// puzzle with none is a Standard one.
 // The type decides what the board shows and which tools are on offer: the Play app's generator of
 // the type is used (Generate / Path / Reproduce), and what does not belong to a type is hidden:
 // every element with data-variants="standard wrap ..." (design.html) is shown only for those types.
-const variantKey = p => (p.arrows ? 'arrows' : p.wrap ? 'wrap' : p.exact ? 'exact' : p.loop ? 'loop' : p.portals ? 'teleport' : '');
+const variantKey = p => (p.arrows ? 'arrows' : p.wrap ? 'wrap' : p.exact ? 'exact' : p.loop ? 'loop'
+  : p.portals ? 'teleport' : p.split ? 'twopaths' : '');
 // The type shown: a surface type (Tetrahedron, Cube) while surface.js owns the board.
 const currentKey = () => (surface.active ? surface.kind : variantKey(P));
 const isSurfaceKey = key => key === 'tetra' || key === 'cube';
 const VARIANT_NAME = {
   arrows: 'One way arrows', wrap: 'Wrap-around', exact: 'Exact', loop: 'Loop',
-  teleport: 'Teleport pairs',
+  teleport: 'Teleport pairs', twopaths: 'Two paths',
 };
 const VARIANT_RULE = {
   arrows: ' An arrow can be crossed only in its direction; there are no walls.',
@@ -184,29 +212,36 @@ const VARIANT_RULE = {
   loop: ' The path is a ring: its last cell has to touch cell 1; the numbers are met in cyclic order, the highest need not be the last cell.',
   teleport: ' Linked portal cells count as neighbours: a step from one to the other is a move, '
     + 'and no wall stands on it. Each cell is still visited once.',
+  twopaths: ' A red and a blue path together cover every cell; each has its own numbers from 1 and '
+    + 'ends on its last one. A number is red or blue: pick the colour, then type.',
 };
 // Give a board the puzzle type `key` ('' = standard): its marker, empty where it has content (arrows).
 function setTypeMarker(p, key) {
-  delete p.arrows; delete p.wrap; delete p.exact; delete p.loop; delete p.portals;
+  delete p.arrows; delete p.wrap; delete p.exact; delete p.loop; delete p.portals; delete p.split;
   if (key === 'arrows') p.arrows = new Uint8Array(p.n * p.n);
   else if (key === 'teleport') p.portals = [];
+  else if (key === 'twopaths') markTwoPaths(p);
   else if (key) p[key] = true;
 }
 // Whether the tool in `mode` belongs to the puzzle type `key`.
 const TOOL_TYPES = {
-  number: ['', 'arrows', 'wrap', 'exact', 'loop', 'teleport'],
-  wall: ['', 'wrap', 'loop', 'teleport'],
+  number: ['', 'arrows', 'wrap', 'exact', 'loop', 'teleport', 'twopaths'],
+  wall: ['', 'wrap', 'loop', 'teleport', 'twopaths'],
   arrow: ['arrows'],
   portal: ['teleport'],
 };
 function syncVariantUi() {
   const key = currentKey();
   $('variantSel').value = key;
+  $('colRed').classList.toggle('active', numColour === 0);
+  $('colBlue').classList.toggle('active', numColour === 1);
   document.querySelectorAll('[data-variants]').forEach(el => {
     el.style.display = el.dataset.variants.split(' ').includes(key || 'standard') ? '' : 'none';
   });
   // a ring needs an even number of cells: no odd grid sizes in the Loop type
-  [...$('sizeSel').options].forEach(o => { o.disabled = key === 'loop' && +o.value % 2 === 1; });
+  [...$('sizeSel').options].forEach(o => {
+    o.disabled = (key === 'loop' && +o.value % 2 === 1) || (key === 'twopaths' && +o.value < 4);
+  });
   // the A/B comparison is for the types that have it (design.html): off where it is hidden
   if (compareMode() && $('compareToggle').closest('[data-variants]').style.display === 'none') {
     $('compareToggle').checked = false;
@@ -247,6 +282,11 @@ function setVariant(key) {
     if (walls) { P.walls.fill(0); notes.push(`${plural(walls, 'wall')} removed`); }
   }
   setTypeMarker(P, key);
+  if (key === 'twopaths') {
+    numColour = 0;
+    const numbers = maxNumber(P);
+    if (numbers) notes.push(`its ${plural(numbers, 'number')} are red now: add the blue path's`);
+  }
   if (key === 'loop' && P.n % 2) { // no ring on an odd board: the next even size, empty
     const even = P.n < 12 ? P.n + 1 : P.n - 1;
     notes.push(`the ${P.n} × ${P.n} board was odd: now ${even} × ${even}, cleared`);
@@ -290,6 +330,7 @@ function adopt(q) {
     n: q.n, cp: q.cp, walls: q.walls, ...(q.arrows ? { arrows: q.arrows } : {}),
     ...(q.wrap ? { wrap: true } : {}), ...(q.exact ? { exact: true } : {}), ...(q.loop ? { loop: true } : {}),
     ...(q.portals ? { portals: q.portals.map(pair => pair.slice()) } : {}),
+    ...(q.split ? { split: q.split } : {}),
   };
   preview = q.path || null; previewVisible = true; selected = -1; buffer = ''; pending = -1;
 }
@@ -301,7 +342,9 @@ function refresh() { clearSolutions(); draw(); renderLegend(); updateWallCapTag(
 // band of the chosen grade, read from the current trap model (so it follows a refit).
 const fmtScore = x => (Number.isFinite(x) ? x.toFixed(2) : x > 0 ? '∞' : '-∞');
 function updateTargetGrades() {
-  const model = P.exact ? EXACT_MODEL : P.portals ? TELEPORT_MODEL : TRAP_MODEL; // an Exact or Teleport puzzle is graded by its own (reduced) model
+  // an Exact, Teleport or Two paths puzzle is graded by its own (reduced) model
+  const model = P.exact ? EXACT_MODEL : P.portals ? TELEPORT_MODEL
+    : P.split ? TWOPATHS_MODEL : TRAP_MODEL;
   const sel = $('targetGrade'), top = maxTargetGrade(P.n, model);
   [...sel.options].forEach(o => { o.disabled = +o.value > top; });
   if (+sel.value > top) sel.value = String(top);
@@ -309,10 +352,18 @@ function updateTargetGrades() {
   sel.title = `Grade ${b.grade} at ${P.n}×${P.n} = trap score from ${fmtScore(b.lo)} up to ${fmtScore(b.hi)} (the search aims at ${fmtScore(b.a)} to ${fmtScore(b.b)}). The highest grade offered for this size is ${top}.`;
 }
 
+// validate() of the puzzle; a Two paths puzzle first says what is wrong with its numbers colour by
+// colour (red 3 missing), not in the one list the solver counts.
+function check(p) {
+  const own = p.split ? colourProblems(p) : null;
+  return own ? { ok: false, msg: own } : validate(p);
+}
 function updateValidity() {
-  const v = validate(P), el = $('validity');
+  const v = check(P), el = $('validity');
   el.className = 'validity ' + (v.ok ? 'good' : 'bad');
-  const ok = P.exact ? `${plural(v.max, 'number')} (steps up to ${cellCount(P)}) — valid ✓` : `Checkpoints 1…${v.max} — valid ✓`;
+  const ok = P.exact ? `${plural(v.max, 'number')} (steps up to ${cellCount(P)}) — valid ✓`
+    : P.split ? `Red 1…${P.split}, blue 1…${v.max - P.split} — valid ✓`
+      : `Checkpoints 1…${v.max} — valid ✓`;
   el.textContent = v.ok ? ok : v.msg;
 }
 function renderLegend() {
@@ -326,14 +377,21 @@ function renderLegend() {
 }
 function updateHint() {
   setHintText($('hint'), playMode ? 'Drag from checkpoint 1 through every cell. Move back over the path to undo.'
-    : mode === 'number' ? (P.exact ? EXACT_NUMBER_HINT : 'Click a cell then type a number (Enter to confirm · Esc to cancel). Drag a numbered cell to move it to an empty cell. Press Delete or Backspace to clear the selected cell.')
+    : mode === 'number' ? (P.exact ? EXACT_NUMBER_HINT : P.split ? TWO_NUMBER_HINT : NUMBER_HINT)
       : mode === 'arrow' ? ARROW_HINT
       : mode === 'portal' ? PORTAL_HINT
       : P.wrap ? WRAP_WALL_HINT : 'Click the gaps between cells to add or remove blocking walls.');
 }
+const NUMBER_HINT = 'Click a cell then type a number (Enter to confirm · Esc to cancel). Drag a '
+  + 'numbered cell to move it to an empty cell. Press Delete or Backspace to clear the selected '
+  + 'cell.';
 const EXACT_NUMBER_HINT = 'Exact: a number is the step of its cell on the path (1 = start, '
   + 'the cell count = end), so numbers are not 1, 2, 3...: click a cell and type its step '
   + '(Enter to confirm · Esc to cancel). Drag a numbered cell to move it; Delete clears it.';
+const TWO_NUMBER_HINT = 'Two paths: pick Red or Blue, click a cell and type its number within that '
+  + 'colour (Enter to confirm · Esc to cancel); the blue numbers count from 1 again. Adding or '
+  + 'removing a red number moves the blue ones along. Drag a numbered cell to move it; Delete '
+  + 'clears it.';
 const WRAP_WALL_HINT = 'Click the gaps between cells to add or remove blocking walls. '
   + 'The gaps on the border are the seams: a wall there blocks the step from one side to the other.';
 const PORTAL_HINT = 'Click a cell, then its partner: the two become a pair of linked portals '
@@ -369,7 +427,11 @@ boardEl.addEventListener('click', e => {
   if (w && mode === 'wall') { const id = +w.dataset.edge; setWallId(P.walls, id, !hasWallId(P.walls, id)); clearSolutions(); clearPreview(); draw(); updateWallCapTag(); return; }
   if (w && mode === 'arrow') { cycleArrow(+w.dataset.edge); return; }
   const c = e.target.closest('.cell');
-  if (c && mode === 'number') { selected = +c.dataset.idx; buffer = ''; draw(); }
+  if (c && mode === 'number') {
+    selected = +c.dataset.idx; buffer = '';
+    if (P.split && P.cp[selected]) numColour = colourOfCell(P, selected); // keeps its colour
+    draw();
+  }
   if (c && mode === 'portal' && P.portals) placePortal(+c.dataset.idx);
 });
 // The portal tool: a click on a portal removes its pair; else the first click of a pair waits for
@@ -407,14 +469,33 @@ document.addEventListener('keydown', e => {
   if (modal.isOpen() || playMode || busy || mode !== 'number' || selected < 0) return;
   if (/^(INPUT|SELECT|TEXTAREA)$/.test((e.target && e.target.tagName) || '')) return;
   if (/^[0-9]$/.test(e.key)) { e.preventDefault(); buffer = (buffer + e.key).slice(0, 3); draw(); }
-  else if (e.key === 'Backspace') { e.preventDefault(); if (buffer) buffer = buffer.slice(0, -1); else if (P.cp[selected]) { P.cp[selected] = 0; clearSolutions(); } draw(); }
+  else if (e.key === 'Backspace') {
+    e.preventDefault();
+    if (buffer) buffer = buffer.slice(0, -1);
+    else if (P.cp[selected]) { clearNumber(selected); clearSolutions(); }
+    draw();
+  }
   else if (e.key === 'Enter') { e.preventDefault(); commitBuffer(); }
   else if (e.key === 'Escape') { buffer = ''; draw(); }
-  else if (e.key === 'Delete') { e.preventDefault(); buffer = ''; P.cp[selected] = 0; clearSolutions(); draw(); }
+  else if (e.key === 'Delete') {
+    e.preventDefault(); buffer = ''; clearNumber(selected); clearSolutions(); draw();
+  }
 });
+// A cell without a number (Two paths: the blue numbers behind a red one move up).
+function clearNumber(cell) {
+  if (P.split) setColourNumber(P, cell, numColour, 0);
+  else P.cp[cell] = 0;
+}
 function commitBuffer() {
   const v = parseInt(buffer, 10);
-  if (buffer !== '' && v >= 1 && v <= P.n * P.n) { for (let i = 0; i < P.cp.length; i++) if (P.cp[i] === v) P.cp[i] = 0; P.cp[selected] = v; clearSolutions(); clearPreview(); }
+  if (buffer !== '' && v >= 1 && v <= P.n * P.n) {
+    if (P.split) setColourNumber(P, selected, numColour, v); // renumbers around it
+    else {
+      for (let i = 0; i < P.cp.length; i++) if (P.cp[i] === v) P.cp[i] = 0;
+      P.cp[selected] = v;
+    }
+    clearSolutions(); clearPreview();
+  }
   buffer = ''; draw();
 }
 const cellFromEvent = e => {
@@ -430,6 +511,7 @@ boardEl.addEventListener('pointerdown', e => {
   if (playMode) { // start (or rewind) the play path
     if (playPaused) return;
     const idx = cellFromEvent(e); if (idx < 0) return; e.preventDefault();
+    if (P.split) { pressTwo(idx); return; }
     if (!playPath.length) { if (P.cp[idx] !== 1) { $('playInfo').textContent = 'Start at checkpoint 1.'; return; } playPath = [idx]; }
     else {
       const i = playPath.indexOf(idx);
@@ -449,13 +531,17 @@ boardEl.addEventListener('pointerdown', e => {
 addEventListener('pointermove', e => {
   if (playMode) { // extend the play path
     if (!drawing) return;
-    const idx = cellFromEvent(e); if (idx >= 0 && step(P, playPath, idx, playStep)) paintPlayNow();
+    const idx = cellFromEvent(e);
+    const moved = idx >= 0 && (P.split ? walkColour(P, playPaths, playColour, idx, playStep)
+      : step(P, playPath, idx, playStep));
+    if (moved) paintPlayNow();
     return;
   }
   if (!numDrag) return;
   if (!numDrag.dragging && (e.clientX - numDrag.x) ** 2 + (e.clientY - numDrag.y) ** 2 > 25) {
     numDrag.dragging = true; endGhost();
-    dragGhost = document.createElement('div'); dragGhost.className = 'drag-ghost'; dragGhost.textContent = P.cp[numDrag.src];
+    dragGhost = document.createElement('div'); dragGhost.className = 'drag-ghost';
+    dragGhost.textContent = P.split ? colourNumberOf(P, numDrag.src).number : P.cp[numDrag.src];
     const s = Math.round(cellSizeFor(P.n) * 0.66); Object.assign(dragGhost.style, { width: s + 'px', height: s + 'px', fontSize: Math.max(12, Math.round(cellSizeFor(P.n) * 0.32)) + 'px' });
     document.body.appendChild(dragGhost); moveGhost(e.clientX, e.clientY); draw(); // draw dims the source badge
   }
@@ -542,7 +628,51 @@ function nextNumber() {
   for (const c of playPath) hi = Math.max(hi, P.cp[c]);
   return hi + 1 <= maxNumber(P) ? hi + 1 : 0;
 }
+// Two paths, Play mode: a press picks the colour it draws (a cell of a path, a 1, the head that can
+// step there), a press on a cell of that path rewinds it to that cell, a press on a cell next to
+// its head steps there; the drag then goes on with the same colour (pointermove).
+function pressTwo(idx) {
+  playColour = pickColour(P, playPaths, idx, playColour);
+  playPath = playPaths[playColour];
+  const at = playPath.indexOf(idx);
+  if (at >= 0) playPath.length = at + 1;
+  else if (!walkColour(P, playPaths, playColour, idx, playStep)) {
+    if (!playPath.length) $('playInfo').textContent = 'Start at checkpoint 1 of a colour.';
+    return;
+  }
+  drawing = true; paintPlayNow();
+}
+// Two paths: the two lines, and a line of text with how far each colour is.
+function paintPlayTwoNow() {
+  const solved = solvedPaths(P, playPaths);
+  paintPlayTwo(refs, P, playPaths, solved);
+  const total = cellCount(P), done = reached(P, playPaths), info = $('playInfo');
+  const cells = playPaths[0].length + playPaths[1].length;
+  const counts = [P.split, maxNumber(P) - P.split];
+  if (solved) {
+    info.textContent = '🎉 Solved! Every cell visited exactly once, by one of the two paths.';
+    if (!playFinished) {
+      playElapsed = (performance.now() - playStartTime) / 1000;
+      playFinished = true;
+      stopPlayTimer();
+      const t = $('playTimer');
+      if (t) t.textContent = sec(playElapsed) + ' — solved';
+      if (!playSeededSolved) setTiming('play', playElapsed * 1000);
+      syncPauseButton();
+    }
+    return;
+  }
+  const colours = `red ${done[0]}/${counts[0]} · blue ${done[1]}/${counts[1]}`;
+  const start = cells ? '' : ' — drag from a 1 to start';
+  info.textContent = `${cells} / ${total} cells · ${colours}${start}`;
+  if (playFinished) { // rewound off the solved position: resume timing
+    timing.play = null;
+    startPlayTimer();
+    syncPauseButton();
+  }
+}
 function paintPlayNow() {
+  if (P.split) return paintPlayTwoNow();
   const { legConflicts } = paintPlay(refs, P.n, playPath, P, showConn, showDead, showProp, showLegCollide, showGraph);
   const total = cellCount(P), K = maxNumber(P), info = $('playInfo');
   if (!playPath.length) info.textContent = `Drag from checkpoint 1 to start. 0 / ${total} cells.`;
@@ -577,10 +707,15 @@ function paintPlayNow() {
   if (legConflicts.length) info.textContent += '\nLeg collision: ' + legConflicts.map(k => `${legName(P, k.a)} ✕ ${legName(P, k.b)} (${k.cells.length} cell${k.cells.length > 1 ? 's' : ''})`).join(', ');
 }
 function enterPlay(seedPath) {
-  const v = validate(P); if (!v.ok) { setStatus('Fix the puzzle before playing: ' + v.msg, 'error'); return; }
+  const v = check(P);
+  if (!v.ok) { setStatus('Fix the puzzle before playing: ' + v.msg, 'error'); return; }
   playMode = true; playPath = seedPath || []; drawing = false; solutions = []; solVisible = []; selected = -1; buffer = ''; endGhost(); numDrag = null;
+  if (P.split) { // the seed is a solution: the red path, then the blue one
+    playPaths = (seedPath && splitPath(P, seedPath)) || newPaths();
+    playColour = 0; playPath = playPaths[0];
+  }
   $('playBtn').classList.add('on'); $('playBtn').textContent = '■ Stop playing'; $('playInfo').style.display = '';
-  $('connToggles').style.display = '';
+  $('connToggles').style.display = P.split ? 'none' : ''; // its analyses follow one path
   syncVariantUi();
   playSeededSolved = Boolean(seedPath) && seedPath.length === cellCount(P);
   timing.play = null;
@@ -590,6 +725,7 @@ function enterPlay(seedPath) {
 }
 function exitPlay() {
   playMode = false; playPath = []; drawing = false; playPaused = false; stopPlayTimer();
+  playPaths = newPaths(); playColour = 0;
   syncPauseButton();
   $('playBtn').classList.remove('on'); $('playBtn').textContent = '▶ Play'; $('playInfo').style.display = 'none';
   $('connToggles').style.display = 'none';
@@ -601,7 +737,7 @@ function exitPlay() {
 function doSolve() {
   if (surface.active) { surface.solve(); return; }
   if (playMode) exitPlay();
-  const v = validate(P); if (!v.ok) { clearSolutions(); setStatus(v.msg, 'error'); return; }
+  const v = check(P); if (!v.ok) { clearSolutions(); setStatus(v.msg, 'error'); return; }
   previewVisible = false;
   $('compareResult').style.display = 'none';
   if (!compareMode()) {
@@ -649,7 +785,11 @@ const pairs_ = () => Math.min(int_('pairCount', 1, 1), maxPortalPairs(P.n, K_())
 const pairsGiven = () => ($('pairCount').value.trim() === '' ? {} : { pairs: pairs_() });
 async function doMinimize() {
   if (playMode) exitPlay();
-  const v = validate(P); if (!v.ok) { clearSolutions(); setStatus('Fix the puzzle before minimizing: ' + v.msg, 'error'); return; }
+  const v = check(P);
+  if (!v.ok) {
+    clearSolutions(); setStatus('Fix the puzzle before minimizing: ' + v.msg, 'error');
+    return;
+  }
   const limit = nodeLimit(), before = countWalls(P), first = solve(P, { limit: 2, nodeCap: limit, prop: true });
   solutions = []; solVisible = []; lastAborted = false; lastNodes = 0; previewVisible = false;
   if (first.exceeded || first.count !== 1) {
@@ -756,7 +896,8 @@ $('randArrows').onclick = async () => {
 // ---------- import / export / modal ----------
 function exportText() {
   if (surface.active) return surface.exportText($('includePath').checked);
-  return serialize(P, { path: $('includePath').checked ? playPath : null, times: exportTimes() });
+  const walked = P.split ? [...playPaths[0], ...playPaths[1]] : playPath; // two: red, blue
+  return serialize(P, { path: $('includePath').checked ? walked : null, times: exportTimes() });
 }
 // Cheap detection of a `path` line without surfacing parse errors — used only to enable/disable
 // the "also load path" checkbox live as the import text is edited/pasted.
@@ -773,11 +914,14 @@ function openModal(m) {
   $('modalTitle').textContent = m === 'export' ? 'Export Puzzle' : 'Import Puzzle';
   const row = $('includePathRow'), box = $('includePath');
   const walking = surface.active ? surface.playing : playMode;
-  const hasPath = (surface.active ? surface.playPath : playPath).length > 1;
+  // Two paths: a path line is both paths, so only a solved board has one
+  const hasPath = P.split && !surface.active ? solvedPaths(P, playPaths)
+    : (surface.active ? surface.playPath : playPath).length > 1;
   row.style.display = m === 'export' && walking ? '' : 'none';
   box.disabled = !hasPath;
   if (!hasPath) box.checked = false;
-  $('includePathHint').textContent = hasPath ? '' : '(walk a path on the board first)';
+  const askFor = P.split && !surface.active ? 'solve it on the board' : 'walk a path on the board';
+  $('includePathHint').textContent = hasPath ? '' : `(${askFor} first)`;
   $('modalText').value = m === 'export' ? exportText() : '';
   $('modalText').placeholder = m === 'export' ? '' : '# Zip Puzzle\nsize 7\ncheckpoints 0,0=1 2,3=2 4,1=3 6,6=4\nwalls H,0,1 V,3,3 H,5,5';
   $('modalOk').textContent = m === 'export' ? 'Copy to clipboard' : 'Import';
@@ -825,6 +969,15 @@ $('modeNumber').onclick = () => setMode('number');
 $('modeWall').onclick = () => setMode('wall');
 $('modeArrow').onclick = () => setMode('arrow');
 $('modePortal').onclick = () => setMode('portal');
+// Two paths: the colour of the numbers typed (the selected cell shows it while a number is typed)
+function setNumColour(colour) {
+  numColour = colour;
+  $('colRed').classList.toggle('active', colour === 0);
+  $('colBlue').classList.toggle('active', colour === 1);
+  draw();
+}
+$('colRed').onclick = () => setNumColour(0);
+$('colBlue').onclick = () => setNumColour(1);
 $('sizeSel').onchange = () => { resetBoard(+$('sizeSel').value); setDefaults(P.n); };
 $('variantSel').onchange = () => setVariant($('variantSel').value);
 $('clearWalls').onclick = () => { P.walls.fill(0); clearSolutions(); clearPreview(); draw(); updateWallCapTag(); };
@@ -850,9 +1003,17 @@ $('showLegCollide').onclick = () => { showLegCollide = $('showLegCollide').check
 $('showGraph').onclick = () => { showGraph = $('showGraph').checked; if (playMode) paintPlayNow(); };
 $('exportBtn').onclick = () => openModal('export'); $('importBtn').onclick = () => openModal('import');
 $('minimizeWalls').onclick = doMinimize;
+// Two paths: how many of K numbers are red when they are scattered: half, 2 at least for each
+const twoSplit = K => Math.max(2, Math.min(K - 2, Math.round(K / 2)));
 $('randScatter').onclick = () => {
   if (playMode) exitPlay();
-  P.cp = scatter(P, K_(), rnd); P.walls.fill(0); preview = null; previewVisible = true; selected = -1; buffer = '';
+  if (P.split && Math.min(K_(), P.n * P.n) < 4) {
+    setStatus('Two paths needs at least 4 numbers: raise Max checkpoints.', 'warn');
+    return;
+  }
+  P.cp = scatter(P, K_(), rnd);
+  if (P.split) P.split = twoSplit(Math.min(K_(), P.n * P.n));
+  P.walls.fill(0); preview = null; previewVisible = true; selected = -1; buffer = '';
   if (P.arrows) P.arrows.fill(0);
   if (P.portals) P.portals = []; // the new numbers could sit on a portal
   refresh(); setStatus(`Scattered ${Math.min(K_(), P.n * P.n)} random checkpoints. ${P.arrows ? 'Arrows' : P.portals ? 'Walls and portals' : 'Walls'} cleared.`, 'ok');
@@ -863,28 +1024,36 @@ const loopOdd = () => {
   setStatus('A loop needs an even grid size: pick 4, 6, 8, 10 or 12.', 'warn');
   return true;
 };
+// Two paths are generated from 4 × 4 (the same holds for an imported 3 × 3 board).
+const twoTooSmall = () => {
+  if (!P.split || P.n >= 4) return false;
+  setStatus('Two paths are generated on a 4 × 4 board or larger.', 'warn');
+  return true;
+};
 $('randPath').onclick = () => {
   if (playMode) exitPlay();
-  if (loopOdd()) return;
+  if (loopOdd() || twoTooSmall()) return;
   const key = variantKey(P);
   let made;
   try {
-    made = randomPathPuzzle(P.n, K_(), rnd, !!P.wrap, !!P.loop, P.portals ? pairs_() : 0);
+    const pairs = P.portals ? pairs_() : 0;
+    made = randomPathPuzzle(P.n, K_(), rnd, !!P.wrap, !!P.loop, pairs, !!P.split);
   } catch (err) {
     setStatus(err.message, 'warn');
     return;
   }
   adopt(made);
   // the type stays (an arrows puzzle starts without arrows; a Teleport one keeps its new pairs)
-  if (key !== 'teleport') setTypeMarker(P, key);
+  if (key !== 'teleport' && key !== 'twopaths') setTypeMarker(P, key);
   refresh();
   const more = key === 'arrows' ? 'arrows' : 'walls';
   setStatus(`Generated a random Hamiltonian path${P.portals ? ` through ${plural(P.portals.length, 'portal pair')}` : ''} with checkpoints along it, no ${more}. The template is shown dashed — click Solve to check it, then add ${more} manually if it's not unique.`, 'ok');
 };
 $('randPathUnique').onclick = async () => {
   if (playMode) exitPlay();
-  if (loopOdd()) return;
-  const K = Math.min(K_(), P.n * P.n), W = W_(), tries = int_('genTries', CAPPED_TRIES, 1), hardest = $('genHardest').checked;
+  if (loopOdd() || twoTooSmall()) return;
+  const K = Math.max(P.split ? 4 : 0, Math.min(K_(), P.n * P.n)), W = W_();
+  const tries = int_('genTries', CAPPED_TRIES, 1), hardest = $('genHardest').checked;
   const seed = currentSeed(); // reads the Seed field, or picks+reveals a fresh one
   setBusy(true); setStatus('Generating…', '');
   $('compareResult').style.display = 'none';
@@ -892,7 +1061,17 @@ $('randPathUnique').onclick = async () => {
     if (!compareMode()) {
       const flags = decodeFlags(flagsSingle.get());
       const clock = { ms: 0 };
-      const r = await runAsync(measured(generateUnique(P.n, K, makeRng(seed), { maxWalls: W, tries, hardest, flags, wrap: !!P.wrap, loop: !!P.loop, pairs: P.portals ? pairs_() : 0 }), clock), { onEvent: e => setStatus(`Generating… retry ${e.attempt}/${e.of}${hardest ? ` · ${plural(e.found, 'candidate')}` : ''}${e.walls != null ? ` · ${plural(e.walls, 'wall')} so far` : ''}`, '') });
+      const genOpts = {
+        maxWalls: W, tries, hardest, flags, wrap: !!P.wrap, loop: !!P.loop,
+        pairs: P.portals ? pairs_() : 0, twopaths: !!P.split,
+      };
+      const onEvent = e => {
+        const found = hardest ? ` · ${plural(e.found, 'candidate')}` : '';
+        const walls = e.walls != null ? ` · ${plural(e.walls, 'wall')} so far` : '';
+        setStatus(`Generating… retry ${e.attempt}/${e.of}${found}${walls}`, '');
+      };
+      const gen = measured(generateUnique(P.n, K, makeRng(seed), genOpts), clock);
+      const r = await runAsync(gen, { onEvent });
       adopt(r.puzzle);
       if (r.unique) {
         setTiming('gen', clock.ms); // a failed run's wall-free fallback is not a generated puzzle
@@ -1006,6 +1185,7 @@ $('genTarget').onclick = async () => {
 };
 $('reproducePlay').onclick = async () => {
   if (playMode) exitPlay();
+  if (twoTooSmall()) return;
   const seed = currentSeed();
   setBusy(true); setStatus('Reproducing Play puzzle (generate())…', '');
   $('compareResult').style.display = 'none';
@@ -1017,14 +1197,16 @@ $('reproducePlay').onclick = async () => {
     // A Wrap-around or Exact puzzle is the Play app's own generator of that type (apps/play/variants.js).
     const clock = { ms: 0 };
     const gen = P.arrows ? generateArrows(P.n, seed) : P.exact ? generateExact(P.n, seed)
-      : P.loop ? generateLoop(P.n, seed) : P.portals ? generateTeleport(P.n, seed, pairsGiven()) : generate(P.n, seed, P.wrap ? { wrap: true } : {});
+      : P.loop ? generateLoop(P.n, seed) : P.portals ? generateTeleport(P.n, seed, pairsGiven())
+        : P.split ? generateTwoPaths(P.n, seed) : generate(P.n, seed, P.wrap ? { wrap: true } : {});
     const count = e => (e.labels != null ? plural(e.labels, 'number') : e.arrows != null ? plural(e.arrows, 'arrow') : plural(e.walls ?? 0, 'wall'));
     const p = await runAsync(measured(gen, clock), { onEvent: e => setStatus(`Reproducing… ${count(e)} so far`, '') });
     adopt(p);
     setTiming('gen', clock.ms);
     refresh();
     const kind = P.arrows ? 'generateArrows()' : P.exact ? 'generateExact()' : P.loop ? 'generateLoop()'
-      : P.portals ? 'generateTeleport()' : P.wrap ? 'generate() with wrap' : 'generate()';
+      : P.portals ? 'generateTeleport()' : P.split ? 'generateTwoPaths()'
+        : P.wrap ? 'generate() with wrap' : 'generate()';
     const flagsNote = P.arrows || P.exact ? '' : ` (flags always ${flagsToHex(PLAY_FLAGS_INT)} — generate() has no flags of its own yet)`;
     setStatus(`Reproduced ${kind}'s puzzle for seed ${seed} at ${P.n}×${P.n}${flagsNote}. The template is shown dashed.`, 'ok');
   } finally { setBusy(false); }
