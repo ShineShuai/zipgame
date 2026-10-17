@@ -73,6 +73,9 @@ export function serialize(p, opts = {}) {
   if (p.loop) {
     lines.push('# loop                    (the last cell touches cell 1, a ring; numbers in cyclic order: Loop)');
   }
+  if (p.split) {
+    lines.push('# split k                 (Two paths: red takes the numbers 1..k, blue the numbers after k)');
+  }
   const portals = portalPairs(p);
   if (p.portals) {
     lines.push('# portals r,c~r,c ...     (pairs of linked cells; a step between them is a move)');
@@ -87,6 +90,7 @@ export function serialize(p, opts = {}) {
   if (hs.length) lines.push('holes ' + hs.join(' '));
   if (as) lines.push(as.length ? 'arrows ' + as.join(' ') : 'arrows');
   if (p.exact) lines.push('exact');
+  if (p.split) lines.push(`split ${p.split}`);
   if (p.portals) {
     const pairs = portals.map(pair => pair.map(cell => cellKey(p.n, cell)).join('~'));
     lines.push(('portals ' + pairs.join(' ')).trim());
@@ -100,6 +104,9 @@ export function serialize(p, opts = {}) {
 // in canonical order (see portalPairs). Without a pair it is not valid yet (validate), as in the
 // design app.
 // An `arrows` line (even an empty one) makes it a One way arrows puzzle: p.arrows (core/edges.js).
+// A `split k` line makes it a Two paths puzzle: p.split = k, the numbers 1..k are the red path's, the
+// rest the blue path's (core/model.js, core/twopaths.js); a path line then lists the red path
+// followed by the blue one.
 // An `exact` line (no values) makes it an Exact puzzle: p.exact, the numbers are steps
 // (core/model.js). A `loop` line (no values) makes it a Loop puzzle: p.loop, a ring.
 // Throws Error with a user-readable message. Returns the puzzle; if the text had a `path` line,
@@ -108,7 +115,7 @@ export function serialize(p, opts = {}) {
 export function parse(text) {
   let n = null; const cps = [], ws = [], hs = [], as = [], ps = [];
   let pathCells = null, hasArrows = false;
-  let isExact = false, isWrap = false, isLoop = false, isPortals = false;
+  let isExact = false, isWrap = false, isLoop = false, isPortals = false, split = 0;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim(); if (!line || line.startsWith('#')) continue;
     const parts = line.split(/\s+/), kw = parts[0].toLowerCase();
@@ -137,6 +144,9 @@ export function parse(text) {
     } else if (kw === 'loop') {
       if (parts.length > 1) throw new Error('The "loop" line takes no values.');
       isLoop = true;
+    } else if (kw === 'split') {
+      split = parts.length === 2 && /^\d+$/.test(parts[1]) ? parseInt(parts[1], 10) : 0;
+      if (split < 1) throw new Error('The "split" line takes one number: split k.');
     } else if (kw === 'portals') {
       // even an empty line: a Teleport puzzle without a pair yet (the design app's, not yet valid)
       isPortals = true;
@@ -208,6 +218,13 @@ export function parse(text) {
     if (hasArrows) throw new Error('An Exact puzzle cannot have arrows.');
     p.exact = true;
   }
+  if (split) {
+    if (isWrap || isLoop || isExact || isPortals || hasArrows || hs.length) {
+      throw new Error('A Two paths puzzle cannot have holes, arrows, exact numbers, wrap-around, '
+        + 'a loop or portals (yet).');
+    }
+    p.split = split;
+  }
   if (isPortals) {
     if (isWrap || isLoop || isExact || hasArrows || hs.length) {
       throw new Error('A Teleport puzzle cannot have holes, arrows, exact numbers, wrap-around '
@@ -237,10 +254,12 @@ export function parse(text) {
     for (let i = 1; i < path.length; i++) {
       if (p.holes && (p.holes[path[i - 1]] || p.holes[path[i]])) throw new Error(`Path enters a hole at step ${i}: ${pathCells[i - 1].join(',')} -> ${pathCells[i].join(',')}`);
       const [from, to] = [path[i - 1], path[i]];
-      if (!isPortalPair(p.portals, from, to) && !adjacent(n, !!p.wrap, from, to)) {
+      // a Two paths path crosses its bridge, from the last red number to the first blue one
+      const bridge = p.split && p.cp[from] === p.split && p.cp[to] === p.split + 1;
+      if (!bridge && !isPortalPair(p.portals, from, to) && !adjacent(n, !!p.wrap, from, to)) {
         throw new Error(`Path is not connected at step ${i}: ${pathCells[i - 1].join(',')} -> ${pathCells[i].join(',')}`);
       }
-      if (!canStep(p, path[i - 1], path[i])) throw new Error(`Path crosses a wall at step ${i}: ${pathCells[i - 1].join(',')} -> ${pathCells[i].join(',')}`);
+      if (!bridge && !canStep(p, path[i - 1], path[i])) throw new Error(`Path crosses a wall at step ${i}: ${pathCells[i - 1].join(',')} -> ${pathCells[i].join(',')}`);
     }
     if (new Set(path).size !== path.length) throw new Error('Path revisits a cell.');
     p.path = path;

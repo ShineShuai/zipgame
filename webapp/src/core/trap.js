@@ -91,6 +91,10 @@ export const LOOP_MODEL = withoutAltFracLadder();
 // undirected over the grid
 // only; refit once ratings of Teleport puzzles exist.
 export const TELEPORT_MODEL = withoutAltFracLadder();
+// Two paths: the solver sees one path with a bridge (a portal edge it must use, solver/solve-two.js),
+// so the wrong turns of trapProfile() are those of a Teleport puzzle; same reduced model, same
+// caveat: refit once ratings of Two paths puzzles exist.
+export const TWOPATHS_MODEL = withoutAltFracLadder();
 
 // The score model that fits a board: Cutout (holes) drops altFrac, One way arrows keeps trapMax and trapTop3 only, the rest TRAP_MODEL.
 // The play app grades with it (grades.js playGradesFor); trapMetrics itself keeps TRAP_MODEL unless a model is passed.
@@ -100,6 +104,7 @@ export const modelFor = p => {
   if (p.wrap) return WRAP_MODEL;
   if (p.loop) return LOOP_MODEL;
   if (p.portals) return TELEPORT_MODEL;
+  if (p.split) return TWOPATHS_MODEL;
   return p.holes ? withoutAltFrac() : TRAP_MODEL;
 };
 
@@ -176,7 +181,7 @@ export function trapMetricsFromProfile(p, path, profile, cfg = TRAP_CFG, ladTria
     trapDeep: steps.filter(s => s.score >= cfg.points[3]).length,
     alternatives: profile.length, nonUnique: profile.nonUnique, steps,
   };
-  const noLadder = p.arrows || p.exact || p.wrap || p.loop || p.portals;
+  const noLadder = p.arrows || p.exact || p.wrap || p.loop || p.portals || p.split;
   m.ladTrials = ladTrials ?? (noLadder ? 0 : ladderTrials(p, cfg));
   m.lTr = Math.log1p(m.ladTrials);
   m.predicted = trapPredict(m, model);

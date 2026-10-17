@@ -1,4 +1,5 @@
-import { startCell, endCell, maxNumber, cellCount } from './model.js';
+import { startCell, endCell, maxNumber, cellCount, checkpointCells } from './model.js';
+import { splitPath } from './twopaths.js';
 import { hasWall, arrowAllows } from './edges.js';
 import { adjacent, isPortalPair } from './geom.js';
 
@@ -12,11 +13,41 @@ export const canStep = (p, a, b) => isPortalPair(p.portals, a, b) || (adjacent(p
   && !(p.holes && (p.holes[a] || p.holes[b]))
   && !(p.arrows && !arrowAllows(p.arrows, p.n, a, b)));
 
+// Two paths puzzle (p.split, core/twopaths.js): both paths together cover every cell, share none, take
+// every step over an open edge, and each visits its own numbers in order, the red from 1 to
+// split, the blue from split + 1 to the last number, ending on its last one.
+export function isSolvedPaths(p, red, blue) {
+  const k = p.split;
+  const K = maxNumber(p);
+  const cells = checkpointCells(p);
+  if (red.length + blue.length !== cellCount(p)) return false;
+  if (red[0] !== cells[0] || red[red.length - 1] !== cells[k - 1]) return false;
+  if (blue[0] !== cells[k] || blue[blue.length - 1] !== cells[K - 1]) return false;
+  const seen = new Set();
+  const walk = (path, first, last) => {
+    let next = first;
+    for (let i = 0; i < path.length; i++) {
+      const cell = path[i];
+      if (seen.has(cell) || (i > 0 && !canStep(p, path[i - 1], cell))) return false;
+      seen.add(cell);
+      const number = p.cp[cell];
+      if (number && number !== next++) return false;
+    }
+    return next === last + 1;
+  };
+  return walk(red, 1, k) && walk(blue, k + 1, K) && seen.size === cellCount(p);
+}
+
 // Full-board solved check: covers every cell, starts at 1, ends on the max checkpoint, checkpoints visited in ascending order.
+// Two paths puzzle: `path` is the red path followed by the blue one (a solution path), see isSolvedPaths.
 // Loop puzzle: no fixed end; the last cell has to touch cell 1 through an open edge (the ring closes).
 // Exact puzzle: every number sits at its own step (the cell numbered k is path[k - 1]), which also
 // makes the order right.
 export function isSolved(p, path) {
+  if (p.split) {
+    const parts = splitPath(p, path);
+    return parts !== null && isSolvedPaths(p, parts[0], parts[1]);
+  }
   if (path.length !== cellCount(p)) return false;
   if (path[0] !== startCell(p)) return false;
   if (p.loop ? !canStep(p, path[path.length - 1], path[0]) : path[path.length - 1] !== endCell(p)) return false;

@@ -8,8 +8,9 @@
 //   - a forced cycle is a contradiction;
 //   - a forced chain from the head to the end that leaves cells uncovered is a contradiction;
 //   - an open edge between the two ends of one forced chain would close a cycle, so it is dropped.
-// An optional "must-use" edge (deduce's last two arguments) is forced before the fixpoint runs; the solver's
-// freedEdge check uses it to look only for solutions that cross a just-removed wall.
+// Optional "must-use" edges (deduce's last argument) are forced before the fixpoint runs; the solver's
+// freedEdge check uses one to look only for solutions that cross a just-removed wall, a Two paths
+// puzzle adds its bridge (solver/solve-two.js).
 //
 // Cost per deduce() call: O(U * alpha(U)) for U unvisited cells. Space: O(T), allocated once per
 // makePropagator() call (the solver makes one per solve(); the overlay one per repaint).
@@ -30,11 +31,12 @@ const POPCOUNT = Array.from({ length: 64 }, (_, mask) => {
 // 4 or 5), fr[u] = forced edge bits.
 //          Valid after a deduce() call that returned true; av[head] = the head's possible moves.
 //   nbm[u] static open-edge mask of u (walls and borders excluded).
-//   deduce(cur, count, ul, un, vm, mustA = -1, mustB = -1) -> false when this position cannot be completed.
+//   deduce(cur, count, ul, un, vm, must = null) -> false when this position cannot be completed.
 //     cur = head cell, count = path length so far (head included),
 //     ul[0 .. un) = unvisited cells, vm[u] = mask of u's neighbours that are on the path.
-//     mustA/mustB = optional edge (two grid-adjacent cells, each the head or unvisited) that the rest of the
-//     path has to use; deduce() fails when it cannot.
+//     must = optional flat list [a0, b0, a1, b1, ...] of edges (each a pair of neighbouring cells,
+//     each the head or unvisited) that the rest of the path has to use; deduce() fails when it
+//     cannot.
 // cells (default T): how many cells the path covers in all (T minus the holes of a Cutout puzzle).
 export function makePropagator(nb, T, end, vis, cells = T) {
   const W = (nb.length / T) | 0; // direction slots per cell: 4, or 6 with a portal
@@ -137,7 +139,7 @@ export function makePropagator(nb, T, end, vis, cells = T) {
     return true;
   }
 
-  function deduce(cur, count, ul, un, vm, mustA = -1, mustB = -1) {
+  function deduce(cur, count, ul, un, vm, must = null) {
     if (cur === end) return false; // count < T here: the path may only end on the last checkpoint
     pcur = cur;
     pneed = cells - count + 1;
@@ -176,10 +178,14 @@ export function makePropagator(nb, T, end, vis, cells = T) {
     if (headDegree < 1) return false;
     if (headDegree === 1) pq[qt++] = cur;
 
-    if (mustA >= 0) {
-      let dir = -1;
-      for (let d = 0; d < W; d++) if (nb[mustA * W + d] === mustB) dir = d;
-      if (dir < 0 || ((av[mustA] >> dir) & 1) === 0 || !force(mustA, dir)) return false;
+    if (must) {
+      for (let i = 0; i < must.length; i += 2) {
+        const mustA = must[i];
+        const mustB = must[i + 1];
+        let dir = -1;
+        for (let d = 0; d < W; d++) if (nb[mustA * W + d] === mustB) dir = d;
+        if (dir < 0 || ((av[mustA] >> dir) & 1) === 0 || !force(mustA, dir)) return false;
+      }
     }
     for (let h = 0; h < qt; h++) {
       const u = pq[h];

@@ -184,6 +184,8 @@ export function transformPuzzle(p, k, reverse) { // k = 0..7: (k & 3) quarter-tu
   // Teleport pairs travel with the board (without them, puzzles that differ only by their portals
   // would look alike)
   if (p.portals) q.portals = p.portals.map(([a, b]) => [map(a), map(b)]);
+  // Two paths: numbering backwards makes the blue path (counted from the end) the first one
+  if (p.split) q.split = reverse ? K - p.split : p.split;
   return q;
 }
 // Smallest key over the 16 variants: equal for puzzles that are the same up to the symmetries above.
