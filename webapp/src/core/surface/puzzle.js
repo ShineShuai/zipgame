@@ -5,6 +5,7 @@
 // between two cells is closed. The rules are those of the flat game: the path starts on 1, ends
 // on the highest number, visits every cell once and meets the numbers in ascending order.
 import { surfaceTopology, edgeBetween } from './topology.js';
+import { timeComments } from '../format.js';
 
 export const isSurfacePuzzle = p => Boolean(p && p.surface);
 export const topologyOf = p => surfaceTopology(p.surface, p.n);
@@ -129,12 +130,68 @@ export function isSolved(p, path) {
   return previous === maxNumber(p);
 }
 
+// The number the path has to reach next: the highest number on it plus one (0 once the highest
+// number of the puzzle is on it).
+export function nextNumber(p, path) {
+  let highest = 0;
+  for (const cell of path) {
+    highest = Math.max(highest, p.cp[cell]);
+  }
+  return highest < maxNumber(p) ? highest + 1 : 0;
+}
+
+// One move on a path being walked (`path` is changed in place), like core/rules.js step():
+//   'push'   the path grew by `cell`
+//   'pop'    `cell` is the one before the head: one step back
+//   'trunc'  opts.truncate: `cell` is earlier on the path, the path is cut back to it
+//   null     refused
+// opts.strictOrder: the numbers have to be met in order, and nothing follows the highest number.
+export function step(p, path, cell, opts = {}) {
+  const length = path.length;
+  if (length === 0) {
+    if (cell !== startCell(p)) {
+      return null;
+    }
+    path.push(cell);
+    return 'push';
+  }
+  if (length > 1 && cell === path[length - 2]) {
+    path.pop();
+    return 'pop';
+  }
+  const at = path.indexOf(cell);
+  if (at >= 0) {
+    if (opts.truncate && at < length - 1) {
+      path.length = at + 1;
+      return 'trunc';
+    }
+    return null;
+  }
+  const last = path[length - 1];
+  if (!canStep(p, last, cell)) {
+    return null;
+  }
+  if (opts.strictOrder) {
+    const K = maxNumber(p);
+    if (K > 1 && p.cp[last] === K) {
+      return null;
+    }
+    const number = p.cp[cell];
+    if (number && number !== nextNumber(p, path)) {
+      return null;
+    }
+  }
+  path.push(cell);
+  return 'push';
+}
+
 // Plain text:
 //   surface tetra 4
 //   checkpoints 12=1 7=2 30=3        cell=number, in the order of the numbers
 //   walls 3,17,22                    edge numbers
 //   path 12 14 ...                   optional: a solution, as cell numbers
-// Blank lines and lines starting with # are ignored.
+// Blank lines and lines starting with # are ignored. opts.times ({ generateMs, solveMs, playS })
+// adds `# name value` comment lines, as the flat format does.
 export function serializeSurface(p, opts = {}) {
   const lines = [`surface ${p.surface} ${p.n}`];
   const cells = [];
@@ -151,11 +208,16 @@ export function serializeSurface(p, opts = {}) {
   if (walls.length) {
     lines.push(`walls ${walls.join(',')}`);
   }
-  if (opts.path) {
+  if (opts.path && opts.path.length) {
     lines.push(`path ${opts.path.join(' ')}`);
   }
+  lines.push(...timeComments(opts.times));
   return `${lines.join('\n')}\n`;
 }
+
+// Whether `text` is a surface puzzle: its first line that is not blank or a comment starts with
+// `surface` (the design app tells it from a flat puzzle this way).
+export const looksLikeSurface = text => /^\s*(?:#[^\n]*\n\s*)*surface\s/.test(text);
 
 const whole = (text, what) => {
   if (!/^\d+$/.test(text)) {

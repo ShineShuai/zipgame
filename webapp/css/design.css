@@ -16,7 +16,7 @@ body{margin:0;min-height:100vh;background:radial-gradient(circle at 20% 0%,#1a1f
 .field-row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
 .field-row > label{margin-bottom:0;flex:1;}
 .field-row > select,.field-row > input[type=number]{width:108px;flex:none;}
-.field-row > #variantSel{width:150px;}
+.field-row > #variantSel,.field-row > #sfSize{width:150px;}
 select,input[type=number]{width:100%;padding:8px 10px;background:#0e1220;color:#e7e9f3;border:1px solid #2a3252;border-radius:8px;font-size:14px;font-family:inherit;}
 select:focus,input:focus{outline:2px solid #5b7cfa55;border-color:#5b7cfa;}
 button{font-family:inherit;font-size:13px;cursor:pointer;border-radius:8px;border:1px solid #2a3252;background:#1d2440;color:#dfe3f5;padding:8px 12px;transition:background .15s,filter .15s,border-color .15s;}
@@ -223,3 +223,33 @@ button.playbtn.on{background:linear-gradient(135deg,#b3344f,#e0526f);}
 .diff-ascii{margin:0 0 6px;font:11px/1.25 ui-monospace,Menlo,monospace;color:#c7cce3;overflow-x:auto;}
 .diff-dup-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:#c7cce3;margin-top:4px;}
 
+/* ---- surface boards: the flat net of a tetrahedron or cube (src/apps/design/surface-board.js) ---- */
+.sf-svg{display:block;max-width:100%;height:auto;touch-action:none;user-select:none;-webkit-user-select:none;}
+.sf-cell{stroke:#2a3252;stroke-width:1;}
+.sf-f0{fill:#18213a;}
+.sf-f1{fill:#1f1d38;}
+.sf-f2{fill:#15262f;}
+.sf-f3{fill:#232130;}
+.sf-f4{fill:#172435;}
+.sf-f5{fill:#1d2133;}
+.sf-board:not(.playmode) .sf-cell{cursor:pointer;}
+.sf-board:not(.playmode) .sf-cell:hover{filter:brightness(1.5);}
+.sf-board.wallmode:not(.playmode) .sf-cell{cursor:crosshair;}
+.sf-board.playmode{cursor:crosshair;}
+.sf-cell.visited{fill:#25336a;}
+.sf-sel{fill:none;stroke:#5b7cfa;stroke-width:3;pointer-events:none;}
+.sf-wall{stroke:#7d88c9;stroke-linecap:round;pointer-events:none;}
+.sf-cut{stroke:#c9a14a;stroke-width:1.5;stroke-dasharray:4 3;pointer-events:none;}
+.sf-path{fill:none;stroke-linecap:round;stroke-linejoin:round;pointer-events:none;}
+.sf-head{fill:#5b7cfa;stroke:#e7e9f3;stroke-width:2;pointer-events:none;}
+.sf-badge{pointer-events:none;}
+.sf-badge circle{fill:#0e1326;stroke:#3a4468;stroke-width:2;}
+.sf-badge.start circle{stroke:#3ddc97;}
+.sf-badge.end circle{stroke:#ff6b8a;}
+.sf-badge.pending circle{stroke:#5b7cfa;}
+.sf-badge.visited{opacity:.55;}
+.sf-badge text,.sf-tag text{text-anchor:middle;dominant-baseline:central;font-weight:700;fill:#e7e9f3;}
+.sf-badge.pending text{font-style:italic;fill:#a9bcff;}
+.sf-tag{pointer-events:none;}
+.sf-tag circle{fill:#2a2412;stroke:#c9a14a;stroke-width:1.5;}
+.sf-tag text{fill:#ffd98a;}
