@@ -719,9 +719,9 @@ export function surfaceTests(t, ok, eq) {
     const marks = routeCrossings(net, cut);
     const slot = slotBetween(top, cut[0], cut[1]);
     eq(marks.map(m => m.kind), ['out', 'in']);
-    eq(marks[0], { kind: 'out', cell: cut[0], slot, letter: net.letterAt.get(cut[0] * 4 + slot) });
+    eq(marks[0], { kind: 'out', cell: cut[0], slot, letter: net.letterAt.get(cut[0] * SLOTS + slot) });
     eq(marks[1].cell, cut[1]);
-    eq(marks[1].slot, top.rev[cut[0] * 4 + slot]);
+    eq(marks[1].slot, top.rev[cut[0] * SLOTS + slot]);
     eq(marks[1].letter, marks[0].letter);
     const hidden = { ...net, hidden: top.faceOf.map(face => face === top.faceOf[cut[1]]) };
     eq(routeCrossings(hidden, cut).map(m => m.kind), ['out'], 'a hidden cell has no mark');

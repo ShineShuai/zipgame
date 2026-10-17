@@ -1,10 +1,11 @@
 // Puzzles on a closed surface (see topology.js): the model, the move rule, the solved check and a
 // plain-text format. A puzzle is
-//   { surface: 'tetra' | 'cube', n, cp: Uint16Array(T), walls: Uint8Array(E) }
+//   { surface: 'tetra' | 'cube' | 'ball', n, cp: Uint16Array(T), walls: Uint8Array(E) }
+// (n is the size of a tetra or cube, the catalog id of a ball)
 // cp[cell] is the checkpoint number of a cell (0 = none) and walls[edge] is 1 where the side
 // between two cells is closed. The rules are those of the flat game: the path starts on 1, ends
 // on the highest number, visits every cell once and meets the numbers in ascending order.
-import { surfaceTopology, edgeBetween } from './topology.js';
+import { surfaceTopology, edgeBetween, BALL_KIND } from './topology.js';
 import { timeComments } from '../format.js';
 
 export const isSurfacePuzzle = p => Boolean(p && p.surface);
@@ -186,7 +187,7 @@ export function step(p, path, cell, opts = {}) {
 }
 
 // Plain text:
-//   surface tetra 4
+//   surface tetra 4                  (or: surface ball snubdodeca)
 //   checkpoints 12=1 7=2 30=3        cell=number, in the order of the numbers
 //   walls 3,17,22                    edge numbers
 //   path 12 14 ...                   optional: a solution, as cell numbers
@@ -233,9 +234,10 @@ export function parseSurface(text) {
     .filter(line => line && !line.startsWith('#'));
   const head = (lines.shift() || '').split(/\s+/);
   if (head[0] !== 'surface' || head.length !== 3) {
-    throw new Error("the first line must be 'surface <tetra|cube> <n>'");
+    throw new Error("the first line must be 'surface <tetra|cube> <n>' or 'surface ball <id>'");
   }
-  const p = makeSurfacePuzzle(head[1], whole(head[2], 'size'));
+  const size = head[1] === BALL_KIND ? head[2] : whole(head[2], 'size');
+  const p = makeSurfacePuzzle(head[1], size);
   const top = topologyOf(p);
   let path;
   for (const line of lines) {

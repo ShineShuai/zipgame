@@ -1,8 +1,11 @@
-// Puzzles on a tetrahedron or cube board (src/core/surface/): generate them, or solve a file.
+// Puzzles on a tetrahedron, cube or ball board (src/core/surface/): generate them, or solve a file.
 //   node tools/surface-gen.mjs tetra 4 [--seed 1] [--count 1] [--k 12] [--path] [--quiet]
+//   node tools/surface-gen.mjs ball snub-dodeca [--seed 1] ...
 //   node tools/surface-gen.mjs --solve FILE
 // kind              tetra (n^2 triangles on each of 4 faces) or cube (n^2 squares on 6 faces)
 // n                 cells along a side, 1..12 (the app plans tetra 3..5 and cube 3..4)
+// ball              a polyhedron of triangles, squares, pentagons, by id (the list: node
+//                   tools/ball-catalog.mjs); its cells are the faces
 // --seed S --count C  puzzle i uses seed S+i (default 1, 1); same arguments, same puzzles
 // --k K             how many numbers (default: about 20% of a tetra's cells, 15% of a cube's)
 // --path            also print the solution as a `path` line
@@ -12,7 +15,7 @@
 // puzzle unique, the difficulty measure. Exit codes: 0 done, 1 bad arguments or an invalid puzzle.
 import { readFileSync } from 'node:fs';
 import { generateSurface, defaultK } from '../src/core/surface/gen.js';
-import { surfaceTopology } from '../src/core/surface/topology.js';
+import { surfaceTopology, ballEntry, BALL_KIND } from '../src/core/surface/topology.js';
 import { serializeSurface, parseSurface } from '../src/core/surface/puzzle.js';
 import { solveSurface } from '../src/core/surface/solve.js';
 
@@ -55,16 +58,19 @@ for (let i = 0; i < args.length; i++) {
   }
 }
 const [kind, size] = positional;
-const n = Number(size);
-if (!kind || !Number.isInteger(n)) {
-  fail('usage: node tools/surface-gen.mjs <tetra|cube> <n> [--seed S] [--count C] [--k K] ' +
-    '[--path] [--quiet]');
+const n = kind === BALL_KIND ? size : Number(size);
+if (!kind || (kind === BALL_KIND ? !size : !Number.isInteger(n))) {
+  fail('usage: node tools/surface-gen.mjs <tetra|cube> <n> | ball <id> [--seed S] [--count C] ' +
+    '[--k K] [--path] [--quiet]');
 }
 let cells;
 try {
   cells = surfaceTopology(kind, n).T;
 } catch (error) {
   fail(error.message);
+}
+if (kind === BALL_KIND && !ballEntry(n).ok) {
+  fail(`${n} cannot be played: ${ballEntry(n).why}`);
 }
 const seed = Number(value('seed', 1));
 const count = Number(value('count', 1));

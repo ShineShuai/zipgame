@@ -1,31 +1,49 @@
 // Closed-surface boards as graphs: the cells of a regular tetrahedron (equilateral triangles, 3
-// neighbours each) or of a cube (squares, 4 neighbours each). Every face is split into n x n
-// cells. The cells are vertices of a graph, an edge joins two cells that share a side, and the
-// puzzle is the same as on the flat board: one path through every cell, numbers met in order.
+// neighbours each), of a cube (squares, 4 neighbours each) or of a ball (a convex polyhedron whose
+// cells are triangles, squares and pentagons, see ball-catalog.js). Every face of a tetra or cube
+// is split into n x n cells. The cells are vertices of a graph, an edge joins two cells that share
+// a side, and the puzzle is the same as on the flat board: one path through every cell, numbers
+// met in order.
 //
 //   tetra n  4 faces of n^2 triangles: 4n^2 cells, 6n^2 edges, 2n^2 + 2 corners
 //   cube n   6 faces of n^2 squares:   6n^2 cells, 12n^2 edges, 6n^2 + 2 corners
+//   ball id  one cell per face of the catalog polyhedron `id` (n is the id, a string); every
+//            cell is its own face, the sides of the polyhedron are the sides of the cells
 //
 // Cell numbers (fixed: puzzles and share codes refer to them):
 //   cube   face * n^2 + i * n + j, the face 0..5 = +x, -x, +y, -y, +z, -z, row i, column j
+//   ball   the index of the face in the catalog entry (its ring list), and the slots of a cell
+//          follow its ring: slot k is the side from ring[k] to ring[k + 1]
 //   tetra  face * n^2 + k; inside a face the rows i = 0..n-1 come in turn, and each row lists
 //          the up triangle (i, j) for j = 0..n-1-i, each followed by the down triangle between
 //          it and the next up triangle (not after the last one of the row)
 //
-// A cell has up to 4 slots (a tetra cell uses 3), one per side, in counter-clockwise order seen
-// from outside. Slot k of cell c is the side c shares with nb[c * 4 + k]; rev[c * 4 + k] is the
-// slot of that neighbour that points back at c. Edges are numbered by (lower cell, slot).
+// A cell has up to 5 slots (a tetra cell uses 3, a cube cell 4), one per side, in
+// counter-clockwise order seen from outside. Slot k of cell c is the side c shares with
+// nb[c * SLOTS + k]; rev[c * SLOTS + k] is the slot of that neighbour that points back at c.
+// Edges are numbered by (lower cell, slot).
 //
-// Both boards are closed (no border, nothing is forced by a border) and not bipartite: three
-// cells meet at every corner of the solid, and any two of them touch.
+// All boards are closed (no border, nothing is forced by a border). Tetra and cube are not
+// bipartite: three cells meet at every corner of the solid, and any two of them touch. A ball is
+// bipartite when an even number of cells meets at every corner; then no path can cover it unless
+// the two colour classes differ by at most 1 in size (top.classes).
 
+import { BALL_CATALOG } from './ball-catalog.js';
+
+// The kinds with a size n (a whole number); `ball` has an id instead and is listed in BALL_KIND.
 export const SURFACE_KINDS = ['tetra', 'cube'];
+export const BALL_KIND = 'ball';
 // The sizes (n) the app offers; the builders accept any n from 1 to MAX_SIDE.
 export const SURFACE_SIZES = { tetra: [3, 4, 5], cube: [3, 4] };
 export const MAX_SIDE = 12;
-export const SLOTS = 4;
+export const SLOTS = 5;
 
-export const surfaceCellCount = (kind, n) => (kind === 'tetra' ? 4 : 6) * n * n;
+export const surfaceCellCount = (kind, n) => {
+  if (kind === BALL_KIND) {
+    return ballEntry(n).r.length;
+  }
+  return (kind === 'tetra' ? 4 : 6) * n * n;
+};
 
 const TETRA_CORNERS = [
   [1, 1, 1],
@@ -148,7 +166,9 @@ function allDistances(T, nb) {
   return dist;
 }
 
-function isBipartite(T, nb) {
+// A 2-colouring of the cells (neighbours differ) as an array of 0 and 1, or null when there is
+// none (an odd cycle of cells).
+function twoColouring(T, nb) {
   const colour = new Int8Array(T).fill(-1);
   const stack = [0];
   colour[0] = 0;
@@ -163,14 +183,15 @@ function isBipartite(T, nb) {
         colour[next] = 1 - colour[cell];
         stack.push(next);
       } else if (colour[next] === colour[cell]) {
-        return false;
+        return null;
       }
     }
   }
-  return true;
+  return colour;
 }
 
-function buildGraph(kind, n, mesh) {
+// faceCount: the number of faces of the solid (a cell of a ball is its own face).
+function buildGraph(kind, n, mesh, faceCount) {
   const { cells, faces, positions } = mesh;
   const T = cells.length;
   const nb = new Int32Array(T * SLOTS).fill(-1);
@@ -180,6 +201,9 @@ function buildGraph(kind, n, mesh) {
   const unmatched = new Map();
   for (let cell = 0; cell < T; cell++) {
     const corners = cells[cell];
+    if (corners.length > SLOTS) {
+      throw new Error(`${kind} ${n}: a cell with more than ${SLOTS} sides`);
+    }
     deg[cell] = corners.length;
     for (let k = 0; k < corners.length; k++) {
       ring[cell * SLOTS + k] = corners[k];
@@ -220,6 +244,10 @@ function buildGraph(kind, n, mesh) {
       }
     }
   }
+  const colouring = twoColouring(T, nb);
+  // [cells of one colour, cells of the other] of a bipartite board, else null
+  const ones = colouring ? colouring.reduce((sum, c) => sum + c, 0) : 0;
+  const classes = colouring ? [T - ones, ones] : null;
   const verts = new Float64Array(positions.length * 3);
   positions.forEach((xyz, i) => verts.set(xyz, i * 3));
   return {
@@ -234,29 +262,60 @@ function buildGraph(kind, n, mesh) {
     edgeAt,
     ends: Int32Array.from(ends),
     ring,
-    faceOf: Uint8Array.from(faces),
-    faceCount: kind === 'tetra' ? 4 : 6,
+    faceOf: Uint16Array.from(faces),
+    faceCount,
     verts,
     dist: allDistances(T, nb),
-    bipartite: isBipartite(T, nb),
+    bipartite: colouring !== null,
+    classes,
   };
 }
 
 const cache = new Map();
 
+const ballsById = new Map(BALL_CATALOG.map(entry => [entry.id, entry]));
+
+// The catalog entry of a ball (see ball-catalog.js): { id, name, f, ok, why, v, r }.
+export function ballEntry(id) {
+  const entry = ballsById.get(id);
+  if (!entry) {
+    throw new Error(`unknown ball '${id}'`);
+  }
+  return entry;
+}
+
+// The corners are the unit vectors of the entry, a cell is a face (its ring of corners).
+function ballMesh(entry) {
+  const mesh = makeMesh();
+  const ids = entry.v.map((xyz, i) => mesh.vertex(String(i), xyz));
+  entry.r.forEach((ring, face) => mesh.cell(face, ring.map(k => ids[k])));
+  return mesh;
+}
+
+// The graph of a catalog entry, not cached (tools/ball-catalog.mjs builds it for entries that
+// are not in the catalog yet); the app uses surfaceTopology('ball', id).
+export const buildBallTopology = entry =>
+  buildGraph(BALL_KIND, entry.id, ballMesh(entry), entry.r.length);
+
 export function surfaceTopology(kind, n) {
-  if (!SURFACE_KINDS.includes(kind)) {
-    throw new Error(`unknown surface '${kind}'`);
-  }
-  if (!Number.isInteger(n) || n < 1 || n > MAX_SIDE) {
-    throw new Error(`surface size must be a whole number from 1 to ${MAX_SIDE}`);
-  }
   const key = `${kind}:${n}`;
   let top = cache.get(key);
-  if (!top) {
-    top = buildGraph(kind, n, kind === 'tetra' ? tetraMesh(n) : cubeMesh(n));
-    cache.set(key, top);
+  if (top) {
+    return top;
   }
+  if (kind === BALL_KIND) {
+    top = buildBallTopology(ballEntry(n));
+  } else {
+    if (!SURFACE_KINDS.includes(kind)) {
+      throw new Error(`unknown surface '${kind}'`);
+    }
+    if (!Number.isInteger(n) || n < 1 || n > MAX_SIDE) {
+      throw new Error(`surface size must be a whole number from 1 to ${MAX_SIDE}`);
+    }
+    const tetra = kind === 'tetra';
+    top = buildGraph(kind, n, tetra ? tetraMesh(n) : cubeMesh(n), tetra ? 4 : 6);
+  }
+  cache.set(key, top);
   return top;
 }
 
