@@ -39,13 +39,14 @@ export function pickColour(p, paths, cell, current = RED) {
   return current;
 }
 
-// One move of `colour` onto `cell`: 'push' | 'pop' | null (step() in core/rules.js; the path is
-// mutated). Refused: a cell of the other path, a number of the other colour.
-export function walkColour(p, paths, colour, cell) {
+// One move of `colour` onto `cell`: 'push' | 'pop' | null (step() in core/rules.js, which takes
+// `opts` too: truncate, strictOrder; the path is mutated). Refused: a cell of the other path, a
+// number of the other colour.
+export function walkColour(p, paths, colour, cell, opts = {}) {
   if (paths[1 - colour].includes(cell)) return null;
   const owner = colourOfCell(p, cell);
   if (owner >= 0 && owner !== colour) return null;
-  return step(viewOf(p, colour), paths[colour], cell);
+  return step(viewOf(p, colour), paths[colour], cell, opts);
 }
 
 export const solvedPaths = (p, paths) => isSolvedPaths(p, paths[RED], paths[BLUE]);

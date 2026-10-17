@@ -13,7 +13,7 @@
   <aside class="panel">
     <h1><span class="dot"></span>Zip Puzzle Designer</h1>
 
-    <div class="field field-row" data-variants="standard arrows wrap exact loop teleport">
+    <div class="field field-row" data-variants="standard arrows wrap exact loop teleport twopaths">
       <label for="sizeSel">Grid size</label>
       <select id="sizeSel">
         <option value="4">4 × 4</option>
@@ -29,7 +29,7 @@
     </div>
 
     <div class="field field-row">
-      <label for="variantSel" title="Standard: checkpoints 1, 2, 3... in order, edges stop at the border, walls block. One way arrows: no walls, an arrow can be crossed only in its direction. Wrap-around: the edges join across the borders (a torus), so a step can leave one side and come in on the opposite one. Exact: a number is the step of its cell on the path (the cell numbered 8 is the 8th cell), so the numbers are gaps-and-all, 1 and the cell count among them. Loop: the path is a ring, its last cell touches cell 1 (even sizes only), the numbers 1..K are met in cyclic order and K need not be the last cell. Teleport pairs: pairs of linked cells (the same icon on both); a step from one to the other is a move, no wall stands on it, and each cell is still visited once. Tetrahedron, Cube: the board is the surface of a solid (4 faces of triangles, 6 faces of squares) shown as its flat net; the sides marked with the same letter touch when the net is folded.">Puzzle type</label>
+      <label for="variantSel" title="Standard: checkpoints 1, 2, 3... in order, edges stop at the border, walls block. One way arrows: no walls, an arrow can be crossed only in its direction. Wrap-around: the edges join across the borders (a torus), so a step can leave one side and come in on the opposite one. Exact: a number is the step of its cell on the path (the cell numbered 8 is the 8th cell), so the numbers are gaps-and-all, 1 and the cell count among them. Loop: the path is a ring, its last cell touches cell 1 (even sizes only), the numbers 1..K are met in cyclic order and K need not be the last cell. Teleport pairs: pairs of linked cells (the same icon on both); a step from one to the other is a move, no wall stands on it, and each cell is still visited once. Two paths: a red and a blue path together cover every cell, each with its own numbers counted from 1 (red 1..k, blue 1..m), each ending on its last number; type a number after picking its colour, and the blue numbers follow the red ones by themselves. Tetrahedron, Cube: the board is the surface of a solid (4 faces of triangles, 6 faces of squares) shown as its flat net; the sides marked with the same letter touch when the net is folded.">Puzzle type</label>
       <select id="variantSel">
         <option value="">Standard</option>
         <option value="arrows">One way arrows</option>
@@ -37,6 +37,7 @@
         <option value="exact">Exact</option>
         <option value="loop">Loop</option>
         <option value="teleport">Teleport pairs</option>
+        <option value="twopaths">Two paths</option>
         <option value="tetra">Tetrahedron</option>
         <option value="cube">Cube</option>
       </select>
@@ -67,13 +68,21 @@
     </div>
     </div>
 
-    <div class="field" data-variants="standard arrows wrap loop teleport">
+    <div class="field" data-variants="standard arrows wrap loop teleport twopaths">
       <label>Tool</label>
       <div class="segmented">
         <button id="modeNumber" class="seg active">Numbers</button>
-        <button id="modeWall" class="seg" data-variants="standard wrap loop teleport">Walls <span id="wallModeTag" class="seg-count"></span></button>
+        <button id="modeWall" class="seg" data-variants="standard wrap loop teleport twopaths">Walls <span id="wallModeTag" class="seg-count"></span></button>
         <button id="modeArrow" class="seg" data-variants="arrows" title="Click a gap to cycle: an arrow one way, the other way, none ">Arrows <span id="arrowModeTag" class="seg-count"></span></button>
         <button id="modePortal" class="seg" data-variants="teleport" title="Click a cell, then its partner: a pair of linked portals. Click a portal to remove its pair.">Portals <span id="portalModeTag" class="seg-count"></span></button>
+      </div>
+    </div>
+
+    <div class="field" data-variants="twopaths" style="display:none">
+      <label>Number colour</label>
+      <div class="segmented">
+        <button id="colRed" class="seg active" title="The numbers typed are red: the red path starts on red 1 and ends on its last red number">Red</button>
+        <button id="colBlue" class="seg" title="The numbers typed are blue: the blue path starts on blue 1 and ends on its last blue number">Blue</button>
       </div>
     </div>
 
@@ -105,7 +114,7 @@
     </div>
     </div>
 
-    <div data-variants="standard arrows wrap loop teleport">
+    <div data-variants="standard arrows wrap loop teleport twopaths">
     <div class="divider"></div>
 
     <div class="field field-row">
@@ -119,7 +128,7 @@
     </div>
     </div>
 
-    <div data-variants="standard wrap loop teleport">
+    <div data-variants="standard wrap loop teleport twopaths">
     <div class="divider"></div>
 
     <div class="field field-row">
@@ -150,7 +159,7 @@
     </div>
     </div>
 
-    <div data-variants="standard wrap loop teleport">
+    <div data-variants="standard wrap loop teleport twopaths">
     <div class="divider"></div>
 
     <div class="field field-row" data-variants="teleport" style="display:none">
@@ -242,7 +251,7 @@
       Exact model, and has no diagnostics.
     </div>
     </div>
-    <div data-variants="standard arrows wrap exact loop teleport">
+    <div data-variants="standard arrows wrap exact loop teleport twopaths">
     <div class="divider"></div>
     <div class="field">
       <button id="reproducePlay" class="wide" title="Runs generate() itself, the same function the Play app uses for its daily/local puzzles — not the flags/Max checkpoints/Max walls above, which only apply to Generate. Use this to reproduce a puzzle seen in the Play app via its seed.">▶️↺ Reproduce Play puzzle</button>
@@ -259,7 +268,7 @@
     <div class="divider"></div>
 
     <div class="field">
-      <button id="clearWalls" class="wide" data-variants="standard wrap loop teleport">Clear all walls</button>
+      <button id="clearWalls" class="wide" data-variants="standard wrap loop teleport twopaths">Clear all walls</button>
       <button id="clearAll" class="wide">Reset board</button>
     </div>
   </aside>
@@ -278,7 +287,7 @@
         <label for="compareToggle" title="Set two algorithm flag configurations (A/B) and run Generate or Solve with both, at the same seed, to compare them">Compare A / B</label>
         <input id="compareToggle" type="checkbox">
       </div>
-      <div data-variants="standard arrows wrap exact loop teleport">
+      <div data-variants="standard arrows wrap exact loop teleport twopaths">
         <div id="flagsSingle" class="flags-panel"></div>
         <div id="flagsCompare" class="flags-compare" style="display:none">
           <div class="flags-panel flags-panel-ab" data-side="A"></div>
@@ -286,7 +295,7 @@
         </div>
       </div>
     </div>
-    <div id="board" class="board" data-variants="standard arrows wrap exact loop teleport"></div>
+    <div id="board" class="board" data-variants="standard arrows wrap exact loop teleport twopaths"></div>
     <div id="sfBoard" class="board sf-board" data-variants="tetra cube" style="display:none"></div>
     <div id="legend" class="legend"></div>
     <div id="status" class="status status-below"></div>
@@ -302,7 +311,7 @@
       <label for="nodeLimit">Search limit (nodes)</label>
       <input id="nodeLimit" type="number" min="1000" step="1000" value="300000">
     </div>
-    <div data-variants="standard arrows wrap exact loop teleport">
+    <div data-variants="standard arrows wrap exact loop teleport twopaths">
       <div class="hint">Uses the Score-phase flags set above the board (side A when comparing).</div>
     </div>
     <div data-variants="tetra cube" style="display:none">

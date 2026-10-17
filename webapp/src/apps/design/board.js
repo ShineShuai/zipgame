@@ -7,9 +7,12 @@ import {
   WRAP_PAD,
 } from '../../view/geometry.js';
 import { boardConnectivity, boardPropagation, boardLegCollide } from '../../core/connectivity.js';
+import { bridgeCells, colourNumberOf } from '../../core/twopaths.js';
 
 export const TPL_C = '#8b93b8', PLAY_C = '#5b7cfa', SOL_C = ['#ffa62b', '#38bdf8'], LEG_C = '#c754ff', GRAPH_C = '#2dd4bf';
 export const ARROW_C = '#ffd23f';
+// Two paths: the red and the blue path on the dark board
+export const TWO_C = ['#ff6b73', '#6f8fff'];
 export const cellSizeFor = n => n <= 5 ? 66 : n <= 7 ? 54 : 46;
 const NS = 'http://www.w3.org/2000/svg';
 const box = (cls, x, y, w, h) => { const d = document.createElement('div'); d.className = cls; Object.assign(d.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' }); return d; };
@@ -79,6 +82,13 @@ function portalRoute(n, cells, portals, stroke, w, attrs = {}) {
   jumpArcs(n, cells, portals, stroke, w, attrs.opacity ?? 0.95).forEach(e => g.appendChild(e));
   return g;
 }
+// A route of a Two paths puzzle (red cells, then blue cells, as the solver and a generated path
+// have it): one line broken at the bridge between the two paths, which is not a step on the board
+// (the same break as the jump of a portal pair, without its arc).
+const bridgeLinks = p => (p.split ? [bridgeCells(p)] : null);
+export const splitD = (n, cells, p) => portalD(n, cells, bridgeLinks(p));
+const splitRoute = (n, cells, p, stroke, w, attrs = {}) =>
+  poly(splitD(n, cells, p), stroke, w, attrs, 'path');
 // A Loop puzzle's route closes: from its last cell back to cell 1 (the ring). Other puzzles: as it is.
 const ringCells = (p, cells) => (p.loop && cells.length > 2 ? [...cells, cells[0]] : cells);
 // The in / out arrowheads of the seam steps of a wrap-around route (geometry.js seamMarks), in cell units.
@@ -158,14 +168,16 @@ export function renderBoard(board, stage, V) {
   if (V.preview && V.previewVisible && !V.playMode) {
     const dashed = { 'stroke-dasharray': '0.28 0.22', opacity: 0.65 };
     svg.appendChild(P.portals ? portalRoute(n, V.preview, P.portals, TPL_C, 0.2, dashed)
-      : route(n, ringCells(P, V.preview), wrap, TPL_C, 0.2, dashed));
+      : P.split ? splitRoute(n, V.preview, P, TPL_C, 0.2, dashed)
+        : route(n, ringCells(P, V.preview), wrap, TPL_C, 0.2, dashed));
     if (wrap) seamMarkEls(n, V.preview, TPL_C, 0.65).forEach(m => svg.appendChild(m));
   }
   V.solutions.forEach((sol, i) => {
     if (!V.solVisible[i]) return;
     const look = { opacity: 0.92, ...(i === 1 ? { 'stroke-dasharray': '0.34 0.24' } : {}) };
     svg.appendChild(P.portals ? portalRoute(n, sol, P.portals, SOL_C[i], 0.24, look)
-      : route(n, ringCells(P, sol), wrap, SOL_C[i], 0.24, look));
+      : P.split ? splitRoute(n, sol, P, SOL_C[i], 0.24, look)
+        : route(n, ringCells(P, sol), wrap, SOL_C[i], 0.24, look));
     if (wrap) seamMarkEls(n, sol, SOL_C[i], 0.92).forEach(m => svg.appendChild(m));
   });
   const refs = {};
@@ -173,9 +185,21 @@ export function renderBoard(board, stage, V) {
     // a Teleport route is a path, broken at the jumps (portalD), with the arcs of the jumps in a
     // layer of their own
     const lookPlay = { opacity: 0.95 };
-    refs.line = P.portals ? poly('', PLAY_C, 0.3, lookPlay, 'path')
-      : route(n, [], wrap, PLAY_C, 0.3, lookPlay);
-    svg.appendChild(refs.line);
+    if (P.split) { // Two paths: a line and a head for each colour (paintPlayTwo)
+      refs.lines = TWO_C.map(color => poly('', color, 0.3, lookPlay));
+      refs.lines.forEach(line => svg.appendChild(line));
+      refs.heads = TWO_C.map(color => {
+        const head = document.createElementNS(NS, 'circle');
+        const look = { r: 0.16, fill: '#0e1326', stroke: color, 'stroke-width': 0.06 };
+        for (const [k, v] of Object.entries(look)) head.setAttribute(k, v);
+        svg.appendChild(head);
+        return head;
+      });
+    } else {
+      refs.line = P.portals ? poly('', PLAY_C, 0.3, lookPlay, 'path')
+        : route(n, [], wrap, PLAY_C, 0.3, lookPlay);
+      svg.appendChild(refs.line);
+    }
     const layers = [
       ['graphLayer', 'graphlayer'], ['propLayer', 'proplayer'], ['legLayer', 'leglayer'],
       ['seamLayer', 'seamlayer'], ['jumpLayer', 'jumplayer'],
@@ -183,9 +207,12 @@ export function renderBoard(board, stage, V) {
     for (const [k, cls] of layers) {
       refs[k] = document.createElementNS(NS, 'g'); refs[k].setAttribute('class', cls); svg.appendChild(refs[k]);
     }
-    refs.head = document.createElementNS(NS, 'circle');
-    for (const [k, v] of Object.entries({ r: 0.16, fill: '#c3d0ff', stroke: PLAY_C, 'stroke-width': 0.06 })) refs.head.setAttribute(k, v);
-    svg.appendChild(refs.head);
+    if (!P.split) {
+      refs.head = document.createElementNS(NS, 'circle');
+      const look = { r: 0.16, fill: '#c3d0ff', stroke: PLAY_C, 'stroke-width': 0.06 };
+      for (const [k, v] of Object.entries(look)) refs.head.setAttribute(k, v);
+      svg.appendChild(refs.head);
+    }
   }
   if (P.arrows) { // one-way arrows, above the lines
     for (const { edge, points } of arrowMarks(P)) {
@@ -206,9 +233,17 @@ export function renderBoard(board, stage, V) {
     const v = P.cp[i], pending = !V.playMode && i === V.selected && V.buffer !== '';
     if (!v && !pending) continue;
     const holder = box('badge', pm + (i % n) * cs, pm + ((i / n) | 0) * cs, cs, cs), inner = document.createElement('div');
-    inner.className = 'badge-inner' + (pending ? ' pending' : '') + (v === 1 ? ' start' : '') + (v && v === K ? ' end' : '') + (visited && visited.has(i) ? ' visited' : '') + (i === V.dragSrc ? ' dragging' : '');
+    // Two paths: a number is red or blue and counts within its colour; one being typed has the
+    // colour picked
+    const typing = { colour: V.numColour || 0, number: v };
+    const two = P.split ? (v ? colourNumberOf(P, i) : typing) : null;
+    const first = two ? v && two.number === 1 : v === 1;
+    const last = two ? v && v === (two.colour === 0 ? P.split : K) : v && v === K;
+    inner.className = 'badge-inner' + (pending ? ' pending' : '') + (first ? ' start' : '')
+      + (last ? ' end' : '') + (visited && visited.has(i) ? ' visited' : '')
+      + (i === V.dragSrc ? ' dragging' : '') + (two ? (two.colour === 0 ? ' red' : ' blue') : '');
     inner.style.fontSize = Math.max(11, Math.round(cs * (v > 99 ? 0.24 : 0.3))) + 'px';
-    inner.textContent = pending ? V.buffer : v;
+    inner.textContent = pending ? V.buffer : two ? two.number : v;
     holder.appendChild(inner); layer.appendChild(holder);
   }
   board.appendChild(layer);
@@ -306,6 +341,23 @@ export function paintPlay(refs, n, path, P, showConn, showDead, showProp, showLe
   return out;
 }
 
+// Two paths, in Play mode: each colour's line from its path and a head dot on its last cell
+// (paths = [red, blue] as cells). Both lines turn green when the puzzle is solved.
+export function paintPlayTwo(refs, P, paths, solved) {
+  if (!refs.lines) return;
+  paths.forEach((path, colour) => {
+    const line = refs.lines[colour], head = refs.heads[colour];
+    line.setAttribute('points', polyPoints(P.n, path));
+    line.setAttribute('stroke', solved ? '#3ddc97' : TWO_C[colour]);
+    line.style.display = path.length > 1 ? '' : 'none';
+    if (path.length) {
+      const h = path[path.length - 1];
+      head.setAttribute('cx', (h % P.n) + 0.5); head.setAttribute('cy', ((h / P.n) | 0) + 0.5);
+      head.style.display = '';
+    } else head.style.display = 'none';
+  });
+}
+
 // Leg as shown to the user: checkpoint numbers, or ● when the leg starts at the head (not on a checkpoint).
 export const legName = (P, [s, t]) => `${P.cp[s] || '●'}→${P.cp[t]}`;
 
@@ -375,8 +427,8 @@ export function miniPreviewSvg(p, path, color) {
     const [cx, cy] = cellCenter(n, cell, 1);
     return portalIcon(portalShape(i), portalColor(i), cx, cy, 1);
   }).join('')).join('');
-  if (path && path.length > 1 && p.portals) {
-    pathLine = `<path d="${portalD(n, path, p.portals)}" ${look}/>`;
+  if (path && path.length > 1 && (p.portals || p.split)) {
+    pathLine = `<path d="${portalD(n, path, p.portals || bridgeLinks(p))}" ${look}/>`;
   } else if (path && path.length > 1) {
     path = ringCells(p, path);
     pathLine = wrap ? `<path d="${pathD(n, path, 1, true)}" ${look}/>` : `<polyline points="${polyPoints(n, path)}" ${look}/>`;

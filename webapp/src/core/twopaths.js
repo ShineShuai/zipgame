@@ -43,3 +43,75 @@ export function colourView(p, colour) {
   }
   return { n: p.n, cp, walls: p.walls };
 }
+
+// ---------- editing (the design app) ----------
+
+// The colour and the number a cell has on the board: { colour: 0 | 1, number } (the blue numbers
+// count from 1), or null for a cell without a number.
+export function colourNumberOf(p, cell) {
+  const colour = colourOfCell(p, cell);
+  return colour < 0 ? null : { colour, number: colourNumber(p, p.cp[cell]) };
+}
+
+// Give `cell` the number `value` of `colour` (0 red, 1 blue), 0 = no number; the number was
+// anywhere else of that colour, it moves. The one list of numbers (puzzle.cp) is rebuilt around
+// it: split becomes the highest red number, and the blue numbers follow it, so a red number
+// added or taken away moves every blue one without the designer counting. A board without a red
+// number has split 1 (a Two paths puzzle keeps a split; validate() says what is missing).
+export function setColourNumber(p, cell, colour, value) {
+  const red = new Map();
+  const blue = new Map();
+  p.cp.forEach((v, c) => {
+    if (v) (v <= p.split ? red : blue).set(c, colourNumber(p, v));
+  });
+  red.delete(cell);
+  blue.delete(cell);
+  if (value > 0) {
+    const mine = colour === 0 ? red : blue;
+    for (const [c, v] of mine) if (v === value) mine.delete(c);
+    mine.set(cell, value);
+  }
+  const split = Math.max(1, ...red.values());
+  p.cp.fill(0);
+  red.forEach((v, c) => {
+    p.cp[c] = v;
+  });
+  blue.forEach((v, c) => {
+    p.cp[c] = split + v;
+  });
+  p.split = split;
+}
+
+// What is wrong with the numbers of a Two paths puzzle, in the board's own words (red 1.., blue
+// 1..), or null when each colour has 2 or more numbers, counted from 1 without gaps or repeats.
+export function colourProblems(p) {
+  const found = [new Map(), new Map()];
+  for (let cell = 0; cell < p.cp.length; cell++) {
+    const at = colourNumberOf(p, cell);
+    if (!at) continue;
+    const seen = found[at.colour].get(at.number) || [];
+    seen.push(cell);
+    found[at.colour].set(at.number, seen);
+  }
+  const names = ['red', 'blue'];
+  for (const colour of [0, 1]) {
+    const numbers = found[colour];
+    const top = Math.max(0, ...numbers.keys());
+    for (const [number, cells] of numbers) {
+      if (cells.length > 1) {
+        return `Invalid: ${names[colour]} ${number} is on ${cells.length} cells.`;
+      }
+    }
+    for (let number = 1; number <= top; number++) {
+      if (!numbers.has(number)) return `Invalid: ${names[colour]} ${number} is missing.`;
+    }
+    if (top < 2) return `Invalid: the ${names[colour]} path needs at least 2 numbers.`;
+  }
+  return null;
+}
+
+// A board that was another type becomes a Two paths board: its numbers stay, all of them red (the
+// blue path has none yet).
+export function markTwoPaths(p) {
+  p.split = Math.max(1, Math.max(0, ...p.cp));
+}

@@ -30,6 +30,10 @@ export function ladder(p, o = {}) {
   if (p.portals) {
     return { error: 'not available for a Teleport puzzle (no portal edges in its reasoning)' };
   }
+  // the bridge of a Two paths puzzle is not an edge of the board either
+  if (p.split) {
+    return { error: 'not available for a Two paths puzzle (its bridge is no board edge)' };
+  }
   const t0 = performance.now();
   const pdMax = o.probeDepth ?? 2;
   const workCap = o.workCap ?? 3e6;

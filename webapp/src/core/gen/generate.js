@@ -323,8 +323,10 @@ export function* generate(n, seed, o = {}) {
 // loop (n even, on a grid): a Loop puzzle: a random ring cut at a random cell, which is cell 1, and
 // the numbers on its first stretch, short of the way round as in loopCheckpoints; p.path is the ring
 // from cell 1 on (its last cell touches the first), and K is at least 3.
-export function randomPathPuzzle(n, K, rnd, wrap = false, loop = false, pairs = 0) {
-  K = Math.max(loop ? 3 : 2, Math.min(K, n * n));
+export function randomPathPuzzle(
+  n, K, rnd, wrap = false, loop = false, pairs = 0, twopaths = false,
+) {
+  K = Math.max(loop ? 3 : twopaths ? 4 : 2, Math.min(K, n * n));
   const p = makePuzzle(n);
   let path;
   let positions;
@@ -350,6 +352,12 @@ export function randomPathPuzzle(n, K, rnd, wrap = false, loop = false, pairs = 
     const tail = Math.round(path.length * (LOOP_TAIL[0] + (LOOP_TAIL[1] - LOOP_TAIL[0]) * rnd()));
     positions = randomCheckpoints(path.length - tail, K, rnd);
     p.loop = true;
+  } else if (twopaths) {
+    // a path cut in two, red then blue (gen/twopaths-layout.js); needs 4 numbers and n >= 4
+    const layout = twoPathsLayout(n, K, rnd);
+    if (!layout) throw new Error('No Two paths board found for N=' + n + ' and ' + K + ' numbers');
+    ({ path, positions } = layout);
+    p.split = layout.split;
   } else {
     path = backbite(n, rnd, wrap);
     positions = randomCheckpoints(path.length, K, rnd);
@@ -427,7 +435,11 @@ export function* generateUnique(n, K, rnd, o = {}) {
   if (pairs && (n < 4 || o.wrap || loop)) {
     throw new Error('A Teleport puzzle needs n >= 4, on a grid');
   }
-  K = Math.max(loop ? 3 : 2, Math.min(K, n * n));
+  const twopaths = !!o.twopaths;
+  if (twopaths && (n < 4 || o.wrap || loop || pairs)) {
+    throw new Error('A Two paths puzzle needs n >= 4, on a grid');
+  }
+  K = Math.max(loop ? 3 : twopaths ? 4 : 2, Math.min(K, n * n));
   const maxWalls = o.maxWalls == null ? null : Math.max(0, Math.floor(o.maxWalls));
   const unbounded = maxWalls == null;
   const nodeCap = o.nodeCap || 50000;
@@ -454,7 +466,7 @@ export function* generateUnique(n, K, rnd, o = {}) {
   for (let attempt = 0; attempt < tries; attempt++) {
     const extra = { attempt: attempt + 1, of: tries };
     const gen = tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, {
-      path: pathAlgo, cps: cpsAlgo, flags: buildFlags, counts, wrap, loop, pairs,
+      path: pathAlgo, cps: cpsAlgo, flags: buildFlags, counts, wrap, loop, pairs, twopaths,
     });
     const p = yield* tag(gen, extra);
     if (p) {
@@ -478,6 +490,7 @@ export function* generateUnique(n, K, rnd, o = {}) {
     yield { frac: (attempt + 1) / tries, walls: best ? best.walls : null, K, found, ...extra };
   }
   if (best) return { ...best, found, counts: withTotal() };
-  const puzzle = randomPathPuzzle(n, K, rnd, wrap, loop, pairs);
+  // the wall-free fallback is a puzzle of the same type (a Two paths one keeps its split)
+  const puzzle = randomPathPuzzle(n, K, rnd, wrap, loop, pairs, twopaths);
   return { puzzle, unique: false, walls: 0, removed: 0, attempts: tries, found: 0, counts: withTotal() };
 }
