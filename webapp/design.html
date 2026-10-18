@@ -29,7 +29,7 @@
     </div>
 
     <div class="field field-row">
-      <label for="variantSel" title="Standard: checkpoints 1, 2, 3... in order, edges stop at the border, walls block. One way arrows: no walls, an arrow can be crossed only in its direction. Wrap-around: the edges join across the borders (a torus), so a step can leave one side and come in on the opposite one. Exact: a number is the step of its cell on the path (the cell numbered 8 is the 8th cell), so the numbers are gaps-and-all, 1 and the cell count among them. Loop: the path is a ring, its last cell touches cell 1 (even sizes only), the numbers 1..K are met in cyclic order and K need not be the last cell. Teleport pairs: pairs of linked cells (the same icon on both); a step from one to the other is a move, no wall stands on it, and each cell is still visited once. Two paths: a red and a blue path together cover every cell, each with its own numbers counted from 1 (red 1..k, blue 1..m), each ending on its last number; type a number after picking its colour, and the blue numbers follow the red ones by themselves. Tetrahedron, Cube: the board is the surface of a solid (4 faces of triangles, 6 faces of squares) shown as its flat net; the sides marked with the same letter touch when the net is folded.">Puzzle type</label>
+      <label for="variantSel" title="Standard: checkpoints 1, 2, 3... in order, edges stop at the border, walls block. One way arrows: no walls, an arrow can be crossed only in its direction. Wrap-around: the edges join across the borders (a torus), so a step can leave one side and come in on the opposite one. Exact: a number is the step of its cell on the path (the cell numbered 8 is the 8th cell), so the numbers are gaps-and-all, 1 and the cell count among them. Loop: the path is a ring, its last cell touches cell 1 (even sizes only), the numbers 1..K are met in cyclic order and K need not be the last cell. Teleport pairs: pairs of linked cells (the same icon on both); a step from one to the other is a move, no wall stands on it, and each cell is still visited once. Two paths: a red and a blue path together cover every cell, each with its own numbers counted from 1 (red 1..k, blue 1..m), each ending on its last number; type a number after picking its colour, and the blue numbers follow the red ones by themselves. Tetrahedron, Cube: the board is the surface of a solid (4 faces of triangles, 6 faces of squares), shown as the solid you can turn, or as its flat net; the sides marked with the same letter touch when the net is folded. Ball: the surface of a ball made of triangles, squares and pentagons (a polyhedron of your choice: the list is grouped by the shapes it has); shown as the ball you can turn, or as its two halves.">Puzzle type</label>
       <select id="variantSel">
         <option value="">Standard</option>
         <option value="arrows">One way arrows</option>
@@ -40,12 +40,13 @@
         <option value="twopaths">Two paths</option>
         <option value="tetra">Tetrahedron</option>
         <option value="cube">Cube</option>
+        <option value="ball">Ball</option>
       </select>
     </div>
 
-    <div data-variants="tetra cube" style="display:none">
+    <div data-variants="tetra cube ball" style="display:none">
     <div class="field field-row">
-      <label for="sfSize" title="Cells along a side of a face: a tetrahedron has 4 faces of n × n triangles, a cube 6 faces of n × n squares.">Size</label>
+      <label id="sfSizeLabel" for="sfSize" title="Tetrahedron, cube: cells along a side of a face (a tetrahedron has 4 faces of n × n triangles, a cube 6 faces of n × n squares). Ball: the polyhedron, grouped by the shapes of its cells; a ball with no solution (see the tooltip) is disabled.">Size</label>
       <select id="sfSize"></select>
     </div>
     <div class="field">
@@ -58,12 +59,12 @@
     <div class="field">
       <label>View</label>
       <div class="segmented">
-        <button id="sfViewNet" class="seg active" title="The solid cut open and laid flat">Net</button>
-        <button id="sfView3d" class="seg" title="The solid itself: turn it with a right-drag, two fingers, a drag on the background or the arrow keys">3D</button>
+        <button id="sfView3d" class="seg active" title="The solid itself: turn it with a right-drag, two fingers, a drag on the background or the arrow keys">3D</button>
+        <button id="sfViewNet" class="seg" title="The solid cut open and laid flat">Net</button>
       </div>
     </div>
     <div class="field field-row">
-      <label for="sfFollow" title="3D view, in play: turn the solid to the head of the path when it nears the edge of the view">Follow head</label>
+      <label for="sfFollow" title="3D and ball view, in play: turn the solid to the head of the path when it nears the edge of the view">Follow head</label>
       <input id="sfFollow" type="checkbox" checked>
     </div>
     </div>
@@ -89,7 +90,7 @@
     <div class="hint" id="hint"></div>
     <div class="validity" id="validity"></div>
 
-    <div data-variants="tetra cube" style="display:none">
+    <div data-variants="tetra cube ball" style="display:none">
     <div class="divider"></div>
     <div class="field field-row">
       <label for="sfK" title="How many numbers the generator lays along the path (the first and the last included). The size's own default is shown. Fewer numbers need more walls.">Checkpoints</label>
@@ -296,7 +297,7 @@
       </div>
     </div>
     <div id="board" class="board" data-variants="standard arrows wrap exact loop teleport twopaths"></div>
-    <div id="sfBoard" class="board sf-board" data-variants="tetra cube" style="display:none"></div>
+    <div id="sfBoard" class="board sf-board" data-variants="tetra cube ball" style="display:none"></div>
     <div id="legend" class="legend"></div>
     <div id="status" class="status status-below"></div>
     <div id="timing" class="timing" style="display:none" title="Compute time of the algorithm run that produced this exact puzzle. Hidden once the board is edited by hand."></div>
@@ -314,7 +315,7 @@
     <div data-variants="standard arrows wrap exact loop teleport twopaths">
       <div class="hint">Uses the Score-phase flags set above the board (side A when comparing).</div>
     </div>
-    <div data-variants="tetra cube" style="display:none">
+    <div data-variants="tetra cube ball" style="display:none">
       <div class="hint">
         Counts the solutions (at most 2) with dead-end, connectivity and distance prunes. The
         nodes it needs are the difficulty of the puzzle; the search limit stops it.

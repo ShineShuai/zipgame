@@ -226,7 +226,7 @@ button.playbtn.on{background:linear-gradient(135deg,#b3344f,#e0526f);}
 .diff-ascii{margin:0 0 6px;font:11px/1.25 ui-monospace,Menlo,monospace;color:#c7cce3;overflow-x:auto;}
 .diff-dup-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:#c7cce3;margin-top:4px;}
 
-/* ---- surface boards: the flat net of a tetrahedron or cube (src/apps/design/surface-board.js) ---- */
+/* ---- surface boards: a tetrahedron, cube or ball as the solid or as the flat assist view (src/apps/design/surface-board.js) ---- */
 .sf-svg{display:block;max-width:100%;height:auto;touch-action:none;user-select:none;-webkit-user-select:none;}
 .sf-cell{stroke:#34406a;stroke-width:1;}
 .sf-board:not(.playmode) .sf-cell{cursor:pointer;}
@@ -236,6 +236,11 @@ button.playbtn.on{background:linear-gradient(135deg,#b3344f,#e0526f);}
 .sf-mini{position:absolute;top:8px;right:8px;width:230px;background:rgba(13,17,32,.85);border-radius:8px;box-shadow:0 0 0 1px #232a44;}
 .sf-mini,.sf-mini *{pointer-events:none;}
 .sf-mini .sf-svg{width:100%;height:auto;}
+.sf-board.ball .sf-mini{width:130px;}
+.sf-view{display:block;}
+.sf-pair{display:flex;gap:12px;justify-content:center;align-items:center;flex-wrap:wrap;}
+.sf-disc{fill:#0b0f1e;stroke:#232a44;stroke-width:1;pointer-events:none;}
+.sf-gloss{pointer-events:none;}
 .sf-board.wallmode:not(.playmode) .sf-cell{cursor:crosshair;}
 .sf-board.playmode{cursor:crosshair;}
 .sf-sel{fill:none;stroke:#5b7cfa;stroke-width:3;pointer-events:none;}
