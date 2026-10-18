@@ -79,13 +79,18 @@ function puzzleCopy(variant, puzzle) {
   if (variant === 'twopaths') {
     return { ...copy, split: puzzle.split };
   }
+  if (variant === 'pentagon') {
+    return { surface: puzzle.surface, ...copy };
+  }
   return variant ? { ...copy, [variant]: true } : copy;
 }
 
 // gotdDate ('YYYYMMDD') given = a Game of Day, else a local game. A local game carries its puzzle
-// ({ n, cp, walls } plus shape + holes | arrows | exact | wrap | loop | portals | split by variant;
+// ({ n, cp, walls } plus shape + holes | arrows | exact | wrap | loop | portals | split | surface
+// by variant;
 // variant =
-// 'cutout' | 'arrows' | 'exact' | 'wrap' | 'loop' | 'teleport' | 'twopaths', null for a standard
+// 'cutout' | 'arrows' | 'exact' | 'wrap' | 'loop' | 'teleport' | 'twopaths' | 'pentagon', null for
+// a standard
 // game), so the
 // receiver
 // needs no generator. Only a standard game has a grade: the receiver grades a variant's puzzle

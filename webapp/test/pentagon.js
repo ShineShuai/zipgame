@@ -17,6 +17,12 @@ import {
   generatePentagon, pentagonK, PENTAGON_SHARE, PENTAGON_CANDIDATES,
 } from '../src/core/gen/pentagon.js';
 import { makeRng } from '../src/core/rng.js';
+import { generate } from '../src/core/gen/generate.js';
+import { maxNumber as flatMax } from '../src/core/model.js';
+import {
+  encodeShare, decodeShare, SHARE_VERSION_PENTAGON, PENTAGON, SHARE_VERSION_PUZZLE,
+} from '../src/core/share-code.js';
+import { makeShareRecord, shareStatus } from '../src/features/share.js';
 
 const slow = typeof process !== 'undefined' && Boolean(process.env.PENTAGON_SLOW);
 const board = n => surfaceTopology(PENTAGON_KIND, n);
@@ -26,6 +32,19 @@ const neighboursOf = (top, cell) => {
     if (top.nb[cell * SLOTS + k] >= 0) found.push(top.nb[cell * SLOTS + k]);
   }
   return found;
+};
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+const versionOf = code => ALPHABET.indexOf(code[0]) >> 3; // the first 3 bits of a code
+const record = (p, extra = {}) => makeShareRecord({
+  n: p.n, timeS: 83.4, legs: [0, 2, 3], K: maxNumber(p), variant: PENTAGON, puzzle: p, ...extra,
+});
+// A puzzle that is only well formed (not necessarily unique): the numbers 1, 2, ... on `cells`,
+// walls on `edges`.
+const made = (n, cells, edges) => {
+  const p = makeSurfacePuzzle(PENTAGON_KIND, n);
+  cells.forEach((cell, i) => { p.cp[cell] = i + 1; });
+  edges.forEach(edge => { p.walls[edge] = 1; });
+  return p;
 };
 const threw = f => { try { f(); return false; } catch { return true; } };
 const game = (n, seed, o) => runSync(generatePentagon(n, seed, o));
@@ -258,6 +277,91 @@ export function pentagonTests(t, ok, eq) {
     eq(events[events.length - 1].frac, 1);
     eq(events[events.length - 1].walls, wallCount(p), 'the last event has the wall count');
     ok(threw(() => game(5, 1)) && threw(() => game(12, 1)));
+  });
+
+  t('pentagon-share: a code of its own version (6) — round trip for every size, short, '
+    + 'damaged codes fail', () => {
+    eq(SHARE_VERSION_PENTAGON, 6);
+    const puzzles = [
+      ...[1, 2, 3].map(seed => game(4, seed)),
+      ...[1, 2, 3].map(seed => game(6, seed)),
+      game(8, 1),
+      made(10, [0, 37, 12, 99, 55, 70], [3, 4, 100, 219]),
+    ];
+    const longest = { 4: 16, 6: 30, 8: 50, 10: 75 };
+    for (const p of puzzles) {
+      const rec = record(p);
+      const code = encodeShare(rec);
+      ok(code && code.length <= longest[p.n], `n=${p.n}: short (${code?.length})`);
+      eq(versionOf(code), 6, 'its own version');
+      const back = decodeShare(code);
+      ok(back && back.variant === PENTAGON && back.kind === 'local', 'decodes as pentagon');
+      eq([back.n, back.grade, back.timeS, back.levels], [p.n, null, 83.4, rec.levels]);
+      eq([back.puzzle.surface, Array.from(back.puzzle.cp), Array.from(back.puzzle.walls)],
+        [PENTAGON_KIND, Array.from(p.cp), Array.from(p.walls)]);
+      eq(serializeSurface(back.puzzle), serializeSurface(p), 'the same puzzle text');
+      eq(encodeShare(back), code, 'one puzzle, one code');
+      if (p.path) eq(solveSurface(back.puzzle, { limit: 2, nodeCap: 0 }).count, 1, 'unique');
+      const typo = code.slice(0, 7) + (code[7] === 'A' ? 'B' : 'A') + code.slice(8);
+      eq(decodeShare(typo), null, 'mistyped');
+      eq(decodeShare(code.slice(0, -1)), null, 'truncated');
+      eq(decodeShare(`${code}A`), null, 'too long');
+    }
+    const full = record(puzzles[3]);
+    const bare = encodeShare({ ...full, levels: [] });
+    ok(bare.length < encodeShare(full).length, 'no strip, shorter');
+    eq(decodeShare(bare).levels, []);
+  });
+
+  t('pentagon-share: the format is frozen, other versions are not disturbed', () => {
+    const p = made(4, [0, 7, 15], [1, 5]);
+    const code = encodeShare(makeShareRecord({
+      n: 4, timeS: 12.3, legs: [], K: 3, variant: PENTAGON, puzzle: p,
+    }));
+    eq(code, 'xgAY4HiSGI', 'do not edit this code: the format must not change');
+    eq(decodeShare(code).puzzle.cp.indexOf(3), 15);
+    const flat = runSync(generate(5, 1));
+    const standard = encodeShare(makeShareRecord({
+      n: 5, grade: 2, timeS: 10, legs: [], K: flatMax(flat), puzzle: flat,
+    }));
+    eq(versionOf(standard), SHARE_VERSION_PUZZLE, 'a standard puzzle keeps version 3');
+    eq(decodeShare(standard).variant, null);
+    const low = ALPHABET.indexOf(code[0]) & 7; // the 3 bits after the version
+    const other = ALPHABET[low | (SHARE_VERSION_PUZZLE << 3)] + code.slice(1);
+    eq(decodeShare(other), null, 'a Pentagon code under another version is not a code');
+  });
+
+  t('pentagon-share: records that cannot be a code give null', () => {
+    const p = made(6, [0, 20, 35], [2, 9]);
+    ok(encodeShare(record(p)) !== null, 'the control record is fine');
+    const bad = (what, rec) => eq(encodeShare(rec), null, what);
+    bad('n of the record is not the board', record(p, { n: 4 }));
+    bad('a grade', { ...record(p), grade: 3 });
+    bad('no time', { ...record(p), timeS: 0 });
+    bad('levels of the wrong length', { ...record(p), levels: [0, 1, 2] });
+    bad('one number only', record(made(6, [0], [])));
+    const gap = Uint16Array.from(p.cp, v => (v === 3 ? 4 : v));
+    bad('a gap in the numbers', record({ ...p, cp: gap }));
+    const two = Uint8Array.from(p.walls, (v, i) => (i === 2 ? 2 : v));
+    bad('a wall that is not 0 or 1', record({ ...p, walls: two }));
+    bad('too many walls', record({ ...p, walls: new Uint8Array(p.walls.length + 1) }));
+    bad('not a Pentagon puzzle', record({ n: 6, cp: p.cp, walls: p.walls }));
+    const flagged = record(p);
+    bad('another variant flag', { ...flagged, puzzle: { ...flagged.puzzle, wrap: true } });
+    bad('a size that is not offered', record({ ...p, n: 5 }));
+  });
+
+  t('pentagon-share: the record holds a copy of the puzzle; the receiver plays the sizes the '
+    + 'registry offers', () => {
+    const p = made(6, [0, 20, 35], [2, 9]);
+    const rec = record(p);
+    p.cp[0] = 0;
+    p.walls[2] = 0;
+    eq([rec.puzzle.cp[0], rec.puzzle.walls[2], rec.puzzle.surface], [1, 1, PENTAGON_KIND]);
+    const sizesOf = variant => (variant === PENTAGON ? PENTAGON_SIZES : []);
+    const small = { ...rec, n: 4 };
+    eq(shareStatus(small, { sizes: [5, 6, 7], sizesOf }).status, 'ok', 'size 4: a Pentagon size');
+    eq(shareStatus(small, { sizes: [5, 6, 7] }).status, 'invalid', 'without the registry');
   });
 
   if (slow) {
