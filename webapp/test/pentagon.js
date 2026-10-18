@@ -28,6 +28,7 @@ import {
 } from '../src/view/surface-net.js';
 import { surfaceSvg, netFrame } from '../src/apps/design/surface-board.js';
 import { defaultK } from '../src/core/surface/gen.js';
+import { keptK } from '../src/apps/design/k-field.js';
 
 const slow = typeof process !== 'undefined' && Boolean(process.env.PENTAGON_SLOW);
 const board = n => surfaceTopology(PENTAGON_KIND, n);
@@ -374,6 +375,17 @@ export function pentagonTests(t, ok, eq) {
       if (variants.split(' ').includes('pentagon')) continue;
       ok(/>View<|for="sfFollow"/.test(after), `a panel without Pentagon: ${after.slice(0, 40)}`);
     }
+  });
+
+  t('pentagon-design: the Checkpoints field keeps a typed number, cut to the board; else it '
+    + 'follows the size', () => {
+    const cells = 36;
+    eq(keptK({ typed: true, value: '20', cells, fallback: 14 }), '20', 'typed: stays');
+    eq(keptK({ typed: true, value: '20', cells: 16, fallback: 6 }), '16', 'cut to a small board');
+    eq(keptK({ typed: false, value: '20', cells, fallback: 14 }), '14', 'not typed: the default');
+    eq(keptK({ typed: true, value: '', cells, fallback: 14 }), '14', 'emptied: the default');
+    eq(keptK({ typed: true, value: 'x', cells, fallback: 14 }), '14', 'not a number: the default');
+    eq(keptK({ typed: true, value: '3', cells, fallback: 14 }), '3', 'a small number stays');
   });
 
   t('pentagon-design: Generate of the design app — the default K is 40% of the cells', () => {

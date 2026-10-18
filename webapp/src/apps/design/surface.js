@@ -41,6 +41,7 @@ import { behind, buildBallView } from '../../view/ball.js';
 import { runAsync, measured } from '../../platform/run.js';
 import { setHintText } from '../../ui/hint-popover.js';
 import { surfaceSvg } from './surface-board.js';
+import { keptK } from './k-field.js';
 import { TPL_C, SOL_C } from './board.js';
 
 const NAME = { tetra: 'Tetrahedron', cube: 'Cube', ball: 'Ball', pentagon: 'Pentagon' };
@@ -133,6 +134,9 @@ export function createSurfaceController(ctx) {
   });
 
   let kind = null; // null: the board is not a surface
+  // The player typed a number of checkpoints: it stays (Generate, Reset, another size), until the
+  // type changes. Else the field shows the default of the size.
+  let kTyped = false;
   let P = null;
   let frame = null;
   let tool = 'number';
@@ -415,12 +419,18 @@ export function createSurfaceController(ctx) {
       }
     }
     select.value = String(n);
-    $('sfK').value = String(defaultK(kind, n));
-    $('sfK').max = String(surfaceTopology(kind, n).T);
+    const cells = surfaceTopology(kind, n).T;
+    $('sfK').max = String(cells);
+    $('sfK').value = keptK({
+      typed: kTyped, value: $('sfK').value, cells, fallback: defaultK(kind, n),
+    });
   }
 
   // Shows puzzle q (kept as it is, without its path) with `tpl` as the template path.
   function adopt(q, tpl = null) {
+    if (q.surface !== kind) {
+      kTyped = false;
+    }
     kind = q.surface;
     P = cloneSurfacePuzzle(q);
     template = tpl;
@@ -986,6 +996,9 @@ export function createSurfaceController(ctx) {
     draw();
     ctx.setStatus('');
   };
+  $('sfK').addEventListener('input', () => {
+    kTyped = true;
+  });
   $('sfView3d').onclick = () => setView('3d');
   $('sfViewNet').onclick = () => setView('net');
   $('sfNumber').onclick = () => setTool('number');
