@@ -1,4 +1,7 @@
 import { serialize } from '../../core/format.js';
+import {
+  step as surfaceStep, isSolved as surfaceSolved, serializeSurface,
+} from '../../core/surface/puzzle.js';
 import { generate, PLAY_SIZES } from '../../core/gen/generate.js';
 import { edgeId, arrowAllows } from '../../core/edges.js';
 import { isSolved, step, gridAdjacent } from '../../core/rules.js';
@@ -11,7 +14,7 @@ import { createReplay } from '../../features/replay.js';
 import { createStreak, FREEZE_EVERY, FREEZE_MAX, HEAL_DAYS, RAMP } from '../../features/streak.js';
 import { ALGO_VERSION, cellCount, labelCount, labelRanks } from '../../core/model.js';
 import { dailySeed } from '../../core/rng.js';
-import { legsUndo, makeShareRecord, shareStatus, isPlayable, isSpent, shareText, shareUrl, parseShareLink, stripText, dateLabel, dayOfDate } from '../../features/share.js';
+import { legsUndo, makeShareRecord, shareStatus, isPlayable, isSpent, shareText, shareUrl, parseShareLink, stripText, dateLabel, dayOfDate, sizeArg } from '../../features/share.js';
 import { createSharedGames } from '../../features/shared-games.js';
 import { REPLAY_DAYS } from '../../core/hist.js';
 import { maxHints, computeHint, solutionOf, penalizedTime, HINT_PENALTY_S } from '../../features/hints.js';
@@ -22,6 +25,9 @@ import {
   jumpMarksSvg, loopOpen, loopOpenMarks,
 } from './board.js';
 import { variantIcon, cardIcon } from './icons.js';
+import {
+  pentagonBoardSvg, pentagonRouteD, pentagonCellAt, pentagonPoint, pentagonAcross,
+} from './pentagon-board.js';
 import {
   newPaths, pickColour, walkColour, solvedPaths, reached, legsUndoTwo, hintTwo,
 } from '../../features/twopaths-play.js';
@@ -49,6 +55,15 @@ const S = { screen: 'menu', mode: 'standard', variant: null, genMode: 'standard'
   legs: [], paths: [[], []], colour: 0, gameDay: null, isShared: false,
   sharedGames: [], sharedFocus: null, sharedAll: false, sharedArmed: null, sharedNotice: null, sharedMsg: null };
 
+// A Pentagon puzzle (puzzle.surface, core/surface) walks, is solved and is drawn by the surface rules
+// and its own board (pentagon-board.js); the size n is a board id there, shown as the number of cells.
+const stepOf = (p, path, cell) => (p.surface ? surfaceStep(p, path, cell) : step(p, path, cell));
+const solvedOf = (p, path) => (p.surface ? surfaceSolved(p, path) : isSolved(p, path));
+const boardMarkup = state => (state.puzzle.surface ? pentagonBoardSvg(state) : boardSvg(state));
+const routeOf = (p, line) => (p.surface ? pentagonRouteD(p, line) : routeD(p, line));
+// What a size is called: 7x7 on a square board, 36 cells on a Pentagon board.
+const sizeLabel = (variant, n) => (variant === 'pentagon' ? t('size.cells', sizeArg({ variant, n })) : `${n}x${n}`);
+
 // Grade a puzzle right after generation, once, before it's shown (see core/grades.js playGradesFor):
 //   trap   - the main grade (badge): one capped solve per wrong turn along the solution, ~2-200 ms at
 //            play sizes; needs no reference solve, so it exists even for puzzles the reference solve caps on.
@@ -57,6 +72,7 @@ const S = { screen: 'menu', mode: 'standard', variant: null, genMode: 'standard'
 //            variant (Cutout, One way arrows): it gets the trap grade only, scored by the model that fits it (core/trap.js modelFor).
 // Never throws: a failed grade just means "grade unknown" — the puzzle is still perfectly playable.
 function gradePuzzle(puzzle) {
+  if (puzzle.surface) return { ok: false, trap: null, legacy: null }; // the grades model a square board
   try {
     const { trap, legacy } = playGradesFor(puzzle);
     return { ok: trap.ok, trap: trap.ok ? trap : null, legacy };
@@ -100,7 +116,7 @@ function renderGenerating() {
       <section class="card">
         <div class="gen-icon">${variantIcon(S.genMode)}</div>
         <h2 class="card-title">${t('gen.title')}</h2>
-        <p class="small">${t(genVariant ? genVariant.keys.gen : 'gen.sub', S.size)}</p>
+        <p class="small">${t(genVariant ? genVariant.keys.gen : 'gen.sub', sizeArg({ variant: S.genMode, n: S.size }))}</p>
         <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}">
           <div style="width:${percent}%"></div>
         </div>
@@ -284,7 +300,7 @@ function gotdCardHtml() {
 function sizeOptionsHtml() {
   const sizes = sizesFor(S.mode, SIZES);
   if (!sizes.includes(S.size)) S.size = nearestSize(S.size, sizes);
-  return sizes.map(n => `<option value="${n}"${n === S.size ? ' selected' : ''}>${n}x${n}</option>`).join('');
+  return sizes.map(n => `<option value="${n}"${n === S.size ? ' selected' : ''}>${sizeLabel(S.mode, n)}</option>`).join('');
 }
 
 // The dev note (hold V): storage kind, what the app keeps on this device (measured when V is pressed; ~2 bytes a char), refused writes, unlock state.
@@ -444,7 +460,7 @@ const LOCAL_HEAD = ['stats.grid', 'stats.next', 'stats.solves', 'stats.avg', 'st
 function localStatsHtml(scope = '') {
   const rows = scopeSizes(scope).filter(n => store.total(n, scope).n || S.nextIdx[scopeKey(n, scope)] || n === S.puzzle.n).map(n => {
     const c = statCells(n, scope);
-    return statsRow([`${n}x${n}`, gameNo(n, scope), c.solves, c.avg, c.sd, c.best], LOCAL_HEAD, n === S.puzzle.n);
+    return statsRow([sizeLabel(scope, n), gameNo(n, scope), c.solves, c.avg, c.sd, c.best], LOCAL_HEAD, n === S.puzzle.n);
   }).join('');
   return statsTable(scope ? t('stats.variantTitle', t('mode.' + scope)) : t('stats.title'), t('stats.sub'), LOCAL_HEAD, rows);
 }
@@ -535,7 +551,7 @@ function renderGame() {
   const seedTag = `<span id="seedTag" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="${seedHint}">${seedText}</span>`;
   const shapeName = p.shape ? t('shape.' + p.shape) : '';
   const localTitle = S.variant
-    ? t(variantById(S.variant).keys[S.isShared ? 'sharedTitle' : 'title'], p.n, shapeName)
+    ? t(variantById(S.variant).keys[S.isShared ? 'sharedTitle' : 'title'], sizeArg({ variant: S.variant, n: p.n }), shapeName)
     : (S.isShared ? t('game.sharedTitle', p.n) : t('game.localTitle', p.n, S.gameIndex + 1));
   const title = S.isGotd ? t(S.isReplay ? 'game.replayTitle' : 'game.gotdTitle', S.gotdDate) : localTitle + seedTag;
   const canShare = S.finished;
@@ -560,7 +576,7 @@ function renderGame() {
           <div class="hud-time">${t('game.time', `<b id="hudTime">${time}</b>`)}</div>
         </div>
         ${S.lucky && !S.finished ? `<p class="note lucky-once">${t(S.luckyHolder ? 'lucky.onceChance' : 'lucky.onceFun')}</p>` : ''}
-        <div class="grid-wrap" id="gridWrap">${boardSvg(S)}</div>
+        <div class="grid-wrap" id="gridWrap">${boardMarkup(S)}</div>
         ${loopNoteHtml()}
         ${teleportNoteHtml()}
         ${twoPathsNoteHtml()}
@@ -680,7 +696,7 @@ function attachHandlers() {
   on('resetPath', resetPaths);
   on('behaviourToggle', async ev => { ev.preventDefault(); S.behaviourOn = !S.behaviourOn; await behaviour.setOn(S.behaviourOn); render(); });
   on('newPuzzle', () => { if (!S.isGotd) startLocal('skip', S.variant || 'standard'); });
-  on('exportBtn', () => { $('exportText').value = serialize(S.puzzle); $('exportMsg').textContent = ''; modal.open(); setTimeout(() => $('exportText').focus(), 30); });
+  on('exportBtn', () => { $('exportText').value = S.puzzle.surface ? serializeSurface(S.puzzle, { path: S.puzzle.path }) : serialize(S.puzzle); $('exportMsg').textContent = ''; modal.open(); setTimeout(() => $('exportText').focus(), 30); });
   on('hintBtn', () => {
     if (S.finished || S.hintsUsed >= maxHints(S.puzzle)) return;
     const two = Boolean(S.puzzle.split);
@@ -714,12 +730,12 @@ function setupGridInput(svg) {
   const setD = () => {
     if (two) {
       S.paths.forEach((path, colour) => {
-        pathEls[colour].setAttribute('d', path.length > 1 ? routeD(p, path) : '');
+        pathEls[colour].setAttribute('d', path.length > 1 ? routeOf(p, path) : '');
       });
       refreshTwoLegend();
     } else {
       const line = routeCells(p, S.path, S.finished); // a solved Loop puzzle is drawn closed
-      pathEl.setAttribute('d', line.length > 1 ? routeD(p, line) : '');
+      pathEl.setAttribute('d', line.length > 1 ? routeOf(p, line) : '');
     }
     if (seamEl) seamEl.innerHTML = seamMarksSvg(n, S.path);
     // Teleport: the jumps, and the portal to tap next
@@ -763,7 +779,7 @@ function setupGridInput(svg) {
   function walkTo(cell) {
     if (cell < 0 || S.finished || (p.holes && p.holes[cell])) return; // a hole is not part of the board
     const prev = S.path[S.path.length - 1], before = S.path.length, prevPath = S.path.slice();
-    const kind = two ? walkColour(p, S.paths, S.colour, cell) : step(p, S.path, cell);
+    const kind = two ? walkColour(p, S.paths, S.colour, cell) : stepOf(p, S.path, cell);
     if (kind && S.trace) traceStep(S.trace, kind, before, S.path.length);
     if (kind && kind !== 'push') {
       if (two) legsUndoTwo(S.legs, p, S.colour, prevPath, S.path.length);
@@ -780,7 +796,7 @@ function setupGridInput(svg) {
     else if (kind === 'push') fill(cell, true);
     else fill(prev, false);
     setD(); clearHint();
-    const solved = kind === 'push' && (two ? solvedPaths(p, S.paths) : isSolved(p, S.path));
+    const solved = kind === 'push' && (two ? solvedPaths(p, S.paths) : solvedOf(p, S.path));
     if (solved) { onSolved(); setD(); return; }
     if (kind === 'push') {
       const onCp = p.cp[cell] > 0;
@@ -800,12 +816,14 @@ function setupGridInput(svg) {
     segment = highestCp(S.path);
     refreshTwoLegend();
   }
+  const across = p.surface ? pentagonAcross(p) : n; // cells across the board, about
   function move(x, y) { // interpolate so fast drags don't skip cells
     const cell = (px, py) => {
+      if (p.surface) return pentagonCellAt(p, ...pentagonPoint(p, rect, px, py));
       return cellAtPoint(n, px - rect.left, py - rect.top, rect.width, rect.height, pad, wrap);
     };
     if (last) {
-      const dx = x - last.x, dy = y - last.y, stepPx = Math.max(2, rect.width / n / 2), k = Math.max(1, Math.ceil(Math.hypot(dx, dy) / stepPx));
+      const dx = x - last.x, dy = y - last.y, stepPx = Math.max(2, rect.width / across / 2), k = Math.max(1, Math.ceil(Math.hypot(dx, dy) / stepPx));
       for (let i = 1; i <= k; i++) walkTo(cell(last.x + dx * i / k, last.y + dy * i / k));
     } else walkTo(cell(x, y));
     last = { x, y };
@@ -1049,7 +1067,7 @@ function sharedItemHtml({ key, rec, state }) {
     <div class="shared-info">
       <h2 class="shared-title">
         <span class="shared-icon">${variantIcon(rec.variant)}</span>
-        <span>${head} · ${rec.n}x${rec.n}${grade}</span>
+        <span>${head} · ${sizeLabel(rec.variant, rec.n)}${grade}</span>
       </h2>
       <div class="shared-row">${row.join('')}</div>
       ${note ? `<p class="shared-state${bad ? ' bad' : ''}">${note}</p>` : ''}

@@ -1,5 +1,5 @@
 // Icons of the play menu: one per puzzle variant (standard, cutout, arrows, exact, wrap, loop,
-// teleport, twopaths) and one
+// teleport, twopaths, pentagon) and one
 // per menu card.
 // Plain SVG strings, no DOM. Colours come from css/play.css (.vi-*, currentColor), so the
 // icons follow the page theme and the same markup serves the picker, the HUD and the cards.
@@ -145,10 +145,48 @@ function twoPathsRoutes() {
   return one(RED_ROUTE, 'red') + one(BLUE_ROUTE, 'blue');
 }
 
-// variant: 'cutout', 'arrows', 'exact', 'wrap', 'loop', 'teleport', 'twopaths', 'lucky' (the
-// mystery of the lucky game) or
-// anything else (= standard). Class: variant-icon vi-standard | vi-cutout | vi-arrows | vi-exact |
-// vi-wrap | vi-loop | vi-teleport | vi-twopaths | vi-lucky.
+// Pentagon icon: the 16 cells of the smallest Pentagon board (core/surface/pentagon.js, n = 4) as
+// corner lists in the 48 x 48 box, and a path through all their centres.
+const PENTAGON_TILES = [
+  '17.9,7 14.7,10.2 16.3,16.3 22.4,14.7 24,8.6',
+  '33.3,7 30.1,10.2 31.7,16.3 37.8,14.7 39.4,8.6',
+  '7,14.7 10.2,17.9 16.3,16.3 14.7,10.2 8.6,8.6',
+  '22.4,14.7 25.6,17.9 31.7,16.3 30.1,10.2 24,8.6',
+  '25.6,17.9 22.4,14.7 16.3,16.3 17.9,22.4 24,24',
+  '41,17.9 37.8,14.7 31.7,16.3 33.3,22.4 39.4,24',
+  '14.7,25.6 17.9,22.4 16.3,16.3 10.2,17.9 8.6,24',
+  '30.1,25.6 33.3,22.4 31.7,16.3 25.6,17.9 24,24',
+  '17.9,22.4 14.7,25.6 16.3,31.7 22.4,30.1 24,24',
+  '33.3,22.4 30.1,25.6 31.7,31.7 37.8,30.1 39.4,24',
+  '7,30.1 10.2,33.3 16.3,31.7 14.7,25.6 8.6,24',
+  '22.4,30.1 25.6,33.3 31.7,31.7 30.1,25.6 24,24',
+  '25.6,33.3 22.4,30.1 16.3,31.7 17.9,37.8 24,39.4',
+  '41,33.3 37.8,30.1 31.7,31.7 33.3,37.8 39.4,39.4',
+  '14.7,41 17.9,37.8 16.3,31.7 10.2,33.3 8.6,39.4',
+  '30.1,41 33.3,37.8 31.7,31.7 25.6,33.3 24,39.4',
+];
+const PENTAGON_ROUTE = [
+  [19.1, 26.8], [21.2, 19.1], [28.9, 21.2], [36.6, 19.1], [34.5, 11.4], [26.8, 13.5], [19.1, 11.4],
+  [11.4, 13.5], [13.5, 21.2], [11.4, 28.9], [13.5, 36.6], [21.2, 34.5], [26.8, 28.9], [34.5, 26.8],
+  [36.6, 34.5], [28.9, 36.6],
+];
+
+function pentagonTiles() {
+  const polygons = PENTAGON_TILES.map(points => `<polygon points="${points}"/>`);
+  return `<g class="vi-tile vi-pentagons">${polygons.join('')}</g>`;
+}
+
+function pentagonRoute() {
+  const dot = ([x, y]) => `<circle class="vi-dot" cx="${x}" cy="${y}" r="2.7"/>`;
+  const points = PENTAGON_ROUTE.map(([x, y]) => `${x},${y}`).join(' ');
+  return `<polyline class="vi-path" points="${points}"/>${dot(PENTAGON_ROUTE[0])}`
+    + dot(PENTAGON_ROUTE[PENTAGON_ROUTE.length - 1]);
+}
+
+// variant: 'cutout', 'arrows', 'exact', 'wrap', 'loop', 'teleport', 'twopaths', 'pentagon',
+// 'lucky' (the mystery of the lucky game) or anything else (= standard). Class: variant-icon
+// vi-standard | vi-cutout | vi-arrows | vi-exact | vi-wrap | vi-loop | vi-teleport | vi-twopaths |
+// vi-pentagon | vi-lucky.
 export function variantIcon(variant) {
   if (variant === 'lucky') return luckyIcon();
   const cutout = variant === 'cutout';
@@ -158,10 +196,12 @@ export function variantIcon(variant) {
   const loop = variant === 'loop';
   const teleport = variant === 'teleport';
   const twopaths = variant === 'twopaths';
+  const pentagon = variant === 'pentagon';
   const name = cutout ? 'cutout' : arrows ? 'arrows' : exact ? 'exact' : wrap ? 'wrap'
-    : loop ? 'loop' : teleport ? 'teleport' : twopaths ? 'twopaths' : 'standard';
-  const board = tiles(cutout ? RING_HOLES : NO_HOLES);
-  const path = wrap ? wrapRoute() : twopaths ? twoPathsRoutes()
+    : loop ? 'loop' : teleport ? 'teleport' : twopaths ? 'twopaths' : pentagon ? 'pentagon'
+      : 'standard';
+  const board = pentagon ? pentagonTiles() : tiles(cutout ? RING_HOLES : NO_HOLES);
+  const path = pentagon ? pentagonRoute() : wrap ? wrapRoute() : twopaths ? twoPathsRoutes()
     : teleport ? teleportRoute() : route(cutout ? LAP : loop ? RING : SNAKE);
   return `<svg class="variant-icon vi-${name}" viewBox="0 0 48 48" aria-hidden="true" ` +
     'focusable="false"><rect class="vi-bg" x="2" y="2" width="44" height="44" rx="11"/>' +

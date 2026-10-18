@@ -54,6 +54,12 @@
 //   the K numbered cells, in number order: distinct picks among the cells
 //   walls: a subset of the board's edges, in edge id order
 //   strip: 1 flag, then K - 1 levels of 2 bits, as above
+// Links stay readable: the layout of a version that has shipped is never changed. The Pentagon
+// codes are held by test/pentagon.js and test/play-pentagon.js (frozen codes of every board, made
+// before the 96-cell board was added). Adding a board only appends to PENTAGON_CODE_SIZES. A change
+// that cannot be made that way is a new version number, and the decoder of the old one stays for
+// at least 5 weeks. The play app migrates what a device keeps: the shared games are stored as
+// codes, decoded on load and written again in the current format (features/shared-games.js).
 // A 7x7 standard puzzle is about 20 characters, a 12x12 one about 45.
 import { LABELS } from './gen/shapes.js';
 import { allEdges, arrowProblem, arrowDirId, arrowIds, wallIds } from './edges.js';

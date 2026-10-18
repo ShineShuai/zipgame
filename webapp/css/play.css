@@ -392,6 +392,7 @@ select:focus { border-color: var(--blue); }
 .variant-icon { display: block; flex: none; width: 72px; height: 72px; }
 .vi-bg { fill: #dde6ff; }
 .vi-tile { fill: #fff; stroke: #a9bcf5; stroke-width: 0.7; }
+.vi-pentagons { stroke-linejoin: round; }
 .vi-path { fill: none; stroke: #ffb020; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .vi-dot { fill: var(--blue); stroke: #fff; stroke-width: 1.2; }
 /* the Two paths icon: a red and a blue path */
@@ -499,6 +500,8 @@ select:focus { border-color: var(--blue); }
 .zip-svg.cutout { background: transparent; box-shadow: none; overflow: visible; }
 /* Wrap-around: the white square and its dashed outline are drawn in the svg (play/board.js); the margin around them is where the seam stubs are seen */
 .zip-svg.wrap { background: transparent; box-shadow: none; }
+/* Pentagon: the tiles carry the white and the outline (play/pentagon-board.js), so the jagged edge of the board shows */
+.zip-svg.pentagon { background: transparent; box-shadow: none; overflow: visible; }
 /* One way arrows: a step against an arrow flashes it (the polygon gets .blocked, see flashBlockedArrow in main.js). */
 .arrow-mark polygon { transform-box: fill-box; transform-origin: center; }
 .arrow-mark polygon.blocked { animation: arrow-blocked 0.45s ease-out; }

@@ -11,7 +11,9 @@ import {
   PLAY_VARIANTS, LUCKY_SIZES, variantById, variantOf, sizesFor, luckyDefs,
 } from '../src/apps/play/variants.js';
 import { PLAY_SIZES } from '../src/core/gen/generate.js';
-import { VARIANTS as SHARE_VARIANTS, TELEPORT, TWO_PATHS } from '../src/core/share-code.js';
+import {
+  VARIANTS as SHARE_VARIANTS, TELEPORT, TWO_PATHS, PENTAGON,
+} from '../src/core/share-code.js';
 import { runSync } from '../src/core/run.js';
 import { EN, ZH } from '../src/ui/i18n.js';
 
@@ -206,9 +208,10 @@ export function unlockTests(t, ta, ok, eq) {
     eq(PLAY_VARIANTS.map(v => v.id).slice(0, 3), ['cutout', 'arrows', 'exact']); // later ones append
     eq(LUCKY_SIZES, [7, 8, 9, 10]);
     for (const v of PLAY_VARIANTS) {
-      // Teleport and Two paths have a link version of their own (SHARE_VERSION_PORTAL,
-      // SHARE_VERSION_SPLIT), so that the type field of the older links stays as it was
-      ok(SHARE_VARIANTS.includes(v.id) || v.id === TELEPORT || v.id === TWO_PATHS,
+      // Teleport, Two paths and Pentagon have a link version of their own (SHARE_VERSION_PORTAL,
+      // SHARE_VERSION_SPLIT, SHARE_VERSION_PENTAGON), so that the type field of the older links
+      // stays as it was
+      ok(SHARE_VARIANTS.includes(v.id) || [TELEPORT, TWO_PATHS, PENTAGON].includes(v.id),
         `${v.id} is in core/share-code.js VARIANTS (or has a version of its own)`);
       for (const dict of [EN, ZH]) {
         for (const key of Object.values(v.keys)) ok(dict[key], `${v.id}: ${key}`);
@@ -230,7 +233,8 @@ export function unlockTests(t, ta, ok, eq) {
 
   t('variants: each generator makes a puzzle that detect() and variantOf() assign to it', () => {
     for (const v of PLAY_VARIANTS) {
-      const n = v.id === 'loop' ? 6 : 5; // a ring needs an even board
+      // a ring needs an even board; a Pentagon board has its own sizes
+      const n = v.id === 'loop' ? 6 : v.id === PENTAGON ? 4 : 5;
       const puzzle = runSync(v.generate(n, 11));
       ok(v.detect(puzzle), `${v.id}: detect`);
       eq(variantOf(puzzle), v.id);

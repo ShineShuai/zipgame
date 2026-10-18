@@ -1,5 +1,6 @@
 import { encodeShare, decodeShare, MAX_LEGS } from '../core/share-code.js';
 import { labelRanks } from '../core/model.js';
+import { PENTAGON_KIND, PENTAGON_CELLS } from '../core/surface/pentagon.js';
 import { dateOfDay } from './daily.js';
 
 // Sharing a finished game and playing a shared one.
@@ -169,10 +170,14 @@ export function parseShareLink(search) {
 }
 
 // Text that goes with the link (chat apps show it; the link carries the data). tr = the app's t().
+// The number a text shows for the size of a game: the n of a square board (7 for 7x7), the number of
+// cells of a Pentagon board (its n is only the id of the board). { variant, n } -> number.
+export const sizeArg = ({ variant, n }) => (variant === PENTAGON_KIND ? PENTAGON_CELLS[n] : n);
+
 export function shareText(rec, url, tr) {
   const head = rec.kind === 'gotd'
     ? tr('share.headGotd', dateLabel(dateOfDay(rec.day)), rec.n)
-    : rec.variant ? tr('share.head' + rec.variant[0].toUpperCase() + rec.variant.slice(1), rec.n)
+    : rec.variant ? tr('share.head' + rec.variant[0].toUpperCase() + rec.variant.slice(1), sizeArg(rec))
       : tr('share.headLocal', rec.n);
   const grade = rec.grade == null ? '' : ` · ${tr('grade.' + rec.grade)} ${rec.grade}/5`;
   const result = [`⏱ ${rec.timeS.toFixed(1)}s`];
