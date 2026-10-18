@@ -12,13 +12,14 @@
 import { SLOTS } from './topology.js';
 import { topologyOf, maxNumber, validateSurface } from './puzzle.js';
 
-// 1 for every slot that leads to a neighbour through an open side.
+// 1 for every slot that leads to a neighbour through an open side (a side on the border of a flat
+// board has no edge and no neighbour: closed).
 export function openSlots(top, walls) {
   const open = new Uint8Array(top.T * SLOTS);
   for (let cell = 0; cell < top.T; cell++) {
     for (let k = 0; k < top.deg[cell]; k++) {
       const edge = top.edgeAt[cell * SLOTS + k];
-      open[cell * SLOTS + k] = walls && walls[edge] ? 0 : 1;
+      open[cell * SLOTS + k] = edge >= 0 && !(walls && walls[edge]) ? 1 : 0;
     }
   }
   return open;
@@ -212,7 +213,7 @@ export function countHamiltonianPaths(top, opts = {}) {
     }
     for (let k = 0; k < deg[head]; k++) {
       const cell = nb[head * SLOTS + k];
-      if (vis[cell]) {
+      if (cell < 0 || vis[cell]) {
         continue;
       }
       vis[cell] = 1;
