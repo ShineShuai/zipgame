@@ -1,6 +1,7 @@
-// Draws a surface board (tetrahedron, cube) as its flat net (view/surface-net.js): one SVG, as
-// markup. Walls, numbers, the template path, solutions and the path being played are layers on
-// the net; the letters on the border of the net mark the sides that touch when it is folded.
+// Draws a surface board (tetrahedron, cube, ball) as its flat net (view/surface-net.js), as the
+// solid (view/proj.js) or as a ball (view/ball.js): one SVG, as markup. Walls, numbers, the
+// template path, solutions and the path being played are layers on the picture; the letters on
+// the border of a net mark the sides that touch when it is folded.
 // The click and drag logic is in surface.js; the colours of the classes are in css/design.css.
 import { SLOTS } from '../../core/surface/topology.js';
 import { maxNumber } from '../../core/surface/puzzle.js';
@@ -13,6 +14,9 @@ const MAX_SIDE_PX = 60;
 // The fill of the cells of each face, and of a cell the path has been through.
 const FACE_TINT = ['#18213a', '#1f1d38', '#15262f', '#232130', '#172435', '#1d2133'];
 const VISITED_TINT = '#25336a';
+// The fill of the cells of a ball by their number of sides (it has no faces to tell apart): the
+// composition of the ball shows.
+const SIDES_TINT = { 3: '#1a2a52', 4: '#2a2250', 5: '#15383a' };
 
 const round = value => Math.round(value * 100) / 100;
 
@@ -28,7 +32,11 @@ export function netFrame(net) {
   const width = box.maxX - box.minX;
   const height = box.maxY - box.minY;
   const sideCap = net.maxSidePx ?? MAX_SIDE_PX;
-  const scale = Math.min(MAX_WIDTH / width, MAX_HEIGHT / height, sideCap / side);
+  const scale = Math.min(
+    (net.maxWidth ?? MAX_WIDTH) / width,
+    (net.maxHeight ?? MAX_HEIGHT) / height,
+    sideCap / side,
+  );
   // room around the net for the letters of the cuts, or for the arrows at the edge of a solid
   const margin = Math.ceil(side * scale * (net.tags.length ? 0.95 : 0.4));
   return {
@@ -48,9 +56,14 @@ export function netFrame(net) {
 //   playing, path      the path walked in play mode
 //   template           the dashed path of the generator, or null
 //   solutions, visible the solutions of Solve and which of them to show
+//   idSuffix           makes the id of the gloss of a ball unique when two balls are on a page
 // `net` is the flat net (view/surface-net.js) or the solid in a view (view/proj.js): a cell with
 // net.hidden[cell] is not drawn, net.depth[cell] (how much it faces the viewer) shades it, and
-// net.frameOf(cell) lays its number and the head marker into the plane of the cell.
+// net.frameOf(cell) lays its number and the head marker into the plane of the cell. A ball
+// (view/ball.js) also has net.outlines[cell] (the curved outline to draw), net.drawn[cell] (a
+// cell partly in front is drawn, a cell with net.hidden is not marked), net.arcPieces,
+// net.sideMid and net.routePieces (curved sides and routes), net.markRadius(cell) (cells differ
+// in size), net.uniform and net.disc (no faces; the disc of the ball).
 // Returns { markup, frame }.
 export function surfaceSvg(net, V) {
   const { top } = net;
@@ -71,21 +84,41 @@ export function surfaceSvg(net, V) {
   };
 
   const seen = cell => !net.hidden || !net.hidden[cell];
+  const drawn = cell => (net.drawn ? Boolean(net.drawn[cell]) : seen(cell));
+  const outline = cell => (net.outlines ? net.outlines[cell] : net.polys[cell]);
+  if (net.disc) {
+    const [x, y] = frame.toPixels([0, 0]);
+    parts.push(`<circle class=\"sf-disc\" cx=\"${x}\" cy=\"${y}\" r=\"${round(frame.scale)}\"/>`);
+  }
   // how much a cell faces the viewer: it is darker when turned away
   const facing = cell => (net.depth ? Math.min(1, Math.max(0, net.depth[cell])) : 1);
   const visited = new Set(V.playing ? V.path : []);
   for (let cell = 0; cell < top.T; cell++) {
-    if (!seen(cell)) {
+    if (!drawn(cell)) {
       continue;
     }
     const classes = ['sf-cell', `sf-f${top.faceOf[cell]}`];
     if (visited.has(cell)) {
       classes.push('visited');
     }
-    const tint = visited.has(cell) ? VISITED_TINT : FACE_TINT[top.faceOf[cell] % FACE_TINT.length];
+    const faceTint = net.uniform
+      ? SIDES_TINT[top.deg[cell]]
+      : FACE_TINT[top.faceOf[cell] % FACE_TINT.length];
+    const tint = visited.has(cell) ? VISITED_TINT : faceTint;
     const fill = darker(tint, 0.6 + 0.4 * facing(cell));
     parts.push(`<polygon class="${classes.join(' ')}" data-cell="${cell}" fill="${fill}" `
-      + `points="${points(net.polys[cell])}"/>`);
+      + `points="${points(outline(cell))}"/>`);
+  }
+  if (net.disc) {
+    // light from the upper left, dark towards the rim: the cells look round
+    const [x, y] = frame.toPixels([0, 0]);
+    const id = `sfGloss${V.idSuffix ?? ''}`;
+    parts.push(`<defs><radialGradient id="${id}" cx="36%" cy="30%" r="80%">`
+      + '<stop offset="0" stop-color="#fff" stop-opacity="0.16"/>'
+      + '<stop offset="0.55" stop-color="#fff" stop-opacity="0"/>'
+      + '<stop offset="1" stop-color="#000" stop-opacity="0.5"/></radialGradient></defs>'
+      + `<circle class="sf-gloss" cx="${x}" cy="${y}" r="${round(frame.scale)}" `
+      + `fill="url(#${id})"/>`);
   }
 
   // the cuts of the net: dashed, with the letter of the cut beside them
@@ -105,11 +138,19 @@ export function surfaceSvg(net, V) {
     for (let slot = 0; slot < top.deg[cell]; slot++) {
       const other = top.nb[cell * SLOTS + slot];
       const shown = !net.glued[cell * SLOTS + slot] || cell < other;
-      if (shown && (seen(cell) || seen(other)) && P.walls[top.edgeAt[cell * SLOTS + slot]]) {
-        const poly = net.polys[cell];
-        const [a, b] = [poly[slot], poly[(slot + 1) % poly.length]].map(frame.toPixels);
-        parts.push(`<line class="sf-wall" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" `
-          + `stroke-width="${wallWidth}"/>`);
+      if (shown && (drawn(cell) || drawn(other)) && P.walls[top.edgeAt[cell * SLOTS + slot]]) {
+        if (net.arcPieces) {
+          // a curved side: the parts of its arc that are in front
+          for (const piece of net.arcPieces(cell, slot)) {
+            parts.push(`<polyline class="sf-wall" fill="none" stroke-width="${wallWidth}" `
+              + `points="${piece.map(point => frame.toPixels(point)).join(' ')}"/>`);
+          }
+        } else {
+          const poly = net.polys[cell];
+          const [a, b] = [poly[slot], poly[(slot + 1) % poly.length]].map(frame.toPixels);
+          parts.push(`<line class="sf-wall" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" `
+            + `stroke-width="${wallWidth}"/>`);
+        }
       }
     }
   }
@@ -142,14 +183,16 @@ export function surfaceSvg(net, V) {
   };
   const route = (cells, color, extra = '', thickness = net.depth ? 0.1 : 0.13) => {
     const width = round(px * thickness);
-    for (const piece of routePieces(net, cells)) {
+    for (const piece of net.routePieces ? net.routePieces(cells) : routePieces(net, cells)) {
       if (piece.length > 1) {
         const line = piece.map(corner => frame.toPixels(corner)).join(' ');
         parts.push(`<polyline class="sf-path" points="${line}" `
           + `stroke="${color}" stroke-width="${width}" ${extra}/>`);
       }
     }
-    routeCrossings(net, cells).forEach(mark => arrow(mark, color));
+    if (!net.routePieces) {
+      routeCrossings(net, cells).forEach(mark => arrow(mark, color));
+    }
   };
   if (V.template && !V.playing) {
     route(V.template, TPL_C, `stroke-dasharray="${round(px * 0.2)} ${round(px * 0.14)}"`, 0.07);
@@ -167,13 +210,19 @@ export function surfaceSvg(net, V) {
     if (seen(head)) {
       const [x, y] = frame.toPixels(net.centers[head]);
       const [cx, cy, at] = placed(head, x, y);
-      parts.push(`<circle class="sf-head" cx="${cx}" cy="${cy}" r="${round(px * 0.17)}"${at}/>`);
+      const r = net.markRadius ? round(net.markRadius(head) * frame.scale * 0.5) : round(px * 0.17);
+      parts.push(`<circle class="sf-head" cx="${cx}" cy="${cy}" r="${r}"${at}/>`);
     }
   }
 
   // numbers
   const K = maxNumber(P);
-  const fontFor = text => round(px * (String(text).length > 2 ? 0.26 : 0.34));
+  const radiusOf = cell => (net.markRadius
+    ? round(net.markRadius(cell) * frame.scale)
+    : round(px * (top.deg[cell] === 3 ? 0.25 : 0.36)));
+  const fontFor = (text, radius) => (net.markRadius
+    ? round(radius * (String(text).length > 2 ? 0.72 : 0.95))
+    : round(px * (String(text).length > 2 ? 0.26 : 0.34)));
   for (let cell = 0; cell < top.T; cell++) {
     if (!seen(cell)) {
       continue;
@@ -195,14 +244,14 @@ export function surfaceSvg(net, V) {
       classes.push('visited');
     }
     const [x, y] = frame.toPixels(net.centers[cell]);
-    const radius = round(px * (top.deg[cell] === 3 ? 0.25 : 0.36));
+    const radius = radiusOf(cell);
     const [cx, cy, at] = placed(cell, x, y);
     parts.push(`<g class="${classes.join(' ')}"${at}><circle cx="${cx}" cy="${cy}" r="${radius}"/>`
-      + `<text x="${cx}" y="${cy}" font-size="${fontFor(number)}">${number}</text></g>`);
+      + `<text x="${cx}" y="${cy}" font-size="${fontFor(number, radius)}">${number}</text></g>`);
   }
 
-  if (V.selected >= 0 && !V.playing && seen(V.selected)) {
-    parts.push(`<polygon class="sf-sel" points="${points(net.polys[V.selected])}"/>`);
+  if (V.selected >= 0 && !V.playing && drawn(V.selected)) {
+    parts.push(`<polygon class="sf-sel" points="${points(outline(V.selected))}"/>`);
   }
 
   // the letters of the cuts, outside the net

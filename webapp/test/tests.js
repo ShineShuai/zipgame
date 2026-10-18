@@ -84,6 +84,7 @@ import { loopPlayTests } from './play-loop.js';
 import { surfaceTests } from './surface.js';
 import { ballTests } from './ball.js';
 import { pentagonTests } from './pentagon.js';
+import { ballViewTests } from './ball-view.js';
 import { teleportTests } from './teleport.js';
 import { teleportGenTests } from './teleport-gen.js';
 import { teleportPlayTests } from './play-teleport.js';
@@ -3335,6 +3336,7 @@ loopPlayTests(t, ta, ok, eq);
 // ---------- Surface (tetrahedron, cube, ball) puzzles ----------
 surfaceTests(t, ok, eq);
 ballTests(t, ok, eq);
+ballViewTests(t, ok, eq);
 
 // ---------- Pentagon (Cairo tiling) boards ----------
 pentagonTests(t, ok, eq);
