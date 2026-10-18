@@ -83,6 +83,7 @@ import { loopGenTests } from './loop-gen.js';
 import { loopPlayTests } from './play-loop.js';
 import { surfaceTests } from './surface.js';
 import { ballTests } from './ball.js';
+import { pentagonTests } from './pentagon.js';
 import { ballViewTests } from './ball-view.js';
 import { teleportTests } from './teleport.js';
 import { teleportGenTests } from './teleport-gen.js';
@@ -3336,6 +3337,9 @@ loopPlayTests(t, ta, ok, eq);
 surfaceTests(t, ok, eq);
 ballTests(t, ok, eq);
 ballViewTests(t, ok, eq);
+
+// ---------- Pentagon (Cairo tiling) boards ----------
+pentagonTests(t, ok, eq);
 
 // ---------- Teleport pairs (linked portal cells) ----------
 teleportTests(t, ok, eq);

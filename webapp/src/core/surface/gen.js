@@ -43,7 +43,9 @@ export function randomHamiltonianPath(top, rnd, cfg = GEN_CFG) {
     }
     const around = [];
     for (let k = 0; k < deg[head]; k++) {
-      around.push(nb[head * SLOTS + k]);
+      if (nb[head * SLOTS + k] >= 0) {
+        around.push(nb[head * SLOTS + k]);
+      }
     }
     for (const cell of shuffle(around, rnd)) {
       if (vis[cell]) {

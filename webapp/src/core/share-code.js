@@ -44,11 +44,24 @@
 // its own version, SHARE_VERSION_SPLIT: the layout above as a standard puzzle (type 0, walls), then
 // split:     split - 2: how many numbers the red path has, short of two for each colour (radix K - 3)
 // before the strip.
+// A Pentagon puzzle (core/surface/pentagon.js, a flat board of pentagons) has a code of its own
+// version, SHARE_VERSION_PENTAGON, with its own layout (no type field; no grade; the cells and
+// the edges are those of the board, numbered as in core/surface/topology.js). Fields, first =
+// least significant:
+//   size index, (n - 4) / 2 (n = 4, 6, 8, 10 now; room for sizes up to 18)     radix 8
+//   time, tenths of a second - 1: count()
+//   K - 2: how many numbers there are                                   radix cells - 1
+//   the K numbered cells, in number order: distinct picks among the cells
+//   walls: a subset of the board's edges, in edge id order
+//   strip: 1 flag, then K - 1 levels of 2 bits, as above
 // A 7x7 standard puzzle is about 20 characters, a 12x12 one about 45.
 import { LABELS } from './gen/shapes.js';
 import { allEdges, arrowProblem, arrowDirId, arrowIds, wallIds } from './edges.js';
 import { validate, labelCount, numberedCells } from './model.js';
 import { RadixWriter, RadixReader, bitLength } from './radix-code.js';
+import { PENTAGON_KIND, PENTAGON_SIZES } from './surface/pentagon.js';
+import { surfaceTopology } from './surface/topology.js';
+import { validateSurface, wallEdges } from './surface/puzzle.js';
 
 export const SHARE_VERSION = 1;
 export const SHARE_VERSION_PUZZLE = 3;
@@ -56,8 +69,16 @@ export const SHARE_VERSION_PORTAL = 4; // a puzzle with portal pairs (variant na
 export const TELEPORT = 'teleport';
 export const SHARE_VERSION_SPLIT = 5; // a puzzle with two paths (variant name TWO_PATHS)
 export const TWO_PATHS = 'twopaths';
-// the variants with a version of their own (their puzzle type field is the standard one)
-const OWN_VERSION = { [TELEPORT]: SHARE_VERSION_PORTAL, [TWO_PATHS]: SHARE_VERSION_SPLIT };
+export const SHARE_VERSION_PENTAGON = 6; // a puzzle on the Pentagon board (variant name PENTAGON)
+export const PENTAGON = 'pentagon';
+// the variants with a version of their own (their puzzle type field is the standard one, except
+// Pentagon, whose layout has none)
+const OWN_VERSION = {
+  [TELEPORT]: SHARE_VERSION_PORTAL,
+  [TWO_PATHS]: SHARE_VERSION_SPLIT,
+  [PENTAGON]: SHARE_VERSION_PENTAGON,
+};
+const PENTAGON_SIZE_RADIX = 8;
 const OWN_VARIANT = Object.fromEntries(Object.entries(OWN_VERSION).map(([name, v]) => [v, name]));
 // puzzle type id -> variant name (null = a standard puzzle)
 export const VARIANTS = [null, 'cutout', 'arrows', 'exact', 'wrap', 'loop'];
@@ -210,6 +231,17 @@ const isTwoPathsPuzzle = p =>
   isNumbered(marksOf(p)) &&
   validate(p).ok;
 
+// A Pentagon puzzle { surface: 'pentagon', n, cp, walls } (core/surface/puzzle.js): one of the
+// boards, one wall bit per edge of the board, numbered 1..K without gaps, and valid.
+function isPentagonPuzzle(p) {
+  if (!p || p.surface !== PENTAGON_KIND || !PENTAGON_SIZES.includes(p.n) || !onlyFlag(p, null)) {
+    return false;
+  }
+  const top = surfaceTopology(PENTAGON_KIND, p.n);
+  return Boolean(p.cp && p.walls) && p.cp.length === top.T && p.walls.length === top.E
+    && p.walls.every(w => w === 0 || w === 1) && isNumbered(marksOf(p)) && validateSurface(p).ok;
+}
+
 // by puzzle type id (index in VARIANTS)
 const SOUND_PUZZLE = [
   isStandardPuzzle,
@@ -222,7 +254,11 @@ const SOUND_PUZZLE = [
 
 // A local game: { kind: 'local', variant: name | null (standard), n, grade (standard only), timeS,
 // levels: [] or K - 1 levels, puzzle }
-const SOUND_OWN = { [TELEPORT]: isTeleportPuzzle, [TWO_PATHS]: isTwoPathsPuzzle };
+const SOUND_OWN = {
+  [TELEPORT]: isTeleportPuzzle,
+  [TWO_PATHS]: isTwoPathsPuzzle,
+  [PENTAGON]: isPentagonPuzzle,
+};
 const typeId = rec => (rec.variant in OWN_VERSION ? 0 : VARIANTS.indexOf(rec.variant ?? null));
 
 function isEncodablePuzzleRecord(rec) {
@@ -236,7 +272,7 @@ function isEncodablePuzzleRecord(rec) {
   const gradeOk = id === 0 && !own
     ? rec.grade == null || isInt(rec.grade, 0, 5)
     : rec.grade == null;
-  const K = labelCount(p);
+  const K = rec.variant === PENTAGON ? marksOf(p).length : labelCount(p);
   const levelsOk =
     Array.isArray(rec.levels) &&
     rec.levels.every(v => isInt(v, 0, 3)) &&
@@ -313,7 +349,33 @@ function writeHoles(w, p) {
   }
 }
 
+// The packed number of a Pentagon code (layout at the top).
+function packPentagonRecord(rec) {
+  const p = rec.puzzle;
+  const top = surfaceTopology(PENTAGON_KIND, p.n);
+  const w = new RadixWriter();
+  w.uint((p.n - 4) / 2, PENTAGON_SIZE_RADIX);
+  w.count(tenths(rec.timeS) - 1, MAX_TENTHS - 1);
+  const numbered = [];
+  p.cp.forEach((number, cell) => {
+    if (number) {
+      numbered[number - 1] = cell;
+    }
+  });
+  w.uint(numbered.length - 2, top.T - 1);
+  w.distinct(numbered, top.T);
+  w.subset(wallEdges(p), top.E);
+  w.uint(rec.levels.length ? 1 : 0, 2);
+  for (const level of rec.levels) {
+    w.uint(level, 4);
+  }
+  return w;
+}
+
 function packPuzzleRecord(rec) {
+  if (rec.variant === PENTAGON) {
+    return packPentagonRecord(rec);
+  }
   const p = rec.puzzle;
   const id = typeId(rec);
   const T = p.n * p.n;
@@ -494,8 +556,43 @@ function readHoles(r, n) {
   return holes;
 }
 
+// The packed number of a Pentagon code; throws RangeError when it is not one.
+function unpackPentagonRecord(r) {
+  const n = r.uint(PENTAGON_SIZE_RADIX) * 2 + 4;
+  if (!PENTAGON_SIZES.includes(n)) {
+    throw new RangeError(`there is no Pentagon board of size ${n}`);
+  }
+  const top = surfaceTopology(PENTAGON_KIND, n);
+  const rec = {
+    kind: 'local',
+    variant: PENTAGON,
+    n,
+    grade: null,
+    timeS: (r.count(MAX_TENTHS - 1) + 1) / 10,
+  };
+  const p = { surface: PENTAGON_KIND, n, cp: new Uint16Array(top.T), walls: new Uint8Array(top.E) };
+  const count = r.uint(top.T - 1) + 2;
+  r.distinct(top.T, count).forEach((cell, i) => {
+    p.cp[cell] = i + 1;
+  });
+  for (const edge of r.subset(top.E)) {
+    p.walls[edge] = 1;
+  }
+  rec.levels = [];
+  if (r.uint(2) === 1) {
+    for (let i = 1; i < count; i++) {
+      rec.levels.push(r.uint(4));
+    }
+  }
+  rec.puzzle = p;
+  return rec;
+}
+
 // The packed number of a puzzle code (layout at the top); throws RangeError when it is not one.
 function unpackPuzzleRecord(r, own = null) {
+  if (own === PENTAGON) {
+    return unpackPentagonRecord(r);
+  }
   const variant = VARIANTS[r.uint(VARIANTS.length)];
   if (own && variant !== null) {
     throw new RangeError(`a ${own} code has the standard type`);

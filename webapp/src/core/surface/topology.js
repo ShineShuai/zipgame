@@ -23,12 +23,21 @@
 // nb[c * SLOTS + k]; rev[c * SLOTS + k] is the slot of that neighbour that points back at c.
 // Edges are numbered by (lower cell, slot).
 //
-// All boards are closed (no border, nothing is forced by a border). Tetra and cube are not
+// All these boards are closed (no border, nothing is forced by a border). Tetra and cube are not
 // bipartite: three cells meet at every corner of the solid, and any two of them touch. A ball is
 // bipartite when an even number of cells meets at every corner; then no path can cover it unless
 // the two colour classes differ by at most 1 in size (top.classes).
+//
+// The one exception is the Pentagon board (kind 'pentagon', n = 4, 6, 8 or 10; pentagon.js): a
+// flat patch of the Cairo tiling with a border. A cell on the border has sides with no neighbour:
+// there nb is -1 and edgeAt is -1 (no edge, so no wall, and the solver never steps there); deg is
+// still the number of sides, so a slot is a side as everywhere else. top.flat is true and
+// top.centres[2 * cell], [2 * cell + 1] is the centre of a cell (verts have z = 0).
 
 import { BALL_CATALOG } from './ball-catalog.js';
+import { PENTAGON_KIND, PENTAGON_CELLS, pentagonMesh } from './pentagon.js';
+
+export { PENTAGON_KIND };
 
 // The kinds with a size n (a whole number); `ball` has an id instead and is listed in BALL_KIND.
 export const SURFACE_KINDS = ['tetra', 'cube'];
@@ -41,6 +50,9 @@ export const SLOTS = 5;
 export const surfaceCellCount = (kind, n) => {
   if (kind === BALL_KIND) {
     return ballEntry(n).r.length;
+  }
+  if (kind === PENTAGON_KIND) {
+    return PENTAGON_CELLS[n];
   }
   return (kind === 'tetra' ? 4 : 6) * n * n;
 };
@@ -191,7 +203,8 @@ function twoColouring(T, nb) {
 }
 
 // faceCount: the number of faces of the solid (a cell of a ball is its own face).
-function buildGraph(kind, n, mesh, faceCount) {
+// opts.open: the board has a border (a side may have no neighbour); mesh.centres: see the header.
+function buildGraph(kind, n, mesh, faceCount, opts = {}) {
   const { cells, faces, positions } = mesh;
   const T = cells.length;
   const nb = new Int32Array(T * SLOTS).fill(-1);
@@ -223,7 +236,7 @@ function buildGraph(kind, n, mesh, faceCount) {
       rev[other] = k;
     }
   }
-  if (unmatched.size) {
+  if (unmatched.size && !opts.open) {
     throw new Error(`${kind} ${n}: a side with no neighbour (the surface is not closed)`);
   }
   const edgeAt = new Int32Array(T * SLOTS).fill(-1);
@@ -232,6 +245,9 @@ function buildGraph(kind, n, mesh, faceCount) {
     const seen = new Set();
     for (let k = 0; k < deg[cell]; k++) {
       const other = nb[cell * SLOTS + k];
+      if (other < 0) {
+        continue; // a side on the border
+      }
       if (seen.has(other)) {
         throw new Error(`${kind} ${n}: two cells share more than one side`);
       }
@@ -268,6 +284,7 @@ function buildGraph(kind, n, mesh, faceCount) {
     dist: allDistances(T, nb),
     bipartite: colouring !== null,
     classes,
+    ...(opts.open ? { flat: true, centres: Float64Array.from(mesh.centres.flat()) } : {}),
   };
 }
 
@@ -305,6 +322,8 @@ export function surfaceTopology(kind, n) {
   }
   if (kind === BALL_KIND) {
     top = buildBallTopology(ballEntry(n));
+  } else if (kind === PENTAGON_KIND) {
+    top = buildGraph(kind, n, pentagonMesh(n), PENTAGON_CELLS[n], { open: true });
   } else {
     if (!SURFACE_KINDS.includes(kind)) {
       throw new Error(`unknown surface '${kind}'`);
