@@ -5,15 +5,19 @@
 // corners of a cell are the centres of the 5 tiles (2 squares, 3 triangles) around that corner.
 //
 // One fixed board per size n (the same puzzle always means the same board):
-//   n    4   6   8   10    cells 16, 36, 64, 100
-// The board is the part of the tiling inside a square window centred on a 4-fold centre of the
-// tiling (a square of the snub tiling): a turn by 90 degrees about the centre maps the board onto
-// itself. The windows are chosen so that no cell has fewer than 2 neighbours (no cell sticks out
-// of the board: it would be the start or the end of any path, a free hint); only the 4 corner
-// cells have 2 neighbours. Odd sizes would have 8 or more such cells and are not offered.
+//   n    4   6   8   9   10    cells 16, 36, 64, 96, 100
+// The board is the part of the tiling inside a window centred on a 4-fold centre of the tiling (a
+// square of the snub tiling): the windows of n = 4, 6, 8, 10 are squares and a turn by 90 degrees
+// about the centre maps the board onto itself; n = 9 is a window 4 periods wide and 6 high (a
+// portrait board) and a half turn maps it onto itself. The windows are chosen so that no cell has
+// fewer than 2 neighbours (no cell sticks out of the board: it would be the start or the end of
+// any path, a free hint) and only the 4 corner cells have 2. The other windows that qualify (24,
+// 48, 80, 120 cells) have 8 to 20 cells with 2 neighbours; those cells fix both their sides, which
+// is 70% (24 cells) to 34% (120 cells) of the path before the first move, against 8 to 23% for the
+// boards above 36 cells: they are not offered.
 //
 // The geometry uses floating point, but every decision made with it has a large margin (see
-// WIDTH, ROW_EPS), so every engine builds the same board. test/pentagon.js freezes the numbering.
+// WINDOW, ROW_EPS), so every engine builds the same board. test/pentagon.js freezes the numbering.
 //
 // Cell numbers (fixed: puzzles and share codes refer to them): the cells in reading order of their
 // centres, top row first, rows being the cells whose centres have the same y. y points down, as
@@ -22,16 +26,16 @@
 // the one short side of every cell, so slot k leads to the same kind of side in every cell.
 
 export const PENTAGON_KIND = 'pentagon';
-export const PENTAGON_SIZES = [4, 6, 8, 10];
-export const PENTAGON_CELLS = { 4: 16, 6: 36, 8: 64, 10: 100 };
+export const PENTAGON_SIZES = [4, 6, 8, 9, 10]; // by cells
+export const PENTAGON_CELLS = { 4: 16, 6: 36, 8: 64, 9: 96, 10: 100 };
 
 const PERIOD = (1 + Math.sqrt(3)) / Math.SQRT2; // the snub square tiling repeats every PERIOD
 const TILT = Math.PI / 12; // squares are turned by +-15 degrees
 const SAME = 1e-6; // two points closer than this are one point
-// Width of the square window in periods. The cell set stays the same for any width in these
-// ranges: n=4 1.64..2.36, n=6 2.64..3.36, n=8 3.64..4.36, n=10 4.64..5.20; the widths below sit
-// in the middle of them.
-const WIDTH = { 4: 2.0, 6: 3.0, 8: 4.0, 10: 4.9 };
+// Width and height of the window in periods. The cell set stays the same for any width or height
+// in these ranges: 1.64..2.36, 2.64..3.36, 3.64..4.36, 4.64..5.20 (n = 10) and 5.64..6.36 (the
+// height of n = 9); the sizes below sit in the middle of them.
+const WINDOW = { 4: [2, 2], 6: [3, 3], 8: [4, 4], 9: [4, 6], 10: [4.9, 4.9] };
 // Centres whose y differ by less than this are in one row (theoretically equal y values differ
 // by rounding only; distinct rows are at least 0.25 apart).
 const ROW_EPS = 1e-6;
@@ -98,13 +102,13 @@ export function pentagonMesh(n) {
   if (!PENTAGON_SIZES.includes(n)) {
     throw new Error(`pentagon board size must be one of ${PENTAGON_SIZES.join(', ')}`);
   }
-  const half = (WIDTH[n] * PERIOD) / 2;
-  const { points, around, tiles } = snubPatch(Math.ceil(WIDTH[n] / 2) + 1);
+  const [halfX, halfY] = WINDOW[n].map(width => (width * PERIOD) / 2);
+  const { points, around, tiles } = snubPatch(Math.ceil(Math.max(...WINDOW[n]) / 2) + 1);
   const tilesAt = points.map(() => []);
   tiles.forEach((tile, index) => tile.ids.forEach(id => tilesAt[id].push(index)));
   let inside = [];
   points.forEach(([x, y], id) => {
-    if (Math.abs(x) < half && Math.abs(y) < half) inside.push(id);
+    if (Math.abs(x) < halfX && Math.abs(y) < halfY) inside.push(id);
   });
   // Reading order: rows from the top, a row left to right.
   inside.sort((a, b) => points[a][1] - points[b][1]);

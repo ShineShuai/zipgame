@@ -16,17 +16,18 @@ import { PENTAGON_KIND, PENTAGON_SIZES } from '../surface/pentagon.js';
 // keeps 16 walls on average, with 40% about 10 (the square 8 x 8 board needs 2 to 4). K is 35 to
 // 45% of the cells.
 // Measured with tools/pentagon-bench.mjs (the candidates below): median time and walls
-//   16 cells 13 ms, 0 walls | 36 cells 20 ms, 2 | 64 cells 0.2 s, 6 | 100 cells 1.3 s, 13
-// (worst time 27 ms, 80 ms, 0.4 s, 1.5 s). Before the solver of core/surface/solve.js was made
-// incremental the 100-cell board took 3.1 s for 4 candidates (walls 14).
+//   16 cells 13 ms, 0 walls | 36 cells 20 ms, 2 | 64 cells 0.2 s, 6 | 96 cells 0.9 s, 11 |
+//   100 cells 1.3 s, 13 (worst time 27 ms, 80 ms, 0.4 s, 1.6 s, 1.5 s). Before the solver of
+// core/surface/solve.js was made incremental the 100-cell board took 3.1 s for 4 candidates
+// (walls 14).
 
 export { PENTAGON_SIZES };
-// The sizes the play app offers for this variant: cells 16, 36, 64, 100.
+// The sizes the play app offers for this variant: cells 16, 36, 64, 96, 100.
 export const PENTAGON_OFFERED = PENTAGON_SIZES;
 // Share of the cells that carry a number: from the first to just short of the second.
 export const PENTAGON_SHARE = [0.35, 0.45];
-// How many candidates are made per size: a second per puzzle at most, on the 100-cell board.
-export const PENTAGON_CANDIDATES = { 4: 6, 6: 8, 8: 10, 10: 8 };
+// How many candidates are made per size: about a second per puzzle on the 96 and 100-cell boards.
+export const PENTAGON_CANDIDATES = { 4: 6, 6: 8, 8: 10, 9: 8, 10: 8 };
 
 // The number of checkpoints: PENTAGON_SHARE of the cells, at least 4.
 export function pentagonK(n, rnd) {

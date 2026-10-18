@@ -28,7 +28,7 @@
 // bipartite when an even number of cells meets at every corner; then no path can cover it unless
 // the two colour classes differ by at most 1 in size (top.classes).
 //
-// The one exception is the Pentagon board (kind 'pentagon', n = 4, 6, 8 or 10; pentagon.js): a
+// The one exception is the Pentagon board (kind 'pentagon', n = 4, 6, 8, 9 or 10; pentagon.js): a
 // flat patch of the Cairo tiling with a border. A cell on the border has sides with no neighbour:
 // there nb is -1 and edgeAt is -1 (no edge, so no wall, and the solver never steps there); deg is
 // still the number of sides, so a slot is a side as everywhere else. top.flat is true and

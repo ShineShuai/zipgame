@@ -86,13 +86,15 @@ const FROZEN = {
   4: ['8ac141ce', '09197270'],
   6: ['6d7409df', '8e6a7967'],
   8: ['9d03dd2f', 'af390c97'],
+  9: ['85d19675', '89a82f81'],
   10: ['a95f48ab', '5d1dc5f4'],
 };
 
 export function pentagonTests(t, ok, eq) {
   t('pentagon: boards — 16, 36, 64, 100 cells of 5 sides, connected, not bipartite, no cell with '
     + 'fewer than 2 neighbours, only the 4 corner cells have 2', () => {
-    eq(PENTAGON_SIZES, [4, 6, 8, 10]);
+    eq(PENTAGON_SIZES, [4, 6, 8, 9, 10]);
+    eq(PENTAGON_SIZES.map(n => PENTAGON_CELLS[n]), [16, 36, 64, 96, 100]);
     for (const n of PENTAGON_SIZES) {
       const top = board(n);
       eq(top.T, PENTAGON_CELLS[n], `n=${n} cells`);
@@ -158,8 +160,8 @@ export function pentagonTests(t, ok, eq) {
     }
   });
 
-  t('pentagon: every board is symmetric — a quarter turn about the centre maps the cells onto '
-    + 'the cells and keeps who touches whom', () => {
+  t('pentagon: every board is symmetric — a quarter turn about the centre (a half turn for the '
+    + '96-cell board) maps the cells onto the cells and keeps who touches whom', () => {
     for (const n of PENTAGON_SIZES) {
       const top = board(n);
       const at = (x, y) => {
@@ -169,9 +171,11 @@ export function pentagonTests(t, ok, eq) {
         }
         return -1;
       };
-      const turned = Array.from(
-        { length: top.T }, (_, c) => at(-top.centres[2 * c + 1], top.centres[2 * c]),
-      );
+      const half = n === 9; // the portrait board: a half turn only
+      const turned = Array.from({ length: top.T }, (_, c) => {
+        const [x, y] = [top.centres[2 * c], top.centres[2 * c + 1]];
+        return half ? at(-x, -y) : at(-y, x);
+      });
       ok(turned.every(c => c >= 0) && new Set(turned).size === top.T, `n=${n}: a bijection`);
       for (let c = 0; c < top.T; c++) {
         const image = neighboursOf(top, turned[c]).sort((a, b) => a - b);
@@ -402,8 +406,9 @@ export function pentagonTests(t, ok, eq) {
       ...[1, 2, 3].map(seed => game(6, seed)),
       game(8, 1),
       made(10, [0, 37, 12, 99, 55, 70], [3, 4, 100, 219]),
+      made(9, [0, 95, 12, 50, 77], [0, 7, 200]),
     ];
-    const longest = { 4: 16, 6: 30, 8: 50, 10: 75 };
+    const longest = { 4: 16, 6: 30, 8: 50, 9: 70, 10: 75 };
     for (const p of puzzles) {
       const rec = record(p);
       const code = encodeShare(rec);

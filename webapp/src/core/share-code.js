@@ -48,7 +48,7 @@
 // version, SHARE_VERSION_PENTAGON, with its own layout (no type field; no grade; the cells and
 // the edges are those of the board, numbered as in core/surface/topology.js). Fields, first =
 // least significant:
-//   size index, (n - 4) / 2 (n = 4, 6, 8, 10 now; room for sizes up to 18)     radix 8
+//   size index: the place of n in PENTAGON_CODE_SIZES (append only)             radix 8
 //   time, tenths of a second - 1: count()
 //   K - 2: how many numbers there are                                   radix cells - 1
 //   the K numbered cells, in number order: distinct picks among the cells
@@ -79,6 +79,9 @@ const OWN_VERSION = {
   [PENTAGON]: SHARE_VERSION_PENTAGON,
 };
 const PENTAGON_SIZE_RADIX = 8;
+// The sizes of the Pentagon boards in the order of their size index: never change an entry, add
+// new sizes at the end (up to 8). Codes made before 9 was added read as before.
+const PENTAGON_CODE_SIZES = [4, 6, 8, 10, 9];
 const OWN_VARIANT = Object.fromEntries(Object.entries(OWN_VERSION).map(([name, v]) => [v, name]));
 // puzzle type id -> variant name (null = a standard puzzle)
 export const VARIANTS = [null, 'cutout', 'arrows', 'exact', 'wrap', 'loop'];
@@ -354,7 +357,7 @@ function packPentagonRecord(rec) {
   const p = rec.puzzle;
   const top = surfaceTopology(PENTAGON_KIND, p.n);
   const w = new RadixWriter();
-  w.uint((p.n - 4) / 2, PENTAGON_SIZE_RADIX);
+  w.uint(PENTAGON_CODE_SIZES.indexOf(p.n), PENTAGON_SIZE_RADIX);
   w.count(tenths(rec.timeS) - 1, MAX_TENTHS - 1);
   const numbered = [];
   p.cp.forEach((number, cell) => {
@@ -558,9 +561,10 @@ function readHoles(r, n) {
 
 // The packed number of a Pentagon code; throws RangeError when it is not one.
 function unpackPentagonRecord(r) {
-  const n = r.uint(PENTAGON_SIZE_RADIX) * 2 + 4;
+  const index = r.uint(PENTAGON_SIZE_RADIX);
+  const n = PENTAGON_CODE_SIZES[index];
   if (!PENTAGON_SIZES.includes(n)) {
-    throw new RangeError(`there is no Pentagon board of size ${n}`);
+    throw new RangeError(`there is no Pentagon board with size index ${index}`);
   }
   const top = surfaceTopology(PENTAGON_KIND, n);
   const rec = {
