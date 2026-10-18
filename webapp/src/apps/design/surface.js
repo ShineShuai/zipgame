@@ -1,11 +1,14 @@
-// The design app's controller for the closed-surface types (Tetrahedron, Cube, Ball): it owns the
-// surface puzzle, draws it as the solid you can turn (3D, the default) or as an assist: the flat
-// net of a tetrahedron or cube, the two halves of a ball (surface-board.js), and runs the tools,
-// Generate, Minimize walls, Solve, Play and the text export. design.html shows its panels while
-// the type is a surface (data-variants); main.js hands over the shared buttons (Solve, Play,
-// Export, Reset) and the seed, status, timing and busy state, which come in through `ctx`.
+// The design app's controller for the surface types (Tetrahedron, Cube, Ball, Pentagon): it owns
+// the surface puzzle, draws it as the solid you can turn (3D, the default) or as an assist: the
+// flat net of a tetrahedron or cube, the two halves of a ball (surface-board.js), and runs the
+// tools, Generate, Minimize walls, Solve, Play and the text export. The Pentagon type is a flat
+// board with a border: nothing to turn, one picture (buildFlat in view/surface-net.js), the same
+// tools. design.html shows its panels while the type is a surface (data-variants); main.js hands
+// over the shared buttons (Solve, Play, Export, Reset) and the seed, status, timing and busy
+// state, which come in through `ctx`.
 import {
   BALL_KIND,
+  PENTAGON_KIND,
   SURFACE_SIZES,
   SLOTS,
   ballEntry,
@@ -24,7 +27,7 @@ import {
 } from '../../core/surface/puzzle.js';
 import { solveSurface } from '../../core/surface/solve.js';
 import { defaultK, generateSurfaceWithin, minimizeSurfaceWalls } from '../../core/surface/gen.js';
-import { buildNet, pickSide, slotBetween } from '../../view/surface-net.js';
+import { buildFlat, buildNet, pickSide, slotBetween } from '../../view/surface-net.js';
 import {
   IDENTITY,
   buildView,
@@ -40,9 +43,13 @@ import { setHintText } from '../../ui/hint-popover.js';
 import { surfaceSvg } from './surface-board.js';
 import { TPL_C, SOL_C } from './board.js';
 
-const NAME = { tetra: 'Tetrahedron', cube: 'Cube', ball: 'Ball' };
-const FACES = { tetra: '4 faces of n × n triangles', cube: '6 faces of n × n squares' };
-const DEFAULT_SIZE = { tetra: 4, cube: 3, ball: 'snub-cube' };
+const NAME = { tetra: 'Tetrahedron', cube: 'Cube', ball: 'Ball', pentagon: 'Pentagon' };
+const FACES = {
+  tetra: '4 faces of n × n triangles',
+  cube: '6 faces of n × n squares',
+  pentagon: 'a flat board of pentagons',
+};
+const DEFAULT_SIZE = { tetra: 4, cube: 3, ball: 'snub-cube', pentagon: 6 };
 // The two halves of a ball side by side (the Map view): the width of each, in pixels.
 const MAP_WIDTH = 300;
 // Puzzles Generate makes (new seeds in turn) while looking for one within Max walls.
@@ -78,6 +85,10 @@ const MAP_HINT = ' The two halves of the ball side by side; a cell on the rim is
   + 'it as in the Ball view.';
 const PLAY_HINT = 'Drag from checkpoint 1 through every cell, or tap the next cell. A side with '
   + 'a letter on the border continues at the same letter. Move back over the path to undo.';
+const WALL_HINT_FLAT = 'Click a cell near one of its sides to add or remove a wall there. A side '
+  + 'on the border of the board has no neighbour: nothing to wall.';
+const PLAY_HINT_FLAT = 'Drag from checkpoint 1 through every cell, or tap the next cell. Move back '
+  + 'over the path to undo.';
 const PLAY_HINT_BALL = 'Drag from checkpoint 1 through every cell, or tap the next cell. The ball '
   + 'turns to the head of the path (Follow head). Move back over the path to undo.';
 
@@ -154,8 +165,9 @@ export function createSurfaceController(ctx) {
 
   const topology = () => surfaceTopology(P.surface, P.n);
   const isBall = () => kind === BALL_KIND;
-  // Whether the solid can be turned: the 3D view, and both views of a ball
-  const turnable = () => kind !== null && (viewMode === '3d' || isBall());
+  const isFlat = () => kind === PENTAGON_KIND;
+  // Whether the solid can be turned: the 3D view, and both views of a ball (not a flat board)
+  const turnable = () => kind !== null && !isFlat() && (viewMode === '3d' || isBall());
 
   // ---------- drawing ----------
   function renderLegend() {
@@ -230,6 +242,9 @@ export function createSurfaceController(ctx) {
   // or cube is the solid with the net in the corner, or the net; a ball is the ball with its far
   // side in the corner, or both halves side by side.
   function layoutsFor(top) {
+    if (isFlat()) {
+      return { main: [buildFlat(top)], inset: null };
+    }
     if (isBall()) {
       const options = viewMode === '3d' ? {} : { maxWidth: MAP_WIDTH };
       const back = buildBallView(top, behind(rotation), options);
@@ -318,7 +333,7 @@ export function createSurfaceController(ctx) {
   // 3D view in play: when the head of the path or one of the cells it can step to is turned away,
   // the solid turns (a few frames) to face the head, so the next cells are on the front.
   function followHead() {
-    if (viewMode !== '3d' || !playing || !path.length || !$('sfFollow').checked) {
+    if (isFlat() || viewMode !== '3d' || !playing || !path.length || !$('sfFollow').checked) {
       return;
     }
     const top = topology();
@@ -345,6 +360,11 @@ export function createSurfaceController(ctx) {
   }
 
   function updateHint() {
+    if (isFlat()) {
+      const wall = tool === 'wall' ? WALL_HINT_FLAT : NUMBER_HINT;
+      setHintText($('hint'), playing ? PLAY_HINT_FLAT : wall);
+      return;
+    }
     const ball = isBall();
     const wall = ball ? WALL_HINT_BALL : WALL_HINT;
     const play = ball ? PLAY_HINT_BALL : PLAY_HINT;
@@ -409,7 +429,7 @@ export function createSurfaceController(ctx) {
     visible = [];
     selected = -1;
     buffer = '';
-    rotation = overview(topology());
+    rotation = isFlat() ? IDENTITY : overview(topology());
     fillShapes(P.n);
     syncViewButtons();
     renderLegend();
@@ -443,6 +463,14 @@ export function createSurfaceController(ctx) {
         `Ball, ${ball.name}: ${plural(top.T, 'cell')} (${compositionLabel(ball.f)}), `
           + `${plural(top.E, 'side')}. Turn it with the mouse; Map shows both halves. One path `
           + 'through every cell, the numbers in order.',
+        'ok',
+      );
+      return;
+    }
+    if (isFlat()) {
+      ctx.setStatus(
+        `Pentagon ${P.n}: ${plural(top.T, 'cell')} (${FACES[kind]}), ${plural(top.E, 'side')} `
+          + 'between two cells. One path through every cell, the numbers in order.',
         'ok',
       );
       return;

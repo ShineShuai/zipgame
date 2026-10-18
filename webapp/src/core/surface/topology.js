@@ -35,15 +35,16 @@
 // top.centres[2 * cell], [2 * cell + 1] is the centre of a cell (verts have z = 0).
 
 import { BALL_CATALOG } from './ball-catalog.js';
-import { PENTAGON_KIND, PENTAGON_CELLS, pentagonMesh } from './pentagon.js';
+import { PENTAGON_KIND, PENTAGON_CELLS, PENTAGON_SIZES, pentagonMesh } from './pentagon.js';
 
 export { PENTAGON_KIND };
 
 // The kinds with a size n (a whole number); `ball` has an id instead and is listed in BALL_KIND.
 export const SURFACE_KINDS = ['tetra', 'cube'];
 export const BALL_KIND = 'ball';
-// The sizes (n) the app offers; the builders accept any n from 1 to MAX_SIDE.
-export const SURFACE_SIZES = { tetra: [3, 4, 5], cube: [3, 4] };
+// The sizes (n) the app offers; the builders of a tetra or cube accept any n from 1 to MAX_SIDE,
+// the Pentagon boards are the sizes listed (pentagon.js).
+export const SURFACE_SIZES = { tetra: [3, 4, 5], cube: [3, 4], pentagon: PENTAGON_SIZES };
 export const MAX_SIDE = 12;
 export const SLOTS = 5;
 

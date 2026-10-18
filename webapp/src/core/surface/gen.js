@@ -7,7 +7,7 @@
 // walls are needed; K is the knob (defaultK gives a starting point).
 import { makeRng, shuffle } from '../rng.js';
 import { runSync } from '../run.js';
-import { SLOTS, surfaceTopology } from './topology.js';
+import { SLOTS, PENTAGON_KIND, surfaceTopology } from './topology.js';
 import { makeSurfacePuzzle, wallCount, wallEdges } from './puzzle.js';
 import { makePrunes, openSlots, solveSurface } from './solve.js';
 
@@ -20,10 +20,11 @@ export const GEN_CFG = {
 
 // Roughly the share of the cells that carry a number: tetra needs fewer than a cube, whose
 // numbers would otherwise have to be replaced by walls. A ball is like a tetra: its cells have
-// 3 to 5 neighbours, and the many triangles force the path by themselves.
+// 3 to 5 neighbours, and the many triangles force the path by themselves. A Pentagon cell has 5
+// neighbours, one more than a square: it takes 40% of the cells to keep the walls few.
 export const defaultK = (kind, n) => {
   const cells = surfaceTopology(kind, n).T;
-  const share = kind === 'cube' ? 0.15 : 0.2;
+  const share = kind === 'cube' ? 0.15 : kind === PENTAGON_KIND ? 0.4 : 0.2;
   return Math.max(3, Math.round(cells * share));
 };
 
