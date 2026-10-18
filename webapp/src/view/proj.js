@@ -124,8 +124,16 @@ export const cellDirection = (top, cell) => solidOf(top).directions[cell];
 // on the screen, so numbers stay as upright as the plane allows. For a cell facing the viewer it
 // is [1, 0, 0, 1]; its determinant is the z of the normal, the share of its area that is seen.
 export function faceFrame(R, top, cell) {
-  const n = turn(R, solidOf(top).normals[cell]);
-  const up = unit([-n[1] * n[0], 1 - n[1] * n[1], -n[1] * n[2]]);
+  return frameForNormal(turn(R, solidOf(top).normals[cell]));
+}
+
+// faceFrame() for a plane with the unit normal n (in view space).
+export function frameForNormal(n) {
+  const raw = [-n[1] * n[0], 1 - n[1] * n[1], -n[1] * n[2]];
+  if (Math.hypot(...raw) < 1e-9) {
+    return [1, 0, 0, 1]; // the plane is horizontal: seen edge-on, nothing to lay into it
+  }
+  const up = unit(raw);
   const right = cross(up, n);
   return [right[0], -right[1], -up[0], up[1]];
 }

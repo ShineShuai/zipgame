@@ -1,9 +1,17 @@
-// The design app's controller for the closed-surface types (Tetrahedron, Cube): it owns the
-// surface puzzle, draws it as a flat net (surface-board.js) and runs the tools, Generate, Minimize
-// walls, Solve, Play and the text export. design.html shows its panels while the type is a
-// surface (data-variants); main.js hands over the shared buttons (Solve, Play, Export, Reset) and
-// the seed, status, timing and busy state, which come in through `ctx`.
-import { SURFACE_SIZES, SLOTS, surfaceTopology } from '../../core/surface/topology.js';
+// The design app's controller for the closed-surface types (Tetrahedron, Cube, Ball): it owns the
+// surface puzzle, draws it as the solid you can turn (3D, the default) or as an assist: the flat
+// net of a tetrahedron or cube, the two halves of a ball (surface-board.js), and runs the tools,
+// Generate, Minimize walls, Solve, Play and the text export. design.html shows its panels while
+// the type is a surface (data-variants); main.js hands over the shared buttons (Solve, Play,
+// Export, Reset) and the seed, status, timing and busy state, which come in through `ctx`.
+import {
+  BALL_KIND,
+  SURFACE_SIZES,
+  SLOTS,
+  ballEntry,
+  surfaceTopology,
+} from '../../core/surface/topology.js';
+import { ballsByComposition, compositionLabel } from '../../core/surface/balls.js';
 import {
   makeSurfacePuzzle,
   cloneSurfacePuzzle,
@@ -26,14 +34,17 @@ import {
   turn,
   turnToward,
 } from '../../view/proj.js';
+import { behind, buildBallView } from '../../view/ball.js';
 import { runAsync, measured } from '../../platform/run.js';
 import { setHintText } from '../../ui/hint-popover.js';
 import { surfaceSvg } from './surface-board.js';
 import { TPL_C, SOL_C } from './board.js';
 
-const NAME = { tetra: 'Tetrahedron', cube: 'Cube' };
+const NAME = { tetra: 'Tetrahedron', cube: 'Cube', ball: 'Ball' };
 const FACES = { tetra: '4 faces of n × n triangles', cube: '6 faces of n × n squares' };
-const DEFAULT_SIZE = { tetra: 4, cube: 3 };
+const DEFAULT_SIZE = { tetra: 4, cube: 3, ball: 'snub-cube' };
+// The two halves of a ball side by side (the Map view): the width of each, in pixels.
+const MAP_WIDTH = 300;
 // Puzzles Generate makes (new seeds in turn) while looking for one within Max walls.
 const GEN_TRIES = 20;
 const PLAY_STEP = { strictOrder: true };
@@ -50,15 +61,25 @@ const ARROW_TURN = {
 };
 const FOLLOW_SPEED = 0.25;
 const FOLLOW_DONE = 0.9995;
+// A ball turns to the head of the path when the head, or a cell it can step to, is nearer to the
+// rim than this (z of its direction).
+const FOLLOW_EDGE = 0.25;
 
 const NUMBER_HINT = 'Click a cell then type a number (Enter to confirm · Esc to cancel). '
   + 'Delete or Backspace clears the cell. The numbers go 1, 2, 3... along the path.';
 const WALL_HINT = 'Click a cell near one of its sides to add or remove a wall there. A side on '
   + 'the border of the net is glued to the side with the same letter: its wall shows on both.';
+const WALL_HINT_BALL = 'Click a cell near one of its sides to add or remove a wall there.';
 const ORBIT_HINT = ' Turn the solid: right-drag, two fingers, drag the background, or the arrow '
   + 'keys. The small net shows the whole board.';
+const BALL_HINT = ' Turn the ball: right-drag, two fingers, drag the background, or the arrow '
+  + 'keys. The small ball shows its far side.';
+const MAP_HINT = ' The two halves of the ball side by side; a cell on the rim is on both. Turn '
+  + 'it as in the Ball view.';
 const PLAY_HINT = 'Drag from checkpoint 1 through every cell, or tap the next cell. A side with '
   + 'a letter on the border continues at the same letter. Move back over the path to undo.';
+const PLAY_HINT_BALL = 'Drag from checkpoint 1 through every cell, or tap the next cell. The ball '
+  + 'turns to the head of the path (Follow head). Move back over the path to undo.';
 
 // A stopwatch that can be paused: seconds() is the time run so far, onTick gets it every 100 ms.
 function createClock(onTick) {
@@ -120,15 +141,21 @@ export function createSurfaceController(ctx) {
   let seededSolved = false;
   let working = false;
   let over = -1; // the cell the pointer was over at the previous sample of a drag
-  let viewMode = 'net'; // 'net': the solid cut open, '3d': the solid itself
+  // '3d': the solid itself; 'net': the assist (the net, or the two halves of a ball)
+  let viewMode = '3d';
   let rotation = IDENTITY; // the 3D view
-  let layout = null; // what is drawn now: the net, or the solid seen from `rotation`
+  let layouts = []; // what is drawn now: the net, the solid seen from `rotation`, or both halves
+  let layout = null; // layouts[0]
+  let frames = []; // the frame of each layout
   const pointers = new Map(); // pointer id -> [clientX, clientY], the pointers that are down
   let orbiting = null; // { start, last, active } while a drag turns the solid
   let suppressClick = false;
   let animation = null;
 
   const topology = () => surfaceTopology(P.surface, P.n);
+  const isBall = () => kind === BALL_KIND;
+  // Whether the solid can be turned: the 3D view, and both views of a ball
+  const turnable = () => kind !== null && (viewMode === '3d' || isBall());
 
   // ---------- drawing ----------
   function renderLegend() {
@@ -199,9 +226,27 @@ export function createSurfaceController(ctx) {
     }
   }
 
+  // The layouts to draw: the main ones, and the one shown small in a corner (or null). A tetra
+  // or cube is the solid with the net in the corner, or the net; a ball is the ball with its far
+  // side in the corner, or both halves side by side.
+  function layoutsFor(top) {
+    if (isBall()) {
+      const options = viewMode === '3d' ? {} : { maxWidth: MAP_WIDTH };
+      const back = buildBallView(top, behind(rotation), options);
+      return viewMode === '3d'
+        ? { main: [buildBallView(top, rotation)], inset: back }
+        : { main: [buildBallView(top, rotation, options), back], inset: null };
+    }
+    return viewMode === '3d'
+      ? { main: [buildView(top, rotation)], inset: buildNet(top) }
+      : { main: [buildNet(top)], inset: null };
+  }
+
   function draw() {
     const top = topology();
-    layout = viewMode === '3d' ? buildView(top, rotation) : buildNet(top);
+    const { main, inset } = layoutsFor(top);
+    layouts = main;
+    layout = main[0];
     const state = {
       P,
       selected,
@@ -212,16 +257,24 @@ export function createSurfaceController(ctx) {
       solutions,
       visible,
     };
-    const picture = surfaceSvg(layout, state);
-    frame = picture.frame;
-    // the 3D view has the whole board as a small net in a corner
-    const overall = surfaceSvg(buildNet(top), { ...state, selected: -1 }).markup;
-    const mini = viewMode === '3d' ? `<div class="sf-mini">${overall}</div>` : '';
-    host.innerHTML = picture.markup + mini;
-    stage.style.setProperty('--board-size', `${frame.width}px`);
+    const pictures = main.map((net, i) => surfaceSvg(net, { ...state, idSuffix: String(i) }));
+    frames = pictures.map(picture => picture.frame);
+    frame = frames[0];
+    const views = pictures
+      .map((picture, i) => `<div class="sf-view" data-view="${i}">${picture.markup}</div>`)
+      .join('');
+    const small = inset
+      ? surfaceSvg(inset, { ...state, selected: -1, idSuffix: 'm' }).markup
+      : '';
+    host.innerHTML = (pictures.length > 1 ? `<div class="sf-pair">${views}</div>` : views)
+      + (inset ? `<div class="sf-mini">${small}</div>` : '');
+    const gap = 12;
+    const width = frames.reduce((total, each) => total + each.width, gap * (frames.length - 1));
+    stage.style.setProperty('--board-size', `${width}px`);
     host.classList.toggle('wallmode', tool === 'wall' && !playing);
     host.classList.toggle('playmode', playing);
-    host.classList.toggle('solid', viewMode === '3d');
+    host.classList.toggle('solid', turnable());
+    host.classList.toggle('ball', isBall());
     $('sfWallTag').textContent = wallCount(P) ? `(${wallCount(P)})` : '';
     paintValidity();
     if (playing) {
@@ -237,11 +290,27 @@ export function createSurfaceController(ctx) {
     }
   }
 
+  // The two view buttons: 3D (Ball) is the game's view, Net (Map) the assist.
+  function syncViewButtons() {
+    const ball = isBall();
+    $('sfView3d').textContent = ball ? 'Ball' : '3D';
+    $('sfView3d').title = ball
+      ? 'The ball itself: turn it with a right-drag, two fingers, a drag on the background or '
+        + 'the arrow keys'
+      : 'The solid itself: turn it with a right-drag, two fingers, a drag on the background or '
+        + 'the arrow keys';
+    $('sfViewNet').textContent = ball ? 'Map' : 'Net';
+    $('sfViewNet').title = ball
+      ? 'The two halves of the ball side by side, to see every cell at once'
+      : 'The solid cut open and laid flat';
+    $('sfViewNet').classList.toggle('active', viewMode === 'net');
+    $('sfView3d').classList.toggle('active', viewMode === '3d');
+  }
+
   function setView(mode) {
     viewMode = mode;
     stopAnimation();
-    $('sfViewNet').classList.toggle('active', mode === 'net');
-    $('sfView3d').classList.toggle('active', mode === '3d');
+    syncViewButtons();
     updateHint();
     draw();
   }
@@ -254,10 +323,13 @@ export function createSurfaceController(ctx) {
     }
     const top = topology();
     const head = path[path.length - 1];
-    let turnedAway = layout.hidden[head];
+    // a solid turns when a cell is turned away, a ball when it is near the rim
+    const away = cell =>
+      (isBall() ? layout.depth[cell] < FOLLOW_EDGE : Boolean(layout.hidden[cell]));
+    let turnedAway = away(head);
     for (let k = 0; k < top.deg[head]; k++) {
       const next = top.nb[head * SLOTS + k];
-      turnedAway = turnedAway || (layout.hidden[next] && !path.includes(next));
+      turnedAway = turnedAway || (away(next) && !path.includes(next));
     }
     if (!turnedAway) {
       return;
@@ -273,8 +345,13 @@ export function createSurfaceController(ctx) {
   }
 
   function updateHint() {
-    const base = playing ? PLAY_HINT : tool === 'wall' ? WALL_HINT : NUMBER_HINT;
-    setHintText($('hint'), viewMode === '3d' ? base + ORBIT_HINT : base);
+    const ball = isBall();
+    const wall = ball ? WALL_HINT_BALL : WALL_HINT;
+    const play = ball ? PLAY_HINT_BALL : PLAY_HINT;
+    const base = playing ? play : tool === 'wall' ? wall : NUMBER_HINT;
+    const solid = viewMode === '3d';
+    const turning = ball ? (solid ? BALL_HINT : MAP_HINT) : solid ? ORBIT_HINT : '';
+    setHintText($('hint'), base + turning);
   }
 
   function setTool(name) {
@@ -288,15 +365,34 @@ export function createSurfaceController(ctx) {
   }
 
   // ---------- the board ----------
-  function fillSizes(n) {
-    const sizes = [...new Set([...SURFACE_SIZES[kind], n])].sort((a, b) => a - b);
+  // The choices of the shape/size select: the sizes of a tetra or cube, or the balls grouped by
+  // composition (a ball that cannot be played is listed, disabled, with the reason).
+  function fillShapes(n) {
     const select = $('sfSize');
     select.innerHTML = '';
-    for (const size of sizes) {
-      const option = document.createElement('option');
-      option.value = String(size);
-      option.textContent = `${size} (${surfaceTopology(kind, size).T} cells)`;
-      select.appendChild(option);
+    $('sfSizeLabel').textContent = isBall() ? 'Shape' : 'Size';
+    if (isBall()) {
+      for (const group of ballsByComposition()) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = `${group.label} · ${plural(group.balls[0].r.length, 'cell')}`;
+        for (const ball of group.balls) {
+          const option = document.createElement('option');
+          option.value = ball.id;
+          option.textContent = ball.ok ? ball.name : `${ball.name} (no solution)`;
+          option.disabled = !ball.ok;
+          option.title = ball.ok ? '' : ball.why;
+          optgroup.appendChild(option);
+        }
+        select.appendChild(optgroup);
+      }
+    } else {
+      const sizes = [...new Set([...SURFACE_SIZES[kind], n])].sort((a, b) => a - b);
+      for (const size of sizes) {
+        const option = document.createElement('option');
+        option.value = String(size);
+        option.textContent = `${size} (${surfaceTopology(kind, size).T} cells)`;
+        select.appendChild(option);
+      }
     }
     select.value = String(n);
     $('sfK').value = String(defaultK(kind, n));
@@ -314,7 +410,8 @@ export function createSurfaceController(ctx) {
     selected = -1;
     buffer = '';
     rotation = overview(topology());
-    fillSizes(P.n);
+    fillShapes(P.n);
+    syncViewButtons();
     renderLegend();
   }
 
@@ -340,10 +437,21 @@ export function createSurfaceController(ctx) {
     updateHint();
     draw();
     const top = topology();
+    if (isBall()) {
+      const ball = ballEntry(P.n);
+      ctx.setStatus(
+        `Ball, ${ball.name}: ${plural(top.T, 'cell')} (${compositionLabel(ball.f)}), `
+          + `${plural(top.E, 'side')}. Turn it with the mouse; Map shows both halves. One path `
+          + 'through every cell, the numbers in order.',
+        'ok',
+      );
+      return;
+    }
     ctx.setStatus(
       `${NAME[kind]} ${P.n}: ${plural(top.T, 'cell')} (${FACES[kind]}), ${plural(top.E, 'side')}. `
-        + 'The net is the solid cut open: a side with a letter on the border continues at the '
-        + 'same letter elsewhere. One path through every cell, the numbers in order.',
+        + 'Turn the solid with the mouse; Net shows it cut open: a side with a letter on the '
+        + 'border continues at the same letter elsewhere. One path through every cell, the '
+        + 'numbers in order.',
       'ok',
     );
   }
@@ -358,7 +466,7 @@ export function createSurfaceController(ctx) {
     kind = null;
     P = null;
     host.innerHTML = '';
-    host.classList.remove('wallmode', 'playmode');
+    host.classList.remove('wallmode', 'playmode', 'solid', 'ball');
   }
 
   function reset() {
@@ -371,15 +479,26 @@ export function createSurfaceController(ctx) {
   }
 
   // ---------- editing ----------
-  function netPoint(event) {
-    const rect = host.querySelector('svg').getBoundingClientRect();
-    const x = (event.clientX - rect.left) * (frame.width / rect.width);
-    const y = (event.clientY - rect.top) * (frame.height / rect.height);
-    return frame.toNet(x, y);
+  // The picture (0: the only one, or the front half of a ball; 1: the far half) an event is in.
+  function viewIndexOf(event) {
+    const wrapper = event.target.closest?.('.sf-view');
+    return wrapper ? Number(wrapper.dataset.view) : 0;
+  }
+
+  function netPoint(event, index) {
+    const svg = host.querySelector(`.sf-view[data-view="${index}"] svg`);
+    const rect = svg.getBoundingClientRect();
+    const view = frames[index];
+    const x = (event.clientX - rect.left) * (view.width / rect.width);
+    const y = (event.clientY - rect.top) * (view.height / rect.height);
+    return view.toNet(x, y);
   }
 
   function toggleWall(cell, event) {
-    const slot = pickSide(layout, cell, ...netPoint(event));
+    const index = viewIndexOf(event);
+    const net = layouts[index];
+    const point = netPoint(event, index);
+    const slot = net.pickSide ? net.pickSide(cell, ...point) : pickSide(net, cell, ...point);
     const edge = topology().edgeAt[cell * SLOTS + slot];
     P.walls[edge] ^= 1;
     touched();
@@ -421,7 +540,7 @@ export function createSurfaceController(ctx) {
 
   document.addEventListener('keydown', event => {
     const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(event.target?.tagName ?? '');
-    if (ARROW_TURN[event.key] && kind && viewMode === '3d' && !ctx.modalOpen() && !typing) {
+    if (ARROW_TURN[event.key] && turnable() && !ctx.modalOpen() && !typing) {
       event.preventDefault();
       stopAnimation();
       rotation = orbit(rotation, ...ARROW_TURN[event.key]);
@@ -559,7 +678,7 @@ export function createSurfaceController(ctx) {
       return;
     }
     pointers.set(event.pointerId, [event.clientX, event.clientY]);
-    const solid = viewMode === '3d';
+    const solid = turnable();
     if (solid && (pointers.size >= 2 || event.button === 2)) {
       // right button or two fingers: turn the solid at once
       stopAnimation();
@@ -664,7 +783,7 @@ export function createSurfaceController(ctx) {
   host.addEventListener('pointerup', release);
   host.addEventListener('pointercancel', release);
   host.addEventListener('contextmenu', event => {
-    if (viewMode === '3d') {
+    if (turnable()) {
       event.preventDefault();
     }
   });
@@ -835,12 +954,12 @@ export function createSurfaceController(ctx) {
     if (playing) {
       exitPlay();
     }
-    adopt(makeSurfacePuzzle(kind, Number($('sfSize').value)));
+    adopt(makeSurfacePuzzle(kind, isBall() ? $('sfSize').value : Number($('sfSize').value)));
     draw();
     ctx.setStatus('');
   };
-  $('sfViewNet').onclick = () => setView('net');
   $('sfView3d').onclick = () => setView('3d');
+  $('sfViewNet').onclick = () => setView('net');
   $('sfNumber').onclick = () => setTool('number');
   $('sfWall').onclick = () => setTool('wall');
   $('sfGenerate').onclick = generate;
