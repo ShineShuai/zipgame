@@ -23,6 +23,12 @@ import {
   encodeShare, decodeShare, SHARE_VERSION_PENTAGON, PENTAGON, SHARE_VERSION_PUZZLE,
 } from '../src/core/share-code.js';
 import { makeShareRecord, shareStatus } from '../src/features/share.js';
+import {
+  buildFlat, cellAt, pickSide, routePieces, routeCrossings,
+} from '../src/view/surface-net.js';
+import { surfaceSvg, netFrame } from '../src/apps/design/surface-board.js';
+import { defaultK } from '../src/core/surface/gen.js';
+import { keptK } from '../src/apps/design/k-field.js';
 
 const slow = typeof process !== 'undefined' && Boolean(process.env.PENTAGON_SLOW);
 const board = n => surfaceTopology(PENTAGON_KIND, n);
@@ -277,6 +283,115 @@ export function pentagonTests(t, ok, eq) {
     eq(events[events.length - 1].frac, 1);
     eq(events[events.length - 1].walls, wallCount(p), 'the last event has the wall count');
     ok(threw(() => game(5, 1)) && threw(() => game(12, 1)));
+  });
+
+  t('pentagon-design: the flat layout — corners counter-clockwise, y up, every side with a '
+    + 'neighbour glued and shared by both cells, a point finds its cell and its side', () => {
+    for (const n of PENTAGON_SIZES) {
+      const top = board(n);
+      const net = buildFlat(top);
+      ok(buildFlat(top) === net, 'built once');
+      eq([net.polys.length, net.centers.length, net.tags.length, net.cuts.length],
+        [top.T, top.T, 0, 0]);
+      ok(net.uniform === true && net.glued.every(v => v === 1), 'one tint, no cuts');
+      ok(Math.abs(net.side - 0.7466) < 1e-3, `side ${net.side}`);
+      const area = poly => poly.reduce((sum, [x, y], i) => {
+        const [nx, ny] = poly[(i + 1) % poly.length];
+        return sum + (x * ny - nx * y) / 2;
+      }, 0);
+      const same = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-9;
+      for (let c = 0; c < top.T; c++) {
+        ok(area(net.polys[c]) > 0.5, `n=${n} cell ${c}: counter-clockwise, y up`);
+        eq(cellAt(net, ...net.centers[c]), c, `n=${n}: the centre of ${c} is in ${c}`);
+        for (let k = 0; k < 5; k++) {
+          const o = top.nb[c * SLOTS + k];
+          const [a, b] = [net.polys[c][k], net.polys[c][(k + 1) % 5]];
+          const mid = [0, 1].map(axis => (a[axis] + b[axis]) / 2);
+          const toward = [0, 1].map(axis => mid[axis] + (net.centers[c][axis] - mid[axis]) * 0.2);
+          eq(pickSide(net, c, ...toward), k, `n=${n} cell ${c}: a point near side ${k}`);
+          if (o < 0) continue;
+          const back = top.rev[c * SLOTS + k];
+          const shared = same(a, net.polys[o][(back + 1) % 5]) && same(b, net.polys[o][back]);
+          ok(shared, `n=${n}: ${c}-${o} share a side`);
+        }
+      }
+      const total = net.polys.reduce((sum, poly) => sum + area(poly), 0);
+      ok(Math.abs(total - top.T * area(net.polys[0])) < 1e-6, `n=${n}: the cells are one size`);
+    }
+  });
+
+  t('pentagon-design: a route is a line through the centres, nothing crosses a cut', () => {
+    const p = game(6, 4);
+    const net = buildFlat(board(6));
+    const pieces = routePieces(net, p.path);
+    eq(pieces.length, 1, 'one piece');
+    eq(pieces[0], p.path.map(c => net.centers[c]), 'through the centres in order');
+    eq(routeCrossings(net, p.path), [], 'no crossings');
+  });
+
+  t('pentagon-design: the picture — a polygon per cell, a line per wall, a border line per side '
+    + 'on the border, a badge per number, the path and the head in play', () => {
+    const count = (markup, text) => markup.split(text).length - 1;
+    for (const n of [4, 6, 8]) {
+      const top = board(n);
+      const p = game(n, 2);
+      const net = buildFlat(top);
+      const state = {
+        P: p, selected: -1, buffer: '', playing: false, path: [], template: null,
+        solutions: [], visible: [],
+      };
+      const { markup, frame } = surfaceSvg(net, state);
+      eq(count(markup, 'class="sf-cell'), top.T, `n=${n} cells`);
+      eq(count(markup, 'class="sf-wall"'), wallCount(p), 'walls');
+      let border = 0;
+      for (let i = 0; i < top.T * SLOTS; i++) if (i % SLOTS < 5 && top.nb[i] < 0) border++;
+      eq(count(markup, 'class="sf-border"'), border, 'border sides');
+      eq([count(markup, 'class="sf-cut"'), count(markup, 'class="sf-tag"')], [0, 0], 'no cuts');
+      eq(count(markup, 'class="sf-badge'), maxNumber(p), 'badges');
+      ok(markup.startsWith('<svg') && frame.width > 100 && frame.height > 100, 'a picture');
+      const centre = net.centers[3];
+      const back = frame.toNet(...frame.toPixels(centre));
+      ok(Math.abs(back[0] - centre[0]) < 0.02 && Math.abs(back[1] - centre[1]) < 0.02, 'frame');
+      const walked = surfaceSvg(net, { ...state, playing: true, path: p.path.slice(0, 6) }).markup;
+      const marks = ['sf-path', 'sf-head'].map(name => count(walked, `class="${name}"`));
+      eq(marks, [1, 1], 'path, head');
+      const solved = surfaceSvg(net, { ...state, solutions: [p.path], visible: [true] }).markup;
+      eq(count(solved, 'class="sf-path"'), 1, 'a solution');
+    }
+    eq(netFrame(buildFlat(board(10))).scale <= 60 / 0.7, true, 'a 100-cell board fits the page');
+  });
+
+  t('pentagon-design: design.html — the Pentagon type is offered, and every surface panel but '
+    + 'the 3D view buttons and Follow head is shown for it', () => {
+    const fs = typeof process !== 'undefined' && process.getBuiltinModule?.('node:fs');
+    if (!fs) return; // in the browser the page is not on hand
+    const html = fs.readFileSync(new URL('../design.html', import.meta.url), 'utf8');
+    ok(html.includes('<option value="pentagon">Pentagon</option>'), 'an option');
+    ok(/id="sfBoard"[^>]*data-variants="[^"]*\bpentagon\b/.test(html), 'the board is shown');
+    const panel = /<div[^>]*data-variants="([^"]*\bball\b[^"]*)"[^>]*>([^]{0,120})/g;
+    const tags = [...html.matchAll(panel)];
+    ok(tags.length >= 5, 'the surface panels were found');
+    for (const [, variants, after] of tags) {
+      if (variants.split(' ').includes('pentagon')) continue;
+      ok(/>View<|for="sfFollow"/.test(after), `a panel without Pentagon: ${after.slice(0, 40)}`);
+    }
+  });
+
+  t('pentagon-design: the Checkpoints field keeps a typed number, cut to the board; else it '
+    + 'follows the size', () => {
+    const cells = 36;
+    eq(keptK({ typed: true, value: '20', cells, fallback: 14 }), '20', 'typed: stays');
+    eq(keptK({ typed: true, value: '20', cells: 16, fallback: 6 }), '16', 'cut to a small board');
+    eq(keptK({ typed: false, value: '20', cells, fallback: 14 }), '14', 'not typed: the default');
+    eq(keptK({ typed: true, value: '', cells, fallback: 14 }), '14', 'emptied: the default');
+    eq(keptK({ typed: true, value: 'x', cells, fallback: 14 }), '14', 'not a number: the default');
+    eq(keptK({ typed: true, value: '3', cells, fallback: 14 }), '3', 'a small number stays');
+  });
+
+  t('pentagon-design: Generate of the design app — the default K is 40% of the cells', () => {
+    for (const n of PENTAGON_SIZES) {
+      eq(defaultK(PENTAGON_KIND, n), Math.round(PENTAGON_CELLS[n] * 0.4));
+    }
   });
 
   t('pentagon-share: a code of its own version (6) — round trip for every size, short, '

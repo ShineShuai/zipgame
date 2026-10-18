@@ -1,5 +1,6 @@
 // Draws a surface board (tetrahedron, cube, ball) as its flat net (view/surface-net.js), as the
-// solid (view/proj.js) or as a ball (view/ball.js): one SVG, as markup. Walls, numbers, the
+// solid (view/proj.js) or as a ball (view/ball.js), or a flat Pentagon board (buildFlat in
+// view/surface-net.js, with its border): one SVG, as markup. Walls, numbers, the
 // template path, solutions and the path being played are layers on the picture; the letters on
 // the border of a net mark the sides that touch when it is folded.
 // The click and drag logic is in surface.js; the colours of the classes are in css/design.css.
@@ -128,6 +129,20 @@ export function surfaceSvg(net, V) {
         const poly = net.polys[cell];
         const [a, b] = [poly[slot], poly[(slot + 1) % poly.length]].map(frame.toPixels);
         parts.push(`<line class="sf-cut" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}"/>`);
+      }
+    }
+  }
+
+  // the border of a flat board: the sides that have no neighbour
+  if (top.flat) {
+    for (let cell = 0; cell < top.T; cell++) {
+      for (let slot = 0; slot < top.deg[cell]; slot++) {
+        if (top.nb[cell * SLOTS + slot] < 0) {
+          const poly = net.polys[cell];
+          const [a, b] = [poly[slot], poly[(slot + 1) % poly.length]].map(frame.toPixels);
+          parts.push(`<line class="sf-border" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" `
+            + `y2="${b[1]}"/>`);
+        }
       }
     }
   }

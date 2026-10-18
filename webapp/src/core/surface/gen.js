@@ -7,9 +7,9 @@
 // walls are needed; K is the knob (defaultK gives a starting point).
 import { makeRng, shuffle } from '../rng.js';
 import { runSync } from '../run.js';
-import { SLOTS, surfaceTopology } from './topology.js';
+import { SLOTS, PENTAGON_KIND, surfaceTopology } from './topology.js';
 import { makeSurfacePuzzle, wallCount, wallEdges } from './puzzle.js';
-import { makePrunes, openSlots, solveSurface } from './solve.js';
+import { makeLinker, openSlots, solveSurface } from './solve.js';
 
 export const GEN_CFG = {
   pathNodeCap: 20000, // steps one try of the path search may take before it starts over
@@ -20,20 +20,60 @@ export const GEN_CFG = {
 
 // Roughly the share of the cells that carry a number: tetra needs fewer than a cube, whose
 // numbers would otherwise have to be replaced by walls. A ball is like a tetra: its cells have
-// 3 to 5 neighbours, and the many triangles force the path by themselves.
+// 3 to 5 neighbours, and the many triangles force the path by themselves. A Pentagon cell has 5
+// neighbours, one more than a square: it takes 40% of the cells to keep the walls few.
 export const defaultK = (kind, n) => {
   const cells = surfaceTopology(kind, n).T;
-  const share = kind === 'cube' ? 0.15 : 0.2;
+  const share = kind === 'cube' ? 0.15 : kind === PENTAGON_KIND ? 0.4 : 0.2;
   return Math.max(3, Math.round(cells * share));
 };
 
 // A random Hamiltonian path (list of cells), or null when none was found within the budget.
+// Depth-first, with the dead-end and connectivity prunes of solve.js done incrementally (see its
+// header): free[x] is the number of sides of an unvisited cell x that lead to an unvisited cell or
+// to the head, singles the number of unvisited cells with a single one (at most one may end the
+// path), and a step only changes the cells next to the cell the head leaves.
 export function randomHamiltonianPath(top, rnd, cfg = GEN_CFG) {
   const { T, nb, deg } = top;
-  const prunes = makePrunes(top, openSlots(top, null));
+  const open = openSlots(top, null);
   const vis = new Uint8Array(T);
+  const linked = makeLinker(top, open, vis);
+  const free = new Int32Array(T);
+  let singles = 0;
   const path = [];
   let nodes = 0;
+  const bump = (cell, by) => {
+    if (free[cell] === 1) {
+      singles--;
+    }
+    free[cell] += by;
+    if (free[cell] === 1) {
+      singles++;
+    }
+  };
+  // The head leaves `from` for a cell that is visited now: false when an unvisited cell is cut
+  // off, or when two are left with a single side. Take back with giveBack().
+  const takeAway = from => {
+    let alive = true;
+    for (let k = 0; k < SLOTS; k++) {
+      const cell = nb[from * SLOTS + k];
+      if (open[from * SLOTS + k] && !vis[cell]) {
+        bump(cell, -1);
+        if (free[cell] === 0) {
+          alive = false;
+        }
+      }
+    }
+    return alive && singles <= 1;
+  };
+  const giveBack = from => {
+    for (let k = 0; k < SLOTS; k++) {
+      const cell = nb[from * SLOTS + k];
+      if (open[from * SLOTS + k] && !vis[cell]) {
+        bump(cell, 1);
+      }
+    }
+  };
   const extend = head => {
     if (path.length === T) {
       return true;
@@ -53,9 +93,22 @@ export function randomHamiltonianPath(top, rnd, cfg = GEN_CFG) {
       }
       vis[cell] = 1;
       path.push(cell);
-      const left = T - path.length;
-      if (prunes.deadEnds(vis, cell, -1) && prunes.connected(vis, cell, left) && extend(cell)) {
+      if (free[cell] === 1) {
+        singles--;
+      }
+      let found = path.length === T;
+      if (!found) {
+        const alive = takeAway(head);
+        found = alive && linked(head, cell) && extend(cell);
+        if (!found) {
+          giveBack(head);
+        }
+      }
+      if (found) {
         return true;
+      }
+      if (free[cell] === 1) {
+        singles++;
       }
       path.pop();
       vis[cell] = 0;
@@ -69,8 +122,21 @@ export function randomHamiltonianPath(top, rnd, cfg = GEN_CFG) {
     vis.fill(0);
     path.length = 0;
     nodes = 0;
+    singles = 0;
+    for (let cell = 0; cell < T; cell++) {
+      free[cell] = 0;
+      for (let k = 0; k < SLOTS; k++) {
+        free[cell] += open[cell * SLOTS + k];
+      }
+      if (free[cell] === 1) {
+        singles++;
+      }
+    }
     const first = Math.floor(rnd() * T);
     vis[first] = 1;
+    if (free[first] === 1) {
+      singles--;
+    }
     path.push(first);
     if (extend(first)) {
       return path.slice();

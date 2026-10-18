@@ -243,6 +243,54 @@ export function buildNet(top) {
   return net;
 }
 
+// The layout of a flat board (top.flat: the Pentagon board): the cells lie as they are, nothing is
+// folded, nothing is cut, so every side with a neighbour is glued and the border is the only edge.
+// top.verts and top.centres are screen coordinates (y down); the layout has y up, like a net (the
+// drawing flips it back), and the corners of a cell still run counter-clockwise. The picture has
+// one tint for all cells (net.uniform), and no letters.
+export function buildFlat(top) {
+  if (nets.has(top)) {
+    return nets.get(top);
+  }
+  const polys = [];
+  const centers = [];
+  for (let cell = 0; cell < top.T; cell++) {
+    const poly = [];
+    for (let k = 0; k < top.deg[cell]; k++) {
+      const [x, y] = vertexOf(top, top.ring[cell * SLOTS + k]);
+      poly.push([x, -y]);
+    }
+    polys.push(poly);
+    centers.push([top.centres[2 * cell], -top.centres[2 * cell + 1]]);
+  }
+  const box = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+  for (const [x, y] of polys.flat()) {
+    box.minX = Math.min(box.minX, x);
+    box.minY = Math.min(box.minY, y);
+    box.maxX = Math.max(box.maxX, x);
+    box.maxY = Math.max(box.maxY, y);
+  }
+  const first = polys[0];
+  const perimeter = first.reduce((sum, [x, y], k) => {
+    const [nx, ny] = first[(k + 1) % first.length];
+    return sum + Math.hypot(nx - x, ny - y);
+  }, 0);
+  const net = {
+    top,
+    polys,
+    centers,
+    glued: new Uint8Array(top.T * SLOTS).fill(1),
+    letterAt: new Map(),
+    cuts: [],
+    tags: [],
+    box,
+    side: perimeter / first.length,
+    uniform: true,
+  };
+  nets.set(top, net);
+  return net;
+}
+
 export const sideSegment = (net, cell, slot) => sideOf(net, cell, slot);
 
 // The cell whose polygon holds the point, or -1.
