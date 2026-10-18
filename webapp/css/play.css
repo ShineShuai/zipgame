@@ -689,3 +689,49 @@ tr:last-child td { border-bottom: 0; }
 }
 
 .share-msg { min-height: 1.2em; margin-top: 8px; } /* "copied" line after a solve */
+
+/* ---------- 3D puzzles (src/apps/play/solid.js): the menu card, the solid in a game ---------- */
+.menu-grid > .solid-card { grid-column: 1 / -1; }
+.solid-card .size-field { max-width: 360px; margin-top: 14px; }
+.vi-spoke { fill: none; stroke: #a9bcf5; stroke-width: 0.7; stroke-linecap: round; }
+
+.solid-wrap { position: relative; touch-action: none; user-select: none; -webkit-user-select: none; }
+.solid-wrap.turnable { cursor: grab; }
+.solid-wrap .sf-svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.sf-view { display: block; }
+.sf-pair { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px; }
+.sf-cell { stroke: #93a8ee; stroke-width: 1.2; cursor: crosshair; }
+.sf-disc { fill: #eef3ff; stroke: #c3d0f7; stroke-width: 1; pointer-events: none; }
+.sf-gloss { pointer-events: none; }
+.sf-wall { stroke: #26324f; stroke-linecap: round; pointer-events: none; }
+.sf-cut { stroke: #e8890c; stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none; }
+.sf-path { fill: none; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.sf-head { fill: #ffb020; stroke: #fff; stroke-width: 2; pointer-events: none; }
+.sf-badge { pointer-events: none; }
+.sf-badge circle { fill: #fff; stroke: var(--blue); stroke-width: 2; }
+.sf-badge text, .sf-tag text {
+  text-anchor: middle; dominant-baseline: central; font-weight: 700; fill: var(--blue);
+}
+.sf-badge.visited circle { fill: var(--blue); }
+.sf-badge.visited text { fill: #fff; }
+.sf-arrow { stroke: #fff; stroke-width: 1; stroke-linejoin: round; pointer-events: none; }
+.sf-cross {
+  fill: #b36200; font-weight: 700; text-anchor: middle; dominant-baseline: central;
+  pointer-events: none;
+}
+.sf-tag { pointer-events: none; }
+.sf-tag circle { fill: #fff3d6; stroke: #e8890c; stroke-width: 1.5; }
+.sf-tag text { fill: #b36200; }
+/* the whole board in a corner of the solid: the net of a tetra or cube, the far side of a ball */
+.sf-mini {
+  position: absolute; top: 10px; right: 10px; width: 150px; padding: 4px;
+  background: rgba(255, 255, 255, 0.9); border-radius: 12px; box-shadow: 0 0 0 1px #d3ddfb;
+}
+.sf-mini, .sf-mini * { pointer-events: none; }
+.sf-mini .sf-svg { width: 100%; height: auto; }
+.solid-wrap.ball .sf-mini { width: 120px; }
+.btn.secondary.active { background: var(--blue-soft); border-color: var(--blue); }
+@media (max-width: 600px) {
+  .sf-mini { width: 96px; top: 6px; right: 6px; }
+  .solid-wrap.ball .sf-mini { width: 84px; }
+}

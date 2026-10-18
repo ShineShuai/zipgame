@@ -84,6 +84,7 @@ import { loopPlayTests } from './play-loop.js';
 import { surfaceTests } from './surface.js';
 import { ballTests } from './ball.js';
 import { ballViewTests } from './ball-view.js';
+import { solidTests } from './solid.js';
 import { teleportTests } from './teleport.js';
 import { teleportGenTests } from './teleport-gen.js';
 import { teleportPlayTests } from './play-teleport.js';
@@ -3336,6 +3337,7 @@ loopPlayTests(t, ta, ok, eq);
 surfaceTests(t, ok, eq);
 ballTests(t, ok, eq);
 ballViewTests(t, ok, eq);
+solidTests(t, ok, eq);
 
 // ---------- Teleport pairs (linked portal cells) ----------
 teleportTests(t, ok, eq);

@@ -25,15 +25,14 @@ import {
 import { solveSurface } from '../../core/surface/solve.js';
 import { defaultK, generateSurfaceWithin, minimizeSurfaceWalls } from '../../core/surface/gen.js';
 import { buildNet, pickSide, slotBetween } from '../../view/surface-net.js';
+import { IDENTITY, buildView, orbit, overview } from '../../view/proj.js';
 import {
-  IDENTITY,
-  buildView,
-  cellDirection,
-  orbit,
-  overview,
-  turn,
-  turnToward,
-} from '../../view/proj.js';
+  ARROW_TURN,
+  ORBIT_SLOP,
+  ORBIT_SPEED,
+  createTurner,
+  headTurnedAway,
+} from '../../view/solid-nav.js';
 import { behind, buildBallView } from '../../view/ball.js';
 import { runAsync, measured } from '../../platform/run.js';
 import { setHintText } from '../../ui/hint-popover.js';
@@ -48,23 +47,6 @@ const MAP_WIDTH = 300;
 // Puzzles Generate makes (new seeds in turn) while looking for one within Max walls.
 const GEN_TRIES = 20;
 const PLAY_STEP = { strictOrder: true };
-// The 3D view: pixels of a drag per radian, the pixels a click may move before it is a drag, the
-// radians of an arrow key, and follow-head: the share of the way the solid turns per animation
-// frame, and how near to the viewer (z of the direction of the head) it stops.
-const ORBIT_SPEED = 0.01;
-const ORBIT_SLOP = 6;
-const ARROW_TURN = {
-  ArrowLeft: [-0.15, 0],
-  ArrowRight: [0.15, 0],
-  ArrowUp: [0, -0.15],
-  ArrowDown: [0, 0.15],
-};
-const FOLLOW_SPEED = 0.25;
-const FOLLOW_DONE = 0.9995;
-// A ball turns to the head of the path when the head, or a cell it can step to, is nearer to the
-// rim than this (z of its direction).
-const FOLLOW_EDGE = 0.25;
-
 const NUMBER_HINT = 'Click a cell then type a number (Enter to confirm · Esc to cancel). '
   + 'Delete or Backspace clears the cell. The numbers go 1, 2, 3... along the path.';
 const WALL_HINT = 'Click a cell near one of its sides to add or remove a wall there. A side on '
@@ -150,7 +132,14 @@ export function createSurfaceController(ctx) {
   const pointers = new Map(); // pointer id -> [clientX, clientY], the pointers that are down
   let orbiting = null; // { start, last, active } while a drag turns the solid
   let suppressClick = false;
-  let animation = null;
+  // the turn that follows the head of the path in play (view/solid-nav.js)
+  const turner = createTurner({
+    getRotation: () => rotation,
+    setRotation: R => {
+      rotation = R;
+    },
+    redraw: () => draw(),
+  });
 
   const topology = () => surfaceTopology(P.surface, P.n);
   const isBall = () => kind === BALL_KIND;
@@ -283,12 +272,7 @@ export function createSurfaceController(ctx) {
     ctx.renderTiming();
   }
 
-  function stopAnimation() {
-    if (animation !== null) {
-      cancelAnimationFrame(animation);
-      animation = null;
-    }
-  }
+  const stopAnimation = () => turner.stop();
 
   // The two view buttons: 3D (Ball) is the game's view, Net (Map) the assist.
   function syncViewButtons() {
@@ -322,26 +306,9 @@ export function createSurfaceController(ctx) {
       return;
     }
     const top = topology();
-    const head = path[path.length - 1];
-    // a solid turns when a cell is turned away, a ball when it is near the rim
-    const away = cell =>
-      (isBall() ? layout.depth[cell] < FOLLOW_EDGE : Boolean(layout.hidden[cell]));
-    let turnedAway = away(head);
-    for (let k = 0; k < top.deg[head]; k++) {
-      const next = top.nb[head * SLOTS + k];
-      turnedAway = turnedAway || (away(next) && !path.includes(next));
+    if (headTurnedAway(top, layout, path, isBall())) {
+      turner.toward(top, path[path.length - 1]);
     }
-    if (!turnedAway) {
-      return;
-    }
-    const direction = cellDirection(top, head);
-    stopAnimation();
-    const tick = () => {
-      rotation = turnToward(rotation, direction, FOLLOW_SPEED);
-      draw();
-      animation = turn(rotation, direction)[2] < FOLLOW_DONE ? requestAnimationFrame(tick) : null;
-    };
-    animation = requestAnimationFrame(tick);
   }
 
   function updateHint() {
