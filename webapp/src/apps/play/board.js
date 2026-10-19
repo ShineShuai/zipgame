@@ -197,7 +197,11 @@ export const twoPathsSvg = (p, paths) => paths.map((path, colour) => {
 
 // Red cross on the first wrong move of a hint.
 function wrongMoveMark(n, cell) {
-  const [x, y] = cellCenter(n, cell, CELL);
+  return wrongMoveMarkAt(cellCenter(n, cell, CELL));
+}
+
+// The same, centred on [x, y] (the Pentagon board has its own cell centres).
+export function wrongMoveMarkAt([x, y]) {
   const d = CELL * 0.22;
   return `<g data-role="hint-wrong" stroke="${COLORS.hintWrong}" stroke-width="5" stroke-linecap="round">` +
     `<line x1="${x - d}" y1="${y - d}" x2="${x + d}" y2="${y + d}"/><line x1="${x - d}" y1="${y + d}" x2="${x + d}" y2="${y - d}"/></g>`;
@@ -205,7 +209,11 @@ function wrongMoveMark(n, cell) {
 
 // Pulsing ring on the correct move of a hint.
 function correctMoveRing(n, cell) {
-  const [x, y] = cellCenter(n, cell, CELL);
+  return correctMoveRingAt(cellCenter(n, cell, CELL));
+}
+
+// The same, centred on [x, y].
+export function correctMoveRingAt([x, y]) {
   const small = CELL * 0.36;
   const large = CELL * 0.44;
   return `<circle data-role="hint" cx="${x}" cy="${y}" r="${CELL * 0.4}" fill="none" stroke="${COLORS.hintRing}" stroke-width="4" stroke-dasharray="6 4">` +
@@ -321,7 +329,7 @@ export function jumpMarksSvg(p, path, finished = false) {
 }
 
 // The drawn line of a puzzle with one path (`route` = its svg path data).
-const singlePathSvg = route => `<path data-role="path" d="${route}" stroke="${COLORS.path}" ` +
+export const singlePathSvg = route => `<path data-role="path" d="${route}" stroke="${COLORS.path}" ` +
   `stroke-width="${CELL * 0.28}" fill="none" stroke-linecap="round" stroke-linejoin="round" ` +
   'opacity="0.95"/>';
 

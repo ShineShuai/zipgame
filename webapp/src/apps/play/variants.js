@@ -5,13 +5,16 @@ import { generate, WRAP_SIZES } from '../../core/gen/generate.js';
 import { generateLoop, LOOP_SIZES } from '../../core/gen/loop.js';
 import { generateTeleport, TELEPORT_SIZES } from '../../core/gen/teleport.js';
 import { generateTwoPaths, TWOPATHS_SIZES } from '../../core/gen/twopaths.js';
+import { generatePentagon, PENTAGON_SIZES } from '../../core/gen/pentagon.js';
+import { PENTAGON_KIND } from '../../core/surface/pentagon.js';
 
 // The puzzle variants of the play app, one entry each. Everything that differs between variants
 // is read from here (the menu tiles, the generator, the texts, the lucky game), so a new variant
 // is: a generator module, an icon (icons.js), one entry below, and its texts (ui/i18n.js; the
 // keys follow textKeys). Also add its id to VARIANTS in core/share-code.js (the share link);
-// Teleport and Two paths are the exceptions: their link has a version of its own
-// (SHARE_VERSION_PORTAL, SHARE_VERSION_SPLIT), so that the older links keep reading.
+// Teleport, Two paths and Pentagon are the exceptions: their link has a version of its own
+// (SHARE_VERSION_PORTAL, SHARE_VERSION_SPLIT, SHARE_VERSION_PENTAGON), so that the older links
+// keep reading.
 //
 //   id         the name the app uses (S.mode, S.variant, the share record)
 //   detect     which puzzles belong to the variant
@@ -98,6 +101,18 @@ export const PLAY_VARIANTS = [
     countKey: 'gen.walls',
     source: 'generateTwoPaths (core/gen/twopaths.js)',
     generate: (n, seed) => generateTwoPaths(n, seed),
+  },
+  {
+    id: 'pentagon',
+    detect: puzzle => puzzle.surface === PENTAGON_KIND,
+    // Its own boards (core/surface/pentagon.js): n is the id of a board, 4 to 10, by cells: 16, 36,
+    // 64, 96, 100. They do not depend on the grid sizes of the app. The lucky game of a locked
+    // variant takes the middle boards.
+    sizes: () => PENTAGON_SIZES,
+    luckySizes: [6, 8],
+    countKey: 'gen.walls',
+    source: 'generatePentagon (core/gen/pentagon.js)',
+    generate: (n, seed) => generatePentagon(n, seed),
   },
 ].map(variant => ({ ...variant, keys: textKeys(variant.id) }));
 
