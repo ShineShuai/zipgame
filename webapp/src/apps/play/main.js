@@ -9,6 +9,7 @@ import { statSummary } from '../../core/stats.js';
 import { pickStorage, usage } from '../../platform/storage.js';
 import { runAsync } from '../../platform/run.js';
 import { createStore } from '../../features/stats-store.js';
+import { devLinkMode, tapCombo, loadPin, savePin, DEV_TAP_MS } from '../../features/dev-reveal.js';
 import { createDaily, scopeKey, fetchGameOfDay, fetchGameOfDayFor, utcDateString, utcDayNumber, dateOfDay } from '../../features/daily.js';
 import { createReplay } from '../../features/replay.js';
 import { createStreak, FREEZE_EVERY, FREEZE_MAX, HEAL_DAYS, RAMP } from '../../features/streak.js';
@@ -82,6 +83,7 @@ function gradePuzzle(puzzle) {
   }
 }
 let storage, store, daily, replay, streak, unlock, rulesSeen, shared, modal, lb;
+let devPinned = false, devTimer = null; // a device kept revealed (features/dev-reveal.js); the tap reveal's fall-back timer
 const replayPuzzles = new Map(), replayNoFile = new Set(); // date -> puzzle (the file of a past day never changes, so each is fetched once per page load); dates without a file
 const $ = id => document.getElementById(id), today = () => utcDateString(new Date()), dayNo = () => utcDayNumber(new Date()), sec = x => x.toFixed(1) + 's';
 const statsText = { everyone: (avg, n) => t('stats.everyone', avg, n), top: (k, avg) => t('stats.top', k, avg), beat: pct => t('stats.beat', pct) };
@@ -1290,14 +1292,14 @@ function startTimer() {
 }
 function stopTimer() { if (S.timerId) { clearInterval(S.timerId); S.timerId = null; } }
 
-// ---------- hidden dev reveal: hold "v" ----------
+// ---------- hidden dev reveal: hold "v", or 5 taps on the bare app bar, or a pinned device ----------
 function setDevReveal(on) {
-  if (S.showDev === on) return; S.showDev = on;
+  if (S.showDev === on || (!on && devPinned)) return; S.showDev = on;
   const b = $('versionBadge'); if (b) b.style.display = on ? 'block' : 'none';
   const h = $('hintBtn'); if (h) h.style.display = hintShown() ? '' : 'none';
   const x = $('exportBtn'); if (x) x.style.display = on ? '' : 'none';
   const sn = $('storageNote'); if (sn) sn.style.display = on ? '' : 'none';
-  if (on) usage(storage).then(u => { storageUsed = ` · ~${Math.max(1, Math.round(u.chars * 2 / 1024))} KB in ${u.keys} keys`; const n = $('storageNote'); if (n) n.textContent = storageNoteText(); }).catch(() => {});
+  if (on) measureStorage();
   const bn = $('behaviourNote'); if (bn) bn.style.display = on ? '' : 'none';
   const tag = $('seedTag'); if (tag) tag.style.display = on ? 'inline' : 'none';
   solid.reveal();
@@ -1306,6 +1308,9 @@ function setDevReveal(on) {
   for (const { id } of PLAY_VARIANTS) { const tile = $('variantOpt-' + id); if (tile) tile.style.display = typeShown(id) ? '' : 'none'; }
   const shown = S.screen === 'game' && S.isGotd ? store.attemptOn(S.gotdDate) : store.attempt(), st = shown && shown.stats;
   if (st) document.querySelectorAll('.gotd-stats').forEach(e => { e.textContent = statsLineT(st, on); });
+}
+function measureStorage() {
+  usage(storage).then(u => { storageUsed = ` · ~${Math.max(1, Math.round(u.chars * 2 / 1024))} KB in ${u.keys} keys`; const n = $('storageNote'); if (n) n.textContent = storageNoteText(); }).catch(() => {});
 }
 // Time the tab is hidden during a game (the timer runs on): a game with much of it is not uploaded (BEHAVIOUR.hiddenMaxMs).
 let hiddenAt = null;
@@ -1320,6 +1325,23 @@ function installDevReveal() {
   addEventListener('keyup', e => { if (e.key === 'v' || e.key === 'V') setDevReveal(false); });
   addEventListener('blur', () => setDevReveal(false));
   document.addEventListener('visibilitychange', () => { if (document.hidden) setDevReveal(false); trackHidden(); });
+  // Touch: 5 quick taps on the bare app bar (not on the brand link or a button) toggle the reveal; it falls back by itself.
+  const combo = tapCombo();
+  document.querySelector('.app-bar').addEventListener('pointerup', e => {
+    if (e.target.closest('a, button') || !combo(e.timeStamp)) return;
+    clearTimeout(devTimer);
+    setDevReveal(!S.showDev);
+    if (S.showDev && !devPinned) devTimer = setTimeout(() => setDevReveal(false), DEV_TAP_MS);
+  });
+}
+// A pinned device starts revealed. A dev link (a share link, see features/dev-reveal.js) pins or unpins it; it is taken before
+// initShared so that it is no shared game, and its `s` parameter is dropped. The markup carries S.showDev: set it before render().
+async function initDevPin() {
+  const mode = devLinkMode(parseShareLink(location.search).rec);
+  if (mode) { await savePin(storage, mode === 'on'); stripShareParam(); }
+  devPinned = await loadPin(storage);
+  S.showDev = devPinned;
+  if (devPinned) measureStorage();
 }
 
 // ---------- sound toggle (lives in the app bar, outside #app — wired once, not by render()) ----------
@@ -1383,6 +1405,7 @@ async function initLang() {
   behaviour = createBehaviour({ storage, cfg: BEHAVIOUR, sinks: sinksFromConfig(BEHAVIOUR, LEADERBOARD) });
   try { S.behaviourOn = await behaviour.isOn(); behaviour.flush().catch(() => {}); } catch (e) { console.warn('behaviour init failed:', e); } // rows left from an earlier page load
   try { S.nextIdx = await peekNext(); } catch (e) { console.warn('daily counters failed:', e); }
+  await initDevPin();
   await initShared();
   document.addEventListener('click', () => { setShareTip(false); setLuckyTip(false); closeStatTips(); closeRules(); });
   // a press anywhere but on a rules tooltip's own host closes the tooltips, in the capture phase: the board takes its presses

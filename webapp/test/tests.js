@@ -71,6 +71,7 @@ import { exactTests } from './exact.js';
 import { exactGenTests } from './exact-gen.js';
 import { playExactTests } from './play-exact.js';
 import { sharedGamesTests } from './shared-games.js';
+import { devLinkMode, devLinkCode, devLinkUrl, tapCombo, loadPin, savePin, DEV_KEY } from '../src/features/dev-reveal.js';
 import { wrapAllTests } from './wrap-all.js';
 import { arrowsGenTests } from './arrows-gen.js';
 import { playArrowsTests } from './play-arrows.js';
@@ -2921,6 +2922,29 @@ t('share-code: damaged codes are rejected (empty, truncated, extended, foreign c
     if (decodeShare(code.slice(0, i) + ch + code.slice(i + 1))) accepted++;
   }
   ok(accepted / tried < 0.02, `an 8-bit check lets ~0.4% of single-character mistakes through, got ${accepted}/${tried}`);
+});
+t('dev link: a share-looking code, on and off apart, never an ordinary share', () => {
+  const on = devLinkCode(true), off = devLinkCode(false);
+  ok(on !== off && /^[A-Za-z0-9_-]{14}$/.test(on) && /^[A-Za-z0-9_-]{14}$/.test(off), 'URL-safe, as long as a Game of Day with 7 legs');
+  eq([devLinkMode(decodeShare(on)), devLinkMode(decodeShare(off))], ['on', 'off'], 'it decodes like any share');
+  eq(decodeShare(on).day, 0, 'a day no game has');
+  eq(devLinkUrl('https://x/p/', true), `https://x/p/?s=${on}`);
+  for (const rec of [GOTD_REC, LOCAL_REC, null, undefined, { ...decodeShare(on), pct: 5 }, { ...decodeShare(on), day: 1 }]) eq(devLinkMode(rec), null);
+});
+t('dev reveal: 5 taps in a row, each within the gap, make the combo; a pause starts it over', () => {
+  const tap = tapCombo(5, 500);
+  eq([0, 300, 600, 900, 1200].map(tap), [false, false, false, false, true]);
+  eq([1500, 1800, 2100, 2400, 2700].map(tap), [false, false, false, false, true], 'it starts over after a combo');
+  eq([4000, 4300, 4600, 5200, 5500, 5800, 6100].map(tap), [false, false, false, false, false, false, false], 'a 600 ms gap resets the count (fewer than 5 since)');
+  eq([6400].map(tap), [true], 'and 5 since the reset make one');
+});
+ta('dev reveal: the pin is kept under one key as \'1\' and cleared by removing it', async () => {
+  const st = fakeStorage();
+  eq(await loadPin(st), false);
+  await savePin(st, true); eq([await loadPin(st), (await st.get(DEV_KEY)).value], [true, '1']);
+  await savePin(st, false); eq([await loadPin(st), await st.get(DEV_KEY)], [false, null]);
+  await st.set(DEV_KEY, 'yes'); eq(await loadPin(st), false, 'anything but 1 is not a pin');
+  eq(await loadPin({ get() { throw new Error('x'); } }), false, 'a failing store is no pin');
 });
 t('share: levelOf thresholds and legLevels (K-1 legs; extra legs merge into the last; none for K<2 or too many)', () => {
   eq([0, 1, 2, 3, 6, 7, 99].map(levelOf), [0, 1, 1, 2, 2, 3, 3]);

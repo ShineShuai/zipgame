@@ -15,6 +15,7 @@
     "test:bench": "node --test bench/results.test.js",
     "golden": "node test/print-golden.js",
     "share:decode": "node tools/share-decode.mjs",
+    "dev:link": "node tools/dev-link.mjs",
     "gotd:fit": "node tools/gotd-fit.mjs",
     "target:eval": "node tools/target-eval.mjs",
     "size:level": "node tools/size-level.mjs",
