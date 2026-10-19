@@ -339,36 +339,57 @@ export function seeds(maxN = 8) {
   return out;
 }
 
-// ---------- free-form triangulations ----------
+// ---------- congruent cells ----------
 
-// V well spread points on the unit sphere: a golden spiral, then repulsion (deterministic: no
-// random numbers). The hull of the points is the Delaunay triangulation of the sphere, 2V - 4
-// triangles.
-export function spreadPoints(V) {
-  const golden = Math.PI * (3 - Math.sqrt(5));
-  let pts = Array.from({ length: V }, (_, i) => {
-    const y = 1 - (2 * (i + 0.5)) / V;
-    const r = Math.sqrt(1 - y * y);
-    return [r * Math.cos(i * golden), y, r * Math.sin(i * golden)];
-  });
-  for (let round = 0; round < 400; round++) {
-    const step = 0.08 / (1 + round * 0.05);
-    pts = pts.map((p, i) => {
-      let force = [0, 0, 0];
-      pts.forEach((q, j) => {
-        if (i !== j) {
-          const d = sub(p, q);
-          force = add(force, mul(d, 1 / norm(d) ** 3));
-        }
-      });
-      const along = dot(force, p);
-      const tangent = sub(force, mul(p, along));
-      const size = norm(tangent);
-      const move = size > 0 ? mul(tangent, Math.min(size, 1) * step / size) : [0, 0, 0];
-      return unit(add(p, move));
-    });
+const chord = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+// The distances between all pairs of corners of a polygon, in the order of its corners from
+// corner `start`, forwards (turn 1) or backwards (-1). Corners on the unit sphere: two polygons
+// with equal distances are the same spherical polygon (equal up to a rotation or a reflection of
+// the sphere).
+function spread(corners, start, turn) {
+  const k = corners.length;
+  const ring = Array.from({ length: k }, (_, i) => corners[(((start + turn * i) % k) + k) % k]);
+  const out = [];
+  for (let i = 0; i < k; i++) {
+    for (let j = i + 1; j < k; j++) {
+      out.push(chord(ring[i], ring[j]));
+    }
   }
-  return pts;
+  return out;
+}
+
+// How far apart two polygons with the same number of corners are from being congruent: the least,
+// over the ways to lay one over the other, of the greatest difference of a corner distance.
+export function incongruence(a, b) {
+  const reference = spread(a, 0, 1);
+  let least = Infinity;
+  for (let start = 0; start < b.length; start++) {
+    for (const turn of [1, -1]) {
+      const other = spread(b, start, turn);
+      least = Math.min(least, Math.max(...other.map((d, i) => Math.abs(d - reference[i]))));
+    }
+  }
+  return least;
+}
+
+// Whether the cells of the same type (triangles, squares, pentagons) of a ball are congruent, as
+// the cells of the ball on the sphere: the corners are unit vectors, `rings` list them by cell.
+// The solids with this are those with regular faces (Platonic, Archimedean, prisms and antiprisms),
+// their duals (the faces of a Catalan solid are all alike) and the pyramids on faces of those
+// with one kind of face; a solid with uneven cells, e.g. a pyramid on every face of a square
+// pyramid, is not.
+export function congruentByType(verts, rings, tolerance = 1e-4) {
+  const first = new Map();
+  for (const ring of rings) {
+    const cell = ring.map(v => verts[v]);
+    if (!first.has(cell.length)) {
+      first.set(cell.length, cell);
+    } else if (incongruence(first.get(cell.length), cell) > tolerance) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // ---------- identity of a solid ----------

@@ -183,12 +183,44 @@ function pentagonRoute() {
     + dot(PENTAGON_ROUTE[PENTAGON_ROUTE.length - 1]);
 }
 
+// The 3D puzzles (apps/play/solid.js): a cube seen from a corner, a tetrahedron seen from above
+// one corner, a ball with a pentagon in front. Each is a few tiles with a path over them.
+const polygon = points => `<polygon class="vi-tile" points="${points}"/>`;
+const dots = (...centres) => centres
+  .map(([x, y]) => `<circle class="vi-dot" cx="${x}" cy="${y}" r="2.7"/>`)
+  .join('');
+
+const SOLID_ICONS = {
+  cube: polygon('24,10.5 36.5,17.5 24,24.5 11.5,17.5') + polygon('11.5,19.5 23,26 23,40 11.5,33')
+    + polygon('25,26 36.5,19.5 36.5,33 25,40')
+    + '<polyline class="vi-path" points="24,17.5 17,28 23.5,33 30.5,28"/>'
+    + dots([24, 17.5], [30.5, 28]),
+  tetra: polygon('24,9 40,36 25,28.2') + polygon('22.5,9.8 8,36 23,28.2')
+    + polygon('9.5,38 38.5,38 24,30.2')
+    + '<polyline class="vi-path" points="20,24 16,32 24,34 32,32"/>'
+    + dots([20, 24], [32, 32]),
+  ball: '<circle class="vi-tile" cx="24" cy="24" r="17.5"/>'
+    + '<polygon class="vi-tile" points="24,17.5 30.2,22 27.8,29.3 20.2,29.3 17.8,22"/>'
+    + '<path class="vi-spoke" d="M24 17.5V8M30.2 22l9-3M27.8 29.3l5.5 7.5M20.2 29.3l-5.5 7.5'
+    + 'M17.8 22l-9-3"/>'
+    + '<polyline class="vi-path" points="13,30 20,26 28,26 35,18"/>'
+    + dots([13, 30], [35, 18]),
+};
+
+function solidIcon(kind) {
+  return `<svg class="variant-icon vi-${kind}" viewBox="0 0 48 48" aria-hidden="true" ` +
+    'focusable="false"><rect class="vi-bg" x="2" y="2" width="44" height="44" rx="11"/>' +
+    `${SOLID_ICONS[kind]}</svg>`;
+}
+
 // variant: 'cutout', 'arrows', 'exact', 'wrap', 'loop', 'teleport', 'twopaths', 'pentagon',
-// 'lucky' (the mystery of the lucky game) or anything else (= standard). Class: variant-icon
-// vi-standard | vi-cutout | vi-arrows | vi-exact | vi-wrap | vi-loop | vi-teleport | vi-twopaths |
-// vi-pentagon | vi-lucky.
+// 'lucky' (the mystery of the lucky game), the 3D puzzles 'tetra', 'cube' and 'ball', or
+// anything else (= standard). Class: variant-icon vi-standard | vi-cutout | vi-arrows |
+// vi-exact | vi-wrap | vi-loop | vi-teleport | vi-twopaths | vi-pentagon | vi-lucky |
+// vi-tetra | vi-cube | vi-ball.
 export function variantIcon(variant) {
   if (variant === 'lucky') return luckyIcon();
+  if (SOLID_ICONS[variant]) return solidIcon(variant);
   const cutout = variant === 'cutout';
   const arrows = variant === 'arrows';
   const exact = variant === 'exact';
@@ -237,6 +269,9 @@ const CARD_ICONS = {
     `<polygon points="${star(12, 15.2, 3.3, 1.4)}" fill="currentColor" stroke-width="1"/>`,
   // a play button: free play
   free: '<circle cx="12" cy="12" r="9"/><path d="M10 8.4v7.2l5.8-3.6z" fill="currentColor"/>',
+  // a cube: the 3D puzzles
+  solid: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/>' +
+    '<path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>',
 };
 
 export function cardIcon(kind) {
