@@ -2789,15 +2789,15 @@ t('streak: a healed day that reaches a reward day grants it', () => {
   eq([s.streak, s.freezes, s.prog], [6, 0, 6]);
   const r = healDay(s, 105, 106); eq([r.state.streak, r.state.freezes, r.rewards, r.state.prog], [7, 2, 1, 0], 'refund + the reward\'s freeze');
 });
-t('streak: healing the days of a broken gap joins the streaks again (heal days count), partial heals change nothing yet', () => {
+t('streak: healing the days of a broken gap joins the streaks again (heal days count); a partial heal counts only what touches the new streak', () => {
   const one = streakPlay(sPlay(span(100, 105)), 107); // 6 days, no freeze, day 106 missed: broken
   eq([one.streak, one.freezes, streakHealable(one, 107)], [1, 0, [106]]);
   const a = healDay(one, 106, 107); eq([a.state.streak, a.state.best, a.state.freezes, a.rewards, a.state.prog], [8, 8, 1, 1, 1], '6 + healed + today: crosses day 7');
   const two = streakPlay(sPlay(span(100, 104)), 107); eq(streakHealable(two, 107), [106, 105]);
   const p = healDay(two, 105, 107); eq([p.state.streak, p.rewards], [1, 0], 'one of two days: still broken');
   const q = healDay(p.state, 106, 107); eq([q.state.streak, q.rewards, q.state.freezes], [8, 1, 1]);
-  const f = streakPlay(sPlay(span(100, 104)), 107); const part = healDay(f, 106, 107); // 1 of 2 healed, nothing covers the other
-  eq(part.state.streak, 1);
+  const f = streakPlay(sPlay(span(100, 104)), 107); const part = healDay(f, 106, 107); // 1 of 2 healed, nothing covers the other: still broken, but day 106 touches the new streak
+  eq([part.state.streak, part.state.brk.frozen], [2, false]);
   const cover = healDay({ ...f, freezes: 1 }, 106, 107);
   eq([cover.state.streak, cover.state.freezes, cover.state.brk.frozen], [7, 1, true], 'a freeze covers the day still missed; 5 + 1 + 1 is a reward day');
   eq(healDay(cover.state, 105, 107).state.freezes, 2, 'the covered day can still be healed: its freeze comes back');
@@ -2809,12 +2809,47 @@ t('streak: only the latest gap can be healed, and healable() lists the open days
   eq(streakHealable(late, 102 + HEAL_DAYS + FREEZE_MAX + 2), [], 'a gap too long to repair'); eq(streakHealable(streakFresh(), 5), []);
   eq(streakHealable(late, 111), [110, 109, 108, 107, 106, 105, 104], 'only the last HEAL_DAYS days');
 });
+const brokenGap = () => streakPlay(sPlay(span(100, 100)), 107); // day 100 solved, 101-106 missed, 107 solved: broken, streak 1
+t('streak: a healed day right before the new streak joins it (+1) while the gap stays broken; days apart from it count once they connect', () => {
+  const s = brokenGap(); eq([s.streak, s.prog, s.freezes], [1, 1, 0]);
+  const a = healDay(s, 106, 107); eq([a.state.streak, a.state.best, a.state.prog, a.rewards, a.state.brk.x], [2, 2, 2, 0, 1]);
+  const next = streakPlay(a.state, 108); eq([next.streak, next.prog], [3, 3], 'the next solve goes on from the longer streak');
+  const apart = healDay(s, 104, 107); eq([apart.state.streak, apart.state.prog, apart.state.brk.x ?? 0], [1, 1, 0], 'not touching the new streak: nothing yet');
+  const bridge = healDay(healDay(apart.state, 105, 107).state, 106, 107); eq([bridge.state.streak, bridge.state.brk.x], [4, 3], '104-106 connect: 3 days join at once');
+  eq(healDay(a.state, 106, 107), null, 'once');
+  const both = healDay(healDay(s, 106, 107).state, 105, 107); eq(both.state.streak, 3, 'two days, one after the other');
+});
+t('streak: the healed days counted into a broken streak are not counted twice when the gap is joined again', () => {
+  const two = streakPlay(sPlay(span(100, 104)), 107); // 5 days, 105-106 missed, no freeze: broken
+  const near = healDay(healDay(two, 106, 107).state, 105, 107).state, far = healDay(healDay(two, 105, 107).state, 106, 107).state;
+  eq([near.streak, near.brk], [8, null], '5 + 2 healed + day 107 = 8');
+  eq([far.streak, far.earned, far.prog, far.freezes], [near.streak, near.earned, near.prog, near.freezes], 'the order changes nothing');
+  eq(healDay(healDay({ ...two, freezes: 1 }, 106, 107).state, 105, 107).state.streak, 8, 'with a freeze covering the last day');
+});
+t('streak: a healed day that touches the new streak and reaches a reward day grants it, once', () => {
+  const s = { ...brokenGap(), prog: 6 }; // 6 of 7 days: the next streak day is a reward day
+  const r = healDay(s, 106, 107); eq([r.state.streak, r.rewards, r.state.earned - s.earned, r.state.prog, r.state.freezes], [2, 1, 1, 0, 1]);
+  const again = healDay(r.state, 105, 107); eq([again.rewards, again.state.streak], [0, 3], 'the next healed day: no second reward');
+});
+ta('streak: a state saved before healed days counted into a broken streak is repaired on load; its rewards come back from init()', async () => {
+  const st = fakeStorage(), u = d => Math.floor(Date.UTC(2026, 9, d, 12) / 86400000), now = () => new Date(Date.UTC(2026, 9, 19, 12));
+  const saved = { last: u(19), streak: 2, best: 2, freezes: 0, earned: 3, prog: 2, brk: { from: u(11), to: u(18), a: 1, e: 3, p: 1, frozen: false, healed: [u(17)] } };
+  await st.set('zip_streak', JSON.stringify(saved));
+  const S = createStreak(st, { all: async () => [] }, now); eq(await S.init(), { rewards: 0 });
+  eq([S.view().streak, S.view().best, S.progress().on], [3, 3, 3], 'days 17, 18, 19');
+  const stored = JSON.parse((await st.get('zip_streak')).value); eq([stored.streak, stored.prog, stored.brk.x], [3, 3, 1], 'saved');
+  const B = createStreak(st, { all: async () => [] }, now); eq(await B.init(), { rewards: 0 }); eq(B.view().streak, 3, 'a second load does not count it again');
+  await st.set('zip_streak', JSON.stringify({ ...saved, prog: 6 }));
+  const C = createStreak(st, { all: async () => [] }, now); eq(await C.init(), { rewards: 1 }, 'the counted day reaches a reward day'); eq(C.view().streak, 3);
+  await st.set('zip_streak', JSON.stringify({ ...saved, brk: { ...saved.brk, x: 'bad' } }));
+  const D = createStreak(st, { all: async () => [] }, now); eq(await D.init(), { rewards: 0 }); eq(D.view().streak, 2, 'a damaged gap record is dropped, as before');
+});
 ta('streak: heal() after record() — rewards returned, state persisted, a second heal refused', async () => {
   const st = fakeStorage(), u = d => Math.floor(Date.UTC(2026, 0, d, 12) / 86400000); let d = 8;
   await st.set('zip_streak', JSON.stringify({ last: u(5), streak: 5, best: 5, freezes: 0, earned: RAMP.length, prog: 5, brk: null }));
   const S = createStreak(st, { all: async () => [] }, () => new Date(Date.UTC(2026, 0, d, 12))); await S.init();
   eq(S.healable(), [u(7), u(6)]); eq(await S.record(), false); eq(S.view().streak, 1);
-  eq(await S.heal(u(7)), { rewards: 0 }); eq(S.view().streak, 1, 'half healed'); eq(S.healable(), [u(6)]);
+  eq(await S.heal(u(7)), { rewards: 0 }); eq(S.view().streak, 2, 'half healed: day 7 touches today\'s streak'); eq(S.healable(), [u(6)]);
   eq(await S.heal(u(6)), { rewards: 1 }); eq(S.view(), { streak: 8, best: 8, freezes: 1, today: true });
   eq(await S.heal(u(6)), null); eq(S.healable(), []);
   const B = createStreak(st, { all: async () => [] }, () => new Date(Date.UTC(2026, 0, d, 12))); await B.init(); eq(B.view().streak, 8, 'stored');

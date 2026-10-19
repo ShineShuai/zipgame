@@ -1395,7 +1395,8 @@ async function initLang() {
   replay = createReplay(storage, store);
   try { await replay.init(); } catch (e) { console.warn('replay init failed:', e); }
   streak = createStreak(storage, playlog);
-  try { await streak.init(); } catch (e) { console.warn('streak init failed:', e); }
+  let streakRewards = 0; // rewards of healed days a saved streak had not counted yet: granted once the rest is loaded
+  try { streakRewards = (await streak.init()).rewards; } catch (e) { console.warn('streak init failed:', e); }
   unlock = createUnlock(storage, luckyDefs(SIZES));
   try { await unlock.init(); } catch (e) { console.warn('unlock init failed:', e); }
   rulesSeen = createRulesSeen(storage, PLAY_VARIANTS.map(v => v.id));
@@ -1418,4 +1419,5 @@ async function initLang() {
   modal = bindModal($('exportModal'));
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));
   installDevReveal(); await initSoundToggle(); await initLang(); render();
+  for (let i = 0; i < streakRewards; i++) await onStreakMilestone();
 })();
