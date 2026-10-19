@@ -82,11 +82,14 @@ import { loopTests } from './loop.js';
 import { loopGenTests } from './loop-gen.js';
 import { loopPlayTests } from './play-loop.js';
 import { surfaceTests } from './surface.js';
+import { BALL_CATALOG } from '../src/core/surface/ball-catalog.js';
+import { registerBalls } from '../src/core/surface/ball-registry.js';
 import { ballTests } from './ball.js';
 import { pentagonTests } from './pentagon.js';
 import { surfaceFastTests } from './surface-fast.js';
 import { playPentagonTests } from './play-pentagon.js';
 import { ballViewTests } from './ball-view.js';
+import { solidTests } from './solid.js';
 import { teleportTests } from './teleport.js';
 import { teleportGenTests } from './teleport-gen.js';
 import { teleportPlayTests } from './play-teleport.js';
@@ -94,6 +97,9 @@ import { twoPathsTests } from './twopaths.js';
 import { twoPathsGenTests } from './twopaths-gen.js';
 import { twoPathsPlayTests } from './play-twopaths.js';
 import { designTwoPathsTests } from './design-twopaths.js';
+
+// The ball boards are in a catalog of their own that the apps load when needed; the tests have it.
+registerBalls(BALL_CATALOG);
 
 // ---- mini harness ----
 const out = []; let pass = 0, fail = 0;
@@ -3339,6 +3345,7 @@ loopPlayTests(t, ta, ok, eq);
 surfaceTests(t, ok, eq);
 ballTests(t, ok, eq);
 ballViewTests(t, ok, eq);
+solidTests(t, ok, eq);
 
 // ---------- Pentagon (Cairo tiling) boards ----------
 pentagonTests(t, ok, eq);

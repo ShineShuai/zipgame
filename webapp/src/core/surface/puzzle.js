@@ -142,6 +142,10 @@ export function nextNumber(p, path) {
   return highest < maxNumber(p) ? highest + 1 : 0;
 }
 
+// Whether one step from the head of `path` to `cell` would make the path longer (the test of
+// step(), nothing is moved).
+export const canPush = (p, path, cell, opts = {}) => step(p, path.slice(), cell, opts) === 'push';
+
 // One move on a path being walked (`path` is changed in place), like core/rules.js step():
 //   'push'   the path grew by `cell`
 //   'pop'    `cell` is the one before the head: one step back

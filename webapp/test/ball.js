@@ -2,6 +2,7 @@
 // from it (topology.js), which boards can be played, and puzzles on them. Registered by tests.js:
 // ballTests(t, ok, eq). Regenerating the catalog: node tools/ball-catalog.mjs --check
 import { BALL_CATALOG } from '../src/core/surface/ball-catalog.js';
+import { registerBalls } from '../src/core/surface/ball-registry.js';
 import {
   ballsByComposition,
   compositionLabel,
@@ -33,6 +34,7 @@ import {
   randomHamiltonianPath,
 } from '../src/core/surface/gen.js';
 import { makeRng } from '../src/core/rng.js';
+import { congruentByType, kis, meshOf, seeds } from '../tools/polyhedra.mjs';
 
 const threw = f => {
   try {
@@ -58,9 +60,14 @@ const cross = (a, b) => [
   a[0] * b[1] - a[1] * b[0],
 ];
 
+registerBalls(BALL_CATALOG);
+
+// a copy of the registry module that has not been given the catalog
+const fresh = await import('../src/core/surface/ball-registry.js?fresh');
+
 export function ballTests(t, ok, eq) {
   t('ball catalog: ids, hashes and the shape of every entry', () => {
-    ok(BALL_CATALOG.length >= 70, 'the catalog is not empty');
+    ok(BALL_CATALOG.length >= 35, 'the catalog is not empty');
     eq(new Set(BALL_CATALOG.map(entry => entry.id)).size, BALL_CATALOG.length, 'ids are unique');
     for (const entry of BALL_CATALOG) {
       const where = entry.id;
@@ -131,13 +138,10 @@ export function ballTests(t, ok, eq) {
     eq(f('snub-cube'), [32, 6, 0]);
     eq(f('cuboct'), [8, 6, 0], '8 triangles + 6 squares');
     eq(f('icosidodeca'), [20, 0, 12], '20 triangles + 12 pentagons');
-    // every even number of triangles from 4 to 100 is on offer
+    // the numbers of triangles on offer: cells of one type are congruent, so no free-form solid
     const flat = BALL_CATALOG.filter(e => e.f[1] + e.f[2] === 0 && e.ok);
-    const triangles = new Set(flat.map(e => e.f[0]));
-    for (let n = 4; n <= 100; n += 2) {
-      ok(triangles.has(n), `${n} triangles`);
-    }
-    ok(!triangles.has(5) && !triangles.has(7), 'an odd number of triangles is no solid');
+    const triangles = [...new Set(flat.map(e => e.f[0]))].sort((a, b) => a - b);
+    eq(triangles, [4, 6, 8, 10, 12, 14, 16, 20, 24, 48, 60]);
     // a bipartite board can only be covered by a path when its colour classes are almost equal
     for (const id of ['cuboct', 'icosidodeca', 'rhombicuboct', 'rhombicosidodeca']) {
       const top = surfaceTopology(BALL_KIND, id);
@@ -175,7 +179,7 @@ export function ballTests(t, ok, eq) {
 
   t('balls: play window, selector groups, labels', () => {
     const list = playableBalls();
-    ok(list.length >= 60, `${list.length} balls in the play window`);
+    ok(list.length >= 25, `${list.length} balls in the play window`);
     for (const entry of list) {
       ok(entry.ok && entry.r.length >= PLAY_MIN_CELLS && entry.r.length <= PLAY_MAX_CELLS);
     }
@@ -203,9 +207,35 @@ export function ballTests(t, ok, eq) {
     eq(eighty.balls.map(e => e.id), ['snub-dodeca']);
   });
 
+  t('ball catalog: the cells of a type are congruent; uneven balls are not offered', () => {
+    for (const entry of BALL_CATALOG) {
+      ok(congruentByType(entry.v, entry.r), `${entry.id}: congruent triangles, squares, pentagons`);
+    }
+    // a pyramid on every face of a square pyramid has two kinds of triangles
+    const pyramid = seeds().find(([id]) => id === 'pyramid4');
+    const uneven = kis(meshOf(pyramid[2]));
+    const corners = uneven.verts.map(p => p.map(x => x / Math.hypot(...p)));
+    eq(congruentByType(corners, uneven.faces), false, 'kis pyramid4 is uneven');
+    ok(!BALL_CATALOG.some(entry => entry.id === 'kis-pyramid4' || entry.id.startsWith('spread')));
+    // the Catalan and Archimedean solids stay
+    for (const id of ['snub-dodeca', 'dual-snub-dodeca', 'kis-dodeca', 'antiprism5']) {
+      ok(BALL_CATALOG.some(entry => entry.id === id), id);
+    }
+  });
+
+  t('ball catalog: the registry is empty until it is given the catalog', () => {
+    eq(fresh.ballsLoaded(), false);
+    ok(threw(() => fresh.ballEntry('tetra')), 'not loaded');
+    fresh.registerBalls(BALL_CATALOG);
+    eq(fresh.ballsLoaded(), true);
+    eq(fresh.ballEntry('tetra').id, 'tetra');
+    eq(fresh.ballList().length, BALL_CATALOG.length);
+    ok(threw(() => fresh.ballEntry('nope')));
+  });
+
   t('ball puzzles: generated, unique, solvable, and the text format round-trips', () => {
     for (const [id, seed] of [['octa', 1], ['dodeca', 2], ['prism5', 3], ['snub-cube', 4],
-      ['dual-snub-cube', 5], ['kis-cube', 6], ['spread20', 7], ['snub-dodeca', 8]]) {
+      ['dual-snub-cube', 5], ['kis-cube', 6], ['bipyramid6', 7], ['snub-dodeca', 8]]) {
       const top = surfaceTopology(BALL_KIND, id);
       const made = generateSurface(BALL_KIND, id, seed);
       const p = made.puzzle;

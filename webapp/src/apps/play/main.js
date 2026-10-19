@@ -25,6 +25,7 @@ import {
   jumpMarksSvg, loopOpen, loopOpenMarks,
 } from './board.js';
 import { variantIcon, cardIcon } from './icons.js';
+import { createSolidPlay, isSolidKind } from './solid.js';
 import {
   pentagonBoardSvg, pentagonRouteD, pentagonCellAt, pentagonPoint, pentagonAcross,
 } from './pentagon-board.js';
@@ -89,7 +90,7 @@ const statsLineT = (s, detail) => statsLine(s, detail, statsText);
 
 // ---------- render ----------
 function render() {
-  const screens = { menu: renderMenu, generating: renderGenerating, game: renderGame, replay: renderReplay };
+  const screens = { menu: renderMenu, generating: renderGenerating, game: renderGame, replay: renderReplay, solid: () => solid.screenHtml() };
   const screen = screens[S.screen] || renderGame;
   $('app').innerHTML = screen() + devBadgeHtml();
   attachHandlers();
@@ -116,7 +117,7 @@ function renderGenerating() {
       <section class="card">
         <div class="gen-icon">${variantIcon(S.genMode)}</div>
         <h2 class="card-title">${t('gen.title')}</h2>
-        <p class="small">${t(genVariant ? genVariant.keys.gen : 'gen.sub', sizeArg({ variant: S.genMode, n: S.size }))}</p>
+        <p class="small">${t(genVariant ? genVariant.keys.gen : isSolidKind(S.genMode) ? 'gen.subSolid' : 'gen.sub', sizeArg({ variant: S.genMode, n: S.size }))}</p>
         <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}">
           <div style="width:${percent}%"></div>
         </div>
@@ -158,6 +159,15 @@ const gameNo = (n, scope = '') => { const i = S.nextIdx[scopeKey(n, scope)]; ret
 const todayText = () => t('menu.today', gameNo(S.size, S.mode === 'standard' ? '' : S.mode));
 const randomSeed = () => (globalThis.crypto && crypto.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 4294967296));
 const randomInt = n => Math.floor(randomSeed() / 4294967296 * n); // 0..n-1
+// The export window, with `text` (a puzzle in the plain text format the design app reads).
+function openExport(text) {
+  $('exportText').value = text;
+  $('exportMsg').textContent = '';
+  modal.open();
+  setTimeout(() => $('exportText').focus(), 30);
+}
+// The 3D puzzles (tetrahedron, cube, ball): their own card in the menu (shown with V) and game screen.
+const solid = createSolidPlay({ S, $, t, render, startTimer, stopTimer, randomSeed, openExport });
 
 // Radio tiles, each an icon of the board it plays (full square, square with holes, ...), a name and a tagline.
 // Native radios: keyboard (arrows), screen readers and touch work without extra code; css/play.css draws the state.
@@ -345,7 +355,7 @@ function renderMenu() {
     <div class="menu-layout">
       ${sharedCardHtml()}
       <p class="menu-intro">${t('menu.blurb')}</p>
-      <div class="menu-grid">${gotdCardHtml()}${freePlayCardHtml()}
+      <div class="menu-grid">${gotdCardHtml()}${freePlayCardHtml()}${solid.cardHtml()}
       </div>
     </div>`;
 }
@@ -696,7 +706,7 @@ function attachHandlers() {
   on('resetPath', resetPaths);
   on('behaviourToggle', async ev => { ev.preventDefault(); S.behaviourOn = !S.behaviourOn; await behaviour.setOn(S.behaviourOn); render(); });
   on('newPuzzle', () => { if (!S.isGotd) startLocal('skip', S.variant || 'standard'); });
-  on('exportBtn', () => { $('exportText').value = S.puzzle.surface ? serializeSurface(S.puzzle, { path: S.puzzle.path }) : serialize(S.puzzle); $('exportMsg').textContent = ''; modal.open(); setTimeout(() => $('exportText').focus(), 30); });
+  on('exportBtn', () => openExport(S.puzzle.surface ? serializeSurface(S.puzzle, { path: S.puzzle.path }) : serialize(S.puzzle)));
   on('hintBtn', () => {
     if (S.finished || S.hintsUsed >= maxHints(S.puzzle)) return;
     const two = Boolean(S.puzzle.split);
@@ -707,6 +717,7 @@ function attachHandlers() {
     S.hintsUsed++; S.hintCell = correctCell; S.hintWrongCell = wrongCell; render();
   });
   const svg = document.querySelector('#gridWrap svg'); if (svg) setupGridInput(svg);
+  solid.attach();
 }
 
 function setupGridInput(svg) {
@@ -1290,6 +1301,7 @@ function setDevReveal(on) {
   if (on) usage(storage).then(u => { storageUsed = ` · ~${Math.max(1, Math.round(u.chars * 2 / 1024))} KB in ${u.keys} keys`; const n = $('storageNote'); if (n) n.textContent = storageNoteText(); }).catch(() => {});
   const bn = $('behaviourNote'); if (bn) bn.style.display = on ? '' : 'none';
   const tag = $('seedTag'); if (tag) tag.style.display = on ? 'inline' : 'none';
+  solid.reveal();
   const d = $('difficultyDev'); if (d) d.style.display = on ? 'inline' : 'none';
   const g = $('genDev'); if (g) g.style.display = on ? 'inline' : 'none';
   for (const { id } of PLAY_VARIANTS) { const tile = $('variantOpt-' + id); if (tile) tile.style.display = typeShown(id) ? '' : 'none'; }
@@ -1379,6 +1391,7 @@ async function initLang() {
     lastPointer = e.pointerType;
     if (!e.target.closest('.variant-opt, .rules-host')) closeRules();
   }, true);
+  document.addEventListener('keydown', solid.onKey);
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { setShareTip(false); setLuckyTip(false); closeStatTips(); closeRules(); } });
   modal = bindModal($('exportModal'));
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));
