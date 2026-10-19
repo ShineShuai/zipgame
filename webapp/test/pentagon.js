@@ -6,7 +6,8 @@ import { hashStr } from '../src/core/rng.js';
 import { runSync } from '../src/core/run.js';
 import { surfaceTopology, SLOTS } from '../src/core/surface/topology.js';
 import {
-  pentagonMesh, PENTAGON_KIND, PENTAGON_SIZES, PENTAGON_CELLS,
+  pentagonMesh, PENTAGON_KIND, PENTAGON_SIZES, PENTAGON_CELLS, PENTAGON_BOARD_SIZES,
+  PENTAGON_DESIGN_SIZES, pentagonKRange, shapeHint,
 } from '../src/core/surface/pentagon.js';
 import {
   makeSurfacePuzzle, validateSurface, isSolved, serializeSurface, parseSurface, maxNumber,
@@ -14,9 +15,10 @@ import {
 } from '../src/core/surface/puzzle.js';
 import { solveSurface, countHamiltonianPaths } from '../src/core/surface/solve.js';
 import {
-  generatePentagon, pentagonK, PENTAGON_SHARE, PENTAGON_CANDIDATES,
+  generatePentagon, pentagonK, PENTAGON_CANDIDATES,
 } from '../src/core/gen/pentagon.js';
 import { makeRng } from '../src/core/rng.js';
+import { pickK } from '../src/core/gen/generate.js';
 import { generate } from '../src/core/gen/generate.js';
 import { maxNumber as flatMax } from '../src/core/model.js';
 import {
@@ -84,18 +86,24 @@ function brute(p) {
 // fails the board changed: do not edit the hashes, fix the board.
 const FROZEN = {
   4: ['8ac141ce', '09197270'],
+  5: ['6f6ec879', '9e27987c'],
   6: ['6d7409df', '8e6a7967'],
+  7: ['664faff8', '5ec24b86'],
   8: ['9d03dd2f', 'af390c97'],
   9: ['85d19675', '89a82f81'],
   10: ['a95f48ab', '5d1dc5f4'],
+  11: ['9337a669', 'c9dfbb98'],
 };
 
 export function pentagonTests(t, ok, eq) {
-  t('pentagon: boards — 16, 36, 64, 100 cells of 5 sides, connected, not bipartite, no cell with '
-    + 'fewer than 2 neighbours, only the 4 corner cells have 2', () => {
+  t('pentagon: boards — 16 to 100 cells of 5 sides, connected, not bipartite, no cell with fewer '
+    + 'than 2 neighbours; the boards of the play app have only the 4 corner cells with 2', () => {
     eq(PENTAGON_SIZES, [4, 6, 8, 9, 10]);
-    eq(PENTAGON_SIZES.map(n => PENTAGON_CELLS[n]), [16, 36, 64, 96, 100]);
-    for (const n of PENTAGON_SIZES) {
+    eq(PENTAGON_DESIGN_SIZES, [5, 7, 11]);
+    eq(PENTAGON_BOARD_SIZES.map(n => PENTAGON_CELLS[n]), [16, 24, 36, 48, 64, 80, 96, 100]);
+    eq([...PENTAGON_SIZES, ...PENTAGON_DESIGN_SIZES].sort((a, b) => a - b),
+      [...PENTAGON_BOARD_SIZES].sort((a, b) => a - b), 'every board is one or the other');
+    for (const n of PENTAGON_BOARD_SIZES) {
       const top = board(n);
       eq(top.T, PENTAGON_CELLS[n], `n=${n} cells`);
       ok(top.flat && top.centres.length === 2 * top.T, 'flat, with centres');
@@ -109,7 +117,11 @@ export function pentagonTests(t, ok, eq) {
       }
       eq(top.E, pairs / 2, `n=${n} edges`);
       ok(!histogram[0] && !histogram[1], `n=${n} no cell with fewer than 2 neighbours`);
-      eq(histogram[2], 4, `n=${n} corner cells`);
+      const twos = PENTAGON_DESIGN_SIZES.includes(n) ? { 5: 8, 7: 12, 11: 16 }[n] : 4;
+      eq(histogram[2], twos, `n=${n} cells with 2 neighbours`);
+      const hint = shapeHint(top);
+      eq([hint.twoNeighbour, hint.fixed, hint.path], [twos, 2 * twos, top.T - 1],
+        `n=${n} shape hint`);
       ok(top.bipartite === false && top.classes === null, 'three cells meet at a corner');
       for (let c = 0; c < top.T; c++) ok(top.dist[c * top.T + (top.T - 1)] < 255, 'connected');
     }
@@ -134,7 +146,7 @@ export function pentagonTests(t, ok, eq) {
 
   t('pentagon: every cell is the same pentagon — 4 sides of 0.789 and one of 0.577 (slot 0), '
     + 'angles 90, 90, 120, 120, 120', () => {
-    for (const n of PENTAGON_SIZES) {
+    for (const n of PENTAGON_BOARD_SIZES) {
       const top = board(n);
       const point = corner => [top.verts[corner * 3], top.verts[corner * 3 + 1]];
       for (let c = 0; c < top.T; c++) {
@@ -162,7 +174,7 @@ export function pentagonTests(t, ok, eq) {
 
   t('pentagon: every board is symmetric — a quarter turn about the centre (a half turn for the '
     + '96-cell board) maps the cells onto the cells and keeps who touches whom', () => {
-    for (const n of PENTAGON_SIZES) {
+    for (const n of PENTAGON_BOARD_SIZES) {
       const top = board(n);
       const at = (x, y) => {
         for (let c = 0; c < top.T; c++) {
@@ -187,7 +199,7 @@ export function pentagonTests(t, ok, eq) {
 
   t('pentagon: the numbering is frozen — reading order of the centres, and a fixed neighbour and '
     + 'corner table per size', () => {
-    for (const n of PENTAGON_SIZES) {
+    for (const n of PENTAGON_BOARD_SIZES) {
       const top = board(n);
       const hashes = [top.nb, top.ring].map(table => hashStr(Array.from(table).join(',')));
       eq(hashes, FROZEN[n], `n=${n}`);
@@ -203,7 +215,7 @@ export function pentagonTests(t, ok, eq) {
     }
     const again = pentagonMesh(6);
     eq(again.cells, pentagonMesh(6).cells, 'the same mesh every time');
-    ok(threw(() => pentagonMesh(5)) && threw(() => board(7)), 'only 4, 6, 8, 10');
+    ok(threw(() => pentagonMesh(3)) && threw(() => board(12)), 'only the boards 4 to 11');
   });
 
   t('pentagon: the solver counts the Hamiltonian paths of the 16-cell board like a plain search',
@@ -232,24 +244,30 @@ export function pentagonTests(t, ok, eq) {
       [PENTAGON_KIND, 6, Array.from(p.cp), Array.from(p.walls)]);
     eq(back.path, p.path);
     ok(validateSurface(back).ok);
-    ok(threw(() => parseSurface('surface pentagon 5\n')), 'size 5 does not exist');
+    ok(threw(() => parseSurface('surface pentagon 12\n')), 'size 12 does not exist');
     const past = `surface pentagon 4\nwalls ${board(4).E}\n`;
     ok(threw(() => parseSurface(past)), 'edge past the last');
     eq(wallCount(makeSurfacePuzzle(PENTAGON_KIND, 4)), 0);
   });
 
-  t('pentagon-gen: K is 35 to 45% of the cells (at least 4), drawn from the seed', () => {
-    for (const n of PENTAGON_SIZES) {
-      const rnd = makeRng(n);
-      const seen = new Set();
-      for (let i = 0; i < 40; i++) {
-        const K = pentagonK(n, rnd);
-        seen.add(K);
-        const cells = PENTAGON_CELLS[n];
-        const low = Math.max(4, Math.round(cells * PENTAGON_SHARE[0]));
-        ok(K >= low && K <= Math.round(cells * PENTAGON_SHARE[1]), `n=${n} K=${K}`);
+  t('pentagon-gen: the number of checkpoints follows the rule of the square boards — pickK on '
+    + 'the range from the square root to a quarter of the cells', () => {
+    eq([16, 36, 64, 96, 100].map(cells => pentagonKRange(cells)),
+      [[4, 5], [6, 9], [8, 16], [10, 24], [10, 25]]);
+    for (const n of PENTAGON_BOARD_SIZES) {
+      const [min, max] = pentagonKRange(PENTAGON_CELLS[n]);
+      const seen = [];
+      for (let seed = 1; seed <= 600; seed++) {
+        const K = pentagonK(n, makeRng(seed));
+        eq(K, pickK(min, max, makeRng(seed)), 'the same draw as pickK');
+        ok(K >= min && K <= max, `n=${n}: K=${K} in ${min}..${max}`);
+        seen.push(K);
       }
-      ok(seen.size > 1 || n === 4, `n=${n}: K varies`);
+      const mean = seen.reduce((a, b) => a + b, 0) / seen.length;
+      if (max - min >= 8) {
+        ok(Math.abs(mean - (min + 0.3 * (max - min))) < 0.4, `n=${n}: mean ${mean.toFixed(2)}`);
+      }
+      ok(seen.some(K => K !== seen[0]) || max - min < 2, `n=${n}: K varies`);
       ok(PENTAGON_CANDIDATES[n] >= 1);
     }
   });
@@ -286,12 +304,12 @@ export function pentagonTests(t, ok, eq) {
     ok(events.every((e, i) => i === 0 || e.frac >= events[i - 1].frac - 1e-12), 'rises');
     eq(events[events.length - 1].frac, 1);
     eq(events[events.length - 1].walls, wallCount(p), 'the last event has the wall count');
-    ok(threw(() => game(5, 1)) && threw(() => game(12, 1)));
+    ok(threw(() => game(3, 1)) && threw(() => game(12, 1)));
   });
 
   t('pentagon-design: the flat layout — corners counter-clockwise, y up, every side with a '
     + 'neighbour glued and shared by both cells, a point finds its cell and its side', () => {
-    for (const n of PENTAGON_SIZES) {
+    for (const n of PENTAGON_BOARD_SIZES) {
       const top = board(n);
       const net = buildFlat(top);
       ok(buildFlat(top) === net, 'built once');
@@ -392,10 +410,13 @@ export function pentagonTests(t, ok, eq) {
     eq(keptK({ typed: true, value: '3', cells, fallback: 14 }), '3', 'a small number stays');
   });
 
-  t('pentagon-design: Generate of the design app — the default K is 40% of the cells', () => {
-    for (const n of PENTAGON_SIZES) {
-      eq(defaultK(PENTAGON_KIND, n), Math.round(PENTAGON_CELLS[n] * 0.4));
+  t('pentagon-design: Generate of the design app — the default K is the mean of the rule of '
+    + 'the square boards', () => {
+    for (const n of PENTAGON_BOARD_SIZES) {
+      const [min, max] = pentagonKRange(PENTAGON_CELLS[n]);
+      eq(defaultK(PENTAGON_KIND, n), Math.round(min + 0.3 * (max - min)), `n=${n}`);
     }
+    eq([4, 6, 8, 9, 10].map(n => defaultK(PENTAGON_KIND, n)), [4, 7, 10, 14, 15]);
   });
 
   t('pentagon-share: a code of its own version (6) — round trip for every size, short, '
@@ -469,6 +490,9 @@ export function pentagonTests(t, ok, eq) {
     const flagged = record(p);
     bad('another variant flag', { ...flagged, puzzle: { ...flagged.puzzle, wrap: true } });
     bad('a size that is not offered', record({ ...p, n: 5 }));
+    for (const n of PENTAGON_DESIGN_SIZES) {
+      bad(`board ${n}: only the design app has it`, record(made(n, [0, 10, 20], [1, 2])));
+    }
   });
 
   t('pentagon-share: the record holds a copy of the puzzle; the receiver plays the sizes the '

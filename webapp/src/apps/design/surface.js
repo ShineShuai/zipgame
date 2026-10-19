@@ -42,6 +42,7 @@ import { runAsync, measured } from '../../platform/run.js';
 import { setHintText } from '../../ui/hint-popover.js';
 import { surfaceSvg } from './surface-board.js';
 import { keptK } from './k-field.js';
+import { shapeHint } from '../../core/surface/pentagon.js';
 import { TPL_C, SOL_C } from './board.js';
 
 const NAME = { tetra: 'Tetrahedron', cube: 'Cube', ball: 'Ball', pentagon: 'Pentagon' };
@@ -363,6 +364,16 @@ export function createSurfaceController(ctx) {
     animation = requestAnimationFrame(tick);
   }
 
+  // What a flat board is and what its shape gives away: the cells with only 2 neighbours fix both
+  // their sides.
+  function flatStatus(top) {
+    const hint = shapeHint(top);
+    return `Pentagon ${P.n}: ${plural(top.T, 'cell')} (${FACES[kind]}), ${plural(top.E, 'side')} `
+      + `between two cells. ${plural(hint.twoNeighbour, 'cell')} with only 2 neighbours fix `
+      + `${hint.fixed} of the ${hint.path} sides of the path before the first move. `
+      + 'One path through every cell, the numbers in order.';
+  }
+
   function updateHint() {
     if (isFlat()) {
       const wall = tool === 'wall' ? WALL_HINT_FLAT : NUMBER_HINT;
@@ -410,7 +421,9 @@ export function createSurfaceController(ctx) {
         select.appendChild(optgroup);
       }
     } else {
-      const sizes = [...new Set([...SURFACE_SIZES[kind], n])].sort((a, b) => a - b);
+      const cellsOf = size => surfaceTopology(kind, size).T;
+      const all = [...new Set([...SURFACE_SIZES[kind], n])];
+      const sizes = all.sort((a, b) => cellsOf(a) - cellsOf(b));
       for (const size of sizes) {
         const option = document.createElement('option');
         option.value = String(size);
@@ -478,11 +491,7 @@ export function createSurfaceController(ctx) {
       return;
     }
     if (isFlat()) {
-      ctx.setStatus(
-        `Pentagon ${P.n}: ${plural(top.T, 'cell')} (${FACES[kind]}), ${plural(top.E, 'side')} `
-          + 'between two cells. One path through every cell, the numbers in order.',
-        'ok',
-      );
+      ctx.setStatus(flatStatus(top), 'ok');
       return;
     }
     ctx.setStatus(
@@ -994,7 +1003,7 @@ export function createSurfaceController(ctx) {
     }
     adopt(makeSurfacePuzzle(kind, isBall() ? $('sfSize').value : Number($('sfSize').value)));
     draw();
-    ctx.setStatus('');
+    ctx.setStatus(isFlat() ? flatStatus(topology()) : '', isFlat() ? 'ok' : undefined);
   };
   $('sfK').addEventListener('input', () => {
     kTyped = true;

@@ -1,7 +1,10 @@
 import { makeRng } from '../rng.js';
+import { pickK } from './generate.js';
 import { generateSurfaceSteps } from '../surface/gen.js';
 import { surfaceTopology } from '../surface/topology.js';
-import { PENTAGON_KIND, PENTAGON_SIZES } from '../surface/pentagon.js';
+import {
+  PENTAGON_KIND, PENTAGON_SIZES, PENTAGON_BOARD_SIZES, pentagonKRange,
+} from '../surface/pentagon.js';
 
 // Generator of Pentagon puzzles: a puzzle on the flat Cairo board of core/surface/pentagon.js
 // (puzzle.surface === 'pentagon'; the model, rules and text format are those of core/surface). It
@@ -11,37 +14,37 @@ import { PENTAGON_KIND, PENTAGON_SIZES } from '../surface/pentagon.js';
 //   3. every side the path does not use gets a wall, then walls are taken away again, in random
 //      order, while the solution stays the only one.
 //
-// Why so many numbers: a cell has 5 neighbours, one more than on the square board, so a path has
-// more ways to go and more has to be fixed. With a fifth of the cells numbered a 64-cell board
-// keeps 16 walls on average, with 40% about 10 (the square 8 x 8 board needs 2 to 4). K is 35 to
-// 45% of the cells.
-// Measured with tools/pentagon-bench.mjs (the candidates below): median time and walls
-//   16 cells 13 ms, 0 walls | 36 cells 20 ms, 2 | 64 cells 0.2 s, 6 | 96 cells 0.9 s, 11 |
-//   100 cells 1.3 s, 13 (worst time 27 ms, 80 ms, 0.4 s, 1.6 s, 1.5 s). Before the solver of
-// core/surface/solve.js was made incremental the 100-cell board took 3.1 s for 4 candidates
-// (walls 14).
+// The number of checkpoints follows the rule of the square boards (pickK in gen/generate.js): K ~
+// Normal(mean = Kmin + 0.3 (Kmax - Kmin), sd = (Kmax - Kmin) / 6), cut to [Kmin, Kmax], with Kmin
+// the square root of the cells and Kmax a quarter of them (pentagonKRange). A cell has 5
+// neighbours, one more than on a square board, so with so few numbers the walls have to do more:
+// see the measurements below.
+//
+// Measured with tools/pentagon-bench.mjs (the candidates below): median time, walls, checkpoints:
+//   16 cells 9 ms, 2 walls, K 4 | 24: 6 ms, 1, 5 | 36: 22 ms, 6, 7 | 48: 90 ms, 6, 9 |
+//   64: 0.5 s, 15, 10 | 80: 1.2 s, 15, 12 | 96: 2.2 s, 29, 14 | 100: 2.9 s, 29, 13
+// (worst time 1.0 s at 64 cells, 3.2 s at 96, 4.3 s at 100). With the number of checkpoints of the
+// square boards the big boards need about twice the walls of a board with 35-45% of the cells
+// numbered (96 cells: 11 walls, 100 cells: 13), and more time per candidate, so fewer are made.
 
 export { PENTAGON_SIZES };
-// The sizes the play app offers for this variant: cells 16, 36, 64, 96, 100.
-export const PENTAGON_OFFERED = PENTAGON_SIZES;
-// Share of the cells that carry a number: from the first to just short of the second.
-export const PENTAGON_SHARE = [0.35, 0.45];
-// How many candidates are made per size: about a second per puzzle on the 96 and 100-cell boards.
-export const PENTAGON_CANDIDATES = { 4: 6, 6: 8, 8: 10, 9: 8, 10: 8 };
+// How many candidates are made per size (the one with the fewest walls is kept).
+export const PENTAGON_CANDIDATES = { 4: 6, 5: 8, 6: 8, 7: 8, 8: 6, 9: 3, 10: 3, 11: 4 };
 
-// The number of checkpoints: PENTAGON_SHARE of the cells, at least 4.
+// The number of checkpoints of a puzzle on board n: pickK of the square boards, on the range of
+// the board. rnd() is used twice.
 export function pentagonK(n, rnd) {
-  const cells = surfaceTopology(PENTAGON_KIND, n).T;
-  const [low, high] = PENTAGON_SHARE;
-  return Math.min(cells, Math.max(4, Math.round(cells * (low + (high - low) * rnd()))));
+  const [min, max] = pentagonKRange(surfaceTopology(PENTAGON_KIND, n).T);
+  return pickK(min, max, rnd);
 }
 
 // Generator (function*, progress events { frac|null, walls, K } as gen/generate.js): (n, seed) ->
 // puzzle { surface: 'pentagon', n, cp, walls, path, seed }; path is the solution. Same seed, same
-// puzzle. o.K: the number of checkpoints, o.candidates: how many puzzles to make.
+// puzzle. o.K: the number of checkpoints, o.candidates: how many puzzles to make. Any board of
+// core/surface/pentagon.js (the play app offers PENTAGON_SIZES).
 export function* generatePentagon(n, seed, o = {}) {
-  if (!PENTAGON_SIZES.includes(n)) {
-    throw new Error(`A Pentagon puzzle needs n to be one of ${PENTAGON_SIZES.join(', ')}`);
+  if (!PENTAGON_BOARD_SIZES.includes(n)) {
+    throw new Error(`A Pentagon puzzle needs n to be one of ${PENTAGON_BOARD_SIZES.join(', ')}`);
   }
   const rnd = makeRng(seed);
   const K = o.K ?? pentagonK(n, rnd);

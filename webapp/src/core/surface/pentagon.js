@@ -5,16 +5,19 @@
 // corners of a cell are the centres of the 5 tiles (2 squares, 3 triangles) around that corner.
 //
 // One fixed board per size n (the same puzzle always means the same board):
-//   n    4   6   8   9   10    cells 16, 36, 64, 96, 100
+//   n    4   6   8   9   10    cells 16, 36, 64, 96, 100       offered by the play app
+//   n    5   7   11          cells 24, 48, 80                  only the design app offers them
+// (n is only the id of a board: 11 is the 80-cell board, and the 120-cell board has no id yet.)
 // The board is the part of the tiling inside a window centred on a 4-fold centre of the tiling (a
 // square of the snub tiling): the windows of n = 4, 6, 8, 10 are squares and a turn by 90 degrees
 // about the centre maps the board onto itself; n = 9 is a window 4 periods wide and 6 high (a
 // portrait board) and a half turn maps it onto itself. The windows are chosen so that no cell has
 // fewer than 2 neighbours (no cell sticks out of the board: it would be the start or the end of
-// any path, a free hint) and only the 4 corner cells have 2. The other windows that qualify (24,
-// 48, 80, 120 cells) have 8 to 20 cells with 2 neighbours; those cells fix both their sides, which
-// is 70% (24 cells) to 34% (120 cells) of the path before the first move, against 8 to 23% for the
-// boards above 36 cells: they are not offered.
+// any path, a free hint) and the boards of the play app have only the 4 corner cells with 2. The
+// other windows that qualify (24, 48, 80, 120 cells) have 8 to 20 cells with 2 neighbours; those
+// cells fix both their sides, which is 70% (24 cells) to 34% (120 cells) of the path before the
+// first move, against 8 to 23% for the boards above 36 cells. They are in the design app, to be
+// judged there (shapeHint() counts them), not in the play app.
 //
 // The geometry uses floating point, but every decision made with it has a large margin (see
 // WINDOW, ROW_EPS), so every engine builds the same board. test/pentagon.js freezes the numbering.
@@ -26,16 +29,23 @@
 // the one short side of every cell, so slot k leads to the same kind of side in every cell.
 
 export const PENTAGON_KIND = 'pentagon';
-export const PENTAGON_SIZES = [4, 6, 8, 9, 10]; // by cells
-export const PENTAGON_CELLS = { 4: 16, 6: 36, 8: 64, 9: 96, 10: 100 };
+export const PENTAGON_SIZES = [4, 6, 8, 9, 10]; // offered by the play app, by cells
+export const PENTAGON_DESIGN_SIZES = [5, 7, 11]; // only in the design app
+// Every board, by cells: 16, 24, 36, 48, 64, 80, 96, 100.
+export const PENTAGON_BOARD_SIZES = [4, 5, 6, 7, 8, 11, 9, 10];
+export const PENTAGON_CELLS = { 4: 16, 5: 24, 6: 36, 7: 48, 8: 64, 11: 80, 9: 96, 10: 100 };
 
 const PERIOD = (1 + Math.sqrt(3)) / Math.SQRT2; // the snub square tiling repeats every PERIOD
 const TILT = Math.PI / 12; // squares are turned by +-15 degrees
 const SAME = 1e-6; // two points closer than this are one point
 // Width and height of the window in periods. The cell set stays the same for any width or height
-// in these ranges: 1.64..2.36, 2.64..3.36, 3.64..4.36, 4.64..5.20 (n = 10) and 5.64..6.36 (the
-// height of n = 9); the sizes below sit in the middle of them.
-const WINDOW = { 4: [2, 2], 6: [3, 3], 8: [4, 4], 9: [4, 6], 10: [4.9, 4.9] };
+// in these ranges: 1.64..2.36, 2.37..2.63 (24 cells), 2.64..3.36, 3.37..3.63 (48), 3.64..4.36,
+// 4.37..4.63 (80), 4.64..5.20 (n = 10) and 5.64..6.36 (the height of n = 9); the sizes below sit in
+// the middle of them.
+const WINDOW = {
+  4: [2, 2], 5: [2.5, 2.5], 6: [3, 3], 7: [3.5, 3.5], 8: [4, 4], 11: [4.5, 4.5], 9: [4, 6],
+  10: [4.9, 4.9],
+};
 // Centres whose y differ by less than this are in one row (theoretically equal y values differ
 // by rounding only; distinct rows are at least 0.25 apart).
 const ROW_EPS = 1e-6;
@@ -99,8 +109,8 @@ function snubPatch(reach) {
 // positions: the corners [x, y, 0]; cells[i]: the corner ids of cell i; faces[i] = i (every cell is
 // its own face); centres: [[x, y]] of every cell.
 export function pentagonMesh(n) {
-  if (!PENTAGON_SIZES.includes(n)) {
-    throw new Error(`pentagon board size must be one of ${PENTAGON_SIZES.join(', ')}`);
+  if (!PENTAGON_BOARD_SIZES.includes(n)) {
+    throw new Error(`pentagon board size must be one of ${PENTAGON_BOARD_SIZES.join(', ')}`);
   }
   const [halfX, halfY] = WINDOW[n].map(width => (width * PERIOD) / 2);
   const { points, around, tiles } = snubPatch(Math.ceil(Math.max(...WINDOW[n]) / 2) + 1);
@@ -156,4 +166,33 @@ export function pentagonMesh(n) {
     centres.push([vx, vy]);
   }
   return { positions, cells, faces: inside.map((id, i) => i), centres };
+}
+
+// The cells of a board with only 2 neighbours and what they fix: such a cell uses both its sides
+// (unless it is the start or the end of the path, which the numbers 1 and K show), so the sides
+// they touch are on the path before the first move.
+// top: the topology of a board (surface/topology.js). -> { twoNeighbour: cells, fixed: sides,
+// path: the sides of a path, cells - 1 }.
+export function shapeHint(top) {
+  const sides = new Set();
+  let twoNeighbour = 0;
+  for (let cell = 0; cell < top.T; cell++) {
+    const edges = [];
+    for (let k = 0; k < top.deg[cell]; k++) {
+      if (top.nb[cell * 5 + k] >= 0) edges.push(top.edgeAt[cell * 5 + k]);
+    }
+    if (edges.length === 2) {
+      twoNeighbour++;
+      edges.forEach(edge => sides.add(edge));
+    }
+  }
+  return { twoNeighbour, fixed: sides.size, path: top.T - 1 };
+}
+
+// The range of the number of checkpoints of a Pentagon puzzle, as on the square boards (see
+// pickK in gen/generate.js): from the square root of the cells (the side of a square board) to a
+// quarter of the cells. [min, max].
+export function pentagonKRange(cells) {
+  const min = Math.max(4, Math.round(Math.sqrt(cells)));
+  return [min, Math.max(min + 1, Math.round(cells / 4))];
 }

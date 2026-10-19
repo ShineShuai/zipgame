@@ -28,14 +28,16 @@
 // bipartite when an even number of cells meets at every corner; then no path can cover it unless
 // the two colour classes differ by at most 1 in size (top.classes).
 //
-// The one exception is the Pentagon board (kind 'pentagon', n = 4, 6, 8, 9 or 10; pentagon.js): a
+// The one exception is the Pentagon board (kind 'pentagon', n = 4 to 11; pentagon.js): a
 // flat patch of the Cairo tiling with a border. A cell on the border has sides with no neighbour:
 // there nb is -1 and edgeAt is -1 (no edge, so no wall, and the solver never steps there); deg is
 // still the number of sides, so a slot is a side as everywhere else. top.flat is true and
 // top.centres[2 * cell], [2 * cell + 1] is the centre of a cell (verts have z = 0).
 
 import { BALL_CATALOG } from './ball-catalog.js';
-import { PENTAGON_KIND, PENTAGON_CELLS, PENTAGON_SIZES, pentagonMesh } from './pentagon.js';
+import {
+  PENTAGON_KIND, PENTAGON_CELLS, PENTAGON_BOARD_SIZES, pentagonMesh,
+} from './pentagon.js';
 
 export { PENTAGON_KIND };
 
@@ -44,7 +46,7 @@ export const SURFACE_KINDS = ['tetra', 'cube'];
 export const BALL_KIND = 'ball';
 // The sizes (n) the app offers; the builders of a tetra or cube accept any n from 1 to MAX_SIDE,
 // the Pentagon boards are the sizes listed (pentagon.js).
-export const SURFACE_SIZES = { tetra: [3, 4, 5], cube: [3, 4], pentagon: PENTAGON_SIZES };
+export const SURFACE_SIZES = { tetra: [3, 4, 5], cube: [3, 4], pentagon: PENTAGON_BOARD_SIZES };
 export const MAX_SIDE = 12;
 export const SLOTS = 5;
 
