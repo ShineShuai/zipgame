@@ -233,11 +233,15 @@ export function narrowOpen(top, open, cp, start, end) {
 
 // Solves p, stopping after opts.limit solutions (default 2: enough to tell unique from not) or
 // when more than opts.nodeCap steps were tried (0 = no cap).
+// opts.forced: a path to start with (cell list from the cell of number 1): only solutions that
+// begin with it are searched, and only the steps below its last cell are counted and capped. That
+// is how a wrong turn is tried (surface/trap.js): the nodes needed below it are its cost.
 // Returns { count, path, second, nodes, capped }: path and second are the first two solutions as
 // cell lists; with capped the count is only a lower bound.
 export function solveSurface(p, opts = {}) {
   const limit = opts.limit ?? 2;
   const nodeCap = opts.nodeCap ?? 0;
+  const forced = opts.forced ?? [];
   const checked = validateSurface(p);
   if (!checked.ok) {
     throw new Error(checked.msg);
@@ -375,7 +379,9 @@ export function solveSurface(p, opts = {}) {
 
   // depth cells are on the path, the last one is head, and number `next` is wanted next.
   const search = (head, depth, next) => {
-    nodes++;
+    if (depth >= forced.length) {
+      nodes++;
+    }
     if (nodeCap && nodes > nodeCap) {
       capped = true;
       return;
@@ -393,7 +399,7 @@ export function solveSurface(p, opts = {}) {
         continue;
       }
       const cell = nb[head * SLOTS + k];
-      if (vis[cell]) {
+      if (vis[cell] || (depth < forced.length && cell !== forced[depth])) {
         continue;
       }
       const number = p.cp[cell];

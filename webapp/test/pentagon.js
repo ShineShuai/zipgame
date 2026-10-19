@@ -31,6 +31,11 @@ import {
 import { surfaceSvg, netFrame } from '../src/apps/design/surface-board.js';
 import { defaultK } from '../src/core/surface/gen.js';
 import { keptK } from '../src/apps/design/k-field.js';
+import { playGradesFor } from '../src/core/grades.js';
+import {
+  surfaceTrapMetrics, surfaceTrapProfile, surfaceSolutionPath, PENTAGON_MODEL,
+} from '../src/core/surface/trap.js';
+import { TRAP_CFG, trapGradeOf, SIZE_GRADE_CAP } from '../src/core/trap.js';
 
 const slow = typeof process !== 'undefined' && Boolean(process.env.PENTAGON_SLOW);
 const board = n => surfaceTopology(PENTAGON_KIND, n);
@@ -408,6 +413,105 @@ export function pentagonTests(t, ok, eq) {
     eq(keptK({ typed: true, value: '', cells, fallback: 14 }), '14', 'emptied: the default');
     eq(keptK({ typed: true, value: 'x', cells, fallback: 14 }), '14', 'not a number: the default');
     eq(keptK({ typed: true, value: '3', cells, fallback: 14 }), '3', 'a small number stays');
+  });
+
+  t('pentagon-grade: a forced start — the solution keeps its path, a wrong turn has no solution, '
+    + 'only the steps below the last forced cell are counted', () => {
+    for (const [n, seed] of [[4, 2], [6, 3], [8, 1]]) {
+      const p = game(n, seed);
+      const top = board(n);
+      const full = solveSurface(p, { limit: 2, forced: p.path });
+      eq([full.count, full.path, full.nodes], [1, p.path, 1], `n=${n}: the whole path forced`);
+      const start = solveSurface(p, { limit: 2, forced: p.path.slice(0, 5) });
+      eq([start.count, start.path], [1, p.path], `n=${n}: a start of the path`);
+      ok(start.nodes < solveSurface(p, { limit: 2 }).nodes + 1, 'fewer steps than from the start');
+      for (let i = 0; i < Math.min(8, p.path.length - 1); i++) {
+        for (let k = 0; k < SLOTS; k++) {
+          const cell = top.nb[p.path[i] * SLOTS + k];
+          if (cell < 0 || p.path.slice(0, i + 1).includes(cell) || cell === p.path[i + 1]) continue;
+          const wrong = solveSurface(p, { limit: 1, forced: [...p.path.slice(0, i + 1), cell] });
+          eq(wrong.count, 0, `n=${n}: a wrong turn at step ${i} has no solution`);
+        }
+      }
+    }
+  });
+
+  t('pentagon-grade: the wrong turns along the solution — each a neighbour over a side without a '
+    + 'wall, none the solution\'s own next cell, none visited; every one dead (checked by plain '
+    + 'search on 16 cells)', () => {
+    for (const [n, seed] of [[4, 2], [4, 5], [6, 3], [8, 1]]) {
+      const p = game(n, seed);
+      const top = board(n);
+      const profile = surfaceTrapProfile(p, p.path);
+      ok(profile.length > 0 && !profile.nonUnique, `n=${n}: some wrong turns, a unique puzzle`);
+      for (const { i, cell, sub, capped } of profile) {
+        ok(!p.path.slice(0, i + 1).includes(cell) && cell !== p.path[i + 1], 'a real wrong turn');
+        const slot = [...Array(SLOTS).keys()].find(k => top.nb[p.path[i] * SLOTS + k] === cell);
+        const side = top.edgeAt[p.path[i] * SLOTS + slot];
+        ok(slot !== undefined && !p.walls[side], 'next to it, no wall');
+        ok(sub >= 0 && typeof capped === 'boolean');
+      }
+      if (n === 4) {
+        for (const { i, cell } of profile) {
+          const prefix = [...p.path.slice(0, i + 1), cell];
+          const seen = new Uint8Array(top.T);
+          prefix.forEach(c => { seen[c] = 1; });
+          let completions = 0;
+          const go = (head, depth, next) => {
+            if (depth === top.T) { if (p.cp[head] === maxNumber(p)) completions++; return; }
+            for (let k = 0; k < SLOTS; k++) {
+              const other = top.nb[head * SLOTS + k];
+              if (other < 0 || seen[other] || p.walls[top.edgeAt[head * SLOTS + k]]) continue;
+              const number = p.cp[other];
+              if (number && number !== next) continue;
+              seen[other] = 1;
+              go(other, depth + 1, number ? next + 1 : next);
+              seen[other] = 0;
+            }
+          };
+          let next = 2;
+          prefix.slice(1).forEach(c => { if (p.cp[c]) next = p.cp[c] + 1; });
+          const okPrefix = prefix.every((c, j) => j === 0 || !p.cp[c] || p.cp[c] <= next - 1);
+          if (okPrefix) go(cell, prefix.length, next);
+          eq(completions, 0, `n=${n}: the wrong turn at step ${i} cannot be finished`);
+        }
+      }
+    }
+  });
+
+  t('pentagon-grade: the grade — 0 to 5 by the reduced trap model, capped by the size of a '
+    + 'square board with as many cells, the same for a received puzzle (no stored solution), '
+    + 'rising with the board', () => {
+    const meanPredicted = n => {
+      let sum = 0;
+      for (let seed = 1; seed <= 6; seed++) {
+        sum += surfaceTrapMetrics(game(n, 100 + seed)).predicted;
+      }
+      return sum / 6;
+    };
+    for (const [n, cap] of [[4, 5], [5, SIZE_GRADE_CAP[5]], [6, SIZE_GRADE_CAP[6]], [8, 5]]) {
+      for (let seed = 1; seed <= 5; seed++) {
+        const p = game(n, seed);
+        const m = surfaceTrapMetrics(p);
+        ok(m.ok && m.grade >= 0 && m.grade <= cap, `n=${n}: grade ${m.grade} <= ${cap}`);
+        const cut = Math.min(trapGradeOf(m.predicted, PENTAGON_MODEL), cap);
+        eq(m.grade, cut, 'the model and the cap');
+        ok(m.T === PENTAGON_CELLS[n] && m.altFrac > 0, 'the fields of the display');
+        eq(m.ladTrials, 0, 'no ladder');
+        const graded = playGradesFor(p);
+        eq([graded.trap.grade, graded.legacy], [m.grade, null], 'playGradesFor');
+        if (PENTAGON_SIZES.includes(n)) {
+          const received = decodeShare(encodeShare(makeShareRecord({
+            n, timeS: 5, legs: [], K: maxNumber(p), variant: PENTAGON, puzzle: p,
+          }))).puzzle;
+          eq(playGradesFor(received).trap.grade, m.grade, `n=${n}: the same grade when received`);
+        }
+      }
+    }
+    ok(meanPredicted(4) < meanPredicted(6) && meanPredicted(6) < meanPredicted(8),
+      'a bigger board grades higher on average');
+    eq(surfaceSolutionPath(game(6, 3)).length, 36);
+    ok(TRAP_CFG.cap > 0);
   });
 
   t('pentagon-design: Generate of the design app — the default K is the mean of the rule of '

@@ -13,6 +13,7 @@ import { metricsFor, gradeOf, refNodeCap } from './difficulty.js';
 import { spatialMetrics } from './spatial.js';
 import { GRADED_METRICS, DEFAULT_THRESHOLDS_BY_METRIC } from './gen/calibration.js';
 import { trapMetrics, modelFor } from './trap.js';
+import { surfaceTrapMetrics } from './surface/trap.js';
 
 // Order the calibrated (solver/geometry) grades are shown in. The play app's badge is the TRAP grade
 // (core/trap.js), so the first three here — the old badge decisionNodes, then B and crossPerSeg — are
@@ -43,11 +44,13 @@ export function gradesFromMetrics(metrics, spatial, thresholdsById = DEFAULT_THR
 //            so it exists even when the reference solve below is capped. { ok:false } if none is found.
 //   legacy = gradesFor() — the previous calibrated grades (decisionNodes, B, crossPerSeg, ...), kept for
 //            hold-V exactly as before; null when the reference solve is capped.
-// A variant (Cutout, One way arrows, Exact, Wrap-around, Loop, Teleport pairs, Two paths) gets the trap grade
-// only, with the score
+// A variant (Cutout, One way arrows, Exact, Wrap-around, Loop, Teleport pairs, Two paths, Pentagon)
+// gets the trap grade only, with the score
 // model that fits it (trap.js modelFor): the old grades were calibrated on full-square boards
 // with walls.
 export function playGradesFor(puzzle) {
+  // a Pentagon puzzle: the trap grade on its own board, by the graph solver (surface/trap.js)
+  if (puzzle.surface) return { trap: surfaceTrapMetrics(puzzle), legacy: null };
   const variant = puzzle.holes || puzzle.arrows || puzzle.exact || puzzle.wrap || puzzle.loop
     || puzzle.portals || puzzle.split;
   return { trap: trapMetrics(puzzle, undefined, null, modelFor(puzzle)), legacy: variant ? null : gradesFor(puzzle) };
