@@ -3,6 +3,7 @@
 // cell the exact test gives, marks and routes stay in front, and the markup is complete.
 // Registered by tests.js: ballViewTests(t, ok, eq).
 import { BALL_CATALOG } from '../src/core/surface/ball-catalog.js';
+import { registerBalls } from '../src/core/surface/ball-registry.js';
 import { BALL_KIND, SLOTS, surfaceTopology } from '../src/core/surface/topology.js';
 import { makeSurfacePuzzle } from '../src/core/surface/puzzle.js';
 import { generateSurface } from '../src/core/surface/gen.js';
@@ -54,6 +55,8 @@ const viewsOf = top => {
   return [overview(top), IDENTITY, ...out];
 };
 
+registerBalls(BALL_CATALOG);
+
 export function ballViewTests(t, ok, eq) {
   t('ball view: the outlines tile the disc of the ball, in every view of every ball', () => {
     for (const entry of BALL_CATALOG) {
@@ -84,7 +87,7 @@ export function ballViewTests(t, ok, eq) {
 
   t('ball view: a point of the picture is in the cell the exact test finds', () => {
     const rnd = makeRng(11);
-    for (const id of ['tetra', 'cube', 'snub-cube', 'snub-dodeca', 'dual-snub-cube', 'spread23']) {
+    for (const id of ['tetra', 'cube', 'snub-cube', 'snub-dodeca', 'dual-snub-cube', 'bipyramid7']) {
       const top = surfaceTopology(BALL_KIND, id);
       for (const R of viewsOf(top).slice(0, 4)) {
         const view = buildBallView(top, R);
@@ -121,7 +124,7 @@ export function ballViewTests(t, ok, eq) {
   });
 
   t('ball view: the far side, the middle of a side, picking a side, marks', () => {
-    for (const id of ['snub-cube', 'kis-dodeca', 'prism5', 'spread30']) {
+    for (const id of ['snub-cube', 'kis-dodeca', 'prism5', 'dual-antiprism5']) {
       const top = surfaceTopology(BALL_KIND, id);
       const R = orbit(overview(top), 0.6, 0.35);
       const front = buildBallView(top, R);

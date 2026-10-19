@@ -16,9 +16,11 @@
 import { readFileSync } from 'node:fs';
 import { generateSurface, defaultK } from '../src/core/surface/gen.js';
 import { surfaceTopology, ballEntry, BALL_KIND } from '../src/core/surface/topology.js';
+import { loadBalls } from '../src/core/surface/balls.js';
 import { serializeSurface, parseSurface } from '../src/core/surface/puzzle.js';
 import { solveSurface } from '../src/core/surface/solve.js';
 
+await loadBalls();
 const args = process.argv.slice(2);
 const has = name => args.includes(`--${name}`);
 const value = (name, fallback) => {

@@ -333,7 +333,7 @@ const shown = (net, cell) => !net.hidden || !net.hidden[cell];
 
 // How a route goes from cell `from` to its neighbour `cell`: null when they are no neighbours,
 // { joined: true } when both are drawn side by side, else the sides on both ends.
-function stepOver(net, from, cell) {
+export function stepOver(net, from, cell) {
   const slot = slotBetween(net.top, from, cell);
   if (slot < 0) {
     return null;

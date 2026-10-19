@@ -262,3 +262,7 @@ button.playbtn.on{background:linear-gradient(135deg,#b3344f,#e0526f);}
 .sf-tag{pointer-events:none;}
 .sf-tag circle{fill:#2a2412;stroke:#c9a14a;stroke-width:1.5;}
 .sf-tag text{fill:#ffd98a;}
+
+.sf-land{fill:rgba(255,180,84,.16);stroke:#ffb454;stroke-width:3;pointer-events:none;animation:sf-land-pulse 1.1s ease-in-out infinite alternate;}
+@keyframes sf-land-pulse{from{fill-opacity:.35;}to{fill-opacity:1;}}
+@media (prefers-reduced-motion:reduce){.sf-land{animation:none;}}

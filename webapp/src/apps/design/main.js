@@ -44,6 +44,11 @@ import { mountDifficultyPanel } from './difficulty-panel.js';
 import { initHints, setHintText } from '../../ui/hint-popover.js';
 import { looksLikeSurface, parseSurface } from '../../core/surface/puzzle.js';
 import { createSurfaceController } from './surface.js';
+import { loadBalls } from '../../core/surface/balls.js';
+
+// The ball boards of the Ball type (a module of its own, big): the design app, a desktop tool,
+// loads them before it starts.
+await loadBalls();
 
 // Minimize: walls whose check hits the search limit get a deeper second look, within this many times the limit in nodes in total.
 const REFINE_BUDGET_X = 50;

@@ -34,12 +34,12 @@
 // still the number of sides, so a slot is a side as everywhere else. top.flat is true and
 // top.centres[2 * cell], [2 * cell + 1] is the centre of a cell (verts have z = 0).
 
-import { BALL_CATALOG } from './ball-catalog.js';
 import {
   PENTAGON_KIND, PENTAGON_CELLS, PENTAGON_BOARD_SIZES, pentagonMesh,
 } from './pentagon.js';
+import { ballEntry } from './ball-registry.js';
 
-export { PENTAGON_KIND };
+export { PENTAGON_KIND, ballEntry };
 
 // The kinds with a size n (a whole number); `ball` has an id instead and is listed in BALL_KIND.
 export const SURFACE_KINDS = ['tetra', 'cube'];
@@ -292,17 +292,6 @@ function buildGraph(kind, n, mesh, faceCount, opts = {}) {
 }
 
 const cache = new Map();
-
-const ballsById = new Map(BALL_CATALOG.map(entry => [entry.id, entry]));
-
-// The catalog entry of a ball (see ball-catalog.js): { id, name, f, ok, why, v, r }.
-export function ballEntry(id) {
-  const entry = ballsById.get(id);
-  if (!entry) {
-    throw new Error(`unknown ball '${id}'`);
-  }
-  return entry;
-}
 
 // The corners are the unit vectors of the entry, a cell is a face (its ring of corners).
 function ballMesh(entry) {

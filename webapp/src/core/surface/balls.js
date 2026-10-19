@@ -1,15 +1,31 @@
 // The ball boards the apps offer (the data is in ball-catalog.js, the graph in topology.js).
-import { BALL_CATALOG } from './ball-catalog.js';
+import { ballList, ballsLoaded, registerBalls } from './ball-registry.js';
+
+export { ballsLoaded, registerBalls };
 
 // The cells of the boards the play app draws from: any ball in this range that can be played.
 export const PLAY_MIN_CELLS = 8;
 export const PLAY_MAX_CELLS = 100;
 
+let loading = null;
+
+// Loads the catalog (a module of its own, imported on first use) and registers it. Every other
+// function here, and surfaceTopology('ball', id), needs it loaded.
+export function loadBalls() {
+  if (ballsLoaded()) {
+    return Promise.resolve();
+  }
+  if (!loading) {
+    loading = import('./ball-catalog.js').then(({ BALL_CATALOG }) => registerBalls(BALL_CATALOG));
+  }
+  return loading;
+}
+
 export const ballCells = entry => entry.r.length;
 
 // The balls that can be played with min <= cells <= max, in catalog order.
 export const playableBalls = (min = PLAY_MIN_CELLS, max = PLAY_MAX_CELLS) =>
-  BALL_CATALOG.filter(entry => entry.ok && ballCells(entry) >= min && ballCells(entry) <= max);
+  ballList().filter(entry => entry.ok && ballCells(entry) >= min && ballCells(entry) <= max);
 
 // A random playable ball; rnd() is a number in [0, 1).
 export function pickBall(rnd, min = PLAY_MIN_CELLS, max = PLAY_MAX_CELLS) {
@@ -31,7 +47,7 @@ export const compositionLabel = f =>
 // included (a selector shows them disabled, with their `why`).
 export function ballsByComposition() {
   const groups = new Map();
-  for (const entry of BALL_CATALOG) {
+  for (const entry of ballList()) {
     const key = entry.f.join(',');
     if (!groups.has(key)) {
       groups.set(key, { f: entry.f, label: compositionLabel(entry.f), balls: [] });
