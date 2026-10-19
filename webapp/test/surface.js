@@ -39,6 +39,7 @@ import {
   randomHamiltonianPath,
   numberAlongPath,
   defaultK,
+  pickSurfaceK,
   GEN_CFG,
 } from '../src/core/surface/gen.js';
 import { makeRng, shuffle } from '../src/core/rng.js';
@@ -456,22 +457,46 @@ export function surfaceTests(t, ok, eq) {
     eq(maxNumber(generateSurface('tetra', 3, 1, { K: 36 }).puzzle), 36);
   });
 
+  t('surface generator: the play app draws K like the square boards (pickK), after the path', () => {
+    // the range: from the square root of the cells to a quarter of them, mean at 30% of the way
+    const cases = [['tetra', 3, 36], ['tetra', 5, 100], ['cube', 2, 24], ['cube', 4, 96]];
+    for (const [kind, n, cells] of cases) {
+      const min = Math.max(4, Math.round(Math.sqrt(cells)));
+      const max = Math.max(min + 1, Math.round(cells / 4));
+      const rnd = makeRng(5);
+      const draws = Array.from({ length: 4000 }, () => pickSurfaceK(kind, n, rnd));
+      ok(draws.every(K => K >= min && K <= max), `${kind} ${n}: within [${min}, ${max}]`);
+      const mean = draws.reduce((sum, K) => sum + K, 0) / draws.length;
+      ok(Math.abs(mean - (min + 0.3 * (max - min))) < 0.4, `${kind} ${n}: mean ${mean}`);
+      ok(new Set(draws).size > 1, `${kind} ${n}: K varies`);
+    }
+    // without opts.K the generator draws it; with it the stream (and so the numbers) is as before
+    const drawn = new Set();
+    for (let seed = 1; seed <= 12; seed++) {
+      drawn.add(generateSurface('cube', 3, seed).K);
+    }
+    ok(drawn.size > 1, 'K differs between seeds');
+    const [a, b] = [generateSurface('tetra', 3, 1), generateSurface('tetra', 3, 1, { K: 9 })];
+    eq(a.path, b.path, 'the path of a seed does not depend on K');
+    eq(b.K, 9);
+  });
+
   t('surface generator: pinned puzzles (change only with a deliberate generator change)', () => {
     const tetra = generateSurface('tetra', 3, 1);
     eq(
       serializeSurface(tetra.puzzle, { path: tetra.path }),
-      'surface tetra 3\ncheckpoints 8=1 11=2 26=3 6=4 3=5 16=6 15=7\n' +
+      'surface tetra 3\ncheckpoints 8=1 14=2 20=3 2=4 22=5 15=6\n' +
         'path 8 17 31 30 29 14 10 11 20 21 25 2 1 0 35 26 24 23 19 18 9 27 28 32 33 34 5 6 7 3 ' +
         '4 22 13 12 16 15\n',
     );
-    eq(tetra.nodes, 394);
+    eq(tetra.nodes, 400);
     const cube = generateSurface('cube', 2, 1);
     eq(
       serializeSurface(cube.puzzle, { path: cube.path }),
-      'surface cube 2\ncheckpoints 5=1 1=2 14=3 4=4\nwalls 4,9,14,17,20,23,27,35,42\n' +
+      'surface cube 2\ncheckpoints 5=1 21=2 20=3 11=4 4=5\nwalls 4,8,17,18,20,38\n' +
         'path 5 16 17 7 6 21 20 22 13 0 2 23 9 8 10 11 3 19 18 1 15 14 12 4\n',
     );
-    eq(cube.nodes, 153);
+    eq(cube.nodes, 382);
   });
 
   t('surface step: push, pop, truncate, order of the numbers, walls', () => {

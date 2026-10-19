@@ -27,9 +27,9 @@ import {
   wallEdges,
 } from '../src/core/surface/puzzle.js';
 import { solveSurface, countHamiltonianPaths } from '../src/core/surface/solve.js';
+import { pentagonKRange } from '../src/core/surface/pentagon.js';
 import {
   GEN_CFG,
-  defaultK,
   generateSurface,
   randomHamiltonianPath,
 } from '../src/core/surface/gen.js';
@@ -241,7 +241,8 @@ export function ballTests(t, ok, eq) {
       const p = made.puzzle;
       eq(p.surface, BALL_KIND);
       eq(p.n, id);
-      eq(made.K, Math.min(defaultK(BALL_KIND, id), top.T), `${id}: checkpoints`);
+      const [kMin, kMax] = pentagonKRange(top.T);
+      ok(made.K >= kMin && made.K <= Math.min(kMax, top.T), `${id}: checkpoints ${made.K}`);
       eq(validateSurface(p).ok, true, `${id}: valid`);
       const solved = solveSurface(p, { limit: 2 });
       eq(solved.count, 1, `${id}: exactly one solution`);

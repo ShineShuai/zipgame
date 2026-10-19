@@ -3404,7 +3404,7 @@ loopPlayTests(t, ta, ok, eq);
 surfaceTests(t, ok, eq);
 ballTests(t, ok, eq);
 ballViewTests(t, ok, eq);
-solidTests(t, ok, eq);
+solidTests(t, ok, eq, ta);
 
 // ---------- Pentagon (Cairo tiling) boards ----------
 pentagonTests(t, ok, eq);

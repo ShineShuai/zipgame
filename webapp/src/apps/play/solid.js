@@ -81,6 +81,9 @@ export function createSolidPlay(app) {
   const choice = { kind: 'ball', size: { ...DEFAULT_SIZE }, shape: 'random' };
   // once the player has used the card it stays until the page is reloaded
   let picked = false;
+  // the view the player chose last ('3d' or 'net'): a new puzzle opens in it, until the page is
+  // reloaded
+  let view = '3d';
   // the game on the screen: { kind, n, P, top, path, rotation, view, follow, finished, seed }
   let game = null;
   let layouts = [];
@@ -341,7 +344,7 @@ export function createSolidPlay(app) {
       path: [],
       // the solid starts turned to checkpoint 1, so the first cell is in view
       rotation: turnToward(IDENTITY, cellDirection(top, puzzle.cp.indexOf(1))),
-      view: '3d',
+      view,
       follow: true,
       finished: false,
       seed,
@@ -728,7 +731,7 @@ export function createSolidPlay(app) {
     };
     $('solidView').onclick = () => {
       turner.stop();
-      game.view = game.view === '3d' ? 'net' : '3d';
+      game.view = view = game.view === '3d' ? 'net' : '3d';
       app.render();
     };
     $('solidFollow').onclick = () => {

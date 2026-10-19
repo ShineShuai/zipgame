@@ -33,7 +33,7 @@ const fills = markup => [...markup.matchAll(/fill="rgb\((\d+),(\d+),(\d+)\)"/g)]
 
 registerBalls(BALL_CATALOG);
 
-export function solidTests(t, ok, eq) {
+export function solidTests(t, ok, eq, ta) {
   t('solid nav: the turn that follows the head', () => {
     const ball = surfaceTopology(BALL_KIND, 'snub-cube');
     const R = overview(ball);
@@ -325,5 +325,43 @@ export function solidTests(t, ok, eq) {
     eq(tiles(html), ['tetra', 'cube', 'ball'], 'V shows everything, before the release too');
     eq(locked(html), 3, 'the kinds nobody can play yet are marked');
     eq(locked(make(first)), 2, 'cube and ball are marked, the tetra is not');
+  });
+
+  ta('play app: a new 3D puzzle opens in the view the player chose last', async () => {
+    registerBalls(BALL_CATALOG);
+    // a page that does nothing: every element takes any property and any call
+    const els = {};
+    const calls = () => new Proxy({}, { get: () => () => null });
+    const element = () => new Proxy({ style: {}, classList: calls(), innerHTML: '' }, {
+      get: (target, key) => (key in target ? target[key] : () => null),
+      set: (target, key, value) => Object.assign(target, { [key]: value }) && true,
+    });
+    const play = createSolidPlay({
+      S: { showDev: false, screen: 'menu' },
+      $: id => (els[id] ??= element()),
+      t: translate,
+      render: () => {},
+      startTimer: () => {},
+      stopTimer: () => {},
+      randomSeed: () => 7,
+      openExport: () => {},
+    });
+    const label = () => /id="solidView">([^<]*)</.exec(play.screenHtml())[1];
+    const toggle = () => {
+      play.attach();
+      els.solidView.onclick();
+    };
+    await play.start({ kind: 'tetra', size: 2 });
+    eq(label(), translate('solid.net'), 'the solid at first');
+    toggle();
+    eq(label(), translate('solid.solid'), 'the net after the button');
+    await play.start({ kind: 'tetra', size: 2 });
+    eq(label(), translate('solid.solid'), 'a new puzzle keeps the net');
+    await play.start({ kind: 'cube', size: 2 });
+    eq(label(), translate('solid.solid'), 'so does another kind');
+    toggle();
+    eq(label(), translate('solid.net'), 'the solid again');
+    await play.start({ kind: 'tetra', size: 3 });
+    eq(label(), translate('solid.net'), 'a new puzzle keeps the solid');
   });
 }
