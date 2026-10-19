@@ -8,14 +8,22 @@ import {
 import { createUnlock, sanitize, UNLOCK_KEY } from '../src/features/unlock.js';
 import { createRulesSeen, sanitize as sanitizeSeen, RULES_SEEN_KEY } from '../src/features/rules-seen.js';
 import {
-  PLAY_VARIANTS, LUCKY_SIZES, variantById, variantOf, sizesFor, luckyDefs,
+  PLAY_VARIANTS, LUCKY_SIZES, variantById, variantOf, sizesFor, luckyDefs, solidDefs,
 } from '../src/apps/play/variants.js';
+import {
+  SOLID_KINDS, SOLID_SIZES, dayOfYmd, releaseDays, stageOf, openSizes,
+} from '../src/features/solid-release.js';
+import { SOLID_RELEASE } from '../src/config.js';
 import { PLAY_SIZES } from '../src/core/gen/generate.js';
 import {
   VARIANTS as SHARE_VARIANTS, TELEPORT, TWO_PATHS, PENTAGON,
 } from '../src/core/share-code.js';
 import { runSync } from '../src/core/run.js';
-import { EN, ZH } from '../src/ui/i18n.js';
+import { EN, ZH, t as translate } from '../src/ui/i18n.js';
+import { createSolidPlay } from '../src/apps/play/solid.js';
+import { ballEntry } from '../src/core/surface/topology.js';
+import { registerBalls } from '../src/core/surface/ball-registry.js';
+import { BALL_CATALOG } from '../src/core/surface/ball-catalog.js';
 
 const MON = 20731; // 2026-10-05, the lucky day of its week; the next one is 20743 (2026-10-17)
 const memory = (init = {}) => {
@@ -295,5 +303,226 @@ export function unlockTests(t, ta, ok, eq) {
     await safe.init();
     await safe.mark('wrap'); // must not throw
     ok(safe.seen('wrap'), 'it still works for this page load');
+  });
+
+  // ---------- the release of the 3D puzzles (features/solid-release.js) ----------
+  const RELEASE = { first: 20261201, tetra: 7, cube: 21, ball: 35 };
+
+  const throwsRange = (fn, what) => {
+    let threw = false;
+    try {
+      fn();
+    } catch (error) {
+      threw = error instanceof RangeError;
+    }
+    ok(threw, `${what} must throw a RangeError`);
+  };
+
+  t('solid release: dates, stages and the sizes open to everyone', () => {
+    eq(dayOfYmd(20261201), Date.UTC(2026, 11, 1) / 86400000);
+    for (const bad of [20261301, 20260230, '2026-12-01', 'x', null, 0, 202612011]) {
+      throwsRange(() => dayOfYmd(bad), `date ${bad}`);
+    }
+    eq(releaseDays(null), null);
+    eq(releaseDays({ ...RELEASE, first: null }), null, 'no first day: nothing is released');
+    const rel = releaseDays(RELEASE);
+    const f = rel.first;
+    eq([rel.tetra - f, rel.cube - f, rel.ball - f], [7, 21, 35]);
+    const stages = day => SOLID_KINDS.map(kind => stageOf(kind, day, rel));
+    eq(stages(f - 1), ['none', 'none', 'none']);
+    eq(stages(f), ['part', 'none', 'none']);
+    eq(stages(f + 6), ['part', 'none', 'none']);
+    eq(stages(f + 7), ['all', 'none', 'none']);
+    eq(stages(f + 20), ['all', 'none', 'none']);
+    eq(stages(f + 21), ['all', 'all', 'none']);
+    eq(stages(f + 34), ['all', 'all', 'none']);
+    eq(stages(f + 35), ['all', 'all', 'all']);
+    eq(SOLID_KINDS.map(kind => stageOf(kind, f + 99, null)), ['none', 'none', 'none']);
+    const tetraSizes = [f - 1, f, f + 6, f + 7].map(day => openSizes('tetra', day, rel));
+    eq(tetraSizes, [[], [2], [2], [2, 3, 4, 5]]);
+    const cubeSizes = [f + 20, f + 21].map(day => openSizes('cube', day, rel));
+    eq(cubeSizes, [[], SOLID_SIZES.cube]);
+    eq(releaseDays({ ...RELEASE, tetra: 0 }).tetra, f, 'zero days: all tetra sizes at once');
+    for (const key of ['tetra', 'cube', 'ball']) {
+      for (const bad of [-1, 1.5, '7', undefined]) {
+        throwsRange(() => releaseDays({ ...RELEASE, [key]: bad }), `${key}: ${bad}`);
+      }
+    }
+    releaseDays(SOLID_RELEASE); // the shipped config is valid
+  });
+
+  t('solid release: luckyDefs has the 3D kinds only when given a release', () => {
+    ok(!luckyDefs(PLAY_SIZES).some(d => d.solid), 'without a release: flat variants only');
+    const rel = releaseDays(RELEASE);
+    const defsOn = luckyDefs(PLAY_SIZES, rel);
+    eq(defsOn.length, PLAY_VARIANTS.length + 3);
+    const solid = defsOn.filter(d => d.solid);
+    eq(solid.map(d => d.id), SOLID_KINDS);
+    ok(solid.every(d => d.from === rel.first), 'live from the first day');
+    const unreleased = luckyDefs(PLAY_SIZES, null).filter(d => d.solid);
+    ok(unreleased.every(d => d.from === null), 'not released: never live');
+    for (const d of solid.filter(d => d.id !== 'ball')) {
+      ok(d.locked.every(n => d.pool.includes(n)), `${d.id}: locked sizes are pool sizes`);
+    }
+    const byId = Object.fromEntries(solid.map(d => [d.id, d]));
+    ok(!byId.tetra.locked.includes(2), 'the free tetra size 2 is never a locked one');
+    eq(byId.tetra.locked, [3, 4]);
+    eq(byId.cube.locked, [2, 3]);
+    eq(byId.cube.pool, [2, 3, 4]);
+    eq(byId.ball.locked, [{ min: 10, max: 30 }]);
+    eq(byId.ball.pool, [{ min: 8, max: 100 }]);
+    const open = d => [rel.first, rel.tetra, rel.cube, rel.ball].map(day => d.open(day));
+    eq(solid.map(open), [
+      [false, true, true, true],
+      [false, false, true, true],
+      [false, false, false, true],
+    ]);
+  });
+
+  const solidRel = releaseDays(RELEASE);
+  const flatDefs = [
+    { id: 'a', locked: [7], pool: [7, 8] },
+    { id: 'b', locked: [9], pool: [9] },
+  ];
+  const withSolid = [...flatDefs, ...solidDefs(solidRel)];
+  const allFlat = { a: 1, b: 1 };
+  const saved = (unlocked, tokens = 0) => memory({
+    [UNLOCK_KEY]: JSON.stringify({
+      v: 1, unlocked, tokens, choices: 0, played: [], active: null,
+    }),
+  });
+  // how many variants the lucky game draws from, and the game it started
+  const drawn = async (u, value = 0) => {
+    const seen = [];
+    const game = await u.begin(n => {
+      seen.push(n);
+      return value % n;
+    });
+    return { n: seen[0], game };
+  };
+
+  ta('solid unlock: 3D kinds wait for every flat variant and the first day', async () => {
+    const early = createUnlock(memory(), withSolid, at(solidRel.first + 40));
+    await early.init();
+    eq((await drawn(early)).n, 2, 'a flat variant is still locked: 2 to draw from');
+
+    const before = createUnlock(saved(allFlat), withSolid, at(solidRel.first - 1));
+    await before.init();
+    eq([before.allUnlocked(), before.view().allUnlocked, before.view().open],
+      [true, true, false], 'all unlocked before the 3D release');
+
+    const day = createUnlock(saved(allFlat), withSolid, at(solidRel.first));
+    await day.init();
+    eq([day.allUnlocked(), day.view().open], [false, true],
+      'the first day: the 3D kinds are new things to unlock');
+    eq((await drawn(day)).n, 5, 'two flat and three 3D');
+  });
+
+  ta('solid unlock: a chance on a 3D kind unlocks it for good, early', async () => {
+    const day = solidRel.first + 2;
+    const st = saved(allFlat, 1);
+    const u = createUnlock(st, withSolid, at(day));
+    await u.init();
+    const { game } = await drawn(u, 2); // the tetra
+    eq(game.id, 'tetra');
+    ok(game.isNew && game.holder, 'a new kind, an unlock chance');
+    ok([3, 4].includes(game.size), 'a locked tetra is played at 3 or 4');
+    eq(await u.finish(true), { id: 'tetra', solved: true, holder: true, newly: true });
+    eq([u.unlocked('tetra'), u.unlocked('cube'), u.unlocked('ball')], [true, false, false]);
+    eq(JSON.parse(st.map.get(UNLOCK_KEY)).unlocked.tetra, day);
+    const again = createUnlock(st, withSolid, at(day));
+    await again.init();
+    ok(again.unlocked('tetra'), 'it persists');
+    eq(createUnlock(st, flatDefs, at(day)).unlocked('tetra'), false, 'false before init');
+  });
+
+  ta('solid unlock: a kind open to everyone counts as unlocked', async () => {
+    const none = createUnlock(memory(), withSolid, at(solidRel.tetra));
+    await none.init();
+    eq([none.unlocked('tetra'), none.unlocked('cube')], [true, false],
+      'the tetra is open to everyone after a week');
+
+    const rich = createUnlock(saved(allFlat, 1), withSolid, at(solidRel.tetra));
+    await rich.init();
+    const game = await rich.begin(pick(2, 0)); // the tetra, the first size of its pool
+    eq(game, { id: 'tetra', size: 2, isNew: false, holder: true }, 'every size is drawn');
+    eq(await rich.finish(true), { id: 'tetra', solved: true, holder: true, newly: false },
+      'nothing to unlock');
+
+    const last = createUnlock(saved(allFlat, 1), withSolid, at(solidRel.ball));
+    await last.init();
+    eq([last.allUnlocked(), last.view().open], [true, false],
+      'everything is open: no lucky game left');
+  });
+
+  ta('solid lucky: a 3D lucky game is one try; a failed start gives the chance back', async () => {
+    registerBalls(BALL_CATALOG);
+    const calls = [];
+    const S = { showDev: false, screen: 'menu', luckyHolder: true };
+    let timers = 0;
+    let seedValue = 7;
+    const play = createSolidPlay({
+      S,
+      $: () => null,
+      t: translate,
+      render: () => {},
+      startTimer: () => {
+        timers++;
+      },
+      stopTimer: () => {},
+      randomSeed: () => seedValue,
+      luckyHtml: done => `<i data-done="${done}"></i>`,
+      luckyFailed: async () => {
+        calls.push('failed');
+      },
+      leaveLucky: () => {
+        calls.push('left');
+      },
+    });
+    const hintHidden = html => /id="solidHint"[^>]*style="display:none"/.test(html);
+
+    await play.start({ kind: 'tetra', size: 3, lucky: true });
+    eq([S.screen, S.lucky, timers], ['solid', true, 1]);
+    let html = play.screenHtml();
+    ok(html.includes('lucky-chip') && html.includes('lucky-once'), 'the chip and the note');
+    ok(/id="solidNew" style="display:none"/.test(html), 'no new puzzle');
+    ok(hintHidden(html), 'no hint');
+    ok(html.includes('data-done="false"'), 'the lucky result goes under the game');
+    S.showDev = true;
+    ok(!hintHidden(play.screenHtml()), 'V brings the hint back');
+    S.showDev = false;
+
+    for (const size of [2, 3]) {
+      await play.start({ kind: 'cube', size, lucky: true });
+      eq([S.screen, S.lucky], ['solid', true], `cube ${size}`);
+    }
+
+    // a ball: its size is the range of cells
+    for (const seed of [1, 7, 4294967295]) {
+      seedValue = seed;
+      await play.start({ kind: 'ball', size: { min: 10, max: 30 }, lucky: true });
+      const id = /ball · ([^ ]+) · seed/.exec(play.screenHtml())[1];
+      const cells = ballEntry(id).r.length;
+      ok(cells >= 10 && cells <= 30, `${id} has ${cells} cells`);
+    }
+
+    // a free game is no lucky game
+    await play.start({ kind: 'tetra', size: 2 });
+    html = play.screenHtml();
+    eq(S.lucky, false);
+    ok(!html.includes('lucky-chip'), 'no chip');
+    ok(/id="solidNew" style=""/.test(html), 'a new puzzle');
+    ok(!hintHidden(html), 'a hint');
+
+    // a start that fails tells the lucky game, which gives the chance back
+    const restore = [globalThis.alert, console.error];
+    globalThis.alert = () => {};
+    console.error = () => {};
+    try {
+      await play.start({ kind: 'tetra', size: 99, lucky: true }); // no such board
+    } finally {
+      [globalThis.alert, console.error] = restore;
+    }
+    eq([calls, S.screen], [['failed'], 'menu']);
   });
 }

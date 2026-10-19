@@ -24,6 +24,7 @@ import {
 } from '../src/view/solid-nav.js';
 import { SOLID_KINDS, createSolidPlay, isSolidKind } from '../src/apps/play/solid.js';
 import { variantIcon, cardIcon } from '../src/apps/play/icons.js';
+import { releaseDays } from '../src/features/solid-release.js';
 import { EN, ZH, t as translate } from '../src/ui/i18n.js';
 
 // the channels of every fill="rgb(r,g,b)" in a markup
@@ -278,5 +279,51 @@ export function solidTests(t, ok, eq) {
       registerBalls(BALL_CATALOG);
     }
     ok(loadBalls() instanceof Promise, 'loading is a promise');
+  });
+
+  t('play app: the card of the 3D puzzles follows the release dates', () => {
+    const rel = releaseDays({ first: 20261201, tetra: 7, cube: 21, ball: 35 });
+    const make = (day, { unlocked = () => false, showDev = false, release = rel } = {}) => (
+      createSolidPlay({
+        S: { showDev, screen: 'menu' },
+        $: () => null,
+        t: translate,
+        render: () => {},
+        startTimer: () => {},
+        stopTimer: () => {},
+        randomSeed: () => 1,
+        release,
+        today: () => day,
+        unlocked,
+      }).cardHtml()
+    );
+    const tiles = html => [...html.matchAll(/id="solidOpt-(\w+)"( style="display:none")?/g)]
+      .filter(match => !match[2])
+      .map(match => match[1]);
+    const sizes = html => [...html.matchAll(/<option value="(\d+)"/g)]
+      .map(match => Number(match[1]));
+    const locked = html => (html.match(/variant-locked/g) || []).length;
+    const hiddenCard = /id="solidCard" style="display:none"/;
+    const first = rel.first;
+
+    ok(hiddenCard.test(make(first - 1)), 'hidden before the first day');
+    ok(hiddenCard.test(make(first, { release: null })), 'hidden when nothing is released');
+    let html = make(first);
+    ok(/id="solidCard" style=""/.test(html), 'shown from the first day');
+    eq([tiles(html), sizes(html)], [['tetra'], [2]], 'the first day: tetra of size 2 only');
+    ok(/value="tetra"[^>]*checked/.test(html), 'and it is the picked tile');
+    ok(html.includes('2 (16 cells)'));
+    html = make(first + 7);
+    eq([tiles(html), sizes(html)], [['tetra'], [2, 3, 4, 5]], 'a week later: every size');
+    eq(tiles(make(first + 21)), ['tetra', 'cube'], 'three weeks later: the cube');
+    eq(tiles(make(first + 35)), ['tetra', 'cube', 'ball'], 'five weeks later: the ball');
+
+    html = make(first, { unlocked: kind => kind === 'cube' });
+    eq([tiles(html), sizes(html)], [['tetra', 'cube'], [2]], 'a kind won in the lucky game');
+
+    html = make(first - 30, { showDev: true });
+    eq(tiles(html), ['tetra', 'cube', 'ball'], 'V shows everything, before the release too');
+    eq(locked(html), 3, 'the kinds nobody can play yet are marked');
+    eq(locked(make(first)), 2, 'cube and ball are marked, the tetra is not');
   });
 }

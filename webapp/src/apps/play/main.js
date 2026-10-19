@@ -38,7 +38,8 @@ import { createUnlock } from '../../features/unlock.js';
 import { createRulesSeen } from '../../features/rules-seen.js';
 import { weekOf, weekTable } from '../../core/lucky.js';
 import { VERSION } from '../../version.js';
-import { LEADERBOARD, BEHAVIOUR } from '../../config.js';
+import { LEADERBOARD, BEHAVIOUR, SOLID_RELEASE } from '../../config.js';
+import { releaseDays } from '../../features/solid-release.js';
 import { createLeaderboard, backendsFromConfig, submitAttempt } from '../../platform/leaderboard.js';
 import { createBehaviour, sinksFromConfig } from '../../platform/behaviour.js';
 import { rowFromGame, skillBucket } from '../../core/behaviour.js';
@@ -167,8 +168,28 @@ function openExport(text) {
   modal.open();
   setTimeout(() => $('exportText').focus(), 30);
 }
-// The 3D puzzles (tetrahedron, cube, ball): their own card in the menu (shown with V) and game screen.
-const solid = createSolidPlay({ S, $, t, render, startTimer, stopTimer, randomSeed, openExport });
+// The 3D puzzles (tetrahedron, cube, ball): their own card in the menu (from the release
+// day, or with V) and game screen.
+// Which 3D kinds are open to everyone, and from when (config.js SOLID_RELEASE); a bad
+// config switches the release off.
+const solidRelease = (() => {
+  try {
+    return releaseDays(SOLID_RELEASE);
+  } catch (e) {
+    console.error('SOLID_RELEASE ignored:', e);
+    return null;
+  }
+})();
+const solid = createSolidPlay({
+  S, $, t, render, startTimer, stopTimer, randomSeed, openExport,
+  release: solidRelease,
+  today: dayNo,
+  unlocked: kind => Boolean(unlock && unlock.unlocked(kind)),
+  luckyHtml: luckyGameHtml,
+  luckySolved: finishLucky,
+  luckyFailed: () => unlock && unlock.refund(),
+  leaveLucky,
+});
 
 // Radio tiles, each an icon of the board it plays (full square, square with holes, ...), a name and a tagline.
 // Native radios: keyboard (arrows), screen readers and touch work without extra code; css/play.css draws the state.
@@ -254,12 +275,13 @@ function luckyBoxHtml() {
 }
 
 // Under the game after a solve: what the lucky game unlocked (or why not), a streak reward to claim.
-function luckyGameHtml() {
-  if (!S.finished) return '';
+function luckyGameHtml(done = S.finished) {
+  if (!done) return '';
   const parts = [], r = S.luckyResult, v = unlockView();
   if (r && r.solved) {
-    const key = r.newly ? 'lucky.unlocked' : unlock.unlocked(r.id) ? 'lucky.already' : 'lucky.noChance';
-    parts.push(`<div class="lucky-result${r.newly ? '' : ' same'}">${variantIcon(r.id)}<span>${t(key, t(variantById(r.id).keys.name))}</span></div>`);
+    const newKey = solid.isKind(r.id) ? 'lucky.unlockedSolid' : 'lucky.unlocked';
+    const key = r.newly ? newKey : unlock.unlocked(r.id) ? 'lucky.already' : 'lucky.noChance';
+    parts.push(`<div class="lucky-result${r.newly ? '' : ' same'}">${variantIcon(r.id)}<span>${t(key, t('mode.' + r.id))}</span></div>`);
   }
   if (S.healed) parts.push(`<div class="lucky-result heal"><span>${t('streak.healed')}</span></div>`);
   if (v && v.choices > 0) parts.push(rewardRowHtml(v));
@@ -966,15 +988,25 @@ async function startLucky() {
   S.luckyNote = null;
   const pick = await unlock.begin(randomInt);
   if (!pick) return render();
-  S.size = pick.size; S.luckyHolder = pick.holder;
+  S.luckyHolder = pick.holder;
+  if (solid.isKind(pick.id)) { // a 3D kind: the 3D game screen
+    return solid.start({ kind: pick.id, size: pick.size, lucky: true });
+  }
+  S.size = pick.size;
   await startLocal('open', pick.id, true);
 }
 async function finishLucky() {
   const r = await unlock.finish(true);
   if (!r) return; // a re-solve after a reset: the first solve counted
   S.luckyResult = r;
-  if (r.newly) S.mode = r.id; // the new tile is picked in the menu
-  if (S.screen === 'game') render();
+  if (r.newly) { // the new tile is picked in the menu
+    if (solid.isKind(r.id)) {
+      solid.pick(r.id);
+    } else {
+      S.mode = r.id;
+    }
+  }
+  if (S.screen === 'game' || S.screen === 'solid') render();
 }
 // Back to the menu from a lucky game that was not solved: the chance is gone.
 function leaveLucky() {
@@ -1397,7 +1429,7 @@ async function initLang() {
   streak = createStreak(storage, playlog);
   let streakRewards = 0; // rewards of healed days a saved streak had not counted yet: granted once the rest is loaded
   try { streakRewards = (await streak.init()).rewards; } catch (e) { console.warn('streak init failed:', e); }
-  unlock = createUnlock(storage, luckyDefs(SIZES));
+  unlock = createUnlock(storage, luckyDefs(SIZES, solidRelease));
   try { await unlock.init(); } catch (e) { console.warn('unlock init failed:', e); }
   rulesSeen = createRulesSeen(storage, PLAY_VARIANTS.map(v => v.id));
   await rulesSeen.init();

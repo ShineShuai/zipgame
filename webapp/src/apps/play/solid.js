@@ -1,7 +1,10 @@
-// The 3D puzzles of the play app: a tetrahedron, a cube or a ball, drawn as a solid you turn. Three
-// parts: the card of the menu (a dedicated card, shown while V is held and then until the page is
-// reloaded, once the player has used it), the game screen, and the game itself (a path through
-// every cell, the numbers in order, as on the flat board).
+// The 3D puzzles of the play app: a tetrahedron, a cube or a ball, drawn as a solid you
+// turn. Three parts: the card of the menu (a dedicated card, shown from the release day in
+// config.js SOLID_RELEASE, features/solid-release.js, and for a player who unlocked a kind
+// in the lucky game; while V is held it shows everything, and a tile picked then stays
+// until the page is reloaded), the game screen, and the game itself (a path through every
+// cell, the numbers in order, as on the flat board). The lucky game can draw a 3D kind
+// (main.js startLucky): the same game screen, one try.
 //
 // The board is a surface puzzle (core/surface/), the picture is view/surface-board.js in the
 // light palette, and the turning is view/solid-nav.js. A 3D game has hints (with the time penalty
@@ -12,7 +15,6 @@
 import {
   BALL_KIND,
   SLOTS,
-  SURFACE_SIZES,
   ballEntry,
   surfaceTopology,
 } from '../../core/surface/topology.js';
@@ -47,9 +49,10 @@ import {
   sfxMoveAfterCheckpoint,
   sfxSolved,
 } from '../../platform/sound.js';
+import { SOLID_KINDS, SOLID_SIZES, openSizes, stageOf } from '../../features/solid-release.js';
 import { cardIcon, variantIcon } from './icons.js';
 
-export const SOLID_KINDS = ['tetra', 'cube', 'ball'];
+export { SOLID_KINDS };
 export const isSolidKind = kind => SOLID_KINDS.includes(kind);
 
 // Numbers have to be met in order, and nothing follows the highest number.
@@ -60,8 +63,19 @@ const DEFAULT_SIZE = { tetra: 4, cube: 3 };
 
 const sec = seconds => `${seconds.toFixed(1)}s`;
 
+// What main.js hands over besides the page (all optional, so the card works on its own):
+//   release   releaseDays(SOLID_RELEASE): what is open to everyone, and from when
+//             (null: nothing)
+//   today     () -> the UTC day number
+//   unlocked  kind -> whether the player has unlocked it (the lucky game)
+//   luckyHtml done -> the markup under a lucky game (what it unlocked, a streak reward)
+//   luckySolved, luckyFailed, leaveLucky: the lucky game was solved, could not start
+//             (the chance comes back), was left
 export function createSolidPlay(app) {
   const { S, $, t } = app;
+  const release = app.release ?? null;
+  const today = app.today ?? (() => 0);
+  const isUnlocked = app.unlocked ?? (() => false);
   // what the menu card has chosen: the kind, the size of a tetra and of a cube, the ball ('random'
   // or the id of a catalog entry)
   const choice = { kind: 'ball', size: { ...DEFAULT_SIZE }, shape: 'random' };
@@ -91,7 +105,31 @@ export function createSolidPlay(app) {
 
   // ---------- the card of the menu ----------
 
-  const cardShown = () => S.showDev || picked;
+  // What the player may play of a kind: 'all' (unlocked, or open to everyone), 'part'
+  // (the first sizes of a tetra, open to everyone from the first day) or 'none'.
+  // Holding V shows everything.
+  const realAccess = kind => (isUnlocked(kind) ? 'all' : stageOf(kind, today(), release));
+  const accessOf = kind => (S.showDev ? 'all' : realAccess(kind));
+  const sizesOf = kind => (
+    accessOf(kind) === 'part' ? openSizes(kind, today(), release) : SOLID_SIZES[kind]
+  );
+  // A tile the player picked (while V was held) stays until the page is reloaded, like
+  // the flat variants.
+  const kept = new Set();
+  const tileShown = kind => S.showDev || realAccess(kind) !== 'none' || kept.has(kind);
+  const cardShown = () => (
+    S.showDev || picked || SOLID_KINDS.some(kind => realAccess(kind) !== 'none')
+  );
+
+  // The choice must be something on offer: a shown kind, one of its sizes.
+  function fitChoice() {
+    if (!tileShown(choice.kind)) {
+      choice.kind = SOLID_KINDS.find(tileShown) ?? choice.kind;
+    }
+    if (choice.kind !== BALL_KIND && !sizesOf(choice.kind).includes(choice.size[choice.kind])) {
+      choice.size[choice.kind] = sizesOf(choice.kind)[0];
+    }
+  }
 
   function shapeOptionsHtml() {
     if (choice.kind === BALL_KIND) {
@@ -112,7 +150,7 @@ export function createSolidPlay(app) {
       const random = choice.shape === 'random' ? ' selected' : '';
       return `<option value="random"${random}>${t('solid.random')}</option>${groups.join('')}`;
     }
-    return SURFACE_SIZES[choice.kind]
+    return sizesOf(choice.kind)
       .map(n => {
         const selected = n === choice.size[choice.kind] ? ' selected' : '';
         const cells = t('solid.cells', surfaceTopology(choice.kind, n).T);
@@ -125,8 +163,10 @@ export function createSolidPlay(app) {
 
   function tileHtml(kind) {
     const checked = kind === choice.kind ? ' checked' : '';
+    const locked = realAccess(kind) === 'none' ? ' variant-locked' : '';
+    const style = tileShown(kind) ? '' : ' style="display:none"';
     return `
-        <label class="variant-opt" id="solidOpt-${kind}">
+        <label class="variant-opt${locked}" id="solidOpt-${kind}"${style}>
           <input type="radio" name="solid" value="${kind}"
             aria-describedby="solidRules-${kind}"${checked}>
           <span class="variant-card">
@@ -141,6 +181,7 @@ export function createSolidPlay(app) {
   }
 
   function cardHtml() {
+    fitChoice();
     return `
       <section class="card solid-card" id="solidCard" style="${cardShown() ? '' : 'display:none'}">
         <header class="card-head">
@@ -196,6 +237,7 @@ export function createSolidPlay(app) {
     document.querySelectorAll('input[name="solid"]').forEach(input => {
       input.onchange = () => {
         choice.kind = input.value;
+        kept.add(input.value);
         $('solidSel').innerHTML = shapeOptionsHtml();
         $('solidSelLabel').textContent = choiceLabel();
       };
@@ -219,10 +261,25 @@ export function createSolidPlay(app) {
     const card = $('solidCard');
     if (card) {
       card.style.display = cardShown() ? '' : 'none';
+      fitChoice();
+      for (const kind of SOLID_KINDS) {
+        const tile = $(`solidOpt-${kind}`);
+        if (tile) {
+          tile.style.display = tileShown(kind) ? '' : 'none';
+        }
+      }
+      const select = $('solidSel');
+      if (select && choice.kind !== BALL_KIND) {
+        select.innerHTML = shapeOptionsHtml();
+      }
     }
     const exportButton = $('solidExport');
     if (exportButton) {
       exportButton.style.display = S.showDev ? '' : 'none';
+    }
+    const hintButton = $('solidHint');
+    if (hintButton && game) {
+      hintButton.style.display = hintShown() ? '' : 'none';
     }
     if (cardShown()) {
       ensureBalls();
@@ -231,21 +288,27 @@ export function createSolidPlay(app) {
 
   // ---------- starting a game ----------
 
-  async function start() {
-    const kind = choice.kind;
-    let n = choice.size[kind];
-    if (kind === BALL_KIND) {
-      await loadBalls();
-      const entry = choice.shape === 'random'
-        ? pickBall(() => app.randomSeed() / 4294967296)
-        : ballEntry(choice.shape);
-      n = entry.id;
-    }
+  // Starts a game of what the card has chosen. The lucky game (main.js startLucky) gives
+  // the kind and the size instead: the size of a tetra or cube, for a ball the range of
+  // cells it may have, { min, max }.
+  async function start({ kind = choice.kind, size, lucky = false } = {}) {
+    let n = size ?? choice.size[kind];
     S.screen = 'generating';
     S.genMode = kind;
     S.gen = { frac: 0, walls: null, K: null };
     app.render();
     try {
+      if (kind === BALL_KIND) {
+        await loadBalls();
+        const rnd = () => app.randomSeed() / 4294967296;
+        let entry;
+        if (lucky) {
+          entry = pickBall(rnd, size.min, size.max);
+        } else {
+          entry = choice.shape === 'random' ? pickBall(rnd) : ballEntry(choice.shape);
+        }
+        n = entry.id;
+      }
       const seed = app.randomSeed();
       const made = await runAsync(generateSurfaceSteps(kind, n, seed), {
         onEvent: event => {
@@ -256,16 +319,19 @@ export function createSolidPlay(app) {
           }
         },
       });
-      begin(kind, n, made.puzzle, seed, made.path);
+      begin(kind, n, made.puzzle, seed, made.path, lucky);
     } catch (error) {
       console.error('3D puzzle failed:', error);
+      if (lucky && app.luckyFailed) {
+        await app.luckyFailed();
+      }
       S.screen = 'menu';
       app.render();
       alert(t('err.generate'));
     }
   }
 
-  function begin(kind, n, puzzle, seed, solution) {
+  function begin(kind, n, puzzle, seed, solution, lucky = false) {
     const top = surfaceTopology(kind, n);
     game = {
       kind,
@@ -285,6 +351,7 @@ export function createSolidPlay(app) {
       hintWrongCell: null,
       penalized: false,
       noteKey: null, // the line under the board, when not the usual one
+      lucky, // the lucky game: one try, no hint, no new puzzle
     };
     drawing = false;
     orbiting = null;
@@ -293,6 +360,7 @@ export function createSolidPlay(app) {
     lastPoint = null;
     S.finished = false;
     S.elapsed = 0;
+    Object.assign(S, { lucky, luckyResult: null, luckyNote: null, healed: false });
     S.screen = 'solid';
     app.startTimer();
     app.render();
@@ -302,6 +370,9 @@ export function createSolidPlay(app) {
   function leave() {
     turner.stop();
     app.stopTimer();
+    if (app.leaveLucky) {
+      app.leaveLucky(); // an unsolved lucky game forfeits its unlock chance
+    }
     game = null;
     S.screen = 'menu';
     app.render();
@@ -320,6 +391,9 @@ export function createSolidPlay(app) {
     }
     return t(net ? 'solid.solid' : 'solid.net');
   }
+
+  // The hint button: in free play always, in the lucky game only while V is held.
+  const hintShown = () => S.showDev || !game.lucky;
 
   // The hints a game has: one for every checkpoint.
   const hintCap = () => game.P.cp.reduce((count, number) => count + (number ? 1 : 0), 0);
@@ -348,25 +422,35 @@ export function createSolidPlay(app) {
     const tag = `<span id="seedTag" class="seed-tag" style="display:${dev}">`
       + `${game.kind} · ${game.n} · seed ${game.seed}</span>`;
     const follow = game.follow ? ' active' : '';
+    const hintStyle = hintShown() ? '' : 'display:none';
+    const newStyle = game.lucky ? 'display:none' : '';
+    const luckyChip = game.lucky ? `<span class="lucky-chip">${t('lucky.tag')}</span>` : '';
+    const luckyOnce = game.lucky && !game.finished
+      ? `<p class="note lucky-once">${t(S.luckyHolder ? 'lucky.onceChance' : 'lucky.onceFun')}</p>`
+      : '';
+    const luckyResult = app.luckyHtml ? app.luckyHtml(game.finished) : '';
     return `
     <div class="game-layout">
       <section class="card board-card">
         <div class="hud">
           <div class="hud-title">
-            <span class="hud-icon">${variantIcon(game.kind)}</span><span>${titleOf()}</span>${tag}
+            <span class="hud-icon">${variantIcon(game.kind)}</span>
+            <span>${titleOf()}</span>${luckyChip}${tag}
           </div>
           <div class="hud-time">${t('game.time', `<b id="hudTime">${time}</b>`)}</div>
         </div>
         <div class="grid-wrap solid-wrap" id="solidWrap"></div>
         <p class="note" id="solidNote">${t(noteKey())}</p>
+        ${luckyOnce}
       </section>
       <div class="side">
         <section class="card">
           <div class="button-row">
             <button class="btn secondary" id="solidMenu">${t('game.menu')}</button>
-            <button class="btn secondary" id="solidNew">${t('game.new')}</button>
+            <button class="btn secondary" id="solidNew" style="${newStyle}">
+              ${t('game.new')}</button>
             <button class="btn secondary" id="solidReset">${t('game.reset')}</button>
-            <button class="btn secondary" id="solidHint"${hintOff}>
+            <button class="btn secondary" id="solidHint"${hintOff} style="${hintStyle}">
               ${t('game.hint', game.hints, hintCap())}</button>
             <button class="btn secondary" id="solidExport" style="${exportShown}">Export</button>
             <button class="btn secondary" id="solidView">${viewLabel()}</button>
@@ -375,6 +459,7 @@ export function createSolidPlay(app) {
               ${t('solid.follow')}</button>
           </div>
           ${solved}
+          ${luckyResult}
         </section>
       </div>
     </div>`;
@@ -465,6 +550,9 @@ export function createSolidPlay(app) {
           // each hint adds a penalty to the time, once, even if the path is reset and solved again
           S.elapsed = penalizedTime(S.elapsed, game.hints);
           game.penalized = true;
+        }
+        if (game.lucky && app.luckySolved) {
+          app.luckySolved();
         }
       }
     } else {
@@ -753,6 +841,11 @@ export function createSolidPlay(app) {
     // wires the page after every render: the card in the menu, the board in a game
     attach: () => (S.screen === 'solid' && game ? attachGame() : attachCard()),
     reveal,
+    start,
+    // the kind the card has chosen (the one just unlocked)
+    pick: kind => {
+      choice.kind = kind;
+    },
     onKey,
     isKind: isSolidKind,
   };

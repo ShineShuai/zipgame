@@ -7,6 +7,8 @@ import { generateTeleport, TELEPORT_SIZES } from '../../core/gen/teleport.js';
 import { generateTwoPaths, TWOPATHS_SIZES } from '../../core/gen/twopaths.js';
 import { generatePentagon, PENTAGON_SIZES } from '../../core/gen/pentagon.js';
 import { PENTAGON_KIND } from '../../core/surface/pentagon.js';
+import { PLAY_MAX_CELLS, PLAY_MIN_CELLS } from '../../core/surface/balls.js';
+import { SOLID_KINDS, SOLID_SIZES, stageOf } from '../../features/solid-release.js';
 
 // The puzzle variants of the play app, one entry each. Everything that differs between variants
 // is read from here (the menu tiles, the generator, the texts, the lucky game), so a new variant
@@ -131,14 +133,41 @@ export const sizesFor = (mode, sizes) => {
   return variant ? variant.sizes(sizes) : sizes;
 };
 
-// What the unlock feature (features/unlock.js) needs of each variant: the sizes of its lucky game
-// while it is locked (its luckySizes, default LUCKY_SIZES, that the variant offers) and once it is
-// unlocked (all of its sizes, the same as in free play).
-export const luckyDefs = sizes => PLAY_VARIANTS.map(variant => {
-  const pool = variant.sizes(sizes), lucky = variant.luckySizes || LUCKY_SIZES;
-  const locked = pool.filter(n => lucky.includes(n));
-  return { id: variant.id, locked: locked.length ? locked : pool, pool };
-});
+// The sizes of the lucky game of a locked 3D kind. A ball has no size: its entry is
+// the range of cells the board may have, { min, max }.
+export const SOLID_LUCKY = {
+  tetra: [3, 4],
+  cube: [2, 3],
+  ball: [{ min: 10, max: 30 }],
+};
+
+// What the unlock feature (features/unlock.js) needs of each 3D kind. `release` is
+// releaseDays(SOLID_RELEASE) (null: not released, so the kind is never in the lucky
+// game). Size 2 of the tetra is open to everyone from the first day, so a locked
+// tetra is played at 3 or 4; once unlocked it draws from every size, a ball from
+// every playable board.
+export const solidDefs = release => SOLID_KINDS.map(kind => ({
+  id: kind,
+  solid: true,
+  from: release ? release.first : null,
+  locked: SOLID_LUCKY[kind],
+  pool: kind === 'ball' ? [{ min: PLAY_MIN_CELLS, max: PLAY_MAX_CELLS }] : SOLID_SIZES[kind],
+  open: day => stageOf(kind, day, release) === 'all',
+}));
+
+// What the unlock feature (features/unlock.js) needs of each variant: the sizes of its
+// lucky game while it is locked (its luckySizes, default LUCKY_SIZES, that the variant
+// offers) and once it is unlocked (all of its sizes, the same as in free play). With
+// `release` given (null or the releaseDays of the config) the 3D kinds follow
+// (solidDefs).
+export const luckyDefs = (sizes, release) => [
+  ...PLAY_VARIANTS.map(variant => {
+    const pool = variant.sizes(sizes), lucky = variant.luckySizes || LUCKY_SIZES;
+    const locked = pool.filter(n => lucky.includes(n));
+    return { id: variant.id, locked: locked.length ? locked : pool, pool };
+  }),
+  ...(release === undefined ? [] : solidDefs(release)),
+];
 
 // The size to show when `size` is not on offer: the offered one closest to it (the smaller one
 // on a tie).

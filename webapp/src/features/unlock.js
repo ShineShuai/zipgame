@@ -14,8 +14,13 @@ import { utcDayNumber } from './daily.js';
 //   rewards still to pick), played: [offers started, by lucky day, the latest few], active: null |
 //   { id, size, day, offer, holder } } (active: the game in progress; a stored one means the page
 //   was closed during the game: abandoned).
-// `defs` is [{ id, locked, pool }] (apps/play/variants.js luckyDefs): the sizes the lucky game of a
-// locked variant may have, and those it may have once the variant is unlocked.
+// `defs` is [{ id, locked, pool, solid?, from?, open? }] (apps/play/variants.js
+// luckyDefs): the sizes the lucky game of a locked variant may have, and those it may
+// have once the variant is unlocked. The 3D kinds (solid) are in the lucky game's list,
+// and count for "all unlocked", only when every flat variant is unlocked and their
+// `from` day (a UTC day number; null = never) has come. `open(day)` says the kind is
+// open to everyone that day (its release), which counts as unlocked without the
+// player's own unlock.
 export const UNLOCK_KEY = 'zip_unlock', VERSION = 1, PLAYED_KEPT = 8;
 
 export const fresh = () => ({ v: VERSION, unlocked: {}, tokens: 0, choices: 0, played: [], active: null });
@@ -40,7 +45,21 @@ export function createUnlock(storage, defs, now = () => new Date()) {
   const today = () => utcDayNumber(now());
   let s = null; // null until init()
   const save = async () => { try { await storage.set(UNLOCK_KEY, JSON.stringify(s)); } catch { /* ignore */ } };
-  const all = () => Boolean(s) && ids.every(id => s.unlocked[id] !== undefined);
+  // Unlocked by the player, or open to everyone today (a 3D kind after its release).
+  const isUnlocked = id => {
+    if (!s) return false;
+    const def = defs.find(d => d.id === id);
+    return s.unlocked[id] !== undefined || Boolean(def && def.open && def.open(today()));
+  };
+  // The variants the lucky game draws from and "all unlocked" looks at.
+  const live = () => {
+    const flat = defs.filter(d => !d.solid);
+    if (!flat.every(d => isUnlocked(d.id))) return flat;
+    const day = today();
+    const released = d => d.solid && d.from !== null && d.from !== undefined && d.from <= day;
+    return [...flat, ...defs.filter(released)];
+  };
+  const all = () => Boolean(s) && live().every(d => isUnlocked(d.id));
   // What the menu shows. offer = the oldest open offer not played yet (named by its lucky day),
   // open = it can be played now (not while a game is on, not once everything is unlocked),
   // offerLast = its last day. nextLucky is the first lucky day after today.
@@ -64,7 +83,7 @@ export function createUnlock(storage, defs, now = () => new Date()) {
       s = fresh();
       await save();
     },
-    unlocked: id => Boolean(s) && s.unlocked[id] !== undefined,
+    unlocked: isUnlocked,
     allUnlocked: all,
     view,
     async addChoice() { if (s) { s.choices++; await save(); } },
@@ -75,9 +94,9 @@ export function createUnlock(storage, defs, now = () => new Date()) {
     // unlock chance (holder) spends it now. null = no offer to play. Nothing else can start before
     // finish() or refund().
     async begin(rand) {
-      const v = view();
-      if (!v || !v.open || !defs.length) return null;
-      const def = defs[rand(defs.length)], isNew = s.unlocked[def.id] === undefined;
+      const v = view(), list = live();
+      if (!v || !v.open || !list.length) return null;
+      const def = list[rand(list.length)], isNew = !isUnlocked(def.id);
       const sizes = isNew ? def.locked : def.pool, holder = s.tokens > 0;
       if (holder) s.tokens--;
       s.played = [...s.played, v.offer].slice(-PLAYED_KEPT);
@@ -97,7 +116,7 @@ export function createUnlock(storage, defs, now = () => new Date()) {
     // null when no game was in progress, so calling it twice is harmless.
     async finish(solved) {
       if (!s || !s.active) return null;
-      const { id, holder } = s.active, newly = solved && holder && s.unlocked[id] === undefined;
+      const { id, holder } = s.active, newly = solved && holder && !isUnlocked(id);
       s.active = null;
       if (newly) s.unlocked[id] = today();
       await save();
