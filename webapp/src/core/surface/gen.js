@@ -8,6 +8,7 @@
 import { makeRng, shuffle } from '../rng.js';
 import { runSync } from '../run.js';
 import { SLOTS, PENTAGON_KIND, surfaceTopology } from './topology.js';
+import { pentagonKRange } from './pentagon.js';
 import { makeSurfacePuzzle, wallCount, wallEdges } from './puzzle.js';
 import { makeLinker, openSlots, solveSurface } from './solve.js';
 
@@ -20,11 +21,16 @@ export const GEN_CFG = {
 
 // Roughly the share of the cells that carry a number: tetra needs fewer than a cube, whose
 // numbers would otherwise have to be replaced by walls. A ball is like a tetra: its cells have
-// 3 to 5 neighbours, and the many triangles force the path by themselves. A Pentagon cell has 5
-// neighbours, one more than a square: it takes 40% of the cells to keep the walls few.
+// 3 to 5 neighbours, and the many triangles force the path by themselves. A Pentagon board is the
+// exception: it uses the rule of the square boards (pentagonKRange).
 export const defaultK = (kind, n) => {
   const cells = surfaceTopology(kind, n).T;
-  const share = kind === 'cube' ? 0.15 : kind === PENTAGON_KIND ? 0.4 : 0.2;
+  if (kind === PENTAGON_KIND) {
+    // the mean of the number of checkpoints the square boards draw (pickK in gen/generate.js)
+    const [min, max] = pentagonKRange(cells);
+    return Math.round(min + 0.3 * (max - min));
+  }
+  const share = kind === 'cube' ? 0.15 : 0.2;
   return Math.max(3, Math.round(cells * share));
 };
 

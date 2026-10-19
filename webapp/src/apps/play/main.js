@@ -73,7 +73,6 @@ const sizeLabel = (variant, n) => (variant === 'pentagon' ? t('size.cells', size
 //            variant (Cutout, One way arrows): it gets the trap grade only, scored by the model that fits it (core/trap.js modelFor).
 // Never throws: a failed grade just means "grade unknown" — the puzzle is still perfectly playable.
 function gradePuzzle(puzzle) {
-  if (puzzle.surface) return { ok: false, trap: null, legacy: null }; // the grades model a square board
   try {
     const { trap, legacy } = playGradesFor(puzzle);
     return { ok: trap.ok, trap: trap.ok ? trap : null, legacy };
@@ -499,7 +498,7 @@ function difficultyBadgeHtml() {
 // Hidden by default; same hold-to-reveal pattern as seedTag.
 function difficultyDevHtml() {
   const d = S.difficulty, tm = d && d.trap, g = d && d.legacy;
-  const reduced = ['arrows', 'exact', 'wrap', 'loop', 'teleport', 'twopaths'].includes(S.variant);
+  const reduced = ['arrows', 'exact', 'wrap', 'loop', 'teleport', 'twopaths', 'pentagon'].includes(S.variant);
   const trapPart = tm ? `trap ${tm.predicted.toFixed(2)} <span class="dev-raw">max ${tm.trapMax} · top3 ${tm.trapTop3}${reduced ? ' · max+top3 only, uncalibrated' : ` · alt ${tm.altFrac.toFixed(2)} · ladder trials ${tm.ladTrials}`}</span>` : '';
   const legacyPart = g
     ? `decisionNodes ${g.grades.decisionNodes}/5 · B ${g.grades.B}/5 · cross ${g.grades.crossPerSeg}/5 · <span class="dev-raw">decisionNodes ${g.raw.decisionNodes} · B ${g.raw.B.toFixed(2)} · cross/seg ${g.raw.crossPerSeg.toFixed(2)}</span>`
