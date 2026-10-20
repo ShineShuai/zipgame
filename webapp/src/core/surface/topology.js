@@ -41,7 +41,7 @@ export { BALL_KIND, ballEntry };
 
 // The sizes (n) the app offers; the builders of a tetra or cube accept any n from 1 to MAX_SIDE,
 // the Pentagon boards are the sizes listed (core/pentagon.js).
-export const SURFACE_SIZES = { tetra: [3, 4, 5], cube: [3, 4], pentagon: PENTAGON_BOARD_SIZES };
+export const SURFACE_SIZES = { tetra: [2, 3, 4, 5], cube: [2, 3, 4], pentagon: PENTAGON_BOARD_SIZES };
 export const MAX_SIDE = 12;
 export const SLOTS = 5;
 

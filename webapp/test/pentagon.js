@@ -7,7 +7,7 @@ import { runSync } from '../src/core/run.js';
 import { surfaceTopology, SLOTS } from '../src/core/surface/topology.js';
 import {
   pentagonMesh, PENTAGON_KIND, PENTAGON_SIZES, PENTAGON_CELLS, PENTAGON_BOARD_SIZES,
-  PENTAGON_DESIGN_SIZES, isPentagon, shapeHint,
+  isPentagon, shapeHint,
 } from '../src/core/pentagon.js';
 import {
   makeSurfacePuzzle, validateSurface, isSolved, serializeSurface, parseSurface, maxNumber,
@@ -103,10 +103,7 @@ export function pentagonTests(t, ok, eq) {
   t('pentagon: boards — 16 to 100 cells of 5 sides, connected, not bipartite, no cell with fewer '
     + 'than 2 neighbours; the boards of the play app have only the 4 corner cells with 2', () => {
     eq(PENTAGON_SIZES, [4, 6, 8, 9, 10]);
-    eq(PENTAGON_DESIGN_SIZES, [5, 7, 11]);
     eq(PENTAGON_BOARD_SIZES.map(n => PENTAGON_CELLS[n]), [16, 24, 36, 48, 64, 80, 96, 100]);
-    eq([...PENTAGON_SIZES, ...PENTAGON_DESIGN_SIZES].sort((a, b) => a - b),
-      [...PENTAGON_BOARD_SIZES].sort((a, b) => a - b), 'every board is one or the other');
     for (const n of PENTAGON_BOARD_SIZES) {
       const top = board(n);
       eq(top.T, PENTAGON_CELLS[n], `n=${n} cells`);
@@ -121,7 +118,7 @@ export function pentagonTests(t, ok, eq) {
       }
       eq(top.E, pairs / 2, `n=${n} edges`);
       ok(!histogram[0] && !histogram[1], `n=${n} no cell with fewer than 2 neighbours`);
-      const twos = PENTAGON_DESIGN_SIZES.includes(n) ? { 5: 8, 7: 12, 11: 16 }[n] : 4;
+      const twos = [5, 7, 11].includes(n) ? { 5: 8, 7: 12, 11: 16 }[n] : 4;
       eq(histogram[2], twos, `n=${n} cells with 2 neighbours`);
       const hint = shapeHint(top);
       eq([hint.twoNeighbour, hint.fixed, hint.path], [twos, 2 * twos, top.T - 1],
@@ -607,9 +604,6 @@ export function pentagonTests(t, ok, eq) {
     const flagged = record(p);
     bad('another variant flag', { ...flagged, puzzle: { ...flagged.puzzle, wrap: true } });
     bad('a size that is not offered', record({ ...p, n: 5 }));
-    for (const n of PENTAGON_DESIGN_SIZES) {
-      bad(`board ${n}: only the design app has it`, record(made(n, [0, 10, 20], [1, 2])));
-    }
   });
 
   t('pentagon-share: the record holds a copy of the puzzle; the receiver plays the sizes the '
