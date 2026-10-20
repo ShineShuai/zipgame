@@ -1,0 +1,10 @@
+# Zip Puzzle — plain text format
+# seed 2: grade 5 (target 5), 5 walls, 9 checkpoints, 83.7 s, 12743 changes, 20 tries
+# size N
+# checkpoints r,c=n ...   (0-based row/col)
+# walls T,r,c ...        (T = H or V; H spans (r,c)-(r+1,c); V spans (r,c)-(r,c+1))
+# solve_time_ms 30.6
+# play_time_s 456.4
+size 8
+checkpoints 0,7=9 1,6=8 2,1=4 2,3=2 2,6=7 3,3=1 5,3=6 5,6=3 6,3=5
+walls H,0,1 H,1,4 H,2,7 H,5,5 V,5,6
