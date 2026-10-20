@@ -14,8 +14,8 @@
 //   connectivity  all unvisited cells must still be reachable from the head
 //   distance      the steps left must reach the next number and then every later number
 //                 (distances ignore the path so far, so this never rejects a real solution)
-// All boards but the Pentagon one are non-bipartite, and that one too, so there is no parity prune
-// (the square boards have one).
+// There is no parity prune here, as the boards are not bipartite in general (the square boards
+// have one).
 //
 // The search does these checks incrementally, in the work of one step instead of one pass over the
 // board (about a tenth of the time at 100 cells), and prunes exactly what the checks above prune:

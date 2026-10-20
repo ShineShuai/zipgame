@@ -30,6 +30,7 @@ import { createSolidPlay, isSolidKind } from './solid.js';
 import {
   pentagonBoardSvg, pentagonRouteD, pentagonCellAt, pentagonPoint, pentagonAcross,
 } from './pentagon-board.js';
+import { isPentagon } from '../../core/pentagon.js';
 import {
   newPaths, pickColour, walkColour, solvedPaths, reached, legsUndoTwo, hintTwo,
 } from '../../features/twopaths-play.js';
@@ -58,12 +59,15 @@ const S = { screen: 'menu', mode: 'standard', variant: null, genMode: 'standard'
   legs: [], paths: [[], []], colour: 0, gameDay: null, isShared: false,
   sharedGames: [], sharedFocus: null, sharedAll: false, sharedArmed: null, sharedNotice: null, sharedMsg: null };
 
-// A Pentagon puzzle (puzzle.surface, core/surface) walks, is solved and is drawn by the surface rules
-// and its own board (pentagon-board.js); the size n is a board id there, shown as the number of cells.
-const stepOf = (p, path, cell) => (p.surface ? surfaceStep(p, path, cell) : step(p, path, cell));
-const solvedOf = (p, path) => (p.surface ? surfaceSolved(p, path) : isSolved(p, path));
-const boardMarkup = state => (state.puzzle.surface ? pentagonBoardSvg(state) : boardSvg(state));
-const routeOf = (p, line) => (p.surface ? pentagonRouteD(p, line) : routeD(p, line));
+// A Pentagon puzzle (core/pentagon.js) walks and is solved by the rules of the cell graph
+// (core/surface) and is drawn by its own board (pentagon-board.js); the size n is a board id there,
+// shown as the number of cells.
+const stepOf = (p, path, cell) => (
+  isPentagon(p) ? surfaceStep(p, path, cell) : step(p, path, cell)
+);
+const solvedOf = (p, path) => (isPentagon(p) ? surfaceSolved(p, path) : isSolved(p, path));
+const boardMarkup = state => (isPentagon(state.puzzle) ? pentagonBoardSvg(state) : boardSvg(state));
+const routeOf = (p, line) => (isPentagon(p) ? pentagonRouteD(p, line) : routeD(p, line));
 // What a size is called: 7x7 on a square board, 36 cells on a Pentagon board.
 const sizeLabel = (variant, n) => (variant === 'pentagon' ? t('size.cells', sizeArg({ variant, n })) : `${n}x${n}`);
 
@@ -729,7 +733,7 @@ function attachHandlers() {
   on('resetPath', resetPaths);
   on('behaviourToggle', async ev => { ev.preventDefault(); S.behaviourOn = !S.behaviourOn; await behaviour.setOn(S.behaviourOn); render(); });
   on('newPuzzle', () => { if (!S.isGotd) startLocal('skip', S.variant || 'standard'); });
-  on('exportBtn', () => openExport(S.puzzle.surface ? serializeSurface(S.puzzle, { path: S.puzzle.path }) : serialize(S.puzzle)));
+  on('exportBtn', () => openExport(isPentagon(S.puzzle) ? serializeSurface(S.puzzle, { path: S.puzzle.path }) : serialize(S.puzzle)));
   on('hintBtn', () => {
     if (S.finished || S.hintsUsed >= maxHints(S.puzzle)) return;
     const two = Boolean(S.puzzle.split);
@@ -850,10 +854,10 @@ function setupGridInput(svg) {
     segment = highestCp(S.path);
     refreshTwoLegend();
   }
-  const across = p.surface ? pentagonAcross(p) : n; // cells across the board, about
+  const across = isPentagon(p) ? pentagonAcross(p) : n; // cells across the board, about
   function move(x, y) { // interpolate so fast drags don't skip cells
     const cell = (px, py) => {
-      if (p.surface) return pentagonCellAt(p, ...pentagonPoint(p, rect, px, py));
+      if (isPentagon(p)) return pentagonCellAt(p, ...pentagonPoint(p, rect, px, py));
       return cellAtPoint(n, px - rect.left, py - rect.top, rect.width, rect.height, pad, wrap);
     };
     if (last) {

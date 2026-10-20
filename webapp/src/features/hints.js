@@ -1,11 +1,12 @@
 import { solve } from '../core/solver/solve.js';
 import { solveSurface } from '../core/surface/solve.js';
+import { isPentagon } from '../core/pentagon.js';
 
 export const maxHints = p => Math.min(p.n, p.cp.reduce((k, v) => k + (v ? 1 : 0), 0));
 
 // The unique solution: stored on generated puzzles; solved lazily (and cached) for imported / Game-of-Day ones.
 export function solutionOf(p) {
-  if (!p.path && p.surface) { p.path = solveSurface(p, { limit: 1, nodeCap: 2000000 }).path; }
+  if (!p.path && isPentagon(p)) { p.path = solveSurface(p, { limit: 1, nodeCap: 2000000 }).path; }
   else if (!p.path) { const r = solve(p, { limit: 1, nodeCap: 2000000, capture: true, prop: true }); p.path = r.paths && r.paths[0] || null; }
   return p.path;
 }

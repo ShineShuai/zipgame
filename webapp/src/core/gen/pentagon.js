@@ -1,12 +1,10 @@
 import { makeRng } from '../rng.js';
-import { pickK } from './generate.js';
+import { pickK, kRange } from './pick-k.js';
 import { generateSurfaceSteps } from '../surface/gen.js';
 import { surfaceTopology } from '../surface/topology.js';
-import {
-  PENTAGON_KIND, PENTAGON_SIZES, PENTAGON_BOARD_SIZES, pentagonKRange,
-} from '../surface/pentagon.js';
+import { PENTAGON_KIND, PENTAGON_SIZES, PENTAGON_BOARD_SIZES } from '../pentagon.js';
 
-// Generator of Pentagon puzzles: a puzzle on the flat Cairo board of core/surface/pentagon.js
+// Generator of Pentagon puzzles: a puzzle on the flat Cairo board of core/pentagon.js
 // (puzzle.surface === 'pentagon'; the model, rules and text format are those of core/surface). It
 // runs the recipe of surface/gen.js several times and keeps the candidate with the fewest walls:
 //   1. a random Hamiltonian path of the board is the intended solution
@@ -16,7 +14,7 @@ import {
 //
 // The number of checkpoints follows the rule of the square boards (pickK in gen/generate.js): K ~
 // Normal(mean = Kmin + 0.3 (Kmax - Kmin), sd = (Kmax - Kmin) / 6), cut to [Kmin, Kmax], with Kmin
-// the square root of the cells and Kmax a quarter of them (pentagonKRange). A cell has 5
+// the square root of the cells and Kmax a quarter of them (kRange in gen/pick-k.js). A cell has 5
 // neighbours, one more than on a square board, so with so few numbers the walls have to do more:
 // see the measurements below.
 //
@@ -34,14 +32,20 @@ export const PENTAGON_CANDIDATES = { 4: 6, 5: 8, 6: 8, 7: 8, 8: 6, 9: 3, 10: 3, 
 // The number of checkpoints of a puzzle on board n: pickK of the square boards, on the range of
 // the board. rnd() is used twice.
 export function pentagonK(n, rnd) {
-  const [min, max] = pentagonKRange(surfaceTopology(PENTAGON_KIND, n).T);
+  const [min, max] = kRange(surfaceTopology(PENTAGON_KIND, n).T);
   return pickK(min, max, rnd);
+}
+
+// The mean of pentagonK: the starting value of the number of checkpoints in the design app.
+export function pentagonDefaultK(n) {
+  const [min, max] = kRange(surfaceTopology(PENTAGON_KIND, n).T);
+  return Math.round(min + 0.3 * (max - min));
 }
 
 // Generator (function*, progress events { frac|null, walls, K } as gen/generate.js): (n, seed) ->
 // puzzle { surface: 'pentagon', n, cp, walls, path, seed }; path is the solution. Same seed, same
 // puzzle. o.K: the number of checkpoints, o.candidates: how many puzzles to make. Any board of
-// core/surface/pentagon.js (the play app offers PENTAGON_SIZES).
+// core/pentagon.js (the play app offers PENTAGON_SIZES).
 export function* generatePentagon(n, seed, o = {}) {
   if (!PENTAGON_BOARD_SIZES.includes(n)) {
     throw new Error(`A Pentagon puzzle needs n to be one of ${PENTAGON_BOARD_SIZES.join(', ')}`);

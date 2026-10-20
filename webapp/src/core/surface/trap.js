@@ -6,14 +6,15 @@ import {
 } from '../trap.js';
 
 // The trap grade (core/trap.js: what wrong turns a solver faces along the solution, and how long
-// each takes to refute) for puzzles on a surface or flat board (core/surface), the Pentagon
-// puzzles: the same measurements and thresholds, with the graph solver (solve.js) and the
+// each takes to refute) for puzzles on a cell graph (core/surface: the solids and the flat
+// Pentagon board): the same measurements and thresholds, with the graph solver (solve.js) and the
 // neighbours of the board in place of the grid's.
 //
 // The score model is the reduced one of the other variants (trapMax and trapTop3 only): the fit
 // never saw such a board, so this is a ranking without hand ratings behind it. Refit when ratings
-// of Pentagon puzzles exist. The cap by size uses the side of a square board with as many cells.
-export const PENTAGON_MODEL = withoutAltFracLadder();
+// of such puzzles exist (so far only Pentagon puzzles are graded). The cap by size uses the side
+// of a square board with as many cells.
+export const GRAPH_TRAP_MODEL = withoutAltFracLadder();
 
 // The side of a square board with as many cells as p has, for the cap of the grade by size.
 export const sideOf = p => Math.round(Math.sqrt(topologyOf(p).T));
@@ -68,7 +69,7 @@ const alternativePoints = (w, cfg) => {
 };
 
 // All the metrics of core/trap.js trapMetricsFromProfile that the model and the display use.
-export function surfaceTrapMetricsFromProfile(p, profile, cfg = TRAP_CFG, model = PENTAGON_MODEL) {
+export function surfaceTrapMetricsFromProfile(p, profile, cfg = TRAP_CFG, model = GRAPH_TRAP_MODEL) {
   const T = topologyOf(p).T;
   const byStep = new Map();
   for (const w of profile) {
@@ -100,7 +101,7 @@ export function surfaceTrapMetricsFromProfile(p, profile, cfg = TRAP_CFG, model 
 
 // One call, like trapMetrics in core/trap.js: { ok: false, reason } when no solution is found,
 // else { ok: true, path, ...metrics }.
-export function surfaceTrapMetrics(p, cfg = TRAP_CFG, path = null, model = PENTAGON_MODEL) {
+export function surfaceTrapMetrics(p, cfg = TRAP_CFG, path = null, model = GRAPH_TRAP_MODEL) {
   const solution = path || surfaceSolutionPath(p, cfg.pathCap);
   if (!solution) {
     return { ok: false, reason: 'no solution found within the search budget (pathCap)' };

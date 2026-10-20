@@ -1,4 +1,4 @@
-// Tests of the Pentagon boards (core/surface/pentagon.js, the open-border support of
+// Tests of the Pentagon boards (core/pentagon.js, the open-border support of
 // core/surface/topology.js, solve.js and gen.js) and of the Pentagon generator
 // (core/gen/pentagon.js). Registered by tests.js: pentagonTests(t, ok, eq).
 // Set PENTAGON_SLOW=1 for the 100-cell board (a few seconds per puzzle).
@@ -7,20 +7,20 @@ import { runSync } from '../src/core/run.js';
 import { surfaceTopology, SLOTS } from '../src/core/surface/topology.js';
 import {
   pentagonMesh, PENTAGON_KIND, PENTAGON_SIZES, PENTAGON_CELLS, PENTAGON_BOARD_SIZES,
-  PENTAGON_DESIGN_SIZES, pentagonKRange, shapeHint,
-} from '../src/core/surface/pentagon.js';
+  PENTAGON_DESIGN_SIZES, isPentagon, shapeHint,
+} from '../src/core/pentagon.js';
 import {
   makeSurfacePuzzle, validateSurface, isSolved, serializeSurface, parseSurface, maxNumber,
   wallCount,
 } from '../src/core/surface/puzzle.js';
 import { solveSurface, countHamiltonianPaths } from '../src/core/surface/solve.js';
 import {
-  generatePentagon, pentagonK, PENTAGON_CANDIDATES,
+  generatePentagon, pentagonK, pentagonDefaultK, PENTAGON_CANDIDATES,
 } from '../src/core/gen/pentagon.js';
 import { makeRng } from '../src/core/rng.js';
-import { pickK } from '../src/core/gen/generate.js';
+import { pickK, kRange } from '../src/core/gen/pick-k.js';
 import { generate } from '../src/core/gen/generate.js';
-import { maxNumber as flatMax } from '../src/core/model.js';
+import { maxNumber as flatMax, makePuzzle } from '../src/core/model.js';
 import {
   encodeShare, decodeShare, SHARE_VERSION_PENTAGON, PENTAGON, SHARE_VERSION_PUZZLE,
 } from '../src/core/share-code.js';
@@ -29,11 +29,10 @@ import {
   buildFlat, cellAt, pickSide, routePieces, routeCrossings,
 } from '../src/view/surface-net.js';
 import { surfaceSvg, netFrame } from '../src/apps/design/surface-board.js';
-import { defaultK } from '../src/core/surface/gen.js';
 import { keptK } from '../src/apps/design/k-field.js';
 import { playGradesFor } from '../src/core/grades.js';
 import {
-  surfaceTrapMetrics, surfaceTrapProfile, surfaceSolutionPath, PENTAGON_MODEL,
+  surfaceTrapMetrics, surfaceTrapProfile, surfaceSolutionPath, GRAPH_TRAP_MODEL,
 } from '../src/core/surface/trap.js';
 import { TRAP_CFG, trapGradeOf, SIZE_GRADE_CAP } from '../src/core/trap.js';
 
@@ -257,10 +256,10 @@ export function pentagonTests(t, ok, eq) {
 
   t('pentagon-gen: the number of checkpoints follows the rule of the square boards — pickK on '
     + 'the range from the square root to a quarter of the cells', () => {
-    eq([16, 36, 64, 96, 100].map(cells => pentagonKRange(cells)),
+    eq([16, 36, 64, 96, 100].map(cells => kRange(cells)),
       [[4, 5], [6, 9], [8, 16], [10, 24], [10, 25]]);
     for (const n of PENTAGON_BOARD_SIZES) {
-      const [min, max] = pentagonKRange(PENTAGON_CELLS[n]);
+      const [min, max] = kRange(PENTAGON_CELLS[n]);
       const seen = [];
       for (let seed = 1; seed <= 600; seed++) {
         const K = pentagonK(n, makeRng(seed));
@@ -494,7 +493,7 @@ export function pentagonTests(t, ok, eq) {
         const p = game(n, seed);
         const m = surfaceTrapMetrics(p);
         ok(m.ok && m.grade >= 0 && m.grade <= cap, `n=${n}: grade ${m.grade} <= ${cap}`);
-        const cut = Math.min(trapGradeOf(m.predicted, PENTAGON_MODEL), cap);
+        const cut = Math.min(trapGradeOf(m.predicted, GRAPH_TRAP_MODEL), cap);
         eq(m.grade, cut, 'the model and the cap');
         ok(m.T === PENTAGON_CELLS[n] && m.altFrac > 0, 'the fields of the display');
         eq(m.ladTrials, 0, 'no ladder');
@@ -517,10 +516,24 @@ export function pentagonTests(t, ok, eq) {
   t('pentagon-design: Generate of the design app — the default K is the mean of the rule of '
     + 'the square boards', () => {
     for (const n of PENTAGON_BOARD_SIZES) {
-      const [min, max] = pentagonKRange(PENTAGON_CELLS[n]);
-      eq(defaultK(PENTAGON_KIND, n), Math.round(min + 0.3 * (max - min)), `n=${n}`);
+      const [min, max] = kRange(PENTAGON_CELLS[n]);
+      eq(pentagonDefaultK(n), Math.round(min + 0.3 * (max - min)), `n=${n}`);
     }
-    eq([4, 6, 8, 9, 10].map(n => defaultK(PENTAGON_KIND, n)), [4, 7, 10, 14, 15]);
+    eq([4, 6, 8, 9, 10].map(n => pentagonDefaultK(n)), [4, 7, 10, 14, 15]);
+  });
+
+  t('pentagon: isPentagon tells a Pentagon puzzle from a 3D one and from a grid one', () => {
+    ok(isPentagon(makeSurfacePuzzle(PENTAGON_KIND, 4)), 'a Pentagon puzzle');
+    ok(!isPentagon(makeSurfacePuzzle('tetra', 2)), 'a tetra puzzle has a surface too');
+    ok(!isPentagon(makePuzzle(5)), 'a grid puzzle');
+    ok(!isPentagon(null) && !isPentagon(undefined), 'no puzzle');
+  });
+
+  t('pick-k: kRange is the rule of the square boards on a board with n * n cells', () => {
+    for (let n = 4; n <= 16; n++) {
+      const min = Math.max(4, n);
+      eq(kRange(n * n), [min, Math.max(min + 1, Math.round((n * n) / 4))], `n=${n}`);
+    }
   });
 
   t('pentagon-share: a code of its own version (6) — round trip for every size, short, '

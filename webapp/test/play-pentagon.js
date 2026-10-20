@@ -7,7 +7,7 @@ import { generatePentagon } from '../src/core/gen/pentagon.js';
 import { generate } from '../src/core/gen/generate.js';
 import {
   PENTAGON_KIND, PENTAGON_SIZES, PENTAGON_CELLS,
-} from '../src/core/surface/pentagon.js';
+} from '../src/core/pentagon.js';
 import { SLOTS, surfaceTopology } from '../src/core/surface/topology.js';
 import {
   step as surfaceStep, isSolved as surfaceSolved, makeSurfacePuzzle, wallCount, maxNumber,

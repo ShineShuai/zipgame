@@ -31,17 +31,21 @@
     <div class="field field-row">
       <label for="variantSel" title="Standard: checkpoints 1, 2, 3... in order, edges stop at the border, walls block. One way arrows: no walls, an arrow can be crossed only in its direction. Wrap-around: the edges join across the borders (a torus), so a step can leave one side and come in on the opposite one. Exact: a number is the step of its cell on the path (the cell numbered 8 is the 8th cell), so the numbers are gaps-and-all, 1 and the cell count among them. Loop: the path is a ring, its last cell touches cell 1 (even sizes only), the numbers 1..K are met in cyclic order and K need not be the last cell. Teleport pairs: pairs of linked cells (the same icon on both); a step from one to the other is a move, no wall stands on it, and each cell is still visited once. Two paths: a red and a blue path together cover every cell, each with its own numbers counted from 1 (red 1..k, blue 1..m), each ending on its last number; type a number after picking its colour, and the blue numbers follow the red ones by themselves. Tetrahedron, Cube: the board is the surface of a solid (4 faces of triangles, 6 faces of squares), shown as the solid you can turn, or as its flat net; the sides marked with the same letter touch when the net is folded. Ball: the surface of a ball made of triangles, squares and pentagons (a polyhedron of your choice: the list is grouped by the shapes it has); shown as the ball you can turn, or as its two halves. Pentagon: a flat board of pentagons (the Cairo tiling) with a border; every cell has 5 sides and touches up to 5 cells, the cells on the border fewer; sizes of 16, 24, 36, 48, 64, 80, 96 and 100 cells (the play app offers 16, 36, 64, 96 and 100: the others have 8 to 16 cells with only 2 neighbours, which fix much of the path); walls and numbers as in Standard, nothing to turn.">Puzzle type</label>
       <select id="variantSel">
-        <option value="">Standard</option>
-        <option value="arrows">One way arrows</option>
-        <option value="wrap">Wrap-around</option>
-        <option value="exact">Exact</option>
-        <option value="loop">Loop</option>
-        <option value="teleport">Teleport pairs</option>
-        <option value="twopaths">Two paths</option>
-        <option value="tetra">Tetrahedron</option>
-        <option value="cube">Cube</option>
-        <option value="ball">Ball</option>
-        <option value="pentagon">Pentagon</option>
+        <optgroup label="Flat">
+          <option value="">Standard</option>
+          <option value="arrows">One way arrows</option>
+          <option value="wrap">Wrap-around</option>
+          <option value="exact">Exact</option>
+          <option value="loop">Loop</option>
+          <option value="teleport">Teleport pairs</option>
+          <option value="twopaths">Two paths</option>
+          <option value="pentagon">Pentagon</option>
+        </optgroup>
+        <optgroup label="3D">
+          <option value="tetra">Tetrahedron</option>
+          <option value="cube">Cube</option>
+          <option value="ball">Ball</option>
+        </optgroup>
       </select>
     </div>
 

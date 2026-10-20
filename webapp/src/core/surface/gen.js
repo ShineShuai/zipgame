@@ -7,9 +7,8 @@
 // walls are needed; K is the knob (defaultK gives a starting point).
 import { makeRng, shuffle } from '../rng.js';
 import { runSync } from '../run.js';
-import { SLOTS, PENTAGON_KIND, surfaceTopology } from './topology.js';
-import { pentagonKRange } from './pentagon.js';
-import { pickK } from '../gen/generate.js';
+import { SLOTS, surfaceTopology } from './topology.js';
+import { pickK, kRange } from '../gen/pick-k.js';
 import { makeSurfacePuzzle, wallCount, wallEdges } from './puzzle.js';
 import { makeLinker, openSlots, solveSurface } from './solve.js';
 
@@ -22,25 +21,20 @@ export const GEN_CFG = {
 
 // Roughly the share of the cells that carry a number: tetra needs fewer than a cube, whose
 // numbers would otherwise have to be replaced by walls. A ball is like a tetra: its cells have
-// 3 to 5 neighbours, and the many triangles force the path by themselves. A Pentagon board is the
-// exception: it uses the rule of the square boards (pentagonKRange). This is the starting value
-// of the design app; the play app draws K (pickSurfaceK, below).
+// 3 to 5 neighbours, and the many triangles force the path by themselves. This is the starting
+// value of the design app; the play app draws K (pickSurfaceK, below). (The flat Pentagon board
+// has a start value of its own, next to its generator.)
 export const defaultK = (kind, n) => {
   const cells = surfaceTopology(kind, n).T;
-  if (kind === PENTAGON_KIND) {
-    // the mean of the number of checkpoints the square boards draw (pickK in gen/generate.js)
-    const [min, max] = pentagonKRange(cells);
-    return Math.round(min + 0.3 * (max - min));
-  }
   const share = kind === 'cube' ? 0.15 : 0.2;
   return Math.max(3, Math.round(cells * share));
 };
 
 // The number of checkpoints of a play-app puzzle, drawn like on the square boards (pickK in
-// gen/generate.js): Normal, mean 30% of the way from the square root of the cells to a quarter of
-// them, cut to that range (pentagonKRange). Uses rnd() twice.
+// gen/pick-k.js): Normal, mean 30% of the way from the square root of the cells to a quarter of
+// them, cut to that range (kRange). Uses rnd() twice.
 export const pickSurfaceK = (kind, n, rnd) => {
-  const [min, max] = pentagonKRange(surfaceTopology(kind, n).T);
+  const [min, max] = kRange(surfaceTopology(kind, n).T);
   return pickK(min, max, rnd);
 };
 

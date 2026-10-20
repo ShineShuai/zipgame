@@ -1,6 +1,6 @@
 import { encodeShare, decodeShare, MAX_LEGS } from '../core/share-code.js';
 import { labelRanks } from '../core/model.js';
-import { PENTAGON_KIND, PENTAGON_CELLS } from '../core/surface/pentagon.js';
+import { PENTAGON_KIND, PENTAGON_CELLS } from '../core/pentagon.js';
 import { dateOfDay } from './daily.js';
 
 // Sharing a finished game and playing a shared one.

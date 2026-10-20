@@ -8,6 +8,9 @@ import { gapCheckpoints, randomCheckpoints, loopCheckpoints, LOOP_TAIL } from '.
 import { twoPathsLayout } from './twopaths-layout.js';
 import { makeUnique, minimizeWalls, refineWalls, minimizeFully, REFINE_CAP_X } from './walls.js';
 import { solve } from '../solver/solve.js';
+import { pickK } from './pick-k.js';
+
+export { pickK };
 
 // Candidate puzzles built per play grid size. A candidate is a fresh random path with fresh
 // checkpoints, walled until unique. Every candidate is then minimized and the one left with the
@@ -63,17 +66,6 @@ export const CHECK_CAP_X = 0.5;
 // Every attempt starts by pre-walling this share of the free edges at random. That makes uniqueness
 // cheap to reach; minimizeWalls() later strips the walls that turn out to be unnecessary.
 export const SEED_FRACTION = 0.4;
-
-// K ~ Normal(mean = Kmin + 0.3 * (Kmax - Kmin), sd = range / 6), sampled with Box-Muller and clamped
-// to [Kmin, Kmax]. Favors small K. Always consumes exactly 2 rnd() values.
-export function pickK(Kmin, Kmax, rnd) {
-  const range = Kmax - Kmin;
-  const u = 1 - rnd();
-  const v = rnd();
-  const z = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
-  const k = Math.round(Kmin + 0.3 * range + (range / 6) * z);
-  return Math.min(Kmax, Math.max(Kmin, k));
-}
 
 // One attempt: path -> checkpoints -> walls until unique. Returns the puzzle (with .path and .order) or null.
 // o.path: 'warnsdorff' | 'backbite';  o.cps: 'gap' | 'random';  o.prop: solver propagation.

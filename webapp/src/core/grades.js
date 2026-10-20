@@ -14,6 +14,7 @@ import { spatialMetrics } from './spatial.js';
 import { GRADED_METRICS, DEFAULT_THRESHOLDS_BY_METRIC } from './gen/calibration.js';
 import { trapMetrics, modelFor } from './trap.js';
 import { surfaceTrapMetrics } from './surface/trap.js';
+import { isPentagon } from './pentagon.js';
 
 // Order the calibrated (solver/geometry) grades are shown in. The play app's badge is the TRAP grade
 // (core/trap.js), so the first three here — the old badge decisionNodes, then B and crossPerSeg — are
@@ -50,7 +51,7 @@ export function gradesFromMetrics(metrics, spatial, thresholdsById = DEFAULT_THR
 // with walls.
 export function playGradesFor(puzzle) {
   // a Pentagon puzzle: the trap grade on its own board, by the graph solver (surface/trap.js)
-  if (puzzle.surface) return { trap: surfaceTrapMetrics(puzzle), legacy: null };
+  if (isPentagon(puzzle)) return { trap: surfaceTrapMetrics(puzzle), legacy: null };
   const variant = puzzle.holes || puzzle.arrows || puzzle.exact || puzzle.wrap || puzzle.loop
     || puzzle.portals || puzzle.split;
   return { trap: trapMetrics(puzzle, undefined, null, modelFor(puzzle)), legacy: variant ? null : gradesFor(puzzle) };

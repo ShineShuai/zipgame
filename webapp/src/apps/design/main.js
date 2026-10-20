@@ -203,7 +203,8 @@ function setBusy(b) {
 // every element with data-variants="standard wrap ..." (design.html) is shown only for those types.
 const variantKey = p => (p.arrows ? 'arrows' : p.wrap ? 'wrap' : p.exact ? 'exact' : p.loop ? 'loop'
   : p.portals ? 'teleport' : p.split ? 'twopaths' : '');
-// The type shown: a surface type (Tetrahedron, Cube, Ball, Pentagon) while surface.js owns the board.
+// The type shown: a cell-graph type (Tetrahedron, Cube, Ball, Pentagon) while surface.js owns the
+// board.
 const currentKey = () => (surface.active ? surface.kind : variantKey(P));
 const isSurfaceKey = key => ['tetra', 'cube', 'ball', 'pentagon'].includes(key);
 const VARIANT_NAME = {
@@ -305,8 +306,9 @@ function setVariant(key) {
   const extra = notes.length ? ` (${notes.join(', ')})` : '';
   setStatus(`${key ? VARIANT_NAME[key] : 'Standard'} puzzle${extra}.${VARIANT_RULE[key] || ''}`, 'ok');
 }
-// Surface types (Tetrahedron, Cube, Ball, Pentagon): surface.js owns the board and its tools; the shared buttons
-// (Solve, Play, Pause, Export, Import, Reset) are handed over to it while one is active.
+// Cell-graph types (Tetrahedron, Cube, Ball, Pentagon): surface.js owns the board and its tools;
+// the shared buttons (Solve, Play, Pause, Export, Import, Reset) are handed over to it while one
+// is active.
 function enterSurface(kind, q = null) {
   if (playMode) exitPlay();
   selected = -1; buffer = ''; pending = -1; numDrag = null; endGhost();

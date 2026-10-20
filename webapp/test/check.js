@@ -3,6 +3,7 @@
 //   - every .js file parses
 //   - every relative import points at a file that exists
 //   - every named import is exported by the module it comes from
+//   - layering: the cell-graph engine (src/core/surface) knows no variant board (see LAYERS below)
 //   - every <script src> / <link href> / <a href> in the html pages points at a file that exists
 //   - the home page at the repository root (index.html next to webapp/) is checked the same way, and its
 //     two languages must have the same number of texts
@@ -89,6 +90,19 @@ function exportedNames(file) {
   return names;
 }
 
+// Who may not import whom. The cell-graph engine in src/core/surface serves the 3D variants and
+// the flat Pentagon board; it must not depend on a variant, and the variant owns its board:
+//   - only topology.js (the kind table) may import the Pentagon board, src/core/pentagon.js
+//   - nothing in the engine imports the grid generator, src/core/gen/generate.js (use gen/pick-k.js)
+const LAYERS = [
+  {
+    in: 'src/core/surface/',
+    except: ['src/core/surface/topology.js'],
+    deny: ['src/core/pentagon.js'],
+  },
+  { in: 'src/core/surface/', except: [], deny: ['src/core/gen/generate.js'] },
+];
+
 const jsFiles = ['src', 'test', 'bench'].flatMap(dir => filesUnder(join(root, dir), '.js'));
 
 for (const file of jsFiles) {
@@ -109,6 +123,12 @@ for (const file of jsFiles) {
     if (!existsSync(target)) {
       report(file, line, `import '${specifier}' does not exist`);
       continue;
+    }
+    for (const layer of LAYERS) {
+      const name = shortName(file);
+      if (name.startsWith(layer.in) && !layer.except.includes(name) && layer.deny.includes(shortName(target))) {
+        report(file, line, `layering: ${name} must not import ${shortName(target)}`);
+      }
     }
     if (!namedList) continue;
     const exported = exportedNames(target);

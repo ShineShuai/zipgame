@@ -44,7 +44,7 @@
 // its own version, SHARE_VERSION_SPLIT: the layout above as a standard puzzle (type 0, walls), then
 // split:     split - 2: how many numbers the red path has, short of two for each colour (radix K - 3)
 // before the strip.
-// A Pentagon puzzle (core/surface/pentagon.js, a flat board of pentagons) has a code of its own
+// A Pentagon puzzle (core/pentagon.js, a flat board of pentagons) has a code of its own
 // version, SHARE_VERSION_PENTAGON, with its own layout (no type field; no grade; the cells and
 // the edges are those of the board, numbered as in core/surface/topology.js). Fields, first =
 // least significant:
@@ -65,7 +65,7 @@ import { LABELS } from './gen/shapes.js';
 import { allEdges, arrowProblem, arrowDirId, arrowIds, wallIds } from './edges.js';
 import { validate, labelCount, numberedCells } from './model.js';
 import { RadixWriter, RadixReader, bitLength } from './radix-code.js';
-import { PENTAGON_KIND, PENTAGON_SIZES } from './surface/pentagon.js';
+import { PENTAGON_KIND, PENTAGON_SIZES, isPentagon } from './pentagon.js';
 import { surfaceTopology } from './surface/topology.js';
 import { validateSurface, wallEdges } from './surface/puzzle.js';
 
@@ -243,7 +243,7 @@ const isTwoPathsPuzzle = p =>
 // A Pentagon puzzle { surface: 'pentagon', n, cp, walls } (core/surface/puzzle.js): one of the
 // boards, one wall bit per edge of the board, numbered 1..K without gaps, and valid.
 function isPentagonPuzzle(p) {
-  if (!p || p.surface !== PENTAGON_KIND || !PENTAGON_SIZES.includes(p.n) || !onlyFlag(p, null)) {
+  if (!isPentagon(p) || !PENTAGON_SIZES.includes(p.n) || !onlyFlag(p, null)) {
     return false;
   }
   const top = surfaceTopology(PENTAGON_KIND, p.n);

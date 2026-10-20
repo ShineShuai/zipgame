@@ -28,24 +28,30 @@
 // bipartite when an even number of cells meets at every corner; then no path can cover it unless
 // the two colour classes differ by at most 1 in size (top.classes).
 //
-// The one exception is the Pentagon board (kind 'pentagon', n = 4 to 11; pentagon.js): a
-// flat patch of the Cairo tiling with a border. A cell on the border has sides with no neighbour:
-// there nb is -1 and edgeAt is -1 (no edge, so no wall, and the solver never steps there); deg is
-// still the number of sides, so a slot is a side as everywhere else. top.flat is true and
-// top.centres[2 * cell], [2 * cell + 1] is the centre of a cell (verts have z = 0).
+// The engine below (graph, puzzle, solver, generator) does not need a board to be closed. A flat
+// board with a border is the other family, owned by a variant, not by this folder: the Pentagon
+// board (kind 'pentagon', n = 4 to 11; core/pentagon.js), a flat patch of the Cairo tiling. A cell
+// on the border has sides with no neighbour: there nb is -1 and edgeAt is -1 (no edge, so no
+// wall, and the solver never steps there); deg is still the number of sides, so a slot is a side
+// as everywhere else. top.flat is true and top.centres[2 * cell], [2 * cell + 1] is the centre of
+// a cell (verts have z = 0).
+//
+// This file is the one place of core/surface that knows the flat board (the kind table below:
+// surfaceCellCount, SURFACE_SIZES, surfaceTopology); test/check.js keeps the rest of the folder
+// free of it.
 
 import {
   PENTAGON_KIND, PENTAGON_CELLS, PENTAGON_BOARD_SIZES, pentagonMesh,
-} from './pentagon.js';
+} from '../pentagon.js';
 import { ballEntry } from './ball-registry.js';
 
-export { PENTAGON_KIND, ballEntry };
+export { ballEntry };
 
 // The kinds with a size n (a whole number); `ball` has an id instead and is listed in BALL_KIND.
 export const SURFACE_KINDS = ['tetra', 'cube'];
 export const BALL_KIND = 'ball';
 // The sizes (n) the app offers; the builders of a tetra or cube accept any n from 1 to MAX_SIDE,
-// the Pentagon boards are the sizes listed (pentagon.js).
+// the Pentagon boards are the sizes listed (core/pentagon.js).
 export const SURFACE_SIZES = { tetra: [3, 4, 5], cube: [3, 4], pentagon: PENTAGON_BOARD_SIZES };
 export const MAX_SIDE = 12;
 export const SLOTS = 5;

@@ -6,7 +6,7 @@ import { generateLoop, LOOP_SIZES } from '../../core/gen/loop.js';
 import { generateTeleport, TELEPORT_SIZES } from '../../core/gen/teleport.js';
 import { generateTwoPaths, TWOPATHS_SIZES } from '../../core/gen/twopaths.js';
 import { generatePentagon, PENTAGON_SIZES } from '../../core/gen/pentagon.js';
-import { PENTAGON_KIND } from '../../core/surface/pentagon.js';
+import { isPentagon } from '../../core/pentagon.js';
 import { PLAY_MAX_CELLS, PLAY_MIN_CELLS } from '../../core/surface/balls.js';
 import { SOLID_KINDS, SOLID_SIZES, stageOf } from '../../features/solid-release.js';
 
@@ -106,8 +106,8 @@ export const PLAY_VARIANTS = [
   },
   {
     id: 'pentagon',
-    detect: puzzle => puzzle.surface === PENTAGON_KIND,
-    // Its own boards (core/surface/pentagon.js): n is the id of a board, 4 to 10, by cells: 16, 36,
+    detect: isPentagon,
+    // Its own boards (core/pentagon.js): n is the id of a board, 4 to 10, by cells: 16, 36,
     // 64, 96, 100. They do not depend on the grid sizes of the app. The lucky game of a locked
     // variant takes the middle boards.
     sizes: () => PENTAGON_SIZES,

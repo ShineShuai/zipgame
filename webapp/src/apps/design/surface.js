@@ -1,14 +1,14 @@
-// The design app's controller for the surface types (Tetrahedron, Cube, Ball, Pentagon): it owns
-// the surface puzzle, draws it as the solid you can turn (3D, the default) or as an assist: the
-// flat net of a tetrahedron or cube, the two halves of a ball (surface-board.js), and runs the
-// tools, Generate, Minimize walls, Solve, Play and the text export. The Pentagon type is a flat
-// board with a border: nothing to turn, one picture (buildFlat in view/surface-net.js), the same
-// tools. design.html shows its panels while the type is a surface (data-variants); main.js hands
+// The design app's controller for the types that run on a cell graph (core/surface): the 3D types
+// (Tetrahedron, Cube, Ball) and the flat Pentagon type. It owns the graph puzzle, draws a solid as
+// the one you can turn (3D, the default) or as an assist: the flat net of a tetrahedron or cube,
+// the two halves of a ball (surface-board.js), and runs the tools, Generate, Minimize walls,
+// Solve, Play and the text export. The Pentagon type (core/pentagon.js) is a flat board with a
+// border: nothing to turn, one picture (buildFlat in view/surface-net.js), the same tools.
+// design.html shows its panels while the type is one of these (data-variants); main.js hands
 // over the shared buttons (Solve, Play, Export, Reset) and the seed, status, timing and busy
 // state, which come in through `ctx`.
 import {
   BALL_KIND,
-  PENTAGON_KIND,
   SURFACE_SIZES,
   SLOTS,
   ballEntry,
@@ -43,7 +43,8 @@ import { runAsync, measured } from '../../platform/run.js';
 import { setHintText } from '../../ui/hint-popover.js';
 import { surfaceSvg } from './surface-board.js';
 import { keptK } from './k-field.js';
-import { shapeHint } from '../../core/surface/pentagon.js';
+import { PENTAGON_KIND, shapeHint } from '../../core/pentagon.js';
+import { pentagonDefaultK } from '../../core/gen/pentagon.js';
 import { TPL_C, SOL_C } from './board.js';
 
 const NAME = { tetra: 'Tetrahedron', cube: 'Cube', ball: 'Ball', pentagon: 'Pentagon' };
@@ -53,6 +54,8 @@ const FACES = {
   pentagon: 'a flat board of pentagons',
 };
 const DEFAULT_SIZE = { tetra: 4, cube: 3, ball: 'snub-cube', pentagon: 6 };
+// The starting value of the number of checkpoints: the Pentagon board has a rule of its own.
+const startK = (kind, n) => (kind === PENTAGON_KIND ? pentagonDefaultK(n) : defaultK(kind, n));
 // The two halves of a ball side by side (the Map view): the width of each, in pixels.
 const MAP_WIDTH = 300;
 // Puzzles Generate makes (new seeds in turn) while looking for one within Max walls.
@@ -406,7 +409,7 @@ export function createSurfaceController(ctx) {
     const cells = surfaceTopology(kind, n).T;
     $('sfK').max = String(cells);
     $('sfK').value = keptK({
-      typed: kTyped, value: $('sfK').value, cells, fallback: defaultK(kind, n),
+      typed: kTyped, value: $('sfK').value, cells, fallback: startK(kind, n),
     });
   }
 
@@ -881,7 +884,7 @@ export function createSurfaceController(ctx) {
       exitPlay();
     }
     const top = topology();
-    const K = Math.min(Math.max(wholeField('sfK') ?? defaultK(kind, P.n), 2), top.T);
+    const K = Math.min(Math.max(wholeField('sfK') ?? startK(kind, P.n), 2), top.T);
     const maxWalls = wholeField('sfWalls');
     const seed = ctx.currentSeed();
     const clockMs = { ms: 0 };

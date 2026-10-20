@@ -4,7 +4,7 @@ import {
   COLORS, CELL, badgeColors, singlePathSvg, wrongMoveMarkAt, correctMoveRingAt,
 } from './board.js';
 
-// The play board of a Pentagon puzzle (core/surface/pentagon.js, p.surface === 'pentagon'): a flat
+// The play board of a Pentagon puzzle (core/pentagon.js, p.surface === 'pentagon'): a flat
 // patch of pentagon cells, drawn in the same style as the square board (board.js): white tiles on
 // the light grid colour, a heavier outline along the border of the board, dark walls on the sides
 // between two cells, the orange line through the cell centres, a badge on every number. The

@@ -145,7 +145,7 @@ function twoPathsRoutes() {
   return one(RED_ROUTE, 'red') + one(BLUE_ROUTE, 'blue');
 }
 
-// Pentagon icon: the 16 cells of the smallest Pentagon board (core/surface/pentagon.js, n = 4) as
+// Pentagon icon: the 16 cells of the smallest Pentagon board (core/pentagon.js, n = 4) as
 // corner lists in the 48 x 48 box, and a path through all their centres.
 const PENTAGON_TILES = [
   '17.9,7 14.7,10.2 16.3,16.3 22.4,14.7 24,8.6',
