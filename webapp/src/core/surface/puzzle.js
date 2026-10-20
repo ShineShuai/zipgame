@@ -1,6 +1,6 @@
-// Puzzles on a closed surface (see topology.js): the model, the move rule, the solved check and a
-// plain-text format. A puzzle is
-//   { surface: 'tetra' | 'cube' | 'ball' | 'pentagon', n, cp: Uint16Array(T),
+// Puzzles on a cell graph (see topology.js: a solid or the flat Pentagon board): the model, the
+// move rule, the solved check and a plain-text format. A puzzle is
+//   { kind: 'tetra' | 'cube' | 'ball' | 'pentagon', n, cp: Uint16Array(T),
 //     walls: Uint8Array(E) }
 // (n is the size of a tetra, cube or pentagon board, the catalog id of a ball)
 // cp[cell] is the checkpoint number of a cell (0 = none) and walls[edge] is 1 where the side
@@ -9,13 +9,13 @@
 import { surfaceTopology, edgeBetween, BALL_KIND } from './topology.js';
 import { timeComments } from '../format.js';
 
-export const isSurfacePuzzle = p => Boolean(p && p.surface);
-export const topologyOf = p => surfaceTopology(p.surface, p.n);
+export const isSurfacePuzzle = p => Boolean(p && p.kind);
+export const topologyOf = p => surfaceTopology(p.kind, p.n);
 
 export function makeSurfacePuzzle(kind, n) {
   const top = surfaceTopology(kind, n);
   return {
-    surface: kind,
+    kind,
     n,
     cp: new Uint16Array(top.T),
     walls: new Uint8Array(top.E),
@@ -23,7 +23,7 @@ export function makeSurfacePuzzle(kind, n) {
 }
 
 export const cloneSurfacePuzzle = p => ({
-  surface: p.surface,
+  kind: p.kind,
   n: p.n,
   cp: Uint16Array.from(p.cp),
   walls: Uint8Array.from(p.walls),
@@ -67,7 +67,7 @@ export function canStep(p, a, b) {
 export function validateSurface(p) {
   const top = topologyOf(p);
   if (p.cp.length !== top.T || p.walls.length !== top.E) {
-    return { ok: false, msg: 'Invalid: the board arrays do not match the surface.' };
+    return { ok: false, msg: 'Invalid: the board arrays do not match the board.' };
   }
   const numbers = [];
   for (const value of p.cp) {
@@ -199,7 +199,7 @@ export function step(p, path, cell, opts = {}) {
 // Blank lines and lines starting with # are ignored. opts.times ({ generateMs, solveMs, playS })
 // adds `# name value` comment lines, as the flat format does.
 export function serializeSurface(p, opts = {}) {
-  const lines = [`surface ${p.surface} ${p.n}`];
+  const lines = [`surface ${p.kind} ${p.n}`];
   const cells = [];
   for (let cell = 0; cell < p.cp.length; cell++) {
     if (p.cp[cell]) {

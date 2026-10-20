@@ -244,7 +244,7 @@ export function pentagonTests(t, ok, eq) {
     const text = serializeSurface(p, { path: p.path });
     ok(text.startsWith('surface pentagon 6\n'));
     const back = parseSurface(text);
-    eq([back.surface, back.n, Array.from(back.cp), Array.from(back.walls)],
+    eq([back.kind, back.n, Array.from(back.cp), Array.from(back.walls)],
       [PENTAGON_KIND, 6, Array.from(p.cp), Array.from(p.walls)]);
     eq(back.path, p.path);
     ok(validateSurface(back).ok);
@@ -281,7 +281,7 @@ export function pentagonTests(t, ok, eq) {
     for (const [n, seeds] of [[4, [1, 2, 3, 4]], [6, [1, 2, 3]], [8, [1]]]) {
       for (const seed of seeds) {
         const p = game(n, seed);
-        eq([p.surface, p.n], [PENTAGON_KIND, n]);
+        eq([p.kind, p.n], [PENTAGON_KIND, n]);
         ok(validateSurface(p).ok, `n=${n} seed=${seed}: valid`);
         ok(isSolved(p, p.path), 'the stored path solves it');
         const solved = solveSurface(p, { limit: 2, nodeCap: 0 });
@@ -555,7 +555,7 @@ export function pentagonTests(t, ok, eq) {
       const back = decodeShare(code);
       ok(back && back.variant === PENTAGON && back.kind === 'local', 'decodes as pentagon');
       eq([back.n, back.grade, back.timeS, back.levels], [p.n, null, 83.4, rec.levels]);
-      eq([back.puzzle.surface, Array.from(back.puzzle.cp), Array.from(back.puzzle.walls)],
+      eq([back.puzzle.kind, Array.from(back.puzzle.cp), Array.from(back.puzzle.walls)],
         [PENTAGON_KIND, Array.from(p.cp), Array.from(p.walls)]);
       eq(serializeSurface(back.puzzle), serializeSurface(p), 'the same puzzle text');
       eq(encodeShare(back), code, 'one puzzle, one code');
@@ -618,7 +618,7 @@ export function pentagonTests(t, ok, eq) {
     const rec = record(p);
     p.cp[0] = 0;
     p.walls[2] = 0;
-    eq([rec.puzzle.cp[0], rec.puzzle.walls[2], rec.puzzle.surface], [1, 1, PENTAGON_KIND]);
+    eq([rec.puzzle.cp[0], rec.puzzle.walls[2], rec.puzzle.kind], [1, 1, PENTAGON_KIND]);
     const sizesOf = variant => (variant === PENTAGON ? PENTAGON_SIZES : []);
     const small = { ...rec, n: 4 };
     eq(shareStatus(small, { sizes: [5, 6, 7], sizesOf }).status, 'ok', 'size 4: a Pentagon size');

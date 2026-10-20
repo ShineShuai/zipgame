@@ -1,4 +1,4 @@
-// Generates the catalog of ball boards (src/core/surface/ball-catalog.js): convex polyhedra whose
+// Generates the catalog of ball boards (src/core/solid/ball-catalog.js): convex polyhedra whose
 // faces are triangles, squares and pentagons. A cell of the puzzle is a face; two cells are
 // neighbours when the faces share a side (see src/core/surface/topology.js).
 //   node tools/ball-catalog.mjs [--max-cells 100] [--depth 2] [--max-n 8] [--filter REGEX]
@@ -30,12 +30,12 @@ import {
   canonical,
   fnv,
 } from './polyhedra.mjs';
-import { BALL_CATALOG } from '../src/core/surface/ball-catalog.js';
+import { BALL_CATALOG } from '../src/core/solid/ball-catalog.js';
 import { buildBallTopology } from '../src/core/surface/topology.js';
 import { GEN_CFG, randomHamiltonianPath } from '../src/core/surface/gen.js';
 import { makeRng } from '../src/core/rng.js';
 
-const FILE = fileURLToPath(new URL('../src/core/surface/ball-catalog.js', import.meta.url));
+const FILE = fileURLToPath(new URL('../src/core/solid/ball-catalog.js', import.meta.url));
 const args = process.argv.slice(2);
 const has = name => args.includes(`--${name}`);
 const value = (name, fallback) => {

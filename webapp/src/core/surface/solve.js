@@ -1,4 +1,4 @@
-// Solver for puzzles on a closed surface (puzzle.js): depth-first search over the cell graph that
+// Solver for puzzles on a cell graph (puzzle.js): depth-first search over the cell graph that
 // counts solutions up to a limit. The flat-board solvers cannot be used here: they pair the
 // sides of a cell as d and d ^ 1, which no consistent labelling of a cube's sides allows.
 //

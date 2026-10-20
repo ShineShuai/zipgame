@@ -1,7 +1,7 @@
 // Convex polyhedra for the ball boards (tools/ball-catalog.mjs): a convex hull that merges
 // coplanar points into polygons, the operators dual, kis and snub, the seed solids and a
 // point spreader for free-form triangulations. Offline only: the app reads the data the catalog
-// tool writes (src/core/surface/ball-catalog.js) and never runs this.
+// tool writes (src/core/solid/ball-catalog.js) and never runs this.
 //
 // A mesh is { verts: [[x, y, z]], faces: [ring], planes: [{ n, d }] }: a ring lists vertex ids
 // counter-clockwise seen from outside, plane i is the plane of face i (unit outward normal n, and

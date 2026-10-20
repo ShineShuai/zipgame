@@ -172,9 +172,9 @@ function openExport(text) {
   modal.open();
   setTimeout(() => $('exportText').focus(), 30);
 }
-// The 3D puzzles (tetrahedron, cube, ball): their own card in the menu (from the release
+// The solid puzzles (tetrahedron, cube, ball): their own card in the menu (from the release
 // day, or with V) and game screen.
-// Which 3D kinds are open to everyone, and from when (config.js SOLID_RELEASE); a bad
+// Which solid kinds are open to everyone, and from when (config.js SOLID_RELEASE); a bad
 // config switches the release off.
 const solidRelease = (() => {
   try {
@@ -993,7 +993,7 @@ async function startLucky() {
   const pick = await unlock.begin(randomInt);
   if (!pick) return render();
   S.luckyHolder = pick.holder;
-  if (solid.isKind(pick.id)) { // a 3D kind: the 3D game screen
+  if (solid.isKind(pick.id)) { // a solid kind: the solid game screen
     return solid.start({ kind: pick.id, size: pick.size, lucky: true });
   }
   S.size = pick.size;

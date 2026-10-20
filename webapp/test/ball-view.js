@@ -2,8 +2,8 @@
 // outlines of the cells tile the disc of the ball in every view, a point of the picture is in the
 // cell the exact test gives, marks and routes stay in front, and the markup is complete.
 // Registered by tests.js: ballViewTests(t, ok, eq).
-import { BALL_CATALOG } from '../src/core/surface/ball-catalog.js';
-import { registerBalls } from '../src/core/surface/ball-registry.js';
+import { BALL_CATALOG } from '../src/core/solid/ball-catalog.js';
+import { registerBalls } from '../src/core/solid/ball-registry.js';
 import { BALL_KIND, SLOTS, surfaceTopology } from '../src/core/surface/topology.js';
 import { makeSurfacePuzzle } from '../src/core/surface/puzzle.js';
 import { generateSurface } from '../src/core/surface/gen.js';

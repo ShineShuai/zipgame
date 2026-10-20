@@ -44,7 +44,7 @@ import { mountDifficultyPanel } from './difficulty-panel.js';
 import { initHints, setHintText } from '../../ui/hint-popover.js';
 import { looksLikeSurface, parseSurface } from '../../core/surface/puzzle.js';
 import { createSurfaceController } from './surface.js';
-import { loadBalls } from '../../core/surface/balls.js';
+import { loadBalls } from '../../core/solid/balls.js';
 
 // The ball boards of the Ball type (a module of its own, big): the design app, a desktop tool,
 // loads them before it starts.
@@ -946,7 +946,7 @@ $('modalOk').onclick = async () => {
     if (looksLikeSurface($('modalText').value)) {
       const surfaceQ = parseSurface($('modalText').value);
       const surfacePath = $('importPath').checked && surfaceQ.path ? surfaceQ.path.slice() : null;
-      enterSurface(surfaceQ.surface, surfaceQ);
+      enterSurface(surfaceQ.kind, surfaceQ);
       msg.textContent = 'Puzzle imported ✓'; msg.className = 'modal-msg ok'; setTimeout(modal.close, 400);
       if (surfacePath) surface.togglePlay(surfacePath);
       return;

@@ -1,4 +1,4 @@
-// Generator for puzzles on a closed surface (see puzzle.js). Same recipe as the flat board:
+// Generator for puzzles on a cell graph (see puzzle.js). Same recipe as the flat board:
 //   1. a random Hamiltonian path of the board is the intended solution
 //   2. K numbers are laid along it: 1 on the first cell, K on the last, the rest spread at random
 //   3. every side the path does not use is closed (a wall), which makes the solution unique

@@ -1,5 +1,5 @@
 // The ball board seen from outside, for the ball view of the design app: the cells of a catalog
-// solid (core/surface/ball-catalog.js) as pieces of a sphere, the same cells and neighbours, only
+// solid (core/solid/ball-catalog.js) as pieces of a sphere, the same cells and neighbours, only
 // drawn round. No DOM. buildBallView() has the shape of view/proj.js buildView() (the corners of
 // every cell in the picture, centers, glued, hidden, depth, frameOf, box, side), so the renderer
 // of surface-board.js draws both, and more: the true outline of every cell (a side is the

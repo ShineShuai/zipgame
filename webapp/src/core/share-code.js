@@ -580,7 +580,7 @@ function unpackPentagonRecord(r) {
     grade: null,
     timeS: (r.count(MAX_TENTHS - 1) + 1) / 10,
   };
-  const p = { surface: PENTAGON_KIND, n, cp: new Uint16Array(top.T), walls: new Uint8Array(top.E) };
+  const p = { kind: PENTAGON_KIND, n, cp: new Uint16Array(top.T), walls: new Uint8Array(top.E) };
   const count = r.uint(top.T - 1) + 2;
   r.distinct(top.T, count).forEach((cell, i) => {
     p.cp[cell] = i + 1;

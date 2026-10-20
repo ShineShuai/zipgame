@@ -1,4 +1,4 @@
-// How many checkpoints a puzzle gets, the same rule on every board (square, Pentagon, 3D).
+// How many checkpoints a puzzle gets, the same rule on every board (square, Pentagon, solid).
 
 // K ~ Normal(mean = Kmin + 0.3 * (Kmax - Kmin), sd = range / 6), sampled with Box-Muller and clamped
 // to [Kmin, Kmax]. Favors small K. Always consumes exactly 2 rnd() values.

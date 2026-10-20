@@ -16,7 +16,7 @@ import { utcDayNumber } from './daily.js';
 //   was closed during the game: abandoned).
 // `defs` is [{ id, locked, pool, solid?, from?, open? }] (apps/play/variants.js
 // luckyDefs): the sizes the lucky game of a locked variant may have, and those it may
-// have once the variant is unlocked. The 3D kinds (solid) are in the lucky game's list,
+// have once the variant is unlocked. The solid kinds are in the lucky game's list,
 // and count for "all unlocked", only when every flat variant is unlocked and their
 // `from` day (a UTC day number; null = never) has come. `open(day)` says the kind is
 // open to everyone that day (its release), which counts as unlocked without the
@@ -45,7 +45,7 @@ export function createUnlock(storage, defs, now = () => new Date()) {
   const today = () => utcDayNumber(now());
   let s = null; // null until init()
   const save = async () => { try { await storage.set(UNLOCK_KEY, JSON.stringify(s)); } catch { /* ignore */ } };
-  // Unlocked by the player, or open to everyone today (a 3D kind after its release).
+  // Unlocked by the player, or open to everyone today (a solid kind after its release).
   const isUnlocked = id => {
     if (!s) return false;
     const def = defs.find(d => d.id === id);

@@ -30,8 +30,8 @@
 
 export const PENTAGON_KIND = 'pentagon';
 // A Pentagon puzzle: { surface: 'pentagon', n, cp, walls } (the graph model of core/surface). Every
-// other puzzle that has a `surface` is a 3D one (tetra, cube, ball); a grid puzzle has none.
-export const isPentagon = p => p?.surface === PENTAGON_KIND;
+// other puzzle that has a `kind` is a solid one (tetra, cube, ball); a grid puzzle has none.
+export const isPentagon = p => p?.kind === PENTAGON_KIND;
 export const PENTAGON_SIZES = [4, 6, 8, 9, 10]; // offered by the play app, by cells
 export const PENTAGON_DESIGN_SIZES = [5, 7, 11]; // only in the design app
 // Every board, by cells: 16, 24, 36, 48, 64, 80, 96, 100.

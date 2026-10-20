@@ -7,10 +7,10 @@ import {
   surfaceTopology,
   edgeBetween,
   cellCentroid,
-  SURFACE_KINDS,
   SURFACE_SIZES,
   SLOTS,
 } from '../src/core/surface/topology.js';
+import { SIZED_SOLIDS } from '../src/core/solid/kinds.js';
 import {
   makeSurfacePuzzle,
   cloneSurfacePuzzle,
@@ -80,7 +80,7 @@ const threw = f => {
 
 // Every Hamiltonian path that obeys the rules, by plain search with no pruning at all.
 function brute(p) {
-  const top = surfaceTopology(p.surface, p.n);
+  const top = surfaceTopology(p.kind, p.n);
   const K = maxNumber(p);
   const start = p.cp.indexOf(1);
   const vis = new Uint8Array(top.T);
@@ -146,7 +146,7 @@ function solvablePuzzle(kind, n, seed, wallShare) {
 
 export function surfaceTests(t, ok, eq) {
   t('surface topology: counts, closed surface, Euler characteristic, sizes on offer', () => {
-    for (const kind of SURFACE_KINDS) {
+    for (const kind of SIZED_SOLIDS) {
       const degree = kind === 'tetra' ? 3 : 4;
       for (let n = 1; n <= 5; n++) {
         const top = surfaceTopology(kind, n);
@@ -172,7 +172,7 @@ export function surfaceTests(t, ok, eq) {
   });
 
   t('surface topology: neighbours, sides and edges agree with each other', () => {
-    for (const kind of SURFACE_KINDS) {
+    for (const kind of SIZED_SOLIDS) {
       for (const n of [1, 2, 3, 4]) {
         const top = surfaceTopology(kind, n);
         const timesSeen = new Int32Array(top.E);
@@ -201,7 +201,7 @@ export function surfaceTests(t, ok, eq) {
   });
 
   t('surface topology: distances, face numbering, and cells face outwards', () => {
-    for (const kind of SURFACE_KINDS) {
+    for (const kind of SIZED_SOLIDS) {
       const top = surfaceTopology(kind, 3);
       const n2 = 9;
       for (let a = 0; a < top.T; a++) {
@@ -238,7 +238,7 @@ export function surfaceTests(t, ok, eq) {
     }
     eq(surfaceTopology('cube', 3).dist[0 * 54 + 53] > 0, true);
     const diameters = { tetra: [1, 4, 7], cube: [2, 5, 8] };
-    for (const kind of SURFACE_KINDS) {
+    for (const kind of SIZED_SOLIDS) {
       [1, 2, 3].forEach((n, i) => {
         eq(Math.max(...surfaceTopology(kind, n).dist), diameters[kind][i]);
       });
@@ -369,7 +369,7 @@ export function surfaceTests(t, ok, eq) {
     const { p, path } = solvablePuzzle('tetra', 3, 2, 0.5);
     const text = serializeSurface(p, { path });
     const back = parseSurface(text);
-    eq(back.surface, 'tetra');
+    eq(back.kind, 'tetra');
     eq(back.n, 3);
     eq(Array.from(back.cp), Array.from(p.cp));
     eq(Array.from(back.walls), Array.from(p.walls));
@@ -402,7 +402,7 @@ export function surfaceTests(t, ok, eq) {
   });
 
   t('surface generator: random Hamiltonian path on every board size', () => {
-    for (const kind of SURFACE_KINDS) {
+    for (const kind of SIZED_SOLIDS) {
       for (const n of [1, 2, 3, ...SURFACE_SIZES[kind]]) {
         const top = surfaceTopology(kind, n);
         const path = randomHamiltonianPath(top, makeRng(n + 10));

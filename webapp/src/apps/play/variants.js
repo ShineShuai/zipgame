@@ -7,7 +7,7 @@ import { generateTeleport, TELEPORT_SIZES } from '../../core/gen/teleport.js';
 import { generateTwoPaths, TWOPATHS_SIZES } from '../../core/gen/twopaths.js';
 import { generatePentagon, PENTAGON_SIZES } from '../../core/gen/pentagon.js';
 import { isPentagon } from '../../core/pentagon.js';
-import { PLAY_MAX_CELLS, PLAY_MIN_CELLS } from '../../core/surface/balls.js';
+import { PLAY_MAX_CELLS, PLAY_MIN_CELLS } from '../../core/solid/balls.js';
 import { SOLID_KINDS, SOLID_SIZES, stageOf } from '../../features/solid-release.js';
 
 // The puzzle variants of the play app, one entry each. Everything that differs between variants
@@ -133,7 +133,7 @@ export const sizesFor = (mode, sizes) => {
   return variant ? variant.sizes(sizes) : sizes;
 };
 
-// The sizes of the lucky game of a locked 3D kind. A ball has no size: its entry is
+// The sizes of the lucky game of a locked solid kind. A ball has no size: its entry is
 // the range of cells the board may have, { min, max }.
 export const SOLID_LUCKY = {
   tetra: [3, 4],
@@ -141,7 +141,7 @@ export const SOLID_LUCKY = {
   ball: [{ min: 10, max: 30 }],
 };
 
-// What the unlock feature (features/unlock.js) needs of each 3D kind. `release` is
+// What the unlock feature (features/unlock.js) needs of each solid kind. `release` is
 // releaseDays(SOLID_RELEASE) (null: not released, so the kind is never in the lucky
 // game). Size 2 of the tetra is open to everyone from the first day, so a locked
 // tetra is played at 3 or 4; once unlocked it draws from every size, a ball from
@@ -158,7 +158,7 @@ export const solidDefs = release => SOLID_KINDS.map(kind => ({
 // What the unlock feature (features/unlock.js) needs of each variant: the sizes of its
 // lucky game while it is locked (its luckySizes, default LUCKY_SIZES, that the variant
 // offers) and once it is unlocked (all of its sizes, the same as in free play). With
-// `release` given (null or the releaseDays of the config) the 3D kinds follow
+// `release` given (null or the releaseDays of the config) the solid kinds follow
 // (solidDefs).
 export const luckyDefs = (sizes, release) => [
   ...PLAY_VARIANTS.map(variant => {

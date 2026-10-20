@@ -183,7 +183,7 @@ function pentagonRoute() {
     + dot(PENTAGON_ROUTE[PENTAGON_ROUTE.length - 1]);
 }
 
-// The 3D puzzles (apps/play/solid.js): a cube seen from a corner, a tetrahedron seen from above
+// The solid puzzles (apps/play/solid.js): a cube seen from a corner, a tetrahedron seen from above
 // one corner, a ball with a pentagon in front. Each is a few tiles with a path over them.
 const polygon = points => `<polygon class="vi-tile" points="${points}"/>`;
 const dots = (...centres) => centres
@@ -214,7 +214,7 @@ function solidIcon(kind) {
 }
 
 // variant: 'cutout', 'arrows', 'exact', 'wrap', 'loop', 'teleport', 'twopaths', 'pentagon',
-// 'lucky' (the mystery of the lucky game), the 3D puzzles 'tetra', 'cube' and 'ball', or
+// 'lucky' (the mystery of the lucky game), the solid puzzles 'tetra', 'cube' and 'ball', or
 // anything else (= standard). Class: variant-icon vi-standard | vi-cutout | vi-arrows |
 // vi-exact | vi-wrap | vi-loop | vi-teleport | vi-twopaths | vi-pentagon | vi-lucky |
 // vi-tetra | vi-cube | vi-ball.
@@ -269,7 +269,7 @@ const CARD_ICONS = {
     `<polygon points="${star(12, 15.2, 3.3, 1.4)}" fill="currentColor" stroke-width="1"/>`,
   // a play button: free play
   free: '<circle cx="12" cy="12" r="9"/><path d="M10 8.4v7.2l5.8-3.6z" fill="currentColor"/>',
-  // a cube: the 3D puzzles
+  // a cube: the solid puzzles
   solid: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/>' +
     '<path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>',
 };

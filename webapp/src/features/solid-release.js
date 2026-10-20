@@ -1,15 +1,17 @@
-// The release of the 3D puzzles in the play app, by date (config.js SOLID_RELEASE). Pure: the day
+// The release of the solid puzzles in the play app, by date (config.js SOLID_RELEASE). Pure: the day
 // is a UTC day number (features/daily.js utcDayNumber), nothing is stored.
 //
-//   from `first`          the tetrahedron of size 2 is open to everyone (nothing else 3D is)
+//   from `first`          the tetrahedron of size 2 is open to everyone (no other solid is)
 //   first + tetra days    every tetrahedron size is open to everyone
 //   first + cube days     the cube is open to everyone
 //   first + ball days     the ball is open to everyone
 //
-// Before `first` no 3D puzzle is shown or played (hold V still shows the card). A kind that is not
+// Before `first` no solid puzzle is shown or played (hold V still shows the card). A kind that is not
 // open to everyone yet can be unlocked early through the lucky game (features/unlock.js), once the
 // player has unlocked every flat variant.
-export const SOLID_KINDS = ['tetra', 'cube', 'ball'];
+import { SOLID_KINDS } from '../core/solid/kinds.js';
+
+export { SOLID_KINDS };
 // The sizes of a tetra or cube the play app offers (a ball is picked from the catalog instead).
 export const SOLID_SIZES = { tetra: [2, 3, 4, 5], cube: [2, 3, 4] };
 // The tetra sizes of the first stage.

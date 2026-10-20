@@ -1,4 +1,4 @@
-// The solid of a surface board (core/surface/topology.js) seen from outside, for the 3D view of
+// The solid of a board (core/surface/topology.js) seen from outside, for the 3D view of
 // the design app. No DOM. A rotation is a 3x3 matrix as 9 numbers (row by row); the view is
 // orthographic, x to the right, y up, z towards the viewer, so a cell is seen when its outward
 // normal has a positive z. buildView() gives the same shape as view/surface-net.js buildNet() (the

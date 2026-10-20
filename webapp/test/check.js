@@ -92,7 +92,9 @@ function exportedNames(file) {
 
 // Who may not import whom. The cell-graph engine in src/core/surface serves the 3D variants and
 // the flat Pentagon board; it must not depend on a variant, and the variant owns its board:
-//   - only topology.js (the kind table) may import the Pentagon board, src/core/pentagon.js
+//   - only topology.js (the kind table) may import the Pentagon board, src/core/pentagon.js, and the
+//     boards of the solids, src/core/solid/
+//   - a solid knows nothing of the engine or of the Pentagon board
 //   - nothing in the engine imports the grid generator, src/core/gen/generate.js (use gen/pick-k.js)
 const LAYERS = [
   {
@@ -100,6 +102,12 @@ const LAYERS = [
     except: ['src/core/surface/topology.js'],
     deny: ['src/core/pentagon.js'],
   },
+  {
+    in: 'src/core/surface/',
+    except: ['src/core/surface/topology.js'],
+    deny: ['src/core/solid/meshes.js', 'src/core/solid/kinds.js'],
+  },
+  { in: 'src/core/solid/', except: [], deny: ['src/core/pentagon.js'] },
   { in: 'src/core/surface/', except: [], deny: ['src/core/gen/generate.js'] },
 ];
 

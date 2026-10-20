@@ -3,9 +3,11 @@
 // texts, and the card of the menu (apps/play/solid.js; its DOM parts run in a browser).
 // Registered by tests.js: solidTests(t, ok, eq).
 import { BALL_KIND, SLOTS, surfaceTopology } from '../src/core/surface/topology.js';
-import { BALL_CATALOG } from '../src/core/surface/ball-catalog.js';
-import { registerBalls } from '../src/core/surface/ball-registry.js';
-import { loadBalls } from '../src/core/surface/balls.js';
+import { BALL_CATALOG } from '../src/core/solid/ball-catalog.js';
+import { SOLID_KINDS as CORE_SOLID_KINDS, SIZED_SOLIDS } from '../src/core/solid/kinds.js';
+import { PENTAGON_KIND } from '../src/core/pentagon.js';
+import { registerBalls } from '../src/core/solid/ball-registry.js';
+import { loadBalls } from '../src/core/solid/balls.js';
 import { buildNet } from '../src/view/surface-net.js';
 import { computeHint } from '../src/features/hints.js';
 import { canPush, makeSurfacePuzzle } from '../src/core/surface/puzzle.js';
@@ -325,6 +327,17 @@ export function solidTests(t, ok, eq, ta) {
     eq(tiles(html), ['tetra', 'cube', 'ball'], 'V shows everything, before the release too');
     eq(locked(html), 3, 'the kinds nobody can play yet are marked');
     eq(locked(make(first)), 2, 'cube and ball are marked, the tetra is not');
+  });
+
+  t('solid: one list of the solid kinds, shared by the core and the play app; the board of a '
+    + 'puzzle is its kind', () => {
+    eq(CORE_SOLID_KINDS, [...SIZED_SOLIDS, BALL_KIND]);
+    eq(SOLID_KINDS, CORE_SOLID_KINDS, 'the play app uses the list of the core');
+    ok(!CORE_SOLID_KINDS.includes(PENTAGON_KIND), 'the Pentagon board is not a solid');
+    for (const kind of SIZED_SOLIDS) {
+      const p = makeSurfacePuzzle(kind, 2);
+      eq([p.kind, p.surface], [kind, undefined], `${kind}: the field is kind`);
+    }
   });
 
   ta('play app: a new 3D puzzle opens in the view the player chose last', async () => {

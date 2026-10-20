@@ -22,8 +22,8 @@ import { runSync } from '../src/core/run.js';
 import { EN, ZH, t as translate } from '../src/ui/i18n.js';
 import { createSolidPlay } from '../src/apps/play/solid.js';
 import { ballEntry } from '../src/core/surface/topology.js';
-import { registerBalls } from '../src/core/surface/ball-registry.js';
-import { BALL_CATALOG } from '../src/core/surface/ball-catalog.js';
+import { registerBalls } from '../src/core/solid/ball-registry.js';
+import { BALL_CATALOG } from '../src/core/solid/ball-catalog.js';
 
 const MON = 20731; // 2026-10-05, the lucky day of its week; the next one is 20743 (2026-10-17)
 const memory = (init = {}) => {

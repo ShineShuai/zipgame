@@ -1,4 +1,4 @@
-// The design app's controller for the types that run on a cell graph (core/surface): the 3D types
+// The design app's controller for the types that run on a cell graph (core/surface): the solids
 // (Tetrahedron, Cube, Ball) and the flat Pentagon type. It owns the graph puzzle, draws a solid as
 // the one you can turn (3D, the default) or as an assist: the flat net of a tetrahedron or cube,
 // the two halves of a ball (surface-board.js), and runs the tools, Generate, Minimize walls,
@@ -14,7 +14,7 @@ import {
   ballEntry,
   surfaceTopology,
 } from '../../core/surface/topology.js';
-import { ballsByComposition, compositionLabel } from '../../core/surface/balls.js';
+import { ballsByComposition, compositionLabel } from '../../core/solid/balls.js';
 import {
   makeSurfacePuzzle,
   cloneSurfacePuzzle,
@@ -163,7 +163,7 @@ export function createSurfaceController(ctx) {
     redraw: () => draw(),
   });
 
-  const topology = () => surfaceTopology(P.surface, P.n);
+  const topology = () => surfaceTopology(P.kind, P.n);
   const isBall = () => kind === BALL_KIND;
   const isFlat = () => kind === PENTAGON_KIND;
   // Whether the solid can be turned: the 3D view, and both views of a ball (not a flat board)
@@ -415,10 +415,10 @@ export function createSurfaceController(ctx) {
 
   // Shows puzzle q (kept as it is, without its path) with `tpl` as the template path.
   function adopt(q, tpl = null) {
-    if (q.surface !== kind) {
+    if (q.kind !== kind) {
       kTyped = false;
     }
-    kind = q.surface;
+    kind = q.kind;
     P = cloneSurfacePuzzle(q);
     template = tpl;
     templateVisible = true;

@@ -42,16 +42,16 @@ export const BEHAVIOUR = {
   backup: 'cloudflare',
 };
 
-// Release of the 3D puzzles in the play app (src/features/solid-release.js).
+// Release of the solid puzzles in the play app (src/features/solid-release.js).
 // Dates are UTC days, YYYYMMDD.
-//   first   the day the first 3D puzzle goes live: from then on everyone sees the
-//           tetrahedron of size 2 (and nothing else 3D). null = not released yet
-//           (hold V still shows the 3D card, for testing).
+//   first   the day the first solid puzzle goes live: from then on everyone sees the
+//           tetrahedron of size 2 (and no other solid). null = not released yet
+//           (hold V still shows the solid card, for testing).
 //   tetra   days after `first` on which every tetrahedron size is open to everyone
 //   cube    days after `first` on which the cube is open to everyone
 //   ball    days after `first` on which the ball is open to everyone
 // A kind that is not open to everyone yet can be won early in the lucky game, but
-// only by a player who has unlocked every flat variant; from `first` on, the 3D
+// only by a player who has unlocked every flat variant; from `first` on, the solid
 // kinds are in the lucky game's list for those players.
 export const SOLID_RELEASE = {
   first: null,

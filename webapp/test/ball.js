@@ -1,8 +1,8 @@
-// Tests of the ball boards: the generated catalog (core/surface/ball-catalog.js), the graph built
+// Tests of the ball boards: the generated catalog (core/solid/ball-catalog.js), the graph built
 // from it (topology.js), which boards can be played, and puzzles on them. Registered by tests.js:
 // ballTests(t, ok, eq). Regenerating the catalog: node tools/ball-catalog.mjs --check
-import { BALL_CATALOG } from '../src/core/surface/ball-catalog.js';
-import { registerBalls } from '../src/core/surface/ball-registry.js';
+import { BALL_CATALOG } from '../src/core/solid/ball-catalog.js';
+import { registerBalls } from '../src/core/solid/ball-registry.js';
 import {
   ballsByComposition,
   compositionLabel,
@@ -10,7 +10,7 @@ import {
   playableBalls,
   PLAY_MAX_CELLS,
   PLAY_MIN_CELLS,
-} from '../src/core/surface/balls.js';
+} from '../src/core/solid/balls.js';
 import {
   BALL_KIND,
   SLOTS,
@@ -63,7 +63,7 @@ const cross = (a, b) => [
 registerBalls(BALL_CATALOG);
 
 // a copy of the registry module that has not been given the catalog
-const fresh = await import('../src/core/surface/ball-registry.js?fresh');
+const fresh = await import('../src/core/solid/ball-registry.js?fresh');
 
 export function ballTests(t, ok, eq) {
   t('ball catalog: ids, hashes and the shape of every entry', () => {
@@ -239,7 +239,7 @@ export function ballTests(t, ok, eq) {
       const top = surfaceTopology(BALL_KIND, id);
       const made = generateSurface(BALL_KIND, id, seed);
       const p = made.puzzle;
-      eq(p.surface, BALL_KIND);
+      eq(p.kind, BALL_KIND);
       eq(p.n, id);
       const [kMin, kMax] = kRange(top.T);
       ok(made.K >= kMin && made.K <= Math.min(kMax, top.T), `${id}: checkpoints ${made.K}`);

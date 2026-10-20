@@ -1,13 +1,13 @@
-// The 3D puzzles of the play app: a tetrahedron, a cube or a ball, drawn as a solid you
+// The solid puzzles of the play app: a tetrahedron, a cube or a ball, drawn as a solid you
 // turn. Three parts: the card of the menu (a dedicated card, shown from the release day in
 // config.js SOLID_RELEASE, features/solid-release.js, and for a player who unlocked a kind
 // in the lucky game; while V is held it shows everything, and a tile picked then stays
 // until the page is reloaded), the game screen, and the game itself (a path through every
-// cell, the numbers in order, as on the flat board). The lucky game can draw a 3D kind
+// cell, the numbers in order, as on the flat board). The lucky game can draw a solid kind
 // (main.js startLucky): the same game screen, one try.
 //
-// The board is a surface puzzle (core/surface/), the picture is view/surface-board.js in the
-// light palette, and the turning is view/solid-nav.js. A 3D game has hints (with the time penalty
+// The board is a puzzle of the cell-graph engine (core/surface/), the picture is view/surface-board.js in the
+// light palette, and the turning is view/solid-nav.js. A solid game has hints (with the time penalty
 // of the flat game) and, while V is held, an export; it has no stats, no streak and no share link:
 // it is played for fun. main.js owns the page (render, timer, dev reveal, export window); it hands
 // what this module needs in `app`:
@@ -23,7 +23,7 @@ import {
   ballsLoaded,
   loadBalls,
   pickBall,
-} from '../../core/surface/balls.js';
+} from '../../core/solid/balls.js';
 import { generateSurfaceSteps } from '../../core/surface/gen.js';
 import { canPush, isSolved, serializeSurface, step } from '../../core/surface/puzzle.js';
 import { HINT_PENALTY_S, computeHint, penalizedTime } from '../../features/hints.js';
@@ -324,7 +324,7 @@ export function createSolidPlay(app) {
       });
       begin(kind, n, made.puzzle, seed, made.path, lucky);
     } catch (error) {
-      console.error('3D puzzle failed:', error);
+      console.error('Solid puzzle failed:', error);
       if (lucky && app.luckyFailed) {
         await app.luckyFailed();
       }
