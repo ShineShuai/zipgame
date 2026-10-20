@@ -19,6 +19,32 @@ repos:
         pass_filenames: false
         verbose: true
 
+      # After the bump hooks: it bumps VERSION itself only when the bump hook did not run.
+      - id: refresh-labels
+        name: Refit trap model + gotd-models after ratings/pairs change
+        entry: webapp/tools/pre-commit-refresh.sh
+        language: script
+        args: [labels]
+        files: ^webapp/tools/(ratings|pairs)\.json$
+        pass_filenames: false
+        verbose: true
+
+      - id: refresh-bin-edge
+        name: Regenerate Turso bin_edge (schema.sql)
+        entry: webapp/tools/pre-commit-refresh.sh
+        language: script
+        args: [bin-edge]
+        files: ^webapp/src/core/hist\.js$
+        pass_filenames: false
+
+      - id: refresh-bench-report
+        name: Re-render bench/report.html from its template
+        entry: webapp/tools/pre-commit-refresh.sh
+        language: script
+        args: [bench-report]
+        files: ^webapp/bench/report\.template\.html$
+        pass_filenames: false
+
       - id: unique-puzzles
         name: Check puzzle uniqueness in demo/GameOfDay/
         entry: python3 demo/GameOfDay/check_unique_puzzles.py
