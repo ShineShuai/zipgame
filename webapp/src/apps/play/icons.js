@@ -18,8 +18,8 @@ const RING_HOLES = new Set([5, 6, 9, 10]);
 
 // Solution paths as [col, row] corners: a snake over all 16 cells, a lap around the ring.
 const SNAKE = [[0, 0], [3, 0], [3, 1], [0, 1], [0, 2], [3, 2], [3, 3], [0, 3]];
-// Standard icon: an S (start top right, end bottom left); the middle bar runs between rows 1 and 2.
-const S_SHAPE = [[3, 0], [0, 0], [0, 1.5], [3, 1.5], [3, 3], [0, 3]];
+// Standard icon: the snake mirrored left to right, so it starts top right and reads as an S (through the cells, like the others).
+const S_SHAPE = SNAKE.map(([col, row]) => [CELLS - 1 - col, row]);
 const LAP = [[0, 0], [3, 0], [3, 3], [0, 3], [0, 1]];
 // Loop icon: one closed ring through all 16 cells (it comes back to its start), with three
 // numbers on it in cyclic order.
