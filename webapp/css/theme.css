@@ -1,0 +1,172 @@
+/* Zip colour tokens, shared by the play and stats pages. Light is the default; the dark values apply while
+   <html data-theme="dark"> is set (src/ui/theme.js; an inline script in each page's <head> sets it before the
+   first paint, from the saved choice or the system setting). Pages use only these names, never a hex literal;
+   the board colours (--b-*) are read by the SVG markup in src/apps/play/board.js. WCAG contrast: text >= 4.5,
+   graphics >= 3 (the pairs are listed in test/theme.js). */
+
+:root {
+  color-scheme: light;
+  /* page and surfaces */
+  --bg: #f4f7ff;
+  --bg-top: #e6edff;
+  --surface: #ffffff;
+  --surface-2: #f1f5ff;       /* inputs, tonal buttons, nested panels */
+  --line: #e1e8fa;
+  --line-strong: #c5d3f7;
+  /* text */
+  --text: #2a3350;
+  --heading: #16203c;
+  --muted: #56628a;
+  /* accent */
+  --accent: #3b68ee;
+  --accent-hover: #2f56cf;
+  --accent-text: #2f56cf;      /* accent used as text or icon colour on a surface */
+  --accent-soft: #e6edff;
+  --on-accent: #ffffff;
+  /* status */
+  --ok: #17583b;
+  --ok-bg: #dff7ea;
+  --ok-line: #b9ecd0;
+  --ok-ink: #22a55a;
+  --warn: #9a5a00;
+  --warn-bg: #fff4dc;
+  --warn-line: #ffb020;
+  --danger: #c23b3f;
+  --danger-bg: #fdecec;
+  --danger-ink: #e11d48;
+  --heal: #9a3412;
+  --heal-bg: #fff3e6;
+  --flame: #f97316;
+  --flame-soft: #fdba74;
+  --orange: #ff9f1c;
+  --on-orange: #16203c;        /* dark text on an orange fill, in both themes */
+  /* elevation and overlays */
+  --shadow: 0 8px 28px rgba(59, 104, 238, 0.10);
+  --pop-shadow: 0 14px 34px rgba(30, 45, 110, 0.20);
+  --sheet-shadow: 0 -14px 44px rgba(22, 32, 60, 0.28);
+  --backdrop: rgba(22, 32, 60, 0.45);
+  --glass: rgba(255, 255, 255, 0.86);
+  --pop-bg: #ffffff;
+  --radius: 20px;
+  /* flat board (src/apps/play/board.js) */
+  --b-bg: #ffffff;
+  --b-stage: #f3f6ff;
+  --b-frame: #c9d6fb;
+  --b-grid: #dbe4fb;
+  --b-outline: #aebff5;
+  --b-wall: #26324f;
+  --b-path: #d97706;           /* 3.2:1 on the white board (the brand orange #ffb020 is 1.8:1) */
+  --b-halo: #ffffff;           /* the ring that separates an arrow or a seam mark from the path */
+  --b-num: #3b68ee;
+  --b-num-fill: #ffffff;
+  --b-num-on: #ffffff;         /* text on a visited (filled) number */
+  --b-wrong: #e5484d;
+  --b-hint: #ff9f1c;
+  --b-red: #e5484d;            /* Two paths */
+  --b-blue: #3b68ee;
+  /* the little board icons (variant tiles, shared games) and the logo, assets/images/logo/zip.svg */
+  --icon-plate: #dde6ff;
+  --icon-tile: #ffffff;
+  --icon-line: #a9bcf5;
+  --icon-path: #ffb020;
+  --icon-dot: #3b68ee;
+  --icon-ink: #26324f;
+  --logo-plate: var(--icon-plate);
+  --logo-tile: var(--icon-tile);
+  --logo-line: var(--icon-line);
+  --logo-path: var(--icon-path);
+  --logo-dot: var(--icon-dot);
+  /* 3D views (.sf-* in play.css; the cell tints come from the palette in src/view/surface-board.js) */
+  --sf-line: #93a8ee;
+  --sf-disc: #eef3ff;
+  --sf-disc-line: #c3d0f7;
+  --sf-mark: #b36200;
+  --sf-tag-bg: #fff3d6;
+  --sf-cut: #e8890c;
+  --sf-mini-bg: rgba(255, 255, 255, 0.9);
+  --sf-mini-line: #d3ddfb;
+  /* stats page */
+  --green: #2fa36b;
+  --violet: #8a5cf6;
+  --teal: #12a4b6;
+  --seed: #aab3cf;
+  --seed-bg: #eef0f7;
+  --soft-warn-bg: #fff4e0;
+  --soft-warn: #a86400;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0d1224;
+  --bg-top: #161d3b;
+  --surface: #151b32;
+  --surface-2: #1c2442;
+  --line: #262f50;
+  --line-strong: #37437a;
+  --text: #c8d0ee;
+  --heading: #f3f6ff;
+  --muted: #95a2c9;
+  --accent: #3b68ee;
+  --accent-hover: #5079f2;
+  --accent-text: #93b0ff;
+  --accent-soft: #222e5e;
+  --on-accent: #ffffff;
+  --ok: #7fe3b0;
+  --ok-bg: #12352a;
+  --ok-line: #1f5a44;
+  --ok-ink: #3ecf86;
+  --warn: #ffc35c;
+  --warn-bg: #31270f;
+  --warn-line: #b9801a;
+  --danger: #ff7b80;
+  --danger-bg: #3a1c26;
+  --danger-ink: #ff5d87;
+  --heal: #ffb27a;
+  --heal-bg: #3a2412;
+  --flame: #fb8a3c;
+  --flame-soft: #8a4b1f;
+  --orange: #ffb340;
+  --on-orange: #16203c;
+  --shadow: none;
+  --pop-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  --sheet-shadow: 0 -14px 44px rgba(0, 0, 0, 0.55);
+  --backdrop: rgba(4, 7, 20, 0.62);
+  --glass: rgba(21, 27, 50, 0.88);
+  --pop-bg: #1c2442;
+  --b-bg: #1a2142;
+  --b-stage: #11172e;
+  --b-frame: #3a4880;
+  --b-grid: #2c376a;
+  --b-outline: #4a5b9a;
+  --b-wall: #eef1ff;
+  --b-path: #ffb020;
+  --b-halo: #1a2142;
+  --b-num: #93b0ff;
+  --b-num-fill: #1a2142;
+  --b-num-on: #0d1430;
+  --b-wrong: #ff6b6f;
+  --b-hint: #ffb340;
+  --b-red: #ff6b6f;
+  --b-blue: #7f9cff;
+  --icon-plate: #232f63;
+  --icon-tile: #1a2142;
+  --icon-line: #3d4a86;
+  --icon-path: #ffb020;
+  --icon-dot: #4f7bff;
+  --icon-ink: #eef1ff;
+  --sf-line: #4a5b9a;
+  --sf-disc: #232d57;
+  --sf-disc-line: #3a4880;
+  --sf-mark: #ffc35c;
+  --sf-tag-bg: #3a2c12;
+  --sf-cut: #ffb454;
+  --sf-mini-bg: rgba(21, 27, 50, 0.9);
+  --sf-mini-line: #37437a;
+  --green: #3ecf86;
+  --violet: #a98bff;
+  --teal: #3cc7d8;
+  --seed: #5d6a99;
+  --seed-bg: #232b4d;
+  --soft-warn-bg: #3a2c12;
+  --soft-warn: #ffc35c;
+}

@@ -25,7 +25,9 @@ import {
   boardSvg, CELL, badgeColors, badgeColorsTwo, stepWrong, seamMarksSvg, routeCells, routeD,
   jumpMarksSvg, loopOpen, loopOpenMarks,
 } from './board.js';
-import { variantIcon, cardIcon } from './icons.js';
+import { variantIcon, cardIcon, actionIcon } from './icons.js';
+import { touchUI, openSheet, installPeek } from '../../ui/info.js';
+import { initTheme } from '../../ui/theme.js';
 import { createSolidPlay, isSolidKind } from './solid.js';
 import {
   pentagonBoardSvg, pentagonRouteD, pentagonCellAt, pentagonPoint, pentagonAcross,
@@ -57,7 +59,8 @@ const S = { screen: 'menu', mode: 'standard', variant: null, genMode: 'standard'
   penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, behaviourOn: false, difficulty: null,
   lucky: false, luckyHolder: false, luckyResult: null, luckyNote: null, healed: false,
   legs: [], paths: [[], []], colour: 0, gameDay: null, isShared: false,
-  sharedGames: [], sharedFocus: null, sharedAll: false, sharedArmed: null, sharedNotice: null, sharedMsg: null };
+  sharedGames: [], sharedFocus: null, sharedAll: false, sharedArmed: null, sharedNotice: null, sharedMsg: null,
+  menuTab: 'flat', howtoOpen: false, sharedOpen: false, statsOpen: null };
 
 // A Pentagon puzzle (core/pentagon.js) walks and is solved by the rules of the cell graph
 // (core/surface) and is drawn by its own board (pentagon-board.js); the size n is a board id there,
@@ -215,7 +218,7 @@ function variantPickerHtml() {
             <span class="variant-name">${t('mode.' + mode)}</span>
             <span class="variant-tag">${t('mode.' + mode + 'Tag')}</span>
           </span>
-          <span class="variant-rules" id="variantRules-${mode}" role="tooltip">${t('mode.' + mode + 'Rules')}</span>
+          <span class="variant-rules" id="variantRules-${mode}" role="tooltip"><b class="pop-title">${t('mode.' + mode)}</b>${t('mode.' + mode + 'Rules')}</span>
         </label>`;
   });
   return `
@@ -298,11 +301,14 @@ function gotdCardHtml() {
   const chances = replay.chances();
   const date = today();
   const playButton = attempt
-    ? `<button class="btn" disabled title="${t('menu.gotdOnce')}">${t('gotd.play')}</button>`
+    ? `<button class="btn" disabled>${t('gotd.play')}</button>`
     : `<button class="btn" id="playGotd">${t('gotd.play')}</button>`;
   const replayButton = chances > 0
     ? `<button class="btn secondary" id="openReplay">${t('menu.replay', chances)}</button>`
-    : `<button class="btn secondary" disabled title="${t('replay.locked', replay.toNext())}">${t('menu.replay', 0)}</button>`;
+    : `<button class="btn secondary" disabled>${t('menu.replay', 0)}</button>`;
+  // why a button is off is written under the buttons: a title attribute is not shown on a touch screen
+  const offReason = attempt ? t('menu.gotdOnce') : chances > 0 ? '' : t('replay.locked', replay.toNext());
+  const offHint = offReason ? `<p class="btn-hint">${offReason}</p>` : '';
   const attemptText = attempt && attempt.solved
     ? t('menu.attemptSolved', sec(attempt.time))
     : t('menu.attemptDone');
@@ -325,6 +331,7 @@ function gotdCardHtml() {
           ${playButton}
           ${replayButton}
         </div>
+        ${offHint}
         ${attemptNote}
         ${hintNote}
         ${statusPanelHtml(chances, streak && streak.view())}
@@ -352,7 +359,7 @@ function freePlayCardHtml() {
   const sizeOptions = sizeOptionsHtml();
   const storageNote = storageNoteText();
   return `
-      <section class="card">
+      <section class="card free-card">
         <header class="card-head">
           <span class="card-badge">${cardIcon('free')}</span>
           <div class="card-head-text">
@@ -362,16 +369,39 @@ function freePlayCardHtml() {
         </header>
         ${luckyBoxHtml()}
         ${variantPickerHtml()}
-        <div class="field size-field">
-          <label class="field-label" for="sizeSel">${t('menu.size')}</label>
-          <select id="sizeSel">${sizeOptions}</select>
-          <span class="small" id="gameNo">${todayText()}</span>
-        </div>
-        <div class="button-row">
-          <button class="btn" id="playLocal">${t('menu.playLocal')}</button>
+        <p class="menu-caption" id="typeCaption" aria-live="polite">${typeCaptionHtml(S.mode)}</p>
+        <div class="play-bar">
+          <div class="field size-field">
+            <label class="field-label" for="sizeSel">${t('menu.size')}</label>
+            <select id="sizeSel">${sizeOptions}</select>
+            <span class="small" id="gameNo">${todayText()}</span>
+          </div>
+          <div class="button-row">
+            <button class="btn" id="playLocal">${t('menu.playLocal')}</button>
+          </div>
         </div>
         <p class="small storage-note" id="storageNote" style="${S.showDev ? '' : 'display:none'}">${storageNote}</p>
       </section>`;
+}
+
+// The line under the type tiles: the type picked, its tagline, and the link to its rules (shown on touch screens; a pointer has the
+// popover). `mode` is a flat type or, in the 3D card, a kind (solid.js has the same line).
+const typeCaptionHtml = mode => `<b>${t('mode.' + mode)}</b> — ${t('mode.' + mode + 'Tag')}`
+  + ` <button type="button" class="link-btn rules-link" data-rules="variantRules-${mode}">${t('menu.rulesLink')}</button>`;
+
+// Flat | 3D: the menu offers the 3D puzzles only once a kind is unlocked or released (solid.available(), or V held).
+// Free play and the 3D card are two panes of one column; the tabs sit over the right end of the card head.
+function playColumnHtml() {
+  const solidOn = solid.available();
+  if (!solidOn) return `<div class="play-col"><div class="tab-pane">${freePlayCardHtml()}</div></div>`;
+  const flat = S.menuTab !== '3d';
+  const tab = (id, key, on) => `<button type="button" role="tab" id="tab-${id}" aria-selected="${on}" aria-controls="pane-${id}" data-tab="${id}">${t(key)}</button>`;
+  return `
+      <div class="play-col has-tabs">
+        <div class="play-tabs" role="tablist" aria-label="${t('menu.tabs')}">${tab('flat', 'menu.tabFlat', flat)}${tab('3d', 'menu.tabSolid', !flat)}</div>
+        <div class="tab-pane" id="pane-flat" role="tabpanel" aria-labelledby="tab-flat"${flat ? '' : ' hidden'}>${freePlayCardHtml()}</div>
+        <div class="tab-pane" id="pane-3d" role="tabpanel" aria-labelledby="tab-3d"${flat ? ' hidden' : ''}>${solid.cardHtml()}</div>
+      </div>`;
 }
 
 function renderMenu() {
@@ -380,10 +410,11 @@ function renderMenu() {
   pruneShared();
   return `
     <div class="menu-layout">
-      ${sharedCardHtml()}
       <p class="menu-intro">${t('menu.blurb')}</p>
-      <div class="menu-grid">${gotdCardHtml()}${freePlayCardHtml()}${solid.cardHtml()}
-      </div>
+      <details class="howto"${S.howtoOpen ? ' open' : ''}><summary>${t('menu.howto')}</summary><p>${t('menu.blurb')}</p></details>
+      ${gotdCardHtml()}
+      ${playColumnHtml()}
+      ${sharedCardHtml()}
     </div>`;
 }
 
@@ -482,14 +513,17 @@ function statCells(n, scope = '') {
 //   a Game of Day (live or replay): the Game of Day time of every grid size;
 //   a variant (Cutout, One way arrows, the lucky game): its own local stats, per grid size, with its own daily counter.
 // On narrow screens each row becomes a small card, so the cells carry their column name in data-label.
+// A <details>: open on a desktop, folded on a phone until the player opens it (the choice is kept while the page lives).
 const statsTable = (title, sub, head, rows) => `
-    <section class="card play-stats">
-      <h2 class="card-title">${title}</h2>
-      <p class="small">${sub}</p>
-      <div class="table-scroll">
-        <table class="responsive"><tr class="head-row">${head.map(key => `<th>${t(key)}</th>`).join('')}</tr>${rows}</table>
+    <details class="card play-stats" id="playStats"${(S.statsOpen ?? !touchUI()) ? ' open' : ''}>
+      <summary>${title}</summary>
+      <div class="stats-body">
+        <p class="small">${sub}</p>
+        <div class="table-scroll">
+          <table class="responsive"><tr class="head-row">${head.map(key => `<th>${t(key)}</th>`).join('')}</tr>${rows}</table>
+        </div>
       </div>
-    </section>`;
+    </details>`;
 const statsRow = (cells, keys, current) => `<tr${current ? ' class="current"' : ''}>${cells.map((value, i) =>
   `<td data-label="${t(keys[i])}">${i === 0 ? value : `<b>${value}</b>`}</td>`).join('')}</tr>`;
 
@@ -592,9 +626,9 @@ function renderGame() {
     : (S.isShared ? t('game.sharedTitle', p.n) : t('game.localTitle', p.n, S.gameIndex + 1));
   const title = S.isGotd ? t(S.isReplay ? 'game.replayTitle' : 'game.gotdTitle', S.gotdDate) : localTitle + seedTag;
   const canShare = S.finished;
-  const shareButton = canShare ? `<button class="btn" id="shareBtn">${t('share.btn')}</button>` : '';
-  const nextReplay = S.isReplay && S.finished && replay.chances() > 0 ? `<button class="btn" id="toReplay">${t('game.nextReplay', replay.chances())}</button>` : '';
-  const newPuzzleButton = S.isGotd || S.lucky ? '' : `<button class="btn secondary" id="newPuzzle">${t('game.new')}</button>`;
+  const shareButton = canShare ? `<button class="btn" id="shareBtn">${actionIcon('share')}${t('share.btn')}</button>` : '';
+  const nextReplay = S.isReplay && S.finished && replay.chances() > 0 ? `<button class="btn" id="toReplay">${actionIcon('next')}${t('game.nextReplay', replay.chances())}</button>` : '';
+  const newPuzzleButton = S.isGotd || S.lucky ? '' : `<button class="btn secondary" id="newPuzzle">${actionIcon('new')}${t('game.new')}</button>`;
   const hiddenUnlessDev = S.showDev ? '' : 'display:none';
   const hintDisabled = S.finished || S.hintsUsed >= cap ? 'disabled' : '';
   const gotdAttempt = S.isGotd ? store.attemptOn(S.gotdDate) : null; // today's record, or the replayed day's
@@ -619,20 +653,21 @@ function renderGame() {
         ${twoPathsNoteHtml()}
       </section>
       <div class="side">
-        <section class="card">
+        <section class="card actions">
           <div class="button-row">
-            ${shareButton}
-            ${nextReplay}
-            <button class="btn secondary" id="backMenu2">${t('game.menu')}</button>
+            <button class="btn secondary" id="backMenu2">${actionIcon('menu')}${t('game.menu')}</button>
             ${newPuzzleButton}
-            <button class="btn secondary" id="resetPath">${t('game.reset')}</button>
-            <button class="btn secondary" id="hintBtn" style="${hintShown() ? '' : 'display:none'}" ${hintDisabled}>${t('game.hint', S.hintsUsed, cap)}</button>
+            <button class="btn secondary" id="resetPath">${actionIcon('reset')}${t('game.reset')}</button>
+            <button class="btn secondary" id="hintBtn" style="${hintShown() ? '' : 'display:none'}" ${hintDisabled}>${actionIcon('hint')}${t('game.hint', S.hintsUsed, cap)}</button>
             <button class="btn secondary" id="exportBtn" style="${hiddenUnlessDev}">Export</button>
           </div>
+        </section>
+        ${S.finished ? `<section class="card result-card">
           ${solved}
           ${luckyGameHtml()}
-          ${canShare ? '<p class="small share-msg" id="shareMsg"></p>' : ''}
-        </section>
+          <div class="button-row">${shareButton}${nextReplay}</div>
+          <p class="small share-msg" id="shareMsg"></p>
+        </section>` : ''}
       </div>
     </div>${playStatsHtml()}`;
 }
@@ -643,14 +678,14 @@ function renderGame() {
 function rulesTipHtml() {
   const mode = S.variant || 'standard';
   return `<button type="button" class="tip-btn rules-btn" id="rulesTip" aria-label="${t('game.rulesLabel')}" aria-describedby="rulesTipPop">i</button>`
-    + `<span class="variant-rules" id="rulesTipPop" role="tooltip"><b>${t('mode.' + mode)}</b><br>${t('mode.' + mode + 'Rules')}</span>`;
+    + `<span class="variant-rules" id="rulesTipPop" role="tooltip"><b class="pop-title">${t('mode.' + mode)}</b>${t('mode.' + mode + 'Rules')}</span>`;
 }
 // The first game of a variant on this device shows its rules without being asked, once. It closes like any rules
 // tooltip: by a press anywhere else (the first press on the board starts the path), a tap, or Esc.
 function maybeShowRules() {
   if (!S.variant || !rulesSeen || rulesSeen.seen(S.variant) || !$('hudTitle')) return;
   rulesSeen.mark(S.variant);
-  showRules($('hudTitle'));
+  if (touchUI()) openRulesSheet('rulesTipPop'); else showRules($('hudTitle'));
 }
 
 // The rules tooltip of a puzzle type tile (and of the game screen's title): shown on hover, keyboard focus or a tap, and moved sideways to stay
@@ -665,6 +700,33 @@ function showRules(opt) {
   const r = pop.getBoundingClientRect(), edge = 8;
   const dx = Math.max(edge - r.left, Math.min(0, innerWidth - edge - r.right));
   pop.style.transform = `translateX(calc(-50% + ${dx}px))`;
+  pop.style.setProperty('--arrow', `calc(50% - ${dx}px)`); // the arrow keeps pointing at the tile
+}
+
+// A long press on a tile (touch) peeks at its rules above it while the finger stays down; lifting closes it, the tile is not picked.
+function showPeek(opt) {
+  closeRules();
+  const pop = opt.querySelector('.variant-rules');
+  if (!pop) return;
+  pop.classList.add('above', 'peek');
+  showRules(opt);
+}
+function hidePeek(opt) {
+  const pop = opt.querySelector('.variant-rules');
+  if (pop) pop.classList.remove('above', 'peek', 'show');
+}
+
+// The rules of a type as a bottom sheet (touch): its icon, name and rules text, from the popover's markup.
+function openRulesSheet(popId) {
+  const pop = $(popId);
+  if (!pop) return;
+  const body = pop.cloneNode(true);
+  const title = body.querySelector('.pop-title');
+  const name = title ? title.textContent : '';
+  if (title) title.remove();
+  const host = pop.closest('.variant-opt, .rules-host');
+  const icon = host && host.querySelector('.variant-icon');
+  openSheet({ icon: icon ? icon.outerHTML : '', title: name, html: body.innerHTML, closeText: t('sheet.close') });
 }
 
 // ---------- handlers ----------
@@ -688,21 +750,48 @@ function attachHandlers() {
   const on = (id, f) => { const e = $(id); if (e) e.onclick = f; };
   on('playLocal', () => { S.size = +$('sizeSel').value; startLocal('open', S.mode); });
   const sel = $('sizeSel'); if (sel) sel.onchange = () => { S.size = +sel.value; $('gameNo').textContent = todayText(); };
+  // Rules: a pointer gets a popover on hover or focus; a touch screen has the caption's "Rules" link (a bottom sheet) and the
+  // long-press peek, so a tap only picks the tile
   document.querySelectorAll('.variant-opt, .rules-host').forEach(opt => {
-    opt.addEventListener('mouseenter', () => showRules(opt));
-    // a finger leaves no hover: the browser's emulated mouse moves off again right after a tap, which must not close it
-    opt.addEventListener('mouseleave', () => { if (lastPointer !== 'touch') closeRules(); });
-    opt.addEventListener('focusin', () => showRules(opt));
-    opt.addEventListener('focusout', closeRules);
-    opt.addEventListener('click', e => { e.stopPropagation(); showRules(opt); }); // a tap on a phone
+    opt.addEventListener('mouseenter', () => { if (!touchUI()) showRules(opt); });
+    opt.addEventListener('mouseleave', () => { if (!touchUI() && lastPointer !== 'touch') closeRules(); });
+    opt.addEventListener('focusin', () => { if (!touchUI()) showRules(opt); });
+    opt.addEventListener('focusout', () => { if (!touchUI()) closeRules(); });
+    opt.addEventListener('click', e => {
+      if (touchUI()) {
+        if (e.target.closest('#rulesTip')) { e.stopPropagation(); openRulesSheet('rulesTipPop'); }
+        return;
+      }
+      e.stopPropagation();
+      showRules(opt);
+    });
   });
+  // the caption under the tiles (its content is replaced when the pick changes): its "Rules" link opens the sheet
+  document.querySelectorAll('.menu-caption').forEach(cap => cap.addEventListener('click', e => {
+    const link = e.target.closest('.rules-link');
+    if (link) { e.stopPropagation(); openRulesSheet(link.dataset.rules); }
+  }));
   document.querySelectorAll('input[name="variant"]').forEach(input => {
     input.onchange = () => {
       S.mode = input.value;
       S.size = +$('sizeSel').value;
       $('sizeSel').innerHTML = sizeOptionsHtml();
       $('gameNo').textContent = todayText();
+      const cap = $('typeCaption');
+      if (cap) cap.innerHTML = typeCaptionHtml(S.mode);
     };
+  });
+  document.querySelectorAll('[data-tab]').forEach(b => { b.onclick = () => { S.menuTab = b.dataset.tab; render(); }; });
+  const howto = document.querySelector('.howto');
+  if (howto) howto.addEventListener('toggle', () => { S.howtoOpen = howto.open; });
+  const stats = $('playStats');
+  if (stats) stats.addEventListener('toggle', () => { S.statsOpen = stats.open; });
+  const sharedHead = $('sharedHead');
+  if (sharedHead) sharedHead.addEventListener('click', e => {
+    if (e.target.closest('button') || innerWidth > 640) return; // the banner opens on a phone; the (i) is its own button
+    const card = $('sharedCard');
+    S.sharedOpen = !card.classList.contains('open');
+    card.classList.toggle('open', S.sharedOpen);
   });
   on('playGotd', startGameOfDay);
   on('playLucky', startLucky);
@@ -728,7 +817,18 @@ function attachHandlers() {
   on('replayBack', () => { S.replayPick = null; S.screen = 'menu'; render(); });
   on('toReplay', () => openReplay());
   document.querySelectorAll('.replay-day').forEach(b => { b.onclick = () => startReplay(b.dataset.date); });
-  document.querySelectorAll('.stat-item').forEach(b => { b.onclick = e => { e.stopPropagation(); const open = !b.classList.contains('open'); closeStatTips(); b.classList.toggle('open', open); }; });
+  document.querySelectorAll('.stat-item').forEach(b => {
+    b.onclick = e => {
+      e.stopPropagation();
+      if (touchUI()) { // a sheet on a touch screen, a popover otherwise
+        const tip = b.querySelector('.stat-tip');
+        openSheet({ icon: b.querySelector('.stat-icon').outerHTML.replace('stat-icon', 'sheet-glyph'),
+          title: t(b.classList.contains('stat-streak') ? 'info.streak' : 'info.replays'), html: tip.innerHTML, closeText: t('sheet.close') });
+        return;
+      }
+      const open = !b.classList.contains('open'); closeStatTips(); b.classList.toggle('open', open);
+    };
+  });
   on('backMenu2', () => { logPlay(false); stopTimer(); leaveLucky(); S.screen = 'menu'; render(); });
   on('resetPath', resetPaths);
   on('behaviourToggle', async ev => { ev.preventDefault(); S.behaviourOn = !S.behaviourOn; await behaviour.setOn(S.behaviourOn); render(); });
@@ -960,7 +1060,7 @@ function beginGame(puzzle, gotdDate, isReplay = false, isShared = false, lucky =
   S.paths = newPaths();
   S.colour = 0;
   if (puzzle.split) S.path = S.paths[0];
-  startTimer(); render(); maybeShowRules();
+  startTimer(); render(); maybeShowRules(); markHowtoSeen();
 }
 function generatorFor(mode, n, seed) {
   const variant = variantById(mode);
@@ -1108,7 +1208,8 @@ function sharedItemHtml({ key, rec, state }) {
   if (rec.levels.length) {
     row.push(`<span class="shared-strip">${stripText(rec.levels)}</span>`);
   }
-  const note = S.sharedMsg && S.sharedMsg.key === key ? t(S.sharedMsg.msg) : sharedStateText(state);
+  const quiet = !(S.sharedMsg && S.sharedMsg.key === key) && state.status === 'replay'; // told once, in the card's (i)
+  const note = S.sharedMsg && S.sharedMsg.key === key ? t(S.sharedMsg.msg) : quiet ? '' : sharedStateText(state);
   const bad = Boolean(S.sharedMsg && S.sharedMsg.key === key) || SHARED_BAD.includes(state.status);
   const armed = S.sharedArmed === key;
   return `<li class="shared-item${key === S.sharedFocus ? ' is-new' : ''}">
@@ -1135,14 +1236,17 @@ function sharedCardHtml() {
   if (!entries.length && !notice) {
     return '';
   }
-  const tip = entries.some(e => e.rec.levels.length)
+  // the (i): what the colours mean, and that a replay of a shared Game of Day costs no replay chance (said once, not on every game)
+  const tipText = [entries.some(e => e.rec.levels.length) ? t('share.tip') : '', entries.some(e => e.state.status === 'replay') ? t('share.freeReplay') : ''].filter(Boolean).join('<br>');
+  const tip = tipText
     ? `<button type="button" class="tip-btn" id="shareTip" aria-expanded="false" aria-label="${t('share.tipLabel')}">i</button>
-      <span class="tip-pop" id="shareTipPop" role="tooltip">${t('share.tip')}</span>` : '';
+      <span class="tip-pop" id="shareTipPop" role="tooltip">${tipText}</span>` : '';
   const more = entries.length > SHARED_ROWS
     ? `<button type="button" class="btn secondary shared-more" id="sharedMore">${S.sharedAll ? t('share.showLess') : t('share.showAll', entries.length)}</button>` : '';
   const warn = S.sharedNotice && (S.sharedNotice.bad || SHARED_BAD.includes(S.sharedNotice.state.status));
-  return `<section class="card shared-card">
-    <div class="shared-head">
+  const open = S.sharedOpen || S.sharedFocus || S.sharedNotice; // on a phone the card is a one-line banner until it is opened
+  return `<section class="card shared-card${open ? ' open' : ''}" id="sharedCard">
+    <div class="shared-head" id="sharedHead">
       <span class="shared-eyebrow">${t('share.title')}</span>${entries.length ? `<span class="shared-count">${entries.length}</span>` : ''}${tip}
     </div>
     ${notice ? `<p class="shared-state${warn ? ' bad' : ''}">${notice}</p>` : ''}
@@ -1162,6 +1266,7 @@ function setShareTip(open) {
 
 function toggleShareTip(ev) {
   ev.stopPropagation();
+  if (touchUI()) return openTipSheet('shareTipPop', t('info.shared'));
   setShareTip(!$('shareTipPop').classList.contains('open'));
 }
 
@@ -1174,7 +1279,13 @@ function setLuckyTip(open) {
 }
 function toggleLuckyTip(ev) {
   ev.stopPropagation();
+  if (touchUI()) return openTipSheet('luckyTipPop', t('info.lucky'));
   setLuckyTip(!$('luckyTipPop').classList.contains('open'));
+}
+// On a touch screen the (i) buttons and the status cards open a bottom sheet with the text of their popover (ui/info.js).
+function openTipSheet(popId, title, icon = '') {
+  const pop = $(popId);
+  if (pop) openSheet({ icon, title, html: pop.innerHTML, closeText: t('sheet.close') });
 }
 
 // Drops the `s` parameter from the address (the other parameters stay), so reloading does not save the game again.
@@ -1322,6 +1433,12 @@ async function shareResult() {
   }
 }
 
+// The rules line of the menu is open (on a phone) until the first game has been started on this device.
+function markHowtoSeen() {
+  if (S.howtoSeen) return;
+  S.howtoSeen = true; S.howtoOpen = false;
+  storage.set('howto-seen', '1');
+}
 function startTimer() {
   stopTimer(); S.startTime = performance.now() - S.elapsed * 1000;
   S.timerId = setInterval(() => { S.elapsed = (performance.now() - S.startTime) / 1000; const el = $('hudTime'); if (el) el.textContent = sec(S.elapsed); }, 100);
@@ -1339,6 +1456,7 @@ function setDevReveal(on) {
   const bn = $('behaviourNote'); if (bn) bn.style.display = on ? '' : 'none';
   const tag = $('seedTag'); if (tag) tag.style.display = on ? 'inline' : 'none';
   solid.reveal();
+  if (S.screen === 'menu' && solid.available() !== Boolean($('pane-3d'))) { render(); return; } // the Flat | 3D tabs come and go with the 3D card
   const d = $('difficultyDev'); if (d) d.style.display = on ? 'inline' : 'none';
   const g = $('genDev'); if (g) g.style.display = on ? 'inline' : 'none';
   for (const { id } of PLAY_VARIANTS) { const tile = $('variantOpt-' + id); if (tile) tile.style.display = typeShown(id) ? '' : 'none'; }
@@ -1411,7 +1529,9 @@ function applyLang() {
   b.setAttribute('aria-label', t('lang.switch'));
   b.title = t('lang.switch');
   applySoundButtonState();
+  if (themeCtl) themeCtl.refresh();
 }
+let themeCtl = null; // the theme button (ui/theme.js); it follows the system setting until the player has picked a theme
 async function initLang() {
   const saved = await storage.get('lang');
   setLang(saved ? saved.value : /^zh/i.test(navigator.language || '') ? 'zh' : 'en');
@@ -1454,6 +1574,11 @@ async function initLang() {
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { setShareTip(false); setLuckyTip(false); closeStatTips(); closeRules(); } });
   modal = bindModal($('exportModal'));
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));
-  installDevReveal(); await initSoundToggle(); await initLang(); render();
+  installDevReveal(); await initSoundToggle(); await initLang();
+  themeCtl = initTheme($('themeToggle'), theme => t(theme === 'dark' ? 'theme.toLight' : 'theme.toDark'));
+  document.addEventListener('zip-theme', () => { if (S.screen === 'solid') render(); }); // the 3D cells are tinted inline: draw them again
+  installPeek({ selector: '.variant-opt', show: showPeek, hide: hidePeek });
+  const howto = await storage.get('howto-seen'); S.howtoSeen = Boolean(howto && howto.value === '1'); S.howtoOpen = !S.howtoSeen;
+  render();
   for (let i = 0; i < streakRewards; i++) await onStreakMilestone();
 })();
