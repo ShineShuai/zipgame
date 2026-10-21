@@ -63,27 +63,6 @@ button, select, input { font-family: inherit; }
 }
 .logo { flex: none; width: 34px; height: 34px; }
 
-.lang-toggle {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  height: 40px;
-  padding: 3px;
-  border: 2px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--muted);
-  font: inherit;
-  font-size: 0.8rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: border-color 0.15s ease;
-}
-.lang-toggle span { min-width: 28px; padding: 4px 6px; border-radius: 999px; text-align: center; line-height: 1.2; }
-.lang-toggle:hover { border-color: var(--accent); }
-.lang-toggle[data-on="en"] span:first-child,
-.lang-toggle[data-on="zh"] span:last-child { background: var(--accent); color: var(--on-accent); }
-
 .icon-btn {
   display: flex;
   align-items: center;
@@ -101,6 +80,8 @@ button, select, input { font-family: inherit; }
 }
 .icon-btn svg { width: 20px; height: 20px; }
 .icon-btn:hover { background: var(--accent-soft); border-color: var(--accent); }
+.lang-toggle { font-size: 0.85rem; font-weight: 800; letter-spacing: 0; }
+.lang-toggle[data-on="en"] span { font-size: 1.05rem; line-height: 1; } /* the glyph shown is the other language: 中 while English is on */
 .sound-toggle.muted { color: var(--muted); }
 .sound-toggle.muted .sound-waves { display: none; }
 .sound-toggle.muted .sound-x { display: block !important; }
@@ -325,6 +306,11 @@ select option, select optgroup { background: var(--surface); color: var(--headin
 }
 .lucky-chances.has { background: var(--warn-bg); color: var(--warn); }
 .lucky-chances .stat-icon { width: 14px; height: 14px; flex: none; color: inherit; }
+button.lucky-chances { position: relative; border: 0; font-family: inherit; line-height: 1.5; cursor: help; }
+.has-tip > .tip-pop { width: 290px; max-width: calc(100vw - 32px); left: -10px; font-size: 0.88rem; font-weight: 400; text-transform: none; white-space: normal; cursor: default; }
+.has-tip > .tip-pop::before { left: 28px; }
+.has-tip:focus-visible > .tip-pop, .has-tip > .tip-pop.open { display: block; }
+@media (hover: hover) { .has-tip:hover > .tip-pop { display: block; } }
 .lucky-row .tip-btn { flex: none; margin-left: 0; }
 .lucky-row > .btn { flex: 0 0 auto; min-height: 40px; padding: 6px 18px; background: var(--surface); border-color: var(--line-strong); color: var(--accent-text); }
 .lucky-box.ready .lucky-row > .btn { border-color: var(--warn-line); color: var(--warn); }
@@ -409,7 +395,7 @@ select option, select optgroup { background: var(--surface); color: var(--headin
    anywhere selects it; the selected tile gets a blue frame and a check mark. Columns follow the width, rows follow the number of
    types (nine flat ones today), so a new type needs no layout change. The rules of a type are in its popover (hover or focus), its
    sheet (touch) and the caption under the grid. */
-.variant-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; }
+.variant-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
 .variant-opt { position: relative; display: block; cursor: pointer; min-width: 0; }
 /* a locked variant (dev reveal only): dashed, with a lock */
 .variant-locked .variant-card { border-style: dashed; }
@@ -418,13 +404,13 @@ select option, select optgroup { background: var(--surface); color: var(--headin
 .variant-card {
   position: relative;
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
+  grid-template-columns: 38px minmax(0, 1fr);
   grid-template-areas: "icon name";
   align-items: center;
   column-gap: 8px;
   height: 100%;
   min-height: 60px;
-  padding: 8px 8px 8px 8px;
+  padding: 8px 6px 8px 8px;
   border: 2px solid var(--line);
   border-radius: 16px;
   background: var(--surface-2);
@@ -434,12 +420,12 @@ select option, select optgroup { background: var(--surface); color: var(--headin
   -webkit-user-select: none;
   user-select: none;
 }
-.variant-card .variant-icon { grid-area: icon; width: 40px; height: 40px; }
+.variant-card .variant-icon { grid-area: icon; width: 38px; height: 38px; }
 .variant-card::after {
   content: "\2713"; position: absolute; top: -7px; right: -7px; display: none; place-items: center; width: 18px; height: 18px;
   border-radius: 50%; background: var(--accent); color: var(--on-accent); font-size: 0.7rem; font-weight: 800; line-height: 1;
 }
-.variant-name { grid-area: name; min-width: 0; font-weight: 800; font-size: 0.9rem; color: var(--heading); line-height: 1.2; overflow-wrap: break-word; }
+.variant-name { grid-area: name; min-width: 0; font-weight: 800; font-size: 0.88rem; color: var(--heading); line-height: 1.2; overflow-wrap: normal; word-break: normal; hyphens: manual; }
 .variant-tag { display: none; }
 .variant-opt input:checked + .variant-card {
   border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent);
@@ -768,8 +754,6 @@ tr:last-child td { border-bottom: 0; }
   .gotd-card .status-panel { margin-top: 10px; padding-top: 0; }
   .stat-item { padding: 6px 10px; gap: 8px; }
   .stat-item .stat-icon { width: 24px; height: 24px; }
-  .lucky-row .tip-btn { display: none; }
-  .lucky-text small { display: none; }
   /* the Play bar of a card: size + Play, kept at the bottom of the card while it is on screen */
   .free-card, .solid-card { padding-bottom: 0; }
   .play-bar {
@@ -802,8 +786,8 @@ tr:last-child td { border-bottom: 0; }
   .hud-icon .variant-icon { width: 30px; height: 30px; }
   .grid-wrap { margin-top: 10px; }
   .zip-svg { border-radius: 14px; }
-  /* actions: a bar fixed to the bottom edge in the thumb zone, icon over label */
-  .game-layout { padding-bottom: calc(76px + env(safe-area-inset-bottom, 0)); }
+  /* actions: a bar fixed to the bottom edge in the thumb zone, icon over label; the page ends above it (stats and all) */
+  #app.has-actions { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0)); }
   .actions {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; margin: 0; padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0));
     border-width: 1px 0 0; border-radius: 20px 20px 0 0; background: var(--glass);
@@ -835,7 +819,6 @@ tr:last-child td { border-bottom: 0; }
 @media (max-width: 380px) {
   .app-bar-inner { gap: 4px; }
   .brand { font-size: 1.15rem; gap: 8px; }
-  .lang-toggle span { min-width: 24px; padding: 4px 4px; }
   .icon-btn { width: 38px; height: 38px; }
 }
 .result-card .lucky-row.reward { margin-top: 12px; border-radius: 14px; }
@@ -843,3 +826,8 @@ tr:last-child td { border-bottom: 0; }
 .view-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .view-tools .btn { flex: 0 1 auto; min-height: 40px; padding: 6px 16px; font-size: 0.92rem; }
 .share-msg:empty { display: none; }
+
+/* the 3D screen's "Follow" explanation: on a pointer it is the button's tooltip, on touch it is written out */
+.view-hint { display: none; margin: 8px 2px 0; }
+@media (hover: none) { .view-hint { display: block; } }
+.sheet-body .lucky-week span.win { background: var(--orange); color: var(--on-orange); }

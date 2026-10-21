@@ -252,7 +252,7 @@ export function unlockTests(t, ta, ok, eq) {
   t('i18n: the unlock and lucky game texts exist in both languages', () => {
     const keys = ['lucky.chances', 'unlock.tip.chance', 'unlock.tip.streak', 'lucky.title', 'lucky.readyChance',
       'lucky.readyFun', 'lucky.used', 'lucky.play', 'lucky.tag', 'lucky.onceChance', 'lucky.onceFun', 'lucky.unlocked',
-      'lucky.already', 'lucky.noChance', 'lucky.lostNote', 'lucky.how', 'lucky.howText', 'lucky.week', 'lucky.winner',
+      'lucky.already', 'lucky.noChance', 'lucky.lostNote', 'lucky.how', 'lucky.howText', 'lucky.week',
       'reward.title', 'reward.pick', 'reward.replay', 'reward.unlock', 'stats.gotdTitle', 'stats.gotdSub', 'stats.date',
       'stats.time'];
     for (const dict of [EN, ZH]) for (const key of keys) ok(dict[key], key);

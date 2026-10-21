@@ -55,7 +55,7 @@
   --b-grid: #dbe4fb;
   --b-outline: #aebff5;
   --b-wall: #26324f;
-  --b-path: #d97706;           /* 3.2:1 on the white board (the brand orange #ffb020 is 1.8:1) */
+  --b-path: #f56a00;           /* vivid orange, 3.0:1 on the white board (the brand orange #ffb020 is 1.8:1: pale on white) */
   --b-halo: #ffffff;           /* the ring that separates an arrow or a seam mark from the path */
   --b-num: #3b68ee;
   --b-num-fill: #ffffff;

@@ -102,6 +102,7 @@ function render() {
   const screens = { menu: renderMenu, generating: renderGenerating, game: renderGame, replay: renderReplay, solid: () => solid.screenHtml() };
   const screen = screens[S.screen] || renderGame;
   $('app').innerHTML = screen() + devBadgeHtml();
+  $('app').classList.toggle('has-actions', Boolean($('app').querySelector('.actions'))); // a phone's action bar floats over the page bottom
   attachHandlers();
 }
 
@@ -235,15 +236,20 @@ const luckyDate = day => { const d = dateOfDay(day); return `${weekday(d)} ${dat
 const peakText = n => new Intl.NumberFormat(getLang() === 'zh' ? 'zh-CN' : 'en', { notation: 'compact', maximumFractionDigits: 1 }).format(n);
 
 // The (i) next to the lucky game: how the lucky day is chosen, with the seven days of the week of the open offer (else of
-// the next lucky day), their Collatz peaks and the winner.
+// the next lucky day) and their Collatz peaks (the winner is marked in the row, and named in the lucky box).
 function luckyTipHtml(v) {
   const rows = weekTable(weekOf(v.open ? v.offer : v.nextLucky));
   const dayName = r => { const d = dateOfDay(r.day); return `${weekday(d)} ${+d.slice(6)}`; };
   const cells = rows.map(r => `<span class="${r.lucky ? 'win' : ''}"><b>${dayName(r)}</b><small>${peakText(r.peak)}</small></span>`);
-  const winner = rows.find(r => r.lucky).day;
   return `<button type="button" class="tip-btn" id="luckyTip" aria-expanded="false" aria-label="${t('lucky.how')}">i</button>
-      <span class="tip-pop" id="luckyTipPop" role="tooltip"><b>${t('lucky.how')}</b><br>${t('lucky.howText')}<br>${t('lucky.week', luckyDate(rows[0].day), luckyDate(rows[6].day))}<span class="lucky-week">${cells.join('')}</span>${t('lucky.winner', luckyDate(winner))}<br>${t('unlock.tip.chance')} ${t('unlock.tip.streak')}</span>`;
+      <span class="tip-pop" id="luckyTipPop" role="tooltip"><b>${t('lucky.how')}</b><br>${t('lucky.howText')}<br>${t('lucky.week', luckyDate(rows[0].day), luckyDate(rows[6].day))}<span class="lucky-week">${cells.join('')}</span></span>`;
 }
+
+// The "1 unlock chance" chip of the lucky box. It has its own popover (hover or focus; a bottom sheet on touch): what an unlock
+// chance is and how to get one; the (i) beside it is about the lucky day only.
+const chanceChipHtml = v => `<button type="button" class="lucky-chances has-tip${v.tokens > 0 ? ' has' : ''}" id="luckyChance" aria-expanded="false">`
+  + `${ICON.unlock}${t('lucky.chances', v.tokens)}`
+  + `<span class="tip-pop" id="luckyChancePop" role="tooltip">${t('unlock.tip.chance')} ${t('unlock.tip.streak')}</span></button>`;
 
 // A streak reward to claim: a replay chance or an unlock chance (only a replay once every variant is unlocked).
 function rewardRowHtml(v) {
@@ -272,7 +278,7 @@ function luckyBoxHtml() {
     <div class="lucky-row">
       <span class="lucky-icon">${variantIcon('lucky')}</span>
       <div class="lucky-text">
-        <span class="lucky-head"><b>${t('lucky.title')}</b><span class="lucky-chances${v.tokens > 0 ? ' has' : ''}">${ICON.unlock}${t('lucky.chances', v.tokens)}</span></span>
+        <span class="lucky-head"><b>${t('lucky.title')}</b>${chanceChipHtml(v)}</span>
         <small>${text}</small>
       </div>
       ${luckyTipHtml(v)}${play}
@@ -796,6 +802,7 @@ function attachHandlers() {
   on('playGotd', startGameOfDay);
   on('playLucky', startLucky);
   on('luckyTip', toggleLuckyTip);
+  on('luckyChance', toggleChanceTip);
   on('rewardReplay', () => claimReward('replay'));
   on('rewardUnlock', () => claimReward('unlock'));
   document.querySelectorAll('.shared-play').forEach(b => {
@@ -1277,6 +1284,17 @@ function setLuckyTip(open) {
   button.setAttribute('aria-expanded', String(open));
   if (!open) button.blur();
 }
+function setChanceTip(open) {
+  const pop = $('luckyChancePop'), button = $('luckyChance');
+  if (!pop || !button) return;
+  pop.classList.toggle('open', open);
+  button.setAttribute('aria-expanded', String(open));
+}
+function toggleChanceTip(ev) {
+  ev.stopPropagation();
+  if (touchUI()) return openTipSheet('luckyChancePop', t('info.chances'));
+  setChanceTip(!$('luckyChancePop').classList.contains('open'));
+}
 function toggleLuckyTip(ev) {
   ev.stopPropagation();
   if (touchUI()) return openTipSheet('luckyTipPop', t('info.lucky'));
@@ -1526,6 +1544,7 @@ function applyLang() {
   document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
   document.querySelector('.brand').setAttribute('aria-label', t('brand.home'));
   b.dataset.on = lang;
+  b.firstElementChild.textContent = lang === 'zh' ? 'EN' : '中'; // like the theme button: it shows what a tap switches to
   b.setAttribute('aria-label', t('lang.switch'));
   b.title = t('lang.switch');
   applySoundButtonState();
@@ -1564,14 +1583,14 @@ async function initLang() {
   try { S.nextIdx = await peekNext(); } catch (e) { console.warn('daily counters failed:', e); }
   await initDevPin();
   await initShared();
-  document.addEventListener('click', () => { setShareTip(false); setLuckyTip(false); closeStatTips(); closeRules(); });
+  document.addEventListener('click', () => { setShareTip(false); setLuckyTip(false); setChanceTip(false); closeStatTips(); closeRules(); });
   // a press anywhere but on a rules tooltip's own host closes the tooltips, in the capture phase: the board takes its presses
   document.addEventListener('pointerdown', e => {
     lastPointer = e.pointerType;
     if (!e.target.closest('.variant-opt, .rules-host')) closeRules();
   }, true);
   document.addEventListener('keydown', solid.onKey);
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { setShareTip(false); setLuckyTip(false); closeStatTips(); closeRules(); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { setShareTip(false); setLuckyTip(false); setChanceTip(false); closeStatTips(); closeRules(); } });
   modal = bindModal($('exportModal'));
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));
   installDevReveal(); await initSoundToggle(); await initLang();

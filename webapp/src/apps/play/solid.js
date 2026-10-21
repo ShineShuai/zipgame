@@ -196,9 +196,9 @@ export function createSolidPlay(app) {
     return `
       <section class="card solid-card" id="solidCard" style="${cardShown() ? '' : 'display:none'}">
         <header class="card-head">
-          <span class="card-badge">${cardIcon('solid')}</span>
+          <span class="card-badge">${cardIcon('free')}</span>
           <div class="card-head-text">
-            <h2 class="card-title">${t('solid.title')}</h2>
+            <h2 class="card-title">${t('menu.title')}</h2>
             <p class="card-sub">${t('solid.sub')}</p>
           </div>
         </header>
@@ -461,6 +461,7 @@ export function createSolidPlay(app) {
             title="${t('solid.followTip')}" aria-label="${t('solid.followTip')}">
             ${t('solid.follow')}</button>
         </div>
+        <p class="small view-hint">${t('solid.followTip')}</p>
         <div class="grid-wrap solid-wrap" id="solidWrap"></div>
         <p class="note" id="solidNote">${t(noteKey())}</p>
         ${luckyOnce}

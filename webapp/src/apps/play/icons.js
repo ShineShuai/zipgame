@@ -18,6 +18,8 @@ const RING_HOLES = new Set([5, 6, 9, 10]);
 
 // Solution paths as [col, row] corners: a snake over all 16 cells, a lap around the ring.
 const SNAKE = [[0, 0], [3, 0], [3, 1], [0, 1], [0, 2], [3, 2], [3, 3], [0, 3]];
+// Standard icon: an S (start top right, end bottom left); the middle bar runs between rows 1 and 2.
+const S_SHAPE = [[3, 0], [0, 0], [0, 1.5], [3, 1.5], [3, 3], [0, 3]];
 const LAP = [[0, 0], [3, 0], [3, 3], [0, 3], [0, 1]];
 // Loop icon: one closed ring through all 16 cells (it comes back to its start), with three
 // numbers on it in cyclic order.
@@ -234,7 +236,7 @@ export function variantIcon(variant) {
       : 'standard';
   const board = pentagon ? pentagonTiles() : tiles(cutout ? RING_HOLES : NO_HOLES);
   const path = pentagon ? pentagonRoute() : wrap ? wrapRoute() : twopaths ? twoPathsRoutes()
-    : teleport ? teleportRoute() : route(cutout ? LAP : loop ? RING : SNAKE);
+    : teleport ? teleportRoute() : route(cutout ? LAP : loop ? RING : name === 'standard' ? S_SHAPE : SNAKE);
   return `<svg class="variant-icon vi-${name}" viewBox="0 0 48 48" aria-hidden="true" ` +
     'focusable="false"><rect class="vi-bg" x="2" y="2" width="44" height="44" rx="11"/>' +
     `${board}${path}${arrows ? arrowheads() : ''}${exact ? stepBadges(ICON_STEPS) : ''}` +
