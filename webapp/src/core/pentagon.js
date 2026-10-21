@@ -33,7 +33,6 @@ export const PENTAGON_KIND = 'pentagon';
 // other puzzle that has a `kind` is a solid one (tetra, cube, ball); a grid puzzle has none.
 export const isPentagon = p => p?.kind === PENTAGON_KIND;
 export const PENTAGON_SIZES = [4, 6, 8, 9, 10]; // offered by the play app, by cells
-export const PENTAGON_DESIGN_SIZES = [5, 7, 11]; // only in the design app
 // Every board, by cells: 16, 24, 36, 48, 64, 80, 96, 100.
 export const PENTAGON_BOARD_SIZES = [4, 5, 6, 7, 8, 11, 9, 10];
 export const PENTAGON_CELLS = { 4: 16, 5: 24, 6: 36, 7: 48, 8: 64, 11: 80, 9: 96, 10: 100 };
