@@ -20,14 +20,16 @@ import { PENTAGON_KIND, PENTAGON_SIZES, PENTAGON_BOARD_SIZES } from '../pentagon
 //
 // Measured with tools/pentagon-bench.mjs (the candidates below): median time, walls, checkpoints:
 //   16 cells 9 ms, 2 walls, K 4 | 24: 6 ms, 1, 5 | 36: 22 ms, 6, 7 | 48: 90 ms, 6, 9 |
-//   64: 0.5 s, 15, 10 | 80: 1.2 s, 15, 12 | 96: 2.2 s, 29, 14 | 100: 2.9 s, 29, 13
-// (worst time 1.0 s at 64 cells, 3.2 s at 96, 4.3 s at 100). With the number of checkpoints of the
-// square boards the big boards need about twice the walls of a board with 35-45% of the cells
-// numbered (96 cells: 11 walls, 100 cells: 13), and more time per candidate, so fewer are made.
+//   64: 0.5 s, 15, 10 | 80: 1.2 s, 15, 12 | 100: 2.9 s, 29, 13
+// (worst time 1.0 s at 64 cells, 4.3 s at 100). 120: 5.5 s, 36, 17 with 2 candidates, measured
+// later on a machine 1.7 times slower (100 cells took 5.0 s there). With the number of
+// checkpoints of the square boards the big boards need about twice the walls of a board with
+// 35-45% of the cells numbered (100 cells: 13 walls), and more time per candidate, so fewer are
+// made.
 
 export { PENTAGON_SIZES };
 // How many candidates are made per size (the one with the fewest walls is kept).
-export const PENTAGON_CANDIDATES = { 4: 6, 5: 8, 6: 8, 7: 8, 8: 6, 9: 3, 10: 3, 11: 4 };
+export const PENTAGON_CANDIDATES = { 4: 6, 5: 8, 6: 8, 7: 8, 8: 6, 9: 4, 10: 3, 11: 2 };
 
 // The number of checkpoints of a puzzle on board n: pickK of the square boards, on the range of
 // the board. rnd() is used twice.

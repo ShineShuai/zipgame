@@ -55,11 +55,11 @@
 //   walls: a subset of the board's edges, in edge id order
 //   strip: 1 flag, then K - 1 levels of 2 bits, as above
 // Links stay readable: the layout of a version that has shipped is never changed. The Pentagon
-// codes are held by test/pentagon.js and test/play-pentagon.js (frozen codes of every board, made
-// before the 96-cell board was added). Adding a board only appends to PENTAGON_CODE_SIZES. A change
-// that cannot be made that way is a new version number, and the decoder of the old one stays for
-// at least 5 weeks. The play app migrates what a device keeps: the shared games are stored as
-// codes, decoded on load and written again in the current format (features/shared-games.js).
+// codes are held by test/pentagon.js and test/play-pentagon.js (frozen codes of every board). A
+// board added to the play app only appends to PENTAGON_CODE_SIZES. A change that cannot be made
+// that way is a new version number, and the decoder of the old one stays for at least 5 weeks.
+// The play app migrates what a device keeps: the shared games are stored as codes, decoded on
+// load and written again in the current format (features/shared-games.js).
 // A 7x7 standard puzzle is about 20 characters, a 12x12 one about 45.
 import { LABELS } from './gen/shapes.js';
 import { allEdges, arrowProblem, arrowDirId, arrowIds, wallIds } from './edges.js';
@@ -86,8 +86,9 @@ const OWN_VERSION = {
 };
 const PENTAGON_SIZE_RADIX = 8;
 // The sizes of the Pentagon boards in the order of their size index: never change an entry, add
-// new sizes at the end (up to 8). Codes made before 9 was added read as before.
-const PENTAGON_CODE_SIZES = [4, 6, 8, 10, 9];
+// new sizes at the end (up to 8). Index 4 was the 96-cell board (dropped, so its links no longer
+// open; the index is never used again, or such a link would read as another board).
+const PENTAGON_CODE_SIZES = [4, 6, 8, 10, null];
 const OWN_VARIANT = Object.fromEntries(Object.entries(OWN_VERSION).map(([name, v]) => [v, name]));
 // puzzle type id -> variant name (null = a standard puzzle)
 export const VARIANTS = [null, 'cutout', 'arrows', 'exact', 'wrap', 'loop'];

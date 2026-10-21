@@ -107,9 +107,9 @@ export const PLAY_VARIANTS = [
   {
     id: 'pentagon',
     detect: isPentagon,
-    // Its own boards (core/pentagon.js): n is the id of a board, 4 to 10, by cells: 16, 36,
-    // 64, 96, 100. They do not depend on the grid sizes of the app. The lucky game of a locked
-    // variant takes the middle boards.
+    // Its own boards (core/pentagon.js): n is the side of a square board of about as many cells,
+    // 4, 6, 8, 10: 16, 36, 64, 100 cells. They do not depend on the grid sizes of the app. The
+    // lucky game of a locked variant takes the middle boards.
     sizes: () => PENTAGON_SIZES,
     luckySizes: [6, 8],
     countKey: 'gen.walls',

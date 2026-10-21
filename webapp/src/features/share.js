@@ -171,7 +171,8 @@ export function parseShareLink(search) {
 
 // Text that goes with the link (chat apps show it; the link carries the data). tr = the app's t().
 // The number a text shows for the size of a game: the n of a square board (7 for 7x7), the number of
-// cells of a Pentagon board (its n is only the id of the board). { variant, n } -> number.
+// cells of a Pentagon board (its n is about the side: 6 is 36 cells, 5 is 24). { variant, n } ->
+// number.
 export const sizeArg = ({ variant, n }) => (variant === PENTAGON_KIND ? PENTAGON_CELLS[n] : n);
 
 export function shareText(rec, url, tr) {

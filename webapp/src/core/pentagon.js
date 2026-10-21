@@ -4,20 +4,22 @@
 // edges: squares and triangles), two cells touch when the corners are joined by an edge; the
 // corners of a cell are the centres of the 5 tiles (2 squares, 3 triangles) around that corner.
 //
-// One fixed board per size n (the same puzzle always means the same board):
-//   n    4   6   8   9   10    cells 16, 36, 64, 96, 100       offered by the play app
-//   n    5   7   11          cells 24, 48, 80                  only the design app offers them
-// (n is only the id of a board: 11 is the 80-cell board, and the 120-cell board has no id yet.)
-// The board is the part of the tiling inside a window centred on a 4-fold centre of the tiling (a
-// square of the snub tiling): the windows of n = 4, 6, 8, 10 are squares and a turn by 90 degrees
-// about the centre maps the board onto itself; n = 9 is a window 4 periods wide and 6 high (a
-// portrait board) and a half turn maps it onto itself. The windows are chosen so that no cell has
-// fewer than 2 neighbours (no cell sticks out of the board: it would be the start or the end of
-// any path, a free hint) and the boards of the play app have only the 4 corner cells with 2. The
-// other windows that qualify (24, 48, 80, 120 cells) have 8 to 20 cells with 2 neighbours; those
-// cells fix both their sides, which is 70% (24 cells) to 34% (120 cells) of the path before the
-// first move, against 8 to 23% for the boards above 36 cells. They are in the design app, to be
-// judged there (shapeHint() counts them), not in the play app.
+// One fixed board per size n (the same puzzle always means the same board). As on the other
+// variants n is the side of the board, here the side of a square board with about as many cells
+// (n x n, 24 and 48 cells have 1 cell less, 80 and 120 have 1 less):
+//   n    4   6   8   10    cells 16, 36, 64, 100       offered by the play app
+//   n    5   7   9   11    cells 24, 48, 80, 120       only the design app offers them
+// The board is the part of the tiling inside a square window centred on a 4-fold centre of the
+// tiling (a square of the snub tiling): a turn by 90 degrees about the centre maps the board onto
+// itself. The windows are chosen so that no cell has fewer than 2 neighbours (no cell sticks out
+// of the board: it would be the start or the end of any path, a free hint) and the boards of the
+// play app have only the 4 corner cells with 2. The other windows that qualify (24, 48, 80, 120
+// cells) have 8 to 20 cells with 2 neighbours; those cells fix both their sides, which is 70% (24
+// cells) to 34% (120 cells) of the path before the first move, against 8 to 23% for the boards
+// above 36 cells. They are in the design app, to be judged there (shapeHint() counts them), not
+// in the play app. (A portrait board, a window 4 periods wide and 6 high, had 96 cells and the
+// size index 9; it was dropped, and a window 5 by 6 periods gives a 120-cell board with only 2
+// cells with 2 neighbours, which is not square.)
 //
 // The geometry uses floating point, but every decision made with it has a large margin (see
 // WINDOW, ROW_EPS), so every engine builds the same board. test/pentagon.js freezes the numbering.
@@ -32,21 +34,22 @@ export const PENTAGON_KIND = 'pentagon';
 // A Pentagon puzzle: { surface: 'pentagon', n, cp, walls } (the graph model of core/surface). Every
 // other puzzle that has a `kind` is a solid one (tetra, cube, ball); a grid puzzle has none.
 export const isPentagon = p => p?.kind === PENTAGON_KIND;
-export const PENTAGON_SIZES = [4, 6, 8, 9, 10]; // offered by the play app, by cells
-// Every board, by cells: 16, 24, 36, 48, 64, 80, 96, 100.
-export const PENTAGON_BOARD_SIZES = [4, 5, 6, 7, 8, 11, 9, 10];
-export const PENTAGON_CELLS = { 4: 16, 5: 24, 6: 36, 7: 48, 8: 64, 11: 80, 9: 96, 10: 100 };
+export const PENTAGON_SIZES = [4, 6, 8, 10]; // offered by the play app
+// Every board, by size and cells: 16, 24, 36, 48, 64, 80, 100, 120.
+// Do not use 9.8 (96 cells) in the play app, which affects the shared link code.
+export const PENTAGON_BOARD_SIZES = [4, 5, 6, 7, 8, 9, 9.8, 10, 11];
+export const PENTAGON_CELLS = { 4: 16, 5: 24, 6: 36, 7: 48, 8: 64, 9: 80, 9.8: 96, 10: 100, 11: 120 };
 
 const PERIOD = (1 + Math.sqrt(3)) / Math.SQRT2; // the snub square tiling repeats every PERIOD
 const TILT = Math.PI / 12; // squares are turned by +-15 degrees
 const SAME = 1e-6; // two points closer than this are one point
 // Width and height of the window in periods. The cell set stays the same for any width or height
 // in these ranges: 1.64..2.36, 2.37..2.63 (24 cells), 2.64..3.36, 3.37..3.63 (48), 3.64..4.36,
-// 4.37..4.63 (80), 4.64..5.20 (n = 10) and 5.64..6.36 (the height of n = 9); the sizes below sit in
-// the middle of them.
+// 4.37..4.63 (80), 4.64..5.20 (100) and 5.37..5.63 (120); the sizes below sit in the middle of
+// them.
 const WINDOW = {
-  4: [2, 2], 5: [2.5, 2.5], 6: [3, 3], 7: [3.5, 3.5], 8: [4, 4], 11: [4.5, 4.5], 9: [4, 6],
-  10: [4.9, 4.9],
+  4: [2, 2], 5: [2.5, 2.5], 6: [3, 3], 7: [3.5, 3.5], 8: [4, 4], 9: [4.5, 4.5], 9.8: [4, 6], 10: [4.9, 4.9],
+  11: [5.5, 5.5],
 };
 // Centres whose y differ by less than this are in one row (theoretically equal y values differ
 // by rounding only; distinct rows are at least 0.25 apart).

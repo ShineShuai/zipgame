@@ -63,8 +63,8 @@ const S = { screen: 'menu', mode: 'standard', variant: null, genMode: 'standard'
   menuTab: 'flat', howtoOpen: false, sharedOpen: false, statsOpen: null };
 
 // A Pentagon puzzle (core/pentagon.js) walks and is solved by the rules of the cell graph
-// (core/surface) and is drawn by its own board (pentagon-board.js); the size n is a board id there,
-// shown as the number of cells.
+// (core/surface) and is drawn by its own board (pentagon-board.js); its size n is about the side
+// (6 is 36 cells), shown as the number of cells.
 const stepOf = (p, path, cell) => (
   isPentagon(p) ? surfaceStep(p, path, cell) : step(p, path, cell)
 );

@@ -1,6 +1,6 @@
 // Tests of the Pentagon variant in the play app: the registry entry and texts, the icon, the board
-// (apps/play/pentagon-board.js), walking and hints on it, the share text, and the links of the
-// time before the 96-cell board (they must read as they did). Registered by tests.js:
+// (apps/play/pentagon-board.js), walking and hints on it, the share text, and the links made
+// earlier (they must read as they did). Registered by tests.js:
 // playPentagonTests(t, ok, eq). The page itself (apps/play/main.js) is not run here.
 import { runSync } from '../src/core/run.js';
 import { COLORS } from '../src/apps/play/board.js';
@@ -36,8 +36,8 @@ const state = (p, path = [], extra = {}) => ({
   puzzle: p, path, hintCell: null, hintWrongCell: null, ...extra,
 });
 
-// Links made before the 96-cell board existed (n = 4, 6, 8, 10; made-up puzzles: numbers on the
-// cells in order, walls on the edges). Never edit these codes: they are what a player may still
+// Links made earlier (n = 4, 6, 8, 10; made-up puzzles: numbers on the cells in order, walls on
+// the edges). Never edit these codes: they are what a player may still
 // hold, and they have to decode to the same puzzle.
 const OLD_LINKS = [
   { code: 'xgAY4HiSGI', n: 4, cells: [0, 7, 15], edges: [1, 5] },
@@ -77,7 +77,7 @@ export function playPentagonTests(t, ok, eq) {
   });
 
   t('play-pentagon: sizes are shown as cells; the share text says so in both languages', () => {
-    eq(PENTAGON_SIZES.map(n => sizeArg({ variant: PENTAGON, n })), [16, 36, 64, 96, 100]);
+    eq(PENTAGON_SIZES.map(n => sizeArg({ variant: PENTAGON, n })), [16, 36, 64, 100]);
     const squares = [{ variant: null, n: 7 }, { variant: 'wrap', n: 6 }].map(sizeArg);
     eq(squares, [7, 6], 'squares: n');
     const p = game(6, 3);
@@ -102,7 +102,7 @@ export function playPentagonTests(t, ok, eq) {
 
   t('play-pentagon: the board markup — a polygon per cell, walls, border, badges, path, '
     + 'hints', () => {
-    for (const n of [4, 6, 9]) {
+    for (const n of [4, 6, 10]) {
       const p = game(n, 2);
       const top = surfaceTopology(PENTAGON_KIND, n);
       const markup = pentagonBoardSvg(state(p, p.path.slice(0, 6)));
@@ -183,8 +183,9 @@ export function playPentagonTests(t, ok, eq) {
     ok(maxHints(made) >= 3 && maxHints(made) <= 6);
   });
 
-  t('play-pentagon: links from before the 96-cell board decode as they did, a stored shared game '
-    + 'is read and written again in the current format, a damaged one is dropped', () => {
+  t('play-pentagon: links made earlier decode as they did, a stored shared game is read and '
+    + 'written again in the current format, a damaged one or one of the dropped 96-cell board '
+    + 'is dropped', () => {
     for (const { code, n, cells, edges } of OLD_LINKS) {
       const rec = decodeShare(code);
       ok(rec && rec.variant === PENTAGON && rec.n === n, `${code} reads`);
@@ -195,21 +196,18 @@ export function playPentagonTests(t, ok, eq) {
       eq(rec.timeS, 12.3);
       eq(encodeShare(rec), code, `${n}: the same code again`);
     }
-    // 96-cell links are new: size index 4, and they are told apart from the others
-    const made = makeSurfacePuzzle(PENTAGON_KIND, 9);
-    [0, 95, 12].forEach((cell, i) => { made.cp[cell] = i + 1; });
-    const code96 = encodeShare(makeShareRecord({
-      n: 9, timeS: 12.3, legs: [], K: 3, variant: PENTAGON, puzzle: made,
-    }));
-    eq(decodeShare(code96).n, 9);
-    ok(!OLD_LINKS.some(link => link.code === code96));
+    // A link of the 96-cell board (size index 4, dropped): it does not open, and the index is not
+    // another board (the 80-cell board has size 9 now, as the 96-cell one had).
+    const code96 = 'w8BT1rkgGM';
+    eq(decodeShare(code96), null, 'the 96-cell board is gone');
     // the shared games of a device: codes, decoded on load, encoded on save
     const stored = { v: 1, items: [...OLD_LINKS.map((link, i) => ({ c: link.code, a: 100 + i })),
-      { c: code96, a: 200 }, { c: `${code96}x`, a: 300 }, { c: 'not a code', a: 400 }] };
+      { c: code96, a: 200 }, { c: `${OLD_LINKS[0].code}x`, a: 300 },
+      { c: 'not a code', a: 400 }] };
     const entries = sanitize(stored);
-    eq(entries.map(e => e.rec.n), [4, 6, 8, 10, 9], 'every good game, no damaged one');
+    eq(entries.map(e => e.rec.n), [4, 6, 8, 10], 'every good game, no damaged or dropped one');
     eq(JSON.parse(serializeShared(entries)).items.map(item => item.c),
-      [...OLD_LINKS.map(link => link.code), code96], 'written again, the same codes');
+      OLD_LINKS.map(link => link.code), 'written again, the same codes');
     eq(sanitize(JSON.parse(serializeShared(entries))).map(e => e.key), entries.map(e => e.key));
   });
 }

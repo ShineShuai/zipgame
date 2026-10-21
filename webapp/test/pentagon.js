@@ -94,16 +94,20 @@ const FROZEN = {
   6: ['6d7409df', '8e6a7967'],
   7: ['664faff8', '5ec24b86'],
   8: ['9d03dd2f', 'af390c97'],
-  9: ['85d19675', '89a82f81'],
+  9: ['9337a669', 'c9dfbb98'],
   10: ['a95f48ab', '5d1dc5f4'],
-  11: ['9337a669', 'c9dfbb98'],
+  11: ['e538a4a4', '7dd55cbc'],
 };
 
 export function pentagonTests(t, ok, eq) {
-  t('pentagon: boards — 16 to 100 cells of 5 sides, connected, not bipartite, no cell with fewer '
-    + 'than 2 neighbours; the boards of the play app have only the 4 corner cells with 2', () => {
-    eq(PENTAGON_SIZES, [4, 6, 8, 9, 10]);
-    eq(PENTAGON_BOARD_SIZES.map(n => PENTAGON_CELLS[n]), [16, 24, 36, 48, 64, 80, 96, 100]);
+  t('pentagon: boards — 16 to 120 cells of 5 sides, connected, not bipartite, no cell with fewer'
+    + ' than 2 neighbours; the boards of the play app have only the 4 corner cells with 2', () => {
+    eq(PENTAGON_SIZES, [4, 6, 8, 10]);
+    eq(PENTAGON_BOARD_SIZES.map(n => PENTAGON_CELLS[n]), [16, 24, 36, 48, 64, 80, 100, 120]);
+    for (const n of PENTAGON_BOARD_SIZES) {
+      const cells = PENTAGON_CELLS[n];
+      eq(Math.round(Math.sqrt(cells)), n, `n=${n}: the side of about ${cells} cells`);
+    }
     for (const n of PENTAGON_BOARD_SIZES) {
       const top = board(n);
       eq(top.T, PENTAGON_CELLS[n], `n=${n} cells`);
@@ -118,7 +122,7 @@ export function pentagonTests(t, ok, eq) {
       }
       eq(top.E, pairs / 2, `n=${n} edges`);
       ok(!histogram[0] && !histogram[1], `n=${n} no cell with fewer than 2 neighbours`);
-      const twos = [5, 7, 11].includes(n) ? { 5: 8, 7: 12, 11: 16 }[n] : 4;
+      const twos = { 5: 8, 7: 12, 9: 16, 11: 20 }[n] ?? 4;
       eq(histogram[2], twos, `n=${n} cells with 2 neighbours`);
       const hint = shapeHint(top);
       eq([hint.twoNeighbour, hint.fixed, hint.path], [twos, 2 * twos, top.T - 1],
@@ -173,8 +177,8 @@ export function pentagonTests(t, ok, eq) {
     }
   });
 
-  t('pentagon: every board is symmetric — a quarter turn about the centre (a half turn for the '
-    + '96-cell board) maps the cells onto the cells and keeps who touches whom', () => {
+  t('pentagon: every board is symmetric — a quarter turn about the centre maps the cells onto '
+    + 'the cells and keeps who touches whom', () => {
     for (const n of PENTAGON_BOARD_SIZES) {
       const top = board(n);
       const at = (x, y) => {
@@ -184,10 +188,9 @@ export function pentagonTests(t, ok, eq) {
         }
         return -1;
       };
-      const half = n === 9; // the portrait board: a half turn only
       const turned = Array.from({ length: top.T }, (_, c) => {
         const [x, y] = [top.centres[2 * c], top.centres[2 * c + 1]];
-        return half ? at(-x, -y) : at(-y, x);
+        return at(-y, x);
       });
       ok(turned.every(c => c >= 0) && new Set(turned).size === top.T, `n=${n}: a bijection`);
       for (let c = 0; c < top.T; c++) {
@@ -253,8 +256,8 @@ export function pentagonTests(t, ok, eq) {
 
   t('pentagon-gen: the number of checkpoints follows the rule of the square boards — pickK on '
     + 'the range from the square root to a quarter of the cells', () => {
-    eq([16, 36, 64, 96, 100].map(cells => kRange(cells)),
-      [[4, 5], [6, 9], [8, 16], [10, 24], [10, 25]]);
+    eq([16, 36, 64, 100].map(cells => kRange(cells)),
+      [[4, 5], [6, 9], [8, 16], [10, 25]]);
     for (const n of PENTAGON_BOARD_SIZES) {
       const [min, max] = kRange(PENTAGON_CELLS[n]);
       const seen = [];
@@ -516,7 +519,7 @@ export function pentagonTests(t, ok, eq) {
       const [min, max] = kRange(PENTAGON_CELLS[n]);
       eq(pentagonDefaultK(n), Math.round(min + 0.3 * (max - min)), `n=${n}`);
     }
-    eq([4, 6, 8, 9, 10].map(n => pentagonDefaultK(n)), [4, 7, 10, 14, 15]);
+    eq([4, 6, 8, 10].map(n => pentagonDefaultK(n)), [4, 7, 10, 15]);
   });
 
   t('pentagon: isPentagon tells a Pentagon puzzle from a 3D one and from a grid one', () => {
@@ -541,9 +544,8 @@ export function pentagonTests(t, ok, eq) {
       ...[1, 2, 3].map(seed => game(6, seed)),
       game(8, 1),
       made(10, [0, 37, 12, 99, 55, 70], [3, 4, 100, 219]),
-      made(9, [0, 95, 12, 50, 77], [0, 7, 200]),
     ];
-    const longest = { 4: 16, 6: 30, 8: 50, 9: 70, 10: 75 };
+    const longest = { 4: 16, 6: 30, 8: 50, 10: 75 };
     for (const p of puzzles) {
       const rec = record(p);
       const code = encodeShare(rec);
