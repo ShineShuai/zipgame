@@ -128,13 +128,13 @@ function badges(p, visited) {
   return parts.join('');
 }
 
-// How wide the board may get on screen: about 64 px per cell across, at most 640, and short
+// How wide the board may get on screen: about 84 px per cell across, at most 720, and short
 // enough to fit the window (the same rule as the square board, by the height of the board).
 function maxBoardCss(p) {
   const { view } = geometry(p);
-  const px = Math.min(640, Math.round((view.w / CELL) * 64));
-  const byHeight = `calc((100vh - 200px) * ${num(view.w / view.h)})`;
-  return `max-width:${px}px;max-width:min(${px}px,max(260px,${byHeight}))`;
+  const px = Math.min(720, Math.round((view.w / CELL) * 84));
+  const byHeight = h => `calc((${h} - 210px) * ${num(view.w / view.h)})`;
+  return `max-width:${px}px;max-width:min(${px}px,max(260px,${byHeight('100vh')}));max-width:min(${px}px,max(260px,${byHeight('100dvh')}))`;
 }
 
 // Full svg markup of the play board (S = the play state, as for boardSvg in board.js).
@@ -153,7 +153,7 @@ export function pentagonBoardSvg(S) {
   let svg = `<svg viewBox="${num(view.x)} ${num(view.y)} ${num(view.w)} ${num(view.h)}" `
     + `class="zip-svg pentagon" style="${maxBoardCss(p)}">`;
   const tiles = g.polys.map(poly => `<polygon points="${pointsOf(poly)}"/>`).join('');
-  svg += `<g data-role="tiles" fill="#fff" stroke="${COLORS.grid}" stroke-width="1.5" `
+  svg += `<g data-role="tiles" fill="${COLORS.tile}" stroke="${COLORS.grid}" stroke-width="1.5" `
     + `stroke-linejoin="round">${tiles}</g>`;
   svg += `<g data-role="outline" stroke="${COLORS.outline}" stroke-width="5" `
     + `stroke-linecap="round">${g.border.map(lineOf).join('')}</g>`;

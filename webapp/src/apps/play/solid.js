@@ -30,7 +30,7 @@ import { HINT_PENALTY_S, computeHint, penalizedTime } from '../../features/hints
 import { IDENTITY, buildView, cellDirection, orbit, turnToward } from '../../view/proj.js';
 import { buildNet, slotBetween } from '../../view/surface-net.js';
 import { behind, buildBallView } from '../../view/ball.js';
-import { LIGHT_PALETTE, surfaceSvg } from '../../view/surface-board.js';
+import { LIGHT_PALETTE, PLAY_DARK_PALETTE, surfaceSvg } from '../../view/surface-board.js';
 import {
   ARROW_TURN,
   ORBIT_SLOP,
@@ -50,7 +50,7 @@ import {
   sfxSolved,
 } from '../../platform/sound.js';
 import { SOLID_KINDS, SOLID_SIZES, openSizes, stageOf } from '../../features/solid-release.js';
-import { cardIcon, variantIcon } from './icons.js';
+import { actionIcon, cardIcon, variantIcon } from './icons.js';
 
 export { SOLID_KINDS };
 export const isSolidKind = kind => SOLID_KINDS.includes(kind);
@@ -71,6 +71,10 @@ const sec = seconds => `${seconds.toFixed(1)}s`;
 //   luckyHtml done -> the markup under a lucky game (what it unlocked, a streak reward)
 //   luckySolved, luckyFailed, leaveLucky: the lucky game was solved, could not start
 //             (the chance comes back), was left
+// The cell tints of the play app's 3D views follow the theme (css/theme.css); a theme switch redraws the screen.
+const playPalette = () => (typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark'
+  ? PLAY_DARK_PALETTE : LIGHT_PALETTE);
+
 export function createSolidPlay(app) {
   const { S, $, t } = app;
   const release = app.release ?? null;
@@ -183,6 +187,10 @@ export function createSolidPlay(app) {
         </label>`;
   }
 
+  // The line under the tiles: the type picked, its tagline and (on a touch screen) the link to its rules sheet.
+  const captionHtml = kind => `<b>${t(`mode.${kind}`)}</b> — ${t(`mode.${kind}Tag`)}`
+    + ` <button type="button" class="link-btn rules-link" data-rules="solidRules-${kind}">${t('menu.rulesLink')}</button>`;
+
   function cardHtml() {
     fitChoice();
     return `
@@ -199,12 +207,15 @@ export function createSolidPlay(app) {
           <div class="variant-options">${SOLID_KINDS.map(tileHtml).join('')}
           </div>
         </fieldset>
-        <div class="field size-field">
-          <label class="field-label" for="solidSel" id="solidSelLabel">${choiceLabel()}</label>
-          <select id="solidSel">${shapeOptionsHtml()}</select>
-        </div>
-        <div class="button-row">
-          <button class="btn" id="playSolid">${t('menu.playLocal')}</button>
+        <p class="menu-caption" id="solidCaption" aria-live="polite">${captionHtml(choice.kind)}</p>
+        <div class="play-bar">
+          <div class="field size-field">
+            <label class="field-label" for="solidSel" id="solidSelLabel">${choiceLabel()}</label>
+            <select id="solidSel">${shapeOptionsHtml()}</select>
+          </div>
+          <div class="button-row">
+            <button class="btn" id="playSolid">${t('menu.playLocal')}</button>
+          </div>
         </div>
       </section>`;
   }
@@ -243,6 +254,7 @@ export function createSolidPlay(app) {
         kept.add(input.value);
         $('solidSel').innerHTML = shapeOptionsHtml();
         $('solidSelLabel').textContent = choiceLabel();
+        $('solidCaption').innerHTML = captionHtml(input.value);
       };
     });
     $('solidSel').onchange = event => {
@@ -432,6 +444,7 @@ export function createSolidPlay(app) {
       ? `<p class="note lucky-once">${t(S.luckyHolder ? 'lucky.onceChance' : 'lucky.onceFun')}</p>`
       : '';
     const luckyResult = app.luckyHtml ? app.luckyHtml(game.finished) : '';
+    const results = solved || luckyResult ? `<section class="card result-card">${solved}${luckyResult}</section>` : '';
     return `
     <div class="game-layout">
       <section class="card board-card">
@@ -442,28 +455,29 @@ export function createSolidPlay(app) {
           </div>
           <div class="hud-time">${t('game.time', `<b id="hudTime">${time}</b>`)}</div>
         </div>
+        <div class="view-tools">
+          <button class="btn secondary" id="solidView">${viewLabel()}</button>
+          <button class="btn secondary${follow}" id="solidFollow" aria-pressed="${game.follow}"
+            title="${t('solid.followTip')}" aria-label="${t('solid.followTip')}">
+            ${t('solid.follow')}</button>
+        </div>
         <div class="grid-wrap solid-wrap" id="solidWrap"></div>
         <p class="note" id="solidNote">${t(noteKey())}</p>
         ${luckyOnce}
       </section>
       <div class="side">
-        <section class="card">
+        <section class="card actions">
           <div class="button-row">
-            <button class="btn secondary" id="solidMenu">${t('game.menu')}</button>
+            <button class="btn secondary" id="solidMenu">${actionIcon('menu')}${t('game.menu')}</button>
             <button class="btn secondary" id="solidNew" style="${newStyle}">
-              ${t('game.new')}</button>
-            <button class="btn secondary" id="solidReset">${t('game.reset')}</button>
+              ${actionIcon('new')}${t('game.new')}</button>
+            <button class="btn secondary" id="solidReset">${actionIcon('reset')}${t('game.reset')}</button>
             <button class="btn secondary" id="solidHint"${hintOff} style="${hintStyle}">
-              ${t('game.hint', game.hints, hintCap())}</button>
+              ${actionIcon('hint')}${t('game.hint', game.hints, hintCap())}</button>
             <button class="btn secondary" id="solidExport" style="${exportShown}">Export</button>
-            <button class="btn secondary" id="solidView">${viewLabel()}</button>
-            <button class="btn secondary${follow}" id="solidFollow" aria-pressed="${game.follow}"
-              title="${t('solid.followTip')}" aria-label="${t('solid.followTip')}">
-              ${t('solid.follow')}</button>
           </div>
-          ${solved}
-          ${luckyResult}
         </section>
+        ${results}
       </div>
     </div>`;
   }
@@ -502,7 +516,7 @@ export function createSolidPlay(app) {
       template: null,
       solutions: [],
       visible: [],
-      palette: LIGHT_PALETTE,
+      palette: playPalette(),
       continues: (from, to) => canPush(game.P, game.path, to, PLAY_STEP),
       hintCell: game.hintCell,
       hintWrongCell: game.hintWrongCell,
@@ -840,6 +854,8 @@ export function createSolidPlay(app) {
 
   return {
     cardHtml,
+    // whether the menu offers the 3D puzzles at all (a kind unlocked or released, or V held): then it has a Flat | 3D tab
+    available: cardShown,
     screenHtml: () => screenHtml(),
     // wires the page after every render: the card in the menu, the board in a game
     attach: () => (S.screen === 'solid' && game ? attachGame() : attachCard()),

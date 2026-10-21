@@ -111,9 +111,10 @@ export function twoPathsPlayTests(t, ok, eq) {
     ok(/data-colour="0" d="M[^"]+L/.test(withLine), 'the red line is drawn');
     ok(/data-colour="1" d=""/.test(withLine), 'the blue one is not');
     const cell0 = `data-num-cell="${red[0]}" data-colour="0"`;
-    const start = new RegExp(`${cell0}><circle[^>]*fill="#e5484d"`);
+    const lit = ink => ink.replace(/[()]/g, '\\$&'); // var(--x) in a regular expression
+    const start = new RegExp(`${cell0}><circle[^>]*fill="${lit(COLORS.twoPath[RED])}"`);
     ok(start.test(withLine), 'red 1 is filled red');
-    const idle = new RegExp(`data-num-cell="${blue[0]}" data-colour="1"><rect[^>]*fill="#ffffff"`);
+    const idle = new RegExp(`data-num-cell="${blue[0]}" data-colour="1"><rect[^>]*fill="${lit(COLORS.numberFill)}"`);
     ok(idle.test(withLine), 'blue 1 is still a white square');
     eq(badgeColorsTwo(BLUE, true).fill, COLORS.twoPath[BLUE]);
     eq(badgeColorsTwo(RED, false).stroke, COLORS.twoPath[RED]);

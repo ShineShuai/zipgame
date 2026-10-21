@@ -279,3 +279,16 @@ export function cardIcon(kind) {
     'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ' +
     `focusable="false">${CARD_ICONS[kind]}</svg>`;
 }
+
+// Small line icons for the action buttons of a game (icon over label on a phone, icon beside it elsewhere).
+const ACTION_PATHS = {
+  menu: '<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+  new: '<path d="M12 5v14M5 12h14"/>',
+  reset: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/>',
+  hint: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z"/>',
+  share: '<path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v13"/>',
+  next: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+};
+export function actionIcon(name) {
+  return `<svg class="bi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ACTION_PATHS[name]}</svg>`;
+}

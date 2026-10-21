@@ -3,6 +3,7 @@
 // time before the 96-cell board (they must read as they did). Registered by tests.js:
 // playPentagonTests(t, ok, eq). The page itself (apps/play/main.js) is not run here.
 import { runSync } from '../src/core/run.js';
+import { COLORS } from '../src/apps/play/board.js';
 import { generatePentagon } from '../src/core/gen/pentagon.js';
 import { generate } from '../src/core/gen/generate.js';
 import {
@@ -122,7 +123,7 @@ export function playPentagonTests(t, ok, eq) {
       ok(hinted.includes('data-role="hint"'), 'the ring');
       ok(hinted.includes('data-role="hint-wrong"'), 'the cross');
       const filled = pentagonBoardSvg(state(p, [p.path[0]]));
-      ok(filled.includes('fill="#3b68ee"'), 'a visited number is filled');
+      ok(filled.includes(`fill="${COLORS.number}"`), 'a visited number is filled');
     }
   });
 

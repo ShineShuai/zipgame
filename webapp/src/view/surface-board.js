@@ -47,6 +47,19 @@ export const LIGHT_PALETTE = {
   gloss: { light: 0.55, dark: 0.16 },
 };
 
+// For the play app in its dark theme: dim cells a little lighter than the board, the orange path of the flat game.
+export const PLAY_DARK_PALETTE = {
+  faces: ['#243059', '#2d2a58', '#21383f', '#33294a', '#243a58', '#2b3050'],
+  sides: { 3: '#24376b', 4: '#34296e', 5: '#1f4a4c' },
+  visited: '#3a4c96',
+  shade: [0.7, 1],
+  template: '#8b93b8',
+  play: '#ffb020',
+  solutions: ['#ffa62b', '#38bdf8'],
+  land: '#ffb454',
+  gloss: { light: 0.2, dark: 0.45 },
+};
+
 const round = value => Math.round(value * 100) / 100;
 
 // A colour '#rrggbb' made darker: factor 1 leaves it, 0 is black.
