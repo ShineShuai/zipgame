@@ -46,7 +46,10 @@ export const BEHAVIOUR = {
 // Dates are UTC days, YYYYMMDD.
 //   first   the day the first solid puzzle goes live: from then on everyone sees the
 //           tetrahedron of size 2 (and no other solid). null = not released yet
-//           (hold V still shows the solid card, for testing).
+//           (hold V still shows the solid card, for testing). It is also the reference day
+//           of the happiest-day gift (src/core/gift.js): null = no gift; the first gift is
+//           in the month after the month of `first`. Do not change it after the launch,
+//           or the gift days move.
 //   tetra   days after `first` on which every tetrahedron size is open to everyone
 //   cube    days after `first` on which the cube is open to everyone
 //   ball    days after `first` on which the ball is open to everyone

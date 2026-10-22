@@ -38,6 +38,8 @@ import {
 } from '../../features/twopaths-play.js';
 import { PLAY_VARIANTS, variantById, variantOf, sizesFor, nearestSize, luckyDefs } from './variants.js';
 import { createUnlock } from '../../features/unlock.js';
+import { createGift, present, listDays, drawKind, LIST_DAYS } from '../../features/gift.js';
+import { giftInfo } from '../../core/gift.js';
 import { createRulesSeen } from '../../features/rules-seen.js';
 import { weekOf, weekTable } from '../../core/lucky.js';
 import { VERSION } from '../../version.js';
@@ -57,7 +59,7 @@ const SIZES = PLAY_SIZES;
 const S = { screen: 'menu', mode: 'standard', variant: null, genMode: 'standard', size: 7, puzzle: null, path: [], elapsed: 0, startTime: 0, timerId: null, finished: false,
   gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, isReplay: false, replayPick: null, gotdDate: null, gotdHint: null, hintsUsed: 0,
   penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, behaviourOn: false, difficulty: null,
-  lucky: false, luckyHolder: false, luckyResult: null, luckyNote: null, healed: false,
+  lucky: false, luckyHolder: false, luckyResult: null, luckyNote: null, healed: false, giftTest: null,
   legs: [], paths: [[], []], colour: 0, gameDay: null, isShared: false,
   sharedGames: [], sharedFocus: null, sharedAll: false, sharedArmed: null, sharedNotice: null, sharedMsg: null,
   menuTab: 'flat', howtoOpen: false, sharedOpen: false, statsOpen: null };
@@ -90,7 +92,7 @@ function gradePuzzle(puzzle) {
     return { ok: false, trap: null, legacy: null };
   }
 }
-let storage, store, daily, replay, streak, unlock, rulesSeen, shared, modal, lb;
+let storage, store, daily, replay, streak, unlock, gift, rulesSeen, shared, modal, lb;
 let devPinned = false, devTimer = null; // a device kept revealed (features/dev-reveal.js); the tap reveal's fall-back timer
 const replayPuzzles = new Map(), replayNoFile = new Set(); // date -> puzzle (the file of a past day never changes, so each is fetched once per page load); dates without a file
 const $ = id => document.getElementById(id), today = () => utcDateString(new Date()), dayNo = () => utcDayNumber(new Date()), sec = x => x.toFixed(1) + 's';
@@ -188,6 +190,8 @@ const solidRelease = (() => {
     return null;
   }
 })();
+// The reference day of the happiest-day gift (core/gift.js): the release day of the solid puzzles; null = no gift.
+const giftRef = solidRelease ? solidRelease.first : null;
 const solid = createSolidPlay({
   S, $, t, render, startTimer, stopTimer, randomSeed, openExport,
   release: solidRelease,
@@ -250,6 +254,51 @@ function luckyTipHtml(v) {
 const chanceChipHtml = v => `<button type="button" class="lucky-chances has-tip${v.tokens > 0 ? ' has' : ''}" id="luckyChance" aria-expanded="false">`
   + `${ICON.unlock}${t('lucky.chances', v.tokens)}`
   + `<span class="tip-pop" id="luckyChancePop" role="tooltip">${t('unlock.tip.chance')} ${t('unlock.tip.streak')}</span></button>`;
+
+// The happiest-day gift (core/gift.js, features/gift.js), above the menu cards. Its (i) explains how the day is chosen and, once enough
+// gifts exist, lists the latest happiest days; it never says what the reference day is, so a player has to work that out from the list.
+// While V is held and no gift is open, a test gift (day DEV_GIFT_DAY) stands in for it, so the box, the button and the toast can be checked.
+const DEV_GIFT_DAY = -1;
+function giftOf() {
+  const real = gift ? gift.view() : null;
+  return real || !(gift && S.showDev) ? real : { day: DEV_GIFT_DAY, opened: S.giftTest !== null, kind: S.giftTest, test: true };
+}
+// The dev note under the gift box (hold V; English only, like the other dev notes).
+function giftDevText(g) {
+  const info = giftInfo(giftRef, dayNo());
+  if (!info) return 'gift dev: off, SOLID_RELEASE.first is null (the rule needs a reference day)';
+  const date = d => (d === null ? '-' : dateLabel(dateOfDay(d))), rec = gift.record(), c = info.chain;
+  const today = info.n < 1 ? 'before the reference day' : `n ${info.n}, ${c.happy ? 'happy' : 'unhappy'}, ${c.steps} steps, peak ${c.peak}`;
+  return [
+    `gift dev: reference day ${date(info.ref)} (day 1) · today ${today} · happiest day today: ${info.today ? 'yes' : 'no'}`,
+    `first ${date(info.first)} · last ${date(info.last)} · next ${date(info.next)}${info.next === null ? '' : ` (in ${info.next - dayNo()} d)`}`
+      + ` · so far ${info.count} (the tooltip lists from ${LIST_DAYS})`,
+    `upcoming: ${info.upcoming.map(date).join(', ') || '-'}`,
+    `opened: ${rec && rec.day !== null ? `${date(rec.day)} ${rec.kind}` : 'never'}${g.test ? ` · test gift: ${g.opened ? `${g.kind}, nothing granted` : 'not opened (opening it only draws, nothing is granted or stored)'}` : ''}`,
+  ].join('<br>');
+}
+function giftHowHtml() {
+  const days = listDays(giftRef, dayNo()), latest = days.at(-1);
+  const chips = days.map(d => `<span${d === latest ? ' class="win"' : ''}>${dateLabel(dateOfDay(d))}</span>`).join('');
+  const guess = days.length ? `${t('gift.recent')}<span class="gift-days">${chips}</span>` : t('gift.soon');
+  return `<b>${t('gift.how')}</b><br>${t('gift.howText')}<br>${guess}`;
+}
+const giftKindText = kind => t(kind === 'unlock' ? 'reward.unlock' : 'reward.replay');
+function giftBoxHtml(g) {
+  const text = g.opened ? t('gift.opened', giftKindText(g.kind)) : t('gift.ready');
+  const open = g.opened ? '' : `<button class="btn" id="giftOpen">${t('gift.open')}</button>`;
+  return `
+      <div class="lucky-box ready gift-box">
+        <div class="lucky-row gift">
+          <span class="lucky-icon">${ICON.gift}</span>
+          <div class="lucky-text"><b>${t('gift.title')}</b><small>${text}</small></div>
+          <button type="button" class="tip-btn" id="giftTip" aria-expanded="false" aria-label="${t('gift.how')}">i</button>
+          <span class="tip-pop" id="giftTipPop" role="tooltip">${giftHowHtml()}</span>
+          ${open}
+        </div>
+        ${S.showDev ? `<p class="small gift-dev">${giftDevText(g)}</p>` : ''}
+      </div>`;
+}
 
 // A streak reward to claim: a replay chance or an unlock chance (only a replay once every variant is unlocked).
 function rewardRowHtml(v) {
@@ -414,10 +463,13 @@ function renderMenu() {
   refreshAttemptIfStale();
   refreshNext();
   pruneShared();
+  const g = giftOf();
+  giftKey = giftKeyOf(g);
   return `
-    <div class="menu-layout">
+    <div class="menu-layout${g ? ' has-gift' : ''}">
       <p class="menu-intro">${t('menu.blurb')}</p>
       <details class="howto"${S.howtoOpen ? ' open' : ''}><summary>${t('menu.howto')}</summary><p>${t('menu.blurb')}</p></details>
+      ${g ? giftBoxHtml(g) : ''}
       ${gotdCardHtml()}
       ${playColumnHtml()}
       ${sharedCardHtml()}
@@ -432,6 +484,7 @@ const ICON = {
   replay: '<svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v5h-5"/></svg>',
   flame: '<svg class="stat-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c1 4 6 7 6 12a6 6 0 0 1-12 0c0-3 2-5 3-7 1 2 2 2 2 1 0-2-.5-4 1-6z"/></svg>',
   unlock: '<svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 7.5-1.5"/></svg>',
+  gift: '<svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="9" width="17" height="11" rx="2"/><path d="M12 9v11M3.5 13.5h17M12 9C9 9 7.5 7.5 8 6s3-1 4 3zM12 9c3 0 4.5-1.5 4-3s-3-1-4 3z"/></svg>',
   snow: '<svg class="freeze-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/></svg>',
 };
 const closeStatTips = () => document.querySelectorAll('.stat-item.open').forEach(b => b.classList.remove('open'));
@@ -803,6 +856,8 @@ function attachHandlers() {
   on('playLucky', startLucky);
   on('luckyTip', toggleLuckyTip);
   on('luckyChance', toggleChanceTip);
+  on('giftOpen', claimGift);
+  on('giftTip', toggleGiftTip);
   on('rewardReplay', () => claimReward('replay'));
   on('rewardUnlock', () => claimReward('unlock'));
   document.querySelectorAll('.shared-play').forEach(b => {
@@ -1048,6 +1103,82 @@ async function claimReward(kind) {
   if (unlock && await unlock.takeChoice()) { if (kind === 'unlock') await unlock.addToken(); else await replay.addBonus(); }
   render();
 }
+// Opens today's happiest-day gift: a random replay or unlock chance (only a replay once every variant is unlocked). Returns the kind.
+async function claimGift() {
+  if (!gift || !unlock) return null;
+  const g = giftOf(), v = unlockView(), onlyReplay = Boolean(v && v.allUnlocked);
+  let kind;
+  if (g && g.test) { // the test gift (hold V): only the draw, nothing is granted or stored
+    kind = g.opened ? null : drawKind(randomInt, onlyReplay);
+    if (kind) S.giftTest = kind;
+  } else {
+    kind = await gift.claim(randomInt, onlyReplay);
+    if (kind === 'unlock') await unlock.addToken(); else if (kind === 'replay') await replay.addBonus();
+  }
+  syncGift();
+  if (kind && S.screen !== 'menu') giftToast(`${ICON.gift}<span class="gift-toast-text">${t('gift.opened', giftKindText(kind))}</span>`, GIFT_DONE_MS, true);
+  return kind;
+}
+
+// ---------- the happiest-day gift, offered on every screen ----------
+// Nothing is fetched: the day comes from the device clock, so it works offline. Only a player's activity offers it, there is no timer: the
+// page asks on boot, on a press or a key (at most every GIFT_CHECK_MS) and when the tab or window comes back, so an idle page is never
+// offered a gift and a page left open overnight offers it at the player's next move.
+// It offers in three places: the menu box (giftBoxHtml: the full text and the (i)), a pulsing button in the bar (every screen, also in a
+// game) and a toast that says it once per happiest day. A running game is never re-rendered or covered: it only gets the button; the toast
+// waits for the menu or the result screen (features/gift.js present).
+const GIFT_CHECK_MS = 5000, GIFT_TOAST_MS = 9000, GIFT_DONE_MS = 4500;
+let giftKey = '', giftTold = null, giftLast = 0, giftToastTimer = null, giftToastKind = null;
+const giftKeyOf = g => (g ? `${g.day}:${g.opened}` : '');
+const playingNow = () => (S.screen === 'game' && !S.finished) || S.screen === 'solid';
+const hideGiftToast = () => { clearTimeout(giftToastTimer); giftToastKind = null; const el = $('giftToast'); if (el) el.hidden = true; };
+function giftToast(html, ms, result = false) {
+  let el = $('giftToast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'giftToast';
+    el.setAttribute('role', 'status');
+    document.body.appendChild(el);
+  }
+  el.className = `gift-toast${result ? ' result' : ''}`;
+  el.innerHTML = html;
+  el.hidden = false;
+  giftToastKind = result ? 'result' : 'offer';
+  clearTimeout(giftToastTimer);
+  giftToastTimer = setTimeout(hideGiftToast, ms);
+}
+function showGiftInfo() {
+  openSheet({ icon: ICON.gift.replace('stat-icon', 'sheet-glyph'), title: t('info.gift'), html: giftHowHtml(), closeText: t('sheet.close') });
+}
+function giftOfferToast() {
+  giftToast(`${ICON.gift}<span class="gift-toast-text">${t('gift.ready')}</span>`
+    + `<button type="button" class="btn" id="giftToastOpen">${t('gift.open')}</button>`
+    + `<button type="button" class="tip-btn" id="giftToastInfo" aria-label="${t('gift.how')}">i</button>`, GIFT_TOAST_MS);
+  $('giftToastOpen').onclick = claimGift;
+  $('giftToastInfo').onclick = showGiftInfo;
+}
+// Brings the button, the toast and the menu box in line with the gift of today.
+function syncGift() {
+  const g = giftOf(), p = present(g, giftTold, playingNow()), btn = $('giftBtn');
+  if (btn) { btn.hidden = !p.button; btn.title = t('gift.title'); btn.setAttribute('aria-label', t('gift.title')); }
+  if (!p.button && giftToastKind === 'offer') hideGiftToast();
+  if (p.toast) { giftTold = g.day; giftOfferToast(); }
+  if (S.screen === 'menu' && giftKeyOf(g) !== giftKey) render(); // the menu box appears, or turns into the opened one
+}
+function watchGift() {
+  const btn = $('giftBtn');
+  if (btn) btn.onclick = claimGift;
+  const ping = () => { // a short delay: a press must not meet a menu that was drawn again under it
+    const now = Date.now();
+    if (now - giftLast < GIFT_CHECK_MS) return;
+    giftLast = now;
+    setTimeout(syncGift, 300);
+  };
+  for (const type of ['pointerdown', 'keydown']) document.addEventListener(type, ping, true);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) syncGift(); });
+  addEventListener('focus', syncGift);
+  syncGift();
+}
 // One submit round (platform/leaderboard.js submitAttempt): the attempt record says which backends already hold the solve.
 async function shareGotd(date) {
   const saved = await submitAttempt(lb, store, date);
@@ -1284,6 +1415,18 @@ function setLuckyTip(open) {
   button.setAttribute('aria-expanded', String(open));
   if (!open) button.blur();
 }
+function setGiftTip(open) {
+  const pop = $('giftTipPop'), button = $('giftTip');
+  if (!pop || !button) return;
+  pop.classList.toggle('open', open);
+  button.setAttribute('aria-expanded', String(open));
+  if (!open) button.blur();
+}
+function toggleGiftTip(ev) {
+  ev.stopPropagation();
+  if (touchUI()) return openTipSheet('giftTipPop', t('info.gift'));
+  setGiftTip(!$('giftTipPop').classList.contains('open'));
+}
 function setChanceTip(open) {
   const pop = $('luckyChancePop'), button = $('luckyChance');
   if (!pop || !button) return;
@@ -1466,6 +1609,8 @@ function stopTimer() { if (S.timerId) { clearInterval(S.timerId); S.timerId = nu
 // ---------- hidden dev reveal: hold "v", or 5 taps on the bare app bar, or a pinned device ----------
 function setDevReveal(on) {
   if (S.showDev === on || (!on && devPinned)) return; S.showDev = on;
+  if (!on) { S.giftTest = null; if (giftTold === DEV_GIFT_DAY) giftTold = null; } // the test gift goes with V
+  if (gift) syncGift(); // the gift box, button and toast (re-draws the menu when the box comes or goes)
   const b = $('versionBadge'); if (b) b.style.display = on ? 'block' : 'none';
   const h = $('hintBtn'); if (h) h.style.display = hintShown() ? '' : 'none';
   const x = $('exportBtn'); if (x) x.style.display = on ? '' : 'none';
@@ -1549,6 +1694,8 @@ function applyLang() {
   b.title = t('lang.switch');
   applySoundButtonState();
   if (themeCtl) themeCtl.refresh();
+  const giftButton = $('giftBtn');
+  if (giftButton) { giftButton.title = t('gift.title'); giftButton.setAttribute('aria-label', t('gift.title')); }
 }
 let themeCtl = null; // the theme button (ui/theme.js); it follows the system setting until the player has picked a theme
 async function initLang() {
@@ -1574,6 +1721,8 @@ async function initLang() {
   try { streakRewards = (await streak.init()).rewards; } catch (e) { console.warn('streak init failed:', e); }
   unlock = createUnlock(storage, luckyDefs(SIZES, solidRelease));
   try { await unlock.init(); } catch (e) { console.warn('unlock init failed:', e); }
+  gift = createGift(storage, giftRef);
+  try { await gift.init(); } catch (e) { console.warn('gift init failed:', e); }
   rulesSeen = createRulesSeen(storage, PLAY_VARIANTS.map(v => v.id));
   await rulesSeen.init();
   shared = createSharedGames(storage);
@@ -1583,14 +1732,14 @@ async function initLang() {
   try { S.nextIdx = await peekNext(); } catch (e) { console.warn('daily counters failed:', e); }
   await initDevPin();
   await initShared();
-  document.addEventListener('click', () => { setShareTip(false); setLuckyTip(false); setChanceTip(false); closeStatTips(); closeRules(); });
+  document.addEventListener('click', () => { setShareTip(false); setLuckyTip(false); setChanceTip(false); setGiftTip(false); closeStatTips(); closeRules(); });
   // a press anywhere but on a rules tooltip's own host closes the tooltips, in the capture phase: the board takes its presses
   document.addEventListener('pointerdown', e => {
     lastPointer = e.pointerType;
     if (!e.target.closest('.variant-opt, .rules-host')) closeRules();
   }, true);
   document.addEventListener('keydown', solid.onKey);
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { setShareTip(false); setLuckyTip(false); setChanceTip(false); closeStatTips(); closeRules(); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { setShareTip(false); setLuckyTip(false); setChanceTip(false); setGiftTip(false); closeStatTips(); closeRules(); } });
   modal = bindModal($('exportModal'));
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));
   installDevReveal(); await initSoundToggle(); await initLang();
@@ -1599,5 +1748,6 @@ async function initLang() {
   installPeek({ selector: '.variant-opt', show: showPeek, hide: hidePeek });
   const howto = await storage.get('howto-seen'); S.howtoSeen = Boolean(howto && howto.value === '1'); S.howtoOpen = !S.howtoSeen;
   render();
+  watchGift();
   for (let i = 0; i < streakRewards; i++) await onStreakMilestone();
 })();
