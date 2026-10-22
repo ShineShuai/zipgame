@@ -2,7 +2,7 @@
 import { LEADERBOARD } from '../../config.js';
 import { backendsFromConfig } from '../../platform/leaderboard.js';
 import { fetchStats } from '../../platform/stats-client.js';
-import { combineDays, isReplicated, dayStats, flagsOf, median, spearman, quantile, dayList } from '../../core/stats-merge.js';
+import { combineDays, isReplicated, dayStats, flagsOf, median, spearman, dayList } from '../../core/stats-merge.js';
 import { withoutSeeds } from '../../core/gotd-model.js';
 import { NB, binOf } from '../../core/hist.js';
 import { parse } from '../../core/format.js';

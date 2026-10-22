@@ -40,7 +40,7 @@ import {
   crossedCut,
   headTurnedAway,
 } from '../../view/solid-nav.js';
-import { runAsync } from '../../platform/run.js';
+import { runAsync, cancellable, isAbort, isTimeout } from '../../platform/run.js';
 import {
   sfxBack,
   sfxBlocked,
@@ -202,6 +202,7 @@ export function createSolidPlay(app) {
             <p class="card-sub">${t('solid.sub')}</p>
           </div>
         </header>
+        ${app.genNoticeHtml()}
         <fieldset class="variant-picker">
           <legend class="field-label">${t('menu.mode')}</legend>
           <div class="variant-options">${SOLID_KINDS.map(tileHtml).join('')}
@@ -311,7 +312,9 @@ export function createSolidPlay(app) {
     S.screen = 'generating';
     S.genMode = kind;
     S.gen = { frac: 0, walls: null, K: null };
+    S.genNotice = null;
     app.render();
+    const job = S.genJob = cancellable();
     try {
       if (kind === BALL_KIND) {
         await loadBalls();
@@ -326,23 +329,29 @@ export function createSolidPlay(app) {
       }
       const seed = app.randomSeed();
       const made = await runAsync(generateSurfaceSteps(kind, n, seed), {
+        signal: job.signal,
         onEvent: event => {
           const frac = event.phase === 'walls' ? 0.05 + (0.95 * event.done) / event.total : 0.05;
           S.gen = { frac, walls: null, K: null };
-          if (S.screen === 'generating') {
-            app.render();
-          }
+          app.paintGenerating();
         },
       });
       begin(kind, n, made.puzzle, seed, made.path, lucky);
-    } catch (error) {
-      console.error('Solid puzzle failed:', error);
+    } catch (error) { // cancelled by the player (silent), too slow, or failed: the menu comes back, the chance of a lucky game with it
+      if (!isAbort(error)) {
+        console.error('Solid puzzle failed:', error);
+        S.genNotice = isTimeout(error) ? 'err.generateSlow' : 'err.generate';
+      }
       if (lucky && app.luckyFailed) {
         await app.luckyFailed();
       }
       S.screen = 'menu';
       app.render();
-      alert(t('err.generate'));
+    } finally {
+      job.end();
+      if (S.genJob === job) {
+        S.genJob = null;
+      }
     }
   }
 

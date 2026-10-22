@@ -16,7 +16,7 @@ import { scatter } from '../src/core/gen/checkpoints.js';
 import { encodeFlags, decodeFlags, flagsToHex, hexToFlags, DEFAULT_FLAGS_INT, DEFAULT_GEN_FLAGS, DEFAULT_MINIMIZE_FLAGS, PLAY_FLAGS_INT } from '../src/core/gen/flags.js';
 import { minimizeWalls, makeUnique, refineWalls, minimizeFully, REFINE_CAP_X } from '../src/core/gen/walls.js';
 import { runSync } from '../src/core/run.js';
-import { runAsync, measured } from '../src/platform/run.js';
+import { runAsync, measured, cancellable, isAbort, isTimeout } from '../src/platform/run.js';
 import { createHoldReveal } from '../src/ui/hold-reveal.js';
 import { createDaily, utcDayNumber, utcDateString, dateOfDay, fetchGameOfDayFor } from '../src/features/daily.js';
 import { createReplay, earned, solvesToNext, stepOf, thresholdOf, REPLAY_SHOW, REPEAT_MIN_AGE, BACKFILL_DAYS } from '../src/features/replay.js';
@@ -1266,6 +1266,52 @@ const fakeStorage = (quota = Infinity) => { const m = new Map(), size = () => [.
 const atDay = d => () => new Date(Date.UTC(2026, 8, d, 12));
 const pending = [];
 const ta = (name, fn) => pending.push([name, fn]); // async tests, run after the sync ones
+
+ta('run: a signal stops runAsync at once: the generator is closed, no event follows, the promise rejects with AbortError', async () => {
+  let steps = 0, closed = false;
+  function* endless() {
+    try {
+      for (;;) { steps++; yield { frac: 0 }; }
+    } finally { closed = true; }
+  }
+  const job = cancellable(60000);
+  const events = [];
+  const run = runAsync(endless(), { onEvent: e => { events.push(e); if (events.length === 3) job.cancel(); }, sliceMs: 1, signal: job.signal });
+  let error = null;
+  try { await run; } catch (e) { error = e; }
+  job.end();
+  ok(isAbort(error) && !isTimeout(error), 'rejects with an AbortError');
+  ok(closed, 'the generator was closed (its finally ran)');
+  const seen = steps;
+  await new Promise(resolve => setTimeout(resolve, 30));
+  eq(steps, seen, 'no step runs after the cancel');
+  eq(events.length, 3, 'no event after the cancel');
+});
+ta('run: a signal that is already aborted runs nothing; a run that ends first leaves the signal alone', async () => {
+  let steps = 0;
+  function* counting() { steps++; yield { frac: 0 }; return 'done'; }
+  const job = cancellable(60000);
+  job.cancel();
+  let error = null;
+  try { await runAsync(counting(), { signal: job.signal }); } catch (e) { error = e; }
+  ok(isAbort(error), 'rejects with an AbortError');
+  eq(steps, 0, 'the generator never started');
+  const fresh = cancellable(60000);
+  eq(await runAsync(counting(), { signal: fresh.signal }), 'done', 'a run that finishes resolves as before');
+  fresh.end();
+  eq(fresh.signal.aborted, false, 'finishing does not abort the signal');
+});
+ta('run: cancellable() stops a run that never ends after its time; end() disarms the clock', async () => {
+  function* endless() { for (;;) yield { frac: 0 }; }
+  const slow = cancellable(20);
+  let error = null;
+  try { await runAsync(endless(), { signal: slow.signal, sliceMs: 1 }); } catch (e) { error = e; }
+  ok(isTimeout(error) && !isAbort(error), 'rejects with a TimeoutError');
+  const done = cancellable(10);
+  done.end();
+  await new Promise(resolve => setTimeout(resolve, 40));
+  eq(done.signal.aborted, false, 'end() cleared the clock');
+});
 
 // ---- hint-popover (minimal fake DOM — this repo has no browser/jsdom test runner, so a small
 // hand-rolled stub sufficient to exercise attachOne()'s branches is used instead of adding a new
