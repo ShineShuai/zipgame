@@ -111,6 +111,21 @@ const LAYERS = [
   { in: 'src/core/surface/', except: [], deny: ['src/core/gen/generate.js'] },
 ];
 
+// src/coop is a hidden trial that must stay removable (delete src/coop and test/coop, nothing else
+// breaks): nothing outside those folders may import it, and it may use only the read-only parts of
+// the app listed here (no leaderboard, behaviour log or stats store: it uploads and writes nothing
+// of the app's own). Its dynamic import (boot.js) is not seen by this static check.
+const COOP_DIRS = ['src/coop/', 'test/coop/'];
+const COOP_MAY_IMPORT = [
+  /^src\/core\//,
+  /^src\/view\/geometry\.js$/,
+  /^src\/apps\/play\/board\.js$/,
+  /^src\/features\/hints\.js$/,
+  /^src\/platform\/(run|sound|storage)\.js$/,
+  /^src\/ui\/i18n\.js$/,
+];
+const inCoop = name => COOP_DIRS.some(dir => name.startsWith(dir));
+
 const jsFiles = ['src', 'test', 'bench'].flatMap(dir => filesUnder(join(root, dir), '.js'));
 
 for (const file of jsFiles) {
@@ -137,6 +152,15 @@ for (const file of jsFiles) {
       if (name.startsWith(layer.in) && !layer.except.includes(name) && layer.deny.includes(shortName(target))) {
         report(file, line, `layering: ${name} must not import ${shortName(target)}`);
       }
+    }
+    const importer = shortName(file);
+    const imported = shortName(target);
+    if (inCoop(imported) && !inCoop(importer)) {
+      report(file, line, `coop: ${importer} must not import ${imported} (the trial is removable)`);
+    }
+    if (importer.startsWith('src/coop/') && !inCoop(imported)
+      && !COOP_MAY_IMPORT.some(allowed => allowed.test(imported))) {
+      report(file, line, `coop: ${importer} may not import ${imported}`);
     }
     if (!namedList) continue;
     const exported = exportedNames(target);

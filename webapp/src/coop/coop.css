@@ -1,0 +1,67 @@
+/* Styles of the hidden Free draw trial (src/coop). Loaded by app.js on the first reveal; uses only
+   the colour tokens of css/theme.css and nothing of the play page's own classes. */
+
+.coop-pill {
+  position: fixed; left: 10px; bottom: 10px; z-index: 60; padding: 6px 12px;
+  border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface);
+  color: var(--accent-text); font: inherit; font-size: 0.85rem; font-weight: 700; cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.coop-pill:hover { background: var(--accent-soft); }
+
+.coop-root {
+  position: fixed; inset: 0; z-index: 400; overflow-y: auto; background: var(--bg);
+  color: var(--text); -webkit-overflow-scrolling: touch;
+}
+.coop-shell { max-width: 780px; margin: 0 auto; padding: 14px 14px 40px; }
+.coop-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.coop-head b { color: var(--heading); font-size: 1.2rem; }
+.coop-tag {
+  padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-text);
+  font-size: 0.75rem; font-weight: 700;
+}
+.coop-head .coop-btn { margin-left: auto; }
+.coop-main { display: flex; flex-direction: column; gap: 12px; }
+.coop-help, .coop-label { margin: 0; color: var(--muted); font-size: 0.95rem; }
+.coop-label { font-weight: 700; }
+.coop-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.coop-hud { display: flex; gap: 16px; font-variant-numeric: tabular-nums; }
+.coop-msg { min-height: 1.4em; margin: 0; color: var(--muted); font-size: 0.95rem; }
+
+.coop-btn {
+  min-height: 44px; padding: 8px 16px; border: 2px solid var(--line-strong); border-radius: 14px;
+  background: var(--surface-2); color: var(--accent-text); font: inherit; font-weight: 700;
+  cursor: pointer;
+}
+.coop-btn:hover { background: var(--accent-soft); border-color: var(--accent); }
+.coop-btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.coop-btn:disabled { opacity: 0.5; cursor: default; }
+.coop-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.coop-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+.coop-frame {
+  padding: 10px; border: 2px solid var(--b-frame); border-radius: 16px; background: var(--b-stage);
+}
+.coop-board {
+  margin: 0 auto; touch-action: none; user-select: none; -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.coop-svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+
+.coop-done {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 14px;
+  border: 2px solid var(--accent); border-radius: 14px; background: var(--surface);
+}
+.coop-done b { color: var(--heading); font-size: 1.15rem; }
+.coop-done span { color: var(--muted); font-size: 0.95rem; }
+
+.coop-confirm {
+  position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
+  padding: 20px; background: var(--backdrop);
+}
+.coop-dialog {
+  display: flex; flex-direction: column; gap: 10px; max-width: 360px; padding: 18px;
+  border: 2px solid var(--line-strong); border-radius: 16px; background: var(--surface);
+}
+.coop-dialog b { color: var(--heading); font-size: 1.1rem; }
+.coop-dialog span { color: var(--muted); }

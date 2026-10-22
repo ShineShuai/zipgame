@@ -1607,8 +1607,13 @@ function startTimer() {
 function stopTimer() { if (S.timerId) { clearInterval(S.timerId); S.timerId = null; } }
 
 // ---------- hidden dev reveal: hold "v", or 5 taps on the bare app bar, or a pinned device ----------
+// The hidden trial in src/coop listens for this event; with nothing listening it does nothing.
+const announceReveal = () => document.dispatchEvent(
+  new CustomEvent('zip:reveal', { detail: S.showDev }),
+);
 function setDevReveal(on) {
   if (S.showDev === on || (!on && devPinned)) return; S.showDev = on;
+  announceReveal();
   if (!on) { S.giftTest = null; if (giftTold === DEV_GIFT_DAY) giftTold = null; } // the test gift goes with V
   if (gift) syncGift(); // the gift box, button and toast (re-draws the menu when the box comes or goes)
   const b = $('versionBadge'); if (b) b.style.display = on ? 'block' : 'none';
@@ -1658,6 +1663,7 @@ async function initDevPin() {
   if (mode) { await savePin(storage, mode === 'on'); stripShareParam(); }
   devPinned = await loadPin(storage);
   S.showDev = devPinned;
+  announceReveal();
   if (devPinned) measureStorage();
 }
 
