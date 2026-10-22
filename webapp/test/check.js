@@ -119,7 +119,7 @@ const COOP_DIRS = ['src/coop/', 'test/coop/'];
 const COOP_MAY_IMPORT = [
   /^src\/core\//,
   /^src\/view\/geometry\.js$/,
-  /^src\/apps\/play\/board\.js$/,
+  /^src\/apps\/play\/(board|icons)\.js$/,
   /^src\/features\/hints\.js$/,
   /^src\/platform\/(run|sound|storage)\.js$/,
   /^src\/ui\/i18n\.js$/,

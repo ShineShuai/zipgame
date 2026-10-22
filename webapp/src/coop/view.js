@@ -5,6 +5,10 @@ import { cellCenter, wallSegments } from '../view/geometry.js';
 
 // The Free draw board as SVG markup (pure). One line per drawn edge, so lines drawn in any order
 // and from anywhere look alike; a number is filled once a line touches its cell.
+// The colour of each player's lines: the orange of the single path and blue, a pair that stays
+// apart for colour-blind players too (both are tokens of css/theme.css, so dark mode follows).
+export const PLAYER_COLORS = [COLORS.path, COLORS.twoPath[1]];
+
 const line = ([x1, y1, x2, y2]) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
 
 // The middle of the edge a-b, in board units.
@@ -23,14 +27,19 @@ function gridMarkup(n) {
   return `<g stroke="${COLORS.grid}" stroke-width="1.5">${rules.join('')}</g>`;
 }
 
+// One group of lines per player that has drawn (always the first player's, even when empty).
 function drawnMarkup(puzzle, drawing) {
-  const segments = drawing.edges().map(([a, b]) => {
+  const byPlayer = new Map([[0, []]]);
+  for (const [a, b] of drawing.edges()) {
+    const player = drawing.ownerOf(a, b);
     const [x1, y1] = cellCenter(puzzle.n, a, CELL);
     const [x2, y2] = cellCenter(puzzle.n, b, CELL);
-    return line([x1, y1, x2, y2]);
-  });
-  return `<g data-role="lines" stroke="${COLORS.path}" stroke-width="${CELL * 0.28}" `
-    + `stroke-linecap="round" opacity="0.95">${segments.join('')}</g>`;
+    byPlayer.set(player, [...(byPlayer.get(player) ?? []), line([x1, y1, x2, y2])]);
+  }
+  const players = [...byPlayer.keys()].sort((x, y) => x - y);
+  return players.map(player => `<g data-role="lines" data-player="${player}" `
+    + `stroke="${PLAYER_COLORS[player] ?? PLAYER_COLORS[0]}" stroke-width="${CELL * 0.28}" `
+    + `stroke-linecap="round" opacity="0.95">${byPlayer.get(player).join('')}</g>`).join('');
 }
 
 function badgesMarkup(puzzle, drawing) {
@@ -70,7 +79,8 @@ export function maxBoardCss(n) {
 export function boardMarkup(puzzle, drawing, hint = null) {
   const size = puzzle.n * CELL;
   const walls = wallSegments(puzzle, CELL).map(line).join('');
-  return `<svg class="coop-svg" viewBox="0 0 ${size} ${size}" style="${maxBoardCss(puzzle.n)}">`
+  const style = maxBoardCss(puzzle.n);
+  return `<svg class="zip-svg coop-svg" viewBox="0 0 ${size} ${size}" style="${style}">`
     + `<rect width="${size}" height="${size}" rx="6" fill="${COLORS.tile}"/>`
     + gridMarkup(puzzle.n)
     + `<g stroke="${COLORS.wall}" stroke-width="6" stroke-linecap="round">${walls}</g>`

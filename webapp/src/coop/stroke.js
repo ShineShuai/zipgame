@@ -6,7 +6,9 @@ import { gridAdjacent } from '../core/rules.js';
 
 const sameEdge = ([a, b], x, y) => (a === x && b === y) || (a === y && b === x);
 
-export const startStroke = cell => ({ head: cell, added: [], removed: [] });
+// `player`: who is drawing (0 or 1); it colours the lines of the stroke. `removed` holds
+// [a, b, owner] of every line the stroke erased, so that Undo gives each back to its owner.
+export const startStroke = (cell, player = 0) => ({ head: cell, added: [], removed: [], player });
 
 // Moves the head of `stroke` onto `cell`. Returns { kind, reason? }:
 //   none     nothing happened (same cell, or not a neighbour: a fast drag skipped a cell)
@@ -33,11 +35,11 @@ export function strokeStep(drawing, stroke, cell) {
     if (drawing.degree(from) > 1) {
       return { kind: 'slide' };
     }
+    stroke.removed.push([from, cell, drawing.ownerOf(from, cell)]);
     drawing.remove(from, cell);
-    stroke.removed.push([from, cell]);
     return { kind: 'retract' };
   }
-  const reason = drawing.add(from, cell);
+  const reason = drawing.add(from, cell, stroke.player);
   if (reason) {
     return { kind: 'blocked', reason };
   }
