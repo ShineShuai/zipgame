@@ -37,8 +37,8 @@ export const isPentagon = p => p?.kind === PENTAGON_KIND;
 export const PENTAGON_SIZES = [4, 6, 8, 10]; // offered by the play app
 // Every board, by size and cells: 16, 24, 36, 48, 64, 80, 100, 120.
 // Do not use 9.8 (96 cells) in the play app, which affects the shared link code.
-export const PENTAGON_BOARD_SIZES = [4, 5, 6, 7, 8, 9, 9.8, 10, 11];
-export const PENTAGON_CELLS = { 4: 16, 5: 24, 6: 36, 7: 48, 8: 64, 9: 80, 9.8: 96, 10: 100, 11: 120 };
+export const PENTAGON_BOARD_SIZES = [4, 5, 6, 7, 8, 9, 10, 11];
+export const PENTAGON_CELLS = { 4: 16, 5: 24, 6: 36, 7: 48, 8: 64, 9: 80, 10: 100, 11: 120 };
 
 const PERIOD = (1 + Math.sqrt(3)) / Math.SQRT2; // the snub square tiling repeats every PERIOD
 const TILT = Math.PI / 12; // squares are turned by +-15 degrees
@@ -48,7 +48,7 @@ const SAME = 1e-6; // two points closer than this are one point
 // 4.37..4.63 (80), 4.64..5.20 (100) and 5.37..5.63 (120); the sizes below sit in the middle of
 // them.
 const WINDOW = {
-  4: [2, 2], 5: [2.5, 2.5], 6: [3, 3], 7: [3.5, 3.5], 8: [4, 4], 9: [4.5, 4.5], 9.8: [4, 6], 10: [4.9, 4.9],
+  4: [2, 2], 5: [2.5, 2.5], 6: [3, 3], 7: [3.5, 3.5], 8: [4, 4], 9: [4.5, 4.5], 10: [4.9, 4.9],
   11: [5.5, 5.5],
 };
 // Centres whose y differ by less than this are in one row (theoretically equal y values differ
