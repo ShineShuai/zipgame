@@ -21,9 +21,9 @@ test('every refusal reason that is shown to the player has a text', () => {
 
 test('tx follows the app language and fills the placeholders', () => {
   setLang('en');
-  assert.equal(tx('hintsLeft', 2), 'Hint (2 left)');
+  assert.equal(tx('generating', 40), 'Making a puzzle… 40%');
   setLang('zh');
-  assert.equal(tx('hintsLeft', 2), '提示（剩 2 次）');
+  assert.equal(tx('generating', 40), '正在生成… 40%');
   setLang('en');
   assert.equal(tx('no such key'), 'no such key');
 });

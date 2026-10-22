@@ -70,6 +70,7 @@ async function open() {
   screen = openScreen({
     stats,
     saveStats: guard(() => saveStats(storage, stats)),
+    isRevealed: () => revealed,
     onClose: () => {
       screen = null;
       if (revealed) {
@@ -79,10 +80,19 @@ async function open() {
   });
 }
 
+// Called by boot.js when the page was opened by an invite link (#coop=<code>): the trial opens
+// by itself, as the guest. The code is the invite of the host.
+export const openFromLink = guard(async code => {
+  ensureStyles();
+  await open();
+  screen?.joinFrom(code);
+});
+
 // Called by boot.js whenever the app's hidden things are revealed (true) or hidden (false).
 export function reveal(on) {
   revealed = on;
   ensureStyles();
+  screen?.setRevealed(on);
   if (on) {
     showPill();
   } else {

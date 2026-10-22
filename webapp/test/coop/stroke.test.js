@@ -104,3 +104,25 @@ test('undoStroke takes back a whole stroke: its lines go, what it erased returns
   assert.deepEqual(drawing.edges().sort(), [[4, 5], [5, 6]]);
   assert.equal(drawing.degree(8), 0);
 });
+
+test('the lines of a stroke belong to its player', () => {
+  const drawing = setup();
+  kinds(drawing, startStroke(6, 1), [7, 11]);
+  kinds(drawing, startStroke(8, 0), [9]);
+  assert.equal(drawing.ownerOf(6, 7), 1);
+  assert.equal(drawing.ownerOf(7, 11), 1);
+  assert.equal(drawing.ownerOf(8, 9), 0);
+  assert.equal(startStroke(3).player, 0);
+});
+
+test('erasing the other player\'s line is allowed; Undo gives it back to its owner', () => {
+  const drawing = setup();
+  kinds(drawing, startStroke(4, 1), [5, 6]);
+  const mine = startStroke(6, 0);
+  assert.deepEqual(kinds(drawing, mine, [5, 4]), ['retract', 'retract']);
+  assert.equal(drawing.count(), 0);
+  assert.deepEqual(mine.removed, [[6, 5, 1], [5, 4, 1]]);
+  undoStroke(drawing, mine);
+  assert.equal(drawing.ownerOf(4, 5), 1);
+  assert.equal(drawing.ownerOf(5, 6), 1);
+});

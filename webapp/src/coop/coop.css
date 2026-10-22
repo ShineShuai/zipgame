@@ -1,5 +1,7 @@
-/* Styles of the hidden Free draw trial (src/coop). Loaded by app.js on the first reveal; uses only
-   the colour tokens of css/theme.css and nothing of the play page's own classes. */
+/* Styles of the hidden Free draw trial (src/coop). Loaded by app.js on the first reveal. The
+   screens are built from the play app's own classes (card, btn, hud, grid-wrap, game-layout,
+   actions, modal ...), so only what the trial adds is styled here, with the tokens of
+   css/theme.css. */
 
 .coop-pill {
   position: fixed; left: 10px; bottom: 10px; z-index: 60; padding: 6px 12px;
@@ -9,59 +11,52 @@
 }
 .coop-pill:hover { background: var(--accent-soft); }
 
+/* a layer over the page, below the app bar (app.js sets its top) */
 .coop-root {
-  position: fixed; inset: 0; z-index: 400; overflow-y: auto; background: var(--bg);
-  color: var(--text); -webkit-overflow-scrolling: touch;
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 400; overflow-y: auto;
+  overscroll-behavior: contain; background: var(--bg); color: var(--text);
+  -webkit-overflow-scrolling: touch;
 }
-.coop-shell { max-width: 780px; margin: 0 auto; padding: 14px 14px 40px; }
-.coop-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-.coop-head b { color: var(--heading); font-size: 1.2rem; }
+/* like #app of the play page */
+.coop-page {
+  display: flex; flex-direction: column; gap: 14px; max-width: 1200px; margin: 0 auto;
+  padding: 18px 20px 48px;
+}
+.coop-page .card { margin: 0; }
+@media (max-width: 640px) {
+  .coop-page { padding: 10px 10px calc(24px + env(safe-area-inset-bottom, 0px)); }
+  .coop-page.has-actions { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+}
+
 .coop-tag {
-  padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-text);
-  font-size: 0.75rem; font-weight: 700;
+  margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft);
+  color: var(--accent-text); font-size: 0.75rem; font-weight: 700; vertical-align: middle;
 }
-.coop-head .coop-btn { margin-left: auto; }
-.coop-main { display: flex; flex-direction: column; gap: 12px; }
-.coop-help, .coop-label { margin: 0; color: var(--muted); font-size: 0.95rem; }
-.coop-label { font-weight: 700; }
-.coop-row { display: flex; flex-wrap: wrap; gap: 8px; }
-.coop-hud { display: flex; gap: 16px; font-variant-numeric: tabular-nums; }
-.coop-msg { min-height: 1.4em; margin: 0; color: var(--muted); font-size: 0.95rem; }
 
-.coop-btn {
-  min-height: 44px; padding: 8px 16px; border: 2px solid var(--line-strong); border-radius: 14px;
-  background: var(--surface-2); color: var(--accent-text); font: inherit; font-weight: 700;
-  cursor: pointer;
+/* the invite and the reply: steps with a link or a code to copy, a place to paste */
+.coop-steps { display: flex; flex-direction: column; gap: 16px; margin: 0 0 12px; padding: 0;
+  list-style: none; }
+.coop-steps li { display: flex; flex-direction: column; gap: 8px; }
+.coop-copy { display: flex; flex-wrap: wrap; gap: 8px; }
+.coop-copy .btn { flex: 0 0 auto; min-height: 44px; padding: 6px 16px; }
+.coop-copy input, .coop-page textarea {
+  min-width: 0; padding: 10px 12px; border: 2px solid var(--line-strong); border-radius: 12px;
+  background: var(--surface); color: var(--heading); font: inherit; font-size: 0.9rem;
 }
-.coop-btn:hover { background: var(--accent-soft); border-color: var(--accent); }
-.coop-btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
-.coop-btn:disabled { opacity: 0.5; cursor: default; }
-.coop-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-.coop-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.coop-copy input { flex: 1 1 220px; }
+.coop-page textarea { width: 100%; resize: vertical; }
+.coop-copy input:focus, .coop-page textarea:focus { outline: none; border-color: var(--accent); }
+@media (max-width: 640px) { .coop-copy input, .coop-page textarea { font-size: 16px; } }
 
-.coop-frame {
-  padding: 10px; border: 2px solid var(--b-frame); border-radius: 16px; background: var(--b-stage);
+/* who draws in which colour (online) */
+.coop-players { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+.coop-chip {
+  display: inline-flex; align-items: center; gap: 8px; padding: 3px 12px; border: 1px solid var(--line);
+  border-radius: 999px; background: var(--surface-2); font-size: 0.9rem; font-weight: 700;
+  color: var(--heading);
 }
-.coop-board {
-  margin: 0 auto; touch-action: none; user-select: none; -webkit-user-select: none;
-  -webkit-touch-callout: none;
-}
-.coop-svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+.coop-chip i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; }
+.coop-chip.gone { opacity: 0.5; text-decoration: line-through; }
 
-.coop-done {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 14px;
-  border: 2px solid var(--accent); border-radius: 14px; background: var(--surface);
-}
-.coop-done b { color: var(--heading); font-size: 1.15rem; }
-.coop-done span { color: var(--muted); font-size: 0.95rem; }
-
-.coop-confirm {
-  position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
-  padding: 20px; background: var(--backdrop);
-}
-.coop-dialog {
-  display: flex; flex-direction: column; gap: 10px; max-width: 360px; padding: 18px;
-  border: 2px solid var(--line-strong); border-radius: 16px; background: var(--surface);
-}
-.coop-dialog b { color: var(--heading); font-size: 1.1rem; }
-.coop-dialog span { color: var(--muted); }
+.coop-msg { min-height: 1.4em; margin: 8px 0 0; color: var(--muted); font-size: 0.95rem; }
+.coop-svg { margin: 0 auto; }

@@ -1,28 +1,71 @@
-import { PLAY_SIZES, generate } from '../core/gen/generate.js';
+import { generate } from '../core/gen/generate.js';
+import { serialize } from '../core/format.js';
+import { playGradesFor } from '../core/grades.js';
+import { actionIcon } from '../apps/play/icons.js';
 import { HINT_PENALTY_S, maxHints, penalizedTime } from '../features/hints.js';
 import { runAsync } from '../platform/run.js';
 import {
   sfxBack, sfxBlocked, sfxCheckpoint, sfxMove, sfxSolved,
 } from '../platform/sound.js';
+import { t } from '../ui/i18n.js';
 import { cellAtPoint } from '../view/geometry.js';
 import { DEFAULT_SIZE } from './config.js';
 import { edgeAt } from './cut.js';
-import { createDrawing, unsupported } from './drawing.js';
+import { unsupported } from './drawing.js';
 import { coopHint } from './hint.js';
+import {
+  confirmDialog, exportDialog, gamePage, generatingPage, invitePage, joinPage, lobbyPage,
+  menuPage, resultCard,
+} from './pages.js';
+import { createReplica } from './replica.js';
+import {
+  acceptReply, createInvite, joinInvite, rtcSupported,
+} from './rtc.js';
+import { createSession } from './session.js';
 import { recordSolve } from './stats.js';
-import { changed, startStroke, strokeStep, undoStroke } from './stroke.js';
+import {
+  changed, startStroke, strokeStep, undoStroke,
+} from './stroke.js';
 import { tx } from './texts.js';
 import { boardMarkup } from './view.js';
 
-// The Free draw overlay: a full-screen layer on top of the app, with its own markup, its own state
-// and its own pointer handling. It never reads or writes the app's state; it only draws on top.
-// `env` = { stats, saveStats, onClose }: the trial's own statistics record, how to store it, and
-// what to do when the player leaves.
+// The Free draw screens: a full-screen layer on top of the app's page, below its app bar, with its
+// own markup, state and pointer handling. It never reads or writes the app's state. Phases:
+//   menu -> (solo) generating -> playing -> solved
+//   menu -> inviting (host) | joining (guest) -> lobby -> generating -> playing -> solved
+// `env` = { stats, saveStats, onClose, isRevealed }: the trial's own statistics record, how to
+// store it, what to do when the player leaves, and whether the app's hidden things are revealed.
 const randomSeed = () => (Math.random() * 2 ** 31) >>> 0;
+const seconds = value => `${value.toFixed(1)}s`;
+const el = id => document.getElementById(id);
 const HOLD_MS = 500; // press and hold this long on a line to cut it
 const HOLD_SLOP_PX = 10; // moving the pointer farther than this is a drag, not a hold
-const seconds = value => `${value.toFixed(1)}s`;
-const el = (id) => document.getElementById(id);
+const CONNECT_MS = 30000; // a connection that has not opened by then is given up
+const linkFor = code => `${location.href.split('#')[0].split('?')[0]}#coop=${code}`;
+
+async function copyText(text, input) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      input.select();
+      return document.execCommand('copy');
+    } catch {
+      return false;
+    }
+  }
+}
+
+function gradeOf(puzzle) {
+  try {
+    const { trap } = playGradesFor(puzzle);
+    return trap.ok ? trap : null;
+  } catch (error) {
+    console.warn('coop: grading failed', error);
+    return null;
+  }
+}
 
 export function openScreen(env) {
   const root = document.createElement('div');
@@ -31,58 +74,111 @@ export function openScreen(env) {
   document.body.append(root);
 
   const state = {
-    phase: 'setup', // setup | generating | playing | solved
+    phase: 'menu',
+    role: 'solo', // solo | host | guest
     size: DEFAULT_SIZE,
+    token: 0, // changes when work in progress (a generation, a handshake) must be forgotten
     progress: 0,
-    token: 0, // changes when a running generation must be forgotten
     puzzle: null,
-    drawing: null,
-    confirming: false, // the "leave this game?" question is on screen
-    cutAt: -Infinity, // when a line was last cut (a touch long press also fires a contextmenu)
+    seed: null,
+    grade: null,
+    drawing: null, // a replica (replica.js), also when playing alone
     history: [],
     hint: null,
     hintsUsed: 0,
     startedAt: 0,
     elapsed: 0,
     timer: null,
+    confirming: false,
+    exporting: false,
+    revealed: env.isRevealed(),
+    cutAt: -Infinity, // when a line was last cut (a touch long press also fires a contextmenu)
+    session: null,
+    connection: null,
+    link: '',
+    code: '',
+    status: '',
+    error: false,
+    peerHere: false,
+    waiting: false, // the host waits for the other device to take the new puzzle
+    connectTimer: null,
   };
-  const strokes = new Map(); // pointer id -> { stroke, refused }
+  const strokes = new Map(); // pointer id -> { stroke, refused, cut, hold, x, y, x0, y0 }
+  const pid = () => (state.session ? state.session.pid : 0);
+  const canShare = typeof navigator.share === 'function';
 
-  // ---------- markup ----------
-  const shell = body => `<div class="coop-shell"><header class="coop-head">`
-    + `<b>${tx('title')}</b><span class="coop-tag">${tx('trial')}</span>`
-    + `<button type="button" class="coop-btn" data-act="exit">${tx('exit')}</button></header>`
-    + `<main class="coop-main">${body}</main></div>`;
-
-  function renderSetup() {
-    const sizes = PLAY_SIZES.map(n => `<button type="button" class="coop-btn coop-size" `
-      + `data-act="size" data-size="${n}" aria-pressed="${n === state.size}">`
-      + `${tx('cells', n)}</button>`).join('');
-    root.innerHTML = shell(`<p class="coop-help">${tx('help')}</p>`
-      + `<p class="coop-label">${tx('size')}</p><div class="coop-row">${sizes}</div>`
-      + `<div class="coop-row"><button type="button" class="coop-btn coop-primary" `
-      + `data-act="start">${tx('start')}</button></div><p class="coop-msg" id="coopMsg" `
-      + 'role="status" aria-live="polite"></p>');
+  // ---------- layer ----------
+  function placeRoot() {
+    const bar = document.querySelector('.app-bar');
+    root.style.top = `${bar ? Math.round(bar.getBoundingClientRect().bottom) : 0}px`;
   }
 
-  function renderGenerating() {
-    root.innerHTML = shell(`<p class="coop-help" id="coopGen">${tx('generating', state.progress)}`
-      + '</p>');
+  // ---------- screens ----------
+  function render() {
+    const rtc = rtcSupported();
+    const pages = {
+      menu: () => menuPage({ size: state.size, rtc }),
+      inviting: () => invitePage({
+        link: state.link, status: state.status, error: state.error, canShare,
+      }),
+      joining: () => joinPage({
+        code: state.code, status: state.status, error: state.error, canShare,
+      }),
+      lobby: () => lobbyPage({ role: state.role, size: state.size, status: state.status }),
+      generating: () => generatingPage({
+        percent: state.progress, waiting: state.waiting, online: Boolean(state.session),
+      }),
+    };
+    if (pages[state.phase]) {
+      root.innerHTML = pages[state.phase]();
+    } else {
+      renderGame();
+    }
+    root.scrollTop = 0;
+  }
+
+  const setStatus = (text, error = false) => {
+    state.status = text;
+    state.error = error;
+    const note = el('coopStatus');
+    if (note) {
+      note.textContent = text;
+      note.classList.toggle('error', error);
+    }
+  };
+
+  const setMessage = text => {
+    const message = el('coopMsg');
+    if (message) {
+      message.textContent = text;
+    }
+  };
+
+  function gameView() {
+    const trap = state.grade;
+    const online = Boolean(state.session);
+    const role = online ? state.role : 'solo';
+    return {
+      n: state.puzzle.n,
+      online,
+      pid: pid(),
+      peerHere: state.peerHere,
+      revealed: state.revealed,
+      grade: trap ? trap.grade : null,
+      seedText: `seed ${state.seed} · ${role}`,
+      devText: trap ? `trap ${trap.predicted.toFixed(2)}` : 'ungraded',
+      time: state.elapsed,
+      hintsLeft: { used: state.hintsUsed, cap: maxHints(state.puzzle) },
+      canNew: state.role !== 'guest',
+    };
   }
 
   function renderGame() {
-    root.innerHTML = shell(`<p class="coop-help">${tx('help')}</p>`
-      + `<div class="coop-hud"><span>${tx('time')} <b id="coopTime">0.0s</b></span></div>`
-      + '<div id="coopDone"></div>'
-      + '<div class="coop-frame"><div class="coop-board" id="coopBoard"></div></div>'
-      + '<p class="coop-msg" id="coopMsg" role="status" aria-live="polite"></p>'
-      + '<div class="coop-row" id="coopTools">'
-      + `<button type="button" class="coop-btn" data-act="undo">${tx('undo')}</button>`
-      + `<button type="button" class="coop-btn" data-act="clear">${tx('clear')}</button>`
-      + '<button type="button" class="coop-btn" data-act="hint" id="coopHint"></button></div>');
+    root.innerHTML = gamePage(gameView());
     redrawBoard();
-    updateHintButton();
-    updateTime();
+    if (state.phase === 'solved') {
+      renderDone();
+    }
   }
 
   function redrawBoard() {
@@ -94,25 +190,163 @@ export function openScreen(env) {
 
   function updateHintButton() {
     const button = el('coopHint');
-    if (!button) {
-      return;
+    if (button) {
+      const cap = maxHints(state.puzzle);
+      button.innerHTML = `${actionIcon('hint')}${t('game.hint', state.hintsUsed, cap)}`;
+      button.disabled = state.phase !== 'playing';
     }
-    const left = maxHints(state.puzzle) - state.hintsUsed;
-    button.textContent = tx('hintsLeft', left);
-    button.disabled = state.phase !== 'playing';
   }
-
-  const setMessage = text => {
-    const message = el('coopMsg');
-    if (message) {
-      message.textContent = text;
-    }
-  };
 
   function updateTime() {
     const time = el('coopTime');
     if (time) {
       time.textContent = seconds(state.elapsed);
+    }
+  }
+
+  // ---------- connection ----------
+  function teardown() {
+    state.token++;
+    clearTimeout(state.connectTimer);
+    state.connectTimer = null;
+    stopTimer();
+    strokes.forEach(endHold);
+    strokes.clear();
+    if (state.session) {
+      state.session.leave();
+    }
+    state.connection?.close();
+    Object.assign(state, {
+      session: null, connection: null, role: 'solo', peerHere: false, waiting: false,
+      link: '', code: '', status: '', error: false,
+    });
+  }
+
+  function showMenu() {
+    teardown();
+    state.phase = 'menu';
+    render();
+  }
+
+  function armConnectTimer() {
+    clearTimeout(state.connectTimer);
+    state.connectTimer = setTimeout(() => {
+      if (state.phase === 'inviting' || state.phase === 'joining') {
+        setStatus(tx('noConnection'), true);
+      }
+    }, CONNECT_MS);
+  }
+
+  // Wires a new connection to a session; when the channel opens, both sides say hello.
+  function adopt(connection, role) {
+    state.connection = connection;
+    state.role = role;
+    state.session = createSession({
+      role, channel: connection.channel, onEvent: onSessionEvent,
+    });
+    connection.channel.onopen = () => {
+      clearTimeout(state.connectTimer);
+      state.session.hello();
+      state.phase = 'lobby';
+      state.status = role === 'host' ? tx('connected') : tx('waitStart');
+      state.error = false;
+      render();
+    };
+  }
+
+  async function hostInvite() {
+    teardown();
+    const token = state.token;
+    Object.assign(state, { phase: 'inviting', role: 'host', status: tx('making') });
+    render();
+    try {
+      const { code, connection } = await createInvite();
+      if (token !== state.token) {
+        connection.close();
+        return;
+      }
+      adopt(connection, 'host');
+      state.link = linkFor(code);
+      state.status = tx('waitFriend');
+      render();
+      armConnectTimer();
+    } catch (error) {
+      console.warn('coop: invite failed', error);
+      setStatus(tx('noRtc'), true);
+    }
+  }
+
+  async function connectReply() {
+    const field = el('coopReply');
+    if (!field || !state.connection) {
+      return;
+    }
+    try {
+      await acceptReply(state.connection, field.value);
+      setStatus(tx('connecting'));
+      armConnectTimer();
+    } catch {
+      setStatus(tx('badCode'), true);
+    }
+  }
+
+  async function guestJoin(text) {
+    teardown();
+    const token = state.token;
+    Object.assign(state, { phase: 'joining', role: 'guest', status: tx('joining') });
+    render();
+    try {
+      const { code, connection } = await joinInvite(text);
+      if (token !== state.token) {
+        connection.close();
+        return;
+      }
+      adopt(connection, 'guest');
+      state.code = code;
+      state.status = tx('connecting');
+      render();
+      armConnectTimer();
+    } catch (error) {
+      state.error = true;
+      state.status = error.message === 'bad code' ? tx('badCode') : tx('noRtc');
+      render();
+    }
+  }
+
+  function onSessionEvent(event) {
+    switch (event.type) {
+      case 'peer':
+        state.peerHere = true;
+        if (!event.compatible) {
+          setStatus(tx('incompatible'), true);
+        }
+        break;
+      case 'puzzle': // guest: the host's new puzzle; the game starts on 'start'
+        Object.assign(state, { puzzle: event.puzzle, seed: event.seed, drawing: event.replica });
+        break;
+      case 'start':
+        beginPlaying();
+        break;
+      case 'op':
+        if (state.phase === 'playing') {
+          afterEdit();
+        }
+        break;
+      case 'rejected':
+        setMessage(tx('rejected'));
+        redrawBoard();
+        break;
+      case 'hint':
+        applyHint(event.hint);
+        break;
+      default: // left, closed
+        state.peerHere = false;
+        el('coopPeer')?.classList.add('gone');
+        setMessage(tx('peerLeft'));
+        if (state.phase === 'lobby') {
+          setStatus(tx('peerLeft'), true);
+        }
+        break;
     }
   }
 
@@ -132,13 +366,18 @@ export function openScreen(env) {
   }
 
   async function startGame() {
+    if (state.role === 'guest') {
+      setMessage(tx('onlyHost'));
+      return;
+    }
     const token = ++state.token;
-    state.phase = 'generating';
-    state.progress = 0;
-    renderGenerating();
+    const seed = randomSeed();
+    Object.assign(state, { phase: 'generating', progress: 0, waiting: false });
+    stopTimer();
+    render();
     let puzzle = null;
     try {
-      puzzle = await runAsync(generate(state.size, randomSeed()), {
+      puzzle = await runAsync(generate(state.size, seed), {
         onEvent: event => {
           if (token === state.token && event.frac != null) {
             state.progress = Math.round(100 * event.frac);
@@ -156,56 +395,88 @@ export function openScreen(env) {
       return; // the player left meanwhile
     }
     if (!puzzle || unsupported(puzzle)) {
-      state.phase = 'setup';
-      renderSetup();
-      setMessage(tx('failed'));
+      state.phase = state.session ? 'lobby' : 'menu';
+      state.status = tx('failed');
+      render();
       return;
     }
     state.puzzle = puzzle;
-    state.drawing = createDrawing(puzzle);
-    state.history = [];
-    state.hint = null;
-    state.hintsUsed = 0;
-    state.elapsed = 0;
-    state.phase = 'playing';
+    state.seed = seed;
+    if (state.session) {
+      state.drawing = state.session.newGame(puzzle, seed);
+      state.waiting = true;
+      render(); // the game begins when the other device has the puzzle ('start')
+    } else {
+      state.drawing = createReplica(puzzle, { pid: 0 });
+      beginPlaying();
+    }
+  }
+
+  function beginPlaying() {
+    state.grade = gradeOf(state.puzzle);
+    Object.assign(state, {
+      phase: 'playing', history: [], hint: null, hintsUsed: 0, elapsed: 0, waiting: false,
+    });
     strokes.clear();
     renderGame();
     startTimer();
   }
 
-  async function finish() {
+  function finish() {
     stopTimer();
     state.phase = 'solved';
     state.elapsed = (performance.now() - state.startedAt) / 1000;
     state.hint = null;
     sfxSolved();
-    const total = penalizedTime(state.elapsed, state.hintsUsed);
-    const summary = recordSolve(env.stats, state.puzzle.n, total);
-    env.saveStats();
     redrawBoard();
     updateHintButton();
     updateTime();
+    renderDone();
+  }
+
+  function renderDone() {
+    const total = penalizedTime(state.elapsed, state.hintsUsed);
+    const online = Boolean(state.session);
+    const summary = recordOnce(online, total);
     const penalty = state.hintsUsed > 0
-      ? tx('penalty', seconds(total), HINT_PENALTY_S * state.hintsUsed, state.hintsUsed)
+      ? t('game.penalty', seconds(HINT_PENALTY_S * state.hintsUsed), state.hintsUsed)
       : '';
+    const lines = [];
+    if (online) {
+      const counts = [0, 0];
+      for (const [a, b] of state.drawing.edges()) {
+        counts[state.drawing.ownerOf(a, b) === pid() ? 0 : 1]++;
+      }
+      lines.push(tx('split', counts[0], counts[1]));
+    }
+    lines.push(tx(online ? 'stats2' : 'stats', seconds(summary.best), seconds(summary.mean),
+      summary.n));
     const done = el('coopDone');
-    done.innerHTML = `<div class="coop-done"><b>${tx('solved', seconds(total))}</b>`
-      + `${penalty ? `<span>${penalty}</span>` : ''}`
-      + `<span>${tx('stats', seconds(summary.best), seconds(summary.mean), summary.n)}</span>`
-      + `<button type="button" class="coop-btn coop-primary" data-act="again">${tx('again')}`
-      + '</button></div>';
+    if (done) {
+      done.innerHTML = resultCard({ solved: t('game.solved', seconds(total), penalty), lines });
+    }
+  }
+
+  // Records the solved game in the local statistics once, however often the screen is drawn.
+  let recorded = null;
+  function recordOnce(online, total) {
+    if (recorded?.token !== state.startedAt) {
+      const key = online ? `${state.puzzle.n}x2` : state.puzzle.n;
+      recorded = { token: state.startedAt, summary: recordSolve(env.stats, key, total) };
+      env.saveStats();
+    }
+    return recorded.summary;
   }
 
   function afterEdit() {
     state.hint = null;
     redrawBoard();
-    if (state.drawing.solved()) {
+    if (state.phase === 'playing' && state.drawing.solved()) {
       finish();
     }
   }
 
   // ---------- pointer input ----------
-  // The pointer is measured against the drawing itself: the wrapper around it can be wider.
   const drawingRect = board => board.firstElementChild.getBoundingClientRect();
 
   function cellAt(board, event) {
@@ -217,6 +488,39 @@ export function openScreen(env) {
       rect.width,
       rect.height,
     );
+  }
+
+  // Cuts the line under the point (client coordinates), if there is one: true when it did.
+  function cutAt(clientX, clientY, player) {
+    const rect = drawingRect(el('coopBoard'));
+    const n = state.puzzle.n;
+    const x = ((clientX - rect.left) / rect.width) * n;
+    const y = ((clientY - rect.top) / rect.height) * n;
+    const edge = edgeAt(state.drawing, x, y);
+    if (!edge) {
+      return false;
+    }
+    const owner = state.drawing.ownerOf(...edge);
+    state.drawing.remove(...edge);
+    state.history.push({ head: edge[0], added: [], removed: [[...edge, owner]], player });
+    state.cutAt = performance.now();
+    sfxBack();
+    setMessage(tx('cut'));
+    afterEdit();
+    return true;
+  }
+
+  function onHoldElapsed(entry) {
+    entry.hold = null;
+    const player = entry.stroke.player;
+    if (state.phase === 'playing' && !changed(entry.stroke) && cutAt(entry.x0, entry.y0, player)) {
+      entry.cut = true;
+    }
+  }
+
+  function endHold(entry) {
+    clearTimeout(entry.hold);
+    entry.hold = null;
   }
 
   function applyStep(entry, cell) {
@@ -245,39 +549,8 @@ export function openScreen(env) {
     afterEdit();
   }
 
-  // Cuts the line under the point (client coordinates), if there is one: true when it did.
-  function cutAt(clientX, clientY) {
-    const rect = drawingRect(el('coopBoard'));
-    const n = state.puzzle.n;
-    const x = ((clientX - rect.left) / rect.width) * n;
-    const y = ((clientY - rect.top) / rect.height) * n;
-    const edge = edgeAt(state.drawing, x, y);
-    if (!edge) {
-      return false;
-    }
-    state.drawing.remove(...edge);
-    state.history.push({ head: edge[0], added: [], removed: [edge] });
-    state.cutAt = performance.now();
-    sfxBack();
-    setMessage(tx('cut'));
-    afterEdit();
-    return true;
-  }
-
-  function onHoldElapsed(entry) {
-    entry.hold = null;
-    if (state.phase === 'playing' && !changed(entry.stroke) && cutAt(entry.x0, entry.y0)) {
-      entry.cut = true;
-    }
-  }
-
-  function endHold(entry) {
-    clearTimeout(entry.hold);
-    entry.hold = null;
-  }
-
   function onPointerDown(event) {
-    if (state.phase !== 'playing') {
+    if (state.phase !== 'playing' || state.confirming || state.exporting) {
       return;
     }
     const board = el('coopBoard');
@@ -292,7 +565,7 @@ export function openScreen(env) {
       // no capture (not supported here): the drag still works while the pointer stays on the board
     }
     const entry = {
-      stroke: startStroke(cell),
+      stroke: startStroke(cell, pid()),
       refused: null,
       cut: false,
       hold: null,
@@ -342,6 +615,17 @@ export function openScreen(env) {
   }
 
   // ---------- buttons ----------
+  function applyHint(hint) {
+    if (!hint || !Array.isArray(hint.edge) || state.phase !== 'playing') {
+      return;
+    }
+    state.hint = { kind: hint.kind === 'wrong' ? 'wrong' : 'next', edge: hint.edge };
+    state.hintsUsed = Math.max(state.hintsUsed, Number(hint.used) || 0);
+    setMessage(tx(state.hint.kind === 'wrong' ? 'hintWrong' : 'hintNext'));
+    redrawBoard();
+    updateHintButton();
+  }
+
   function showHint() {
     if (state.phase !== 'playing') {
       return;
@@ -354,13 +638,11 @@ export function openScreen(env) {
     if (hint.kind === 'none') {
       return;
     }
-    state.hintsUsed++;
-    state.hint = hint;
-    setMessage(tx(hint.kind === 'wrong' ? 'hintWrong' : 'hintNext'));
-    redrawBoard();
-    updateHintButton();
+    applyHint({ ...hint, used: state.hintsUsed + 1 });
+    state.session?.sendHint({ kind: hint.kind, edge: hint.edge, used: state.hintsUsed });
   }
 
+  // Takes back this player's last stroke.
   function undo() {
     const stroke = state.history.pop();
     if (state.phase === 'playing' && stroke) {
@@ -370,6 +652,7 @@ export function openScreen(env) {
     }
   }
 
+  // Erases this player's lines (alone: all of them).
   function clearAll() {
     if (state.phase === 'playing') {
       state.drawing.clear();
@@ -378,21 +661,21 @@ export function openScreen(env) {
     }
   }
 
-  // ---------- leaving ----------
+  // ---------- dialogs ----------
   // Asked only when a game is running and there is something to lose: a line on the board.
   const needsConfirm = () => state.phase === 'playing' && state.drawing.count() > 0;
 
-  function askLeave() {
-    state.confirming = true;
-    root.insertAdjacentHTML('beforeend', `<div class="coop-confirm" id="coopConfirm" `
-      + 'role="alertdialog" aria-modal="true" aria-labelledby="coopConfirmTitle">'
-      + `<div class="coop-dialog"><b id="coopConfirmTitle">${tx('leaveTitle')}</b>`
-      + `<span>${tx('leaveBody')}</span><div class="coop-row">`
-      + `<button type="button" class="coop-btn coop-primary" id="coopStay" data-act="stay">`
-      + `${tx('stay')}</button>`
-      + `<button type="button" class="coop-btn" data-act="leave">${tx('leave')}</button>`
-      + '</div></div></div>');
-    el('coopStay')?.focus();
+  function requestLeave() {
+    if (state.confirming) {
+      return;
+    }
+    if (needsConfirm()) {
+      state.confirming = true;
+      root.insertAdjacentHTML('beforeend', confirmDialog());
+      el('coopStay')?.focus();
+    } else {
+      showMenu();
+    }
   }
 
   function closeConfirm() {
@@ -400,15 +683,61 @@ export function openScreen(env) {
     el('coopConfirm')?.remove();
   }
 
-  function requestExit() {
-    if (state.confirming) {
+  function openExport() {
+    if (!state.puzzle || state.exporting) {
       return;
     }
-    if (needsConfirm()) {
-      askLeave();
-    } else {
-      close();
+    state.exporting = true;
+    root.insertAdjacentHTML('beforeend', exportDialog(serialize(state.puzzle)));
+    setTimeout(() => el('coopExportText')?.focus(), 30);
+  }
+
+  function closeExport() {
+    state.exporting = false;
+    el('coopExport')?.remove();
+  }
+
+  async function copyFrom(button) {
+    const input = el(button.dataset.from);
+    if (input && (await copyText(input.value, input))) {
+      const old = button.textContent;
+      button.textContent = tx('copied');
+      setTimeout(() => {
+        button.textContent = old;
+      }, 1500);
     }
+  }
+
+  async function shareFrom(button) {
+    const input = el(button.dataset.from);
+    try {
+      await navigator.share({ title: tx('title'), url: input.value });
+    } catch {
+      // the share sheet was closed
+    }
+  }
+
+  async function copyExport() {
+    const text = el('coopExportText');
+    const done = text && (await copyText(text.value, text));
+    const message = el('coopExportMsg');
+    if (message) {
+      message.textContent = done ? tx('copied') : '';
+    }
+  }
+
+  function leaveGame() {
+    closeConfirm();
+    showMenu();
+  }
+
+  function close() {
+    teardown();
+    document.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('resize', placeRoot);
+    languageWatch?.disconnect();
+    root.remove();
+    env.onClose();
   }
 
   function onClick(event) {
@@ -417,48 +746,76 @@ export function openScreen(env) {
       return;
     }
     const actions = {
-      exit: requestExit,
-      stay: closeConfirm,
-      leave: close,
-      size: () => {
-        state.size = Number(button.dataset.size);
-        renderSetup();
+      exit: close,
+      solo: () => {
+        state.role = 'solo';
+        startGame();
       },
+      host: hostInvite,
+      connect: connectReply,
+      cancel: showMenu,
       start: startGame,
-      again: startGame,
+      menu: requestLeave,
+      new: startGame,
+      leave: leaveGame,
+      stay: closeConfirm,
       undo,
       clear: clearAll,
       hint: showHint,
+      export: openExport,
+      'export-close': closeExport,
+      'export-copy': copyExport,
+      copy: () => copyFrom(button),
+      share: () => shareFrom(button),
     };
     actions[button.dataset.act]?.();
   }
 
-  // Esc asks before leaving a game with lines on the board; with the question open it answers
-  // "keep playing".
+  // Esc: closes what is open, else asks before leaving a game, else leaves the trial.
   function onKeyDown(event) {
     if (event.key !== 'Escape') {
       return;
     }
-    if (state.confirming) {
+    if (state.exporting) {
+      closeExport();
+    } else if (state.confirming) {
       closeConfirm();
+    } else if (state.phase === 'playing' || state.phase === 'solved') {
+      requestLeave();
+    } else if (state.phase === 'menu') {
+      close();
     } else {
-      requestExit();
+      showMenu();
     }
   }
 
-  function close() {
-    state.token++;
-    stopTimer();
-    strokes.forEach(endHold);
-    strokes.clear();
-    document.removeEventListener('keydown', onKeyDown);
-    root.remove();
-    env.onClose();
+  // The app's language button redraws the screen in the new language.
+  const toggle = document.getElementById('langToggle');
+  const languageWatch = toggle ? new MutationObserver(() => {
+    if (!state.confirming && !state.exporting) {
+      render();
+    }
+  }) : null;
+  languageWatch?.observe(toggle, { attributes: true, attributeFilter: ['data-on'] });
+
+  // Shows or hides what the app keeps for hold-V: the seed, the grade's numbers, Export.
+  function setRevealed(on) {
+    state.revealed = on;
+    root.querySelectorAll('[data-dev]').forEach(node => {
+      node.style.display = on ? '' : 'none';
+    });
   }
 
+  placeRoot();
+  window.addEventListener('resize', placeRoot);
   root.addEventListener('click', onClick);
+  root.addEventListener('change', event => {
+    if (event.target.id === 'coopSize') {
+      state.size = Number(event.target.value);
+    }
+  });
   root.addEventListener('pointerdown', event => {
-    if (!state.confirming && event.target.closest('#coopBoard')) {
+    if (event.target.closest('#coopBoard')) {
       onPointerDown(event);
     }
   });
@@ -469,13 +826,13 @@ export function openScreen(env) {
     event.preventDefault();
     const justCut = performance.now() - state.cutAt < 1000;
     if (state.phase === 'playing' && !state.confirming && !justCut) {
-      cutAt(event.clientX, event.clientY);
+      cutAt(event.clientX, event.clientY, pid());
     }
   });
   root.addEventListener('pointermove', onPointerMove);
   root.addEventListener('pointerup', onPointerEnd);
   root.addEventListener('pointercancel', onPointerEnd);
   document.addEventListener('keydown', onKeyDown);
-  renderSetup();
-  return { close };
+  render();
+  return { close, setRevealed, joinFrom: guestJoin };
 }

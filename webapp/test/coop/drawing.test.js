@@ -180,3 +180,20 @@ test('with every rule kept, solved means cells - 1 lines (random maximal drawing
     }
   }
 });
+
+test('every line has an owner; the owner makes no difference to the rules', () => {
+  const drawing = createDrawing(board());
+  assert.equal(drawing.add(1, 2, 1), null);
+  assert.equal(drawing.add(2, 3), null); // the owner defaults to player 0
+  assert.equal(drawing.ownerOf(1, 2), 1);
+  assert.equal(drawing.ownerOf(3, 2), 0);
+  assert.equal(drawing.add(2, 6, 0), 'degree'); // the other player's lines count as well
+  assert.equal(drawing.add(6, 7, 1), null);
+  assert.equal(drawing.add(7, 3, 1), null);
+  assert.equal(drawing.add(3, 2, 1), 'present');
+  drawing.remove(1, 2);
+  assert.equal(drawing.ownerOf(1, 2), 0); // gone: back to the default
+  drawing.clear();
+  assert.equal(drawing.add(1, 2, 1), null);
+  assert.equal(drawing.ownerOf(1, 2), 1);
+});

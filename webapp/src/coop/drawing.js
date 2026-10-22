@@ -49,6 +49,7 @@ export function createDrawing(puzzle) {
   const end = endCell(puzzle);
   const links = Array.from({ length: total }, () => []);
   const stamps = new Map(); // edge key -> the order in which the edges were drawn
+  const owners = new Map(); // edge key -> the player (0, 1) who drew it
   let counter = 0;
 
   const key = (a, b) => (a < b ? a * total + b : b * total + a);
@@ -104,8 +105,9 @@ export function createDrawing(puzzle) {
     return problem;
   }
 
-  // Draws the edge a-b when the rules allow it: null, else the reason it was refused.
-  function add(a, b) {
+  // Draws the edge a-b for `owner` when the rules allow it: null, else the reason it was refused.
+  // Who drew a line makes no difference to the rules; it only gives the line its colour.
+  function add(a, b, owner = 0) {
     const reason = check(a, b);
     if (reason) {
       return reason;
@@ -113,6 +115,7 @@ export function createDrawing(puzzle) {
     links[a].push(b);
     links[b].push(a);
     stamps.set(key(a, b), counter++);
+    owners.set(key(a, b), owner);
     return null;
   }
 
@@ -124,6 +127,7 @@ export function createDrawing(puzzle) {
     links[a] = links[a].filter(cell => cell !== b);
     links[b] = links[b].filter(cell => cell !== a);
     stamps.delete(key(a, b));
+    owners.delete(key(a, b));
     return true;
   }
 
@@ -132,6 +136,7 @@ export function createDrawing(puzzle) {
       links[cell] = [];
     });
     stamps.clear();
+    owners.clear();
   }
 
   // The drawn edges [a, b] (a < b), in the order they were drawn.
@@ -160,6 +165,7 @@ export function createDrawing(puzzle) {
     fragmentOf,
     path,
     solved,
+    ownerOf: (a, b) => owners.get(key(a, b)) ?? 0,
     degree: cell => links[cell].length,
     count: () => stamps.size,
   };
