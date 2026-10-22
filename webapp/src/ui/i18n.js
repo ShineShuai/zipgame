@@ -21,6 +21,7 @@ export const EN = {
   'info.shared': 'Shared with you',
   'info.lucky': 'Lucky game',
   'info.chances': 'Unlock chances',
+  'info.gift': 'Happiest day',
   'grade.0': 'Warm-up', 'grade.1': 'Easy', 'grade.2': 'Medium', 'grade.3': 'Hard', 'grade.4': 'Expert', 'grade.5': 'Brutal',
   'gen.title': 'Generating puzzle…',
   'gen.sub': '{0}x{0} grid — looking for the cleanest layout.',
@@ -246,6 +247,14 @@ export const EN = {
   'reward.pick': 'Pick one reward:',
   'reward.replay': '+1 replay',
   'reward.unlock': '+1 unlock chance',
+  'gift.title': 'Happiest-day gift',
+  'gift.ready': 'The happiest day of the month is here: a gift is waiting for you.',
+  'gift.open': 'Open',
+  'gift.opened': 'Gift opened: {0}',
+  'gift.how': 'Why is today the happiest day?',
+  'gift.howText': 'Every month (UTC) has one happiest day. They all count from a hidden reference day: it is day 1, the next day is day 2, and so on. A day is the happier the fewer steps its number needs to reach 1, where a step replaces a number by the sum of the squares of its digits: 13 → 1² + 3² = 10 → 1² + 0² = 1 takes 2 steps. A tie goes to the day whose chain climbs highest, then to the earlier day. If no number of the month reaches 1, the fewest steps until a number repeats wins.',
+  'gift.recent': 'The reference day is not told, but the latest happiest days below are enough to work it out. Can you find it?',
+  'gift.soon': 'The reference day is not told. Once enough gifts have been given, the latest happiest days will be listed here, enough to work it out.',
 };
 
 export const ZH = {
@@ -266,6 +275,7 @@ export const ZH = {
   'info.shared': '好友分享',
   'info.lucky': '幸运挑战',
   'info.chances': '解锁机会',
+  'info.gift': '最开心的一天',
   'grade.0': '热身', 'grade.1': '简单', 'grade.2': '中等', 'grade.3': '困难', 'grade.4': '专家', 'grade.5': '残酷',
   'gen.title': '正在生成谜题…',
   'gen.sub': '{0}x{0} 网格——正在寻找最整洁的布局。',
@@ -490,6 +500,14 @@ export const ZH = {
   'reward.pick': '请选择一项奖励：',
   'reward.replay': '+1 次补玩',
   'reward.unlock': '+1 次解锁机会',
+  'gift.title': '开心日礼物',
+  'gift.ready': '本月最开心的一天到了：有一份礼物在等你。',
+  'gift.open': '打开',
+  'gift.opened': '礼物已打开：{0}',
+  'gift.how': '为什么今天是最开心的一天？',
+  'gift.howText': '每个月（UTC）有一个最开心的日子。它们都从一个未公开的基准日算起：基准日是第 1 天，之后依次是第 2 天、第 3 天……一天的编号走到 1 所需的步数越少，这一天越开心；每一步把一个数换成它各位数字的平方和：13 → 1² + 3² = 10 → 1² + 0² = 1，共 2 步。步数相同时，链条爬得最高的那天胜出，再相同则取较早的一天。如果当月没有任何编号能走到 1，则取直到出现重复数字为止步数最少的一天。',
+  'gift.recent': '基准日不会公布，但下面最近的开心日足以让你推出它。你能找到它吗？',
+  'gift.soon': '基准日不会公布。等到送出足够多的礼物后，最近的开心日会列在这里，足以让你推出它。',
 };
 
 const DICTS = { en: EN, zh: ZH };
