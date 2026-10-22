@@ -1,0 +1,182 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { generate } from '../../src/core/gen/generate.js';
+import { runSync } from '../../src/core/run.js';
+import { makeRng, shuffle } from '../../src/core/rng.js';
+import { makePuzzle } from '../../src/core/model.js';
+import { isSolved } from '../../src/core/rules.js';
+import { solutionOf } from '../../src/features/hints.js';
+import { neighbourCell } from '../../src/core/geom.js';
+import { createDrawing, unsupported } from '../../src/coop/drawing.js';
+
+// A 4x4 board with numbers 1 (cell 0), 2 (cell 5), 3 (cell 10), 4 (cell 15) and no walls.
+function board() {
+  const puzzle = makePuzzle(4);
+  [0, 5, 10, 15].forEach((cell, i) => {
+    puzzle.cp[cell] = i + 1;
+  });
+  return puzzle;
+}
+
+const solutionEdges = path => path.slice(1).map((cell, i) => [path[i], cell]);
+
+test('refuses edges that are not open: not neighbours, a wall, the border', () => {
+  const puzzle = board();
+  puzzle.walls[1] |= 1; // wall between cell 1 and cell 2
+  const drawing = createDrawing(puzzle);
+  assert.equal(drawing.add(0, 5), 'blocked'); // diagonal
+  assert.equal(drawing.add(1, 2), 'blocked'); // wall
+  assert.equal(drawing.add(3, 4), 'blocked'); // end of a row, start of the next: not neighbours
+  assert.equal(drawing.add(0, 0), 'blocked');
+  assert.equal(drawing.add(0, 1), null);
+  assert.equal(drawing.add(1, 0), 'present');
+});
+
+test('a cell holds 2 lines, cell 1 and the last number 1', () => {
+  const drawing = createDrawing(board());
+  assert.equal(drawing.add(1, 2), null);
+  assert.equal(drawing.add(2, 3), null);
+  assert.equal(drawing.add(2, 6), 'degree'); // 2 already has two lines
+  assert.equal(drawing.add(0, 1), null); // cell 1 gets its only line
+  assert.equal(drawing.add(0, 4), 'degree');
+  assert.equal(drawing.add(14, 15), null);
+  assert.equal(drawing.add(11, 15), 'degree'); // the last number has one line at most
+});
+
+test('refuses a line that closes a loop', () => {
+  const drawing = createDrawing(board());
+  assert.equal(drawing.add(1, 2), null);
+  assert.equal(drawing.add(2, 6), null);
+  assert.equal(drawing.add(6, 5), null);
+  assert.equal(drawing.add(5, 1), 'cycle');
+});
+
+test('numbers on one piece must rise or fall steadily, without gaps', () => {
+  const puzzle = board();
+  const drawing = createDrawing(puzzle);
+  // 2 (cell 5) - 6 - 10 (number 3): fine, 2 and 3 are next to each other
+  assert.equal(drawing.add(5, 6), null);
+  assert.equal(drawing.add(6, 10), null);
+  // joining cell 15 (number 4) to the piece through 11, 14: 2, 3, 4 in order along it
+  assert.equal(drawing.add(10, 11), null);
+  assert.equal(drawing.add(11, 15), null);
+  // cell 0 (number 1) joined to cell 5 would give 1, 2, 3, 4 in order: allowed
+  assert.equal(drawing.add(0, 4), null);
+  assert.equal(drawing.add(4, 5), null);
+  assert.deepEqual(drawing.path().map(cell => puzzle.cp[cell]).filter(Boolean), [1, 2, 3, 4]);
+});
+
+test('refuses a piece with numbers out of order, or with a number skipped', () => {
+  const puzzle = board();
+  const order = createDrawing(puzzle);
+  // 2 (cell 5) - 6 - 10 (number 3) - 9 - 8 - 4, then cell 0 (number 1) joined to 4: 1, 3, 2
+  assert.equal(order.add(10, 6), null);
+  assert.equal(order.add(6, 5), null);
+  assert.equal(order.add(10, 9), null);
+  assert.equal(order.add(9, 8), null);
+  assert.equal(order.add(8, 4), null);
+  assert.equal(order.add(4, 0), 'order'); // reading from cell 0: 1, 3, 2
+  const gap = createDrawing(puzzle);
+  // 1 (cell 0) - 1 - 2 - 3 - 7 - 11 - 15 (number 4): skips 2 and 3
+  [[0, 1], [1, 2], [2, 3], [3, 7], [7, 11]].forEach(([a, b]) => assert.equal(gap.add(a, b), null));
+  assert.equal(gap.add(11, 15), 'gap');
+});
+
+test('a descending piece is as good as an ascending one', () => {
+  const puzzle = board();
+  const drawing = createDrawing(puzzle);
+  // 4 (cell 15) - 14 - 10 (number 3) - 6 - 5 (number 2): 4, 3, 2 read from cell 15
+  [[15, 14], [14, 10], [10, 6], [6, 5]].forEach(([a, b]) => assert.equal(drawing.add(a, b), null));
+  assert.equal(drawing.add(5, 1), null);
+  assert.equal(drawing.add(1, 0), null); // 4, 3, 2, 1: falling, no gap
+});
+
+test('erasing a line frees its cells and splits the piece', () => {
+  const drawing = createDrawing(board());
+  drawing.add(1, 2);
+  drawing.add(2, 3);
+  assert.equal(drawing.remove(1, 2), true);
+  assert.equal(drawing.remove(1, 2), false);
+  assert.equal(drawing.degree(2), 1);
+  assert.deepEqual(drawing.fragmentOf(1), [1]);
+  assert.deepEqual(drawing.fragmentOf(2).sort(), [2, 3]);
+  assert.equal(drawing.add(2, 6), null);
+  drawing.clear();
+  assert.equal(drawing.count(), 0);
+});
+
+test('edges() lists the lines in the order they were drawn, smaller cell first', () => {
+  const drawing = createDrawing(board());
+  drawing.add(2, 1);
+  drawing.add(5, 6);
+  drawing.add(3, 2);
+  assert.deepEqual(drawing.edges(), [[1, 2], [5, 6], [2, 3]]);
+});
+
+test('only standard puzzles are supported', () => {
+  const puzzle = board();
+  assert.equal(unsupported(puzzle), null);
+  assert.match(unsupported({ ...puzzle, holes: new Uint8Array(16) }), /holes/);
+  assert.match(unsupported({ ...puzzle, wrap: true }), /wrap/);
+  assert.match(unsupported({ kind: 'pentagon' }) ?? '', /Pentagon|pentagon|standard|holes|wrap/);
+});
+
+const PUZZLES = [5, 6, 7, 8].flatMap(
+  n => [1, 2, 3, 4, 5, 6].map(seed => runSync(generate(n, seed))),
+);
+
+test('soundness: any part of the solution can be drawn, in any order, from anywhere', () => {
+  const rnd = makeRng(2024);
+  for (const puzzle of PUZZLES) {
+    const edges = solutionEdges(solutionOf(puzzle));
+    for (let round = 0; round < 6; round++) {
+      const drawing = createDrawing(puzzle);
+      const part = shuffle(edges.filter(() => rnd() < 0.3 + 0.12 * round), rnd);
+      for (const [a, b] of part) {
+        assert.equal(drawing.add(a, b), null, `n=${puzzle.n}: ${a}-${b} of the solution refused`);
+      }
+    }
+  }
+});
+
+test('the whole solution drawn in any order is solved, one edge short of it is not', () => {
+  const rnd = makeRng(7);
+  for (const puzzle of PUZZLES) {
+    const edges = solutionEdges(solutionOf(puzzle));
+    const drawing = createDrawing(puzzle);
+    const order = shuffle(edges.slice(), rnd);
+    order.forEach(([a, b], i) => {
+      drawing.add(a, b);
+      assert.equal(drawing.solved(), i === order.length - 1);
+    });
+    assert.equal(isSolved(puzzle, drawing.path()), true);
+    const [a, b] = order[0];
+    drawing.remove(a, b);
+    assert.equal(drawing.solved(), false);
+  }
+});
+
+test('with every rule kept, solved means cells - 1 lines (random maximal drawings)', () => {
+  const rnd = makeRng(99);
+  for (const puzzle of PUZZLES.filter(p => p.n <= 7)) {
+    const cells = puzzle.n * puzzle.n;
+    const every = [];
+    for (let cell = 0; cell < cells; cell++) {
+      for (const d of [0, 2]) {
+        const other = neighbourCell(puzzle.n, false, cell, d);
+        if (other >= 0) {
+          every.push([cell, other]);
+        }
+      }
+    }
+    for (let round = 0; round < 8; round++) {
+      const drawing = createDrawing(puzzle);
+      for (const [a, b] of shuffle(every.slice(), rnd)) {
+        drawing.add(a, b);
+      }
+      const full = drawing.count() === cells - 1;
+      assert.equal(drawing.solved(), isSolved(puzzle, drawing.path()) && full);
+      assert.equal(isSolved(puzzle, drawing.path()), full);
+    }
+  }
+});
