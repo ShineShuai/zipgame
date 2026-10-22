@@ -466,6 +466,8 @@ export function unlockTests(t, ta, ok, eq) {
       $: () => null,
       t: translate,
       render: () => {},
+      genNoticeHtml: () => '',
+      paintGenerating: () => {},
       startTimer: () => {
         timers++;
       },

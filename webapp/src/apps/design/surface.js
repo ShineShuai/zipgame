@@ -126,7 +126,6 @@ export function createSurfaceController(ctx) {
   // type changes. Else the field shows the default of the size.
   let kTyped = false;
   let P = null;
-  let frame = null;
   let tool = 'number';
   let selected = -1;
   let buffer = '';
@@ -275,7 +274,6 @@ export function createSurfaceController(ctx) {
     };
     const pictures = main.map((net, i) => surfaceSvg(net, { ...state, idSuffix: String(i) }));
     frames = pictures.map(picture => picture.frame);
-    frame = frames[0];
     const views = pictures
       .map((picture, i) => `<div class="sf-view" data-view="${i}">${picture.markup}</div>`)
       .join('');

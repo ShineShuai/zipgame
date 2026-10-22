@@ -162,6 +162,8 @@ export function solidTests(t, ok, eq, ta) {
       $: () => null,
       t: translate,
       render: () => {},
+      genNoticeHtml: () => '',
+      paintGenerating: () => {},
       startTimer: () => {},
       stopTimer: () => {},
       randomSeed: () => 1,
@@ -268,6 +270,8 @@ export function solidTests(t, ok, eq, ta) {
       $: () => null,
       t: translate,
       render: () => {},
+      genNoticeHtml: () => '',
+      paintGenerating: () => {},
       startTimer: () => {},
       stopTimer: () => {},
       randomSeed: () => 1,
@@ -291,6 +295,8 @@ export function solidTests(t, ok, eq, ta) {
         $: () => null,
         t: translate,
         render: () => {},
+        genNoticeHtml: () => '',
+        paintGenerating: () => {},
         startTimer: () => {},
         stopTimer: () => {},
         randomSeed: () => 1,
@@ -354,6 +360,8 @@ export function solidTests(t, ok, eq, ta) {
       $: id => (els[id] ??= element()),
       t: translate,
       render: () => {},
+      genNoticeHtml: () => '',
+      paintGenerating: () => {},
       startTimer: () => {},
       stopTimer: () => {},
       randomSeed: () => 7,
@@ -376,5 +384,34 @@ export function solidTests(t, ok, eq, ta) {
     eq(label(), translate('solid.net'), 'the solid again');
     await play.start({ kind: 'tetra', size: 3 });
     eq(label(), translate('solid.net'), 'a new puzzle keeps the solid');
+  });
+
+  ta('play app: Cancel while a 3D puzzle is made goes back to the menu without a message, and a lucky chance comes back', async () => {
+    registerBalls(BALL_CATALOG);
+    const S = { showDev: false, screen: 'menu' };
+    let refunds = 0;
+    const play = createSolidPlay({
+      S,
+      $: () => null,
+      t: translate,
+      render: () => {},
+      genNoticeHtml: () => '',
+      paintGenerating: () => {},
+      startTimer: () => {},
+      stopTimer: () => {},
+      randomSeed: () => {
+        S.genJob.cancel(); // the player presses Cancel while the puzzle is being made
+        return 7;
+      },
+      luckyFailed: async () => {
+        refunds++;
+      },
+      openExport: () => {},
+    });
+    await play.start({ kind: 'tetra', size: 3, lucky: true });
+    eq(S.screen, 'menu', 'back on the menu');
+    eq(S.genNotice, null, 'a cancel is not a failure: no message');
+    eq(refunds, 1, 'the unlock chance of the lucky game is given back');
+    eq(S.genJob, null, 'the job is closed');
   });
 }

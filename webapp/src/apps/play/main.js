@@ -7,7 +7,7 @@ import { edgeId, arrowAllows } from '../../core/edges.js';
 import { isSolved, step, gridAdjacent } from '../../core/rules.js';
 import { statSummary } from '../../core/stats.js';
 import { pickStorage, usage } from '../../platform/storage.js';
-import { runAsync } from '../../platform/run.js';
+import { runAsync, cancellable, isAbort, isTimeout } from '../../platform/run.js';
 import { createStore } from '../../features/stats-store.js';
 import { devLinkMode, tapCombo, loadPin, savePin, DEV_TAP_MS } from '../../features/dev-reveal.js';
 import { createDaily, scopeKey, fetchGameOfDay, fetchGameOfDayFor, utcDateString, utcDayNumber, dateOfDay } from '../../features/daily.js';
@@ -22,7 +22,7 @@ import { maxHints, computeHint, solutionOf, penalizedTime, HINT_PENALTY_S } from
 import { cellAtPoint, WRAP_PAD } from '../../view/geometry.js';
 import { bindModal, copyText } from '../../ui/modal.js';
 import {
-  boardSvg, CELL, badgeColors, badgeColorsTwo, stepWrong, seamMarksSvg, routeCells, routeD,
+  boardSvg, badgeColors, badgeColorsTwo, stepWrong, seamMarksSvg, routeCells, routeD,
   jumpMarksSvg, loopOpen, loopOpenMarks,
 } from './board.js';
 import { variantIcon, cardIcon, actionIcon } from './icons.js';
@@ -59,7 +59,7 @@ const SIZES = PLAY_SIZES;
 const S = { screen: 'menu', mode: 'standard', variant: null, genMode: 'standard', size: 7, puzzle: null, path: [], elapsed: 0, startTime: 0, timerId: null, finished: false,
   gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, isReplay: false, replayPick: null, gotdDate: null, gotdHint: null, hintsUsed: 0,
   penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, behaviourOn: false, difficulty: null,
-  lucky: false, luckyHolder: false, luckyResult: null, luckyNote: null, healed: false, giftTest: null,
+  lucky: false, luckyHolder: false, luckyResult: null, luckyNote: null, genJob: null, genNotice: null, healed: false, giftTest: null,
   legs: [], paths: [[], []], colour: 0, gameDay: null, isShared: false,
   sharedGames: [], sharedFocus: null, sharedAll: false, sharedArmed: null, sharedNotice: null, sharedMsg: null,
   menuTab: 'flat', howtoOpen: false, sharedOpen: false, statsOpen: null };
@@ -114,26 +114,43 @@ function devBadgeHtml() {
   return `<div id="versionBadge" class="dev-badge" style="display:${display}">Zip v${VERSION}</div>`;
 }
 
-const GEN_SUB = { cutout: 'gen.subCutout', arrows: 'gen.subArrows' }; // the texts under the title, per type
+// Players see only the percentage and the bar; the walls count and K appear while V is held.
+function genDevInfo() {
+  const gen = S.gen, genVariant = variantById(S.genMode);
+  const walls = gen.walls == null ? t('gen.searching') : t(genVariant ? genVariant.countKey : 'gen.walls', gen.walls);
+  return ` — ${walls}${gen.K == null ? '' : ` · K ${gen.K}`}`;
+}
+
+// The progress of a running generation, painted in place: a render() on every slice would rebuild the Cancel button under the
+// finger, and a click on a button that is replaced between press and release never arrives.
+function paintGenerating() {
+  const bar = $('genBar');
+  if (S.screen !== 'generating' || !bar) return;
+  const percent = Math.round(S.gen.frac * 100);
+  bar.setAttribute('aria-valuenow', percent);
+  bar.firstElementChild.style.width = `${percent}%`;
+  $('genPercent').textContent = t('gen.progress', percent);
+  $('genDev').textContent = genDevInfo();
+}
+
+// The note under the card head of the menu after a generation that failed or ran too long (a cancel leaves none).
+const genNoticeHtml = () => (S.genNotice ? `<p class="note error" role="alert">${t(S.genNotice)}</p>` : '');
 
 function renderGenerating() {
   const gen = S.gen;
   const percent = Math.round(gen.frac * 100);
   const genVariant = variantById(S.genMode);
-  const countKey = genVariant ? genVariant.countKey : 'gen.walls';
-  const walls = gen.walls == null ? t('gen.searching') : t(countKey, gen.walls);
-  // Players see only the percentage and the bar; the walls count and K appear while V is held.
-  const devInfo = ` — ${walls}${gen.K == null ? '' : ` · K ${gen.K}`}`;
   return `
     <div class="center-stage">
       <section class="card">
         <div class="gen-icon">${variantIcon(S.genMode)}</div>
         <h2 class="card-title">${t('gen.title')}</h2>
         <p class="small">${t(genVariant ? genVariant.keys.gen : isSolidKind(S.genMode) ? 'gen.subSolid' : 'gen.sub', sizeArg({ variant: S.genMode, n: S.size }))}</p>
-        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}">
+        <div class="progress" id="genBar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}">
           <div style="width:${percent}%"></div>
         </div>
-        <p class="small">${t('gen.progress', percent)}<span id="genDev" style="display:${S.showDev ? 'inline' : 'none'}">${devInfo}</span></p>
+        <p class="small"><span id="genPercent">${t('gen.progress', percent)}</span><span id="genDev" style="display:${S.showDev ? 'inline' : 'none'}">${genDevInfo()}</span></p>
+        <div class="button-row"><button class="btn secondary" id="genCancel">${t('gen.cancel')}</button></div>
       </section>
     </div>`;
 }
@@ -201,6 +218,7 @@ const solid = createSolidPlay({
   luckySolved: finishLucky,
   luckyFailed: () => unlock && unlock.refund(),
   leaveLucky,
+  paintGenerating, genNoticeHtml,
 });
 
 // Radio tiles, each an icon of the board it plays (full square, square with holes, ...), a name and a tagline.
@@ -422,6 +440,7 @@ function freePlayCardHtml() {
             <p class="card-sub">${t('menu.sub')}</p>
           </div>
         </header>
+        ${genNoticeHtml()}
         ${luckyBoxHtml()}
         ${variantPickerHtml()}
         <p class="menu-caption" id="typeCaption" aria-live="polite">${typeCaptionHtml(S.mode)}</p>
@@ -546,11 +565,6 @@ function renderReplay() {
     </div>`;
 }
 
-const gotdText = n => {
-  const best = store.gotdBest(n);
-  return best ? sec(best.time) : '-';
-};
-
 // "today / total" cells for one size (today = current UTC day).
 function statCells(n, scope = '') {
   const total = store.total(n, scope);
@@ -666,8 +680,6 @@ function stepHudHtml(p) {
   const step = `<div class="hud-step">${t('game.step', now, cellCount(p))}</div>`;
   return step;
 }
-
-const VARIANT_TITLE = { cutout: ['game.cutoutTitle', 'game.sharedCutoutTitle'], arrows: ['game.arrowsTitle', 'game.sharedArrowsTitle'] };
 
 // Hint button: free play shows it by default; a Game of the Day or the lucky game hides it unless V is held (setDevReveal).
 const hintShown = () => S.showDev || !(S.isGotd || S.lucky);
@@ -891,6 +903,7 @@ function attachHandlers() {
       const open = !b.classList.contains('open'); closeStatTips(); b.classList.toggle('open', open);
     };
   });
+  on('genCancel', () => { if (S.genJob) S.genJob.cancel(); });
   on('backMenu2', () => { logPlay(false); stopTimer(); leaveLucky(); S.screen = 'menu'; render(); });
   on('resetPath', resetPaths);
   on('behaviourToggle', async ev => { ev.preventDefault(); S.behaviourOn = !S.behaviourOn; await behaviour.setOn(S.behaviourOn); render(); });
@@ -1193,7 +1206,7 @@ function beginGame(puzzle, gotdDate, isReplay = false, isShared = false, lucky =
   S.sharedFocus = null;
   const variant = variantOf(puzzle);
   const difficulty = gradePuzzle(puzzle);
-  Object.assign(S, { variant, lucky, luckyResult: null, luckyNote: null, healed: false, trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
+  Object.assign(S, { variant, lucky, luckyResult: null, luckyNote: null, genNotice: null, healed: false, trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
   // Two paths: the red and the blue path, and the colour drawn now (S.path is that colour's path)
   S.paths = newPaths();
   S.colour = 0;
@@ -1204,23 +1217,27 @@ function generatorFor(mode, n, seed) {
   const variant = variantById(mode);
   return variant ? variant.generate(n, seed) : generate(n, seed);
 }
-const generateShown = (n, seed, mode = 'standard') => runAsync(generatorFor(mode, n, seed), { onEvent: e => { S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls ?? e.arrows ?? e.labels, K: e.K }; if (S.screen === 'generating') render(); } });
+const generateShown = (n, seed, mode, signal) => runAsync(generatorFor(mode, n, seed), { signal, onEvent: e => { S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls ?? e.arrows ?? e.labels, K: e.K }; paintGenerating(); } });
 // how: 'open' (Play local: current or next-if-solved) | 'skip' (New puzzle); a variant is always a new random one.
 // lucky: the lucky game (startLucky): its chance is given back when the puzzle cannot be made.
 async function startLocal(how, mode = 'standard', lucky = false) {
   if (mode !== 'standard') S.size = nearestSize(S.size, sizesFor(mode, SIZES)); // e.g. after a shared 12x12 one
-  S.screen = 'generating'; S.genMode = mode; S.gen = { frac: 0, walls: null, K: null }; render();
+  S.screen = 'generating'; S.genMode = mode; S.gen = { frac: 0, walls: null, K: null }; S.genNotice = null; render();
+  const job = S.genJob = cancellable();
   try {
     const scope = mode === 'standard' ? '' : mode, game = how === 'skip' ? await daily.skip(S.size, scope) : await daily.open(S.size, scope);
     const index = game.index, seed = scope ? randomSeed() : game.seed; // a variant is random: its counter only numbers the day's games
-    const puzzle = await generateShown(S.size, seed, mode);
+    const puzzle = await generateShown(S.size, seed, mode, job.signal);
     S.gameIndex = index; S.seed = seed;
     S.gameDay = mode !== 'standard' ? null : [dayNo(), dayNo() - 1].find(d => dailySeed(d, S.size, index, ALGO_VERSION) === seed) ?? null; // the day this seed was made on (the behaviour log wants it)
     beginGame(puzzle, null, false, false, lucky);
-  } catch (e) {
-    console.error('startLocal failed:', e);
+  } catch (e) { // cancelled by the player (silent), too slow, or failed: the menu comes back, the chance of a lucky game with it
+    if (!isAbort(e)) { console.error('startLocal failed:', e); S.genNotice = isTimeout(e) ? 'err.generateSlow' : 'err.generate'; }
     if (lucky) await unlock.refund();
-    S.screen = 'menu'; render(); alert(t('err.generate'));
+    S.screen = 'menu'; render();
+  } finally {
+    job.end();
+    if (S.genJob === job) S.genJob = null;
   }
 }
 // Lucky game: open to everyone, once per offer. Draws a variant (a locked one has a size of 7-10, features/unlock.js) and plays
