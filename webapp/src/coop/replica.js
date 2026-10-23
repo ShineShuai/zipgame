@@ -124,6 +124,7 @@ export function createReplica(puzzle, { pid = 0, send = () => {}, onRejected = (
     clear: clearMine,
     key: (a, b) => drawing.key(a, b),
     has: (a, b) => drawing.has(a, b),
+    linked: (a, b) => drawing.linked(a, b),
     check: (a, b) => drawing.check(a, b),
     edges: () => drawing.edges(),
     ownerOf: (a, b) => drawing.ownerOf(a, b),

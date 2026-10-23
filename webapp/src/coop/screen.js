@@ -29,6 +29,8 @@ import { tx } from './texts.js';
 import {
   nearestSize, sizesFor, statKey, variantById, variantOf,
 } from './variants.js';
+import { portalPartner } from '../core/geom.js';
+import { padOf } from './layout.js';
 import { boardMarkup } from './view.js';
 
 // The Free draw screens: a full-screen layer on top of the app's page, below its app bar, with its
@@ -104,6 +106,7 @@ export function openScreen(env) {
     peerHere: false,
     waiting: false, // the host waits for the other device to take the new puzzle
     variant: 'standard', // the type of the next puzzle (variants.js)
+    jumpFrom: null, // Teleport: the portal where this player's last stroke ended
     connectTimer: null,
     route: '', // dev line: how the connection runs (rtc.js describeRoute)
     probe: null, // dev line: promise of the per-server STUN check (asked once per connection)
@@ -198,10 +201,23 @@ export function openScreen(env) {
     }
   }
 
+  // Teleport: the cell whose ring says "tap me to jump" (-1: none). It is the partner of the portal
+  // where this player's last stroke ended, as long as the two can be linked.
+  function ringCell() {
+    const from = state.jumpFrom;
+    if (from === null || !state.puzzle.portals) {
+      return -1;
+    }
+    const partner = portalPartner(state.puzzle.portals, from);
+    return partner >= 0 && state.drawing.check(from, partner) === null ? partner : -1;
+  }
+
   function redrawBoard() {
     const board = el('coopBoard');
     if (board) {
-      board.innerHTML = boardMarkup(state.puzzle, state.drawing, state.hint);
+      const cell = ringCell();
+      const ring = cell < 0 ? null : { cell, player: pid() };
+      board.innerHTML = boardMarkup(state.puzzle, state.drawing, state.hint, ring);
     }
   }
 
@@ -462,6 +478,7 @@ export function openScreen(env) {
     state.grade = gradeOf(state.puzzle);
     Object.assign(state, {
       phase: 'playing', history: [], hint: null, hintsUsed: 0, elapsed: 0, waiting: false,
+      jumpFrom: null,
     });
     strokes.clear();
     renderGame();
@@ -525,6 +542,7 @@ export function openScreen(env) {
   // ---------- pointer input ----------
   const drawingRect = board => board.firstElementChild.getBoundingClientRect();
 
+  // A Wrap-around board has a margin: a drag that leaves the board comes in on the other side.
   function cellAt(board, event) {
     const rect = drawingRect(board);
     return cellAtPoint(
@@ -533,15 +551,18 @@ export function openScreen(env) {
       event.clientY - rect.top,
       rect.width,
       rect.height,
+      padOf(state.puzzle),
+      Boolean(state.puzzle.wrap),
     );
   }
 
   // Cuts the line under the point (client coordinates), if there is one: true when it did.
   function cutAt(clientX, clientY, player) {
     const rect = drawingRect(el('coopBoard'));
-    const n = state.puzzle.n;
-    const x = ((clientX - rect.left) / rect.width) * n;
-    const y = ((clientY - rect.top) / rect.height) * n;
+    const pad = padOf(state.puzzle);
+    const span = state.puzzle.n + 2 * pad;
+    const x = ((clientX - rect.left) / rect.width) * span - pad;
+    const y = ((clientY - rect.top) / rect.height) * span - pad;
     const edge = edgeAt(state.drawing, x, y);
     if (!edge) {
       return false;
@@ -610,8 +631,11 @@ export function openScreen(env) {
     } catch {
       // no capture (not supported here): the drag still works while the pointer stays on the board
     }
+    // Teleport: a press on the ringed partner of the portal the last stroke ended on links the two,
+    // and the stroke goes on from there.
+    const jump = cell === ringCell();
     const entry = {
-      stroke: startStroke(cell, pid()),
+      stroke: startStroke(jump ? state.jumpFrom : cell, pid()),
       refused: null,
       cut: false,
       hold: null,
@@ -623,6 +647,12 @@ export function openScreen(env) {
     entry.hold = setTimeout(() => onHoldElapsed(entry), HOLD_MS);
     strokes.set(event.pointerId, entry);
     setMessage('');
+    state.jumpFrom = null;
+    if (jump) {
+      applyStep(entry, cell);
+    } else {
+      redrawBoard();
+    }
   }
 
   // Pointer moves can skip cells: walk from the last point to the new one in small steps.
@@ -636,7 +666,7 @@ export function openScreen(env) {
       endHold(entry);
     }
     const board = el('coopBoard');
-    const cellPx = drawingRect(board).width / state.puzzle.n;
+    const cellPx = drawingRect(board).width / (state.puzzle.n + 2 * padOf(state.puzzle));
     const dx = event.clientX - entry.x;
     const dy = event.clientY - entry.y;
     const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / (cellPx / 3)));
@@ -657,6 +687,13 @@ export function openScreen(env) {
     strokes.delete(event.pointerId);
     if (changed(entry.stroke) && state.phase === 'playing') {
       state.history.push(entry.stroke);
+    }
+    if (state.phase === 'playing' && state.puzzle.portals) {
+      state.jumpFrom = entry.cut ? null : entry.stroke.head;
+      redrawBoard();
+      if (ringCell() >= 0) {
+        setMessage(tx('jump'));
+      }
     }
   }
 
