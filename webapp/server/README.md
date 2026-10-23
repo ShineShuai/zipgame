@@ -12,6 +12,24 @@ Delivery is tracked per solve in the attempt record (`done` = backends that hold
 `replicatedFrom` (YYYYMMDD) = the first UTC day on which every solve is written twice; `replicatedTo` (optional) = the last such day. Set `replicatedFrom` to the first day after this config went live; it stays valid when `always` changes later (new Turso, say, with the same two writes), because the old backends keep their days. Add `replicatedTo` when the two writes stop (`always: null`, or no backup left): the days after it are then added up again. On a replicated day the backends hold copies of the same players, on every other day (one write each, failover) different ones. With `always: null` from the start leave both out: `replicatedFrom` is not tied to `always`, it says which days were stored twice, so a leftover value makes the stats page show only the fullest backend of every single-write day.
 A 400/422 answer (invalid input, e.g. a day outside the window) is never retried and never fails over; the backend counts as done.
 
+## Worker guards (Cloudflare)
+The two writes anyone may make, `POST /gotd` and `POST /play`, are checked in this order; `/seed` and the admin routes need their secret instead.
+1. **Origin** (403 `forbidden`): a request that names an `Origin` other than `ALLOWED_ORIGIN` is refused. Browsers always name it on a cross-site POST, also on the preflight-free `text/plain` one the page sends, so another website cannot make a visitor's browser write here. A request without `Origin` (the tools, `curl`) passes.
+2. **Rate limit** (429 `slow down`, `Retry-After: 60`): the `RATE_LIMIT` binding of `wrangler.toml` counts per client address (`cf-connecting-ip`) and per Cloudflare location, not exactly: 60 calls per 60 s, above the 20 rows that an offline page sends at once. The page retries a 429 later (only 400 and 422 are final). Needs wrangler >= 4.36 (`npx wrangler --version`); delete the `[[ratelimits]]` block to run without a limit; `namespace_id` must be unique among the rate limits of the Cloudflare account. A failing binding lets the request through (and logs it).
+3. **Size** (400 `too large`): every POST has a cap in bytes (`MAX_BODY` in `worker.js`: `/gotd` 256, `/play` 512, `/seed` 1024, `/play-delete` 16384). The Worker stops reading at the cap, also when the body declares no length.
+
+`ALLOWED_ORIGIN` (a var in `wrangler.toml`, the origin only, one value) is also the CORS origin. When it is not set the Worker sends no CORS header and refuses every browser POST: it fails closed. A page served from another origin (a custom domain, localhost) gets 403 until its origin is the value.
+
+What this does not do: `Origin` is sent by browsers only, so a script can send any value or none; the rate limit only slows a script down; a submitted time is still the player's word (there is no proof of play), so a script can still put forged times into the averages and the best 10 of a day. The Supabase and Turso backends have none of these guards (their keys are public insert rights).
+
+Failures are logged as `<route> failed: <message>` (never the request): `npx wrangler tail`. Check after `npx wrangler deploy` (`W` = the Worker URL):
+```
+curl -si -X POST "$W/gotd" -H 'Origin: https://evil.example' -d '{}'     # 403
+curl -si -X POST "$W/gotd" -d '{}'                                        # 400 invalid: a tool passes the guards
+curl -si "$W/stats?from=20260101&to=20260102" | grep -i access-control   # the allowed origin
+```
+Tests: `npm run test:server` (`worker.test.mjs`: Origin, missing `ALLOWED_ORIGIN`, the limiter with a fake binding, chunked bodies, logging).
+
 ## Seed players (cold start)
 `tools/gotd-seed.mjs` (nightly, `.github/workflows/gotd-seed.yml`) adds 3..8 synthetic players to a day on every configured backend (`--only ID` for one); they count in `n`, `sum`, `bins` and `best` like real players, and are listed in `seeds: [ms]` of both read APIs so the stats page and the calibration can subtract them. A day is seeded once per backend: a retry answers `exists` (Worker: HTTP 409) and changes nothing. A seeding cannot be undone, so look at a dry run first (workflow input `dry_run`, or `npm run gotd:seed`).
 One-time setup, one shared secret `SEED_PLAYERS_SECRET` for GitHub, the Worker and Supabase. Keep it in a file outside the repo and never type it on a command line or in an environment variable; every consumer below reads the file (surrounding whitespace is ignored, so a trailing newline does no harm):

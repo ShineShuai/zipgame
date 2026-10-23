@@ -7,6 +7,10 @@
 // GET  /play-export?after=ID&limit=N  Authorization: Bearer <PLAY_ADMIN_SECRET>  ->  { rows: [{ id, ...columns }], next: ID | null, columns? }  (tools/behaviour.mjs)
 // POST /play-delete   Authorization: Bearer <PLAY_ADMIN_SECRET>  { ids: [row id] }  ->  { deleted: n }   (1..500 ids; the only way a row goes)
 // One D1 batch (= one transaction): 2 upserts + best-10 maintenance + reads. Constants mirror src/core/hist.js.
+// Guards on the two public writes (POST /gotd, POST /play):
+//   a browser Origin other than ALLOWED_ORIGIN -> 403 (no ALLOWED_ORIGIN: no CORS header and every browser POST is refused);
+//   more than the RATE_LIMIT binding allows per client address -> 429 (wrangler.toml; no binding = no limit);
+//   a body over its size cap (every POST) -> 400.
 import { NB, TOP_K, MIN_MS, MAX_MS, SEED_MAX, REPLAY_DAYS } from '../../src/core/hist.js';
 import { COLUMN_NAMES, INSERT_SQL, rowArgs, validateRow, fromWire, toB64u } from '../../src/core/behaviour.js';
 
@@ -19,7 +23,7 @@ const dayNumber = ymd => { // YYYYMMDD -> days since epoch, or null if not a rea
 
 // Returns { d, t, b } or null. The day must be at most `back` UTC days before `now` and at most 1 after it (clock skew, late submissions).
 // back = 1 (default): the live Game of Day, and seeding. POST /gotd passes REPLAY_DAYS + 1: the replay of a missed day (the app offers the last
-// REPLAY_DAYS days; +1 because a replay started before UTC midnight is finished after it). Temporary: set it back to 1 to stop accepting replays.
+// REPLAY_DAYS days; +1 because a replay started before UTC midnight is finished after it). Setting it back to 1 stops accepting replays.
 export function validate(body, now = Date.now(), back = 1) {
   if (!body || typeof body !== 'object') return null;
   const { d, t, b } = body;
@@ -137,50 +141,170 @@ export async function deletePlay(db, ids) { // -> { deleted }: how many of the i
   return { deleted: r.slice(0, chunks.length).reduce((a, x) => a + Number(x.results[0].c), 0) };
 }
 
+// ---------- the http handler ----------
+const MAX_BODY = { '/gotd': 256, '/seed': 1024, '/play': 512, '/play-delete': 16384 }; // bytes
+
+// The request body as text, or null when it is longer than `max` bytes. It stops reading after
+// max + 1 byte, so a body that declares no length (chunked) cannot fill the memory either.
+export async function readText(req, max) {
+  if (Number(req.headers.get('content-length') || 0) > max) return null;
+  const reader = req.body ? req.body.getReader() : null;
+  const chunks = [];
+  let size = 0;
+  while (reader) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > max) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  return new Blob(chunks).text();
+}
+
+// -> { body } or { error: 'too large' | 'bad json' }
+async function readJson(req, max) {
+  const text = await readText(req, max);
+  if (text === null) return { error: 'too large' };
+  try {
+    return { body: JSON.parse(text) };
+  } catch {
+    return { error: 'bad json' };
+  }
+}
+
+// A browser names the page it comes from on every cross-site POST, also on a "simple" one
+// (text/plain) that needs no preflight: the page cannot read the answer, but the Worker would
+// still store the row. No Origin header = not a browser (the tools).
+export const originAllowed = (req, env) => {
+  const origin = req.headers.get('Origin');
+  return origin === null || origin === env.ALLOWED_ORIGIN;
+};
+
+// A soft limit per client address: Cloudflare counts per location and not exactly, which is enough
+// to slow a script down. True = go on. No RATE_LIMIT binding, or one that fails: no limit.
+export async function withinLimit(req, env) {
+  if (!env.RATE_LIMIT) return true;
+  try {
+    const key = req.headers.get('cf-connecting-ip') || 'unknown';
+    return (await env.RATE_LIMIT.limit({ key })).success;
+  } catch (e) {
+    console.error('rate limit failed:', e && e.message);
+    return true;
+  }
+}
+
 export default {
   async fetch(req, env) {
-    const cors = { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '86400', Vary: 'Origin' };
-    const reply = (status, body, extra = {}) => new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json', ...extra } });
+    const cors = {
+      // no ALLOWED_ORIGIN: no CORS header at all, so no page may read the answers
+      ...(env.ALLOWED_ORIGIN ? { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN } : {}),
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Max-Age': '86400',
+      Vary: 'Origin',
+    };
+    const reply = (status, body, extra = {}) => new Response(
+      body === undefined ? null : JSON.stringify(body),
+      { status, headers: { ...cors, 'Content-Type': 'application/json', ...extra } },
+    );
+    // the error goes to the log (the message only, never the request), the caller gets a plain 500
+    const dbError = (route, e) => {
+      console.error(`${route} failed:`, e && e.message ? e.message : e);
+      return reply(500, { error: 'db' });
+    };
+    // the guards of the two public writes: a Response to send instead, or null
+    const refuse = async () => {
+      if (!originAllowed(req, env)) return reply(403, { error: 'forbidden' });
+      if (!(await withinLimit(req, env))) {
+        return reply(429, { error: 'slow down' }, { 'Retry-After': '60' });
+      }
+      return null;
+    };
     if (req.method === 'OPTIONS') return reply(204);
     const { pathname, searchParams } = new URL(req.url);
+
     if (req.method === 'GET' && pathname === '/stats') {
       const range = validateRange(...['from', 'to'].map(k => Number(searchParams.get(k) ?? NaN)));
       if (!range) return reply(400, { error: 'invalid' });
-      try { return reply(200, await read(env.DB, range), { 'Cache-Control': 'public, max-age=120' }); } catch (e) { return reply(500, { error: 'db' }); }
+      try {
+        return reply(200, await read(env.DB, range), { 'Cache-Control': 'public, max-age=120' });
+      } catch (e) {
+        return dbError('stats', e);
+      }
     }
+
     if (req.method === 'POST' && pathname === '/seed') {
       if (!(await authorized(req, env))) return reply(401, { error: 'unauthorized' });
-      if (Number(req.headers.get('content-length') || 0) > 1024) return reply(400, { error: 'too large' });
-      let body; try { body = JSON.parse(await req.text()); } catch { return reply(400, { error: 'bad json' }); }
+      const { body, error } = await readJson(req, MAX_BODY[pathname]);
+      if (error) return reply(400, { error });
       const v = validateSeed(body);
       if (!v) return reply(400, { error: 'invalid' });
-      try { const r = await seed(env.DB, v); return reply(r.status === 'exists' ? 409 : 200, r); } catch (e) { return reply(500, { error: 'db' }); }
+      try {
+        const r = await seed(env.DB, v);
+        return reply(r.status === 'exists' ? 409 : 200, r);
+      } catch (e) {
+        return dbError('seed', e);
+      }
     }
+
     if (req.method === 'POST' && pathname === '/play') {
-      if (Number(req.headers.get('content-length') || 0) > 512) return reply(400, { error: 'too large' });
-      let text = await req.text(), body; if (text.length > 512) return reply(400, { error: 'too large' });
-      try { body = JSON.parse(text); } catch { return reply(400, { error: 'bad json' }); }
+      const refused = await refuse();
+      if (refused) return refused;
+      const { body, error } = await readJson(req, MAX_BODY[pathname]);
+      if (error) return reply(400, { error });
       const row = validateRow(fromWire(body));
       if (!row) return reply(400, { error: 'invalid' });
-      try { const status = await addPlay(env.DB, row); return reply(status === 'ok' ? 200 : 503, { status }); } catch (e) { return reply(500, { error: 'db' }); }
-    }
-    if (pathname === '/play-export' || pathname === '/play-delete') {
-      if (req.method !== (pathname === '/play-export' ? 'GET' : 'POST')) return reply(404, { error: 'not found' });
-      if (!(await authorized(req, env, 'PLAY_ADMIN_SECRET'))) return reply(401, { error: 'unauthorized' });
-      if (pathname === '/play-export') {
-        const after = Number(searchParams.get('after') ?? 0), limit = Number(searchParams.get('limit') ?? 1000);
-        if (!Number.isInteger(after) || after < 0 || !Number.isInteger(limit) || limit < 1 || limit > 1000) return reply(400, { error: 'invalid' });
-        try { return reply(200, await readPlay(env.DB, { after, limit })); } catch (e) { return reply(500, { error: 'db' }); }
+      try {
+        const status = await addPlay(env.DB, row);
+        return reply(status === 'ok' ? 200 : 503, { status });
+      } catch (e) {
+        return dbError('play', e);
       }
-      let body; try { body = JSON.parse(await req.text()); } catch { return reply(400, { error: 'bad json' }); }
-      if (!body || !validIds(body.ids)) return reply(400, { error: 'invalid' });
-      try { return reply(200, await deletePlay(env.DB, body.ids)); } catch (e) { return reply(500, { error: 'db' }); }
     }
+
+    if (pathname === '/play-export' || pathname === '/play-delete') {
+      if (req.method !== (pathname === '/play-export' ? 'GET' : 'POST')) {
+        return reply(404, { error: 'not found' });
+      }
+      if (!(await authorized(req, env, 'PLAY_ADMIN_SECRET'))) {
+        return reply(401, { error: 'unauthorized' });
+      }
+      if (pathname === '/play-export') {
+        const after = Number(searchParams.get('after') ?? 0);
+        const limit = Number(searchParams.get('limit') ?? 1000);
+        if (!isInt(after) || after < 0 || !isInt(limit) || limit < 1 || limit > 1000) {
+          return reply(400, { error: 'invalid' });
+        }
+        try {
+          return reply(200, await readPlay(env.DB, { after, limit }));
+        } catch (e) {
+          return dbError('play-export', e);
+        }
+      }
+      const { body, error } = await readJson(req, MAX_BODY[pathname]);
+      if (error) return reply(400, { error });
+      if (!body || !validIds(body.ids)) return reply(400, { error: 'invalid' });
+      try {
+        return reply(200, await deletePlay(env.DB, body.ids));
+      } catch (e) {
+        return dbError('play-delete', e);
+      }
+    }
+
     if (req.method !== 'POST' || pathname !== '/gotd') return reply(404, { error: 'not found' });
-    if (Number(req.headers.get('content-length') || 0) > 256) return reply(400, { error: 'too large' });
-    let body; try { body = JSON.parse(await req.text()); } catch { return reply(400, { error: 'bad json' }); }
+    const refused = await refuse();
+    if (refused) return refused;
+    const { body, error } = await readJson(req, MAX_BODY[pathname]);
+    if (error) return reply(400, { error });
     const v = validate(body, Date.now(), REPLAY_DAYS + 1);
     if (!v) return reply(400, { error: 'invalid' });
-    try { return reply(200, await submit(env.DB, v)); } catch (e) { return reply(500, { error: 'db' }); }
+    try {
+      return reply(200, await submit(env.DB, v));
+    } catch (e) {
+      return dbError('gotd', e);
+    }
   },
 };
