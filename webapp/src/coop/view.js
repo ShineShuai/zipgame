@@ -1,5 +1,5 @@
 import {
-  CELL, COLORS, badgeColors, correctMoveRingAt, cutoutLayers, wrongMoveMarkAt,
+  CELL, COLORS, arrowMarks, badgeColors, correctMoveRingAt, cutoutLayers, wrongMoveMarkAt,
 } from '../apps/play/board.js';
 import { cellCenter, wallSegments } from '../view/geometry.js';
 
@@ -96,6 +96,7 @@ export function boardMarkup(puzzle, drawing, hint = null) {
     + cellsMarkup(puzzle)
     + `<g stroke="${COLORS.wall}" stroke-width="6" stroke-linecap="round">${walls}</g>`
     + drawnMarkup(puzzle, drawing)
+    + (puzzle.arrows ? arrowMarks(puzzle) : '')
     + badgesMarkup(puzzle, drawing)
     + hintMarkup(puzzle, hint)
     + '</svg>';

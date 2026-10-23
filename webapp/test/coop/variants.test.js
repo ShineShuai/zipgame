@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PLAY_SIZES } from '../../src/core/gen/generate.js';
+import { ARROW_SIZES } from '../../src/core/gen/arrows.js';
 import { EXACT_SIZES } from '../../src/core/gen/exact.js';
 import { parse, serialize } from '../../src/core/format.js';
 import { runSync } from '../../src/core/run.js';
@@ -10,11 +11,12 @@ import {
   COOP_VARIANTS, nearestSize, sizesFor, statKey, variantById, variantOf,
 } from '../../src/coop/variants.js';
 
-test('the sizes on offer: every size, except Exact, which keeps to its own', () => {
+test('the sizes on offer: every size, except Exact and arrows, which keep to their own', () => {
   assert.deepEqual(sizesFor('standard'), PLAY_SIZES);
   assert.deepEqual(sizesFor('cutout'), PLAY_SIZES);
   assert.deepEqual(sizesFor('exact'), PLAY_SIZES.filter(n => EXACT_SIZES.includes(n)));
   assert.ok(!sizesFor('exact').includes(16));
+  assert.deepEqual(sizesFor('arrows'), PLAY_SIZES.filter(n => ARROW_SIZES.includes(n)));
   assert.deepEqual(sizesFor('no such type'), PLAY_SIZES); // falls back to standard
 });
 
@@ -29,10 +31,11 @@ test('statistics keys: standard keeps the plain size, other types are told apart
   assert.equal(statKey({ n: 7 }, true), '7x2');
   assert.equal(statKey({ n: 7, holes: [] }, false), 'cutout-7');
   assert.equal(statKey({ n: 8, exact: true }, true), 'exact-8x2');
+  assert.equal(statKey({ n: 6, arrows: [] }, false), 'arrows-6');
 });
 
 for (const variant of COOP_VARIANTS) {
-  test(`${variant.id}: its generator makes a puzzle that Free draw plays, over the wire too`, () => {
+  test(`${variant.id}: its generator makes a puzzle Free draw plays, over the wire too`, () => {
     const n = variant.sizes()[0];
     const puzzle = runSync(variant.generate(n, 3));
     assert.equal(unsupported(puzzle), null);

@@ -56,14 +56,16 @@ const copyRow = (id, value, canShare) => `<div class="coop-copy">`
   + '</div>';
 
 // The first screen: the solo card (like the play app's Free play card) and the online card.
-export function menuPage({ size, rtc, variant = 'standard' }) {
+export function menuPage({
+  size, rtc, variant = 'standard', status = '', error = false,
+}) {
   const solo = `<section class="card free-card">`
     + cardHead(cardIcon('free'), tx('title'), tx('menuSub'),
       ` <span class="coop-tag">${tx('trial')}</span>`)
     + `<p class="menu-caption">${tx('rules')}</p>`
     + `<div class="play-bar">${pickers(variant, size)}`
     + `<div class="button-row"><button class="btn" data-act="solo">${t('menu.playLocal')}`
-    + '</button></div></div></section>';
+    + `</button></div></div>${status ? note(status, error) : ''}</section>`;
   const online = `<section class="card">`
     + cardHead(PEOPLE_ICON, tx('onlineTitle'), tx('onlineSub'))
     + `<p class="blurb">${tx('onlineBlurb')}</p>`
@@ -102,14 +104,16 @@ export function joinPage({ code, status, error, canShare }) {
 }
 
 // Connected, no game yet: the host picks the size, the guest waits.
-export function lobbyPage({ role, size, status, variant = 'standard' }) {
+export function lobbyPage({
+  role, size, status, variant = 'standard', error = false,
+}) {
   const choose = role === 'host'
     ? `<div class="play-bar">${pickers(variant, size)}`
       + `<div class="button-row"><button class="btn" data-act="start">${t('menu.playLocal')}`
       + '</button></div></div>'
     : '';
   return page(`<section class="card">${cardHead(PEOPLE_ICON, tx('onlineTitle'), tx('onlineSub'))}`
-    + `${note(status)}${choose}`
+    + `${note(status, error)}${choose}`
     + `<div class="button-row"><button class="btn secondary" data-act="cancel">${tx('leave')}`
     + '</button></div></section>');
 }

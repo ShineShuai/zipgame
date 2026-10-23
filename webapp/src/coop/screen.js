@@ -122,7 +122,9 @@ export function openScreen(env) {
   function render() {
     const rtc = rtcSupported();
     const pages = {
-      menu: () => menuPage({ size: state.size, rtc, variant: state.variant }),
+      menu: () => menuPage({
+        size: state.size, rtc, variant: state.variant, status: state.status, error: state.error,
+      }),
       inviting: () => invitePage({
         link: state.link, status: state.status, error: state.error, canShare,
       }),
@@ -130,7 +132,8 @@ export function openScreen(env) {
         code: state.code, status: state.status, error: state.error, canShare,
       }),
       lobby: () => lobbyPage({
-        role: state.role, size: state.size, status: state.status, variant: state.variant,
+        role: state.role, size: state.size, status: state.status, error: state.error,
+        variant: state.variant,
       }),
       generating: () => generatingPage({
         percent: state.progress, waiting: state.waiting, online: Boolean(state.session),
@@ -414,6 +417,7 @@ export function openScreen(env) {
     stopTimer();
     render();
     let puzzle = null;
+    let reason = '';
     try {
       puzzle = await runAsync(variantById(state.variant).generate(state.size, seed), {
         onEvent: event => {
@@ -428,13 +432,17 @@ export function openScreen(env) {
       });
     } catch (error) {
       console.warn('coop: generation failed', error);
+      reason = String(error?.message ?? error);
     }
     if (token !== state.token) {
       return; // the player left meanwhile
     }
-    if (!puzzle || unsupported(puzzle)) {
+    const refused = puzzle ? unsupported(puzzle) : null;
+    if (!puzzle || refused) {
+      // The reason is shown too: it tells a refused type from a generator that ran out of time.
       state.phase = state.session ? 'lobby' : 'menu';
-      state.status = tx('failed');
+      state.status = `${tx('failed')} (${refused ?? (reason || 'no puzzle')})`;
+      state.error = true;
       render();
       return;
     }
