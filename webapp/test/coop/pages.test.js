@@ -81,3 +81,26 @@ test('dialogs use the play app\'s modal, and the puzzle text is escaped', () => 
   const card = resultCard({ solved: 'Solved in 3.0s', lines: ['one', 'two'] });
   assert.ok(card.includes('class="solved"') && card.includes('<p class="small">two</p>'));
 });
+
+test('the type and the size are chosen together: the sizes are those of the type', () => {
+  const sizes = html => [...html.matchAll(/<option value="(\d+)"/g)].map(match => Number(match[1]));
+  const standard = menuPage({ size: 7, rtc: true });
+  assert.ok(standard.includes('id="coopVariant"'));
+  for (const id of ['standard', 'cutout', 'exact']) {
+    assert.ok(standard.includes(`<option value="${id}"`), id);
+  }
+  assert.ok(standard.includes('<option value="standard" selected>'));
+  assert.ok(sizes(standard).includes(16));
+  const exact = menuPage({ size: 8, rtc: true, variant: 'exact' });
+  assert.ok(exact.includes('<option value="exact" selected>'));
+  assert.ok(!sizes(exact).includes(16));
+  const lobby = lobbyPage({ role: 'host', size: 6, status: '', variant: 'cutout' });
+  assert.ok(lobby.includes('<option value="cutout" selected>'));
+  assert.ok(lobby.includes('<option value="6" selected>'));
+  assert.ok(!lobbyPage({ role: 'guest', size: 6, status: '' }).includes('coopVariant'));
+});
+
+test('the game title names a type that is not the standard one', () => {
+  assert.ok(!gamePage(view()).includes(' · Cutout'));
+  assert.ok(gamePage(view({ variantName: 'Cutout' })).includes('7×7 · Cutout'));
+});

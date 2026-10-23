@@ -95,7 +95,7 @@ export function seamMarksSvg(n, path) {
 
 // Board with holes (Cutout): only the cells that are left are drawn, each a white tile; the grid lines run between two
 // tiles, and the edge of the shape (every side of a tile that faces a hole or the border) gets the outline. Holes stay empty.
-function cutoutLayers(p) {
+export function cutoutLayers(p) {
   const n = p.n;
   const open = (r, c) => r >= 0 && r < n && c >= 0 && c < n && !p.holes[r * n + c];
   const tiles = [], grid = [], edge = [];

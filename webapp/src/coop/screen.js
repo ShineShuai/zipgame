@@ -1,4 +1,3 @@
-import { generate } from '../core/gen/generate.js';
 import { serialize } from '../core/format.js';
 import { playGradesFor } from '../core/grades.js';
 import { actionIcon } from '../apps/play/icons.js';
@@ -27,6 +26,9 @@ import {
   changed, startStroke, strokeStep, undoStroke,
 } from './stroke.js';
 import { tx } from './texts.js';
+import {
+  nearestSize, sizesFor, statKey, variantById, variantOf,
+} from './variants.js';
 import { boardMarkup } from './view.js';
 
 // The Free draw screens: a full-screen layer on top of the app's page, below its app bar, with its
@@ -101,6 +103,7 @@ export function openScreen(env) {
     error: false,
     peerHere: false,
     waiting: false, // the host waits for the other device to take the new puzzle
+    variant: 'standard', // the type of the next puzzle (variants.js)
     connectTimer: null,
     route: '', // dev line: how the connection runs (rtc.js describeRoute)
     probe: null, // dev line: promise of the per-server STUN check (asked once per connection)
@@ -119,14 +122,16 @@ export function openScreen(env) {
   function render() {
     const rtc = rtcSupported();
     const pages = {
-      menu: () => menuPage({ size: state.size, rtc }),
+      menu: () => menuPage({ size: state.size, rtc, variant: state.variant }),
       inviting: () => invitePage({
         link: state.link, status: state.status, error: state.error, canShare,
       }),
       joining: () => joinPage({
         code: state.code, status: state.status, error: state.error, canShare,
       }),
-      lobby: () => lobbyPage({ role: state.role, size: state.size, status: state.status }),
+      lobby: () => lobbyPage({
+        role: state.role, size: state.size, status: state.status, variant: state.variant,
+      }),
       generating: () => generatingPage({
         percent: state.progress, waiting: state.waiting, online: Boolean(state.session),
       }),
@@ -156,6 +161,12 @@ export function openScreen(env) {
     }
   };
 
+  // The name of the puzzle's type, for the title; nothing for a standard one.
+  function kindName(puzzle) {
+    const kind = variantOf(puzzle);
+    return kind === 'standard' ? '' : t(`mode.${kind}`);
+  }
+
   function gameView() {
     const trap = state.grade;
     const online = Boolean(state.session);
@@ -168,6 +179,7 @@ export function openScreen(env) {
       revealed: state.revealed,
       grade: trap ? trap.grade : null,
       seedText: `seed ${state.seed} · ${role}${state.route ? ` · ${state.route}` : ''}`,
+      variantName: kindName(state.puzzle),
       devText: trap ? `trap ${trap.predicted.toFixed(2)}` : 'ungraded',
       time: state.elapsed,
       hintsLeft: { used: state.hintsUsed, cap: maxHints(state.puzzle) },
@@ -403,7 +415,7 @@ export function openScreen(env) {
     render();
     let puzzle = null;
     try {
-      puzzle = await runAsync(generate(state.size, seed), {
+      puzzle = await runAsync(variantById(state.variant).generate(state.size, seed), {
         onEvent: event => {
           if (token === state.token && event.frac != null) {
             state.progress = Math.round(100 * event.frac);
@@ -487,7 +499,7 @@ export function openScreen(env) {
   let recorded = null;
   function recordOnce(online, total) {
     if (recorded?.token !== state.startedAt) {
-      const key = online ? `${state.puzzle.n}x2` : state.puzzle.n;
+      const key = statKey(state.puzzle, online);
       recorded = { token: state.startedAt, summary: recordSolve(env.stats, key, total) };
       env.saveStats();
     }
@@ -841,6 +853,11 @@ export function openScreen(env) {
   root.addEventListener('change', event => {
     if (event.target.id === 'coopSize') {
       state.size = Number(event.target.value);
+    }
+    if (event.target.id === 'coopVariant') {
+      state.variant = event.target.value;
+      state.size = nearestSize(state.size, sizesFor(state.variant));
+      render();
     }
   });
   root.addEventListener('pointerdown', event => {
