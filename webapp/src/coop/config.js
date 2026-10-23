@@ -11,8 +11,12 @@ export const DEFAULT_SIZE = 7;
 // STUN servers: a browser asks one "what is my address from outside?" so that two devices on
 // different networks can reach each other. They only answer that question; no game data passes
 // through them, and they are not ours. Google's is not reachable from China, hence the others.
+// A url is `stun:host[:port]` (RFC 7064): no `//`. The browser asks all of them at once, so more
+// servers are spares, not a queue; a dead one only costs the wait (see GATHER_MS in rtc.js).
 export const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'stun:stun.nextcloud.com:443' },
   { urls: 'stun:stun.miwifi.com:3478' },
+  { urls: 'stun:stun.chat.bilibili.com:3478' },
 ];

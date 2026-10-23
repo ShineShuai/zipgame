@@ -95,7 +95,7 @@ export function seamMarksSvg(n, path) {
 
 // Board with holes (Cutout): only the cells that are left are drawn, each a white tile; the grid lines run between two
 // tiles, and the edge of the shape (every side of a tile that faces a hole or the border) gets the outline. Holes stay empty.
-function cutoutLayers(p) {
+export function cutoutLayers(p) {
   const n = p.n;
   const open = (r, c) => r >= 0 && r < n && c >= 0 && c < n && !p.holes[r * n + c];
   const tiles = [], grid = [], edge = [];
@@ -124,7 +124,7 @@ function wallLines(puzzle) {
 // One-way arrows (puzzle.arrows): a filled triangle on the middle of the edge it belongs to, pointing the
 // way the edge may be walked. data-arrow = the edge id, so a blocked step can flash the right one.
 // The triangle is drawn for a right-pointing arrow and rotated about the edge's middle.
-function arrowMarks(puzzle) {
+export function arrowMarks(puzzle) {
   const n = puzzle.n;
   const marks = arrowIds(puzzle).map(edge => {
     const [from, to] = arrowMove(n, edge, arrowDirId(puzzle.arrows, edge));

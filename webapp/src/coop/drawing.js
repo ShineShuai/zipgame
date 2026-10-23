@@ -12,21 +12,30 @@ import { isPentagon } from '../core/pentagon.js';
 //   cycle    the line would close a loop
 //   order    the numbers on the connected piece (a "fragment") would not rise or fall steadily
 //   gap      the piece would hold two numbers but not all the numbers between them
+//   steps    Exact puzzle, instead of order and gap: a number is the step of its cell, so along a
+//            piece the numbers must differ by exactly the cells between them, and the piece must
+//            fit between step 1 and the last step
+//   direction  One way arrows puzzle: the arrows, the numbers and the two ends (cell 1 first, the
+//            last number last) must allow at least one way along the piece
+// A Cutout puzzle (holes) needs no rule of its own: canStep() already refuses a hole.
 // Under these rules a drawing is solved exactly when it has cells - 1 edges: it is then one path
 // that covers the board, holds every number in order and has cell 1 and the last number as its
 // ends. solved() still hands the path to isSolved(), the rule of the single-player game.
 
-export const REASONS = ['blocked', 'present', 'degree', 'cycle', 'order', 'gap'];
+export const REASONS = [
+  'blocked', 'present', 'degree', 'cycle', 'order', 'gap', 'steps', 'direction',
+];
 
-// null when Free draw can play `puzzle`, else a message. Standard puzzles only for now: the board
-// drawing and the rules above know no holes, arrows, portals, wrap-around, loops or two paths.
+// null when Free draw can play `puzzle`, else a message. Standard, Cutout, Exact and One way arrows
+// puzzles so far (variants.js): the board drawing and the rules above know no portals,
+// wrap-around, loops, two paths or pentagons.
 export function unsupported(puzzle) {
   if (isPentagon(puzzle)) {
     return 'Free draw does not play Pentagon puzzles (yet).';
   }
-  const extra = ['holes', 'arrows', 'exact', 'wrap', 'loop', 'split', 'portals'];
+  const extra = ['wrap', 'loop', 'split', 'portals'];
   const found = extra.find(name => puzzle[name]);
-  return found ? `Free draw plays standard puzzles only; this one has ${found}.` : null;
+  return found ? `Free draw does not play ${found} puzzles (yet).` : null;
 }
 
 // The numbers of one fragment, in order along it: null when fine, else 'order' or 'gap'.
@@ -43,6 +52,25 @@ function numberProblem(numbers) {
   return span === numbers.length ? null : 'gap';
 }
 
+// Exact puzzle: `numbers` are the numbers of the cells of one piece, in order along it (0: none).
+// The piece is the steps first .. first + (length - 1) of the path, one way or the other, so the
+// number of each cell must be that step. null when it can be, else 'steps'.
+function stepsProblem(numbers, total) {
+  const marked = numbers.map((value, index) => [index, value]).filter(([, value]) => value);
+  if (marked.length === 0) {
+    return null;
+  }
+  const [index0, value0] = marked[0];
+  const last = numbers.length - 1;
+  const fits = sign => {
+    const first = value0 - sign * index0;
+    const end = first + sign * last;
+    return first >= 1 && first <= total && end >= 1 && end <= total
+      && marked.every(([index, value]) => value === first + sign * index);
+  };
+  return fits(1) || fits(-1) ? null : 'steps';
+}
+
 export function createDrawing(puzzle) {
   const total = puzzle.n * puzzle.n;
   const start = startCell(puzzle);
@@ -54,6 +82,36 @@ export function createDrawing(puzzle) {
 
   const key = (a, b) => (a < b ? a * total + b : b * total + a);
   const capacity = cell => (cell === start || cell === end ? 1 : 2);
+  // A line has no direction here, so a one-way edge is open when it may be walked either way.
+  const open = (a, b) => canStep(puzzle, a, b) || canStep(puzzle, b, a);
+
+  // One way arrows: may the cells of a piece, in order along it, be walked first to last, or last
+  // to first? Every step must be allowed in that direction, the numbers must rise that way, cell 1
+  // must come first and the last number last. null when at least one way is possible.
+  function directionProblem(cells) {
+    const first = cells[0];
+    const last = cells[cells.length - 1];
+    let forward = true;
+    let backward = true;
+    for (let i = 1; i < cells.length; i++) {
+      forward = forward && canStep(puzzle, cells[i - 1], cells[i]);
+      backward = backward && canStep(puzzle, cells[i], cells[i - 1]);
+    }
+    const numbers = numbersOf(cells);
+    if (numbers.length > 1) {
+      forward = forward && numbers[1] > numbers[0];
+      backward = backward && numbers[1] < numbers[0];
+    }
+    if (cells.includes(start)) {
+      forward = forward && first === start;
+      backward = backward && last === start;
+    }
+    if (cells.includes(end)) {
+      forward = forward && last === end;
+      backward = backward && first === end;
+    }
+    return forward || backward ? null : 'direction';
+  }
   const has = (a, b) => stamps.has(key(a, b));
 
   // The cells met when walking from `from` through its neighbour `via`, to the end of the piece.
@@ -85,7 +143,7 @@ export function createDrawing(puzzle) {
 
   // null when the edge a-b may be drawn now, else the reason (see REASONS).
   function check(a, b) {
-    if (a === b || !canStep(puzzle, a, b)) {
+    if (a === b || !open(a, b)) {
       return 'blocked';
     }
     if (has(a, b)) {
@@ -99,10 +157,14 @@ export function createDrawing(puzzle) {
     }
     links[a].push(b);
     links[b].push(a);
-    const problem = numberProblem(numbersOf(fragmentOf(a)));
+    const piece = fragmentOf(a);
+    const problem = puzzle.exact
+      ? stepsProblem(piece.map(cell => puzzle.cp[cell] || 0), cellCount(puzzle))
+      : numberProblem(numbersOf(piece));
+    const wrongWay = !problem && puzzle.arrows ? directionProblem(piece) : null;
     links[a].pop();
     links[b].pop();
-    return problem;
+    return problem ?? wrongWay;
   }
 
   // Draws the edge a-b for `owner` when the rules allow it: null, else the reason it was refused.
@@ -150,7 +212,10 @@ export function createDrawing(puzzle) {
   const path = () => fragmentOf(start);
 
   function solved() {
-    return stamps.size === cellCount(puzzle) - 1 && isSolved(puzzle, path());
+    const along = path();
+    return stamps.size === cellCount(puzzle) - 1
+      && along.every((cell, i) => i === 0 || canStep(puzzle, along[i - 1], cell))
+      && isSolved(puzzle, along);
   }
 
   return {
