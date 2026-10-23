@@ -2,12 +2,13 @@ import { serialize } from '../../core/format.js';
 import {
   step as surfaceStep, isSolved as surfaceSolved, serializeSurface,
 } from '../../core/surface/puzzle.js';
-import { generate, PLAY_SIZES } from '../../core/gen/generate.js';
+import { PLAY_SIZES } from '../../core/gen/generate.js';
 import { edgeId, arrowAllows } from '../../core/edges.js';
 import { isSolved, step, gridAdjacent } from '../../core/rules.js';
 import { statSummary } from '../../core/stats.js';
 import { pickStorage, usage } from '../../platform/storage.js';
-import { runAsync, cancellable, isAbort, isTimeout } from '../../platform/run.js';
+import { cancellable, isAbort, isTimeout } from '../../platform/run.js';
+import { runGeneration, generationWhere } from './gen-runner.js';
 import { createStore } from '../../features/stats-store.js';
 import { devLinkMode, tapCombo, loadPin, savePin, DEV_TAP_MS } from '../../features/dev-reveal.js';
 import { createDaily, scopeKey, fetchGameOfDay, fetchGameOfDayFor, utcDateString, utcDayNumber, dateOfDay } from '../../features/daily.js';
@@ -426,7 +427,7 @@ function storageNoteText() {
   const uv = unlockView();
   const unlockDev = uv ? ` · unlock: ${uv.tokens} chance(s), lucky game ${uv.open ? 'open' : 'played'}, next lucky day in ${uv.daysToNext}` : '';
   const refused = storage.refused && storage.refused.size ? ` · writes refused: ${[...storage.refused].join(', ')}` : '';
-  return `Storage: ${storage.name}${storage.shared ? '' : ' (local only)'}${storageUsed}${refused}${unlockDev}`;
+  return `Storage: ${storage.name}${storage.shared ? '' : ' (local only)'}${storageUsed}${refused} · generation: ${generationWhere()}${unlockDev}`;
 }
 function freePlayCardHtml() {
   const sizeOptions = sizeOptionsHtml();
@@ -1213,11 +1214,13 @@ function beginGame(puzzle, gotdDate, isReplay = false, isShared = false, lucky =
   if (puzzle.split) S.path = S.paths[0];
   startTimer(); render(); maybeShowRules(); markHowtoSeen();
 }
-function generatorFor(mode, n, seed) {
-  const variant = variantById(mode);
-  return variant ? variant.generate(n, seed) : generate(n, seed);
-}
-const generateShown = (n, seed, mode, signal) => runAsync(generatorFor(mode, n, seed), { signal, onEvent: e => { S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls ?? e.arrows ?? e.labels, K: e.K }; paintGenerating(); } });
+const generateShown = (n, seed, mode, signal) => runGeneration({ task: 'flat', mode, n, seed }, {
+  signal,
+  onEvent: e => {
+    S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls ?? e.arrows ?? e.labels, K: e.K };
+    paintGenerating();
+  },
+});
 // how: 'open' (Play local: current or next-if-solved) | 'skip' (New puzzle); a variant is always a new random one.
 // lucky: the lucky game (startLucky): its chance is given back when the puzzle cannot be made.
 async function startLocal(how, mode = 'standard', lucky = false) {
