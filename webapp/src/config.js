@@ -10,6 +10,8 @@
 // replicatedTo (optional, add it below replicatedFrom): the last replicated day. Add it when the two writes stop (always: null, or no backup left),
 // so that the days after it are added up again. Without it, replication is assumed to run on. With no replicatedFrom nothing counts as replicated.
 // With `always: null` from the start, leave both out.
+// The page may only call the origins listed in the `connect-src` of index.html and stats.html (their Content-Security-Policy): a new backend's
+// origin goes there too, and `npm run check` fails until it does.
 // The Supabase key is the public anon/publishable key (safe in the client: RLS blocks all direct table access).
 // The Turso key is the public browser token, safe in the client because it can only read and INSERT into `submit` (server/turso/schema.sql validates every row):
 //   turso db tokens create <db> -e never -p all:data_read -p submit:data_add     (url: turso db show <db> --http-url; check it with server/turso/smoke.sh)

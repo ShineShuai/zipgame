@@ -9,7 +9,7 @@ import {
 // the light grid colour, a heavier outline along the border of the board, dark walls on the sides
 // between two cells, the orange line through the cell centres, a badge on every number. The
 // board's own units are the tiling's (a cell is about 1 wide), times CELL; y points down.
-// No DOM: markup and numbers only, main.js puts them on the page.
+// No DOM: markup and numbers only, the play app puts them on the page.
 
 const MARGIN = 6; // room around the board for the outline, in svg units
 const cache = new WeakMap();

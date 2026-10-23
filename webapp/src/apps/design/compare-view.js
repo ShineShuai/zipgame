@@ -1,8 +1,8 @@
 import { wallCount } from '../../core/edges.js';
 import { flagsToHex } from '../../core/gen/flags.js';
 import { miniPreviewSvg, SOL_C } from './board.js';
+import { esc } from '../../ui/esc.js';
 
-const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const row = (label, a, b, indent) => `<tr><th${indent ? ' class="compare-sub"' : ''}>${esc(label)}</th><td>${a}</td><td>${b}</td></tr>`;
 
 // r: runCompare()'s return value. flagsA/flagsB: the raw integers, for the header. tries: for the

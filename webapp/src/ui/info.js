@@ -1,12 +1,12 @@
 // One way to show extra information, in two presentations chosen by the input device (not by the screen width):
-//   pointer devices (hover): a popover next to the element, on hover or keyboard focus (CSS + main.js showRules);
+//   pointer devices (hover): a popover next to the element, on hover or keyboard focus (CSS + apps/play/popups.js showRules);
 //   touch devices: a bottom sheet (openSheet), and a long press on a type tile peeks at its rules (installPeek).
 // The text is the same in both: it lives once in the markup (.variant-rules, .stat-tip, .tip-pop).
 
+import { esc } from './esc.js';
+
 // Whether the main input cannot hover: a phone or a tablet (a laptop with a touch screen still has its mouse).
 export const touchUI = () => typeof matchMedia === 'function' && matchMedia('(hover: none)').matches;
-
-const esc = text => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 let sheet = null, opener = null;
 

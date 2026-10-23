@@ -3,6 +3,7 @@
 // Hover text: any element with data-tip="line\nline" is shown by tooltip.js. Seed players are drawn as hollow dots (class seed) / grey bars (bar-seed).
 import { NB, T0_MS, RATIO } from '../../core/hist.js';
 import { binLo, binHi } from '../../core/stats-merge.js';
+import { escLines } from '../../ui/esc.js';
 
 const W = 640, H = 230, ML = 46, MR = 12, MT = 10, MB = 28;
 const r1 = x => +x.toFixed(1);
@@ -26,9 +27,7 @@ export const timeTicks = (lo, hi) => { const t = TIME_TICKS.filter(v => v >= lo 
 const grid = (ticks, y, fmt) => ticks.map(t => `<line class="grid" x1="${ML}" x2="${W - MR}" y1="${r1(y(t))}" y2="${r1(y(t))}"/><text class="tick" x="${ML - 6}" y="${r1(y(t)) + 4}" text-anchor="end">${fmt(t)}</text>`).join('');
 const dayLabels = (days, x) => { const every = Math.ceil(days.length / 8); return days.map((d, i) => (i % every ? '' : `<text class="tick" x="${r1(x(i))}" y="${H - 8}" text-anchor="middle">${mmdd(d)}</text>`)).join(''); };
 
-const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\n': '&#10;' };
-const esc = text => String(text).replace(/[&<>"\n]/g, c => ESCAPES[c]);
-const tip = lines => `data-tip="${esc([lines].flat().join('\n'))}"`;
+const tip = lines => `data-tip="${escLines([lines].flat().join('\n'))}"`;
 
 // One transparent column per day: click selects the day, hover shows tips[i] (an array of lines, or a string).
 function hits(days, x, sel, w, tips = []) {

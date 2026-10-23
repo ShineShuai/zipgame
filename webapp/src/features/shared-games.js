@@ -2,7 +2,7 @@ import { decodeShare, encodeShare } from '../core/share-code.js';
 import { mergeShared } from './share.js';
 
 // The games other players shared with this player, kept until the player removes them (or, for a
-// Game of Day, until it can no longer be played: apps/play/main.js prunes those). One entry per
+// Game of Day, until it can no longer be played: apps/play/shared-ui.js prunes those). One entry per
 // game (shareKey in share.js); a game that arrives again keeps the worse colour strip.
 // Kept per device, under SHARED_GAMES_KEY: { v, items: [{ c: share code, a: added at, ms }] }. The
 // code is the record in its own checked format (core/share-code.js), so an entry needs no schema of
