@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generate } from '../../src/core/gen/generate.js';
+import { generatePentagon } from '../../src/core/gen/pentagon.js';
 import { generateTeleport } from '../../src/core/gen/teleport.js';
 import { runSync } from '../../src/core/run.js';
 import { maxNumber } from '../../src/core/model.js';
@@ -98,4 +99,24 @@ test('a Teleport board shows its portals; a jump is one dotted curve; the partne
   assert.equal(count(ring, /data-mark="jump-ready"/g), 1);
   const none = boardMarkup(tele, createDrawing(tele));
   assert.equal(count(none, /data-mark="jump-ready"/g), 0);
+});
+
+test('a Pentagon board has a tile per cell, a badge per number and a line per drawn edge', () => {
+  const pentagon = runSync(generatePentagon(6, 2));
+  const drawing = createDrawing(pentagon);
+  const text = boardMarkup(pentagon, drawing);
+  assert.ok(text.includes('class="zip-svg coop-svg pentagon"'));
+  assert.equal(count(text, /<polygon /g), 36);
+  assert.equal(count(text, /data-num-cell=/g), maxNumber(pentagon));
+  const inLines = markup => count(
+    markup.slice(markup.indexOf('data-role="lines"')).split('</g>')[0],
+    /<line /g,
+  );
+  assert.equal(inLines(text), 0);
+  const path = solutionOf(pentagon);
+  drawing.add(path[0], path[1]);
+  drawing.add(path[4], path[5]);
+  assert.equal(inLines(boardMarkup(pentagon, drawing)), 2);
+  const hint = boardMarkup(pentagon, drawing, { kind: 'next', edge: [path[1], path[2]] });
+  assert.ok(hint.length > text.length);
 });

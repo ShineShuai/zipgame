@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { CELL } from '../../src/apps/play/board.js';
 import { makePuzzle } from '../../src/core/model.js';
+import { makeSurfacePuzzle, topologyOf } from '../../src/core/surface/puzzle.js';
+import { SLOTS } from '../../src/core/surface/topology.js';
 import { createDrawing } from '../../src/coop/drawing.js';
 import { edgeAt } from '../../src/coop/cut.js';
 import { edgeMiddleOf } from '../../src/coop/layout.js';
@@ -63,4 +66,14 @@ test('a press on a jump points at it; the chord between the portals is no line',
   const [x, y] = edgeMiddleOf(puzzle, 1, 14);
   assert.deepEqual(edgeAt(drawing, x, y), [1, 14]);
   assert.equal(edgeAt(drawing, 2, 2), null);
+});
+
+test('a press on a line of a Pentagon board points at it (units of CELL)', () => {
+  const puzzle = makeSurfacePuzzle('pentagon', 6);
+  const drawing = createDrawing(puzzle);
+  const next = topologyOf(puzzle).nb[7 * SLOTS]; // a neighbour of cell 7
+  assert.equal(drawing.add(7, next), null);
+  const [x, y] = edgeMiddleOf(puzzle, 7, next, CELL);
+  assert.deepEqual(edgeAt(drawing, x, y, 0.3 * CELL, CELL), [Math.min(7, next), Math.max(7, next)]);
+  assert.equal(edgeAt(drawing, x + 3 * CELL, y, 0.3 * CELL, CELL), null);
 });

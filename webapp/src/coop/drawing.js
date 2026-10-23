@@ -1,7 +1,5 @@
-import { canStep, isSolved } from '../core/rules.js';
-import { cellCount, endCell, startCell } from '../core/model.js';
-import { adjacent, isPortalPair } from '../core/geom.js';
-import { isPentagon } from '../core/pentagon.js';
+import { isSurfacePuzzle } from '../core/surface/puzzle.js';
+import { PLAYED_SURFACES, modelOf } from './model.js';
 
 // Free drawing: the lines a player draws are a set of edges between neighbouring cells, in any
 // order and from anywhere (the pen may be lifted). Pure: no DOM, no storage.
@@ -27,12 +25,14 @@ export const REASONS = [
   'blocked', 'present', 'degree', 'cycle', 'order', 'gap', 'steps', 'direction',
 ];
 
-// null when Free draw can play `puzzle`, else a message. Every type but Loop, Two paths and
-// Pentagon (variants.js). Wrap-around and Teleport need no rule of their own: an edge across a seam
-// or between two portals is an edge like any other, and canStep() knows them.
+// null when Free draw can play `puzzle`, else a message. Every type but Loop, Two paths and the
+// solids (variants.js, model.js PLAYED_SURFACES). Wrap-around and Teleport need no rule of their
+// own: an edge across a seam or between two portals is an edge like any other, and canStep()
+// knows them.
 export function unsupported(puzzle) {
-  if (isPentagon(puzzle)) {
-    return 'Free draw does not play Pentagon puzzles (yet).';
+  if (isSurfacePuzzle(puzzle)) {
+    return PLAYED_SURFACES.includes(puzzle.kind)
+      ? null : `Free draw does not play ${puzzle.kind} puzzles (yet).`;
   }
   const extra = ['loop', 'split'];
   const found = extra.find(name => puzzle[name]);
@@ -73,9 +73,8 @@ function stepsProblem(numbers, total) {
 }
 
 export function createDrawing(puzzle) {
-  const total = puzzle.n * puzzle.n;
-  const start = startCell(puzzle);
-  const end = endCell(puzzle);
+  const model = modelOf(puzzle);
+  const { total, start, end } = model;
   const links = Array.from({ length: total }, () => []);
   const stamps = new Map(); // edge key -> the order in which the edges were drawn
   const owners = new Map(); // edge key -> the player (0, 1) who drew it
@@ -84,11 +83,10 @@ export function createDrawing(puzzle) {
   const key = (a, b) => (a < b ? a * total + b : b * total + a);
   const capacity = cell => (cell === start || cell === end ? 1 : 2);
   // A line has no direction here, so a one-way edge is open when it may be walked either way.
-  const open = (a, b) => canStep(puzzle, a, b) || canStep(puzzle, b, a);
+  const open = (a, b) => model.canStep(a, b) || model.canStep(b, a);
   // May a line run between these two cells at all, walls and arrows aside: do they touch (across a
   // seam too), or are they the two ends of a portal pair?
-  const linked = (a, b) => a !== b
-    && (adjacent(puzzle.n, puzzle.wrap, a, b) || isPortalPair(puzzle.portals, a, b));
+  const linked = model.linked;
 
   // One way arrows: may the cells of a piece, in order along it, be walked first to last, or last
   // to first? Every step must be allowed in that direction, the numbers must rise that way, cell 1
@@ -99,8 +97,8 @@ export function createDrawing(puzzle) {
     let forward = true;
     let backward = true;
     for (let i = 1; i < cells.length; i++) {
-      forward = forward && canStep(puzzle, cells[i - 1], cells[i]);
-      backward = backward && canStep(puzzle, cells[i], cells[i - 1]);
+      forward = forward && model.canStep(cells[i - 1], cells[i]);
+      backward = backward && model.canStep(cells[i], cells[i - 1]);
     }
     const numbers = numbersOf(cells);
     if (numbers.length > 1) {
@@ -164,7 +162,7 @@ export function createDrawing(puzzle) {
     links[b].push(a);
     const piece = fragmentOf(a);
     const problem = puzzle.exact
-      ? stepsProblem(piece.map(cell => puzzle.cp[cell] || 0), cellCount(puzzle))
+      ? stepsProblem(piece.map(cell => puzzle.cp[cell] || 0), model.cells)
       : numberProblem(numbersOf(piece));
     const wrongWay = !problem && puzzle.arrows ? directionProblem(piece) : null;
     links[a].pop();
@@ -218,9 +216,9 @@ export function createDrawing(puzzle) {
 
   function solved() {
     const along = path();
-    return stamps.size === cellCount(puzzle) - 1
-      && along.every((cell, i) => i === 0 || canStep(puzzle, along[i - 1], cell))
-      && isSolved(puzzle, along);
+    return stamps.size === model.cells - 1
+      && along.every((cell, i) => i === 0 || model.canStep(along[i - 1], cell))
+      && model.solved(along);
   }
 
   return {

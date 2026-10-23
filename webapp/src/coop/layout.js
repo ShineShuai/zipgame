@@ -1,5 +1,9 @@
+import { CELL } from '../apps/play/board.js';
+import { pentagonAcross, pentagonCellAt, pentagonPoint } from '../apps/play/pentagon-board.js';
 import { isPortalPair } from '../core/geom.js';
-import { SEAM_STUB, WRAP_PAD, cellCenter } from '../view/geometry.js';
+import { isPentagon } from '../core/pentagon.js';
+import { topologyOf } from '../core/surface/puzzle.js';
+import { SEAM_STUB, WRAP_PAD, cellAtPoint, cellCenter } from '../view/geometry.js';
 
 // Where the line of an edge runs on the board (pure). Lengths are in units of `s` per cell: 1 for
 // cells, CELL for board units.
@@ -15,6 +19,53 @@ import { SEAM_STUB, WRAP_PAD, cellCenter } from '../view/geometry.js';
 // The margin of a Wrap-around board, in cells, on every side: the stubs of a seam show there, and
 // a drag that leaves the board through it comes in on the other side.
 export const padOf = puzzle => (puzzle.wrap ? WRAP_PAD : 0);
+
+// The centre of a cell: on the square grid, the middle of its square; on a Pentagon board, the
+// centre the tiling gives it (core/pentagon.js).
+export function cellCentre(puzzle, cell, s = 1) {
+  if (isPentagon(puzzle)) {
+    const top = topologyOf(puzzle);
+    return [top.centres[2 * cell] * s, top.centres[2 * cell + 1] * s];
+  }
+  return cellCenter(puzzle.n, cell, s);
+}
+
+// The cell under a pointer (client pixels) on the svg whose box is `rect`, or -1.
+export function cellAtClient(puzzle, rect, clientX, clientY) {
+  if (isPentagon(puzzle)) {
+    return pentagonCellAt(puzzle, ...pentagonPoint(puzzle, rect, clientX, clientY));
+  }
+  return cellAtPoint(
+    puzzle.n,
+    clientX - rect.left,
+    clientY - rect.top,
+    rect.width,
+    rect.height,
+    padOf(puzzle),
+    Boolean(puzzle.wrap),
+  );
+}
+
+// About one cell, in pixels: the size of a step of a fast drag.
+export function cellPxOf(puzzle, rect) {
+  return isPentagon(puzzle)
+    ? rect.width / pentagonAcross(puzzle)
+    : rect.width / (puzzle.n + 2 * padOf(puzzle));
+}
+
+// A pointer position as [x, y, s]: in the units of the lines (edgeSegments with that `s`).
+export function pressPoint(puzzle, rect, clientX, clientY) {
+  if (isPentagon(puzzle)) {
+    return [...pentagonPoint(puzzle, rect, clientX, clientY), CELL];
+  }
+  const pad = padOf(puzzle);
+  const span = puzzle.n + 2 * pad;
+  return [
+    ((clientX - rect.left) / rect.width) * span - pad,
+    ((clientY - rect.top) / rect.height) * span - pad,
+    1,
+  ];
+}
 
 // The jump between the portals a and b: a curve { from, via, to } bent to one side. The same bend
 // as the play app's jump (apps/play/board.js jumpMarksSvg), whichever way round the pair is named.
@@ -41,6 +92,9 @@ const onCurve = ({ from, via, to }, t) => [0, 1].map(axis => (1 - t) * (1 - t) *
 // The straight pieces [x1, y1, x2, y2] that the line of the edge a-b is made of.
 export function edgeSegments(puzzle, a, b, s = 1) {
   const n = puzzle.n;
+  if (isPentagon(puzzle)) {
+    return [[...cellCentre(puzzle, a, s), ...cellCentre(puzzle, b, s)]];
+  }
   if (isPortalPair(puzzle.portals, a, b)) {
     const curve = jumpCurve(n, a, b, s);
     const points = Array.from({ length: CURVE_PARTS + 1 },

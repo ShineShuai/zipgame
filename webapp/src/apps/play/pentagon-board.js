@@ -130,11 +130,30 @@ function badges(p, visited) {
 
 // How wide the board may get on screen: about 84 px per cell across, at most 720, and short
 // enough to fit the window (the same rule as the square board, by the height of the board).
-function maxBoardCss(p) {
+export function maxBoardCss(p) {
   const { view } = geometry(p);
   const px = Math.min(720, Math.round((view.w / CELL) * 84));
   const byHeight = h => `calc((${h} - 210px) * ${num(view.w / view.h)})`;
   return `max-width:${px}px;max-width:min(${px}px,max(260px,${byHeight('100vh')}));max-width:min(${px}px,max(260px,${byHeight('100dvh')}))`;
+}
+
+// The tiles, the outline along the border and the walls of the board, as svg (what the play board
+// and the Free draw board have in common).
+export function pentagonLayers(p) {
+  const g = geometry(p);
+  const tiles = g.polys.map(poly => `<polygon points="${pointsOf(poly)}"/>`).join('');
+  const walls = [];
+  p.walls.forEach((wall, edge) => {
+    if (wall) {
+      walls.push(lineOf(g.edgeSegment[edge]));
+    }
+  });
+  return `<g data-role="tiles" fill="${COLORS.tile}" stroke="${COLORS.grid}" stroke-width="1.5" `
+    + `stroke-linejoin="round">${tiles}</g>`
+    + `<g data-role="outline" stroke="${COLORS.outline}" stroke-width="5" `
+    + `stroke-linecap="round">${g.border.map(lineOf).join('')}</g>`
+    + `<g data-role="walls" stroke="${COLORS.wall}" stroke-width="6" `
+    + `stroke-linecap="round">${walls.join('')}</g>`;
 }
 
 // Full svg markup of the play board (S = the play state, as for boardSvg in board.js).
@@ -143,22 +162,10 @@ export function pentagonBoardSvg(S) {
   const g = geometry(p);
   const { view } = g;
   const visited = new Set(S.path);
-  const walls = [];
-  p.walls.forEach((wall, edge) => {
-    if (wall) {
-      walls.push(lineOf(g.edgeSegment[edge]));
-    }
-  });
   const route = S.path.length > 1 ? pentagonRouteD(p, S.path) : '';
   let svg = `<svg viewBox="${num(view.x)} ${num(view.y)} ${num(view.w)} ${num(view.h)}" `
     + `class="zip-svg pentagon" style="${maxBoardCss(p)}">`;
-  const tiles = g.polys.map(poly => `<polygon points="${pointsOf(poly)}"/>`).join('');
-  svg += `<g data-role="tiles" fill="${COLORS.tile}" stroke="${COLORS.grid}" stroke-width="1.5" `
-    + `stroke-linejoin="round">${tiles}</g>`;
-  svg += `<g data-role="outline" stroke="${COLORS.outline}" stroke-width="5" `
-    + `stroke-linecap="round">${g.border.map(lineOf).join('')}</g>`;
-  svg += `<g data-role="walls" stroke="${COLORS.wall}" stroke-width="6" `
-    + `stroke-linecap="round">${walls.join('')}</g>`;
+  svg += pentagonLayers(p);
   svg += singlePathSvg(route);
   svg += badges(p, visited);
   if (S.hintWrongCell != null) {

@@ -1,6 +1,8 @@
 import { generateArrows, ARROW_SIZES } from '../core/gen/arrows.js';
 import { generateCutout, CUTOUT_MAX_MS } from '../core/gen/cutout.js';
 import { generateExact, EXACT_SIZES } from '../core/gen/exact.js';
+import { generatePentagon } from '../core/gen/pentagon.js';
+import { PENTAGON_SIZES, isPentagon } from '../core/pentagon.js';
 import { generate, PLAY_SIZES, WRAP_SIZES } from '../core/gen/generate.js';
 import { generateTeleport, TELEPORT_SIZES } from '../core/gen/teleport.js';
 
@@ -41,6 +43,11 @@ export const COOP_VARIANTS = [
     sizes: () => TELEPORT_SIZES,
     generate: (n, seed) => generateTeleport(n, seed),
   },
+  {
+    id: 'pentagon',
+    sizes: () => PENTAGON_SIZES,
+    generate: (n, seed) => generatePentagon(n, seed),
+  },
 ];
 
 export const variantById = id => COOP_VARIANTS.find(variant => variant.id === id)
@@ -50,6 +57,9 @@ export const sizesFor = id => variantById(id).sizes();
 
 // The variant a puzzle belongs to, among those of COOP_VARIANTS (others are not played).
 export function variantOf(puzzle) {
+  if (isPentagon(puzzle)) {
+    return 'pentagon';
+  }
   if (puzzle.holes) {
     return 'cutout';
   }

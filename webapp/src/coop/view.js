@@ -2,9 +2,15 @@ import {
   CELL, COLORS, arrowMarks, badgeColors, correctMoveRingAt, cutoutLayers, portalIconsSvg,
   wrapLayers, wrongMoveMarkAt,
 } from '../apps/play/board.js';
+import {
+  maxBoardCss as pentagonCss, pentagonLayers, pentagonView,
+} from '../apps/play/pentagon-board.js';
 import { isPortalPair } from '../core/geom.js';
+import { isPentagon } from '../core/pentagon.js';
 import { cellCenter, wallSegments } from '../view/geometry.js';
-import { edgeMiddleOf, edgeSegments, jumpCurve, padOf } from './layout.js';
+import {
+  cellCentre, edgeMiddleOf, edgeSegments, jumpCurve, padOf,
+} from './layout.js';
 
 // The Free draw board as SVG markup (pure). One line per drawn edge, so lines drawn in any order
 // and from anywhere look alike; a number is filled once a line touches its cell.
@@ -64,7 +70,7 @@ function badgesMarkup(puzzle, drawing) {
     if (!number) {
       continue;
     }
-    const [x, y] = cellCenter(puzzle.n, cell, CELL);
+    const [x, y] = cellCentre(puzzle, cell, CELL);
     const colors = badgeColors(drawing.degree(cell) > 0);
     badges.push(
       `<g data-num-cell="${cell}">`
@@ -112,7 +118,7 @@ function ringMarkup(puzzle, ring) {
   if (!ring) {
     return '';
   }
-  const [x, y] = cellCenter(puzzle.n, ring.cell, CELL);
+  const [x, y] = cellCentre(puzzle, ring.cell, CELL);
   const color = PLAYER_COLORS[ring.player] ?? PLAYER_COLORS[0];
   const [small, large] = [CELL * 0.38, CELL * 0.46];
   return `<circle data-mark="jump-ready" cx="${num(x)}" cy="${num(y)}" r="${CELL * 0.42}" `
@@ -121,7 +127,23 @@ function ringMarkup(puzzle, ring) {
     + 'repeatCount="indefinite"/></circle>';
 }
 
+// The Pentagon board: the tiles, the outline and the walls of the play app, and what the other
+// boards have on top (lines, badges, hint).
+function pentagonMarkup(puzzle, drawing, hint) {
+  const { x, y, w, h } = pentagonView(puzzle);
+  return `<svg class="zip-svg coop-svg pentagon" viewBox="${x} ${y} ${w} ${h}" `
+    + `style="${pentagonCss(puzzle)}">`
+    + pentagonLayers(puzzle)
+    + drawnMarkup(puzzle, drawing)
+    + badgesMarkup(puzzle, drawing)
+    + hintMarkup(puzzle, hint)
+    + '</svg>';
+}
+
 export function boardMarkup(puzzle, drawing, hint = null, ring = null) {
+  if (isPentagon(puzzle)) {
+    return pentagonMarkup(puzzle, drawing, hint);
+  }
   const size = puzzle.n * CELL;
   const walls = wallSegments(puzzle, CELL).map(line).join('');
   const pad = padOf(puzzle);

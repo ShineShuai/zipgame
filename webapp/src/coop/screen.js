@@ -1,4 +1,3 @@
-import { serialize } from '../core/format.js';
 import { playGradesFor } from '../core/grades.js';
 import { actionIcon } from '../apps/play/icons.js';
 import { HINT_PENALTY_S, maxHints, penalizedTime } from '../features/hints.js';
@@ -7,7 +6,6 @@ import {
   sfxBack, sfxBlocked, sfxCheckpoint, sfxMove, sfxSolved,
 } from '../platform/sound.js';
 import { t } from '../ui/i18n.js';
-import { cellAtPoint } from '../view/geometry.js';
 import { DEFAULT_SIZE } from './config.js';
 import { edgeAt } from './cut.js';
 import { unsupported } from './drawing.js';
@@ -30,7 +28,8 @@ import {
   nearestSize, sizesFor, statKey, variantById, variantOf,
 } from './variants.js';
 import { portalPartner } from '../core/geom.js';
-import { padOf } from './layout.js';
+import { cellAtClient, cellPxOf, pressPoint } from './layout.js';
+import { serializePuzzle } from './model.js';
 import { boardMarkup } from './view.js';
 
 // The Free draw screens: a full-screen layer on top of the app's page, below its app bar, with its
@@ -543,27 +542,18 @@ export function openScreen(env) {
   const drawingRect = board => board.firstElementChild.getBoundingClientRect();
 
   // A Wrap-around board has a margin: a drag that leaves the board comes in on the other side.
-  function cellAt(board, event) {
-    const rect = drawingRect(board);
-    return cellAtPoint(
-      state.puzzle.n,
-      event.clientX - rect.left,
-      event.clientY - rect.top,
-      rect.width,
-      rect.height,
-      padOf(state.puzzle),
-      Boolean(state.puzzle.wrap),
-    );
-  }
+  const cellAt = (board, event) => cellAtClient(
+    state.puzzle,
+    drawingRect(board),
+    event.clientX,
+    event.clientY,
+  );
 
   // Cuts the line under the point (client coordinates), if there is one: true when it did.
   function cutAt(clientX, clientY, player) {
     const rect = drawingRect(el('coopBoard'));
-    const pad = padOf(state.puzzle);
-    const span = state.puzzle.n + 2 * pad;
-    const x = ((clientX - rect.left) / rect.width) * span - pad;
-    const y = ((clientY - rect.top) / rect.height) * span - pad;
-    const edge = edgeAt(state.drawing, x, y);
+    const [x, y, unit] = pressPoint(state.puzzle, rect, clientX, clientY);
+    const edge = edgeAt(state.drawing, x, y, 0.3 * unit, unit);
     if (!edge) {
       return false;
     }
@@ -666,7 +656,7 @@ export function openScreen(env) {
       endHold(entry);
     }
     const board = el('coopBoard');
-    const cellPx = drawingRect(board).width / (state.puzzle.n + 2 * padOf(state.puzzle));
+    const cellPx = cellPxOf(state.puzzle, drawingRect(board));
     const dx = event.clientX - entry.x;
     const dy = event.clientY - entry.y;
     const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / (cellPx / 3)));
@@ -771,7 +761,7 @@ export function openScreen(env) {
       return;
     }
     state.exporting = true;
-    root.insertAdjacentHTML('beforeend', exportDialog(serialize(state.puzzle)));
+    root.insertAdjacentHTML('beforeend', exportDialog(serializePuzzle(state.puzzle)));
     setTimeout(() => el('coopExportText')?.focus(), 30);
   }
 

@@ -1,4 +1,5 @@
 import { ENABLED } from './config.js';
+import { refreshModules, wasReloaded } from './fresh.js';
 
 // The only file of the trial that the app loads up front (one <script type="module"> tag in
 // index.html, placed before the app's own script). It stays tiny: until the app's hidden things
@@ -8,10 +9,16 @@ let wanted = false;
 let loading = null;
 let app = null;
 
+// After a reload the modules are fetched afresh first (fresh.js): the browser's reload skips its
+// cache for what the page loads before it is done, not for the modules imported now.
 function load() {
-  loading ??= import('./app.js').then(module => {
-    app = module;
-  });
+  loading ??= (async () => {
+    const entry = new URL('./app.js', import.meta.url).href;
+    if (wasReloaded()) {
+      await refreshModules(entry);
+    }
+    app = await import(entry);
+  })();
   return loading;
 }
 

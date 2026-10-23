@@ -4,10 +4,13 @@ import { generateArrows } from '../../src/core/gen/arrows.js';
 import { generateCutout, CUTOUT_MAX_MS } from '../../src/core/gen/cutout.js';
 import { generateExact } from '../../src/core/gen/exact.js';
 import { generate } from '../../src/core/gen/generate.js';
+import { generatePentagon } from '../../src/core/gen/pentagon.js';
 import { generateTeleport } from '../../src/core/gen/teleport.js';
 import { runSync } from '../../src/core/run.js';
 import { makeRng, shuffle } from '../../src/core/rng.js';
 import { cellCount, makePuzzle } from '../../src/core/model.js';
+import { SLOTS } from '../../src/core/surface/topology.js';
+import { isSurfacePuzzle, makeSurfacePuzzle, topologyOf } from '../../src/core/surface/puzzle.js';
 import { isSolved } from '../../src/core/rules.js';
 import { solutionOf } from '../../src/features/hints.js';
 import { neighbourCell } from '../../src/core/geom.js';
@@ -118,7 +121,7 @@ test('edges() lists the lines in the order they were drawn, smaller cell first',
   assert.deepEqual(drawing.edges(), [[1, 2], [5, 6], [2, 3]]);
 });
 
-test('only Loop, Two paths and Pentagon puzzles are refused', () => {
+test('only Loop, Two paths and the solids are refused', () => {
   const puzzle = board();
   assert.equal(unsupported(puzzle), null);
   assert.equal(unsupported({ ...puzzle, holes: new Uint8Array(16) }), null);
@@ -129,7 +132,8 @@ test('only Loop, Two paths and Pentagon puzzles are refused', () => {
   for (const name of ['loop', 'split']) {
     assert.match(unsupported({ ...puzzle, [name]: true }), new RegExp(name));
   }
-  assert.match(unsupported({ kind: 'pentagon' }) ?? '', /entagon/);
+  assert.equal(unsupported(makeSurfacePuzzle('pentagon', 6)), null);
+  assert.match(unsupported(makeSurfacePuzzle('cube', 2)), /cube/);
 });
 
 const PUZZLES = [5, 6, 7, 8].flatMap(
@@ -256,11 +260,38 @@ const WRAPS = [4, 5, 6].flatMap(
   n => [1, 2, 3].map(seed => runSync(generate(n, seed, { wrap: true }))),
 );
 const TELEPORTS = [5, 6, 7, 8].flatMap(n => [1, 2].map(seed => runSync(generateTeleport(n, seed))));
+const PENTAGONS = [4, 6, 8].flatMap(n => [1, 2].map(seed => runSync(generatePentagon(n, seed))));
 const ARROWS = [5, 6, 7, 8].flatMap(n => [1, 2, 3].map(seed => runSync(generateArrows(n, seed))));
+
+// Every pair of cells that a line may join, once each.
+function allEdges(puzzle) {
+  const every = [];
+  if (isSurfacePuzzle(puzzle)) {
+    const top = topologyOf(puzzle);
+    for (let cell = 0; cell < top.T; cell++) {
+      for (let k = 0; k < top.deg[cell]; k++) {
+        const other = top.nb[cell * SLOTS + k];
+        if (other > cell) {
+          every.push([cell, other]);
+        }
+      }
+    }
+    return every;
+  }
+  for (let cell = 0; cell < puzzle.n * puzzle.n; cell++) {
+    for (const d of [0, 2]) {
+      const other = neighbourCell(puzzle.n, Boolean(puzzle.wrap), cell, d);
+      if (other >= 0) {
+        every.push([cell, other]);
+      }
+    }
+  }
+  return every.concat(puzzle.portals ?? []);
+}
 
 const SETS = [
   ['Cutout', CUTOUTS], ['Exact', EXACTS], ['Arrows', ARROWS], ['Wrap-around', WRAPS],
-  ['Teleport', TELEPORTS],
+  ['Teleport', TELEPORTS], ['Pentagon', PENTAGONS],
 ];
 for (const [label, puzzles] of SETS) {
   test(`${label}: any part of the solution can be drawn in any order; the whole is solved`, () => {
@@ -287,17 +318,7 @@ for (const [label, puzzles] of SETS) {
   test(`${label}: with every rule kept, solved means cells - 1 lines`, () => {
     const rnd = makeRng(5);
     for (const puzzle of puzzles) {
-      const cells = puzzle.n * puzzle.n;
-      const every = [];
-      for (let cell = 0; cell < cells; cell++) {
-        for (const d of [0, 2]) {
-          const other = neighbourCell(puzzle.n, Boolean(puzzle.wrap), cell, d);
-          if (other >= 0) {
-            every.push([cell, other]);
-          }
-        }
-      }
-      every.push(...(puzzle.portals ?? []));
+      const every = allEdges(puzzle);
       for (let round = 0; round < 8; round++) {
         const drawing = createDrawing(puzzle);
         for (const [a, b] of shuffle(every.slice(), rnd)) {

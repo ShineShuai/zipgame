@@ -1,4 +1,4 @@
-import { parse, serialize } from '../core/format.js';
+import { parsePuzzle, serializePuzzle } from './model.js';
 import { createReplica } from './replica.js';
 
 // The conversation of two devices over a channel (a WebRTC data channel, or a fake one in the
@@ -51,7 +51,7 @@ export function createSession({ role, channel, onEvent }) {
         onEvent({ type: 'peer', compatible: message.v === VERSION });
         break;
       case 'puzzle': {
-        const puzzle = parse(message.text);
+        const puzzle = parsePuzzle(message.text);
         puzzle.seed = message.seed;
         send({ t: 'ready' });
         onEvent({ type: 'puzzle', puzzle, seed: message.seed, replica: newReplica(puzzle) });
@@ -100,7 +100,7 @@ export function createSession({ role, channel, onEvent }) {
     hello: () => send({ t: 'hello', v: VERSION }),
     // Host: starts a game with this puzzle (generated here); returns this device's replica.
     newGame(puzzle, seed) {
-      const text = serialize(puzzle, { path: puzzle.path });
+      const text = serializePuzzle(puzzle, { path: puzzle.path });
       const mineReplica = newReplica(puzzle);
       send({ t: 'puzzle', text, seed });
       return mineReplica;

@@ -1,4 +1,5 @@
 import { createDrawing } from './drawing.js';
+import { modelOf } from './model.js';
 
 // A drawing shared by two (or more) players, kept equal on every device without a server.
 //
@@ -92,7 +93,7 @@ export function createReplica(puzzle, { pid = 0, send = () => {}, onRejected = (
 
   // An operation of another device. Anything that is not a well-formed operation is ignored.
   function receive(op) {
-    const cells = puzzle.n * puzzle.n;
+    const cells = modelOf(puzzle).total;
     const cell = value => Number.isInteger(value) && value >= 0 && value < cells;
     const count = value => Number.isInteger(value) && value >= 0 && value < 1e9;
     const sound = op && (op.kind === 'add' || op.kind === 'remove') && cell(op.a) && cell(op.b)
