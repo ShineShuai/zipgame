@@ -86,7 +86,7 @@ test('the type and the size are chosen together: the sizes are those of the type
   const sizes = html => [...html.matchAll(/<option value="(\d+)"/g)].map(match => Number(match[1]));
   const standard = menuPage({ size: 7, rtc: true });
   assert.ok(standard.includes('id="coopVariant"'));
-  for (const id of ['standard', 'cutout', 'exact']) {
+  for (const id of ['standard', 'cutout', 'exact', 'arrows']) {
     assert.ok(standard.includes(`<option value="${id}"`), id);
   }
   assert.ok(standard.includes('<option value="standard" selected>'));
@@ -94,6 +94,9 @@ test('the type and the size are chosen together: the sizes are those of the type
   const exact = menuPage({ size: 8, rtc: true, variant: 'exact' });
   assert.ok(exact.includes('<option value="exact" selected>'));
   assert.ok(!sizes(exact).includes(16));
+  const arrows = menuPage({ size: 7, rtc: true, variant: 'arrows' });
+  assert.ok(arrows.includes('<option value="arrows" selected>'));
+  assert.deepEqual(sizes(arrows), [5, 6, 7, 8, 9, 10, 11]);
   const lobby = lobbyPage({ role: 'host', size: 6, status: '', variant: 'cutout' });
   assert.ok(lobby.includes('<option value="cutout" selected>'));
   assert.ok(lobby.includes('<option value="6" selected>'));
@@ -103,4 +106,13 @@ test('the type and the size are chosen together: the sizes are those of the type
 test('the game title names a type that is not the standard one', () => {
   assert.ok(!gamePage(view()).includes(' · Cutout'));
   assert.ok(gamePage(view({ variantName: 'Cutout' })).includes('7×7 · Cutout'));
+});
+
+test('a failed puzzle is told on the menu (alone) and in the lobby, as an error', () => {
+  const failed = 'The puzzle could not be made. Try again. (no puzzle)';
+  const menu = menuPage({ size: 7, rtc: true, status: failed, error: true });
+  assert.ok(menu.includes('class="note error"') && menu.includes(failed));
+  assert.ok(!menuPage({ size: 7, rtc: true }).includes('coopStatus'));
+  const lobby = lobbyPage({ role: 'host', size: 7, status: failed, error: true });
+  assert.ok(lobby.includes('class="note error"') && lobby.includes(failed));
 });

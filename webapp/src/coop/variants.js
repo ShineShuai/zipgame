@@ -1,3 +1,4 @@
+import { generateArrows, ARROW_SIZES } from '../core/gen/arrows.js';
 import { generateCutout, CUTOUT_MAX_MS } from '../core/gen/cutout.js';
 import { generateExact, EXACT_SIZES } from '../core/gen/exact.js';
 import { generate, PLAY_SIZES } from '../core/gen/generate.js';
@@ -24,6 +25,11 @@ export const COOP_VARIANTS = [
     sizes: () => PLAY_SIZES.filter(n => EXACT_SIZES.includes(n)),
     generate: (n, seed) => generateExact(n, seed),
   },
+  {
+    id: 'arrows',
+    sizes: () => PLAY_SIZES.filter(n => ARROW_SIZES.includes(n)),
+    generate: (n, seed) => generateArrows(n, seed),
+  },
 ];
 
 export const variantById = id => COOP_VARIANTS.find(variant => variant.id === id)
@@ -36,7 +42,10 @@ export function variantOf(puzzle) {
   if (puzzle.holes) {
     return 'cutout';
   }
-  return puzzle.exact ? 'exact' : 'standard';
+  if (puzzle.exact) {
+    return 'exact';
+  }
+  return puzzle.arrows ? 'arrows' : 'standard';
 }
 
 // The offered size closest to `size` (the smaller one on a tie).

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { generateArrows } from '../../src/core/gen/arrows.js';
 import { generateCutout, CUTOUT_MAX_MS } from '../../src/core/gen/cutout.js';
 import { generateExact } from '../../src/core/gen/exact.js';
 import { generate } from '../../src/core/gen/generate.js';
@@ -9,6 +10,7 @@ import { cellCount, makePuzzle } from '../../src/core/model.js';
 import { isSolved } from '../../src/core/rules.js';
 import { solutionOf } from '../../src/features/hints.js';
 import { neighbourCell } from '../../src/core/geom.js';
+import { arrowDirId, edgeId, setArrowId } from '../../src/core/edges.js';
 import { createDrawing, unsupported } from '../../src/coop/drawing.js';
 
 // A 4x4 board with numbers 1 (cell 0), 2 (cell 5), 3 (cell 10), 4 (cell 15) and no walls.
@@ -115,12 +117,13 @@ test('edges() lists the lines in the order they were drawn, smaller cell first',
   assert.deepEqual(drawing.edges(), [[1, 2], [5, 6], [2, 3]]);
 });
 
-test('standard, Cutout and Exact puzzles are played, the other types are refused', () => {
+test('standard, Cutout, Exact and arrows puzzles are played, the other types are refused', () => {
   const puzzle = board();
   assert.equal(unsupported(puzzle), null);
   assert.equal(unsupported({ ...puzzle, holes: new Uint8Array(16) }), null);
   assert.equal(unsupported({ ...puzzle, exact: true }), null);
-  for (const name of ['arrows', 'wrap', 'loop', 'split', 'portals']) {
+  assert.equal(unsupported({ ...puzzle, arrows: new Uint8Array(16) }), null);
+  for (const name of ['wrap', 'loop', 'split', 'portals']) {
     assert.match(unsupported({ ...puzzle, [name]: true }), new RegExp(name));
   }
   assert.match(unsupported({ kind: 'pentagon' }) ?? '', /entagon/);
@@ -246,8 +249,9 @@ const CUTOUTS = [5, 6].flatMap(
   n => [1, 2, 3].map(seed => runSync(generateCutout(n, seed, { maxMs: CUTOUT_MAX_MS }))),
 );
 const EXACTS = [5, 6, 7, 8].flatMap(n => [1, 2].map(seed => runSync(generateExact(n, seed))));
+const ARROWS = [5, 6, 7, 8].flatMap(n => [1, 2, 3].map(seed => runSync(generateArrows(n, seed))));
 
-for (const [label, puzzles] of [['Cutout', CUTOUTS], ['Exact', EXACTS]]) {
+for (const [label, puzzles] of [['Cutout', CUTOUTS], ['Exact', EXACTS], ['Arrows', ARROWS]]) {
   test(`${label}: any part of the solution can be drawn in any order; the whole is solved`, () => {
     const rnd = makeRng(31);
     for (const puzzle of puzzles) {
@@ -293,3 +297,67 @@ for (const [label, puzzles] of [['Cutout', CUTOUTS], ['Exact', EXACTS]]) {
     }
   });
 }
+
+// The 4x4 board() with one-way arrows: each [from, to] allows that step only.
+function arrowBoard(...moves) {
+  const puzzle = board();
+  puzzle.arrows = new Uint8Array(16);
+  for (const [from, to] of moves) {
+    setArrowId(puzzle.arrows, edgeId(4, from, to), from < to ? 1 : -1);
+  }
+  return puzzle;
+}
+
+test('Arrows: a line may be drawn from either end; the arrow only counts along the piece', () => {
+  assert.equal(createDrawing(arrowBoard([1, 2])).add(1, 2), null);
+  assert.equal(createDrawing(arrowBoard([1, 2])).add(2, 1), null);
+  assert.equal(createDrawing(arrowBoard([1, 2])).add(0, 5), 'blocked'); // not neighbours
+});
+
+test('Arrows: the arrows along one piece must all point the same way', () => {
+  const drawing = createDrawing(arrowBoard([1, 2], [3, 2], [2, 3]));
+  assert.equal(drawing.add(1, 2), null);
+  assert.equal(drawing.add(2, 3), null); // 1 > 2 > 3: both arrows run the same way
+  const clash = createDrawing(arrowBoard([1, 2], [3, 2]));
+  assert.equal(clash.add(1, 2), null);
+  assert.equal(clash.add(2, 3), 'direction'); // 1 > 2 < 3: cell 2 would be entered twice
+  assert.equal(clash.add(3, 7), null); // a piece apart from it may run either way
+});
+
+test('Arrows: a cell with two arrows leaving it holds only one of their lines', () => {
+  const drawing = createDrawing(arrowBoard([6, 5], [6, 10]));
+  assert.equal(drawing.add(5, 6), null);
+  assert.equal(drawing.add(6, 10), 'direction');
+});
+
+test('Arrows: cell 1 comes first, so no arrow may point into it', () => {
+  assert.equal(createDrawing(arrowBoard([1, 0])).add(0, 1), 'direction');
+  assert.equal(createDrawing(arrowBoard([0, 1])).add(0, 1), null);
+  assert.equal(createDrawing(arrowBoard([15, 14])).add(14, 15), 'direction'); // the last number
+});
+
+test('Arrows: the numbers choose the way along a piece, and the arrows must agree', () => {
+  const drawing = createDrawing(arrowBoard([6, 5]));
+  assert.equal(drawing.add(5, 6), null); // number 2 alone: either way, the arrow picks 6 > 5
+  assert.equal(drawing.add(6, 10), 'direction'); // 2, then 3 further on: runs 5 > 6 > 10
+});
+
+test('Arrows: an arrow turned against the solution refuses that line, as a direction', () => {
+  const puzzle = runSync(generateArrows(5, 1));
+  const path = solutionOf(puzzle);
+  const at = path.findIndex((cell, i) => i > 0
+    && arrowDirId(puzzle.arrows, edgeId(5, path[i - 1], cell)) !== 0);
+  assert.ok(at > 0, 'the puzzle has an arrow on its solution');
+  const edge = edgeId(5, path[at - 1], path[at]);
+  setArrowId(puzzle.arrows, edge, -arrowDirId(puzzle.arrows, edge));
+  const drawing = createDrawing(puzzle);
+  const refused = [];
+  solutionEdges(path).forEach(([a, b]) => {
+    const reason = drawing.add(a, b);
+    if (reason) {
+      refused.push([a, b, reason]);
+    }
+  });
+  assert.deepEqual(refused, [[path[at - 1], path[at], 'direction']]);
+  assert.equal(drawing.solved(), false);
+});
