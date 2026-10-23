@@ -7,7 +7,13 @@ const SDP = [
   'a=group:BUNDLE 0', 'm=application 9 UDP/DTLS/SCTP webrtc-datachannel', 'c=IN IP4 0.0.0.0',
   'a=ice-ufrag:Zq3x', 'a=ice-pwd:0123456789abcdefABCDEF', 'a=ice-options:trickle',
   'a=fingerprint:sha-256 7B:8B:F0:65:5F:78:E2:51:3B:AC:6F:F3:3F:46:1B:35:DC:B8:5F:64:1A:24:C2:43',
-  'a=setup:actpass', 'a=mid:0', 'a=sctp-port:5000', 'a=max-message-size:262144', '',
+  'a=setup:actpass', 'a=mid:0', 'a=sctp-port:5000', 'a=max-message-size:262144',
+  // what a real offer carries after gathering: repetitive candidate lines
+  'a=candidate:1 1 udp 2113937151 3f2b8c1e-6d0a-4b7e-9c55-1a2b3c4d5e6f.local 54321 typ host',
+  'a=candidate:2 1 udp 2113937151 7a9d0e2f-1b3c-4d5e-8f60-0a1b2c3d4e5f.local 54322 typ host',
+  'a=candidate:3 1 udp 1677729535 203.0.113.45 54321 typ srflx raddr 0.0.0.0 rport 0',
+  'a=candidate:4 1 udp 1677729535 203.0.113.45 54322 typ srflx raddr 0.0.0.0 rport 0',
+  'a=end-of-candidates', '',
 ].join('\r\n');
 
 test('a code carries the session description and its kind', async () => {
@@ -19,7 +25,8 @@ test('a code carries the session description and its kind', async () => {
 });
 
 test('the code is shorter than the description it carries', async () => {
-  assert.ok((await encodeCode('o', SDP)).length < SDP.length);
+  const code = await encodeCode('o', SDP);
+  assert.ok(code.length < SDP.length, `${code.length} < ${SDP.length}`);
 });
 
 test('a whole link, or a code broken by a chat app, still decodes', async () => {
