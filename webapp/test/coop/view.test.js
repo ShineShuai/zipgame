@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generate } from '../../src/core/gen/generate.js';
+import { generatePentagon } from '../../src/core/gen/pentagon.js';
+import { generateTeleport } from '../../src/core/gen/teleport.js';
 import { runSync } from '../../src/core/run.js';
 import { maxNumber } from '../../src/core/model.js';
 import { solutionOf } from '../../src/features/hints.js';
@@ -61,4 +63,60 @@ test('lines are drawn in the colour of the player who drew them', () => {
   assert.ok(markup.includes(`data-player="0" stroke="${PLAYER_COLORS[0]}"`));
   assert.ok(markup.includes(`data-player="1" stroke="${PLAYER_COLORS[1]}"`));
   assert.notEqual(PLAYER_COLORS[0], PLAYER_COLORS[1]);
+});
+
+test('a Wrap-around board has a margin and a dashed outline; a seam is two stubs', () => {
+  const wrap = runSync(generate(5, 2, { wrap: true }));
+  const drawing = createDrawing(wrap);
+  const empty = boardMarkup(wrap, drawing);
+  assert.match(empty, /viewBox="-\d+(\.\d+)? -\d+/);
+  assert.ok(empty.includes('data-role="outline"'));
+  assert.ok(empty.includes('class="zip-svg coop-svg wrap"'));
+  drawing.add(4, 0); // the right seam of row 0
+  const lines = text => count(
+    text.slice(text.indexOf('data-role="lines"')).split('</g>')[0],
+    /<line /g,
+  );
+  assert.equal(lines(boardMarkup(wrap, drawing)), 2);
+});
+
+test('a Teleport board shows its portals; a jump is one dotted curve; the partner pulses', () => {
+  const tele = runSync(generateTeleport(6, 2));
+  const drawing = createDrawing(tele);
+  const inLines = text => count(
+    text.slice(text.indexOf('data-role="lines"')).split('</g>')[0],
+    /<line /g,
+  );
+  const [a, b] = tele.portals[0];
+  const text = boardMarkup(tele, drawing);
+  assert.equal(count(text, /data-portal-cell=/g), 2);
+  assert.ok(text.includes('class="zip-svg coop-svg teleport"'));
+  assert.equal(count(text, /data-mark="jump"/g), 0);
+  drawing.add(a, b);
+  assert.equal(count(boardMarkup(tele, drawing), /data-mark="jump"/g), 1);
+  assert.equal(inLines(boardMarkup(tele, drawing)), 0);
+  const ring = boardMarkup(tele, createDrawing(tele), null, { cell: b, player: 1 });
+  assert.equal(count(ring, /data-mark="jump-ready"/g), 1);
+  const none = boardMarkup(tele, createDrawing(tele));
+  assert.equal(count(none, /data-mark="jump-ready"/g), 0);
+});
+
+test('a Pentagon board has a tile per cell, a badge per number and a line per drawn edge', () => {
+  const pentagon = runSync(generatePentagon(6, 2));
+  const drawing = createDrawing(pentagon);
+  const text = boardMarkup(pentagon, drawing);
+  assert.ok(text.includes('class="zip-svg coop-svg pentagon"'));
+  assert.equal(count(text, /<polygon /g), 36);
+  assert.equal(count(text, /data-num-cell=/g), maxNumber(pentagon));
+  const inLines = markup => count(
+    markup.slice(markup.indexOf('data-role="lines"')).split('</g>')[0],
+    /<line /g,
+  );
+  assert.equal(inLines(text), 0);
+  const path = solutionOf(pentagon);
+  drawing.add(path[0], path[1]);
+  drawing.add(path[4], path[5]);
+  assert.equal(inLines(boardMarkup(pentagon, drawing)), 2);
+  const hint = boardMarkup(pentagon, drawing, { kind: 'next', edge: [path[1], path[2]] });
+  assert.ok(hint.length > text.length);
 });

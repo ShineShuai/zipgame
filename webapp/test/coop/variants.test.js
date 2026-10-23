@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 import { PLAY_SIZES } from '../../src/core/gen/generate.js';
 import { ARROW_SIZES } from '../../src/core/gen/arrows.js';
 import { EXACT_SIZES } from '../../src/core/gen/exact.js';
-import { parse, serialize } from '../../src/core/format.js';
+import { WRAP_SIZES } from '../../src/core/gen/generate.js';
+import { TELEPORT_SIZES } from '../../src/core/gen/teleport.js';
+import { PENTAGON_SIZES } from '../../src/core/pentagon.js';
 import { runSync } from '../../src/core/run.js';
 import { solutionOf } from '../../src/features/hints.js';
 import { createDrawing, unsupported } from '../../src/coop/drawing.js';
+import { parsePuzzle, serializePuzzle } from '../../src/coop/model.js';
 import {
   COOP_VARIANTS, nearestSize, sizesFor, statKey, variantById, variantOf,
 } from '../../src/coop/variants.js';
@@ -17,6 +20,9 @@ test('the sizes on offer: every size, except Exact and arrows, which keep to the
   assert.deepEqual(sizesFor('exact'), PLAY_SIZES.filter(n => EXACT_SIZES.includes(n)));
   assert.ok(!sizesFor('exact').includes(16));
   assert.deepEqual(sizesFor('arrows'), PLAY_SIZES.filter(n => ARROW_SIZES.includes(n)));
+  assert.deepEqual(sizesFor('wrap'), WRAP_SIZES); // from 4: smaller than the play app's own list
+  assert.deepEqual(sizesFor('teleport'), TELEPORT_SIZES);
+  assert.deepEqual(sizesFor('pentagon'), PENTAGON_SIZES);
   assert.deepEqual(sizesFor('no such type'), PLAY_SIZES); // falls back to standard
 });
 
@@ -32,6 +38,9 @@ test('statistics keys: standard keeps the plain size, other types are told apart
   assert.equal(statKey({ n: 7, holes: [] }, false), 'cutout-7');
   assert.equal(statKey({ n: 8, exact: true }, true), 'exact-8x2');
   assert.equal(statKey({ n: 6, arrows: [] }, false), 'arrows-6');
+  assert.equal(statKey({ n: 4, wrap: true }, false), 'wrap-4');
+  assert.equal(statKey({ n: 7, portals: [] }, true), 'teleport-7x2');
+  assert.equal(statKey({ kind: 'pentagon', n: 6 }, false), 'pentagon-6');
 });
 
 for (const variant of COOP_VARIANTS) {
@@ -42,7 +51,7 @@ for (const variant of COOP_VARIANTS) {
     assert.equal(variantOf(puzzle), variant.id);
     assert.equal(variantById(variantOf(puzzle)), variant);
     // what the host sends is read back by the guest: same board, same solution
-    const copy = parse(serialize(puzzle, { path: solutionOf(puzzle) }));
+    const copy = parsePuzzle(serializePuzzle(puzzle, { path: solutionOf(puzzle) }));
     assert.equal(variantOf(copy), variant.id);
     assert.deepEqual([...copy.cp], [...puzzle.cp]);
     const holes = puzzle.holes ? [...puzzle.holes] : null;
