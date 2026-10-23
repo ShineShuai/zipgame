@@ -71,7 +71,7 @@ function gridLines(size) {
 // Wrap-around board: a white square with a dashed outline (its edges are open: leave one side and
 // come in on the other), the grid on top. The margin around it is transparent, where the stubs of a
 // step across a seam are seen.
-function wrapLayers(size) {
+export function wrapLayers(size) {
   const square = `x="0" y="0" width="${size}" height="${size}" rx="6"`;
   return `<rect data-role="tiles" ${square} fill="${COLORS.tile}"/>` +
     gridLines(size) +

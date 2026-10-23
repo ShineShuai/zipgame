@@ -1,7 +1,8 @@
 import { generateArrows, ARROW_SIZES } from '../core/gen/arrows.js';
 import { generateCutout, CUTOUT_MAX_MS } from '../core/gen/cutout.js';
 import { generateExact, EXACT_SIZES } from '../core/gen/exact.js';
-import { generate, PLAY_SIZES } from '../core/gen/generate.js';
+import { generate, PLAY_SIZES, WRAP_SIZES } from '../core/gen/generate.js';
+import { generateTeleport, TELEPORT_SIZES } from '../core/gen/teleport.js';
 
 // The puzzle types Free draw plays, one entry each (drawing.js unsupported() refuses the rest).
 // The ids are those of the play app, so its texts (`mode.<id>`) name them.
@@ -30,6 +31,16 @@ export const COOP_VARIANTS = [
     sizes: () => PLAY_SIZES.filter(n => ARROW_SIZES.includes(n)),
     generate: (n, seed) => generateArrows(n, seed),
   },
+  {
+    id: 'wrap',
+    sizes: () => WRAP_SIZES,
+    generate: (n, seed) => generate(n, seed, { wrap: true }),
+  },
+  {
+    id: 'teleport',
+    sizes: () => TELEPORT_SIZES,
+    generate: (n, seed) => generateTeleport(n, seed),
+  },
 ];
 
 export const variantById = id => COOP_VARIANTS.find(variant => variant.id === id)
@@ -45,7 +56,13 @@ export function variantOf(puzzle) {
   if (puzzle.exact) {
     return 'exact';
   }
-  return puzzle.arrows ? 'arrows' : 'standard';
+  if (puzzle.arrows) {
+    return 'arrows';
+  }
+  if (puzzle.wrap) {
+    return 'wrap';
+  }
+  return puzzle.portals ? 'teleport' : 'standard';
 }
 
 // The offered size closest to `size` (the smaller one on a tie).

@@ -1,7 +1,10 @@
 import {
-  CELL, COLORS, arrowMarks, badgeColors, correctMoveRingAt, cutoutLayers, wrongMoveMarkAt,
+  CELL, COLORS, arrowMarks, badgeColors, correctMoveRingAt, cutoutLayers, portalIconsSvg,
+  wrapLayers, wrongMoveMarkAt,
 } from '../apps/play/board.js';
+import { isPortalPair } from '../core/geom.js';
 import { cellCenter, wallSegments } from '../view/geometry.js';
+import { edgeMiddleOf, edgeSegments, jumpCurve, padOf } from './layout.js';
 
 // The Free draw board as SVG markup (pure). One line per drawn edge, so lines drawn in any order
 // and from anywhere look alike; a number is filled once a line touches its cell.
@@ -11,7 +14,7 @@ export const PLAYER_COLORS = [COLORS.path, COLORS.twoPath[1]];
 
 const line = ([x1, y1, x2, y2]) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
 
-// The middle of the edge a-b, in board units.
+// The middle of the straight edge a-b, in board units (layout.js edgeMiddleOf for the others).
 export function edgeMiddle(n, a, b) {
   const [ax, ay] = cellCenter(n, a, CELL);
   const [bx, by] = cellCenter(n, b, CELL);
@@ -27,14 +30,26 @@ function gridMarkup(n) {
   return `<g stroke="${COLORS.grid}" stroke-width="1.5">${rules.join('')}</g>`;
 }
 
+const num = value => +value.toFixed(2);
+
+// The line of one edge: a chord, the two stubs of a seam, or, between two portals, a dotted curve
+// (a jump) that does not run across the cells in between. A jump has no direction, so no arrowhead.
+function edgeMarkup(puzzle, a, b) {
+  if (!isPortalPair(puzzle.portals, a, b)) {
+    return edgeSegments(puzzle, a, b, CELL).map(line).join('');
+  }
+  const { from, via, to } = jumpCurve(puzzle.n, a, b, CELL);
+  const [x1, y1, cx, cy, x2, y2] = [...from, ...via, ...to].map(num);
+  return `<path data-mark="jump" d="M${x1} ${y1} Q${cx} ${cy} ${x2} ${y2}" fill="none" `
+    + `stroke-width="${CELL * 0.1}" stroke-dasharray="1 ${num(CELL * 0.16)}"/>`;
+}
+
 // One group of lines per player that has drawn (always the first player's, even when empty).
 function drawnMarkup(puzzle, drawing) {
   const byPlayer = new Map([[0, []]]);
   for (const [a, b] of drawing.edges()) {
     const player = drawing.ownerOf(a, b);
-    const [x1, y1] = cellCenter(puzzle.n, a, CELL);
-    const [x2, y2] = cellCenter(puzzle.n, b, CELL);
-    byPlayer.set(player, [...(byPlayer.get(player) ?? []), line([x1, y1, x2, y2])]);
+    byPlayer.set(player, [...(byPlayer.get(player) ?? []), edgeMarkup(puzzle, a, b)]);
   }
   const players = [...byPlayer.keys()].sort((x, y) => x - y);
   return players.map(player => `<g data-role="lines" data-player="${player}" `
@@ -67,12 +82,13 @@ function hintMarkup(puzzle, hint) {
   if (!hint || !hint.edge) {
     return '';
   }
-  const middle = edgeMiddle(puzzle.n, ...hint.edge);
+  const middle = edgeMiddleOf(puzzle, ...hint.edge, CELL);
   return hint.kind === 'wrong' ? wrongMoveMarkAt(middle) : correctMoveRingAt(middle);
 }
 
-export function maxBoardCss(n) {
-  const px = Math.min(720, n * 84);
+// `pad`: the margin of a Wrap-around board, in cells, on every side.
+export function maxBoardCss(n, pad = 0) {
+  const px = Math.min(720, (n + 2 * pad) * 84);
   return `max-width:${px}px;max-width:min(${px}px,max(260px,calc(100dvh - 330px)))`;
 }
 
@@ -83,21 +99,45 @@ function cellsMarkup(puzzle) {
     return cutoutLayers(puzzle);
   }
   const size = puzzle.n * CELL;
+  if (puzzle.wrap) {
+    return wrapLayers(size);
+  }
   return `<rect width="${size}" height="${size}" rx="6" fill="${COLORS.tile}"/>`
     + gridMarkup(puzzle.n);
 }
 
-export function boardMarkup(puzzle, drawing, hint = null) {
+// While a portal is waiting for its partner: a pulsing ring on the partner, "tap it to jump" (as in
+// the play app). `ring` is { cell, player } or null.
+function ringMarkup(puzzle, ring) {
+  if (!ring) {
+    return '';
+  }
+  const [x, y] = cellCenter(puzzle.n, ring.cell, CELL);
+  const color = PLAYER_COLORS[ring.player] ?? PLAYER_COLORS[0];
+  const [small, large] = [CELL * 0.38, CELL * 0.46];
+  return `<circle data-mark="jump-ready" cx="${num(x)}" cy="${num(y)}" r="${CELL * 0.42}" `
+    + `fill="none" stroke="${color}" stroke-width="4" stroke-dasharray="6 4">`
+    + `<animate attributeName="r" values="${small};${large};${small}" dur="1s" `
+    + 'repeatCount="indefinite"/></circle>';
+}
+
+export function boardMarkup(puzzle, drawing, hint = null, ring = null) {
   const size = puzzle.n * CELL;
   const walls = wallSegments(puzzle, CELL).map(line).join('');
-  const style = maxBoardCss(puzzle.n);
-  const kind = puzzle.holes ? ' cutout' : '';
-  return `<svg class="zip-svg coop-svg${kind}" viewBox="0 0 ${size} ${size}" style="${style}">`
+  const pad = padOf(puzzle);
+  const style = maxBoardCss(puzzle.n, pad);
+  const margin = pad * CELL;
+  const view = `${-margin} ${-margin} ${size + 2 * margin} ${size + 2 * margin}`;
+  const kind = (puzzle.holes ? ' cutout' : '') + (puzzle.wrap ? ' wrap' : '')
+    + (puzzle.portals ? ' teleport' : '');
+  return `<svg class="zip-svg coop-svg${kind}" viewBox="${view}" style="${style}">`
     + cellsMarkup(puzzle)
     + `<g stroke="${COLORS.wall}" stroke-width="6" stroke-linecap="round">${walls}</g>`
+    + portalIconsSvg(puzzle)
     + drawnMarkup(puzzle, drawing)
     + (puzzle.arrows ? arrowMarks(puzzle) : '')
     + badgesMarkup(puzzle, drawing)
     + hintMarkup(puzzle, hint)
+    + ringMarkup(puzzle, ring)
     + '</svg>';
 }

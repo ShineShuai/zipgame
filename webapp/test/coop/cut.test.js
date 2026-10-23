@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { makePuzzle } from '../../src/core/model.js';
 import { createDrawing } from '../../src/coop/drawing.js';
 import { edgeAt } from '../../src/coop/cut.js';
+import { edgeMiddleOf } from '../../src/coop/layout.js';
 
 // 4x4 board; cell (column c, row r) is cell 4r + c and covers [c, c+1) x [r, r+1).
 const drawn = edges => {
@@ -42,4 +43,24 @@ test('the nearest of several lines wins', () => {
   const drawing = drawn([[5, 6], [9, 10]]);
   assert.deepEqual(edgeAt(drawing, 2.0, 2.45), [9, 10]);
   assert.deepEqual(edgeAt(drawing, 2.0, 1.55), [5, 6]);
+});
+
+test('a press on the stub of a seam points at that line, not at the chord across the board', () => {
+  const puzzle = makePuzzle(4);
+  puzzle.wrap = true;
+  const drawing = createDrawing(puzzle);
+  drawing.add(7, 4); // across the right seam of row 1
+  assert.deepEqual(edgeAt(drawing, 3.9, 1.5), [4, 7]); // the stub out of cell 7
+  assert.deepEqual(edgeAt(drawing, 0.1, 1.5), [4, 7]); // the stub into cell 4
+  assert.equal(edgeAt(drawing, 2.0, 1.5), null); // the middle of the row: no line there
+});
+
+test('a press on a jump points at it; the chord between the portals is no line', () => {
+  const puzzle = makePuzzle(4);
+  puzzle.portals = [[1, 14]];
+  const drawing = createDrawing(puzzle);
+  drawing.add(1, 14);
+  const [x, y] = edgeMiddleOf(puzzle, 1, 14);
+  assert.deepEqual(edgeAt(drawing, x, y), [1, 14]);
+  assert.equal(edgeAt(drawing, 2, 2), null);
 });

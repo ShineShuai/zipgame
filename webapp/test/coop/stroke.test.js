@@ -4,7 +4,7 @@ import { makePuzzle } from '../../src/core/model.js';
 import { createDrawing } from '../../src/coop/drawing.js';
 import { changed, startStroke, strokeStep, undoStroke } from '../../src/coop/stroke.js';
 
-// 4x4 board, numbers 1..4 on cells 0, 5, 10, 15, a wall between cells 1 and 2.
+// 4x4 board (see setup), numbers 1..4 on cells 0, 5, 10, 15, a wall between cells 1 and 2.
 function setup() {
   const puzzle = makePuzzle(4);
   [0, 5, 10, 15].forEach((cell, i) => {
@@ -125,4 +125,25 @@ test('erasing the other player\'s line is allowed; Undo gives it back to its own
   undoStroke(drawing, mine);
   assert.equal(drawing.ownerOf(4, 5), 1);
   assert.equal(drawing.ownerOf(5, 6), 1);
+});
+
+test('a drag leaving a Wrap-around board comes in on the other side', () => {
+  const puzzle = makePuzzle(4);
+  puzzle.wrap = true;
+  const drawing = createDrawing(puzzle);
+  const stroke = startStroke(2);
+  assert.deepEqual(kinds(drawing, stroke, [3, 0, 1, 5, 9, 13, 1]), [
+    'add', 'add', 'add', 'add', 'add', 'add', 'blocked']); // 13 to 1, across the seam: a cycle
+  assert.deepEqual(drawing.edges().slice(0, 2), [[2, 3], [0, 3]]);
+});
+
+test('the head moves between two portals in one step, and nowhere else far', () => {
+  const puzzle = makePuzzle(4);
+  puzzle.portals = [[1, 14]];
+  const drawing = createDrawing(puzzle);
+  const stroke = startStroke(1);
+  assert.equal(strokeStep(drawing, stroke, 13).kind, 'none');
+  assert.equal(strokeStep(drawing, stroke, 14).kind, 'add');
+  assert.equal(strokeStep(drawing, stroke, 1).kind, 'pop'); // back over the jump takes it back
+  assert.deepEqual(drawing.edges(), []);
 });

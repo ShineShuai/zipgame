@@ -1,5 +1,6 @@
 import { canStep, isSolved } from '../core/rules.js';
 import { cellCount, endCell, startCell } from '../core/model.js';
+import { adjacent, isPortalPair } from '../core/geom.js';
 import { isPentagon } from '../core/pentagon.js';
 
 // Free drawing: the lines a player draws are a set of edges between neighbouring cells, in any
@@ -26,14 +27,14 @@ export const REASONS = [
   'blocked', 'present', 'degree', 'cycle', 'order', 'gap', 'steps', 'direction',
 ];
 
-// null when Free draw can play `puzzle`, else a message. Standard, Cutout, Exact and One way arrows
-// puzzles so far (variants.js): the board drawing and the rules above know no portals,
-// wrap-around, loops, two paths or pentagons.
+// null when Free draw can play `puzzle`, else a message. Every type but Loop, Two paths and
+// Pentagon (variants.js). Wrap-around and Teleport need no rule of their own: an edge across a seam
+// or between two portals is an edge like any other, and canStep() knows them.
 export function unsupported(puzzle) {
   if (isPentagon(puzzle)) {
     return 'Free draw does not play Pentagon puzzles (yet).';
   }
-  const extra = ['wrap', 'loop', 'split', 'portals'];
+  const extra = ['loop', 'split'];
   const found = extra.find(name => puzzle[name]);
   return found ? `Free draw does not play ${found} puzzles (yet).` : null;
 }
@@ -84,6 +85,10 @@ export function createDrawing(puzzle) {
   const capacity = cell => (cell === start || cell === end ? 1 : 2);
   // A line has no direction here, so a one-way edge is open when it may be walked either way.
   const open = (a, b) => canStep(puzzle, a, b) || canStep(puzzle, b, a);
+  // May a line run between these two cells at all, walls and arrows aside: do they touch (across a
+  // seam too), or are they the two ends of a portal pair?
+  const linked = (a, b) => a !== b
+    && (adjacent(puzzle.n, puzzle.wrap, a, b) || isPortalPair(puzzle.portals, a, b));
 
   // One way arrows: may the cells of a piece, in order along it, be walked first to last, or last
   // to first? Every step must be allowed in that direction, the numbers must rise that way, cell 1
@@ -222,6 +227,7 @@ export function createDrawing(puzzle) {
     puzzle,
     key,
     has,
+    linked,
     check,
     add,
     remove,
