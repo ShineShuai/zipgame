@@ -19,7 +19,7 @@ import {
 } from './pages.js';
 import { createReplica } from './replica.js';
 import {
-  acceptReply, createInvite, joinInvite, rtcSupported,
+  acceptReply, createInvite, joinInvite, probeServers, probeText, rtcSupported,
 } from './rtc.js';
 import { createSession } from './session.js';
 import { recordSolve } from './stats.js';
@@ -102,6 +102,8 @@ export function openScreen(env) {
     peerHere: false,
     waiting: false, // the host waits for the other device to take the new puzzle
     connectTimer: null,
+    route: '', // dev line: how the connection runs (rtc.js describeRoute)
+    probe: null, // dev line: promise of the per-server STUN check (asked once per connection)
   };
   const strokes = new Map(); // pointer id -> { stroke, refused, cut, hold, x, y, x0, y0 }
   const pid = () => (state.session ? state.session.pid : 0);
@@ -165,7 +167,7 @@ export function openScreen(env) {
       peerHere: state.peerHere,
       revealed: state.revealed,
       grade: trap ? trap.grade : null,
-      seedText: `seed ${state.seed} · ${role}`,
+      seedText: `seed ${state.seed} · ${role}${state.route ? ` · ${state.route}` : ''}`,
       devText: trap ? `trap ${trap.predicted.toFixed(2)}` : 'ungraded',
       time: state.elapsed,
       hintsLeft: { used: state.hintsUsed, cap: maxHints(state.puzzle) },
@@ -218,8 +220,30 @@ export function openScreen(env) {
     state.connection?.close();
     Object.assign(state, {
       session: null, connection: null, role: 'solo', peerHere: false, waiting: false,
-      link: '', code: '', status: '', error: false,
+      link: '', code: '', status: '', error: false, route: '', probe: null,
     });
+  }
+
+  // Asks the connection how it runs and, while revealed, which STUN servers answer; shows it in
+  // the game's dev tag (hold-V only).
+  async function readRoute(connection) {
+    const show = text => {
+      if (connection !== state.connection) {
+        return;
+      }
+      state.route = text;
+      const tag = el('coopSeed');
+      if (tag && state.puzzle) {
+        tag.textContent = gameView().seedText;
+      }
+    };
+    const route = (await connection.report?.().catch(() => '')) ?? '';
+    show(route);
+    if (state.revealed) {
+      state.probe ??= probeServers().then(probeText);
+      show(`${route} · ${await state.probe}`);
+    }
+    return state.route;
   }
 
   function showMenu() {
@@ -230,9 +254,10 @@ export function openScreen(env) {
 
   function armConnectTimer() {
     clearTimeout(state.connectTimer);
-    state.connectTimer = setTimeout(() => {
+    state.connectTimer = setTimeout(async () => {
       if (state.phase === 'inviting' || state.phase === 'joining') {
-        setStatus(tx('noConnection'), true);
+        const why = state.revealed && state.connection ? await readRoute(state.connection) : '';
+        setStatus(`${tx('noConnection')}${why ? ` (${why})` : ''}`, true);
       }
     }, CONNECT_MS);
   }
@@ -246,6 +271,7 @@ export function openScreen(env) {
     });
     connection.channel.onopen = () => {
       clearTimeout(state.connectTimer);
+      readRoute(connection);
       state.session.hello();
       state.phase = 'lobby';
       state.status = role === 'host' ? tx('connected') : tx('waitStart');
@@ -801,6 +827,9 @@ export function openScreen(env) {
   // Shows or hides what the app keeps for hold-V: the seed, the grade's numbers, Export.
   function setRevealed(on) {
     state.revealed = on;
+    if (on && state.connection) {
+      readRoute(state.connection);
+    }
     root.querySelectorAll('[data-dev]').forEach(node => {
       node.style.display = on ? '' : 'none';
     });

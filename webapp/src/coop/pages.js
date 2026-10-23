@@ -145,7 +145,8 @@ export function gamePage(view) {
   ].join('');
   return page(`<div class="game-layout"><section class="card board-card"><div class="hud">`
     + `<div class="hud-title"><span class="hud-icon">${cardIcon('free')}</span>`
-    + `<span>${title}</span><span class="seed-tag" ${dev(revealed)}>${seedText}</span></div>`
+    + `<span>${title}</span><span class="seed-tag" id="coopSeed" ${dev(revealed)}>`
+    + `${seedText}</span></div>`
     + badge
     + `<span class="seed-tag" ${dev(revealed)}>${devText}</span>`
     + `<div class="hud-time">${t('game.time', `<b id="coopTime">${seconds(time)}</b>`)}</div>`
