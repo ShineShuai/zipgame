@@ -11,7 +11,7 @@ import { portalIcon, portalColor, portalShape } from '../../view/portal-icons.js
 export const CELL = 60; // logical units; on-screen size comes from viewBox scaling
 
 // One palette for the board, as CSS variables (css/theme.css: light and dark). The numbers are recolored while drawing
-// (main.js), so it is shared. SVG attributes take var() like any CSS value, so a theme switch needs no redraw.
+// (grid-input.js), so it is shared. SVG attributes take var() like any CSS value, so a theme switch needs no redraw.
 export const COLORS = {
   grid: 'var(--b-grid)',
   outline: 'var(--b-outline)', // the edge of a board with holes (Cutout)
@@ -164,7 +164,7 @@ function numberBadges(puzzle, visited, path) {
 
 // Two paths: the number badges. A red number is a circle, a blue one a rounded square (so that the
 // colours differ by more than a hue), and the blue numbers count again from 1. class num-shape =
-// the shape that main.js recolours when the cell is visited or left.
+// the shape that grid-input.js recolours when the cell is visited or left.
 function twoNumberBadges(p, visited) {
   const n = p.n;
   const badges = [];

@@ -4,7 +4,7 @@ import { legsUndo } from './share.js';
 import { computeHint, solutionOf } from './hints.js';
 
 // Playing a Two paths puzzle (puzzle.split, core/model.js): the rules of the two drawn paths, with
-// no DOM, so that the play app (apps/play/main.js) only has to call them. Two paths, `paths` =
+// no DOM, so that the play app (apps/play) only has to call them. Two paths, `paths` =
 // [red, blue] (arrays of cells, mutated in place), and a colour: 0 = red, 1 = blue.
 //
 // One colour is played by step() (core/rules.js) on that colour's own view of the puzzle

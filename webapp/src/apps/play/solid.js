@@ -4,7 +4,7 @@
 // in the lucky game; while V is held it shows everything, and a tile picked then stays
 // until the page is reloaded), the game screen, and the game itself (a path through every
 // cell, the numbers in order, as on the flat board). The lucky game can draw a solid kind
-// (main.js startLucky): the same game screen, one try.
+// (game-flow.js startLucky): the same game screen, one try.
 //
 // The board is a puzzle of the cell-graph engine (core/surface/), the picture is view/surface-board.js in the
 // light palette, and the turning is view/solid-nav.js. A solid game has hints (with the time penalty
@@ -304,7 +304,7 @@ export function createSolidPlay(app) {
 
   // ---------- starting a game ----------
 
-  // Starts a game of what the card has chosen. The lucky game (main.js startLucky) gives
+  // Starts a game of what the card has chosen. The lucky game (game-flow.js startLucky) gives
   // the kind and the size instead: the size of a tetra or cube, for a ball the range of
   // cells it may have, { min, max }.
   async function start({ kind = choice.kind, size, lucky = false } = {}) {

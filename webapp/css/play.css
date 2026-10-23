@@ -621,7 +621,7 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 /* Cutout, Wrap-around, Pentagon: the tiles carry the white and the outline, so the holes show the page behind them */
 .zip-svg.cutout, .zip-svg.wrap, .zip-svg.pentagon { background: transparent; box-shadow: none; }
 .zip-svg.cutout, .zip-svg.pentagon { overflow: visible; }
-/* One way arrows: a step against an arrow flashes it (the polygon gets .blocked, see flashBlockedArrow in main.js). */
+/* One way arrows: a step against an arrow flashes it (the polygon gets .blocked, see flashBlockedArrow in apps/play/grid-input.js). */
 .arrow-mark polygon { transform-box: fill-box; transform-origin: center; }
 .arrow-mark polygon.blocked { animation: arrow-blocked 0.45s ease-out; }
 @keyframes arrow-blocked {
