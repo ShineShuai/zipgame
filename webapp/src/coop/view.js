@@ -1,5 +1,5 @@
 import {
-  CELL, COLORS, badgeColors, correctMoveRingAt, wrongMoveMarkAt,
+  CELL, COLORS, badgeColors, correctMoveRingAt, cutoutLayers, wrongMoveMarkAt,
 } from '../apps/play/board.js';
 import { cellCenter, wallSegments } from '../view/geometry.js';
 
@@ -76,13 +76,24 @@ export function maxBoardCss(n) {
   return `max-width:${px}px;max-width:min(${px}px,max(260px,calc(100dvh - 330px)))`;
 }
 
+// The cells of the board and the grid: a full square, or, for a Cutout puzzle, only the cells that
+// are left, drawn as in the play app.
+function cellsMarkup(puzzle) {
+  if (puzzle.holes) {
+    return cutoutLayers(puzzle);
+  }
+  const size = puzzle.n * CELL;
+  return `<rect width="${size}" height="${size}" rx="6" fill="${COLORS.tile}"/>`
+    + gridMarkup(puzzle.n);
+}
+
 export function boardMarkup(puzzle, drawing, hint = null) {
   const size = puzzle.n * CELL;
   const walls = wallSegments(puzzle, CELL).map(line).join('');
   const style = maxBoardCss(puzzle.n);
-  return `<svg class="zip-svg coop-svg" viewBox="0 0 ${size} ${size}" style="${style}">`
-    + `<rect width="${size}" height="${size}" rx="6" fill="${COLORS.tile}"/>`
-    + gridMarkup(puzzle.n)
+  const kind = puzzle.holes ? ' cutout' : '';
+  return `<svg class="zip-svg coop-svg${kind}" viewBox="0 0 ${size} ${size}" style="${style}">`
+    + cellsMarkup(puzzle)
     + `<g stroke="${COLORS.wall}" stroke-width="6" stroke-linecap="round">${walls}</g>`
     + drawnMarkup(puzzle, drawing)
     + badgesMarkup(puzzle, drawing)
