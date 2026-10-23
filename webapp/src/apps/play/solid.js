@@ -24,7 +24,6 @@ import {
   loadBalls,
   pickBall,
 } from '../../core/solid/balls.js';
-import { generateSurfaceSteps } from '../../core/surface/gen.js';
 import { canPush, isSolved, serializeSurface, step } from '../../core/surface/puzzle.js';
 import { HINT_PENALTY_S, computeHint, penalizedTime } from '../../features/hints.js';
 import { IDENTITY, buildView, cellDirection, orbit, turnToward } from '../../view/proj.js';
@@ -40,7 +39,8 @@ import {
   crossedCut,
   headTurnedAway,
 } from '../../view/solid-nav.js';
-import { runAsync, cancellable, isAbort, isTimeout } from '../../platform/run.js';
+import { cancellable, isAbort, isTimeout } from '../../platform/run.js';
+import { runGeneration } from './gen-runner.js';
 import {
   sfxBack,
   sfxBlocked,
@@ -328,7 +328,7 @@ export function createSolidPlay(app) {
         n = entry.id;
       }
       const seed = app.randomSeed();
-      const made = await runAsync(generateSurfaceSteps(kind, n, seed), {
+      const made = await runGeneration({ task: 'solid', kind, n, seed }, {
         signal: job.signal,
         onEvent: event => {
           const frac = event.phase === 'walls' ? 0.05 + (0.95 * event.done) / event.total : 0.05;

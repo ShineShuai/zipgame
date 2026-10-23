@@ -92,6 +92,7 @@ import { surfaceFastTests } from './surface-fast.js';
 import { playPentagonTests } from './play-pentagon.js';
 import { ballViewTests } from './ball-view.js';
 import { solidTests } from './solid.js';
+import { generationTests } from './generation.js';
 import { themeTests } from './theme.js';
 import { teleportTests } from './teleport.js';
 import { teleportGenTests } from './teleport-gen.js';
@@ -3454,6 +3455,7 @@ surfaceTests(t, ok, eq);
 ballTests(t, ok, eq);
 ballViewTests(t, ok, eq);
 solidTests(t, ok, eq, ta);
+generationTests(t, ok, eq, ta);
 themeTests(t, ok, eq);
 
 // ---------- Pentagon (Cairo tiling) boards ----------

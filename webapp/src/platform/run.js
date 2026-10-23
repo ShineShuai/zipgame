@@ -14,7 +14,7 @@ export function* measured(gen, clock) {
   }
 }
 
-const abortError = () => new DOMException('The generation was cancelled.', 'AbortError');
+export const abortError = () => new DOMException('The generation was cancelled.', 'AbortError');
 export const isAbort = e => Boolean(e) && e.name === 'AbortError'; // the player cancelled
 export const isTimeout = e => Boolean(e) && e.name === 'TimeoutError'; // cancellable()'s clock ran out
 
