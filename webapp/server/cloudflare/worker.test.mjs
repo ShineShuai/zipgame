@@ -2,7 +2,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import worker, { submit, validate, validateRange, read, validateSeed, seed, addPlay, readPlay, deletePlay } from './worker.js';
+import worker, { submit, validate, validateRange, read, validateSeed, seed, addPlay, readPlay, deletePlay, readText } from './worker.js';
 import { binOf, summarize, NB, TOP_K, SEED_MAX, REPLAY_DAYS } from '../../src/core/hist.js';
 import { parse } from '../../src/core/format.js';
 import { packPuzzle, packS, toB64u, fromB64u, utcDay } from '../../src/core/behaviour.js';
@@ -23,6 +23,12 @@ const fakeD1 = () => { // prepare().bind() / batch() as a single transaction, li
 
 const now = Date.UTC(2026, 8, 29, 12), ymd = 20260929;
 let n = 0; const test = async (name, fn) => { await fn(); n++; console.log('ok   ', name); };
+const quiet = async fn => { // runs fn with console.error collected
+  const logged = [], original = console.error;
+  console.error = (...a) => logged.push(a.join(' '));
+  try { await fn(); } finally { console.error = original; }
+  return logged;
+};
 
 await test('validate: accepts today +-1 day, rejects everything else', () => {
   const ok = { d: ymd, t: 42130, b: 37 };
@@ -104,7 +110,7 @@ await test('http handler: routing, validation, CORS, size guard, db error', asyn
   assert.equal((await call('POST', '/gotd', 'nope')).status, 400);
   assert.equal((await call('POST', '/gotd', JSON.stringify({ d: today, t: 10, b: 0 }))).status, 400);
   assert.equal((await call('POST', '/gotd', 'x'.repeat(300), { 'content-length': '300' })).status, 400);
-  assert.equal((await worker.fetch(new Request('https://w.example/gotd', { method: 'POST', body: JSON.stringify({ d: today, t: 5000, b: 1 }) }), { DB: { prepare() { throw new Error('x'); } } })).status, 500);
+  await quiet(async () => assert.equal((await worker.fetch(new Request('https://w.example/gotd', { method: 'POST', body: JSON.stringify({ d: today, t: 5000, b: 1 }) }), { DB: { prepare() { throw new Error('x'); } } })).status, 500));
 });
 
 await test('validateRange: real dates, ordered, <= 90 days inclusive', () => {
@@ -133,7 +139,7 @@ await test('GET /stats: days, bins and best equal a brute-force model; empty day
   assert.deepEqual(await (await get('from=20260901&to=20260910')).json(), { days: [] });
   assert.deepEqual(await read(env.DB, { from: 20260927, to: 20260927 }).then(x => x.days.map(d => d.n)), [50]);
   for (const q of ['', 'from=20260929', 'from=20260930&to=20260929', 'from=20260101&to=20260929', 'from=x&to=y', 'from=&to=']) assert.equal((await get(q)).status, 400, q);
-  assert.equal((await worker.fetch(new Request('https://w.example/stats?from=20260929&to=20260929'), { DB: { prepare() { throw new Error('x'); } } })).status, 500);
+  await quiet(async () => assert.equal((await worker.fetch(new Request('https://w.example/stats?from=20260929&to=20260929'), { DB: { prepare() { throw new Error('x'); } } })).status, 500));
   assert.equal((await worker.fetch(new Request('https://w.example/stats?from=20260929&to=20260929', { method: 'POST', body: '{}' }), env)).status, 404);
 });
 
@@ -201,7 +207,7 @@ await test('http POST /seed: bearer token, status codes, seeds visible in /stats
   const stats = await (await worker.fetch(new Request(`https://w.example/stats?from=${today}&to=${today}`), env)).json();
   assert.deepEqual(stats.days.map(x => [x.n, x.seeds]), [[3, [30000, 50000, 70000]]]);
   assert.equal((await worker.fetch(new Request('https://w.example/seed', { method: 'GET' }), env)).status, 404);
-  assert.equal((await call({ ...good, d: today + 0 }, 'Bearer s3cret', { DB: { prepare() { throw new Error('x'); } }, SEED_PLAYERS_SECRET: 's3cret' })).status, 500);
+  await quiet(async () => assert.equal((await call({ ...good, d: today + 0 }, 'Bearer s3cret', { DB: { prepare() { throw new Error('x'); } }, SEED_PLAYERS_SECRET: 's3cret' })).status, 500));
 });
 
 // ---------- behaviour rows ----------
@@ -269,6 +275,115 @@ await test('POST /play-delete: bearer secret, 1..500 ids, counts what existed, d
   r = await del({ ids: Array.from({ length: 150 }, (_, i) => i + 11) }); assert.deepEqual(await r.json(), { deleted: 150 }, 'more than one chunk of 90');
   const left = rowsOf(env.DB).map(x => x.id); assert.equal(left.length, 49); assert.ok(!left.includes(3) && !left.includes(11) && !left.includes(160) && left.includes(1) && left.includes(161) && left.includes(200));
   assert.equal((await deletePlay(env.DB, [1, 2])).deleted, 2);
+});
+
+// ---------- guards on the public writes ----------
+const ORIGIN = 'https://u.github.io';
+const streamOf = (chunks, pulled = { n: 0 }) => new ReadableStream({ // a body without a Content-Length
+  pull(controller) {
+    const next = chunks();
+    pulled.n++;
+    if (next === null) controller.close(); else controller.enqueue(new TextEncoder().encode(next));
+  },
+});
+const post = (env, path, body, headers = {}) => worker.fetch(new Request('https://w.example' + path, {
+  method: 'POST', body, headers, ...(body && typeof body === 'object' && 'getReader' in body ? { duplex: 'half' } : {}),
+}), env);
+const ymdToday = Number(new Date().toISOString().slice(0, 10).replaceAll('-', ''));
+const gotdBody = () => JSON.stringify({ d: ymdToday, t: 42130, b: binOf(42130) });
+
+await test('Origin guard: a browser page of another origin cannot write (403, nothing stored); the page and the tools can', async () => {
+  const env = { DB: fakeD1(), ALLOWED_ORIGIN: ORIGIN, PLAY_ADMIN_SECRET: 'adm1n' }, text = { 'Content-Type': 'text/plain;charset=UTF-8' };
+  const play = () => JSON.stringify(playRow());
+  for (const [path, body] of [['/gotd', gotdBody()], ['/play', play()]]) {
+    for (const origin of ['https://evil.example', 'null', ORIGIN + '.evil.example', 'http://u.github.io']) {
+      const r = await post(env, path, body, { ...text, Origin: origin });
+      assert.deepEqual([r.status, (await r.json()).error], [403, 'forbidden'], `${path} from ${origin}`);
+    }
+    assert.equal((await post(env, path, body, { ...text, Origin: ORIGIN })).status, 200, path + ': the page');
+    assert.equal((await post(env, path, body, text)).status, 200, path + ': no Origin header = a tool');
+  }
+  assert.equal(rowsOf(env.DB).length, 2, 'only the two allowed /play rows');
+  assert.equal(env.DB.raw.prepare('SELECT n FROM day').get().n, 2, 'only the two allowed /gotd solves');
+  const stats = await worker.fetch(new Request('https://w.example/stats?from=20260101&to=20260102', { headers: { Origin: 'https://evil.example' } }), env);
+  assert.equal(stats.status, 200, 'reading the aggregates stays open (CORS keeps other pages from reading the answer)');
+  const admin = await worker.fetch(new Request('https://w.example/play-export', { headers: { Authorization: 'Bearer adm1n', Origin: 'https://evil.example' } }), env);
+  assert.equal(admin.status, 200, 'the secret protects the admin routes, not the Origin');
+});
+
+await test('no ALLOWED_ORIGIN: no CORS header, every browser POST refused, the tools still work (fails closed)', async () => {
+  const env = { DB: fakeD1() };
+  let r = await post(env, '/gotd', gotdBody(), { Origin: ORIGIN });
+  assert.equal(r.status, 403); assert.equal(r.headers.get('access-control-allow-origin'), null);
+  r = await post(env, '/gotd', gotdBody()); assert.equal(r.status, 200, 'a tool'); assert.equal(r.headers.get('access-control-allow-origin'), null);
+  r = await worker.fetch(new Request('https://w.example/gotd', { method: 'OPTIONS', headers: { Origin: ORIGIN } }), env);
+  assert.equal(r.status, 204); assert.equal(r.headers.get('access-control-allow-origin'), null, 'the preflight offers no origin');
+  r = await post({ DB: fakeD1(), ALLOWED_ORIGIN: ORIGIN }, '/gotd', gotdBody(), { Origin: ORIGIN });
+  assert.equal(r.headers.get('access-control-allow-origin'), ORIGIN, 'configured: the origin is named');
+});
+
+await test('rate limit: the binding counts per client address; 429 + Retry-After above it; /seed and the admin routes are not counted; a broken binding lets requests through', async () => {
+  const calls = [], counts = new Map();
+  const RATE_LIMIT = { async limit({ key }) { calls.push(key); counts.set(key, (counts.get(key) || 0) + 1); return { success: counts.get(key) <= 2 }; } };
+  const env = { DB: fakeD1(), ALLOWED_ORIGIN: ORIGIN, RATE_LIMIT, SEED_PLAYERS_SECRET: 's3cret', PLAY_ADMIN_SECRET: 'adm1n' };
+  const from = ip => ({ 'cf-connecting-ip': ip });
+  const statuses = [];
+  for (let i = 0; i < 4; i++) statuses.push((await post(env, '/gotd', gotdBody(), from('1.2.3.4'))).status);
+  assert.deepEqual(statuses, [200, 200, 429, 429]);
+  const r = await post(env, '/gotd', gotdBody(), from('1.2.3.4'));
+  assert.equal(r.headers.get('retry-after'), '60'); assert.deepEqual(await r.json(), { error: 'slow down' });
+  assert.equal((await post(env, '/gotd', gotdBody(), from('5.6.7.8'))).status, 200, 'another address has its own count');
+  assert.equal((await post(env, '/play', JSON.stringify(playRow()), from('1.2.3.4'))).status, 429, '/play shares the count of the address');
+  assert.equal(env.DB.raw.prepare('SELECT n FROM day').get().n, 3, 'a refused solve is not stored');
+  const before = calls.length;
+  await post(env, '/seed', '{}', { Authorization: 'Bearer s3cret' });
+  await worker.fetch(new Request('https://w.example/play-export', { headers: { Authorization: 'Bearer adm1n' } }), env);
+  assert.equal(calls.length, before, '/seed, the admin routes and /stats do not call the limiter');
+  assert.equal((await post(env, '/gotd', gotdBody())).status, 200, 'no address header: counted under one shared key');
+  assert.equal(calls.at(-1), 'unknown');
+  const broken = { ...env, DB: fakeD1(), RATE_LIMIT: { limit: async () => { throw new Error('binding down'); } } };
+  const logged = await quiet(async () => assert.equal((await post(broken, '/gotd', gotdBody())).status, 200, 'fails open'));
+  assert.ok(logged.some(l => l.includes('binding down')), 'and says so in the log');
+  assert.equal((await post({ DB: fakeD1(), ALLOWED_ORIGIN: ORIGIN }, '/gotd', gotdBody())).status, 200, 'no binding: no limit');
+});
+
+await test('body size: a cap on every POST, also for a body without Content-Length; reading stops at the cap', async () => {
+  assert.equal(await readText(new Request('https://w.example/x', { method: 'POST', body: 'abc' }), 3), 'abc');
+  assert.equal(await readText(new Request('https://w.example/x', { method: 'POST', body: 'abcd' }), 3), null);
+  assert.equal(await readText(new Request('https://w.example/x', { method: 'GET' }), 3), '', 'no body');
+  assert.equal(await readText(new Request('https://w.example/x', { method: 'POST', body: 'é'.repeat(2) }), 3), null, 'bytes, not characters');
+  const env = { DB: fakeD1(), ALLOWED_ORIGIN: ORIGIN, SEED_PLAYERS_SECRET: 's3cret', PLAY_ADMIN_SECRET: 'adm1n' };
+  const auth = { Authorization: 'Bearer s3cret' }, admin = { Authorization: 'Bearer adm1n' };
+  for (const [path, cap, headers] of [['/gotd', 256, {}], ['/play', 512, {}], ['/seed', 1024, auth], ['/play-delete', 16384, admin]]) {
+    let sent = 0; const pulled = { n: 0 };
+    const endless = () => { sent++; return 'x'.repeat(100); }; // never ends by itself
+    const r = await post(env, path, streamOf(endless, pulled), headers);
+    assert.deepEqual([r.status, (await r.json()).error], [400, 'too large'], path);
+    assert.ok(sent <= Math.ceil(cap / 100) + 2, `${path}: stopped after ${sent} chunks of 100 bytes (cap ${cap})`);
+  }
+  const fits = JSON.stringify({ ids: Array.from({ length: 500 }, (_, i) => 3000000 + i) });
+  assert.ok(fits.length < 16384); assert.equal((await post(env, '/play-delete', fits, admin)).status, 200, '500 ids of 7 digits fit');
+  const ok = await post(env, '/gotd', streamOf((() => { let i = 0; return () => (i++ ? null : gotdBody()); })()));
+  assert.equal(ok.status, 200, 'a small body without Content-Length is read in full');
+});
+
+await test('a database failure is logged (the message, not the request) and answered with a plain 500', async () => {
+  const sick = { prepare() { throw new Error('d1 is down'); }, batch() { throw new Error('d1 is down'); } };
+  const env = { DB: sick, ALLOWED_ORIGIN: ORIGIN, SEED_PLAYERS_SECRET: 's3cret', PLAY_ADMIN_SECRET: 'adm1n' };
+  const logged = await quiet(async () => {
+    const calls = [
+      post(env, '/gotd', gotdBody()), post(env, '/play', JSON.stringify(playRow())),
+      worker.fetch(new Request('https://w.example/stats?from=20260101&to=20260102'), env),
+      worker.fetch(new Request('https://w.example/play-export', { headers: { Authorization: 'Bearer adm1n' } }), env),
+      post(env, '/play-delete', JSON.stringify({ ids: [1] }), { Authorization: 'Bearer adm1n' }),
+      post(env, '/seed', JSON.stringify({ d: ymdToday, ms: [30000], bins: [binOf(30000)] }), { Authorization: 'Bearer s3cret' }),
+    ];
+    for (const r of await Promise.all(calls)) assert.deepEqual([r.status, await r.json()], [500, { error: 'db' }]);
+  });
+  assert.equal(logged.length, 6, 'one line per failure');
+  for (const route of ['gotd', 'play', 'stats', 'play-export', 'play-delete', 'seed']) {
+    assert.ok(logged.some(l => l.startsWith(route + ' failed:') && l.includes('d1 is down')), route);
+  }
 });
 
 console.log(`${n} passed`);

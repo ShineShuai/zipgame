@@ -7,6 +7,16 @@ ALLOWED_ORIGIN = "https://shineshuai.github.io"   # origin only, no repo path
 # secret, not a var (authorises POST /seed): npx wrangler secret put SEED_PLAYERS_SECRET < FILE   (value read from stdin: not an argument, see server/README.md)
 # second secret (authorises GET /play-export and POST /play-delete, tools/behaviour.mjs): npx wrangler secret put PLAY_ADMIN_SECRET < FILE
 
+# A soft limit per client address for POST /gotd and POST /play (the worker answers 429 above it; wrangler >= 4.36). Cloudflare counts
+# per location, not exactly. The queue of a page that was offline sends up to 20 rows at once: keep the limit well above that.
+# Delete the block to run without a limit. namespace_id must be unique among the rate limits of your Cloudflare account.
+[[ratelimits]]
+name = "RATE_LIMIT"
+namespace_id = "1001"
+  [ratelimits.simple]
+  limit = 60
+  period = 60   # seconds: 10 or 60
+
 [[d1_databases]]
 binding = "DB"
 database_name = "zip-gotd"
