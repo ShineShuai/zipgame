@@ -57,7 +57,7 @@ export const BEHAVIOUR = {
 // only by a player who has unlocked every flat variant; from `first` on, the solid
 // kinds are in the lucky game's list for those players.
 export const SOLID_RELEASE = {
-  first: null,
+  first: 20261206,
   tetra: 7,
   cube: 21,
   ball: 35,
