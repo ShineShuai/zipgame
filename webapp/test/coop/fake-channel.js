@@ -33,6 +33,8 @@ export function fakePair() {
     a,
     b,
     pending: side => queues[side].length,
+    // Loses what is on its way TO `side` (a message the network did not carry); returns how many.
+    drop: side => queues[side].splice(0).length,
     // Delivers one message to `side` ('a' or 'b'); false when none waits.
     step: deliverOne,
     // Delivers everything, alternating the two directions (a first) until both are empty.

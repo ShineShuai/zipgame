@@ -35,9 +35,12 @@ async function onReveal(event) {
   }
 }
 
-// A page opened by an invite link (#coop=<code>) opens the trial as the guest, with no reveal.
+// A page opened by an invite link (#c=<code>; older links: #coop=<code>) opens the trial as the
+// guest, with no reveal.
+const INVITE = /^#(?:c|coop)=/;
+
 async function openInvite() {
-  const code = location.hash.slice('#coop='.length);
+  const code = location.hash.replace(INVITE, '');
   history.replaceState(null, '', location.pathname + location.search);
   try {
     await load();
@@ -50,7 +53,7 @@ async function openInvite() {
 
 if (ENABLED) {
   document.addEventListener('zip:reveal', onReveal);
-  if (location.hash.startsWith('#coop=')) {
+  if (INVITE.test(location.hash)) {
     openInvite();
   }
 }

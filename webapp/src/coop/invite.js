@@ -1,9 +1,12 @@
 // Invite and reply codes: a WebRTC session description packed into a short piece of text that
-// fits in a link (the part after "#coop=") or in a chat message. No server is involved: the host
+// fits in a link (the part after "#c=") or in a chat message. No server is involved: the host
 // sends an invite (kind "o", the offer), the guest sends back a reply (kind "a", the answer).
 //
-// A code is kind + mode + base64url(bytes): mode "z" = deflate-raw compressed, "r" = raw UTF-8
-// (for browsers without CompressionStream).
+// A code is kind + mode + base64url(bytes). Mode "c" = compact: only what differs between two
+// connections (compact.js, about 100 characters); when the description holds more than that, "z" =
+// deflate-raw compressed, or "r" = raw UTF-8 (for browsers without CompressionStream).
+import { packSdp, unpackSdp } from './compact.js';
+
 const toBase64Url = bytes => {
   let binary = '';
   for (const byte of bytes) {
@@ -24,6 +27,10 @@ async function through(stream, bytes) {
 }
 
 export async function encodeCode(kind, sdp) {
+  const compact = packSdp(kind, sdp);
+  if (compact) {
+    return `${kind}c${toBase64Url(compact)}`;
+  }
   const bytes = new TextEncoder().encode(sdp);
   if (typeof CompressionStream === 'function') {
     return `${kind}z${toBase64Url(await through(new CompressionStream('deflate-raw'), bytes))}`;
@@ -31,11 +38,11 @@ export async function encodeCode(kind, sdp) {
   return `${kind}r${toBase64Url(bytes)}`;
 }
 
-// The code in `text`, which may be a whole link, with line breaks and blanks from a chat app.
+// The code in `text`, which may be a whole link ("#c=<code>", older links "#coop=<code>"), with
+// line breaks and blanks from a chat app. A code has no "=", so it starts after the last one.
 export function codeFromText(text) {
   const clean = String(text).replace(/\s+/g, '');
-  const at = clean.indexOf('coop=');
-  return at >= 0 ? clean.slice(at + 5) : clean;
+  return clean.slice(clean.lastIndexOf('=') + 1);
 }
 
 // -> { kind: 'o' | 'a', sdp } or throws an Error('bad code').
@@ -47,6 +54,9 @@ export async function decodeCode(text) {
       throw new Error('shape');
     }
     const bytes = fromBase64Url(payload);
+    if (mode === 'c') {
+      return { kind, sdp: unpackSdp(kind, bytes) };
+    }
     let raw = bytes;
     if (mode === 'z') {
       raw = await through(new DecompressionStream('deflate-raw'), bytes);
