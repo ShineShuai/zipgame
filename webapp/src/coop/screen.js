@@ -45,7 +45,7 @@ const HOLD_MS = 500; // press and hold this long on a line to cut it
 const HOLD_SLOP_PX = 10; // moving the pointer farther than this is a drag, not a hold
 const CONNECT_MS = 30000; // a connection that has not opened by then is given up
 const GUEST_WAIT_MS = 180000; // the guest's: the host first has to copy the reply and paste it
-const linkFor = code => `${location.href.split('#')[0].split('?')[0]}#coop=${code}`;
+const linkFor = code => `${location.href.split('#')[0].split('?')[0]}#c=${code}`;
 
 async function copyText(text, input) {
   try {

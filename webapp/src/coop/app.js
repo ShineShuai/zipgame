@@ -80,7 +80,7 @@ async function open() {
   });
 }
 
-// Called by boot.js when the page was opened by an invite link (#coop=<code>): the trial opens
+// Called by boot.js when the page was opened by an invite link (#c=<code>): the trial opens
 // by itself, as the guest. The code is the invite of the host.
 export const openFromLink = guard(async code => {
   ensureStyles();

@@ -59,9 +59,9 @@ test('online: the colour chips, and only the host can start a new puzzle', () =>
 });
 
 test('the invite, reply and lobby screens', () => {
-  const link = 'https://x.test/#coop=oz1';
+  const link = 'https://x.test/#c=oz1';
   const invite = invitePage({ link, status: 'Waiting', canShare: true });
-  assert.ok(invite.includes('value="https://x.test/#coop=oz1"'));
+  assert.ok(invite.includes('value="https://x.test/#c=oz1"'));
   assert.ok(invite.includes('data-act="connect"') && invite.includes('data-act="share"'));
   assert.ok(!invitePage({ link: '', status: 'Preparing', canShare: false }).includes('coopReply'));
   const join = joinPage({ code: 'az9', status: 'Connecting', canShare: false });
