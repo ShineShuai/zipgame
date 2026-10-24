@@ -11,7 +11,7 @@ import { solutionOf } from '../../src/features/hints.js';
 import { createDrawing, unsupported } from '../../src/coop/drawing.js';
 import { parsePuzzle, serializePuzzle } from '../../src/coop/model.js';
 import {
-  COOP_VARIANTS, nearestSize, sizesFor, statKey, variantById, variantOf,
+  COOP_VARIANTS, nearestSize, sizeName, sizesFor, statKey, variantById, variantOf,
 } from '../../src/coop/variants.js';
 
 test('the sizes on offer: every size, except Exact and arrows, which keep to their own', () => {
@@ -23,6 +23,9 @@ test('the sizes on offer: every size, except Exact and arrows, which keep to the
   assert.deepEqual(sizesFor('wrap'), WRAP_SIZES); // from 4: smaller than the play app's own list
   assert.deepEqual(sizesFor('teleport'), TELEPORT_SIZES);
   assert.deepEqual(sizesFor('pentagon'), PENTAGON_SIZES);
+  assert.deepEqual(sizesFor('tetra'), [2, 3, 4, 5]);
+  assert.deepEqual(sizesFor('cube'), [2, 3, 4]);
+  assert.deepEqual(sizesFor('ball'), [0]); // the ball is drawn from the catalog
   assert.deepEqual(sizesFor('no such type'), PLAY_SIZES); // falls back to standard
 });
 
@@ -41,10 +44,12 @@ test('statistics keys: standard keeps the plain size, other types are told apart
   assert.equal(statKey({ n: 4, wrap: true }, false), 'wrap-4');
   assert.equal(statKey({ n: 7, portals: [] }, true), 'teleport-7x2');
   assert.equal(statKey({ kind: 'pentagon', n: 6 }, false), 'pentagon-6');
+  assert.equal(statKey({ kind: 'cube', n: 3 }, true), 'cube-3x2');
 });
 
 for (const variant of COOP_VARIANTS) {
-  test(`${variant.id}: its generator makes a puzzle Free draw plays, over the wire too`, () => {
+  test(`${variant.id}: a puzzle Free draw plays, over the wire too`, async () => {
+    await variant.ready?.();
     const n = variant.sizes()[0];
     const puzzle = runSync(variant.generate(n, 3));
     assert.equal(unsupported(puzzle), null);
@@ -62,3 +67,12 @@ for (const variant of COOP_VARIANTS) {
     assert.equal(drawing.solved(), true);
   });
 }
+
+test('the size in a game title: 6×6 for a board, 3 for a cube, a ball by name', async () => {
+  assert.equal(sizeName({ n: 6 }), '6×6');
+  assert.equal(sizeName({ kind: 'pentagon', n: 6 }), '6×6');
+  assert.equal(sizeName({ kind: 'cube', n: 3 }), '3');
+  assert.equal(sizeName({ kind: 'tetra', n: 4 }), '4');
+  await COOP_VARIANTS.find(variant => variant.id === 'ball').ready();
+  assert.equal(sizeName({ kind: 'ball', n: 'dual-antiprism7' }), 'dual antiprism7');
+});

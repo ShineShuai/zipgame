@@ -1,4 +1,4 @@
-import { solutionOf } from '../features/hints.js';
+import { solutionFor } from './model.js';
 
 // A hint, asked for with the button (never automatic). Uses the puzzle's one solution:
 //   wrong  an edge that has been drawn but is not part of the solution (the first one drawn)
@@ -6,7 +6,7 @@ import { solutionOf } from '../features/hints.js';
 //   none   nothing to say (solved, or the solution is unknown)
 // -> { kind, edge: [a, b] | null }
 export function coopHint(puzzle, drawing) {
-  const solution = solutionOf(puzzle);
+  const solution = solutionFor(puzzle);
   if (!solution) {
     return { kind: 'none', edge: null };
   }

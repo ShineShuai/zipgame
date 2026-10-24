@@ -2,6 +2,7 @@ import { actionIcon, cardIcon } from '../apps/play/icons.js';
 import { t } from '../ui/i18n.js';
 import { tx } from './texts.js';
 import { COOP_VARIANTS, sizesFor } from './variants.js';
+import { surfaceTopology } from '../core/surface/topology.js';
 import { PLAYER_COLORS } from './view.js';
 
 // The markup of the Free draw screens (pure). They are built from the classes of the play app's
@@ -16,6 +17,15 @@ const selectOptions = (values, current, label) => values
   .map(value => `<option value="${value}"${value === current ? ' selected' : ''}>`
     + `${label(value)}</option>`).join('');
 
+// What a size is called in the select: 6×6, or for a tetra or cube the size and its cells, or for
+// a ball (picked from the catalog) just "random".
+function sizeText(variant, n) {
+  if (variant === 'tetra' || variant === 'cube') {
+    return `${n} (${t('solid.cells', surfaceTopology(variant, n).T)})`;
+  }
+  return variant === 'ball' ? t('solid.random') : `${n}×${n}`;
+}
+
 // The type and the size of the puzzle: two selects, the sizes being those of the type.
 const pickers = (variant, size) => `<div class="field">`
   + `<label class="field-label" for="coopVariant">${tx('variant')}</label>`
@@ -23,7 +33,8 @@ const pickers = (variant, size) => `<div class="field">`
     id => t(`mode.${id}`))}</select></div>`
   + `<div class="field size-field">`
   + `<label class="field-label" for="coopSize">${t('menu.size')}</label>`
-  + `<select id="coopSize">${selectOptions(sizesFor(variant), size, n => `${n}×${n}`)}</select>`
+  + `<select id="coopSize">${selectOptions(sizesFor(variant), size, n => sizeText(variant, n))}`
+  + '</select>'
   + '</div>';
 
 const seconds = value => `${value.toFixed(1)}s`;
@@ -139,11 +150,15 @@ const chips = ({ pid, peerHere }) => `<p class="coop-players">`
 export function gamePage(view) {
   const {
     n, online, pid, peerHere, revealed, grade, seedText, devText, time, hintsLeft, variantName,
+    sizeName = `${n}×${n}`, viewLabel = '',
   } = view;
   const badge = grade
     ? `<span class="difficulty-badge">${t('grade.' + grade)} · ${grade}/5</span>` : '';
   const kind = variantName ? ` · ${variantName}` : '';
-  const title = `${tx('gameTitle', n)}${kind}${online ? ` · ${tx('withFriend')}` : ''}`;
+  const title = `${tx('gameTitle', sizeName)}${kind}${online ? ` · ${tx('withFriend')}` : ''}`;
+  // a solid game: the button that swaps the solid for its net and back (the play app's)
+  const viewButton = viewLabel
+    ? `<button class="btn secondary" data-act="view" id="coopView">${viewLabel}</button>` : '';
   const buttons = [
     `<button class="btn secondary" data-act="menu">${actionIcon('menu')}`
       + `${t('game.menu')}</button>`,
@@ -155,6 +170,7 @@ export function gamePage(view) {
     `<button class="btn secondary" data-act="hint" id="coopHint">${actionIcon('hint')}`
       + `${t('game.hint', hintsLeft.used, hintsLeft.cap)}</button>`,
     `<button class="btn secondary" data-act="export" ${dev(revealed)}>Export</button>`,
+    viewButton,
   ].join('');
   return page(`<div class="game-layout"><section class="card board-card"><div class="hud">`
     + `<div class="hud-title"><span class="hud-icon">${cardIcon('free')}</span>`

@@ -86,7 +86,11 @@ test('the type and the size are chosen together: the sizes are those of the type
   const sizes = html => [...html.matchAll(/<option value="(\d+)"/g)].map(match => Number(match[1]));
   const standard = menuPage({ size: 7, rtc: true });
   assert.ok(standard.includes('id="coopVariant"'));
-  for (const id of ['standard', 'cutout', 'exact', 'arrows', 'wrap', 'teleport', 'pentagon']) {
+  const all = [
+    'standard', 'cutout', 'exact', 'arrows', 'wrap', 'teleport', 'pentagon', 'tetra', 'cube',
+    'ball',
+  ];
+  for (const id of all) {
     assert.ok(standard.includes(`<option value="${id}"`), id);
   }
   assert.ok(standard.includes('<option value="standard" selected>'));
@@ -99,6 +103,9 @@ test('the type and the size are chosen together: the sizes are those of the type
   assert.deepEqual(sizes(arrows), [5, 6, 7, 8, 9, 10, 11]);
   assert.deepEqual(sizes(menuPage({ size: 7, rtc: true, variant: 'wrap' })), [4, 5, 6, 7, 8]);
   assert.deepEqual(sizes(menuPage({ size: 6, rtc: true, variant: 'pentagon' })), [4, 6, 8, 10]);
+  assert.deepEqual(sizes(menuPage({ size: 3, rtc: true, variant: 'cube' })), [2, 3, 4]);
+  const cube = menuPage({ size: 3, rtc: true, variant: 'cube' });
+  assert.match(cube, /<option value="3" selected>3 \(\d+ cells\)/);
   const lobby = lobbyPage({ role: 'host', size: 6, status: '', variant: 'cutout' });
   assert.ok(lobby.includes('<option value="cutout" selected>'));
   assert.ok(lobby.includes('<option value="6" selected>'));
@@ -117,4 +124,11 @@ test('a failed puzzle is told on the menu (alone) and in the lobby, as an error'
   assert.ok(!menuPage({ size: 7, rtc: true }).includes('coopStatus'));
   const lobby = lobbyPage({ role: 'host', size: 7, status: failed, error: true });
   assert.ok(lobby.includes('class="note error"') && lobby.includes(failed));
+});
+
+test('a solid game: the title has the size, and the button swaps the solid and its net', () => {
+  const html = gamePage(view({ variantName: 'Cube', sizeName: '3', viewLabel: 'Net' }));
+  assert.ok(html.includes('Free draw 3 · Cube'));
+  assert.ok(html.includes('data-act="view" id="coopView">Net</button>'));
+  assert.ok(!gamePage(view()).includes('data-act="view"'));
 });

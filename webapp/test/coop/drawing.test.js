@@ -6,6 +6,7 @@ import { generateExact } from '../../src/core/gen/exact.js';
 import { generate } from '../../src/core/gen/generate.js';
 import { generatePentagon } from '../../src/core/gen/pentagon.js';
 import { generateTeleport } from '../../src/core/gen/teleport.js';
+import { COOP_VARIANTS } from '../../src/coop/variants.js';
 import { runSync } from '../../src/core/run.js';
 import { makeRng, shuffle } from '../../src/core/rng.js';
 import { cellCount, makePuzzle } from '../../src/core/model.js';
@@ -121,7 +122,7 @@ test('edges() lists the lines in the order they were drawn, smaller cell first',
   assert.deepEqual(drawing.edges(), [[1, 2], [5, 6], [2, 3]]);
 });
 
-test('only Loop, Two paths and the solids are refused', () => {
+test('only Loop, Two paths and unknown surfaces are refused', () => {
   const puzzle = board();
   assert.equal(unsupported(puzzle), null);
   assert.equal(unsupported({ ...puzzle, holes: new Uint8Array(16) }), null);
@@ -133,7 +134,9 @@ test('only Loop, Two paths and the solids are refused', () => {
     assert.match(unsupported({ ...puzzle, [name]: true }), new RegExp(name));
   }
   assert.equal(unsupported(makeSurfacePuzzle('pentagon', 6)), null);
-  assert.match(unsupported(makeSurfacePuzzle('cube', 2)), /cube/);
+  assert.equal(unsupported(makeSurfacePuzzle('cube', 2)), null);
+  assert.equal(unsupported(makeSurfacePuzzle('tetra', 2)), null);
+  assert.match(unsupported({ kind: 'dodecahedron', n: 1 }), /dodecahedron/);
 });
 
 const PUZZLES = [5, 6, 7, 8].flatMap(
@@ -261,6 +264,14 @@ const WRAPS = [4, 5, 6].flatMap(
 );
 const TELEPORTS = [5, 6, 7, 8].flatMap(n => [1, 2].map(seed => runSync(generateTeleport(n, seed))));
 const PENTAGONS = [4, 6, 8].flatMap(n => [1, 2].map(seed => runSync(generatePentagon(n, seed))));
+const solids = (id, sizes, seeds) => {
+  const variant = COOP_VARIANTS.find(candidate => candidate.id === id);
+  return sizes.flatMap(n => seeds.map(seed => runSync(variant.generate(n, seed))));
+};
+await COOP_VARIANTS.find(variant => variant.id === 'ball').ready();
+const TETRAS = solids('tetra', [2, 3], [1, 2]);
+const CUBES = solids('cube', [2, 3], [1, 2]);
+const BALLS = solids('ball', [0], [1, 2, 3, 4]);
 const ARROWS = [5, 6, 7, 8].flatMap(n => [1, 2, 3].map(seed => runSync(generateArrows(n, seed))));
 
 // Every pair of cells that a line may join, once each.
@@ -291,7 +302,8 @@ function allEdges(puzzle) {
 
 const SETS = [
   ['Cutout', CUTOUTS], ['Exact', EXACTS], ['Arrows', ARROWS], ['Wrap-around', WRAPS],
-  ['Teleport', TELEPORTS], ['Pentagon', PENTAGONS],
+  ['Teleport', TELEPORTS], ['Pentagon', PENTAGONS], ['Tetra', TETRAS], ['Cube', CUBES],
+  ['Ball', BALLS],
 ];
 for (const [label, puzzles] of SETS) {
   test(`${label}: any part of the solution can be drawn in any order; the whole is solved`, () => {

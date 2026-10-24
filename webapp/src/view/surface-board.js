@@ -103,6 +103,8 @@ export function netFrame(net) {
 //   continues(from, to)  in play: whether the path may go on from `from` to its neighbour `to`;
 //                      the net then shows the way on over each cut (see below)
 //   hintCell, hintWrongCell   in play: the cell a hint says to go to, and the wrong cell
+//   under(frame, px)   optional: svg markup for a layer of the caller's own (the lines of Free draw,
+//                      src/coop/solid.js), over the cells and the routes, under the numbers
 // `net` is the flat net (view/surface-net.js) or the solid in a view (view/proj.js): a cell with
 // net.hidden[cell] is not drawn, net.depth[cell] (how much it faces the viewer) shades it, and
 // net.frameOf(cell) lays its number and the head marker into the plane of the cell. A ball
@@ -277,6 +279,10 @@ export function surfaceSvg(net, V) {
       const r = net.markRadius ? round(net.markRadius(head) * frame.scale * 0.5) : round(px * 0.17);
       parts.push(`<circle class="sf-head" cx="${cx}" cy="${cy}" r="${r}"${at}/>`);
     }
+  }
+
+  if (V.under) {
+    parts.push(V.under(frame, px));
   }
 
   // In play on a net: where the path goes on over a cut. The head gets an arrow out on the side
