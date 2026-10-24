@@ -116,9 +116,16 @@ export const probeText = results => 'stun ' + results.map(({ url, ms }) => {
   return `${host} ${ms === null ? 'x' : `${ms}ms`}`;
 }).join(' · ');
 
+// Does this connection state end the channel? `closed` always. `failed` only for a channel that had
+// been open: before that the connection may still recover (the guest's side tries for minutes,
+// until the host has pasted the reply), and a transient `failed` must not end the session.
+export const connectionEnded = (state, opened) => state === 'closed'
+  || (state === 'failed' && opened);
+
 function makeChannel() {
   let real = null;
   const channel = {
+    opened: false,
     onopen: null,
     onmessage: null,
     onclose: null,
@@ -126,11 +133,15 @@ function makeChannel() {
     close: () => real?.close(),
     attach(dataChannel) {
       real = dataChannel;
-      dataChannel.onopen = () => channel.onopen?.();
+      const opening = () => {
+        channel.opened = true;
+        channel.onopen?.();
+      };
+      dataChannel.onopen = opening;
       dataChannel.onmessage = event => channel.onmessage?.(event.data);
       dataChannel.onclose = () => channel.onclose?.();
       if (dataChannel.readyState === 'open') {
-        channel.onopen?.();
+        opening();
       }
     },
   };
@@ -144,7 +155,7 @@ function newConnection() {
   watch(pc, seen);
   const channel = makeChannel();
   pc.onconnectionstatechange = () => {
-    if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+    if (connectionEnded(pc.connectionState, channel.opened)) {
       channel.onclose?.();
     }
   };

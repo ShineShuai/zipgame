@@ -44,6 +44,7 @@ const el = id => document.getElementById(id);
 const HOLD_MS = 500; // press and hold this long on a line to cut it
 const HOLD_SLOP_PX = 10; // moving the pointer farther than this is a drag, not a hold
 const CONNECT_MS = 30000; // a connection that has not opened by then is given up
+const GUEST_WAIT_MS = 180000; // the guest's: the host first has to copy the reply and paste it
 const linkFor = code => `${location.href.split('#')[0].split('?')[0]}#coop=${code}`;
 
 async function copyText(text, input) {
@@ -282,14 +283,14 @@ export function openScreen(env) {
     render();
   }
 
-  function armConnectTimer() {
+  function armConnectTimer(ms = CONNECT_MS) {
     clearTimeout(state.connectTimer);
     state.connectTimer = setTimeout(async () => {
       if (state.phase === 'inviting' || state.phase === 'joining') {
         const why = state.revealed && state.connection ? await readRoute(state.connection) : '';
         setStatus(`${tx('noConnection')}${why ? ` (${why})` : ''}`, true);
       }
-    }, CONNECT_MS);
+    }, ms);
   }
 
   // Wires a new connection to a session; when the channel opens, both sides say hello.
@@ -300,6 +301,9 @@ export function openScreen(env) {
       role, channel: connection.channel, onEvent: onSessionEvent,
     });
     connection.channel.onopen = () => {
+      if (state.phase !== 'inviting' && state.phase !== 'joining') {
+        return; // the browser can announce an open channel twice; the first one counts
+      }
       clearTimeout(state.connectTimer);
       readRoute(connection);
       state.session.hello();
@@ -361,7 +365,7 @@ export function openScreen(env) {
       state.code = code;
       state.status = tx('connecting');
       render();
-      armConnectTimer();
+      armConnectTimer(GUEST_WAIT_MS);
     } catch (error) {
       state.error = true;
       state.status = error.message === 'bad code' ? tx('badCode') : tx('noRtc');
@@ -394,6 +398,14 @@ export function openScreen(env) {
         break;
       case 'hint':
         applyHint(event.hint);
+        break;
+      case 'stalled': // host: the other device never took the puzzle
+        if (state.phase === 'generating' && state.waiting) {
+          Object.assign(state, {
+            phase: 'lobby', waiting: false, status: tx('noAnswer'), error: true,
+          });
+          render();
+        }
         break;
       default: // left, closed
         state.peerHere = false;

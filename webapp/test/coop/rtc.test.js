@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ICE_SERVERS } from '../../src/coop/config.js';
-import { STUN_URL, describeRoute, probeText } from '../../src/coop/rtc.js';
+import {
+  STUN_URL, connectionEnded, describeRoute, probeText,
+} from '../../src/coop/rtc.js';
 
 const seen = (over = {}) => ({ byAddress: new Map(), types: {}, ...over });
 const stats = reports => new Map(reports.map(report => [report.id, report]));
@@ -64,4 +66,12 @@ test('probe line: one entry per server, x = no answer', () => {
     { url: 'stun:stun.l.google.com:19302', ms: null },
     { url: 'stun:stun.nextcloud.com:443', ms: 87 },
   ]), 'stun cloudflare.com 41ms · l.google.com x · nextcloud.com 87ms');
+});
+
+test('a failed connection ends the channel only after it was open', () => {
+  assert.equal(connectionEnded('failed', false), false); // the guest waits for the host's paste
+  assert.equal(connectionEnded('failed', true), true);
+  assert.equal(connectionEnded('closed', false), true);
+  assert.equal(connectionEnded('connected', true), false);
+  assert.equal(connectionEnded('disconnected', true), false);
 });
