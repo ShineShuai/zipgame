@@ -1,12 +1,13 @@
 import {
-  CELL, COLORS, arrowMarks, badgeColors, correctMoveRingAt, cutoutLayers, portalIconsSvg,
-  wrapLayers, wrongMoveMarkAt,
+  CELL, COLORS, arrowMarks, badgeColors, badgeColorsTwo, correctMoveRingAt, cutoutLayers,
+  portalIconsSvg, wrapLayers, wrongMoveMarkAt,
 } from '../apps/play/board.js';
 import {
   maxBoardCss as pentagonCss, pentagonLayers, pentagonView,
 } from '../apps/play/pentagon-board.js';
 import { isPortalPair } from '../core/geom.js';
 import { isPentagon } from '../core/pentagon.js';
+import { colourNumber, colourOfCell } from '../core/twopaths.js';
 import { cellCenter, wallSegments } from '../view/geometry.js';
 import {
   cellCentre, edgeMiddleOf, edgeSegments, jumpCurve, padOf,
@@ -71,13 +72,21 @@ function badgesMarkup(puzzle, drawing) {
       continue;
     }
     const [x, y] = cellCentre(puzzle, cell, CELL);
-    const colors = badgeColors(drawing.degree(cell) > 0);
+    const used = drawing.degree(cell) > 0;
+    // Two paths: a red number is a circle, a blue one a rounded square counted from 1 again
+    const colour = puzzle.split ? colourOfCell(puzzle, cell) : -1;
+    const colors = colour < 0 ? badgeColors(used) : badgeColorsTwo(colour, used);
+    const half = CELL * 0.29;
+    const shape = colour === 1
+      ? `<rect x="${x - half}" y="${y - half}" width="${2 * half}" height="${2 * half}" `
+        + `rx="${CELL * 0.1}" `
+      : `<circle cx="${x}" cy="${y}" r="${CELL * 0.32}" `;
+    const label = colour < 0 ? number : colourNumber(puzzle, number);
     badges.push(
-      `<g data-num-cell="${cell}">`
-      + `<circle cx="${x}" cy="${y}" r="${CELL * 0.32}" fill="${colors.fill}" `
-      + `stroke="${colors.stroke}" stroke-width="3"/>`
+      `<g data-num-cell="${cell}"${colour < 0 ? '' : ` data-colour="${colour}"`}>`
+      + `${shape}fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="3"/>`
       + `<text x="${x}" y="${y}" dy=".35em" text-anchor="middle" font-size="${CELL * 0.32}" `
-      + `font-weight="700" fill="${colors.text}">${number}</text></g>`,
+      + `font-weight="700" fill="${colors.text}">${label}</text></g>`,
     );
   }
   return badges.join('');

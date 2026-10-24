@@ -1,4 +1,6 @@
+import { maxNumber } from '../core/model.js';
 import { isSurfacePuzzle } from '../core/surface/puzzle.js';
+import { bridgeCells } from '../core/twopaths.js';
 import { PLAYED_SURFACES, modelOf } from './model.js';
 
 // Free drawing: the lines a player draws are a set of edges between neighbouring cells, in any
@@ -16,27 +18,31 @@ import { PLAYED_SURFACES, modelOf } from './model.js';
 //            fit between step 1 and the last step
 //   direction  One way arrows puzzle: the arrows, the numbers and the two ends (cell 1 first, the
 //            last number last) must allow at least one way along the piece
+//   colours  Two paths puzzle: a piece would hold a red number and a blue one
+// Loop puzzle: the drawing is a ring, so no cell is an end (every cell holds up to 2 lines), the
+// numbers of a piece are consecutive round the ring (K is followed by 1), and the one line that
+// may close a loop is the last of a piece that covers the board. Two paths puzzle: the numbers 1,
+// k, k + 1 and K begin or end a path (1 line at most), and a piece holds the numbers of one colour
+// (red 1..k, blue k + 1..K).
 // A Cutout puzzle (holes) needs no rule of its own: canStep() already refuses a hole.
 // Under these rules a drawing is solved exactly when it has cells - 1 edges: it is then one path
 // that covers the board, holds every number in order and has cell 1 and the last number as its
-// ends. solved() still hands the path to isSolved(), the rule of the single-player game.
+// ends (a Loop puzzle: cells edges, one ring; Two paths: cells - 2 edges, two paths). solved()
+// still hands the path to isSolved(), the rule of the single-player game.
 
 export const REASONS = [
-  'blocked', 'present', 'degree', 'cycle', 'order', 'gap', 'steps', 'direction',
+  'blocked', 'present', 'degree', 'cycle', 'order', 'gap', 'steps', 'direction', 'colours',
 ];
 
-// null when Free draw can play `puzzle`, else a message. Every type but Loop, Two paths and the
-// solids (variants.js, model.js PLAYED_SURFACES). Wrap-around and Teleport need no rule of their
-// own: an edge across a seam or between two portals is an edge like any other, and canStep()
-// knows them.
+// null when Free draw can play `puzzle`, else a message: every flat puzzle, and the surface kinds
+// of model.js PLAYED_SURFACES. Wrap-around and Teleport need no rule of their own: an edge across
+// a seam or between two portals is an edge like any other, and canStep() knows them.
 export function unsupported(puzzle) {
   if (isSurfacePuzzle(puzzle)) {
     return PLAYED_SURFACES.includes(puzzle.kind)
       ? null : `Free draw does not play ${puzzle.kind} puzzles (yet).`;
   }
-  const extra = ['loop', 'split'];
-  const found = extra.find(name => puzzle[name]);
-  return found ? `Free draw does not play ${found} puzzles (yet).` : null;
+  return null;
 }
 
 // The numbers of one fragment, in order along it: null when fine, else 'order' or 'gap'.
@@ -51,6 +57,25 @@ function numberProblem(numbers) {
   }
   const span = Math.abs(numbers[numbers.length - 1] - numbers[0]) + 1;
   return span === numbers.length ? null : 'gap';
+}
+
+// Loop puzzle: the numbers 1..K of a piece, in order along it, must be consecutive round the ring,
+// one way or the other (K is followed by 1). null when fine, else 'gap' (a number is skipped).
+function ringProblem(numbers, count) {
+  if (numbers.length < 2) {
+    return null;
+  }
+  const step = (from, to) => (to - from + count) % count;
+  const up = numbers.every((value, i) => i === 0 || step(numbers[i - 1], value) === 1);
+  const down = numbers.every((value, i) => i === 0 || step(value, numbers[i - 1]) === 1);
+  return up || down ? null : 'gap';
+}
+
+// Two paths puzzle: the numbers of a piece must be those of one colour (red 1..k, blue above k),
+// and rise or fall steadily like any piece's. null when fine, else 'colours', 'order' or 'gap'.
+function coloursProblem(numbers, split) {
+  const reds = numbers.filter(value => value <= split).length;
+  return reds > 0 && reds < numbers.length ? 'colours' : numberProblem(numbers);
 }
 
 // Exact puzzle: `numbers` are the numbers of the cells of one piece, in order along it (0: none).
@@ -74,14 +99,15 @@ function stepsProblem(numbers, total) {
 
 export function createDrawing(puzzle) {
   const model = modelOf(puzzle);
-  const { total, start, end } = model;
+  const { total, start, end, ends } = model;
+  const count = maxNumber(puzzle);
   const links = Array.from({ length: total }, () => []);
   const stamps = new Map(); // edge key -> the order in which the edges were drawn
   const owners = new Map(); // edge key -> the player (0, 1) who drew it
   let counter = 0;
 
   const key = (a, b) => (a < b ? a * total + b : b * total + a);
-  const capacity = cell => (cell === start || cell === end ? 1 : 2);
+  const capacity = cell => (ends.has(cell) ? 1 : 2);
   // A line has no direction here, so a one-way edge is open when it may be walked either way.
   const open = (a, b) => model.canStep(a, b) || model.canStep(b, a);
   // May a line run between these two cells at all, walls and arrows aside: do they touch (across a
@@ -122,7 +148,7 @@ export function createDrawing(puzzle) {
     const cells = [];
     let previous = from;
     let current = via;
-    while (current !== undefined) {
+    while (current !== undefined && current !== from) {
       cells.push(current);
       const next = links[current].find(cell => cell !== previous);
       previous = current;
@@ -144,6 +170,18 @@ export function createDrawing(puzzle) {
 
   const numbersOf = cells => cells.map(cell => puzzle.cp[cell]).filter(Boolean);
 
+  // The numbers of a piece against the rules of its type: null, or the reason.
+  function numbersProblem(piece) {
+    if (puzzle.exact) {
+      return stepsProblem(piece.map(cell => puzzle.cp[cell] || 0), model.cells);
+    }
+    const numbers = numbersOf(piece);
+    if (puzzle.loop) {
+      return ringProblem(numbers, count);
+    }
+    return puzzle.split ? coloursProblem(numbers, puzzle.split) : numberProblem(numbers);
+  }
+
   // null when the edge a-b may be drawn now, else the reason (see REASONS).
   function check(a, b) {
     if (a === b || !open(a, b)) {
@@ -156,14 +194,13 @@ export function createDrawing(puzzle) {
       return 'degree';
     }
     if (links[a].length > 0 && links[b].length > 0 && fragmentOf(a).includes(b)) {
-      return 'cycle';
+      // a Loop ring is closed by the line between the two ends of a piece that covers the board
+      return puzzle.loop && fragmentOf(a).length === model.cells ? null : 'cycle';
     }
     links[a].push(b);
     links[b].push(a);
     const piece = fragmentOf(a);
-    const problem = puzzle.exact
-      ? stepsProblem(piece.map(cell => puzzle.cp[cell] || 0), model.cells)
-      : numberProblem(numbersOf(piece));
+    const problem = numbersProblem(piece);
     const wrongWay = !problem && puzzle.arrows ? directionProblem(piece) : null;
     links[a].pop();
     links[b].pop();
@@ -211,14 +248,29 @@ export function createDrawing(puzzle) {
       .map(([id]) => [Math.floor(id / total), id % total]);
   }
 
-  // The path from cell 1 along the drawn lines (cell 1 only, when none leaves it).
-  const path = () => fragmentOf(start);
+  // The paths the lines make, as the rule of the single-player game wants them (isSolved): a path
+  // from cell 1 along the lines (cell 1 only, when none leaves it). A ring has two ways round, so
+  // two candidates; Two paths: the red path followed by the blue one, which starts on number k + 1.
+  function candidates() {
+    if (puzzle.loop) {
+      const ways = links[start].map(via => [start, ...walk(start, via)]);
+      return ways.length ? ways : [[start]];
+    }
+    if (puzzle.split) {
+      return [[...fragmentOf(start), ...fragmentOf(bridgeCells(puzzle)[1])]];
+    }
+    return [fragmentOf(start)];
+  }
+
+  const path = () => candidates()[0];
 
   function solved() {
-    const along = path();
-    return stamps.size === model.cells - 1
-      && along.every((cell, i) => i === 0 || model.canStep(along[i - 1], cell))
-      && model.solved(along);
+    const wanted = model.cells - (puzzle.loop ? 0 : puzzle.split ? 2 : 1);
+    const bridge = puzzle.split ? fragmentOf(start).length : -1; // where the blue path begins
+    return stamps.size === wanted && candidates().some(along => (
+      along.every((cell, i) => i === 0 || i === bridge || model.canStep(along[i - 1], cell))
+      && model.solved(along)
+    ));
   }
 
   return {

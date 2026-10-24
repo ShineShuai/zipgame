@@ -176,8 +176,9 @@ export function createSession({
       receive(text);
     }
   };
+  // A channel that reports its end is not given up: sending goes on, and a send that cannot be made
+  // is logged (see the head of this file).
   channel.onclose = () => {
-    open = false;
     onEvent({ type: 'closed' });
   };
 

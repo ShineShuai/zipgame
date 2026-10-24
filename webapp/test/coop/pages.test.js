@@ -87,8 +87,8 @@ test('the type and the size are chosen together: the sizes are those of the type
   const standard = menuPage({ size: 7, rtc: true });
   assert.ok(standard.includes('id="coopVariant"'));
   const all = [
-    'standard', 'cutout', 'exact', 'arrows', 'wrap', 'teleport', 'pentagon', 'tetra', 'cube',
-    'ball',
+    'standard', 'cutout', 'exact', 'arrows', 'wrap', 'teleport', 'loop', 'twopaths', 'pentagon',
+    'tetra', 'cube', 'ball',
   ];
   for (const id of all) {
     assert.ok(standard.includes(`<option value="${id}"`), id);
