@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generate } from '../../src/core/gen/generate.js';
 import { generatePentagon } from '../../src/core/gen/pentagon.js';
+import { generateTwoPaths } from '../../src/core/gen/twopaths.js';
 import { generateTeleport } from '../../src/core/gen/teleport.js';
 import { runSync } from '../../src/core/run.js';
 import { maxNumber } from '../../src/core/model.js';
@@ -119,4 +120,19 @@ test('a Pentagon board has a tile per cell, a badge per number and a line per dr
   assert.equal(inLines(boardMarkup(pentagon, drawing)), 2);
   const hint = boardMarkup(pentagon, drawing, { kind: 'next', edge: [path[1], path[2]] });
   assert.ok(hint.length > text.length);
+});
+
+test('a Two paths board: red numbers are circles, blue ones rounded squares counted from 1', () => {
+  const two = runSync(generateTwoPaths(6, 2));
+  const text = boardMarkup(two, createDrawing(two));
+  const reds = count(text, /data-colour="0"/g);
+  const blues = count(text, /data-colour="1"/g);
+  assert.equal(reds, two.split);
+  assert.equal(blues, maxNumber(two) - two.split);
+  const badges = text.slice(text.indexOf('data-num-cell'));
+  assert.equal(count(badges, /<rect /g), blues);
+  assert.ok(badges.includes('>1</text>'));
+  // a standard board has neither
+  const standard = boardMarkup(runSync(generate(6, 2)), createDrawing(runSync(generate(6, 2))));
+  assert.equal(count(standard, /data-colour=/g), 0);
 });

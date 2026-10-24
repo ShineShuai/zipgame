@@ -63,6 +63,7 @@ export const EN = {
   direction: 'The arrows, numbers and ends would not agree on one way along the line.',
   variant: 'Type',
   jump: 'Tap the pulsing portal to link the two.',
+  colours: 'A line cannot join a red number and a blue one.',
   solidTurn: 'Turn the solid: drag the background, two fingers or the arrow keys. Hold or '
     + 'right-click a line to cut it.',
   solidNet: 'A side with a letter on the border continues at the same letter.',
@@ -134,6 +135,7 @@ export const ZH = {
   direction: '这条线上的箭头、数字和起止点无法指向同一个方向。',
   variant: '类型',
   jump: '点按闪动的传送门，把两个连起来。',
+  colours: '一条线不能连接红色数字和蓝色数字。',
   solidTurn: '转动立体：拖动背景、双指或方向键。长按或右键点线可剪断。',
   solidNet: '边界上标有字母的边，会在相同字母处继续。',
   solidMap: '球的两半：位于边缘的格子在两半中都会出现。',

@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generate } from '../../src/core/gen/generate.js';
+import { generateLoop } from '../../src/core/gen/loop.js';
+import { generateTwoPaths } from '../../src/core/gen/twopaths.js';
 import { runSync } from '../../src/core/run.js';
 import { solutionOf } from '../../src/features/hints.js';
 import { createDrawing } from '../../src/coop/drawing.js';
 import { coopHint } from '../../src/coop/hint.js';
+import { solutionEdges } from '../../src/coop/model.js';
 
 const puzzle = runSync(generate(6, 11));
 const solution = solutionOf(puzzle);
@@ -46,4 +49,31 @@ test('nothing to hint once the solution is drawn', () => {
   solution.slice(1).forEach((cell, i) => drawing.add(solution[i], cell));
   assert.equal(drawing.solved(), true);
   assert.deepEqual(coopHint(puzzle, drawing), { kind: 'none', edge: null });
+});
+
+test('Loop: the line that closes the ring is part of the solution, and the last hint', () => {
+  const ring = runSync(generateLoop(6, 3));
+  const edges = solutionEdges(ring);
+  assert.equal(edges.length, 36); // as many lines as cells
+  const drawing = createDrawing(ring);
+  edges.slice(0, -1).forEach(([a, b]) => assert.equal(drawing.add(a, b), null));
+  assert.deepEqual(coopHint(ring, drawing), { kind: 'next', edge: edges[35] });
+  assert.equal(drawing.add(...edges[35]), null);
+  assert.equal(coopHint(ring, drawing).kind, 'none');
+});
+
+test('Two paths: the bridge between the paths is no line, so no hint asks for it', () => {
+  const two = runSync(generateTwoPaths(5, 2));
+  const edges = solutionEdges(two);
+  assert.equal(edges.length, 23); // 25 cells, two paths
+  const path = solutionOf(two);
+  const bridge = [path.indexOf(two.cp.indexOf(two.split)) ].filter(at => at >= 0);
+  assert.equal(bridge.length, 1);
+  const [at] = bridge;
+  const isBridge = ([a, b]) => a === path[at] && b === path[at + 1];
+  assert.equal(edges.some(isBridge), false);
+  const drawing = createDrawing(two);
+  edges.forEach(([a, b]) => assert.equal(drawing.add(a, b), null));
+  assert.equal(coopHint(two, drawing).kind, 'none');
+  assert.equal(drawing.solved(), true);
 });
