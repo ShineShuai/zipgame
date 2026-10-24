@@ -1,0 +1,65 @@
+{
+  "id": "wood",
+  "mode": "dark",
+  "fonts": [
+    {
+      "family": "Zilla Slab",
+      "weight": "500 700",
+      "file": "zilla-slab-latin.woff2"
+    }
+  ],
+  "seeds": {
+    "bg": "#2b1d14",
+    "bgTop": "#3a281c",
+    "surface": "#3a281c",
+    "surface2": "#4a3324",
+    "line": "#6b4a30",
+    "lineStrong": "#86603f",
+    "ink": "#f4e6cf",
+    "muted": "#cdb79a",
+    "accent": "#d4a017",
+    "onAccent": "#2b1d14",
+    "orange": "#d4a017",
+    "onOrange": "#2b1d14",
+    "tile": "#ead7ae",
+    "tileEdge": "#b99a66",
+    "depth": "#b99a66",
+    "stage": "#4a3324",
+    "wall": "#2b1d14",
+    "path": "#a4281f",
+    "red": "#a4281f",
+    "blue": "#41689a",
+    "numFill": "#3a281c",
+    "numText": "#f4e6cf",
+    "numRing": "#7a5a14",
+    "numvFill": "#d4a017",
+    "numvRing": "#7a5a14",
+    "numvText": "#2b1d14",
+    "icons": [
+      "#d4a017",
+      "#ead7ae",
+      "#b3402f",
+      "#6d8bb5",
+      "#5a3d22"
+    ],
+    "iconInk": "#120a05",
+    "iconPaper": "#ffffff"
+  },
+  "vars": {
+    "--font-body": "\"Zilla Slab\", \"Rockwell\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", serif",
+    "--fw-head": "700",
+    "--r-1": "8px",
+    "--r-2": "10px",
+    "--r-3": "18px",
+    "--r-4": "18px",
+    "--r-chip": "8px",
+    "--r-icon": "8px",
+    "--bw": "1px",
+    "--bw-card": "1px",
+    "--shadow": "0 12px 30px rgba(0, 0, 0, 0.45)",
+    "--bg-image": "repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 2px, transparent 2px 9px)",
+    "--bar-h": "62px",
+    "--ctl-h": "48px",
+    "--vi-scale": "1.05"
+  }
+}

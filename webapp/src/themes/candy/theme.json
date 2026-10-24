@@ -1,0 +1,60 @@
+{
+  "id": "candy",
+  "mode": "light",
+  "fonts": [
+    {
+      "family": "Fredoka",
+      "weight": "400 700",
+      "file": "fredoka-latin.woff2"
+    }
+  ],
+  "seeds": {
+    "bg": "#efe7ff",
+    "bgTop": "#e4d8ff",
+    "surface": "#ffffff",
+    "surface2": "#f3edff",
+    "ink": "#2b1b5a",
+    "muted": "#54448a",
+    "accent": "#6a4cf0",
+    "onAccent": "#ffffff",
+    "orange": "#ffc531",
+    "onOrange": "#2b1b5a",
+    "tile": "#f6f1ff",
+    "tileEdge": "#e0d6ff",
+    "wall": "#2b1b5a",
+    "path": "#e8384f",
+    "red": "#e8384f",
+    "blue": "#6a4cf0",
+    "numFill": "#ffc531",
+    "numText": "#2b1b5a",
+    "numRing": "transparent",
+    "numvFill": "#2b1b5a",
+    "numvText": "#ffffff",
+    "icons": [
+      "#6a4cf0",
+      "#ffc531",
+      "#0f9d83",
+      "#e8384f"
+    ],
+    "iconInk": "#2b1b5a",
+    "iconPaper": "#ffffff"
+  },
+  "vars": {
+    "--font-body": "\"Fredoka\", \"Trebuchet MS\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+    "--fw-head": "700",
+    "--r-1": "14px",
+    "--r-2": "22px",
+    "--r-3": "36px",
+    "--r-4": "36px",
+    "--r-chip": "999px",
+    "--r-icon": "999px",
+    "--bw": "0px",
+    "--bw-card": "0px",
+    "--shadow": "0 10px 28px rgba(106, 76, 240, 0.18)",
+    "--pop-shadow": "0 14px 34px rgba(43, 27, 90, 0.24)",
+    "--bar-h": "62px",
+    "--icon-btn": "42px",
+    "--ctl-h": "50px",
+    "--vi-scale": "1.1"
+  }
+}
