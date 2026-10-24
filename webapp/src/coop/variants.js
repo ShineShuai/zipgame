@@ -3,6 +3,12 @@ import { generateCutout, CUTOUT_MAX_MS } from '../core/gen/cutout.js';
 import { generateExact, EXACT_SIZES } from '../core/gen/exact.js';
 import { generatePentagon } from '../core/gen/pentagon.js';
 import { PENTAGON_SIZES, isPentagon } from '../core/pentagon.js';
+import { loadBalls, pickBall } from '../core/solid/balls.js';
+import { generateSurfaceSteps } from '../core/surface/gen.js';
+import { isSurfacePuzzle } from '../core/surface/puzzle.js';
+import {
+  BALL_KIND, SURFACE_SIZES, ballEntry,
+} from '../core/surface/topology.js';
 import { generate, PLAY_SIZES, WRAP_SIZES } from '../core/gen/generate.js';
 import { generateTeleport, TELEPORT_SIZES } from '../core/gen/teleport.js';
 
@@ -12,6 +18,20 @@ import { generateTeleport, TELEPORT_SIZES } from '../core/gen/teleport.js';
 //   id        'standard' or the play app's variant id
 //   sizes     the board sizes on offer
 //   generate  (n, seed) -> generator function* (core/run.js, platform/run.js drive it)
+//   ready     optional, () -> promise: what generate needs first (the catalog of the balls)
+// The solids come as a puzzle with its solution in `path`, as the generators of the others do.
+function* generateSolid(kind, n, seed) {
+  const made = yield* generateSurfaceSteps(kind, n, seed);
+  made.puzzle.path = made.path;
+  return made.puzzle;
+}
+
+// A ball from the catalog, drawn by the seed (the size select has nothing to say about a ball).
+function* generateBall(seed) {
+  const entry = pickBall(() => (Math.imul(seed, 2654435761) >>> 0) / 4294967296);
+  return yield* generateSolid(BALL_KIND, entry.id, seed);
+}
+
 export const COOP_VARIANTS = [
   {
     id: 'standard',
@@ -48,6 +68,22 @@ export const COOP_VARIANTS = [
     sizes: () => PENTAGON_SIZES,
     generate: (n, seed) => generatePentagon(n, seed),
   },
+  {
+    id: 'tetra',
+    sizes: () => SURFACE_SIZES.tetra,
+    generate: (n, seed) => generateSolid('tetra', n, seed),
+  },
+  {
+    id: 'cube',
+    sizes: () => SURFACE_SIZES.cube,
+    generate: (n, seed) => generateSolid('cube', n, seed),
+  },
+  {
+    id: 'ball',
+    sizes: () => [0],
+    generate: (n, seed) => generateBall(seed),
+    ready: loadBalls,
+  },
 ];
 
 export const variantById = id => COOP_VARIANTS.find(variant => variant.id === id)
@@ -57,8 +93,8 @@ export const sizesFor = id => variantById(id).sizes();
 
 // The variant a puzzle belongs to, among those of COOP_VARIANTS (others are not played).
 export function variantOf(puzzle) {
-  if (isPentagon(puzzle)) {
-    return 'pentagon';
+  if (isSurfacePuzzle(puzzle)) {
+    return puzzle.kind;
   }
   if (puzzle.holes) {
     return 'cutout';
@@ -73,6 +109,20 @@ export function variantOf(puzzle) {
     return 'wrap';
   }
   return puzzle.portals ? 'teleport' : 'standard';
+}
+
+// What the size of a puzzle is called in the title of the game: 6×6, 4 (a tetra or cube) or the
+// name of the ball.
+export function sizeName(puzzle) {
+  switch (variantOf(puzzle)) {
+    case 'tetra':
+    case 'cube':
+      return `${puzzle.n}`;
+    case 'ball':
+      return ballEntry(puzzle.n).name;
+    default:
+      return `${puzzle.n}×${puzzle.n}`;
+  }
 }
 
 // The offered size closest to `size` (the smaller one on a tie).

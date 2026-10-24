@@ -2,7 +2,9 @@ import { parse, serialize } from '../core/format.js';
 import { adjacent, isPortalPair } from '../core/geom.js';
 import { cellCount, endCell, startCell } from '../core/model.js';
 import { canStep, isSolved } from '../core/rules.js';
+import { solveSurface } from '../core/surface/solve.js';
 import { edgeBetween } from '../core/surface/topology.js';
+import { solutionOf } from '../features/hints.js';
 import {
   canStep as surfaceCanStep, endCell as surfaceEnd, isSolved as surfaceSolved, isSurfacePuzzle,
   looksLikeSurface, parseSurface, serializeSurface, startCell as surfaceStart, topologyOf,
@@ -20,7 +22,7 @@ import {
 //   solved(path)   is `path` a solution
 // }
 // The kinds of surface puzzle that Free draw plays so far (core/surface/puzzle.js `kind`).
-export const PLAYED_SURFACES = ['pentagon'];
+export const PLAYED_SURFACES = ['pentagon', 'tetra', 'cube', 'ball'];
 
 const cache = new WeakMap();
 
@@ -64,3 +66,13 @@ export const serializePuzzle = (puzzle, opts) => (isSurfacePuzzle(puzzle)
   ? serializeSurface(puzzle, opts) : serialize(puzzle, opts));
 
 export const parsePuzzle = text => (looksLikeSurface(text) ? parseSurface(text) : parse(text));
+
+// The one solution of the puzzle, as a path of cells (the one the generator made, or solved here);
+// null when it cannot be found. The hint is made from it.
+export function solutionFor(puzzle) {
+  if (puzzle.path || !isSurfacePuzzle(puzzle)) {
+    return solutionOf(puzzle);
+  }
+  puzzle.path = solveSurface(puzzle, { limit: 1, nodeCap: 2000000 }).path;
+  return puzzle.path;
+}

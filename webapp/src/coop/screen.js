@@ -25,11 +25,16 @@ import {
 } from './stroke.js';
 import { tx } from './texts.js';
 import {
-  nearestSize, sizesFor, statKey, variantById, variantOf,
+  nearestSize, sizeName, sizesFor, statKey, variantById, variantOf,
 } from './variants.js';
 import { portalPartner } from '../core/geom.js';
+import { topologyOf } from '../core/surface/puzzle.js';
 import { cellAtClient, cellPxOf, pressPoint } from './layout.js';
 import { serializePuzzle } from './model.js';
+import {
+  ARROW_TURN, FOLLOW_EDGE, ORBIT_SLOP, cellUnder, createTurner, crossedCut, edgeNear, isSolid,
+  netPoint, solidBoard, startRotation, turnBy, turnByKey, turnable,
+} from './solid.js';
 import { boardMarkup } from './view.js';
 
 // The Free draw screens: a full-screen layer on top of the app's page, below its app bar, with its
@@ -106,11 +111,25 @@ export function openScreen(env) {
     waiting: false, // the host waits for the other device to take the new puzzle
     variant: 'standard', // the type of the next puzzle (variants.js)
     jumpFrom: null, // Teleport: the portal where this player's last stroke ended
+    view: '3d', // a solid: '3d' or 'net', kept from game to game until the page is reloaded
+    rotation: null, // a solid: how it is turned (view/proj.js), this device only
+    solidLayouts: [], // a solid: the pictures on the screen, for hit-testing
+    solidFrames: [],
     connectTimer: null,
     route: '', // dev line: how the connection runs (rtc.js describeRoute)
     probe: null, // dev line: promise of the per-server STUN check (asked once per connection)
   };
   const strokes = new Map(); // pointer id -> { stroke, refused, cut, hold, x, y, x0, y0 }
+  const pointers = new Map(); // pointer id -> [clientX, clientY], the pointers that are down
+  let orbiting = null; // a solid: { start, last, active } while a drag turns it
+  const turner = createTurner({
+    getRotation: () => state.rotation,
+    setRotation: rotation => {
+      state.rotation = rotation;
+    },
+    redraw: () => redrawBoard(),
+  });
+  const solid = () => Boolean(state.puzzle) && isSolid(state.puzzle);
   const pid = () => (state.session ? state.session.pid : 0);
   const canShare = typeof navigator.share === 'function';
 
@@ -185,6 +204,8 @@ export function openScreen(env) {
       grade: trap ? trap.grade : null,
       seedText: `seed ${state.seed} · ${role}${state.route ? ` · ${state.route}` : ''}`,
       variantName: kindName(state.puzzle),
+      sizeName: sizeName(state.puzzle),
+      viewLabel: solid() ? viewLabel() : '',
       devText: trap ? `trap ${trap.predicted.toFixed(2)}` : 'ungraded',
       time: state.elapsed,
       hintsLeft: { used: state.hintsUsed, cap: maxHints(state.puzzle) },
@@ -213,7 +234,16 @@ export function openScreen(env) {
 
   function redrawBoard() {
     const board = el('coopBoard');
-    if (board) {
+    if (board && solid()) {
+      const picture = solidBoard(state.puzzle, state.drawing, {
+        view: state.view, rotation: state.rotation, hint: state.hint,
+      });
+      board.classList.add('solid-wrap');
+      board.classList.toggle('turnable', turnable(state.puzzle, state.view));
+      board.classList.toggle('ball', state.puzzle.kind === 'ball');
+      board.innerHTML = picture.html;
+      Object.assign(state, { solidLayouts: picture.layouts, solidFrames: picture.frames });
+    } else if (board) {
       const cell = ringCell();
       const ring = cell < 0 ? null : { cell, player: pid() };
       board.innerHTML = boardMarkup(state.puzzle, state.drawing, state.hint, ring);
@@ -242,8 +272,11 @@ export function openScreen(env) {
     clearTimeout(state.connectTimer);
     state.connectTimer = null;
     stopTimer();
+    turner.stop();
     strokes.forEach(endHold);
     strokes.clear();
+    pointers.clear();
+    orbiting = null;
     if (state.session) {
       state.session.leave();
     }
@@ -434,6 +467,7 @@ export function openScreen(env) {
     let puzzle = null;
     let reason = '';
     try {
+      await variantById(state.variant).ready?.();
       puzzle = await runAsync(variantById(state.variant).generate(state.size, seed), {
         onEvent: event => {
           if (token === state.token && event.frac != null) {
@@ -480,7 +514,14 @@ export function openScreen(env) {
       jumpFrom: null,
     });
     strokes.clear();
+    pointers.clear();
+    orbiting = null;
+    turner.stop();
+    state.rotation = solid() ? startRotation(state.puzzle) : null;
     renderGame();
+    if (solid()) {
+      setMessage(solidNote());
+    }
     startTimer();
   }
 
@@ -542,18 +583,22 @@ export function openScreen(env) {
   const drawingRect = board => board.firstElementChild.getBoundingClientRect();
 
   // A Wrap-around board has a margin: a drag that leaves the board comes in on the other side.
-  const cellAt = (board, event) => cellAtClient(
-    state.puzzle,
-    drawingRect(board),
-    event.clientX,
-    event.clientY,
-  );
+  const cellAt = (board, event) => (solid()
+    ? cellUnder(board, event.clientX, event.clientY)
+    : cellAtClient(state.puzzle, drawingRect(board), event.clientX, event.clientY));
 
   // Cuts the line under the point (client coordinates), if there is one: true when it did.
   function cutAt(clientX, clientY, player) {
-    const rect = drawingRect(el('coopBoard'));
-    const [x, y, unit] = pressPoint(state.puzzle, rect, clientX, clientY);
-    const edge = edgeAt(state.drawing, x, y, 0.3 * unit, unit);
+    const board = el('coopBoard');
+    let edge;
+    if (solid()) {
+      edge = edgeNear(
+        board, state.drawing, state.solidLayouts, state.solidFrames, clientX, clientY,
+      );
+    } else {
+      const [x, y, unit] = pressPoint(state.puzzle, drawingRect(board), clientX, clientY);
+      edge = edgeAt(state.drawing, x, y, 0.3 * unit, unit);
+    }
     if (!edge) {
       return false;
     }
@@ -611,16 +656,26 @@ export function openScreen(env) {
       return;
     }
     const board = el('coopBoard');
+    pointers.set(event.pointerId, [event.clientX, event.clientY]);
+    const turns = solid() && turnable(state.puzzle, state.view);
+    if (turns && pointers.size >= 2) {
+      // two fingers turn the solid at once, and a line that was begun is let go
+      strokes.forEach(endHold);
+      strokes.clear();
+      capture(board, event);
+      orbiting = { start: pointerCentre(), last: pointerCentre(), active: true };
+      return;
+    }
     const cell = cellAt(board, event);
     if (cell < 0) {
+      if (turns) {
+        // anything but a cell turns the solid, once the pointer has moved a little
+        orbiting = { start: pointerCentre(), last: pointerCentre(), active: false };
+      }
       return;
     }
     event.preventDefault();
-    try {
-      board.setPointerCapture(event.pointerId);
-    } catch {
-      // no capture (not supported here): the drag still works while the pointer stays on the board
-    }
+    capture(board, event);
     // Teleport: a press on the ringed partner of the portal the last stroke ended on links the two,
     // and the stroke goes on from there.
     const jump = cell === ringCell();
@@ -633,6 +688,8 @@ export function openScreen(env) {
       y: event.clientY,
       x0: event.clientX,
       y0: event.clientY,
+      lastPoint: crossing()
+        ? netPoint(board, state.solidFrames, event.clientX, event.clientY) : null,
     };
     entry.hold = setTimeout(() => onHoldElapsed(entry), HOLD_MS);
     strokes.set(event.pointerId, entry);
@@ -645,8 +702,68 @@ export function openScreen(env) {
     }
   }
 
+  function capture(board, event) {
+    try {
+      board.setPointerCapture(event.pointerId);
+    } catch {
+      // no capture (not supported here): the drag still works while the pointer stays on the board
+    }
+  }
+
+  const pointerCentre = () => {
+    const all = [...pointers.values()];
+    return [0, 1].map(axis => all.reduce((sum, point) => sum + point[axis], 0) / all.length);
+  };
+
+  // A drag that began off the cells, or two fingers, turns the solid (the play app's rule).
+  function turnSolid(event) {
+    const [x, y] = pointerCentre();
+    if (!orbiting.active) {
+      if (Math.hypot(x - orbiting.start[0], y - orbiting.start[1]) < ORBIT_SLOP) {
+        return;
+      }
+      orbiting.active = true;
+      turner.stop();
+      capture(el('coopBoard'), event);
+    }
+    state.rotation = turnBy(state.rotation, x - orbiting.last[0], y - orbiting.last[1]);
+    orbiting.last = [x, y];
+    redrawBoard();
+  }
+
+  // About one cell of a solid, in pixels: the size of a step of a fast drag.
+  const solidCellPx = board => (
+    board.querySelector('svg').getBoundingClientRect().width / Math.sqrt(topologyOf(state.puzzle).T)
+  );
+
+  // Whether the board is a net with cuts: leaving the head over a cut is a step.
+  const crossing = () => solid() && state.view === 'net'
+    && (state.solidLayouts[0]?.cuts?.length ?? 0) > 0;
+
+  // The pointer left the head of the stroke over a cut of the net: the line goes on where the cut
+  // leads.
+  function crossCut(entry, board, probe) {
+    const at = netPoint(board, state.solidFrames, probe.clientX, probe.clientY);
+    if (at && entry.lastPoint) {
+      const target = crossedCut(
+        topologyOf(state.puzzle), state.solidLayouts[0], entry.stroke.head, entry.lastPoint, at,
+      );
+      if (target >= 0) {
+        applyStep(entry, target);
+      }
+    }
+    entry.lastPoint = at;
+  }
+
   // Pointer moves can skip cells: walk from the last point to the new one in small steps.
   function onPointerMove(event) {
+    if (pointers.has(event.pointerId)) {
+      pointers.set(event.pointerId, [event.clientX, event.clientY]);
+    }
+    if (orbiting) {
+      turnSolid(event);
+      return;
+    }
     const entry = strokes.get(event.pointerId);
     if (!entry || entry.cut || state.phase !== 'playing') {
       return;
@@ -656,19 +773,24 @@ export function openScreen(env) {
       endHold(entry);
     }
     const board = el('coopBoard');
-    const cellPx = cellPxOf(state.puzzle, drawingRect(board));
+    const cellPx = solid() ? solidCellPx(board) : cellPxOf(state.puzzle, drawingRect(board));
     const dx = event.clientX - entry.x;
     const dy = event.clientY - entry.y;
     const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / (cellPx / 3)));
     for (let i = 1; i <= steps && state.phase === 'playing'; i++) {
       const probe = { clientX: entry.x + (dx * i) / steps, clientY: entry.y + (dy * i) / steps };
       applyStep(entry, cellAt(board, probe));
+      if (crossing()) {
+        crossCut(entry, board, probe);
+      }
     }
     entry.x = event.clientX;
     entry.y = event.clientY;
   }
 
   function onPointerEnd(event) {
+    pointers.delete(event.pointerId);
+    orbiting = null;
     const entry = strokes.get(event.pointerId);
     if (!entry) {
       return;
@@ -713,6 +835,48 @@ export function openScreen(env) {
     }
     applyHint({ ...hint, used: state.hintsUsed + 1 });
     state.session?.sendHint({ kind: hint.kind, edge: hint.edge, used: state.hintsUsed });
+    turnToHint(hint.edge);
+  }
+
+  // A solid: the hint is on the side that is turned away, so the solid turns to face it.
+  function turnToHint(edge) {
+    const net = state.solidLayouts[0];
+    if (!solid() || state.view !== '3d' || !net) {
+      return;
+    }
+    const ball = state.puzzle.kind === 'ball';
+    const away = cell => (ball ? net.depth[cell] < FOLLOW_EDGE : net.hidden[cell]);
+    if (edge.every(away)) {
+      turner.toward(topologyOf(state.puzzle), edge[0]);
+    }
+  }
+
+  // The button of a solid game: what the view would change to (the play app's labels).
+  function viewLabel() {
+    const net = state.view === 'net';
+    if (state.puzzle.kind === 'ball') {
+      return t(net ? 'solid.ball' : 'solid.map');
+    }
+    return t(net ? 'solid.solid' : 'solid.net');
+  }
+
+  // The line under the board of a solid game: how to turn it, or how to read the net.
+  function solidNote() {
+    if (state.view === '3d') {
+      return tx('solidTurn');
+    }
+    return tx(state.puzzle.kind === 'ball' ? 'solidMap' : 'solidNet');
+  }
+
+  function toggleView() {
+    if (!solid()) {
+      return;
+    }
+    turner.stop();
+    state.view = state.view === '3d' ? 'net' : '3d';
+    el('coopView').textContent = viewLabel();
+    redrawBoard();
+    setMessage(solidNote());
   }
 
   // Takes back this player's last stroke.
@@ -835,6 +999,7 @@ export function openScreen(env) {
       undo,
       clear: clearAll,
       hint: showHint,
+      view: toggleView,
       export: openExport,
       'export-close': closeExport,
       'export-copy': copyExport,
@@ -846,6 +1011,15 @@ export function openScreen(env) {
 
   // Esc: closes what is open, else asks before leaving a game, else leaves the trial.
   function onKeyDown(event) {
+    const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(event.target?.tagName ?? '');
+    if (ARROW_TURN[event.key] && !typing && solid() && turnable(state.puzzle, state.view)
+      && (state.phase === 'playing' || state.phase === 'solved')) {
+      event.preventDefault();
+      turner.stop();
+      state.rotation = turnByKey(state.rotation, event.key);
+      redrawBoard();
+      return;
+    }
     if (event.key !== 'Escape') {
       return;
     }

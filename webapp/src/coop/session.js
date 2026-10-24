@@ -1,3 +1,4 @@
+import { loadBalls, ballsLoaded } from '../core/solid/balls.js';
 import { parsePuzzle, serializePuzzle } from './model.js';
 import { createReplica } from './replica.js';
 
@@ -82,11 +83,23 @@ export function createSession({ role, channel, onEvent }) {
     }
   }
 
-  channel.onmessage = text => {
+  const receive = text => {
     try {
       handle(JSON.parse(text));
     } catch (error) {
       console.warn('coop: a message was not understood', error);
+    }
+  };
+  // A ball is told by its number in the catalog of the balls, which is loaded when first wanted. A
+  // puzzle that is a ball waits for it, and the messages after it wait their turn behind it.
+  let waiting = null;
+  channel.onmessage = text => {
+    if (waiting) {
+      waiting = waiting.then(() => receive(text));
+    } else if (text.includes('surface ball ') && !ballsLoaded()) {
+      waiting = loadBalls().then(() => receive(text));
+    } else {
+      receive(text);
     }
   };
   channel.onclose = () => {
