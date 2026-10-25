@@ -198,3 +198,91 @@ test('a silent channel is reported once, and again as alive when the other is he
   wire.flush();
   assert.equal(types(events.host).filter(type => type === 'alive').length, 1);
 });
+
+// A running game goes to a friend who has just connected: the friend takes the free place.
+async function shared(ownPid, ownRole = 'host') {
+  const first = createSession({ role: 'host', onEvent() {} });
+  const puzzle = runSync(generate(6, 5));
+  const early = first.newGame(puzzle, 5);
+  const solution = solutionOf(puzzle);
+  early.add(solution[0], solution[1]); // pid 0
+  const wire = fakePair();
+  const events = { host: [], guest: [] };
+  const timers = manualTimers();
+  const host = createSession({
+    role: ownRole, pid: ownPid, channel: wire.a, timers, info: () => ({ elapsed: 33, hints: 2 }),
+    onEvent: e => events.host.push(e),
+  });
+  const mine = await host.restore({
+    text: first.current.text, seed: 5, ops: early.ops(),
+  });
+  const guest = createSession({
+    role: 'guest', channel: wire.b, timers, onEvent: e => events.guest.push(e),
+  });
+  return {
+    wire, host, guest, events, mine, solution,
+  };
+}
+
+test('a friend joins a game that is on: lines, time, and the other place', async () => {
+  const {
+    wire, host, guest, events, mine, solution,
+  } = await shared(0);
+  mine.add(solution[1], solution[2]);
+  assert.equal(host.share(), true);
+  wire.flush();
+  assert.equal(guest.pid, 1);
+  assert.equal(guest.current.seed, 5);
+  const order = types(events.guest).filter(type => type !== 'op');
+  assert.deepEqual(order, ['puzzle', 'start', 'resume']);
+  const start = events.guest.find(event => event.type === 'start');
+  assert.deepEqual(start, { type: 'start', seed: 5, shared: false });
+  const hostStart = events.host.find(event => event.type === 'start');
+  assert.deepEqual(hostStart, { type: 'start', seed: 5, shared: true });
+  assert.deepEqual(events.guest.find(event => event.type === 'resume'),
+    { type: 'resume', game: 5, elapsed: 33, hints: 2 });
+  assert.deepEqual(edgesOf(guest.replica), edgesOf(mine));
+  assert.equal(guest.replica.add(solution[2], solution[3]), null);
+  wire.flush();
+  assert.equal(mine.count(), 3);
+});
+
+test('a guest that takes a game over keeps its number; the friend takes number 0', async () => {
+  const {
+    wire, host, guest, mine, solution,
+  } = await shared(1);
+  assert.equal(host.pid, 1);
+  assert.equal(host.role, 'host');
+  assert.equal(mine.count(), 1, 'the line of the player that left is there');
+  mine.add(solution[1], solution[2]); // number 1 now
+  assert.equal(host.share(), true);
+  wire.flush();
+  assert.equal(guest.pid, 0, 'the friend takes the place that the first host had');
+  assert.equal(guest.replica.pid, 0);
+  assert.equal(guest.replica.add(solution[2], solution[3]), null, 'its first line does not clash');
+  wire.flush();
+  assert.equal(mine.count(), 3);
+  const numbers = guest.replica.ops().filter(op => op.pid === 0).map(op => op.seq);
+  assert.equal(new Set(numbers).size, numbers.length, 'no two lines of number 0 share a seq');
+});
+
+test('a solo game is shared from the start: nothing to restore but the lines', async () => {
+  const wire = fakePair();
+  const host = createSession({ role: 'host', channel: wire.a, onEvent() {} });
+  assert.equal(host.share(), false, 'no game, nothing to share');
+  const guest = createSession({ role: 'guest', channel: wire.b, onEvent() {} });
+  assert.equal(guest.share(), false, 'only a host shares');
+});
+
+test('on a connection made by hand the host gives the guest the secret to find it again', () => {
+  const { wire, host, guest, events } = play();
+  host.sendSecret('abcdefghijklmnopqrstuv');
+  host.sendSecret('short'); // refused by the receiver
+  wire.flush();
+  assert.deepEqual(events.guest.filter(event => event.type === 'secret'), [
+    { type: 'secret', secret: 'abcdefghijklmnopqrstuv' },
+  ]);
+  guest.sendSecret('abcdefghijklmnopqrstuv'); // the host does not take one
+  wire.flush();
+  assert.equal(events.host.some(event => event.type === 'secret'), false);
+});

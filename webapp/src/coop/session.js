@@ -6,13 +6,16 @@ import { createReplica } from './replica.js';
 // tests): who is who, the puzzle, the start, every drawn line, hints. Messages are JSON text.
 //
 //   hello  {v}            both, as soon as the channel is open
-//   puzzle {text, seed}   host -> guest: a new game (the puzzle in the play app's text format,
-//                         with its solution); the guest answers ready
+//   puzzle {text, seed, pid?}   host -> guest: a new game (the puzzle in the play app's text
+//                         format, with its solution); the guest answers ready. With `pid`: a game
+//                         that is already on, and the guest takes that player's place
 //   ready  {seed}         guest -> host
 //   start  {seed}         host -> guest, once the guest is ready; both start the clock then
 //   op     {op}           a drawn or erased line (see replica.js)
 //   hint   {hint}         a hint that was asked for; both boards show it
 //   bye    {}             the sender leaves
+//   secret {s}            host -> guest, on a connection made by hand (copy and paste): the secret
+//                         the two keep, so that they can find each other again (resume.js)
 //   ping   {}             every few seconds while a game runs (heartbeat): a device that hears
 //                         nothing for a while reports `closed`, and `alive` once it hears again
 //   resume {game, elapsed, hints}   a game that goes on over a new channel (after a break or a
@@ -21,7 +24,8 @@ import { createReplica } from './replica.js';
 //
 // A channel is { send(text), close(), onmessage, onclose }. The session sets the last two.
 // It reports to `onEvent({ type, ... })`: peer, puzzle, start, op, rejected, hint, left, closed,
-// alive, resume, stalled (host: the other device never took the puzzle).
+// alive, resume, secret, stalled (host: the other device never took the puzzle). `start` says
+// which game (seed) and whether it was shared (a game that was already on).
 //
 // The channel can be replaced while the game runs (attach), or be missing (a game taken up again
 // after a reload): the drawing is a replica that does not depend on it (replica.js), so lines
@@ -53,8 +57,10 @@ const detached = {
 
 export function createSession({
   role,
+  pid: ownPid = null, // a host that takes over a game of the guest's side keeps its player number
   channel: first = null,
   onEvent,
+  info = () => ({ elapsed: 0, hints: 0 }), // the time and the hints, for the one that joins a game
   resendMs = RESEND_MS,
   resends = RESENDS,
   heartbeat = false, // ping now and then while a game runs, and report a channel that stays silent
@@ -62,7 +68,7 @@ export function createSession({
   // arrow functions: a browser's setTimeout throws when it is called as a method of another object
   timers = { set: (fn, ms) => setTimeout(fn, ms), clear: id => clearTimeout(id) },
 }) {
-  const pid = role === 'host' ? HOST : GUEST;
+  let pid = ownPid ?? (role === 'host' ? HOST : GUEST);
   let replica = null;
   let left = false;
   let warned = false;
@@ -102,7 +108,9 @@ export function createSession({
       return;
     }
     game.tries++;
-    send({ t: 'puzzle', text: game.text, seed: game.seed });
+    send({
+      t: 'puzzle', text: game.text, seed: game.seed, ...(game.shared ? { pid: 1 - pid } : {}),
+    });
     game.timer = timers.set(offerAgain, resendMs);
   }
 
@@ -145,13 +153,28 @@ export function createSession({
     return replica;
   }
 
-  // Host: offers the game that is on (again), until the guest says ready.
+  // Host: offers the game that is on to the device on the channel, which takes the other
+  // player's place (it learns which in the message), until it says ready. Then it gets the time
+  // and every line (sendState).
   function offerCurrent() {
     if (role === 'host' && current) {
       timers.clear(offer?.timer);
-      offer = { ...current, ready: false, tries: 0, timer: null };
+      offer = { ...current, ready: false, tries: 0, timer: null, shared: true };
       offerAgain();
     }
+  }
+
+  // The game as it stands: which one, the time and hints, and every line (in chunks).
+  function sendState(now = info()) {
+    if (!replica || !current) {
+      return false;
+    }
+    send({ t: 'resume', game: current.seed, elapsed: now.elapsed, hints: now.hints });
+    const ops = replica.ops();
+    for (let at = 0; at < ops.length; at += CHUNK) {
+      send({ t: 'sync', ops: ops.slice(at, at + CHUNK) });
+    }
+    return true;
   }
 
   function handle(message) {
@@ -169,6 +192,9 @@ export function createSession({
         }
         const puzzle = parsePuzzle(message.text);
         puzzle.seed = message.seed;
+        if (message.pid === HOST || message.pid === GUEST) {
+          pid = message.pid; // a game that is on: this device takes the place that is free
+        }
         const mine = newReplica(puzzle);
         timers.clear(heard?.timer);
         heard = { text: message.text, seed: message.seed, started: false, tries: 0, timer: null };
@@ -187,7 +213,10 @@ export function createSession({
           offer.ready = true;
           timers.clear(offer.timer);
           send({ t: 'start', seed: offer.seed });
-          onEvent({ type: 'start' });
+          if (offer.shared) {
+            sendState();
+          }
+          onEvent({ type: 'start', seed: offer.seed, shared: Boolean(offer.shared) });
         }
         break;
       case 'start':
@@ -196,7 +225,7 @@ export function createSession({
         }
         heard.started = true;
         timers.clear(heard.timer);
-        onEvent({ type: 'start' });
+        onEvent({ type: 'start', seed: heard.seed, shared: false });
         break;
       case 'op':
         if (replica?.receive(message.op)) {
@@ -224,6 +253,11 @@ export function createSession({
         }
         break;
       }
+      case 'secret':
+        if (role === 'guest' && /^[A-Za-z0-9_-]{22}$/.test(message.s)) {
+          onEvent({ type: 'secret', secret: message.s });
+        }
+        break;
       case 'ping':
         break;
       case 'bye':
@@ -273,9 +307,20 @@ export function createSession({
   bind(channel);
 
   return {
-    pid,
+    get pid() {
+      return pid;
+    },
     role,
     hello: () => send({ t: 'hello', v: VERSION }),
+    sendSecret: secret => send({ t: 'secret', s: secret }),
+    // Host: the game that is on goes to the device on this channel (a friend invited to help).
+    share() {
+      if (role !== 'host' || !current) {
+        return false;
+      }
+      offerCurrent();
+      return true;
+    },
     // Host: starts a game with this puzzle (generated here); returns this device's replica.
     newGame(puzzle, seed) {
       const text = serializePuzzle(puzzle, { path: puzzle.path });
@@ -316,17 +361,7 @@ export function createSession({
       return mine;
     },
     // On a new channel, after hello: tells which game goes on and sends every line known.
-    resume({ elapsed, hints }) {
-      if (!replica || !current) {
-        return false;
-      }
-      send({ t: 'resume', game: current.seed, elapsed, hints });
-      const ops = replica.ops();
-      for (let at = 0; at < ops.length; at += CHUNK) {
-        send({ t: 'sync', ops: ops.slice(at, at + CHUNK) });
-      }
-      return true;
-    },
+    resume: now => sendState(now),
     leave() {
       send({ t: 'bye' });
       left = true;

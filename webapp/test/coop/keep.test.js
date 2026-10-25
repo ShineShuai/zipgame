@@ -6,6 +6,7 @@ import {
 
 const record = (over = {}) => makeRecord({
   role: 'guest',
+  pid: 1,
   seed: 7,
   text: 'zip 4\n...',
   ops: [{
@@ -49,7 +50,8 @@ test('anything that is not a game of this version is refused', () => {
   assert.ok(parseGame(JSON.stringify(ok), ok.saved));
   const bad = [
     null, '', 'not json', '[]', '{}', JSON.stringify({ ...ok, v: 2 }),
-    JSON.stringify({ ...ok, role: 'both' }), JSON.stringify({ ...ok, seed: 'x' }),
+    JSON.stringify({ ...ok, role: 'both' }), JSON.stringify({ ...ok, pid: 2 }),
+    JSON.stringify({ ...ok, seed: 'x' }),
     JSON.stringify({ ...ok, seed: -1 }), JSON.stringify({ ...ok, text: 5 }),
     JSON.stringify({ ...ok, text: 'x'.repeat(100001) }), JSON.stringify({ ...ok, ops: {} }),
     JSON.stringify({ ...ok, ops: [{ kind: 'zap', a: 0, b: 1, clock: 1, pid: 0, seq: 0 }] }),
@@ -76,4 +78,11 @@ test('a storage that fails does not break the game', async () => {
   assert.equal(await loadGame(broken), null);
   assert.equal(await saveGame(broken, record()), false);
   await clearGame(broken);
+});
+
+test('a record without a player number gets the one of its role', () => {
+  const { pid, ...old } = record();
+  assert.equal(parseGame(JSON.stringify(old), old.saved).pid, 1);
+  const host = { ...old, role: 'host' };
+  assert.equal(parseGame(JSON.stringify(host), host.saved).pid, 0);
 });
