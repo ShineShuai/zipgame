@@ -63,6 +63,10 @@ export function installFakeDom() {
     removeEventListener() {},
   };
   globalThis.window = { addEventListener() {}, removeEventListener() {} };
+  if (typeof globalThis.navigator === 'undefined') {
+    // Node 20 has none (it came with Node 21); the screen asks it whether the page can share
+    Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true });
+  }
   globalThis.location = { href: 'https://x.test/zip/index.html?x=1#old', hash: '' };
   return {
     typed,

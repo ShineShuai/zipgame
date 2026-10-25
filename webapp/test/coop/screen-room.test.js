@@ -23,8 +23,15 @@ const stubRtc = {
 };
 const remaining = () => [...net.brokers.values()].flatMap(broker => [...broker.retained.keys()]);
 
-test('the host\'s screen: link, requests, greeting box, accept, decline, cancel', async () => {
-  const screen = openScreen(env);
+// Whatever a test opens is closed when it ends, however it ends: an open room keeps timers (the
+// invite lasts minutes), and a test that failed halfway would keep the whole run from finishing.
+const opened = (t, thing) => {
+  t.after(() => thing.close());
+  return thing;
+};
+
+test('the host\'s screen: link, requests, greeting box, accept, decline, cancel', async t => {
+  const screen = opened(t, openScreen(env));
   dom.click('host');
   await until(() => dom.html().includes('id="coopLink"'), 'the link');
   const link = /value="([^"]+)"/.exec(dom.html())[1];
@@ -33,16 +40,15 @@ test('the host\'s screen: link, requests, greeting box, accept, decline, cancel'
 
   const stages = [];
   const infos = [];
-  const guestHub = createHub({ brokers: SIGNAL_BROKERS });
-  const guest = await joinRoom({
-    hub: guestHub,
+  const guest = opened(t, await joinRoom({
+    hub: createHub({ brokers: SIGNAL_BROKERS }),
     token: link.split('#j=')[1],
     rtc: stubRtc,
     onState: (stage, info) => {
       stages.push(stage);
       infos.push(info);
     },
-  });
+  }));
   await until(() => stages.includes('ready'), 'the guest finds the room');
 
   dom.typed.set('coopNeedGreeting', true);
@@ -59,9 +65,9 @@ test('the host\'s screen: link, requests, greeting box, accept, decline, cancel'
   await until(() => stages.at(-1) === 'declined', 'declined');
   assert.ok(!dom.html().includes('coop-request'), 'the card is gone');
 
-  const second = await joinRoom({
+  const second = opened(t, await joinRoom({
     hub: createHub({ brokers: SIGNAL_BROKERS }), token: link.split('#j=')[1], rtc: stubRtc,
-  });
+  }));
   await second.ask('Bea');
   await until(() => dom.html().includes('coop-request'), 'a second request');
   dom.click('accept', { id: /data-act="accept" data-id="([^"]+)"/.exec(dom.html())[1] });
@@ -69,21 +75,20 @@ test('the host\'s screen: link, requests, greeting box, accept, decline, cancel'
   await until(() => dom.failed(), 'the connection that cannot be made is reported');
   assert.equal(dom.status(), EN.noRtc);
 
-  guest.close();
-  second.close();
   dom.click('cancel');
   await settle(30);
   assert.deepEqual(remaining(), [], 'the brokers are left clean');
-  screen.close();
 });
 
-test('the guest\'s screen: the greeting form, the news, and a connection that fails', async () => {
-  const hostHub = createHub({ brokers: SIGNAL_BROKERS });
+test('the guest\'s screen: the greeting form, the news, and a failing connection', async t => {
   const asked = [];
-  const host = await hostRoom({
-    hub: hostHub, rtc: stubRtc, needGreeting: true, onRequest: list => asked.push(list),
-  });
-  const screen = openScreen(env);
+  const host = opened(t, await hostRoom({
+    hub: createHub({ brokers: SIGNAL_BROKERS }),
+    rtc: stubRtc,
+    needGreeting: true,
+    onRequest: list => asked.push(list),
+  }));
+  const screen = opened(t, openScreen(env));
   screen.joinFrom(host.token, true);
   await until(() => dom.html().includes('id="coopGreeting"'), 'the form');
   await until(() => dom.html().includes('*'), 'told that a greeting is wanted');
@@ -108,14 +113,12 @@ test('the guest\'s screen: the greeting form, the news, and a connection that fa
   dom.click('cancel');
   await settle(30);
   assert.deepEqual(remaining(), [], 'the brokers are left clean');
-  screen.close();
 });
 
-test('a link that is no token is reported', async () => {
-  const screen = openScreen(env);
+test('a link that is no token is reported', async t => {
+  const screen = opened(t, openScreen(env));
   screen.joinFrom('not-a-token', true);
   await until(() => dom.failed(), 'the bad link');
   assert.equal(dom.status(), EN.badCode);
   dom.click('cancel');
-  screen.close();
 });
