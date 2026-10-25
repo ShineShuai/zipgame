@@ -2,7 +2,7 @@
 // or if the behaviour upload is configured towards anything but Turso / Cloudflare backends that exist.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { LEADERBOARD, BEHAVIOUR, SOLID_RELEASE } from '../src/config.js';
 import { releaseDays } from '../src/features/solid-release.js';
 
@@ -29,8 +29,20 @@ releaseDays(SOLID_RELEASE); // throws on a bad date or day count
 const urlsOf = value => (typeof value === 'string' ? (/^https?:\/\//.test(value) ? [new URL(value).origin] : [])
   : value && typeof value === 'object' ? Object.values(value).flatMap(urlsOf) : []);
 const origins = [...new Set([...urlsOf(LEADERBOARD), ...urlsOf(BEHAVIOUR)])];
+// The co-op trial can be removed with its folder, so its brokers (src/coop/config.js) are read as
+// text, not imported. They are reached from the play page only.
+const coopConfig = new URL('../src/coop/config.js', import.meta.url);
+const brokerUrls = existsSync(coopConfig)
+  ? [...readFileSync(coopConfig, 'utf8').matchAll(/url: '(wss?:\/\/[^']+)'/g)].map(match => match[1])
+  : [];
+const brokerOrigins = brokerUrls.map(url => new URL(url).origin);
+assert.ok(!brokerUrls.length || brokerUrls.length >= 2, 'SIGNAL_BROKERS: one broker is no backup, list two');
+for (const url of brokerUrls) {
+  assert.ok(url.startsWith('wss://'), `SIGNAL_BROKERS: ${url} must be wss:// (a page cannot use ws://)`);
+}
 const directives = policy => Object.fromEntries(policy.split(';').map(d => d.trim().split(/\s+/)).filter(d => d[0]).map(([name, ...values]) => [name, values]));
-for (const [page, network] of [['index.html', true], ['stats.html', true], ['design.html', false]]) {
+const pages = [['index.html', true, brokerOrigins], ['stats.html', true, []], ['design.html', false, []]];
+for (const [page, network, extra] of pages) {
   const html = readFileSync(new URL(`../${page}`, import.meta.url), 'utf8');
   const meta = html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/);
   assert.ok(meta, `${page}: no Content-Security-Policy <meta> tag`);
@@ -43,7 +55,8 @@ for (const [page, network] of [['index.html', true], ['stats.html', true], ['des
   }
   assert.equal(csp['script-src'].filter(v => v.startsWith("'sha256-")).length, [...html.matchAll(/<script>/g)].length, `${page}: script-src hashes a script that is not there`);
   for (const bad of ["'unsafe-eval'", "'unsafe-inline'"]) assert.ok(!csp['script-src'].includes(bad), `${page}: script-src has ${bad}`);
-  assert.deepEqual(csp['connect-src'].filter(v => v !== "'self'").sort(), network ? origins.sort() : [], `${page}: connect-src must list exactly the origins of config.js`);
+  const expected = network ? [...origins, ...extra].sort() : [];
+  assert.deepEqual(csp['connect-src'].filter(v => v !== "'self'").sort(), expected, `${page}: connect-src must list exactly the origins of config.js (and the brokers of src/coop/config.js on index.html)`);
   for (const name of ['object-src', 'base-uri']) assert.ok(csp[name], `${page}: ${name} missing`);
 }
 console.log('config ok');

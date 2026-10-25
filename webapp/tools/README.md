@@ -96,3 +96,8 @@ Still manual: `metrics-eval.mjs` (report), the ladder constants (step 5), `targe
 `FORCE=1 pre-commit run refresh-labels --all-files` refits without a ratings change (catch-up when derived files are stale).
 Other derived files, same mechanism: `server/turso/schema.sql` from `src/core/hist.js` (`print-bin-edge.mjs --write`) and
 `bench/report.html` from `bench/report.template.html` (`report.mjs build`).
+
+## Co-op brokers
+`signal-probe.mjs` (Node 22+) tries the MQTT brokers of `SIGNAL_BROKERS` (`src/coop/config.js`) from the network you run it on, with the
+page's own client: connect, a live message, a retained message. `--broker <wss url>` (repeatable) tries others, `--timeout <ms>` changes the wait.
+Run it from China and from Europe before changing the list; a new origin also goes into the `connect-src` of `index.html` (`npm run check`).

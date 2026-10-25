@@ -1,6 +1,7 @@
 import { actionIcon, cardIcon } from '../apps/play/icons.js';
 import { t } from '../ui/i18n.js';
 import { tx } from './texts.js';
+import { GREETING_MAX } from './join.js';
 import { COOP_VARIANTS, sizesFor } from './variants.js';
 import { surfaceTopology } from '../core/surface/topology.js';
 import { PLAYER_COLORS } from './view.js';
@@ -110,6 +111,72 @@ export function joinPage({ code, status, error, canShare }) {
     : '';
   return page(`<section class="card">${cardHead(PEOPLE_ICON, tx('onlineTitle'), tx('onlineSub'))}`
     + `${reply}${note(status, error)}`
+    + `<div class="button-row"><button class="btn secondary" data-act="cancel">${tx('cancel')}`
+    + '</button></div></section>');
+}
+
+// Host, by link: the link to send, what the host asks of the guest, and the guests who wait for
+// a decision (each with its greeting). `down`: no server could be reached, so a code can be used.
+const requestItem = ({ id, greeting }) => `<li class="coop-request"><p class="coop-greeting">`
+  + `${greeting ? `“${attr(greeting)}”` : attr(tx('noGreeting'))}</p>`
+  + `<div class="button-row"><button type="button" class="btn" data-act="accept" `
+  + `data-id="${attr(id)}">${tx('accept')}</button>`
+  + `<button type="button" class="btn secondary" data-act="decline" data-id="${attr(id)}">`
+  + `${tx('decline')}</button></div></li>`;
+
+export function roomInvitePage({
+  link, status, error, canShare, requests = [], needGreeting = false, down = false,
+}) {
+  const steps = link
+    ? `<ol class="coop-steps"><li><b>${tx('step1')}</b>${copyRow('coopLink', link, canShare)}`
+      + `<label class="coop-check"><input type="checkbox" id="coopNeedGreeting" `
+      + `data-act="need-greeting"${needGreeting ? ' checked' : ''}>${tx('askGreeting')}</label>`
+      + `<p class="small">${tx('keepOpen')}</p></li></ol>`
+    : '';
+  const asks = requests.length
+    ? `<div class="coop-asks"><b>${tx('askJoin')}</b><ul class="coop-requests">`
+      + `${requests.map(requestItem).join('')}</ul></div>`
+    : '';
+  const manual = down
+    ? `<div class="button-row"><button class="btn secondary" data-act="manual">${tx('useCode')}`
+      + '</button></div>'
+    : '';
+  return page(`<section class="card">${cardHead(PEOPLE_ICON, tx('onlineTitle'), tx('onlineSub'))}`
+    + `${steps}${asks}${note(status, error)}${manual}`
+    + `<div class="button-row"><button class="btn secondary" data-act="cancel">${tx('cancel')}`
+    + '</button></div></section>');
+}
+
+// What the guest's page says at each stage of a join by link (join.js STAGES): the text, and
+// whether it is a problem.
+export const STAGE_TEXT = {
+  looking: ['lookingHost', false],
+  ready: ['readyJoin', false],
+  asked: ['asked', false],
+  seen: ['hostSees', false],
+  quiet: ['hostQuiet', false],
+  connecting: ['connecting', false],
+  declined: ['declined', true],
+  taken: ['taken', true],
+  timeout: ['hostNoAnswer', true],
+  down: ['noSignal', true],
+  failed: ['noRtc', true],
+};
+
+// Guest, by link: a greeting for the host and Join, then only what happens (stage: join.js).
+export function roomJoinPage({
+  stage, greeting = '', needGreeting = false, status, error,
+}) {
+  const form = stage === 'looking' || stage === 'ready'
+    ? `<div class="coop-hello"><label class="field-label" for="coopGreeting">`
+      + `${tx('greetingLabel')}${needGreeting ? ' *' : ''}</label>`
+      + `<input id="coopGreeting" type="text" maxlength="${GREETING_MAX}" autocomplete="off" `
+      + `spellcheck="false" value="${attr(greeting)}" placeholder="${attr(tx('greetingHint'))}">`
+      + `<div class="button-row"><button class="btn" data-act="join">${tx('joinBtn')}</button>`
+      + '</div></div>'
+    : '';
+  return page(`<section class="card">${cardHead(PEOPLE_ICON, tx('onlineTitle'), tx('onlineSub'))}`
+    + `${form}${note(status, error)}`
     + `<div class="button-row"><button class="btn secondary" data-act="cancel">${tx('cancel')}`
     + '</button></div></section>');
 }

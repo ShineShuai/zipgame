@@ -6,19 +6,22 @@ import {
   sfxBack, sfxBlocked, sfxCheckpoint, sfxMove, sfxSolved,
 } from '../platform/sound.js';
 import { t } from '../ui/i18n.js';
-import { DEFAULT_SIZE } from './config.js';
+import { DEFAULT_SIZE, SIGNAL_BROKERS } from './config.js';
 import { edgeAt } from './cut.js';
 import { unsupported } from './drawing.js';
 import { coopHint } from './hint.js';
+import { hostRoom, joinRoom } from './join.js';
 import {
   confirmDialog, exportDialog, gamePage, generatingPage, invitePage, joinPage, lobbyPage,
-  menuPage, resultCard,
+  menuPage, resultCard, roomInvitePage, roomJoinPage, STAGE_TEXT,
 } from './pages.js';
 import { createReplica } from './replica.js';
 import {
   acceptReply, createInvite, joinInvite, probeServers, probeText, rtcSupported,
 } from './rtc.js';
+import { signalSupported } from './secret.js';
 import { createSession } from './session.js';
+import { createHub } from './signal.js';
 import { recordSolve } from './stats.js';
 import {
   changed, startStroke, strokeStep, undoStroke,
@@ -50,7 +53,10 @@ const HOLD_MS = 500; // press and hold this long on a line to cut it
 const HOLD_SLOP_PX = 10; // moving the pointer farther than this is a drag, not a hold
 const CONNECT_MS = 30000; // a connection that has not opened by then is given up
 const GUEST_WAIT_MS = 180000; // the guest's: the host first has to copy the reply and paste it
-const linkFor = code => `${location.href.split('#')[0].split('?')[0]}#c=${code}`;
+const pageUrl = () => location.href.split('#')[0].split('?')[0];
+const linkFor = code => `${pageUrl()}#c=${code}`;
+const roomLinkFor = token => `${pageUrl()}#j=${token}`;
+
 
 async function copyText(text, input) {
   try {
@@ -117,6 +123,15 @@ export function openScreen(env) {
     solidLayouts: [], // a solid: the pictures on the screen, for hit-testing
     solidFrames: [],
     connectTimer: null,
+    mode: 'code', // inviting / joining: 'room' (by link, via brokers: join.js) or 'code' (by hand)
+    hub: null, // room mode: the brokers (signal.js)
+    room: null, // room mode: the host's or the guest's side of the room (join.js)
+    requests: [], // host, room mode: the guests who wait for a decision [{ id, greeting }]
+    needGreeting: false, // host: asks guests for a greeting; guest: the host does
+    signalDown: false, // host, room mode: no broker could be reached
+    stage: '', // guest, room mode: where the join is (join.js)
+    greeting: '', // guest, room mode: what is typed
+    signalText: '', // dev line: how the brokers did (signal.js report)
     route: '', // dev line: how the connection runs (rtc.js describeRoute)
     probe: null, // dev line: promise of the per-server STUN check (asked once per connection)
   };
@@ -143,16 +158,35 @@ export function openScreen(env) {
   // ---------- screens ----------
   function render() {
     const rtc = rtcSupported();
+    const typed = el('coopGreeting'); // what the guest has typed survives a redraw
+    if (typed) {
+      state.greeting = typed.value;
+    }
+    const room = state.mode === 'room';
     const pages = {
       menu: () => menuPage({
         size: state.size, rtc, variant: state.variant, status: state.status, error: state.error,
       }),
-      inviting: () => invitePage({
+      inviting: () => (room ? roomInvitePage({
+        link: state.link,
+        status: state.status,
+        error: state.error,
+        canShare,
+        requests: state.requests,
+        needGreeting: state.needGreeting,
+        down: state.signalDown,
+      }) : invitePage({
         link: state.link, status: state.status, error: state.error, canShare,
-      }),
-      joining: () => joinPage({
+      })),
+      joining: () => (room ? roomJoinPage({
+        stage: state.stage,
+        greeting: state.greeting,
+        needGreeting: state.needGreeting,
+        status: state.status,
+        error: state.error,
+      }) : joinPage({
         code: state.code, status: state.status, error: state.error, canShare,
-      }),
+      })),
       lobby: () => lobbyPage({
         role: state.role, size: state.size, status: state.status, error: state.error,
         variant: state.variant,
@@ -268,10 +302,18 @@ export function openScreen(env) {
   }
 
   // ---------- connection ----------
+  // The room (join.js) clears its messages from the brokers and closes the connections to them.
+  function closeSignal() {
+    state.room?.close();
+    state.hub?.close();
+    Object.assign(state, { room: null, hub: null });
+  }
+
   function teardown() {
     state.token++;
     clearTimeout(state.connectTimer);
     state.connectTimer = null;
+    closeSignal();
     stopTimer();
     turner.stop();
     strokes.forEach(endHold);
@@ -284,7 +326,8 @@ export function openScreen(env) {
     state.connection?.close();
     Object.assign(state, {
       session: null, connection: null, role: 'solo', peerHere: false, waiting: false,
-      link: '', code: '', status: '', error: false, route: '', probe: null,
+      link: '', code: '', status: '', error: false, route: '', probe: null, mode: 'code',
+      requests: [], needGreeting: false, signalDown: false, stage: '', greeting: '', signalText: '',
     });
   }
 
@@ -295,7 +338,7 @@ export function openScreen(env) {
       if (connection !== state.connection) {
         return;
       }
-      state.route = text;
+      state.route = state.signalText ? `${text} · ${state.signalText}` : text;
       const tag = el('coopSeed');
       if (tag && state.puzzle) {
         tag.textContent = gameView().seedText;
@@ -338,6 +381,8 @@ export function openScreen(env) {
         return; // the browser can announce an open channel twice; the first one counts
       }
       clearTimeout(state.connectTimer);
+      state.signalText = state.hub?.report() ?? '';
+      closeSignal();
       readRoute(connection);
       state.session.hello();
       state.phase = 'lobby';
@@ -347,7 +392,79 @@ export function openScreen(env) {
     };
   }
 
+  // Host, by link: opens a room on the brokers and shows the link at once; guests ask to join
+  // and the host decides (join.js). Without the means for it (an insecure page), by code.
   async function hostInvite() {
+    if (!signalSupported()) {
+      await hostCode();
+      return;
+    }
+    teardown();
+    const token = state.token;
+    const hub = createHub({ brokers: SIGNAL_BROKERS });
+    Object.assign(state, {
+      phase: 'inviting', role: 'host', mode: 'room', hub, status: tx('making'),
+    });
+    render();
+    const current = () => token === state.token;
+    try {
+      const room = await hostRoom({
+        hub,
+        onRequest: list => {
+          if (current()) {
+            state.requests = list;
+            render();
+          }
+        },
+        onConnection: connection => current() && adopt(connection, 'host'),
+        onDown: () => {
+          if (current() && state.phase === 'inviting') {
+            Object.assign(state, { signalDown: true, status: tx('noSignalHost'), error: true });
+            render();
+          }
+        },
+        onExpired: () => {
+          if (current() && state.phase === 'inviting') {
+            Object.assign(state, {
+              room: null, hub: null, link: '', requests: [], status: tx('expired'), error: true,
+            });
+            render();
+          }
+        },
+        onError: error => {
+          console.warn('coop: offer failed', error);
+          if (current()) {
+            setStatus(tx('noRtc'), true);
+          }
+        },
+      });
+      if (!current()) {
+        room.close();
+        return;
+      }
+      Object.assign(state, { room, link: roomLinkFor(room.token), status: tx('waitFriend') });
+      render();
+    } catch (error) {
+      console.warn('coop: room failed', error);
+      hub.close();
+      if (current()) {
+        setStatus(tx('noRtc'), true);
+      }
+    }
+  }
+
+  async function acceptRequest(id) {
+    if (!state.room) {
+      return;
+    }
+    Object.assign(state, { requests: [], status: tx('connecting'), error: false });
+    render();
+    armConnectTimer();
+    await state.room.accept(id);
+  }
+
+  // Host, by code: the older way, still there when the brokers cannot be reached.
+  async function hostCode() {
     teardown();
     const token = state.token;
     Object.assign(state, { phase: 'inviting', role: 'host', status: tx('making') });
@@ -404,6 +521,63 @@ export function openScreen(env) {
       state.status = error.message === 'bad code' ? tx('badCode') : tx('noRtc');
       render();
     }
+  }
+
+  // Guest, by link: finds the host's room, asks to join with a greeting, waits for the decision.
+  async function guestRoom(link) {
+    teardown();
+    const token = state.token;
+    const current = () => token === state.token && state.phase === 'joining';
+    Object.assign(state, {
+      phase: 'joining', role: 'guest', mode: 'room', stage: 'looking', status: tx('lookingHost'),
+    });
+    render();
+    if (!signalSupported()) {
+      setStatus(tx('noCrypto'), true);
+      return;
+    }
+    const hub = createHub({ brokers: SIGNAL_BROKERS });
+    state.hub = hub;
+    try {
+      const room = await joinRoom({
+        hub,
+        token: link,
+        onState: (stage, info) => {
+          if (!current()) {
+            return;
+          }
+          const [key, problem] = STAGE_TEXT[stage];
+          const missing = info.error === 'greeting';
+          Object.assign(state, {
+            stage,
+            needGreeting: info.needGreeting,
+            status: tx(missing ? 'greetNeeded' : key),
+            error: missing || problem,
+          });
+          if (stage === 'connecting') {
+            armConnectTimer();
+          }
+          render();
+        },
+        onConnection: connection => current() && adopt(connection, 'guest'),
+      });
+      if (token !== state.token) {
+        room.close();
+        return;
+      }
+      state.room = room;
+    } catch (error) {
+      hub.close();
+      if (token === state.token) {
+        setStatus(error.message === 'bad code' ? tx('badCode') : tx('noRtc'), true);
+      }
+    }
+  }
+
+  function askToJoin() {
+    const field = el('coopGreeting');
+    state.greeting = field ? field.value : state.greeting;
+    state.room?.ask(state.greeting);
   }
 
   function onSessionEvent(event) {
@@ -982,6 +1156,8 @@ export function openScreen(env) {
 
   function close() {
     teardown();
+    document.removeEventListener('visibilitychange', wake);
+    window.removeEventListener('online', wake);
     document.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('resize', placeRoot);
     languageWatch?.disconnect();
@@ -1001,6 +1177,14 @@ export function openScreen(env) {
         startGame();
       },
       host: hostInvite,
+      manual: hostCode,
+      accept: () => acceptRequest(button.dataset.id),
+      decline: () => state.room?.decline(button.dataset.id),
+      'need-greeting': () => {
+        state.needGreeting = el('coopNeedGreeting')?.checked === true;
+        state.room?.setNeedGreeting(state.needGreeting);
+      },
+      join: askToJoin,
       connect: connectReply,
       cancel: showMenu,
       start: startGame,
@@ -1100,6 +1284,16 @@ export function openScreen(env) {
   root.addEventListener('pointerup', onPointerEnd);
   root.addEventListener('pointercancel', onPointerEnd);
   document.addEventListener('keydown', onKeyDown);
+  // A page that was asleep (a phone while the invite was sent in another app) or offline: the
+  // brokers are asked again at once.
+  function wake() {
+    if (!document.hidden) {
+      state.hub?.wake();
+    }
+  }
+  document.addEventListener('visibilitychange', wake);
+  window.addEventListener('online', wake);
   render();
-  return { close, setRevealed, joinFrom: guestJoin };
+  const joinFrom = (code, room) => (room ? guestRoom(code) : guestJoin(code));
+  return { close, setRevealed, joinFrom };
 }
