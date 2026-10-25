@@ -59,17 +59,21 @@ async function openHost(net, options = {}) {
   const dev = device(net, options.blocked);
   const log = options.log ?? [];
   const requests = [];
+  const secrets = [];
   const room = await hostRoom({
     hub: dev.hub,
     timers: dev.timers,
     rtc: fakeRtc(log, 'host'),
     onRequest: list => requests.push(list),
-    onConnection: connection => log.push(`host: onConnection ${connection.name}`),
+    onConnection: (connection, secret) => {
+      log.push(`host: onConnection ${connection.name}`);
+      secrets.push(secret);
+    },
     ...options.handlers,
     ...options.room,
   });
   return {
-    ...dev, room, log, requests, last: () => requests.at(-1) ?? [],
+    ...dev, room, log, secrets, requests, last: () => requests.at(-1) ?? [],
   };
 }
 
@@ -78,6 +82,7 @@ async function openGuest(net, token, options = {}) {
   const log = options.log ?? [];
   const stages = [];
   const infos = [];
+  const secrets = [];
   const room = await joinRoom({
     hub: dev.hub,
     token,
@@ -87,11 +92,14 @@ async function openGuest(net, token, options = {}) {
       stages.push(stage);
       infos.push(info);
     },
-    onConnection: connection => log.push(`guest: onConnection ${connection.name}`),
+    onConnection: (connection, secret) => {
+      log.push(`guest: onConnection ${connection.name}`);
+      secrets.push(secret);
+    },
     ...options.room,
   });
   return {
-    ...dev, room, log, stages, infos, stage: () => stages.at(-1), info: () => infos.at(-1),
+    ...dev, room, log, secrets, stages, infos, stage: () => stages.at(-1), info: () => infos.at(-1),
   };
 }
 
@@ -128,6 +136,8 @@ test('the whole handshake: greeting, accept, offer and answer cross', async () =
     'host: acceptReply host-connection answer-to-offer-code-123',
   ]);
   assert.equal(guest.stage(), 'connecting');
+  assert.equal(host.secrets[0].length, 16, 'both are given the secret they share');
+  assert.deepEqual(host.secrets, guest.secrets);
   assert.deepEqual(host.last(), [], 'the request list is empty once someone is accepted');
   const wire = everything(net);
   for (const secret of ['offer-code-123', 'answer-to-', 'Anna']) {

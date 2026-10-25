@@ -1,7 +1,7 @@
 import { acceptReply, createInvite, joinInvite } from './rtc.js';
 import {
-  deriveRoom, fingerprint, isPublicKey, makeToken, newId, newPair, newSecret, pairKey, seal,
-  splitToken, unseal,
+  deriveRoom, fingerprint, isPublicKey, keyOfSecret, makeToken, newId, newPair, newSecret,
+  pairSecret, seal, splitToken, unseal,
 } from './secret.js';
 
 // Joining by link: the host opens a room on the brokers (signal.js), the guest finds it from the
@@ -65,8 +65,8 @@ export const cleanGreeting = text => [...String(text ?? '').replace(CONTROL, ' '
 // Host. -> { token, accept(id), decline(id), setNeedGreeting(on), close(), pending() }; the token
 // goes into the link (#j=<token>).
 //   onRequest(list)       the requests that wait for a decision: [{ id, greeting }]
-//   onConnection(conn)    the connection (rtc.js) made for the accepted guest, before the offer
-//                         is sent
+//   onConnection(conn, secret)  the connection (rtc.js) made for the accepted guest, before the
+//                         offer is sent, and the secret the two share (secret.js pairSecret)
 //   onDown()              no broker could be reached
 //   onExpired()           nobody joined in ROOM_MS; the room is already closed
 //   onError(error)        the connection could not be made
@@ -167,14 +167,15 @@ export async function hostRoom({
     });
     report();
     try {
+      const secret = await pairSecret(identity.priv, guest.pub, room);
+      guest.pairKey = await keyOfSecret(secret);
       const { code, connection } = await rtc.createInvite();
       if (closed) {
         connection.close();
         return false;
       }
       guest.connection = connection;
-      onConnection?.(connection);
-      guest.pairKey = await pairKey(identity.priv, guest.pub, room);
+      onConnection?.(connection, secret);
       const to = topic.ok(id);
       const offer = await seal(guest.pairKey, to, { offer: code });
       hub.publish(to, `A${identity.pub}.${offer}`, { repeat: REPEAT });
@@ -315,7 +316,8 @@ export async function joinRoom({
       if (!isPublicKey(hostKey) || await fingerprint(hostKey) !== hostFingerprint) {
         return; // not the host of this link
       }
-      const shared = await pairKey(request.pair.priv, hostKey, room);
+      const secret = await pairSecret(request.pair.priv, hostKey, room);
+      const shared = await keyOfSecret(secret);
       const body = await unseal(shared, from, message.slice(dot + 1));
       if (!body || typeof body.offer !== 'string') {
         return;
@@ -323,7 +325,7 @@ export async function joinRoom({
       request.started = true;
       set('connecting');
       const { code, connection } = await rtc.joinInvite(body.offer);
-      onConnection?.(connection);
+      onConnection?.(connection, secret);
       const to = topic.ans(request.id);
       hub.publish(to, await seal(shared, to, { answer: code }), { repeat: REPEAT });
     } catch (error) {
