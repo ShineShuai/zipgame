@@ -91,7 +91,9 @@ export function createReplica(puzzle, { pid = 0, send = () => {}, onRejected = (
     return true;
   }
 
-  // An operation of another device. Anything that is not a well-formed operation is ignored.
+  // An operation of another device, or one of this device that it has lost (a game that is taken
+  // up again after a reload gets its own last lines back from the other device). Anything that is
+  // not a well-formed operation is ignored.
   function receive(op) {
     const cells = modelOf(puzzle).total;
     const cell = value => Number.isInteger(value) && value >= 0 && value < cells;
@@ -99,8 +101,11 @@ export function createReplica(puzzle, { pid = 0, send = () => {}, onRejected = (
     const sound = op && (op.kind === 'add' || op.kind === 'remove') && cell(op.a) && cell(op.b)
       && count(op.clock) && count(op.seq) && Number.isInteger(op.pid) && op.pid >= 0 && op.pid < 8
       && (op.owner === undefined || (Number.isInteger(op.owner) && op.owner >= 0 && op.owner < 8));
-    if (!sound || known.has(idOf(op)) || op.pid === pid) {
+    if (!sound || known.has(idOf(op))) {
       return false;
+    }
+    if (op.pid === pid) {
+      seq = Math.max(seq, op.seq + 1); // the next line of this device must not reuse a number
     }
     const { kind, a, b, clock: stamp, pid: from, seq: number } = op;
     record({ kind, a, b, owner: op.owner ?? 0, clock: stamp, pid: from, seq: number });
@@ -120,6 +125,8 @@ export function createReplica(puzzle, { pid = 0, send = () => {}, onRejected = (
     puzzle,
     pid,
     receive,
+    // All operations known, oldest first: what is kept with a game and sent again after a break.
+    ops: () => log.map(op => ({ ...op })),
     add,
     remove,
     clear: clearMine,

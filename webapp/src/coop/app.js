@@ -69,6 +69,7 @@ async function open() {
   hidePill();
   screen = openScreen({
     stats,
+    storage,
     saveStats: guard(() => saveStats(storage, stats)),
     isRevealed: () => revealed,
     onClose: () => {

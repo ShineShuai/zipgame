@@ -3,7 +3,14 @@ import assert from 'node:assert/strict';
 import { SIGNAL_BROKERS } from '../../src/coop/config.js';
 import { hostRoom, joinRoom } from '../../src/coop/join.js';
 import { openScreen } from '../../src/coop/screen.js';
+import { createSession } from '../../src/coop/session.js';
 import { createHub } from '../../src/coop/signal.js';
+import { GAME_KEY, loadGame, makeRecord, saveGame } from '../../src/coop/keep.js';
+import { deriveResume, newSecret } from '../../src/coop/secret.js';
+import { fromBase64Url } from '../../src/coop/invite.js';
+import { generate } from '../../src/core/gen/generate.js';
+import { runSync } from '../../src/core/run.js';
+import { solutionOf } from '../../src/features/hints.js';
 import { EN } from '../../src/coop/texts.js';
 import { installFakeDom } from './fake-dom.js';
 import { createNetwork, settle, until } from './fake-broker.js';
@@ -121,4 +128,116 @@ test('a link that is no token is reported', async t => {
   await until(() => dom.failed(), 'the bad link');
   assert.equal(dom.status(), EN.badCode);
   dom.click('cancel');
+});
+
+// ---------- a game that goes on ----------
+const memory = () => {
+  const data = new Map();
+  return {
+    data,
+    get: async key => (data.has(key) ? { value: data.get(key) } : null),
+    set: async (key, value) => data.set(key, value) && true,
+    remove: async key => data.delete(key),
+  };
+};
+
+// The menu offers WebRTC games only where the browser has it: a stand-in that does nothing.
+const withRtc = t => {
+  globalThis.RTCPeerConnection = class {};
+  t.after(() => {
+    delete globalThis.RTCPeerConnection;
+  });
+};
+
+// A game of 6x6 for `role`, with two lines drawn, as it would have been kept.
+async function kept(role, extra = {}) {
+  const puzzle = runSync(generate(6, 5));
+  const host = createSession({ role: 'host', onEvent() {} });
+  const mine = host.newGame(puzzle, 5);
+  const solution = solutionOf(puzzle);
+  mine.add(solution[0], solution[1]);
+  mine.add(solution[1], solution[2]);
+  return makeRecord({
+    role,
+    seed: 5,
+    text: host.current.text,
+    ops: mine.ops(),
+    hints: 1,
+    startedWall: Date.now() - 20000,
+    secret: newSecret(),
+    ...extra,
+  });
+}
+
+test('the menu offers a game that was left open, and it can be given up', async t => {
+  withRtc(t);
+  const storage = memory();
+  await saveGame(storage, await kept('guest'));
+  const screen = opened(t, openScreen({ ...env, storage }));
+  await until(() => dom.html().includes('data-act="rejoin"'), 'the card');
+  assert.ok(dom.html().includes('data-act="discard"'));
+  dom.click('discard');
+  assert.ok(!dom.html().includes('data-act="rejoin"'));
+  assert.equal(storage.data.has(GAME_KEY), false);
+  assert.equal(screen !== null, true);
+});
+
+test('a game that is too old, or damaged, is not offered', async t => {
+  const storage = memory();
+  const old = await kept('host');
+  await saveGame(storage, { ...old, saved: Date.now() - 25 * 3600 * 1000 });
+  opened(t, openScreen({ ...env, storage }));
+  await settle(40);
+  assert.ok(!dom.html().includes('data-act="rejoin"'));
+  storage.data.set(GAME_KEY, '{"v":1');
+  assert.equal(await loadGame(storage), null);
+});
+
+test('rejoining shows the game with its time, and looks for the other device', async t => {
+  withRtc(t);
+  const storage = memory();
+  const record = await kept('host', { hints: 2 });
+  await saveGame(storage, record);
+  const screen = opened(t, openScreen({ ...env, storage }));
+  await until(() => dom.html().includes('data-act="rejoin"'), 'the card');
+  dom.click('rejoin');
+  await until(() => dom.html().includes('id="coopBoard"'), 'the game');
+  assert.match(dom.html(), /class="coop-chip gone" id="coopPeer"/, 'the friend is not there yet');
+  assert.match(dom.html(), /<b id="coopTime">2\d\.\ds<\/b>/, 'about 20 s have passed');
+  assert.match(dom.html(), /Hint \(2/, 'the hints used are counted');
+  await until(() => dom.message() === EN.reconnecting, 'told that it looks for the friend');
+  const { room } = await deriveResume(fromBase64Url(record.secret));
+  const broker = net.brokers.get(SIGNAL_BROKERS[0].url);
+  await until(() => broker.retained.has(`zipcoop/1/${room}/here/0`), 'its presence');
+  const again = await loadGame(storage);
+  assert.equal(again.ops.length, 2, 'the game is kept as it goes on');
+  assert.equal(again.hints, 2);
+
+  dom.click('menu'); // leaving on purpose
+  if (dom.html().includes('data-act="leave"')) {
+    dom.click('leave');
+  }
+  await settle(30);
+  assert.equal(storage.data.has(GAME_KEY), false, 'a game that is left is forgotten');
+  assert.deepEqual(remaining(), [], 'the brokers are left clean');
+  assert.equal(screen !== null, true);
+});
+
+test('the guest\'s kept game is taken up with its own role and lines', async t => {
+  withRtc(t);
+  const storage = memory();
+  const record = await kept('guest');
+  await saveGame(storage, record);
+  opened(t, openScreen({ ...env, storage }));
+  await until(() => dom.html().includes('data-act="rejoin"'), 'the card');
+  dom.click('rejoin');
+  await until(() => dom.html().includes('id="coopBoard"'), 'the game');
+  const { room } = await deriveResume(fromBase64Url(record.secret));
+  const broker = net.brokers.get(SIGNAL_BROKERS[1].url);
+  await until(() => broker.retained.has(`zipcoop/1/${room}/here/1`), 'the guest\'s presence');
+  assert.ok(dom.html().includes('id="coopNew" disabled'), 'only the host starts games');
+  dom.click('menu');
+  if (dom.html().includes('data-act="leave"')) {
+    dom.click('leave');
+  }
 });

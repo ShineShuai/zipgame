@@ -69,7 +69,7 @@ const copyRow = (id, value, canShare) => `<div class="coop-copy">`
 
 // The first screen: the solo card (like the play app's Free play card) and the online card.
 export function menuPage({
-  size, rtc, variant = 'standard', status = '', error = false,
+  size, rtc, variant = 'standard', status = '', error = false, saved = false,
 }) {
   const solo = `<section class="card free-card">`
     + cardHead(cardIcon('free'), tx('title'), tx('menuSub'),
@@ -83,9 +83,16 @@ export function menuPage({
     + `<p class="blurb">${tx('onlineBlurb')}</p>`
     + `<div class="button-row"><button class="btn" data-act="host"${rtc ? '' : ' disabled'}>`
     + `${tx('invite')}</button></div>${rtc ? '' : note(tx('noRtc'), true)}</section>`;
+  // a game with a friend that was left open (keep.js): taken up again, or given up
+  const again = saved
+    ? `<section class="card">${cardHead(PEOPLE_ICON, tx('rejoinTitle'), tx('onlineSub'))}`
+      + `<p class="blurb">${tx('rejoinBlurb')}</p><div class="button-row">`
+      + `<button class="btn" data-act="rejoin">${tx('rejoin')}</button>`
+      + `<button class="btn secondary" data-act="discard">${tx('discard')}</button></div></section>`
+    : '';
   const back = `<div class="button-row"><button class="btn secondary" data-act="exit">`
     + `${tx('backToApp')}</button></div>`;
-  return page(`${solo}${online}${back}`);
+  return page(`${again}${solo}${online}${back}`);
 }
 
 // Host: the invite link to send, and the reply to paste.
