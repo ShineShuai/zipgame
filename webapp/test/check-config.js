@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { LEADERBOARD, BEHAVIOUR, SOLID_RELEASE } from '../src/config.js';
+import { LEADERBOARD, BEHAVIOUR, SOLID_RELEASE, THEMES } from '../src/config.js';
 import { releaseDays } from '../src/features/solid-release.js';
 
 const base = [{ t: null, a: ['data_read'] }, { t: ['submit'], a: ['data_add'] }];
@@ -19,6 +19,7 @@ for (const id of new Set([BEHAVIOUR.primary, BEHAVIOUR.backup])) {
   assert.ok(LEADERBOARD.backends[id], `BEHAVIOUR: unknown backend id ${id}`);
   assert.ok(['turso', 'cloudflare'].includes(LEADERBOARD.backends[id].type), `BEHAVIOUR: ${id} is a ${LEADERBOARD.backends[id].type} backend (only turso and cloudflare receive behaviour rows)`);
 }
+assert.ok(THEMES.stage === null || LEADERBOARD.backends[THEMES.stage]?.type === 'turso', 'THEMES.stage must be null or the id of a turso backend');
 assert.equal(typeof BEHAVIOUR.enabled, 'boolean', 'BEHAVIOUR.enabled must be true or false');
 const [lo, hi] = BEHAVIOUR.localSizes;
 assert.ok(Number.isInteger(lo) && Number.isInteger(hi) && lo >= 2 && hi >= lo && hi <= 16, 'BEHAVIOUR.localSizes must be [min, max] within 2..16');

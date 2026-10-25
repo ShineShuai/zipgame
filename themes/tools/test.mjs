@@ -1,26 +1,26 @@
-// Static tests of the theme templates (run from anywhere: node themes/tools/test.mjs). No browser, no dependencies:
-// the sources (themes/<id>/theme.json), what is generated from them (theme.css, catalog.json), the art, and the contract with
-// the app (the app's own whitelist and pool code must accept every template; the defaults must match css/theme.css).
+// Static tests of the theme templates (run from anywhere: node themes/tools/test.mjs). No browser, no dependencies: the
+// sources (themes/<id>/theme.json, art.json), the bundle each packs into, and the contract with the app (the app's own validators
+// must accept every bundle; the defaults here must match webapp/css/theme.css).
 import { existsSync, readFileSync } from 'node:fs';
-import { audit, parseBase } from './derive.js';
-import { BASE_CSS, build, buildCatalog, loadBuiltin, loadThemes } from './gen.mjs';
+import { audit } from './derive.js';
+import { BUDGET, loadBase, loadThemes, packTheme, BASE_CSS } from './pack.mjs';
 import { LAYOUT, PAIRS, TOKENS } from './schema.js';
 import { isHex } from './color.js';
 import { boardSvg, iconSvg } from '../preview/render.js';
 import { cleanArt, ICON_IDS } from '../../webapp/src/themes/art.js';
+import { cleanBundle } from '../../webapp/src/themes/bundle.js';
 import { cleanLayout } from '../../webapp/src/themes/layout.js';
 import { cleanEntry } from '../../webapp/src/themes/pool.js';
 import { cleanInner, cleanSvg } from '../../webapp/src/themes/svg.js';
 
 const root = new URL('../', import.meta.url);
 const read = path => readFileSync(new URL(path, root), 'utf8');
-const BASE = parseBase(readFileSync(BASE_CSS, 'utf8'));
+const BASE = loadBase();
 const THEMES = loadThemes();
-const CATALOG = JSON.parse(read('catalog.json'));
+const PACKED = Object.fromEntries(THEMES.map(th => [th.id, packTheme(th, BASE)]));
 const FLAT_ICONS = ['standard', 'cutout', 'arrows', 'exact', 'wrap', 'loop', 'teleport', 'twopaths', 'pentagon'];
-const BUDGET = { css: 6 * 1024, art: 12 * 1024, entry: 900, catalog: 8 * 1024 };
-const ART = Object.fromEntries(THEMES.filter(t => existsSync(new URL(`${t.id}/art.json`, root)))
-  .map(t => [t.id, JSON.parse(read(`${t.id}/art.json`))]));
+const BUDGET_ENTRY = 900;
+const ART = Object.fromEntries(THEMES.filter(t => existsSync(new URL(`${t.id}/art.json`, root))).map(t => [t.id, JSON.parse(read(`${t.id}/art.json`))]));
 
 // Minimal well-formedness check of svg markup: balanced tags, quoted attributes.
 function wellFormed(markup) {
@@ -39,41 +39,34 @@ const t = (name, fn) => tests.push([name, fn]);
 const ok = (cond, msg) => { if (!cond) throw new Error(msg || 'assertion failed'); };
 const eq = (a, b, msg) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${msg || 'not equal'}: ${JSON.stringify(a)} != ${JSON.stringify(b)}`); };
 
-t('the catalog is what the generator writes, and small', () => {
-  eq(read('catalog.json'), buildCatalog(THEMES, loadBuiltin()), 'stale catalog.json: run node themes/tools/gen.mjs');
-  ok(read('catalog.json').length <= BUDGET.catalog, `catalog.json is ${read('catalog.json').length} bytes, budget ${BUDGET.catalog}`);
+t('every theme packs into a bundle the game accepts, without contrast problems, within budget', () => {
+  ok(THEMES.length >= 4, 'themes found');
+  for (const th of THEMES) {
+    const { bundle, problems, size } = PACKED[th.id];
+    eq(problems, [], `${th.id}: problems`);
+    const accepted = cleanBundle(JSON.parse(JSON.stringify(bundle)), { known: n => n in BASE.light });
+    ok(accepted, `${th.id}: the app rejects its bundle`);
+    eq([accepted.entry.id, accepted.entry.mode, accepted.entry.chrome], [th.id, th.mode, th.seeds.bg], `${th.id}: identity survives the round trip`);
+    ok(size <= BUDGET.bundle + (bundle.fonts ?? []).reduce((n, f) => n + f.data.length, 0), `${th.id}: ${size} bytes`);
+    for (const name of Object.keys(BASE.light)) ok(name in bundle.tokens, `${th.id}: ${name}`);
+    for (const name of Object.keys(TOKENS)) ok(name in bundle.tokens, `${th.id}: ${name}`);
+  }
 });
 
-t('the manifest entries are valid, and the app accepts every one unchanged', () => {
-  const ids = CATALOG.themes.map(c => c.id);
+t('the metadata of every theme is valid, and the app takes it unchanged', () => {
+  const ids = THEMES.map(c => c.id);
   eq(new Set(ids).size, ids.length, 'unique ids');
-  eq(CATALOG.themes.filter(c => c.builtin).map(c => c.id), ['light', 'dark'], 'light and dark are the built-ins');
-  for (const c of CATALOG.themes) {
+  for (const c of THEMES) {
+    ok(c.themeApi === 1 && Number.isInteger(c.v) && c.v >= 1, `${c.id}: themeApi and v`);
     ok(c.name.en && c.name.zh, `${c.id}: names in both languages`);
     ok(c.swatches.length === 4 && c.swatches.every(isHex), `${c.id}: four hex swatches`);
     for (const [axis, key] of Object.entries(c.layout)) ok(LAYOUT[axis]?.includes(key), `${c.id}: layout ${axis}=${key}`);
     eq(cleanLayout(c.layout), c.layout, `${c.id}: the app knows the layout`);
     ok(c.symbol && wellFormed(c.symbol) && cleanInner(c.symbol, 600) !== null, `${c.id}: the symbol passes the app's whitelist`);
-    const entry = cleanEntry(c);
+    const entry = cleanEntry({ ...c, chrome: c.seeds.bg });
     ok(entry, `${c.id}: cleanEntry accepts it`);
-    eq([entry.id, entry.mode, entry.chrome, entry.layout, entry.symbol], [c.id, c.mode, c.chrome, c.layout, c.symbol], `${c.id}: nothing is changed on the way in`);
-    ok(JSON.stringify(c).length <= BUDGET.entry, `${c.id}: entry is ${JSON.stringify(c).length} bytes, budget ${BUDGET.entry}`);
-  }
-  for (const th of THEMES) {
-    const c = CATALOG.themes.find(x => x.id === th.id);
-    ok(c && c.mode === th.mode && c.chrome === th.seeds.bg, `${th.id}: in the catalog; the browser bar colour is its --bg (the app probes that to know the file applied)`);
-    eq(c.art, existsSync(new URL(`${th.id}/art.json`, root)), `${th.id}: the art flag matches the file`);
-  }
-});
-
-t('the committed theme.css is what the generator writes, with every token, in bounds', () => {
-  for (const th of THEMES) {
-    const { css, problems } = build(th, BASE);
-    eq(read(`${th.id}/theme.css`), css, `${th.id}: stale, run node themes/tools/gen.mjs`);
-    eq(problems, [], `${th.id}: problems`);
-    ok(css.length <= BUDGET.css, `${th.id}: ${css.length} bytes of CSS, budget ${BUDGET.css}`);
-    for (const name of Object.keys(BASE.light)) ok(css.includes(`  ${name}:`), `${th.id}: ${name}`);
-    for (const name of Object.keys(TOKENS)) ok(css.includes(`  ${name}:`), `${th.id}: ${name}`);
+    eq([entry.id, entry.mode, entry.layout, entry.symbol], [c.id, c.mode, c.layout, c.symbol], `${c.id}: nothing is changed on the way in`);
+    ok(JSON.stringify(PACKED[c.id].bundle.meta).length <= BUDGET_ENTRY, `${c.id}: meta is too big`);
   }
 });
 
@@ -82,13 +75,12 @@ t('the template defaults here are the ones webapp/css/theme.css gives light and 
   const block = css.slice(css.indexOf('template tokens:'), css.indexOf('end of template tokens'));
   const have = Object.fromEntries([...block.matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)].map(m => [m[1], m[2].trim()]));
   const want = Object.fromEntries(Object.entries(TOKENS).filter(([, s]) => !s.base).map(([n, s]) => [n, s.d]));
-  eq(have, want, 'theme.css and schema.js disagree');
+  eq(have, want, 'theme.css and webapp/src/themes/tokens.js disagree');
 });
 
-t('contrast of every pair, for every theme', () => {
+t('contrast of every pair, for every theme (measured on the packed tokens)', () => {
   for (const th of THEMES) {
-    const tokens = Object.fromEntries([...read(`${th.id}/theme.css`).matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)].map(m => [m[1], m[2].trim()]));
-    const { fails, rows } = audit(tokens);
+    const { fails, rows } = audit(PACKED[th.id].bundle.tokens);
     eq(fails, [], `${th.id}: contrast`);
     eq(rows.length, PAIRS.length, `${th.id}: every pair was measured`);
   }
@@ -119,7 +111,6 @@ t('art: the app accepts all of it, it covers the flat variants, and it stays sma
     }
     if (art.mark) ok(cleaned.mark && cleaned.mark === cleanSvg(art.mark), `${id}: the mark passes the whitelist`);
     eq(cleaned.board, art.board, `${id}: the board skin is in bounds, nothing is dropped`);
-    ok(JSON.stringify(art).length <= BUDGET.art, `${id}: art is ${JSON.stringify(art).length} bytes, budget ${BUDGET.art}`);
   }
 });
 

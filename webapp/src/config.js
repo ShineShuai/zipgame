@@ -44,6 +44,13 @@ export const BEHAVIOUR = {
   backup: 'cloudflare',
 };
 
+// Theme offers (src/themes/source.js, server/turso/theme_stage.sql): the id of the LEADERBOARD.backends entry (type 'turso') whose
+// `theme_stage` table holds the theme(s) offered right now, only for as long as their event runs. null = no stage: no theme is
+// offered and the game has light and dark only. The browser token only needs the read permission it already has.
+export const THEMES = {
+  stage: null,
+};
+
 // Release of the solid puzzles in the play app (src/features/solid-release.js).
 // Dates are UTC days, YYYYMMDD.
 //   first   the day the first solid puzzle goes live: from then on everyone sees the

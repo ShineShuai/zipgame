@@ -1,12 +1,15 @@
 // The theme button of the app bar and the page's link to the theme system (src/themes). The page's <head> runs a tiny
 // inline script that sets <html data-theme data-mode ...> before the first paint (no flash): the active theme from the pool,
-// else the system setting. Here the controller takes over: it keeps the pool in storage, fetches a downloadable theme's
-// files when it is shown, follows the system setting until the player has chosen, and drives the button.
+// else the system setting. Here the controller takes over: it keeps the pool in storage, shows the offered theme of an event
+// on trial (the player takes it or leaves it), follows the system setting until the player has chosen, and drives the button.
+// A theme the player owns is kept on the device (src/themes/store.js): nothing is fetched to show it.
 // With the two built-in themes the button is the light/dark switch it always was; with another pool it steps through the
 // pool and shows the glyph of the theme it switches to.
+import { LEADERBOARD, THEMES } from '../config.js';
 import { createThemes } from '../themes/index.js';
-import { browserEnv, createRegistry } from '../themes/registry.js';
 import { MODE_KEY, parseMode, resolveMode } from '../themes/pool.js';
+import { createStage, tursoStage } from '../themes/source.js';
+import { createStore } from '../themes/store.js';
 
 export const THEME_KEY = MODE_KEY;   // the key the stats page reads; it mirrors the active theme's mode
 export const parseTheme = parseMode;
@@ -19,8 +22,14 @@ export const currentTheme = () => (document.documentElement.dataset.mode === 'da
 export const themeName = (entry, lang) => entry.name[lang] ?? entry.name.en;
 
 let controller = null;
-// The controller (pool, select, setCap, save, trial ...) for the pool picker and the award / random-theme mechanisms.
+// The controller (select, setCap, install, trial -> commit / revert ...) for the pool picker and the award / offer mechanisms.
 export const themes = () => controller;
+
+// The stage of offered themes (config.js THEMES.stage), or null while none is configured: offers() lists what is on it now.
+export function themeStage() {
+  const backend = THEMES.stage && LEADERBOARD.backends[THEMES.stage];
+  return backend?.url && backend?.key ? createStage({ fetchRows: tursoStage(backend).fetchRows }) : null;
+}
 
 // A theme's glyph for the button: the symbol of the catalog entry (already whitelisted by pool.cleanEntry).
 function setSymbol(button, entry) {
@@ -38,7 +47,9 @@ function setSymbol(button, entry) {
 
 // button: the header button. label(current, next, classic) -> its text for the screen reader and the tooltip.
 export function initTheme(button, label = (cur, next, classic) => (classic ? (cur.mode === 'dark' ? 'Light mode' : 'Dark mode') : `Switch to ${next.name.en} theme`)) {
-  controller = createThemes({ storage: localStorage, media: matchMedia(DARK_QUERY), registry: createRegistry(browserEnv()) });
+  // a custom property this build defines (css/theme.css): a bundle's token the build does not know is ignored
+  const known = name => getComputedStyle(document.documentElement).getPropertyValue(name) !== '';
+  controller = createThemes({ storage: localStorage, media: matchMedia(DARK_QUERY), store: createStore(localStorage), known });
   const sync = () => {
     if (!button) return;
     const [cur, next, classic] = [controller.current(), controller.upcoming(), controller.isClassic()];

@@ -1,13 +1,20 @@
-// The theme controller: the pool (pool.js), the fetching (registry.js) and the page (apply.js) put together. Storage and
-// the system's colour scheme are injected. The mechanisms that award slots or offer a random theme call setCap, save and
-// trial; the header button calls next (or, later, the picker calls select).
+// The theme controller: the pool (pool.js), the device's own themes (store.js) and the page (apply.js) put together. Storage
+// and the system's colour scheme are injected. There are two ways a theme reaches a player, both through `trial`:
+// the mechanisms that run an event hand the controller the bundle on the stage; the player sees it (trial), and takes it
+// (commit: it is saved on the device and in the pool, replacing a theme when the pool is full) or leaves it (revert: it is
+// gone, nothing was kept). A theme that is in the pool needs no network. The mechanisms that award slots call setCap.
 import { BUILTIN } from './builtin.js';
-import { applyEntry } from './apply.js';
+import { applyEntry, loadFonts as realLoadFonts } from './apply.js';
+import { cleanBundle } from './bundle.js';
 import {
-  MODE_KEY, POOL_KEY, activeEntry, isClassicPool, nextEntry, parseState, save, select, serialize, setCap,
+  MODE_KEY, POOL_KEY, activeEntry, isClassicPool, nextEntry, parseState, remove, save, select, serialize, setCap,
 } from './pool.js';
 
-export function createThemes({ storage, media, registry, apply = applyEntry }) {
+const MAX_TIMEOUT = 2 ** 31 - 1;
+
+export function createThemes({
+  storage, media, store, apply = applyEntry, loadFonts = realLoadFonts, known, now = Date.now, timers = globalThis,
+}) {
   const read = key => { try { return storage.getItem(key); } catch { return null; } };
   const write = (key, value) => {
     try { if (value === null) storage.removeItem(key); else storage.setItem(key, value); } catch { /* private mode: not saved */ }
@@ -15,7 +22,10 @@ export function createThemes({ storage, media, registry, apply = applyEntry }) {
   const systemMode = () => (media?.matches ? 'dark' : 'light');
   let state = parseState(read(POOL_KEY), read(MODE_KEY));
   let shown = null;
-  let art = null;
+  let content = null;
+  let fonts = null;
+  let trialing = null;     // the bundle on trial, if any
+  let timer = null;
   const listeners = new Set();
   const notify = () => listeners.forEach(fn => fn(api));
 
@@ -24,65 +34,94 @@ export function createThemes({ storage, media, registry, apply = applyEntry }) {
     write(MODE_KEY, state.active ? activeEntry(state, systemMode()).mode : null);   // the old key: stats.html follows it
   }
 
-  // Shows `entry` now (the attributes are cheap and idempotent), then its art once the files are in. A theme whose files
-  // cannot be had is replaced on screen by the built-in of its mode; the pool is left alone (it may work next time).
-  async function show(entry) {
+  function show(entry, loaded) {
     shown = entry;
-    art = null;
-    apply(entry, null);
+    content = loaded;
+    fonts?.release();
+    fonts = loaded?.fonts?.length ? loadFonts(loaded.fonts) : null;
+    apply(entry, loaded);
     notify();
-    if (entry.builtin) return;
-    try {
-      const loaded = await registry.ensure(entry);
-      if (shown !== entry) return;
-      art = loaded.art;
-      apply(entry, art);
-      notify();
-    } catch {
-      if (shown !== entry) return;
-      await show(state.pool.find(e => e.builtin && e.mode === entry.mode) ?? BUILTIN.find(b => b.mode === entry.mode));
-    }
   }
 
-  const choose = next => { state = next; persist(); return show(activeEntry(state, systemMode())); };
+  const builtinOf = mode => BUILTIN.find(b => b.mode === mode);
+
+  // Shows the stored (or the system's) theme. A theme of the pool whose copy is not on this device any more (storage was
+  // cleared, the device refused it) is not the player's now: it leaves the pool and the built-in of its mode shows.
+  function showActive() {
+    const entry = activeEntry(state, systemMode());
+    if (entry.builtin) { show(entry, null); return; }
+    const loaded = store.load(entry.id);
+    if (loaded) { show(entry, loaded); return; }
+    state = remove(state, entry.id);
+    persist();
+    show(builtinOf(entry.mode), null);
+  }
+
+  const clearTrial = () => { trialing = null; if (timer) timers.clearTimeout(timer); timer = null; };
+  const choose = next => { clearTrial(); state = next; persist(); showActive(); };
+
+  // Saves a valid bundle on the device and in the pool; false when it cannot (not a bundle, the pool is full and `replaceId`
+  // names no theme, or the device refuses it). Nothing changes on false.
+  function keep(bundle, replaceId) {
+    const next = save(state, bundle.entry, replaceId);
+    if (!next || !store.save(bundle)) return false;
+    for (const e of state.pool) if (!next.pool.some(p => p.id === e.id) && !e.builtin) store.remove(e.id);
+    state = next;
+    return true;
+  }
 
   const api = {
     state: () => state,
     current: () => shown ?? activeEntry(state, systemMode()),
-    art: () => art,
+    art: () => content?.art ?? null,
+    owns: id => state.pool.some(e => e.id === id),
     isClassic: () => isClassicPool(state),
     upcoming: () => nextEntry(state, api.current().id),   // what the header button would switch to
     onChange: fn => { listeners.add(fn); return () => listeners.delete(fn); },
-    // Shows the stored (or the system's) theme. Call once at start.
+    // Call once at start.
     start: () => {
-      media?.addEventListener?.('change', () => { if (!state.active) show(activeEntry(state, systemMode())); });
-      return show(activeEntry(state, systemMode()));
+      media?.addEventListener?.('change', () => { if (!state.active && !trialing) showActive(); });
+      showActive();
     },
     select: id => choose(select(state, id)),
     next: () => choose(select(state, nextEntry(state, api.current().id).id)),
-    setCap: n => { state = setCap(state, n); persist(); notify(); },
-    // A theme from the catalog into the pool; `replaceId` when the pool is full. The theme becomes the active one only
-    // when it replaced the active one (see pool.save); call select after for "save and use".
-    save: (entry, replaceId) => {
-      const next = save(state, entry, replaceId);
-      if (!next) return false;
+    // Awards raise the cap (never above 4); the themes a lowered cap cuts leave the device too.
+    setCap: n => {
+      const next = setCap(state, n);
+      for (const e of state.pool) if (!next.pool.some(p => p.id === e.id) && !e.builtin) store.remove(e.id);
       state = next;
       persist();
-      show(activeEntry(state, systemMode()));
+      showActive();
+    },
+    // A bundle (as the stage holds it, or from the console while developing) straight into the pool.
+    install: (raw, replaceId) => {
+      const bundle = cleanBundle(raw, { known });
+      if (!bundle || !keep(bundle, replaceId)) return false;
+      persist();
       return true;
     },
-    // Shows a theme without keeping it: commit(replaceId) saves it into the pool and keeps it, revert() goes back.
-    trial: entry => {
-      const before = api.current();
-      show(entry);
+    // Shows an offered theme without keeping anything. `until` (ms, the end of the event): the theme goes by itself then.
+    // Returns null for something that is not a valid bundle (or an event already over), else { entry, commit, revert }:
+    // commit(replaceId) -> Promise<boolean> keeps it and makes it the active theme; revert() puts the previous theme back.
+    trial: (raw, { until } = {}) => {
+      const bundle = cleanBundle(raw, { known });
+      if (!bundle || (until && until <= now())) return null;
+      clearTrial();
+      trialing = bundle;
+      show(bundle.entry, { css: bundle.css, art: bundle.art, fonts: bundle.fonts });
+      const revert = () => { if (trialing !== bundle) return; clearTrial(); showActive(); };
+      if (until) timer = timers.setTimeout(revert, Math.min(until - now(), MAX_TIMEOUT));
       return {
-        // resolves true when the theme is now in the pool and active, false when the pool is full and `replaceId` is missing
+        entry: bundle.entry,
         commit: async replaceId => {
-          if (!api.save(entry, replaceId)) return false;
-          await api.select(entry.id);
+          if (trialing !== bundle || !keep(bundle, replaceId)) return false;
+          clearTrial();
+          state = select(state, bundle.entry.id);
+          persist();
+          notify();
           return true;
         },
-        revert: () => show(before),
+        revert,
       };
     },
   };

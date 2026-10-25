@@ -2,7 +2,8 @@
 // index.js reads and writes the storage); everything read back from storage or the network goes through cleanEntry.
 //   state = { v: 2, cap, active, pool: [entry] }   cap 2..4 (awards raise it), active = an id in the pool, or null while
 //   the player has not chosen (then the system's light/dark setting picks, as before themes existed).
-// An entry is the catalog metadata of one theme (a snapshot, so the page can start without fetching the catalog).
+// An entry is the metadata of one theme (id, version, mode, names, bar colour, layout keys, swatches, symbol). The pool keeps
+// it with the state so the page can start, and the picker can draw, without opening any theme's files.
 import { BUILTIN, BUILTIN_IDS } from './builtin.js';
 import { cleanLayout } from './layout.js';
 import { cleanInner } from './svg.js';
@@ -18,7 +19,7 @@ const TEXT = /^[^<>"&]{1,40}$/;
 export const parseMode = value => (value === 'light' || value === 'dark' ? value : null);
 export const resolveMode = (saved, systemDark) => parseMode(saved) || (systemDark ? 'dark' : 'light');
 
-// A catalog entry (or a stored one) reduced to what the game uses, or null when it is not a theme.
+// An entry (from storage or a bundle's meta) reduced to what the game uses, or null when it is not a theme.
 export function cleanEntry(x) {
   if (!x || typeof x !== 'object' || !ID_RE.test(x.id ?? '') || !parseMode(x.mode) || !HEX.test(x.chrome ?? '')) return null;
   const builtin = BUILTIN_IDS.includes(x.id);
@@ -36,7 +37,6 @@ export function cleanEntry(x) {
     layout: cleanLayout(x.layout),
     swatches: Array.isArray(x.swatches) && x.swatches.length === 4 && x.swatches.every(c => HEX.test(c)) ? x.swatches : null,
     symbol: cleanInner(x.symbol, 600) ?? '',
-    art: x.art === true,
   };
 }
 
@@ -87,6 +87,18 @@ export function save(state, entry, replaceId = null) {
   if (at < 0) return null;
   const pool = state.pool.map((p, i) => (i === at ? e : p));
   return { ...state, pool, active: state.active === replaceId ? e.id : state.active };
+}
+
+// The pool without `id` (a theme that left it, or whose files are not on this device any more). Never below the built-ins a
+// small pool needs: light and dark come back when the pool would otherwise have fewer themes than its cap allows them to fill.
+// A removed active theme hands over to the built-in of its mode.
+export function remove(state, id) {
+  const gone = state.pool.find(e => e.id === id);
+  if (!gone) return state;
+  const pool = state.pool.filter(e => e.id !== id);
+  for (const b of BUILTIN) if (pool.length < 2 && !pool.some(e => e.id === b.id)) pool.push(b);
+  const handover = pool.find(e => e.id === gone.mode && e.builtin);
+  return { ...state, pool, active: state.active === id ? (handover?.id ?? null) : state.active };
 }
 
 // The theme after `id` in pool order (the header button's step; with the two built-ins it is the old light/dark toggle).

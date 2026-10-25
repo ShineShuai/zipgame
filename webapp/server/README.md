@@ -88,3 +88,12 @@ For each solved game the page may upload one row: the puzzle (local games; a Gam
 - *Changing what a column means* (the units of `ms`, the layout of `pz` or `s`): bump `ROW_VERSION` (`v`, 4 bits) in the same change. Rows keep their `v`, so the tools keep every old decoder and tell the generations apart.
 - A table that was altered has the new column last; the code always names its columns, so the order does not matter.
 
+
+## Theme stage (`theme_stage`, offers at events)
+A theme is offered to players at an event and is only ever served while the event runs (design record: `themes/README.md`). `turso/theme_stage.sql` is the
+whole server side: one table, one row per running offer (a bundle of at most 200 KB), written only by you.
+- **Setup (once):** `turso db shell <db> < server/turso/theme_stage.sql`; in `src/config.js` set `THEMES.stage` to the id of the Turso backend. The browser token already
+  has the read permission it needs (`-p all:data_read`) and no write permission on this table.
+- **Publish:** `node themes/tools/stage.mjs publish <theme> --event 202611-autumn --from 2026-11-01 --until 2026-11-08 | turso db shell <db>`
+- **Withdraw:** `node themes/tools/stage.mjs withdraw --event 202611-autumn | turso db shell <db>`. Deleting the row is what ends the offer; `from`/`until` only drive the countdown.
+- **Test:** `node server/turso/theme-stage.test.mjs` (author tool -> SQL -> SQLite -> the app's adapter and validator).
