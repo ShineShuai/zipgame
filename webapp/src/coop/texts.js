@@ -13,7 +13,7 @@ export const EN = {
     + 'a line from its end to erase it, or press and hold on a line to cut it. Join all the lines '
     + 'into one path from 1 to the last number, covering every cell.',
   generating: 'Making a puzzle… {0}%',
-  backToApp: 'Back to Zip',
+  backToApp: 'Back to zigzag',
   onlineTitle: 'Play together',
   onlineSub: 'Two players, two devices, no server.',
   onlineBlurb: 'Send an invite link to a friend. You draw in orange, your friend in blue, on the '
@@ -84,7 +84,7 @@ export const ZH = {
   rules: '拖动画线，可随时抬手并从任意位置重新开始。从线的末端沿线拖回去即可擦除，'
     + '或长按某条线将其剪断。把所有线连成一条从 1 到最大数字、覆盖每个格子的路径。',
   generating: '正在生成… {0}%',
-  backToApp: '回到 Zip',
+  backToApp: '回到 zigzag',
   onlineTitle: '一起玩',
   onlineSub: '两人两台设备，无需服务器。',
   onlineBlurb: '把邀请链接发给朋友。你用橙色画线，朋友用蓝色，在同一道题上。'

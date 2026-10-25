@@ -1,5 +1,5 @@
-// theme.json (seeds + vars) -> the complete token map of one theme. Pure functions: tools/theme-gen.mjs writes the
-// CSS, test/theme-templates.js checks it. A theme states ~25 seed colours and the shape/size/type values it varies;
+// theme.json (seeds + vars) -> the complete token map of one theme. Pure functions: gen.mjs writes the CSS,
+// test.mjs checks it. A theme states ~25 seed colours and the shape/size/type values it varies;
 // everything else (tonal fills, hover states, status colours, 3D tints, ...) is derived, then every foreground the
 // contrast pairs (schema.js PAIRS) constrain is nudged until it passes, and each nudge is reported.
 import {
@@ -128,6 +128,7 @@ export function derive(theme, base) {
 
   // new tokens: schema default, then the theme's own value
   for (const [name, spec] of Object.entries(TOKENS)) if (!(name in out)) out[name] = spec.d;
+  if (vars['--r-2'] && !vars['--r-tile']) out['--r-tile'] = vars['--r-2'];
   Object.assign(out, vars);
   return { tokens: out, notes };
 }

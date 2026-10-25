@@ -12,7 +12,7 @@ import { createSharedGames } from '../../features/shared-games.js';
 import { maxHints, computeHint, solutionOf } from '../../features/hints.js';
 import { bindModal, copyText } from '../../ui/modal.js';
 import { touchUI, openSheet, installPeek } from '../../ui/info.js';
-import { initTheme } from '../../ui/theme.js';
+import { initTheme, themeName } from '../../ui/theme.js';
 import { createSolidPlay } from './solid.js';
 import { isPentagon } from '../../core/pentagon.js';
 import { hintTwo } from '../../features/twopaths-play.js';
@@ -63,7 +63,7 @@ function render() {
 // Hidden unless the dev reveal is held (see setDevReveal).
 function devBadgeHtml() {
   const display = S.showDev ? 'block' : 'none';
-  return `<div id="versionBadge" class="dev-badge" style="display:${display}">Zip v${VERSION}</div>`;
+  return `<div id="versionBadge" class="dev-badge" style="display:${display}">zigzag v${VERSION}</div>`;
 }
 
 // The solid puzzles (tetrahedron, cube, ball): their own card in the menu (from the release
@@ -334,7 +334,8 @@ async function initLang() {
   bind({ modal: bindModal($('exportModal')) });
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));
   installDevReveal(); await initSoundToggle(); await initLang();
-  themeCtl = initTheme($('themeToggle'), theme => t(theme === 'dark' ? 'theme.toLight' : 'theme.toDark'));
+  themeCtl = initTheme($('themeToggle'), (cur, next, classic) => (classic
+    ? t(cur.mode === 'dark' ? 'theme.toLight' : 'theme.toDark') : t('theme.switchTo', themeName(next, getLang()))));
   document.addEventListener('zip-theme', () => { if (S.screen === 'solid') render(); }); // the 3D cells are tinted inline: draw them again
   installPeek({ selector: '.variant-opt', show: showPeek, hide: hidePeek });
   const howto = await storage.get('howto-seen'); S.howtoSeen = Boolean(howto && howto.value === '1'); S.howtoOpen = !S.howtoSeen;

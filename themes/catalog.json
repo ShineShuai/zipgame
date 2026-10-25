@@ -1,0 +1,149 @@
+{
+ "themeApi": 1,
+ "themes": [
+  {
+   "id": "light",
+   "v": 1,
+   "themeApi": 1,
+   "mode": "light",
+   "name": {
+    "en": "Light",
+    "zh": "浅色"
+   },
+   "chrome": "#f4f7ff",
+   "layout": {
+    "menu": "dashboard",
+    "picker": "tiles",
+    "actions": "side"
+   },
+   "swatches": [
+    "#f4f7ff",
+    "#ffffff",
+    "#3b68ee",
+    "#f56a00"
+   ],
+   "symbol": "<circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4\"/>",
+   "builtin": true
+  },
+  {
+   "id": "dark",
+   "v": 1,
+   "themeApi": 1,
+   "mode": "dark",
+   "name": {
+    "en": "Dark",
+    "zh": "深色"
+   },
+   "chrome": "#0d1224",
+   "layout": {
+    "menu": "dashboard",
+    "picker": "tiles",
+    "actions": "side"
+   },
+   "swatches": [
+    "#0d1224",
+    "#151b32",
+    "#3b68ee",
+    "#ffb020"
+   ],
+   "symbol": "<path d=\"M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z\" fill=\"currentColor\"/>",
+   "builtin": true
+  },
+  {
+   "id": "bauhaus",
+   "v": 1,
+   "themeApi": 1,
+   "mode": "light",
+   "name": {
+    "en": "Bauhaus",
+    "zh": "包豪斯"
+   },
+   "chrome": "#ece4d2",
+   "layout": {
+    "menu": "bento",
+    "picker": "tiles",
+    "actions": "side"
+   },
+   "swatches": [
+    "#ece4d2",
+    "#fbf8f1",
+    "#c8391d",
+    "#e8a920"
+   ],
+   "symbol": "<circle cx=\"7.5\" cy=\"8\" r=\"3.8\"/><rect x=\"13\" y=\"4.2\" width=\"7\" height=\"7\"/><path d=\"M12 13.5l4.5 7.5h-9z\"/>",
+   "art": true
+  },
+  {
+   "id": "bounce",
+   "v": 1,
+   "themeApi": 1,
+   "mode": "light",
+   "name": {
+    "en": "Bounce",
+    "zh": "弹跳"
+   },
+   "chrome": "#dbe6ff",
+   "layout": {
+    "menu": "dashboard",
+    "picker": "tiles",
+    "actions": "side"
+   },
+   "swatches": [
+    "#dbe6ff",
+    "#ffffff",
+    "#2342c4",
+    "#ffb020"
+   ],
+   "symbol": "<circle cx=\"12\" cy=\"8\" r=\"4\"/><ellipse cx=\"12\" cy=\"20\" rx=\"6\" ry=\"1.5\"/>",
+   "art": true
+  },
+  {
+   "id": "candy",
+   "v": 1,
+   "themeApi": 1,
+   "mode": "light",
+   "name": {
+    "en": "Candy",
+    "zh": "糖果"
+   },
+   "chrome": "#efe7ff",
+   "layout": {
+    "menu": "dashboard",
+    "picker": "tiles",
+    "actions": "side"
+   },
+   "swatches": [
+    "#efe7ff",
+    "#ffffff",
+    "#6a4cf0",
+    "#e8384f"
+   ],
+   "symbol": "<circle cx=\"12\" cy=\"12\" r=\"5\"/><path d=\"M7 12 2.5 8.5v7zM17 12l4.5-3.5v7z\"/>",
+   "art": true
+  },
+  {
+   "id": "wood",
+   "v": 1,
+   "themeApi": 1,
+   "mode": "dark",
+   "name": {
+    "en": "Wood",
+    "zh": "木纹"
+   },
+   "chrome": "#2b1d14",
+   "layout": {
+    "menu": "dashboard",
+    "picker": "tiles",
+    "actions": "side"
+   },
+   "swatches": [
+    "#2b1d14",
+    "#3a281c",
+    "#d4a017",
+    "#a4281f"
+   ],
+   "symbol": "<ellipse cx=\"12\" cy=\"12\" rx=\"9\" ry=\"8\"/><ellipse cx=\"12.5\" cy=\"12\" rx=\"5.5\" ry=\"4.8\"/><circle cx=\"13\" cy=\"12\" r=\"1.4\"/>",
+   "art": true
+  }
+ ]
+}

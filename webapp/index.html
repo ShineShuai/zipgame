@@ -2,24 +2,35 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-A0vBNYce/o6LC8EUe0SFt0XuuPdXyNhjcVNj/YL7BfU='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://zip-gotd.shineshine.workers.dev https://tjaidjrjcugkxkluxvrc.supabase.co https://zipgame-becu.aws-ap-northeast-1.turso.io https://uxtmfpgxjdabpfzmmqzm.supabase.co; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-STwOeEVxWDo6eu9Ci0pbUCHszaG8PMk2Kg1Uxy31LHo='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://zip-gotd.shineshine.workers.dev https://tjaidjrjcugkxkluxvrc.supabase.co https://zipgame-becu.aws-ap-northeast-1.turso.io https://uxtmfpgxjdabpfzmmqzm.supabase.co; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#f4f7ff">
-<title>Zip</title>
-<script>/* sets the theme before the first paint (src/ui/theme.js wires the button): the saved choice, else the system setting */
-try{var t=localStorage.getItem('zip_theme');if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
-document.documentElement.dataset.theme=t;var m=document.querySelector('meta[name="theme-color"]');if(m&&t==='dark')m.setAttribute('content','#0d1224')}catch(e){}</script>
+<meta name="themes-base" content="../themes/">
+<title>zigzag</title>
+<script>/* before the first paint: the active theme's attributes and, for a downloadable theme, its token file; src/themes/ takes over once the app runs
+   (the same choice as src/themes/pool.js activeEntry: the chosen theme, else the pool's first of the system's mode, else its first) */
+try{var d=document.documentElement,s=localStorage,k=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light',e=null,p=[],q={},i,x=null,m;
+try{x=JSON.parse(s.getItem('zip_theme_v2'))}catch(c){}
+if(x&&x.v===2&&Array.isArray(x.pool))for(i=0;i<x.pool.length;i++){m=x.pool[i];
+if(m&&/^[a-z][a-z0-9-]{0,23}$/.test(m.id)&&(m.mode==='light'||m.mode==='dark')&&/^#[0-9a-f]{6}$/i.test(m.chrome)&&!q[m.id]){q[m.id]=1;p.push(m)}}
+if(p.length){p=p.slice(0,Math.min(4,Math.max(2,x.cap|0)));for(i=0;i<p.length;i++)if(p[i].id===x.active)e=p[i];for(i=0;i<p.length&&!e;i++)if(p[i].mode===k)e=p[i];e=e||p[0]}
+else{m=s.getItem('zip_theme');m=m==='light'||m==='dark'?m:k;e={id:m,mode:m,chrome:m==='dark'?'#0d1224':'#f4f7ff'}}
+d.dataset.theme=e.id;d.dataset.mode=e.mode;
+for(i in{menu:1,picker:1,actions:1})if(e.layout&&/^[a-z-]{1,16}$/.test(e.layout[i]))d.dataset[i]=e.layout[i];
+m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',e.chrome);
+if(e.id!=='light'&&e.id!=='dark')document.write("<link rel=stylesheet id=theme-css href='"+document.querySelector('meta[name="themes-base"]').content+e.id+"/theme.css?v="+((e.v|0)||1)+"'>")}catch(e){}</script>
 <link rel="stylesheet" href="css/theme.css">
 <link rel="stylesheet" href="css/play.css">
 </head>
 <body>
 <header class="app-bar">
   <div class="app-bar-inner">
-    <a class="brand" href="../index.html" aria-label="Zip home">
-      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
-        <use href="../assets/images/logo/zip.svg" />
-      </svg>
-      <span>Zip</span>
+    <a class="brand" href="../index.html" aria-label="zigzag home">
+      <span class="brand-mark" id="brandMark">
+        <img class="logo logo-light" src="../assets/images/logo/zigzag-mark.svg" alt="" width="34" height="34">
+        <img class="logo logo-dark" src="../assets/images/logo/zigzag-mark-dark.svg" alt="" width="34" height="34">
+      </span>
+      <span>zigzag</span>
     </a>
     <button class="icon-btn gift-btn" id="giftBtn" type="button" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="9" width="17" height="11" rx="2"/><path d="M12 9v11M3.5 13.5h17M12 9C9 9 7.5 7.5 8 6s3-1 4 3zM12 9c3 0 4.5-1.5 4-3s-3-1-4 3z"/></svg></button>
     <button class="icon-btn lang-toggle" id="langToggle" type="button" data-on="en" aria-label="Switch to Chinese" title="Switch to Chinese"><span>中</span></button>

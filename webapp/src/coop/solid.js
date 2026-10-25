@@ -98,7 +98,7 @@ function linesLayer(drawing, hint, net, frame, px) {
 }
 
 const palette = () => (typeof document !== 'undefined'
-  && document.documentElement.dataset.theme === 'dark' ? PLAY_DARK_PALETTE : LIGHT_PALETTE);
+  && document.documentElement.dataset.mode === 'dark' ? PLAY_DARK_PALETTE : LIGHT_PALETTE);
 
 // The board of a solid game: { html, layouts, frames }. `layouts` and `frames` are those of the
 // main pictures, for hit-testing (cellUnder, edgeNear, netPoint).

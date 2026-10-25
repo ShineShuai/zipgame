@@ -1,6 +1,24 @@
 {
   "id": "bauhaus",
+  "v": 1,
+  "themeApi": 1,
   "mode": "light",
+  "name": {
+    "en": "Bauhaus",
+    "zh": "包豪斯"
+  },
+  "symbol": "<circle cx=\"7.5\" cy=\"8\" r=\"3.8\"/><rect x=\"13\" y=\"4.2\" width=\"7\" height=\"7\"/><path d=\"M12 13.5l4.5 7.5h-9z\"/>",
+  "layout": {
+    "menu": "bento",
+    "picker": "tiles",
+    "actions": "side"
+  },
+  "swatches": [
+    "#ece4d2",
+    "#fbf8f1",
+    "#c8391d",
+    "#e8a920"
+  ],
   "fonts": [
     {
       "family": "Jost",

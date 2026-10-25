@@ -1,6 +1,24 @@
 {
   "id": "bounce",
+  "v": 1,
+  "themeApi": 1,
   "mode": "light",
+  "name": {
+    "en": "Bounce",
+    "zh": "弹跳"
+  },
+  "symbol": "<circle cx=\"12\" cy=\"8\" r=\"4\"/><ellipse cx=\"12\" cy=\"20\" rx=\"6\" ry=\"1.5\"/>",
+  "layout": {
+    "menu": "dashboard",
+    "picker": "tiles",
+    "actions": "side"
+  },
+  "swatches": [
+    "#dbe6ff",
+    "#ffffff",
+    "#2342c4",
+    "#ffb020"
+  ],
   "fonts": [
     {
       "family": "Baloo 2",

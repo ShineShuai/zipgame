@@ -232,7 +232,7 @@ export function wrapPlayTests(t, ta, ok, eq) {
     eq(rec.grade, null, 'no grade');
     const tr = (key, ...args) => EN[key].replace(/\{0\}/g, args[0]);
     const text = shareText(rec, 'https://x/?s=abc', tr);
-    eq(text.split('\n')[0], 'Zip Wrap-around · 6x6', 'the head line');
+    eq(text.split('\n')[0], 'zigzag Wrap-around · 6x6', 'the head line');
     eq(shareStatus(rec, { sizes: PLAY_SIZES, algo: 0 }).status, 'ok', 'playable at once');
   });
 

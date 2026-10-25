@@ -1,4 +1,4 @@
-/* Preview of the theme templates (themes.html). Everything reads tokens; the fallbacks after each comma are the values
+/* Preview of the theme templates (themes/preview/). Everything reads tokens; the fallbacks after each comma are the values
    the play app has today, so the built-in light and dark themes look as they do now (the new tokens arrive with P1). */
 * { box-sizing: border-box; }
 body {
@@ -18,8 +18,14 @@ h2 { margin: 0 0 var(--gap, 12px); color: var(--heading); font-family: var(--fon
 h2 small { font-size: 0.8rem; font-weight: 400; color: var(--muted); letter-spacing: 0; text-transform: none; }
 
 .pv-bar { display: flex; align-items: center; gap: 8px; min-height: var(--bar-h, 58px); }
-.pv-mark { display: block; width: var(--logo, 34px); height: var(--logo, 34px); flex: none; }
-.pv-mark svg { width: 100%; height: 100%; display: block; }
+.brand-mark { display: flex; flex: none; }
+.logo { flex: none; width: var(--logo, 34px); height: var(--logo, 34px); }
+.logo-dark { display: none; }
+:root[data-mode="dark"] .logo-light { display: none; }
+:root[data-mode="dark"] .logo-dark { display: block; }
+.brand-art { display: block; width: var(--logo, 34px); height: var(--logo, 34px); }
+.brand-art svg { display: block; width: 100%; height: 100%; }
+:root .brand-mark.has-art .logo { display: none; }
 .pv-name { color: var(--heading); font-family: var(--font-head, inherit); font-weight: var(--fw-head, 800); font-size: 1.3rem; text-transform: var(--tt-head, none); letter-spacing: var(--ls-head, 0); }
 .pv-spacer { flex: 1; }
 .pv-chip { padding: 4px 10px; border-radius: var(--r-chip, 999px); background: var(--surface-2); border: var(--bw-card, 1px) solid var(--line); font-size: 0.85rem; font-weight: 700; }

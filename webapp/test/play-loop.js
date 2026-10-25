@@ -144,7 +144,7 @@ export function loopPlayTests(t, ta, ok, eq) {
     ok(rec.puzzle.walls !== p.walls && rec.puzzle.cp !== p.cp, 'a copy, not the same arrays');
     eq(rec.grade, null, 'no grade');
     const tr = (key, ...args) => EN[key].replace(/\{0\}/g, args[0]);
-    eq(shareText(rec, 'https://x/?s=abc', tr).split('\n')[0], 'Zip Loop · 6x6', 'the head line');
+    eq(shareText(rec, 'https://x/?s=abc', tr).split('\n')[0], 'zigzag Loop · 6x6', 'the head line');
     const ctx = { sizes: PLAY_SIZES, algo: 0, sizesOf: id => sizesFor(id, PLAY_SIZES) };
     eq(shareStatus(rec, ctx).status, 'ok', 'playable at once');
     const four = loopGame(4, 3);

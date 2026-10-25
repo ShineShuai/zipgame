@@ -1,4 +1,4 @@
-/* Zip play app. Colours come from css/theme.css (light and dark); no hex literals here.
+/* zigzag play app. Colours come from css/theme.css (light and dark); no hex literals here.
    Layout: phones first (one column); the menu is a two-column dashboard from 1000 px up, the game's board
    and its actions side by side from 900 px up. Pointer devices get popovers, touch devices get bottom sheets
    (src/ui/info.js). */
@@ -15,15 +15,18 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
   color: var(--text);
-  background: radial-gradient(1200px 420px at 50% -80px, var(--bg-top), transparent 70%), var(--bg);
-  font-family: "Segoe UI", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans", sans-serif;
+  background: var(--bg-image), radial-gradient(1200px 420px at 50% -80px, var(--bg-top), transparent 70%), var(--bg);
+  font-family: var(--font-body);
   font-size: 16px;
   line-height: 1.6;
   -webkit-tap-highlight-color: transparent;
 }
 body.sheet-open { overflow: hidden; }
 
-h2 { margin: 0; color: var(--heading); line-height: 1.25; }
+h2 {
+  margin: 0; color: var(--heading); line-height: 1.25;
+  font-family: var(--font-head); font-weight: var(--fw-head); text-transform: var(--tt-head); letter-spacing: var(--ls-head);
+}
 p { margin: 0; }
 b { color: var(--heading); font-variant-numeric: tabular-nums; }
 :focus-visible { outline: 3px solid var(--orange); outline-offset: 3px; }
@@ -47,9 +50,9 @@ button, select, input { font-family: inherit; }
   align-items: center;
   gap: 8px;
   max-width: 1200px;
-  min-height: 58px;
+  min-height: var(--bar-h);
   margin: 0 auto;
-  padding: 0 20px;
+  padding: 0 var(--pad);
 }
 .brand {
   display: flex;
@@ -57,28 +60,39 @@ button, select, input { font-family: inherit; }
   gap: 10px;
   margin-right: auto;
   color: var(--heading);
-  font-weight: 800;
+  font-family: var(--font-head);
+  font-weight: calc(var(--fw-head) + 100);
   font-size: 1.3rem;
+  text-transform: var(--tt-head);
+  letter-spacing: var(--ls-head);
   text-decoration: none;
 }
-.logo { flex: none; width: 34px; height: 34px; }
+.logo { flex: none; width: var(--logo); height: var(--logo); }
+/* the brand mark: the shared variety-Z in two files (light, dark), or the inline mark of the active theme's art */
+.brand-mark { display: flex; flex: none; }
+.logo-dark { display: none; }
+:root[data-mode="dark"] .logo-light { display: none; }
+:root[data-mode="dark"] .logo-dark { display: block; }
+.brand-art { display: block; width: var(--logo); height: var(--logo); }
+.brand-art svg { display: block; width: 100%; height: 100%; }
+:root .brand-mark.has-art .logo { display: none; }
 
 .icon-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 40px;
-  height: 40px;
+  width: var(--icon-btn);
+  height: var(--icon-btn);
   padding: 0;
-  border: 2px solid var(--line);
-  border-radius: 999px;
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-icon);
   background: var(--surface);
   color: var(--accent-text);
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
-.icon-btn svg { width: 20px; height: 20px; }
+.icon-btn svg { width: var(--glyph); height: var(--glyph); }
 .icon-btn:hover { background: var(--accent-soft); border-color: var(--accent); }
 .lang-toggle { font-size: 0.85rem; font-weight: 800; letter-spacing: 0; }
 .lang-toggle[data-on="en"] span { font-size: 1.05rem; line-height: 1; } /* the glyph shown is the other language: 中 while English is on */
@@ -86,29 +100,32 @@ button, select, input { font-family: inherit; }
 .sound-toggle.muted .sound-waves { display: none; }
 .sound-toggle.muted .sound-x { display: block !important; }
 .theme-toggle .ico-sun { display: none; }
-:root[data-theme="dark"] .theme-toggle .ico-sun { display: block; }
-:root[data-theme="dark"] .theme-toggle .ico-moon { display: none; }
+:root[data-mode="dark"] .theme-toggle .ico-sun { display: block; }
+:root[data-mode="dark"] .theme-toggle .ico-moon { display: none; }
+/* a pool beyond light and dark: the button shows the glyph of the theme it switches to */
+:root .theme-toggle[data-custom] .ico-sun, :root .theme-toggle[data-custom] .ico-moon { display: none; }
+.theme-symbol { width: var(--glyph); height: var(--glyph); }
 
 /* ---------- page, cards ---------- */
 
 #app {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 18px 20px 48px;
+  padding: 18px var(--pad) 48px;
 }
 
 .card {
   margin-bottom: 16px;
-  padding: 20px;
+  padding: var(--pad);
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: var(--bw-card) solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
 .card-title { font-size: 1.3rem; margin-bottom: 2px; overflow-wrap: anywhere; }
 .blurb { margin: 0 0 14px; color: var(--muted); }
 .small { font-size: 0.9rem; color: var(--muted); }
-.note { margin-top: 12px; padding: 10px 14px; border-radius: 12px; background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+.note { margin-top: 12px; padding: 10px 14px; border-radius: var(--r-1); background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
 .note.error { background: var(--danger-bg); color: var(--danger); }
 .storage-note { margin-top: 14px; }
 .btn-hint { margin: 8px 2px 0; font-size: 0.85rem; color: var(--muted); }
@@ -122,7 +139,7 @@ button, select, input { font-family: inherit; }
   place-items: center;
   width: 40px;
   height: 40px;
-  border-radius: 12px;
+  border-radius: var(--r-1);
   background: var(--accent-soft);
   color: var(--accent-text);
 }
@@ -137,10 +154,10 @@ button, select, input { font-family: inherit; }
   gap: 8px;
   min-width: 0;
   max-width: 100%;
-  min-height: 46px;
+  min-height: var(--ctl-h);
   padding: 10px 20px;
-  border: 2px solid var(--accent);
-  border-radius: 14px;
+  border: var(--bw) solid var(--accent);
+  border-radius: var(--r-2);
   background: var(--accent);
   color: var(--on-accent);
   font: inherit;
@@ -154,6 +171,7 @@ button, select, input { font-family: inherit; }
 }
 .btn:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .btn:active { transform: scale(0.98); }
+.btn:not(.secondary) { box-shadow: var(--shadow-btn); }
 .btn.secondary { background: var(--surface-2); border-color: var(--line-strong); color: var(--accent-text); }
 .btn.secondary:hover { background: var(--accent-soft); border-color: var(--accent); }
 .btn.secondary.active { background: var(--accent-soft); border-color: var(--accent); }
@@ -171,10 +189,10 @@ button, select, input { font-family: inherit; }
 select {
   min-width: 0;
   max-width: 100%;
-  min-height: 46px;
+  min-height: var(--ctl-h);
   padding: 8px 40px 8px 16px;
-  border: 2px solid var(--line-strong);
-  border-radius: 12px;
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-1);
   background-color: var(--surface-2);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath d='M1 1.5l6 6 6-6' fill='none' stroke='%237f9cff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -195,7 +213,7 @@ select option, select optgroup { background: var(--surface); color: var(--headin
 .status-panel { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 .stat-item {
   position: relative; flex: 1 1 200px; display: flex; align-items: center; gap: 12px; min-width: 0; padding: 10px 14px;
-  border: 2px solid var(--line); border-radius: 16px; background: var(--surface-2); color: var(--heading); font: inherit; text-align: left; cursor: help;
+  border: var(--bw) solid var(--line); border-radius: var(--r-tile); background: var(--surface-2); color: var(--heading); font: inherit; text-align: left; cursor: help;
 }
 .stat-icon { flex: none; width: 28px; height: 28px; color: var(--muted); }
 .stat-replay.ready { border-color: var(--accent); background: var(--accent-soft); }
@@ -221,7 +239,7 @@ select option, select optgroup { background: var(--surface); color: var(--headin
 
 .stat-tip, .variant-rules, .tip-pop {
   display: none; position: absolute; z-index: 30; padding: 11px 14px;
-  border: 1px solid var(--line-strong); border-radius: 14px; background: var(--pop-bg); color: var(--text);
+  border: 1px solid var(--line-strong); border-radius: var(--r-2); background: var(--pop-bg); color: var(--text);
   box-shadow: var(--pop-shadow); font-size: 0.88rem; font-weight: 400; line-height: 1.45; letter-spacing: 0; text-align: left;
   overflow-wrap: anywhere;
 }
@@ -268,13 +286,13 @@ select option, select optgroup { background: var(--surface); color: var(--headin
 .sheet {
   width: 100%; max-width: 560px; max-height: 82vh; max-height: 82dvh; overflow: auto; overscroll-behavior: contain;
   padding: 10px 18px calc(18px + env(safe-area-inset-bottom, 0)); background: var(--surface); color: var(--text);
-  border: 1px solid var(--line); border-bottom: 0; border-radius: 24px 24px 0 0; box-shadow: var(--sheet-shadow);
+  border: var(--bw-card) solid var(--line); border-bottom: 0; border-radius: var(--r-4) var(--r-4) 0 0; box-shadow: var(--sheet-shadow);
   animation: sheet-up 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .sheet-grab { width: 42px; height: 5px; margin: 0 auto 14px; border-radius: 3px; background: var(--line-strong); }
 .sheet-head { display: flex; align-items: center; gap: 14px; min-width: 0; }
-.sheet-head .variant-icon { width: 60px; height: 60px; }
-.sheet-glyph { flex: none; width: 44px; height: 44px; padding: 9px; border-radius: 14px; background: var(--accent-soft); color: var(--accent-text); }
+.sheet-head .variant-icon { width: calc(60px * var(--vi-scale)); height: calc(60px * var(--vi-scale)); }
+.sheet-glyph { flex: none; width: 44px; height: 44px; padding: 9px; border-radius: var(--r-2); background: var(--accent-soft); color: var(--accent-text); }
 .sheet h2 { font-size: 1.2rem; overflow-wrap: anywhere; }
 .sheet-body { margin: 12px 0 16px; font-size: 1rem; line-height: 1.55; overflow-wrap: anywhere; }
 .sheet-body b { color: var(--heading); }
@@ -287,21 +305,21 @@ select option, select optgroup { background: var(--surface); color: var(--headin
 
 /* ---------- unlock chances and the lucky game ---------- */
 
-.lucky-box { margin: 0 0 14px; border: 2px solid var(--line); border-radius: 16px; background: var(--surface-2); }
+.lucky-box { margin: 0 0 14px; border: var(--bw) solid var(--line); border-radius: var(--r-tile); background: var(--surface-2); }
 .lucky-box.ready { border-color: var(--warn-line); background: var(--warn-bg); }
 .lucky-box .note { margin: 0; padding: 10px 12px; }
 .lucky-row {
   position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px;
 }
 .lucky-box > * + * { border-top: 1px solid var(--line); }
-.lucky-row.reward { background: var(--accent-soft); border-radius: 14px 14px 0 0; }
+.lucky-row.reward { background: var(--accent-soft); border-radius: var(--r-2) var(--r-2) 0 0; }
 .lucky-icon { flex: none; display: grid; place-items: center; }
-.lucky-icon .variant-icon { width: 36px; height: 36px; }
+.lucky-icon .variant-icon { width: calc(36px * var(--vi-scale)); height: calc(36px * var(--vi-scale)); }
 .lucky-text { flex: 1 1 150px; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
 .lucky-text small { color: var(--muted); font-size: 0.85rem; overflow-wrap: anywhere; }
 .lucky-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 .lucky-chances {
-  display: inline-flex; align-items: center; gap: 4px; padding: 1px 9px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 4px; padding: 1px 9px; border-radius: var(--r-chip);
   background: var(--accent-soft); color: var(--muted); font-size: 0.8rem; font-weight: 700; white-space: nowrap;
 }
 .lucky-chances.has { background: var(--warn-bg); color: var(--warn); }
@@ -312,7 +330,7 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 .has-tip:focus-visible > .tip-pop, .has-tip > .tip-pop.open { display: block; }
 @media (hover: hover) { .has-tip:hover > .tip-pop { display: block; } }
 .lucky-row .tip-btn { flex: none; margin-left: 0; }
-.lucky-row > .btn { flex: 0 0 auto; min-height: 40px; padding: 6px 18px; background: var(--surface); border-color: var(--line-strong); color: var(--accent-text); }
+.lucky-row > .btn { flex: 0 0 auto; min-height: calc(var(--ctl-h) - 6px); padding: 6px 18px; background: var(--surface); border-color: var(--line-strong); color: var(--accent-text); }
 .lucky-box.ready .lucky-row > .btn { border-color: var(--warn-line); color: var(--warn); }
 .lucky-row.reward > .reward-buttons { flex: 1 1 100%; }
 .reward-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -330,7 +348,7 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 .gift-toast {
   position: fixed; z-index: 120; top: calc(env(safe-area-inset-top, 0px) + 64px); right: max(12px, env(safe-area-inset-right, 0px));
   display: flex; align-items: center; gap: 10px; width: min(380px, calc(100vw - 24px)); padding: 10px 12px;
-  border: 2px solid var(--warn-line); border-radius: 16px; background: var(--warn-bg); color: var(--text); box-shadow: var(--pop-shadow);
+  border: 2px solid var(--warn-line); border-radius: var(--r-tile); background: var(--warn-bg); color: var(--text); box-shadow: var(--pop-shadow);
   animation: gift-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .gift-dev { margin: 0; padding: 8px 12px; color: var(--muted); font-variant-numeric: tabular-nums; line-height: 1.45; overflow-wrap: anywhere; }
@@ -340,7 +358,7 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 .gift-toast[hidden] { display: none; }
 .gift-toast .stat-icon { flex: none; width: 28px; height: 28px; color: var(--warn); }
 .gift-toast-text { flex: 1 1 0; min-width: 0; font-size: 0.9rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
-.gift-toast .btn { flex: none; min-height: 38px; padding: 4px 14px; }
+.gift-toast .btn { flex: none; min-height: calc(var(--ctl-h) - 8px); padding: 4px 14px; }
 .gift-toast .tip-btn { flex: none; margin-left: 0; }
 .gift-toast.result { pointer-events: none; } /* the result of a tap during a game: the board below keeps taking presses */
 @keyframes gift-in { from { opacity: 0; transform: translateY(-8px); } }
@@ -355,13 +373,13 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 .lucky-chip { margin-left: 8px; padding: 2px 10px; border-radius: 999px; background: var(--warn-bg); color: var(--warn); font-size: 0.75rem; font-weight: 800; }
 .lucky-once { margin: 12px 0 0; }
 .lucky-result {
-  display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 14px; border-radius: 12px;
+  display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 14px; border-radius: var(--r-1);
   background: var(--ok-bg); color: var(--ok); font-weight: 700;
 }
 .lucky-result.same { background: var(--accent-soft); color: var(--accent-text); }
 .lucky-result.heal { background: var(--heal-bg); color: var(--heal); }
 .replay-heal { color: var(--heal); font-weight: 600; }
-.lucky-result .variant-icon { flex: none; width: 36px; height: 36px; }
+.lucky-result .variant-icon { flex: none; width: calc(36px * var(--vi-scale)); height: calc(36px * var(--vi-scale)); }
 
 /* ---------- menu ---------- */
 
@@ -371,7 +389,7 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
   display: grid;
   grid-template-columns: minmax(300px, 4fr) minmax(0, 8fr);
   grid-template-areas: "intro intro" "today play" "shared shared";
-  gap: 12px 16px;
+  gap: var(--gap) 16px;
   align-items: stretch;
 }
 .menu-layout.has-gift { grid-template-areas: "intro intro" "gift gift" "today play" "shared shared"; }
@@ -400,7 +418,7 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 /* Flat | 3D: only when a 3D kind is unlocked or released (solid.available()); laid over the right end of the card head */
 .play-tabs {
   position: absolute; top: 16px; right: 18px; z-index: 3; display: inline-flex; padding: 3px;
-  border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: var(--r-1); background: var(--surface-2);
 }
 .play-tabs button {
   min-height: 34px; padding: 4px 16px; border: 0; border-radius: 9px; background: none; color: var(--muted);
@@ -425,7 +443,7 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
    anywhere selects it; the selected tile gets a blue frame and a check mark. Columns follow the width, rows follow the number of
    types (nine flat ones today), so a new type needs no layout change. The rules of a type are in its popover (hover or focus), its
    sheet (touch) and the caption under the grid. */
-.variant-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.variant-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--tile-min), 1fr)); gap: 10px; }
 .variant-opt { position: relative; display: block; cursor: pointer; min-width: 0; }
 /* a locked variant (dev reveal only): dashed, with a lock */
 .variant-locked .variant-card { border-style: dashed; }
@@ -441,8 +459,8 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
   height: 100%;
   min-height: 60px;
   padding: 8px 6px 8px 8px;
-  border: 2px solid var(--line);
-  border-radius: 16px;
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-tile);
   background: var(--surface-2);
   text-align: left;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
@@ -450,7 +468,7 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
   -webkit-user-select: none;
   user-select: none;
 }
-.variant-card .variant-icon { grid-area: icon; width: 38px; height: 38px; }
+.variant-card .variant-icon { grid-area: icon; width: calc(38px * var(--vi-scale)); height: calc(38px * var(--vi-scale)); }
 .variant-card::after {
   content: "\2713"; position: absolute; top: -7px; right: -7px; display: none; place-items: center; width: 18px; height: 18px;
   border-radius: 50%; background: var(--accent); color: var(--on-accent); font-size: 0.7rem; font-weight: 800; line-height: 1;
@@ -467,7 +485,7 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 
 /* The icons: a plate, tiles (a hole is a missing tile), the orange solution path with a dot on its two ends. Same classes at every
    size (picker, HUD, shared games, sheets). Colours: --icon-* in theme.css. */
-.variant-icon { display: block; flex: none; width: 72px; height: 72px; }
+.variant-icon { display: block; flex: none; width: calc(72px * var(--vi-scale)); height: calc(72px * var(--vi-scale)); }
 .vi-bg { fill: var(--icon-plate); }
 .vi-tile { fill: var(--icon-tile); stroke: var(--icon-line); stroke-width: 0.7; }
 .vi-pentagons { stroke-linejoin: round; }
@@ -506,11 +524,11 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 }
 .shared-head .tip-btn { margin-left: 0; }
 .shared-card > .shared-state { grid-column: 1 / -1; margin: 0; }
-.shared-more { grid-area: 1 / 2; min-height: 36px; padding: 4px 14px; font-size: 0.88rem; }
+.shared-more { grid-area: 1 / 2; min-height: calc(var(--ctl-h) - 10px); padding: 4px 14px; font-size: 0.88rem; }
 .shared-list { grid-area: 2 / 1 / 3 / 3; margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 10px; }
 .shared-item {
   display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 10px 12px;
-  border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2);
+  border: var(--bw-card) solid var(--line); border-radius: var(--r-2); background: var(--surface-2);
 }
 .shared-item.is-new { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); background: var(--surface); }
 .shared-info { min-width: 0; }
@@ -525,8 +543,8 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 .shared-state { margin: 4px 0 0; font-size: 0.85rem; color: var(--muted); }
 .shared-state.bad { color: var(--danger); }
 .shared-action { display: flex; gap: 8px; margin-top: 8px; }
-.shared-action .shared-play { flex: 1 1 auto; min-height: 40px; padding: 6px 14px; font-size: 0.92rem; }
-.shared-del { flex: none; min-width: 44px; min-height: 40px; padding: 6px 12px; }
+.shared-action .shared-play { flex: 1 1 auto; min-height: calc(var(--ctl-h) - 6px); padding: 6px 14px; font-size: 0.92rem; }
+.shared-del { flex: none; min-width: 44px; min-height: calc(var(--ctl-h) - 6px); padding: 6px 12px; }
 .shared-del.armed { color: var(--danger); border-color: var(--danger); }
 
 .share-msg { min-height: 1.2em; margin-top: 8px; } /* "copied" line after a solve */
@@ -537,13 +555,13 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 .replay-stage { max-width: 960px; margin: 0 auto; } /* wider than the menu: three rows of date + status per line need ~250 px each */
 .replay-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
 .replay-head .card-title { margin-bottom: 0; }
-.replay-left { padding: 4px 14px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-weight: 700; }
+.replay-left { padding: 4px 14px; border-radius: var(--r-chip); background: var(--accent-soft); color: var(--accent-text); font-weight: 700; }
 .replay-info { margin: 0 0 14px; }
 .replay-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; margin: 0 0 20px; }
 .replay-day {
   display: flex; flex-direction: column; justify-content: center; gap: 2px;
   min-width: 0; min-height: 64px; padding: 10px 12px 10px 16px;
-  border: 2px solid var(--line); border-radius: 16px; background: var(--surface-2);
+  border: var(--bw) solid var(--line); border-radius: var(--r-tile); background: var(--surface-2);
   color: var(--heading); font: inherit; text-align: left; cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
@@ -553,7 +571,7 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 .replay-date small { font-size: 0.85rem; font-weight: 400; color: var(--muted); }
 .replay-meta { display: flex; flex-wrap: wrap; gap: 0 14px; min-width: 0; font-size: 0.9rem; color: var(--muted); overflow-wrap: anywhere; }
 .replay-meta > span { min-width: 0; }
-.replay-go { flex: none; padding: 6px 14px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-weight: 700; }
+.replay-go { flex: none; padding: 6px 14px; border-radius: var(--r-chip); background: var(--accent); color: var(--on-accent); font-weight: 700; }
 .replay-day:disabled { opacity: 0.55; cursor: default; }
 .replay-day:disabled .replay-go { background: var(--muted); }
 .replay-day:not(:disabled):active { background: var(--accent-soft); border-color: var(--accent); }
@@ -567,7 +585,7 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
   gap: 16px;
   align-items: start;
 }
-.side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.side { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
 .side .card { margin: 0; }
 .board-card { margin-bottom: 0; padding: 18px; }
 
@@ -575,29 +593,29 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 .hud-title { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; font-weight: 700; color: var(--heading); } /* anchors the rules popover */
 .hud-title > span:nth-child(2) { min-width: 0; overflow-wrap: anywhere; }
 .hud-title .tip-btn { flex: none; margin-left: 0; }
-.hud-icon .variant-icon { width: 36px; height: 36px; }
+.hud-icon .variant-icon { width: calc(36px * var(--vi-scale)); height: calc(36px * var(--vi-scale)); }
 .seed-tag { margin-left: 8px; font-size: 0.85rem; font-weight: 400; color: var(--muted); }
 /* Hold-V difficulty block is a flex child of .hud (not an inline tag inside the title), so it does
    not want seed-tag's left margin; the raw numbers behind the grades are dimmer than the grades. */
 #difficultyDev { margin-left: 0; }
 #difficultyDev .dev-raw { opacity: 0.75; margin-left: 4px; }
 .difficulty-badge {
-  padding: 4px 12px; border-radius: 999px; font-size: 0.85rem; font-weight: 600;
+  padding: 4px 12px; border-radius: var(--r-chip); font-size: 0.85rem; font-weight: 600;
   background: var(--ok-bg); color: var(--ok); white-space: nowrap;
 }
 .hud-time {
-  padding: 2px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2);
+  padding: 2px 14px; border: 1px solid var(--line); border-radius: var(--r-chip); background: var(--surface-2);
   font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--heading); white-space: nowrap;
 }
 .hud-step {
-  padding: 4px 14px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-text);
+  padding: 4px 14px; border-radius: var(--r-chip); background: var(--accent-soft); color: var(--accent-text);
   font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; /* Exact: the step of the head, "Step: 12/25" */
 }
 /* Two paths: how far each colour is, a circle for red and a square for blue like the numbers */
 .two-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 .two-chip {
   display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px;
-  border: 2px solid transparent; border-radius: 999px; background: var(--accent-soft);
+  border: 2px solid transparent; border-radius: var(--r-chip); background: var(--accent-soft);
   font-weight: 600; font-variant-numeric: tabular-nums;
 }
 .two-chip.active { border-color: currentColor; }
@@ -632,7 +650,7 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 @media (prefers-reduced-motion: reduce) { .arrow-mark polygon.blocked { animation: none; fill: var(--b-wrong); } }
 
 .solved {
-  margin: 0 0 10px; padding: 12px 16px; border: 1px solid var(--ok-line); border-radius: 14px;
+  margin: 0 0 10px; padding: 12px 16px; border: 1px solid var(--ok-line); border-radius: var(--r-2);
   background: var(--ok-bg); color: var(--ok); font-weight: 700; overflow-wrap: anywhere;
 }
 .solved::before { content: "\2713  "; }
@@ -658,7 +676,7 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 /* ---------- generating ---------- */
 
 .gen-icon { margin-bottom: 10px; }
-.gen-icon .variant-icon { width: 56px; height: 56px; }
+.gen-icon .variant-icon { width: calc(56px * var(--vi-scale)); height: calc(56px * var(--vi-scale)); }
 .progress { height: 12px; margin: 16px 0 10px; background: var(--accent-soft); border-radius: 999px; overflow: hidden; }
 .progress > div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-text)); border-radius: 999px; transition: width 0.1s linear; }
 
@@ -686,13 +704,13 @@ tr:last-child td { border-bottom: 0; }
 }
 .modal-backdrop.show { display: flex; }
 .modal {
-  width: 100%; max-width: 540px; padding: 24px; background: var(--surface); border: 1px solid var(--line);
+  width: 100%; max-width: 540px; padding: 24px; background: var(--surface); border: var(--bw-card) solid var(--line);
   border-radius: var(--radius); box-shadow: var(--pop-shadow);
 }
 .modal h2 { margin-bottom: 12px; font-size: 1.2rem; }
 .modal textarea {
   display: block; width: 100%; min-height: 240px; padding: 12px; background: var(--surface-2); color: var(--heading);
-  border: 2px solid var(--line); border-radius: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  border: var(--bw) solid var(--line); border-radius: var(--r-2); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 14px; line-height: 1.55; resize: vertical;
 }
 .modal textarea:focus { outline: none; border-color: var(--accent); }
@@ -728,7 +746,7 @@ tr:last-child td { border-bottom: 0; }
 /* the whole board in a corner of the solid: the net of a tetra or cube, the far side of a ball */
 .sf-mini {
   position: absolute; top: 10px; right: 10px; width: 150px; padding: 4px;
-  background: var(--sf-mini-bg); border-radius: 12px; box-shadow: 0 0 0 1px var(--sf-mini-line);
+  background: var(--sf-mini-bg); border-radius: var(--r-1); box-shadow: 0 0 0 1px var(--sf-mini-line);
 }
 .sf-mini, .sf-mini * { pointer-events: none; }
 .sf-mini .sf-svg { width: 100%; height: auto; }
@@ -753,7 +771,7 @@ tr:last-child td { border-bottom: 0; }
 }
 
 @media (max-width: 900px) {
-  .game-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .game-layout { grid-template-columns: minmax(0, 1fr); gap: var(--gap); }
 }
 
 @media (max-width: 760px) {
@@ -763,7 +781,7 @@ tr:last-child td { border-bottom: 0; }
 
 @media (max-width: 640px) {
   #app { padding: 10px 10px calc(24px + env(safe-area-inset-bottom, 0)); }
-  .app-bar-inner { padding: 0 12px; min-height: 54px; gap: 6px; }
+  .app-bar-inner { padding: 0 12px; min-height: calc(var(--bar-h) - 4px); gap: 6px; }
   .card { padding: 14px; }
   .card-head { gap: 12px; }
   .menu-layout { gap: 10px; grid-template-areas: "intro" "today" "shared" "play"; }
@@ -809,7 +827,7 @@ tr:last-child td { border-bottom: 0; }
   .shared-card > .shared-state { padding: 0 14px 8px; }
   .shared-icon { display: none; }
   .replay-grid { grid-template-columns: 1fr; }
-  .board-card { padding: 10px; border-radius: 18px; }
+  .board-card { padding: 10px; border-radius: calc(var(--r-3) - 2px); }
   .hud { gap: 6px 10px; }
   .hud-title { flex: 1 1 100%; order: 1; font-size: 0.95rem; }
   .difficulty-badge { order: 2; font-size: 0.78rem; padding: 2px 10px; }
@@ -822,12 +840,12 @@ tr:last-child td { border-bottom: 0; }
   #app.has-actions { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0)); }
   .actions {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; margin: 0; padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0));
-    border-width: 1px 0 0; border-radius: 20px 20px 0 0; background: var(--glass);
+    border-width: 1px 0 0; border-radius: var(--r-3) var(--r-3) 0 0; background: var(--glass);
     -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
   }
   .actions .button-row { display: flex; gap: 8px; }
   .actions .btn {
-    flex: 1 1 0; flex-direction: column; gap: 2px; min-height: 54px; padding: 6px 4px; font-size: 0.74rem; line-height: 1.15; border-radius: 14px;
+    flex: 1 1 0; flex-direction: column; gap: 2px; min-height: 54px; padding: 6px 4px; font-size: 0.74rem; line-height: 1.15; border-radius: var(--r-2);
   }
   .actions .btn .bi { width: 22px; height: 22px; }
   .result-card { padding: 12px; }
@@ -838,7 +856,7 @@ tr:last-child td { border-bottom: 0; }
   /* the wide stats table becomes one small card per grid size */
   table.responsive, table.responsive tbody, table.responsive tr, table.responsive td { display: block; width: 100%; }
   table.responsive .head-row { display: none; }
-  table.responsive tr { margin-bottom: 10px; padding: 8px 14px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 14px; }
+  table.responsive tr { margin-bottom: 10px; padding: 8px 14px; background: var(--surface-2); border: var(--bw-card) solid var(--line); border-radius: var(--r-2); }
   table.responsive td { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border: 0; white-space: normal; }
   table.responsive td::before { content: attr(data-label); color: var(--muted); font-weight: 600; }
   table.responsive td:first-child { padding-bottom: 6px; color: var(--heading); font-size: 1.1rem; font-weight: 800; }
@@ -851,15 +869,21 @@ tr:last-child td { border-bottom: 0; }
 @media (max-width: 380px) {
   .app-bar-inner { gap: 4px; }
   .brand { font-size: 1.15rem; gap: 8px; }
-  .icon-btn { width: 38px; height: 38px; }
+  .icon-btn { width: calc(var(--icon-btn) - 2px); height: calc(var(--icon-btn) - 2px); }
 }
-.result-card .lucky-row.reward { margin-top: 12px; border-radius: 14px; }
+.result-card .lucky-row.reward { margin-top: 12px; border-radius: var(--r-2); }
 .result-card .lucky-row.reward + .lucky-result, .result-card .lucky-result + .lucky-result { margin-top: 10px; }
 .view-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.view-tools .btn { flex: 0 1 auto; min-height: 40px; padding: 6px 16px; font-size: 0.92rem; }
+.view-tools .btn { flex: 0 1 auto; min-height: calc(var(--ctl-h) - 6px); padding: 6px 16px; font-size: 0.92rem; }
 .share-msg:empty { display: none; }
 
 /* the 3D screen's "Follow" explanation: on a pointer it is the button's tooltip, on touch it is written out */
 .view-hint { display: none; margin: 8px 2px 0; }
 @media (hover: none) { .view-hint { display: block; } }
 .sheet-body .lucky-week span.win { background: var(--orange); color: var(--on-orange); }
+
+/* ---------- theme bounds ---------- */
+/* A theme may set --ctl-h as low as 40px; a touch screen keeps its controls at 44px. */
+@media (pointer: coarse) {
+  .btn, select { min-height: max(var(--ctl-h), 44px); }
+}

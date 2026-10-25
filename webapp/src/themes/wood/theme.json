@@ -1,6 +1,24 @@
 {
   "id": "wood",
+  "v": 1,
+  "themeApi": 1,
   "mode": "dark",
+  "name": {
+    "en": "Wood",
+    "zh": "木纹"
+  },
+  "symbol": "<ellipse cx=\"12\" cy=\"12\" rx=\"9\" ry=\"8\"/><ellipse cx=\"12.5\" cy=\"12\" rx=\"5.5\" ry=\"4.8\"/><circle cx=\"13\" cy=\"12\" r=\"1.4\"/>",
+  "layout": {
+    "menu": "dashboard",
+    "picker": "tiles",
+    "actions": "side"
+  },
+  "swatches": [
+    "#2b1d14",
+    "#3a281c",
+    "#d4a017",
+    "#a4281f"
+  ],
   "fonts": [
     {
       "family": "Zilla Slab",

@@ -22,7 +22,7 @@
     "size:level": "node tools/size-level.mjs",
     "gotd:seed": "node tools/gotd-seed.mjs --dry-run",
     "behaviour": "node tools/behaviour.mjs",
-    "themes": "node tools/theme-gen.mjs",
-    "test:themes": "node test/theme-templates.js"
+    "themes": "node ../themes/tools/gen.mjs",
+    "test:themes": "node ../themes/tools/test.mjs"
   }
 }

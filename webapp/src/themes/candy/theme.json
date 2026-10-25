@@ -1,6 +1,24 @@
 {
   "id": "candy",
+  "v": 1,
+  "themeApi": 1,
   "mode": "light",
+  "name": {
+    "en": "Candy",
+    "zh": "糖果"
+  },
+  "symbol": "<circle cx=\"12\" cy=\"12\" r=\"5\"/><path d=\"M7 12 2.5 8.5v7zM17 12l4.5-3.5v7z\"/>",
+  "layout": {
+    "menu": "dashboard",
+    "picker": "tiles",
+    "actions": "side"
+  },
+  "swatches": [
+    "#efe7ff",
+    "#ffffff",
+    "#6a4cf0",
+    "#e8384f"
+  ],
   "fonts": [
     {
       "family": "Fredoka",

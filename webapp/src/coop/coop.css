@@ -5,7 +5,7 @@
 
 .coop-pill {
   position: fixed; left: 10px; bottom: 10px; z-index: 60; padding: 6px 12px;
-  border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface);
+  border: 1px solid var(--line-strong); border-radius: var(--r-chip); background: var(--surface);
   color: var(--accent-text); font: inherit; font-size: 0.85rem; font-weight: 700; cursor: pointer;
   box-shadow: var(--shadow);
 }
@@ -29,7 +29,7 @@
 }
 
 .coop-tag {
-  margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft);
+  margin-left: 8px; padding: 1px 8px; border-radius: var(--r-chip); background: var(--accent-soft);
   color: var(--accent-text); font-size: 0.75rem; font-weight: 700; vertical-align: middle;
 }
 
@@ -40,7 +40,7 @@
 .coop-copy { display: flex; flex-wrap: wrap; gap: 8px; }
 .coop-copy .btn { flex: 0 0 auto; min-height: 44px; padding: 6px 16px; }
 .coop-copy input, .coop-page textarea {
-  min-width: 0; padding: 10px 12px; border: 2px solid var(--line-strong); border-radius: 12px;
+  min-width: 0; padding: 10px 12px; border: var(--bw) solid var(--line-strong); border-radius: var(--r-1);
   background: var(--surface); color: var(--heading); font: inherit; font-size: 0.9rem;
 }
 .coop-copy input { flex: 1 1 220px; }
@@ -52,7 +52,7 @@
 .coop-players { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
 .coop-chip {
   display: inline-flex; align-items: center; gap: 8px; padding: 3px 12px; border: 1px solid var(--line);
-  border-radius: 999px; background: var(--surface-2); font-size: 0.9rem; font-weight: 700;
+  border-radius: var(--r-chip); background: var(--surface-2); font-size: 0.9rem; font-weight: 700;
   color: var(--heading);
 }
 .coop-chip i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; }

@@ -18,8 +18,11 @@ export const COLORS = {
   wall: 'var(--b-wall)',
   arrow: 'var(--b-wall)',      // one-way arrows (same ink as the walls), with a halo
   path: 'var(--b-path)',
-  number: 'var(--b-num)',      // idle number: ring and text on the board colour; visited: filled, text --b-num-on
+  number: 'var(--b-num)',      // idle number: the digit (on --b-num-fill, inside --b-num-ring)
   numberFill: 'var(--b-num-fill)',
+  numberRing: 'var(--b-num-ring)',
+  numberVisited: 'var(--b-numv-fill)', // visited: filled, ringed with --b-numv-ring, the digit --b-num-on
+  numberVisitedRing: 'var(--b-numv-ring)',
   numberVisitedText: 'var(--b-num-on)',
   numberWrong: 'var(--b-wrong)', // an Exact number the path reached on the wrong step
   hintRing: 'var(--b-hint)',
@@ -30,12 +33,13 @@ export const COLORS = {
   twoPath: ['var(--b-red)', 'var(--b-blue)'],
 };
 
-// The colours of a number badge: idle (white, blue ring), visited (filled blue), and in an Exact
-// puzzle visited on the wrong step (filled red).
+// The colours of a number badge: idle (the idle disc, its ring), visited (the visited disc; both discs are themed, in
+// light and dark they are white with a blue ring and filled blue), and in an Exact puzzle visited on the wrong step
+// (filled red).
 export function badgeColors(visited, wrong = false) {
-  if (!visited) return { fill: COLORS.numberFill, stroke: COLORS.number, text: COLORS.number };
-  const ink = wrong ? COLORS.numberWrong : COLORS.number;
-  return { fill: ink, stroke: ink, text: COLORS.numberVisitedText };
+  if (!visited) return { fill: COLORS.numberFill, stroke: COLORS.numberRing, text: COLORS.number };
+  if (wrong) return { fill: COLORS.numberWrong, stroke: COLORS.numberWrong, text: COLORS.numberVisitedText };
+  return { fill: COLORS.numberVisited, stroke: COLORS.numberVisitedRing, text: COLORS.numberVisitedText };
 }
 
 // Two paths: the colours of a number badge of `colour` (0 red, 1 blue): idle (white, coloured ring)
