@@ -13,7 +13,7 @@
     "bench:save": "node bench/bench.js --save",
     "bench:report": "node bench/report.mjs",
     "test:bench": "node --test bench/results.test.js",
-    "test:coop": "node --test test/coop/drawing.test.js test/coop/fresh.test.js test/coop/stroke.test.js test/coop/hint.test.js test/coop/layout.test.js test/coop/view.test.js test/coop/texts-stats.test.js test/coop/cut.test.js test/coop/replica.test.js test/coop/invite.test.js test/coop/rtc.test.js test/coop/variants.test.js test/coop/session.test.js test/coop/session-ball.test.js test/coop/solid.test.js test/coop/pages.test.js",
+    "test:coop": "node --test test/coop/drawing.test.js test/coop/fresh.test.js test/coop/stroke.test.js test/coop/hint.test.js test/coop/layout.test.js test/coop/view.test.js test/coop/texts-stats.test.js test/coop/cut.test.js test/coop/replica.test.js test/coop/invite.test.js test/coop/rtc.test.js test/coop/variants.test.js test/coop/session.test.js test/coop/session-ball.test.js test/coop/solid.test.js test/coop/pages.test.js test/coop/secret.test.js test/coop/mqtt.test.js test/coop/signal.test.js test/coop/join.test.js test/coop/screen-room.test.js",
     "golden": "node test/print-golden.js",
     "share:decode": "node tools/share-decode.mjs",
     "dev:link": "node tools/dev-link.mjs",

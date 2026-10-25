@@ -80,12 +80,12 @@ async function open() {
   });
 }
 
-// Called by boot.js when the page was opened by an invite link (#c=<code>): the trial opens
-// by itself, as the guest. The code is the invite of the host.
-export const openFromLink = guard(async code => {
+// Called by boot.js when the page was opened by an invite link: the trial opens by itself, as the
+// guest. `code` is the host's connection offer (#c=) or, with `room`, the token of its room (#j=).
+export const openFromLink = guard(async (code, room = false) => {
   ensureStyles();
   await open();
-  screen?.joinFrom(code);
+  screen?.joinFrom(code, room);
 });
 
 // Called by boot.js whenever the app's hidden things are revealed (true) or hidden (false).

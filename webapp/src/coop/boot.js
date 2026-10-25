@@ -35,16 +35,17 @@ async function onReveal(event) {
   }
 }
 
-// A page opened by an invite link (#c=<code>; older links: #coop=<code>) opens the trial as the
-// guest, with no reveal.
-const INVITE = /^#(?:c|coop)=/;
+// A page opened by an invite link opens the trial as the guest, with no reveal: #j=<token> (the
+// host's room, join.js) or #c=<code> (older: #coop=<code>), the host's connection offer itself.
+const INVITE = /^#(?:c|coop|j)=/;
 
 async function openInvite() {
   const code = location.hash.replace(INVITE, '');
+  const room = location.hash.startsWith('#j=');
   history.replaceState(null, '', location.pathname + location.search);
   try {
     await load();
-    await app.openFromLink(code);
+    await app.openFromLink(code, room);
   } catch (error) {
     loading = null;
     console.warn('coop: the invite could not be opened', error);

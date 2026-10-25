@@ -48,6 +48,24 @@
 .coop-copy input:focus, .coop-page textarea:focus { outline: none; border-color: var(--accent); }
 @media (max-width: 640px) { .coop-copy input, .coop-page textarea { font-size: 16px; } }
 
+/* joining by link: the guests who ask the host, and the greeting of the guest */
+.coop-asks { display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; }
+.coop-requests { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0;
+  list-style: none; }
+.coop-request { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+.coop-greeting { margin: 0; color: var(--heading); overflow-wrap: anywhere; }
+.coop-request .button-row { flex-wrap: wrap; }
+.coop-check { display: flex; align-items: center; gap: 8px; font-size: 0.95rem; }
+.coop-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.coop-hello { display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; }
+.coop-hello input {
+  min-width: 0; padding: 10px 12px; border: 2px solid var(--line-strong); border-radius: 12px;
+  background: var(--surface); color: var(--heading); font: inherit; font-size: 0.9rem;
+}
+.coop-hello input:focus { outline: none; border-color: var(--accent); }
+@media (max-width: 640px) { .coop-hello input { font-size: 16px; } }
+
 /* who draws in which colour (online) */
 .coop-players { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
 .coop-chip {

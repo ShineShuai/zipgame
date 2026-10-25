@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   confirmDialog, exportDialog, gamePage, invitePage, joinPage, lobbyPage, menuPage, resultCard,
+  roomInvitePage, roomJoinPage, STAGE_TEXT,
 } from '../../src/coop/pages.js';
+import { GREETING_MAX, STAGES } from '../../src/coop/join.js';
+import { EN, ZH } from '../../src/coop/texts.js';
 import { PLAY_SIZES } from '../../src/core/gen/generate.js';
 
 const view = (over = {}) => ({
@@ -69,6 +72,50 @@ test('the invite, reply and lobby screens', () => {
   assert.ok(lobbyPage({ role: 'host', size: 7, status: 's' }).includes('data-act="start"'));
   assert.ok(!lobbyPage({ role: 'guest', size: 7, status: 's' }).includes('data-act="start"'));
   assert.ok(invitePage({ link: '', status: 'bad', error: true }).includes('note error'));
+});
+
+test('the host\'s page by link: the link, the ask-for-greeting box, and who wants to join', () => {
+  const link = 'https://x.test/#j=abc';
+  const page = roomInvitePage({ link, status: 'Waiting', canShare: true, needGreeting: true });
+  assert.ok(page.includes('value="https://x.test/#j=abc"') && page.includes('data-act="share"'));
+  assert.ok(/id="coopNeedGreeting"[^>]*checked/.test(page));
+  assert.ok(!roomInvitePage({ link, status: 's' }).includes(' checked'));
+  assert.ok(!page.includes('coop-request') && !page.includes('data-act="manual"'));
+  assert.ok(!roomInvitePage({ link: '', status: 'Preparing' }).includes('coopLink'));
+  const asked = roomInvitePage({
+    link,
+    status: 's',
+    requests: [
+      { id: 'A_-0123456b', greeting: '<b>Anna</b> & "co"' },
+      { id: 'B_-0123456b', greeting: '' },
+    ],
+  });
+  assert.equal([...asked.matchAll(/data-act="accept"/g)].length, 2);
+  assert.ok(asked.includes('data-act="decline" data-id="B_-0123456b"'));
+  assert.ok(asked.includes('&lt;b>Anna&lt;/b> &amp; &quot;co&quot;') && !asked.includes('<b>Anna'));
+  assert.ok(asked.includes(EN.noGreeting));
+  const down = roomInvitePage({ link, status: 'down', error: true, down: true });
+  assert.ok(down.includes('data-act="manual"'));
+});
+
+test('the guest\'s page by link: a greeting form while it may ask, then only the news', () => {
+  for (const stage of ['looking', 'ready']) {
+    const form = roomJoinPage({ stage, status: 's', greeting: 'Hi "you"' });
+    assert.ok(form.includes('data-act="join"') && form.includes(`maxlength="${GREETING_MAX}"`));
+    assert.ok(form.includes('value="Hi &quot;you&quot;"'));
+  }
+  assert.ok(roomJoinPage({ stage: 'ready', status: 's', needGreeting: true }).includes('*'));
+  for (const stage of STAGES.filter(name => !['looking', 'ready'].includes(name))) {
+    const page = roomJoinPage({ stage, status: 'news' });
+    assert.ok(!page.includes('coopGreeting') && page.includes('data-act="cancel"'), stage);
+  }
+});
+
+test('every stage of a join has a text in both languages', () => {
+  assert.deepEqual(Object.keys(STAGE_TEXT).sort(), [...STAGES].sort());
+  for (const [key] of Object.values(STAGE_TEXT)) {
+    assert.ok(EN[key] && ZH[key], key);
+  }
 });
 
 test('dialogs use the play app\'s modal, and the puzzle text is escaped', () => {
