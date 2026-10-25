@@ -20,3 +20,15 @@ export const ICE_SERVERS = [
   { urls: 'stun:stun.miwifi.com:3478' },
   { urls: 'stun:stun.chat.bilibili.com:3478' },
 ];
+
+// Where two devices meet before they are connected (join.js, signal.js): public MQTT brokers, all
+// used at once, so that one being down or blocked on either side does not stop a join. MQTT is
+// a publish/subscribe messaging protocol; these brokers are free, open and carry no guarantee, so
+// everything sent through them is encrypted (secret.js). `id` is the short name of the dev line;
+// `url` is a secure WebSocket (a page cannot use a plain one). Each origin must also be listed
+// in the connect-src of index.html (npm run check tells). Check a list with tools/signal-probe.mjs.
+export const SIGNAL_BROKERS = [
+  { id: 'mq', url: 'wss://test.mosquitto.org:8081' },
+  { id: 'hv', url: 'wss://broker.hivemq.com:8884/mqtt' },
+  { id: 'em', url: 'wss://broker.emqx.io:8084/mqtt' },
+];

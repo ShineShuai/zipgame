@@ -5,7 +5,9 @@ import { generateCutout, CUTOUT_MAX_MS } from '../../src/core/gen/cutout.js';
 import { generateExact } from '../../src/core/gen/exact.js';
 import { generate } from '../../src/core/gen/generate.js';
 import { generatePentagon } from '../../src/core/gen/pentagon.js';
+import { generateLoop } from '../../src/core/gen/loop.js';
 import { generateTeleport } from '../../src/core/gen/teleport.js';
+import { generateTwoPaths } from '../../src/core/gen/twopaths.js';
 import { COOP_VARIANTS } from '../../src/coop/variants.js';
 import { runSync } from '../../src/core/run.js';
 import { makeRng, shuffle } from '../../src/core/rng.js';
@@ -17,6 +19,7 @@ import { solutionOf } from '../../src/features/hints.js';
 import { neighbourCell } from '../../src/core/geom.js';
 import { arrowDirId, edgeId, setArrowId } from '../../src/core/edges.js';
 import { createDrawing, unsupported } from '../../src/coop/drawing.js';
+import { solutionEdges as solutionEdgesOf } from '../../src/coop/model.js';
 
 // A 4x4 board with numbers 1 (cell 0), 2 (cell 5), 3 (cell 10), 4 (cell 15) and no walls.
 function board() {
@@ -122,7 +125,7 @@ test('edges() lists the lines in the order they were drawn, smaller cell first',
   assert.deepEqual(drawing.edges(), [[1, 2], [5, 6], [2, 3]]);
 });
 
-test('only Loop, Two paths and unknown surfaces are refused', () => {
+test('every flat puzzle is played; of the surfaces only the known kinds', () => {
   const puzzle = board();
   assert.equal(unsupported(puzzle), null);
   assert.equal(unsupported({ ...puzzle, holes: new Uint8Array(16) }), null);
@@ -130,9 +133,8 @@ test('only Loop, Two paths and unknown surfaces are refused', () => {
   assert.equal(unsupported({ ...puzzle, arrows: new Uint8Array(16) }), null);
   assert.equal(unsupported({ ...puzzle, wrap: true }), null);
   assert.equal(unsupported({ ...puzzle, portals: [[1, 14]] }), null);
-  for (const name of ['loop', 'split']) {
-    assert.match(unsupported({ ...puzzle, [name]: true }), new RegExp(name));
-  }
+  assert.equal(unsupported({ ...puzzle, loop: true }), null);
+  assert.equal(unsupported({ ...puzzle, split: 2 }), null);
   assert.equal(unsupported(makeSurfacePuzzle('pentagon', 6)), null);
   assert.equal(unsupported(makeSurfacePuzzle('cube', 2)), null);
   assert.equal(unsupported(makeSurfacePuzzle('tetra', 2)), null);
@@ -146,7 +148,7 @@ const PUZZLES = [5, 6, 7, 8].flatMap(
 test('soundness: any part of the solution can be drawn, in any order, from anywhere', () => {
   const rnd = makeRng(2024);
   for (const puzzle of PUZZLES) {
-    const edges = solutionEdges(solutionOf(puzzle));
+    const edges = solutionEdgesOf(puzzle);
     for (let round = 0; round < 6; round++) {
       const drawing = createDrawing(puzzle);
       const part = shuffle(edges.filter(() => rnd() < 0.3 + 0.12 * round), rnd);
@@ -160,7 +162,7 @@ test('soundness: any part of the solution can be drawn, in any order, from anywh
 test('the whole solution drawn in any order is solved, one edge short of it is not', () => {
   const rnd = makeRng(7);
   for (const puzzle of PUZZLES) {
-    const edges = solutionEdges(solutionOf(puzzle));
+    const edges = solutionEdgesOf(puzzle);
     const drawing = createDrawing(puzzle);
     const order = shuffle(edges.slice(), rnd);
     order.forEach(([a, b], i) => {
@@ -263,6 +265,8 @@ const WRAPS = [4, 5, 6].flatMap(
   n => [1, 2, 3].map(seed => runSync(generate(n, seed, { wrap: true }))),
 );
 const TELEPORTS = [5, 6, 7, 8].flatMap(n => [1, 2].map(seed => runSync(generateTeleport(n, seed))));
+const LOOPS = [6, 8].flatMap(n => [1, 2].map(seed => runSync(generateLoop(n, seed))));
+const TWO_PATHS = [5, 6, 7].flatMap(n => [1, 2].map(seed => runSync(generateTwoPaths(n, seed))));
 const PENTAGONS = [4, 6, 8].flatMap(n => [1, 2].map(seed => runSync(generatePentagon(n, seed))));
 const solids = (id, sizes, seeds) => {
   const variant = COOP_VARIANTS.find(candidate => candidate.id === id);
@@ -303,14 +307,14 @@ function allEdges(puzzle) {
 const SETS = [
   ['Cutout', CUTOUTS], ['Exact', EXACTS], ['Arrows', ARROWS], ['Wrap-around', WRAPS],
   ['Teleport', TELEPORTS], ['Pentagon', PENTAGONS], ['Tetra', TETRAS], ['Cube', CUBES],
-  ['Ball', BALLS],
+  ['Ball', BALLS], ['Loop', LOOPS], ['Two paths', TWO_PATHS],
 ];
 for (const [label, puzzles] of SETS) {
   test(`${label}: any part of the solution can be drawn in any order; the whole is solved`, () => {
     const rnd = makeRng(31);
     for (const puzzle of puzzles) {
       assert.equal(unsupported(puzzle), null);
-      const edges = solutionEdges(solutionOf(puzzle));
+      const edges = solutionEdgesOf(puzzle);
       for (let round = 0; round < 6; round++) {
         const drawing = createDrawing(puzzle);
         const part = shuffle(edges.filter(() => rnd() < 0.3 + 0.12 * round), rnd);
@@ -336,8 +340,12 @@ for (const [label, puzzles] of SETS) {
         for (const [a, b] of shuffle(every.slice(), rnd)) {
           drawing.add(a, b);
         }
-        const full = drawing.count() === cellCount(puzzle) - 1;
-        assert.equal(isSolved(puzzle, drawing.path()), full);
+        // a ring has as many lines as cells, two paths two fewer, a path one fewer
+        const lines = cellCount(puzzle) - (puzzle.loop ? 0 : puzzle.split ? 2 : 1);
+        const full = drawing.count() === lines;
+        const solved = puzzle.loop || puzzle.split
+          ? drawing.solved() : isSolved(puzzle, drawing.path());
+        assert.equal(solved, full);
       }
     }
   });
@@ -435,4 +443,112 @@ test('Teleport: the two portals of a pair are linked by a line, anywhere on the 
   assert.equal(drawing.add(1, 14), 'present');
   assert.equal(drawing.add(14, 10), null); // goes on from the other portal
   assert.equal(drawing.add(1, 13), 'blocked'); // not a neighbour, not the partner
+});
+
+// A 4x4 Loop puzzle: the ring 0 1 2 3 7 6 5 9 10 11 15 14 13 12 8 4 (and back to 0), the numbers
+// 1 2 3 4 5 on cells 0 3 6 10 4, in that order round the ring.
+const RING = [0, 1, 2, 3, 7, 6, 5, 9, 10, 11, 15, 14, 13, 12, 8, 4];
+function loopBoard() {
+  const puzzle = makePuzzle(4);
+  puzzle.loop = true;
+  [[0, 1], [3, 2], [6, 3], [10, 4], [4, 5]].forEach(([cell, number]) => {
+    puzzle.cp[cell] = number;
+  });
+  return puzzle;
+}
+
+test('Loop: a ring has no end, so cell 1 and the last number hold two lines like the rest', () => {
+  const drawing = createDrawing(loopBoard());
+  assert.equal(drawing.add(0, 1), null);
+  assert.equal(drawing.add(0, 4), null); // cell 1 with two lines; number 5 next to number 1
+  assert.equal(drawing.add(4, 5), null); // and number 5 with two
+});
+
+test('Loop: the numbers of a piece are consecutive round the ring, and 5 is followed by 1', () => {
+  const drawing = createDrawing(loopBoard());
+  assert.equal(drawing.add(0, 4), null); // 1 and 5: next to each other round the ring
+  assert.equal(drawing.add(4, 8), null);
+  assert.equal(drawing.add(0, 1), null);
+  const skip = createDrawing(loopBoard());
+  assert.equal(skip.add(0, 1), null);
+  assert.equal(skip.add(1, 5), null);
+  assert.equal(skip.add(5, 6), 'gap'); // 1 and 3 on one piece, with 2 elsewhere: not round the ring
+});
+
+test('Loop: only the line that closes a piece covering the board makes a ring', () => {
+  const drawing = createDrawing(loopBoard());
+  for (const [a, b] of [[0, 1], [1, 5], [5, 4]]) {
+    assert.equal(drawing.add(a, b), null);
+  }
+  assert.equal(drawing.add(4, 0), 'cycle'); // a ring of 4 cells is no ring of 16
+  const whole = createDrawing(loopBoard());
+  RING.slice(1).forEach((cell, i) => assert.equal(whole.add(RING[i], cell), null));
+  assert.equal(whole.solved(), false); // 15 lines: not closed yet
+  assert.equal(whole.add(4, 0), null);
+  assert.equal(whole.solved(), true);
+  assert.equal(whole.count(), 16);
+  assert.equal(whole.add(1, 5), 'degree'); // every cell holds its two lines
+});
+
+test('Loop: the ring is solved whichever way it was drawn, and a wrong order is not', () => {
+  const backwards = createDrawing(loopBoard());
+  [...RING].reverse().forEach((cell, i, list) => {
+    backwards.add(cell, list[(i + 1) % list.length]);
+  });
+  assert.equal(backwards.solved(), true);
+  const swapped = loopBoard();
+  swapped.cp[3] = 3;
+  swapped.cp[6] = 2; // 1 3 2 4 5 round the ring
+  const drawing = createDrawing(swapped);
+  RING.slice(1).forEach((cell, i) => drawing.add(RING[i], cell));
+  assert.equal(drawing.count() < 15, true); // the lines through 3 and 2 were refused on the way
+});
+
+// A 4x4 Two paths puzzle: the red path 0 1 2 3 (numbers 1, 2), the blue path 4 5 6 7 11 10 9 8
+// 12 13 14 15 (numbers 3 and 4: blue 1 and 2), split = 2.
+const RED = [0, 1, 2, 3];
+const BLUE = [4, 5, 6, 7, 11, 10, 9, 8, 12, 13, 14, 15];
+function twoBoard() {
+  const puzzle = makePuzzle(4);
+  puzzle.split = 2;
+  [[0, 1], [3, 2], [4, 3], [15, 4]].forEach(([cell, number]) => {
+    puzzle.cp[cell] = number;
+  });
+  return puzzle;
+}
+
+test('Two paths: cell 1, the last red number, the first blue one, the last one are ends', () => {
+  const drawing = createDrawing(twoBoard());
+  assert.equal(drawing.add(2, 3), null);
+  assert.equal(drawing.add(3, 7), 'degree'); // the last red number holds one line
+  assert.equal(drawing.add(4, 5), null);
+  assert.equal(drawing.add(0, 4), 'degree'); // the first blue number holds one line
+  assert.equal(drawing.add(1, 0), null);
+  assert.equal(drawing.add(0, 1), 'present');
+});
+
+test('Two paths: a piece holds red numbers or blue ones, never both', () => {
+  const puzzle = makePuzzle(4);
+  puzzle.split = 2;
+  [[0, 1], [1, 3], [8, 2], [15, 4]].forEach(([cell, number]) => {
+    puzzle.cp[cell] = number;
+  });
+  const drawing = createDrawing(puzzle);
+  assert.equal(drawing.add(0, 1), 'colours'); // red 1 and blue 1
+  assert.equal(drawing.add(1, 5), null);
+  assert.equal(drawing.add(5, 9), null);
+  assert.equal(drawing.add(9, 8), 'colours'); // red 2 on the piece of blue 1
+});
+
+test('Two paths: both paths drawn, in any order, are solved; two lines short are not', () => {
+  const lines = path => path.slice(1).map((cell, i) => [path[i], cell]);
+  const edges = [...lines(RED), ...lines(BLUE)];
+  const drawing = createDrawing(twoBoard());
+  for (const [a, b] of shuffle(edges.slice(), makeRng(4))) {
+    assert.equal(drawing.add(a, b), null);
+  }
+  assert.equal(drawing.count(), 14);
+  assert.equal(drawing.solved(), true);
+  drawing.remove(0, 1);
+  assert.equal(drawing.solved(), false);
 });
