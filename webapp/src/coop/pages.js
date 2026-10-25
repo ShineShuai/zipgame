@@ -224,7 +224,7 @@ const chips = ({ pid, peerHere }) => `<p class="coop-players">`
 export function gamePage(view) {
   const {
     n, online, pid, peerHere, revealed, grade, seedText, devText, time, hintsLeft, variantName,
-    sizeName = `${n}×${n}`, viewLabel = '',
+    sizeName = `${n}×${n}`, viewLabel = '', helpAvailable = false,
   } = view;
   const badge = grade
     ? `<span class="difficulty-badge">${t('grade.' + grade)} · ${grade}/5</span>` : '';
@@ -245,6 +245,11 @@ export function gamePage(view) {
       + `${t('game.hint', hintsLeft.used, hintsLeft.cap)}</button>`,
     `<button class="btn secondary" data-act="export" ${dev(revealed)}>Export</button>`,
     viewButton,
+    // ask a friend to join the game that is on (shown while nobody else is in it)
+    helpAvailable
+      ? `<button class="btn secondary" data-act="invite-help" id="coopHelp"`
+        + `${peerHere ? ' style="display:none"' : ''}>${tx('inviteHelp')}</button>`
+      : '',
   ].join('');
   return page(`<div class="game-layout"><section class="card board-card"><div class="hud">`
     + `<div class="hud-title"><span class="hud-icon">${cardIcon('free')}</span>`

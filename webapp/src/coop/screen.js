@@ -22,7 +22,7 @@ import {
   acceptReply, createInvite, joinInvite, probeServers, probeText, rtcSupported,
 } from './rtc.js';
 import { resumeRoom } from './resume.js';
-import { signalSupported } from './secret.js';
+import { newSecret, signalSupported } from './secret.js';
 import { createSession } from './session.js';
 import { createHub } from './signal.js';
 import { recordSolve } from './stats.js';
@@ -56,6 +56,7 @@ const HOLD_MS = 500; // press and hold this long on a line to cut it
 const HOLD_SLOP_PX = 10; // moving the pointer farther than this is a drag, not a hold
 const CONNECT_MS = 30000; // a connection that has not opened by then is given up
 const GUEST_WAIT_MS = 180000; // the guest's: the host first has to copy the reply and paste it
+const NET_GRACE_MS = 5000; // no broker this long after a break: the fault is probably ours
 const KEEP_DELAY_MS = 1000; // a game in progress is saved this long after the last change
 const pageUrl = () => location.href.split('#')[0].split('?')[0];
 const linkFor = code => `${pageUrl()}#c=${code}`;
@@ -132,6 +133,11 @@ export function openScreen(env) {
     kept: null, // a game kept on this device (keep.js), offered in the menu
     keepTimer: null,
     attempts: [], // connections made while looking for the other device, not open yet
+    invitation: null, // an invite made from a running game: its connection, not open yet
+    fromGame: false, // the invite page was opened from a running game; Cancel goes back to it
+    peerSeen: false, // while looking for the other device: it has been heard on the brokers
+    lostAt: 0, // when the connection was lost (performance.now())
+    netTimer: null,
     peerLeft: false, // the other device said bye: no reconnecting
     startedWall: 0, // when the game started (Date.now()): the time goes on over a reload
     hub: null, // room mode: the brokers (signal.js)
@@ -260,6 +266,7 @@ export function openScreen(env) {
       time: state.elapsed,
       hintsLeft: { used: state.hintsUsed, cap: maxHints(state.puzzle) },
       canNew: state.role !== 'guest',
+      helpAvailable: rtcSupported() && signalSupported(),
     };
   }
 
@@ -319,6 +326,8 @@ export function openScreen(env) {
   // ---------- connection ----------
   // The room (join.js) clears its messages from the brokers and closes the connections to them.
   function closeSignal() {
+    clearTimeout(state.netTimer);
+    state.netTimer = null;
     state.room?.close();
     state.hub?.close();
     Object.assign(state, { room: null, hub: null });
@@ -340,10 +349,12 @@ export function openScreen(env) {
       state.session.leave();
     }
     state.connection?.close();
+    state.invitation?.close();
     closeAttempts();
     Object.assign(state, {
       session: null, connection: null, role: 'solo', peerHere: false, waiting: false,
       secret: '', keepTimer: null, attempts: [], peerLeft: false, startedWall: 0,
+      invitation: null, fromGame: false, peerSeen: false, lostAt: 0,
       link: '', code: '', status: '', error: false, route: '', probe: null, mode: 'code',
       requests: [], needGreeting: false, signalDown: false, stage: '', greeting: '', signalText: '',
     });
@@ -391,13 +402,80 @@ export function openScreen(env) {
   }
 
   // Wires a new connection to a session; when the channel opens, both sides say hello.
+  // An invite made from a running game keeps the game: only what looks for the old friend stops.
+  function prepareInvite() {
+    if (state.fromGame) {
+      state.token++;
+      clearTimeout(state.connectTimer);
+      state.invitation?.close();
+      Object.assign(state, { invitation: null });
+      closeSignal();
+      closeAttempts();
+    } else {
+      teardown();
+    }
+  }
+
+  // The friend connects to a game that is on: when the channel opens, this device becomes the host
+  // of the game (with the number it had), the friend takes the other place, and the game goes on
+  // for both with everything drawn so far. Until then the game stays as it was.
+  function adoptRunning(connection, secret) {
+    const token = state.token;
+    const text = state.session?.current?.text
+      ?? serializePuzzle(state.puzzle, { path: state.puzzle.path });
+    const session = createSession({
+      role: 'host', pid: pid(), channel: connection.channel, onEvent: onSessionEvent,
+      heartbeat: true, info: gameInfo,
+    });
+    const restored = session.restore({ text, seed: state.seed, ops: state.drawing.ops() });
+    state.invitation = connection;
+    connection.channel.onopen = async () => {
+      const drawing = await restored;
+      if (state.invitation !== connection || token !== state.token) {
+        return;
+      }
+      clearTimeout(state.connectTimer);
+      state.signalText = state.hub?.report() ?? '';
+      closeSignal();
+      state.session?.leave();
+      state.connection?.close();
+      Object.assign(state, {
+        session,
+        drawing,
+        puzzle: drawing.puzzle,
+        role: 'host',
+        connection,
+        invitation: null,
+        secret: secret ? toBase64Url(secret) : '',
+        peerLeft: false,
+      });
+      readRoute(connection);
+      session.hello();
+      shareSecret();
+      session.share(); // the game goes to the friend; 'start' (shared) comes when it has it
+    };
+  }
+
+  // A connection made by hand has no secret to find each other again with: the host makes one and
+  // tells the guest over the channel (which only the two can read).
+  function shareSecret() {
+    if (!state.secret && state.role === 'host') {
+      state.secret = newSecret();
+      state.session.sendSecret(state.secret);
+    }
+  }
+
   function adopt(connection, role, secret) {
+    if (state.fromGame) {
+      adoptRunning(connection, secret);
+      return;
+    }
     state.connection = connection;
     state.role = role;
     state.secret = secret ? toBase64Url(secret) : '';
     state.peerLeft = false;
     state.session = createSession({
-      role, channel: connection.channel, onEvent: onSessionEvent, heartbeat: true,
+      role, channel: connection.channel, onEvent: onSessionEvent, heartbeat: true, info: gameInfo,
     });
     connection.channel.onopen = () => {
       if (state.phase !== 'inviting' && state.phase !== 'joining') {
@@ -408,6 +486,7 @@ export function openScreen(env) {
       closeSignal();
       readRoute(connection);
       state.session.hello();
+      shareSecret();
       state.phase = 'lobby';
       state.status = role === 'host' ? tx('connected') : tx('waitStart');
       state.error = false;
@@ -422,11 +501,15 @@ export function openScreen(env) {
       await hostCode();
       return;
     }
-    teardown();
+    prepareInvite();
     const token = state.token;
     const hub = createHub({ brokers: SIGNAL_BROKERS });
     Object.assign(state, {
-      phase: 'inviting', role: 'host', mode: 'room', hub, status: tx('making'),
+      phase: 'inviting',
+      role: state.fromGame ? state.role : 'host',
+      mode: 'room',
+      hub,
+      status: tx('making'),
     });
     render();
     const current = () => token === state.token;
@@ -476,6 +559,35 @@ export function openScreen(env) {
     }
   }
 
+  // The button in a game: a friend is asked to join it (solo, or after the other has gone).
+  async function inviteToGame() {
+    if (state.phase !== 'playing' || !rtcSupported() || !signalSupported()) {
+      return;
+    }
+    state.fromGame = true;
+    await hostInvite();
+  }
+
+  // Cancel: from an invite made in a game it goes back to the game, looking for the old friend.
+  function cancelInvite() {
+    if (!state.fromGame) {
+      showMenu();
+      return;
+    }
+    state.token++;
+    clearTimeout(state.connectTimer);
+    state.invitation?.close();
+    closeSignal();
+    Object.assign(state, {
+      fromGame: false, invitation: null, phase: 'playing', mode: 'code', requests: [], link: '',
+      status: '', error: false,
+    });
+    renderGame();
+    if (state.session && state.secret && !state.peerLeft && !state.peerHere) {
+      startResume();
+    }
+  }
+
   async function acceptRequest(id) {
     if (!state.room) {
       return;
@@ -488,9 +600,14 @@ export function openScreen(env) {
 
   // Host, by code: the older way, still there when the brokers cannot be reached.
   async function hostCode() {
-    teardown();
+    prepareInvite();
     const token = state.token;
-    Object.assign(state, { phase: 'inviting', role: 'host', status: tx('making') });
+    Object.assign(state, {
+      phase: 'inviting',
+      role: state.fromGame ? state.role : 'host',
+      mode: 'code',
+      status: tx('making'),
+    });
     render();
     try {
       const { code, connection } = await createInvite();
@@ -511,11 +628,12 @@ export function openScreen(env) {
 
   async function connectReply() {
     const field = el('coopReply');
-    if (!field || !state.connection) {
+    const connection = state.invitation ?? state.connection;
+    if (!field || !connection) {
       return;
     }
     try {
-      await acceptReply(state.connection, field.value);
+      await acceptReply(connection, field.value);
       setStatus(tx('connecting'));
       armConnectTimer();
     } catch {
@@ -615,7 +733,24 @@ export function openScreen(env) {
         Object.assign(state, { puzzle: event.puzzle, seed: event.seed, drawing: event.replica });
         break;
       case 'start':
-        beginPlaying();
+        if (event.shared) { // host: the friend has the game that is on
+          markPeer(true);
+          if (state.fromGame) {
+            Object.assign(state, {
+              fromGame: false, phase: 'playing', mode: 'code', requests: [], link: '',
+            });
+            renderGame();
+            keepNow();
+          }
+          setMessage(tx('friendJoined'));
+        } else if (state.phase !== 'playing' || state.seed !== event.seed) {
+          beginPlaying();
+        }
+        break;
+      case 'secret': // guest: a connection made by hand gets a secret to find each other again
+        if (!state.secret) {
+          state.secret = event.secret;
+        }
         break;
       case 'op':
         if (state.phase === 'playing') {
@@ -672,9 +807,15 @@ export function openScreen(env) {
   // ---------- a game that goes on after a break or a reload ----------
   const storage = env.storage ?? null;
 
+  const gameInfo = () => ({ elapsed: state.elapsed, hints: state.hintsUsed });
+
   function markPeer(here) {
     state.peerHere = here;
     el('coopPeer')?.classList.toggle('gone', !here);
+    const help = el('coopHelp'); // nobody to help any more, or somebody: the button follows
+    if (help) {
+      help.style.display = here ? 'none' : '';
+    }
   }
 
   // The game as it stands goes into the storage (keep.js), when the connection is one the two
@@ -688,6 +829,7 @@ export function openScreen(env) {
     }
     saveGame(storage, makeRecord({
       role: state.role,
+      pid: pid(),
       seed: game.seed,
       text: game.text,
       ops: state.drawing.ops(),
@@ -741,20 +883,43 @@ export function openScreen(env) {
     };
   }
 
+  // While the other device is looked for, the message says which side is cut off: this one (the
+  // browser says it is offline, or no broker can be reached), or the friend (the brokers answer,
+  // and it is not on them), or that the friend is on them again.
+  function refreshNet() {
+    if (!state.hub || state.phase !== 'playing' || !state.session || state.fromGame) {
+      return;
+    }
+    let key = 'reconnecting';
+    if (navigator.onLine === false) {
+      key = 'youOffline';
+    } else if (state.hub.anyUp()) {
+      key = state.peerSeen ? 'friendBack' : 'friendOffline';
+    } else if (performance.now() - state.lostAt > NET_GRACE_MS) {
+      key = 'youOffline';
+    }
+    setMessage(tx(key));
+  }
+
   // Looks for the other device where only the two can meet (resume.js), until it is found.
   async function startResume() {
     if (state.hub || !state.secret || !state.session) {
       return;
     }
     const token = state.token;
-    const hub = createHub({ brokers: SIGNAL_BROKERS });
-    state.hub = hub;
+    const hub = createHub({ brokers: SIGNAL_BROKERS, onChange: refreshNet });
+    Object.assign(state, { hub, peerSeen: false, lostAt: performance.now() });
     setMessage(tx('reconnecting'));
+    state.netTimer = setTimeout(refreshNet, NET_GRACE_MS);
     try {
       const room = await resumeRoom({
         hub,
         secret: fromBase64Url(state.secret),
         pid: pid(),
+        onPeer: here => {
+          state.peerSeen = here;
+          refreshNet();
+        },
         onConnection: reattach,
         onExpired: () => {
           if (token === state.token) {
@@ -788,7 +953,9 @@ export function openScreen(env) {
     }
     teardown();
     const token = state.token;
-    const session = createSession({ role: record.role, onEvent: onSessionEvent, heartbeat: true });
+    const session = createSession({
+      role: record.role, pid: record.pid, onEvent: onSessionEvent, heartbeat: true, info: gameInfo,
+    });
     let drawing = null;
     try {
       drawing = await session.restore(record);
@@ -878,8 +1045,12 @@ export function openScreen(env) {
     state.seed = seed;
     if (state.session) {
       state.drawing = state.session.newGame(puzzle, seed);
-      state.waiting = true;
-      render(); // the game begins when the other device has the puzzle ('start')
+      if (state.peerHere) {
+        state.waiting = true;
+        render(); // the game begins when the other device has the puzzle ('start')
+      } else {
+        beginPlaying(); // the friend is away: it gets this game when it is back
+      }
     } else {
       state.drawing = createReplica(puzzle, { pid: 0 });
       beginPlaying();
@@ -1364,6 +1535,7 @@ export function openScreen(env) {
     teardown();
     document.removeEventListener('visibilitychange', wake);
     window.removeEventListener('online', wake);
+    window.removeEventListener('offline', refreshNet);
     window.removeEventListener('pagehide', keepNow);
     document.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('resize', placeRoot);
@@ -1398,7 +1570,8 @@ export function openScreen(env) {
         render();
       },
       connect: connectReply,
-      cancel: showMenu,
+      cancel: cancelInvite,
+      'invite-help': inviteToGame,
       start: startGame,
       menu: requestLeave,
       new: startGame,
@@ -1503,10 +1676,12 @@ export function openScreen(env) {
       keepNow(); // may be the last chance: the page can be dropped from memory in the background
     } else {
       state.hub?.wake();
+      refreshNet();
     }
   }
   document.addEventListener('visibilitychange', wake);
   window.addEventListener('online', wake);
+  window.addEventListener('offline', refreshNet);
   window.addEventListener('pagehide', keepNow);
   render();
   if (storage) {
