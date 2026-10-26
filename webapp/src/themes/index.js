@@ -1,19 +1,24 @@
 // The theme controller: the pool (pool.js), the device's own themes (store.js) and the page (apply.js) put together. Storage
-// and the system's colour scheme are injected. A theme reaches a player only as an offer: the mechanism that runs an event hands
-// `offer` a token (or `trial` a bundle); the player sees the theme (trial), and takes it
-// (commit: it is saved on the device and in the pool, replacing a theme when the pool is full) or leaves it (revert: it is
-// gone, nothing was kept). A theme that is in the pool needs no network. The mechanisms that award slots call setCap.
+// and the system's colour scheme are injected. A theme reaches a player as an offer: when an event fires, `event({ id, until })` picks a
+// theme from the pool of the site (source.js, event.js), the player sees it (trial), and takes it (commit: it is saved on the device and in
+// the pool, replacing a theme when the pool is full) or leaves it (revert: it is gone, nothing was kept). A theme that is in the
+// player's pool needs no network. The mechanisms that award slots call setCap. The dev reveal lists the whole pool of the site
+// (`pool`) and tries (`tryPool`) or keeps (`keepPool`) any theme of it, whatever the cap.
 import { BUILTIN } from './builtin.js';
 import { applyEntry, loadFonts as realLoadFonts } from './apply.js';
 import { cleanBundle } from './bundle.js';
 import {
-  MODE_KEY, POOL_KEY, activeEntry, isClassicPool, nextEntry, parseState, remove, save, select, serialize, setCap,
+  EVENT_KEY, EVENT_RE, SEED_KEY, SEED_RE, newSeed, offerOrder,
+} from './event.js';
+import {
+  MODE_KEY, POOL_KEY, activeEntry, evictable, isClassicPool, nextEntry, parseState, remove, save, select, serialize, setCap,
 } from './pool.js';
 
 const MAX_TIMEOUT = 2 ** 31 - 1;
+const OFFER_TRIES = 3;     // files tried for one offer (the picked theme, then the next ones) before there is no offer
 
 export function createThemes({
-  storage, media, store, source, apply = applyEntry, loadFonts = realLoadFonts, known, now = Date.now, timers = globalThis,
+  storage, media, store, source, apply = applyEntry, loadFonts = realLoadFonts, known, now = Date.now, timers = globalThis, random = Math.random,
 }) {
   const read = key => { try { return storage.getItem(key); } catch { return null; } };
   const write = (key, value) => {
@@ -70,6 +75,19 @@ export function createThemes({
     return true;
   }
 
+  // The device seed: random, made on first use, so that the same event gives the same theme on this device and another one elsewhere.
+  const seed = () => {
+    let value = read(SEED_KEY);
+    if (!SEED_RE.test(value ?? '')) { value = newSeed(random); write(SEED_KEY, value); }
+    return value;
+  };
+
+  // The bundle of a pool entry, on trial (null: the file is missing, is not a valid bundle, or is not the theme the manifest says).
+  const trialOf = async (c, opts) => {
+    const raw = await source?.bundle?.(c.f);
+    return raw && raw.id === c.entry.id ? api.trial(raw, opts) : null;
+  };
+
   const api = {
     state: () => state,
     current: () => shown ?? activeEntry(state, systemMode()),
@@ -93,11 +111,40 @@ export function createThemes({
       persist();
       showActive();
     },
-    // The offered theme behind `token` (see source.js), shown on trial: Promise<{ entry, commit, revert } | null>. null when the file is not
-    // there (the event is over), is not a valid bundle, or `until` has passed.
-    offer: async (token, opts) => {
-      const raw = await source?.bundle(token);
-      return raw ? api.trial(raw, opts) : null;
+    // An event fires: puts one theme of the site's pool on trial, shown until `until` (ms, the end of the event; the theme goes by itself
+    // then). Promise<{ entry, commit, revert } | null>: commit(replaceId) keeps it and makes it the active theme, revert() leaves it; either
+    // answers the event, which is not offered again. null: no valid id, the event is over or already answered, or there is nothing to
+    // offer (the pool is not reachable, empty, all owned, all drafts, or the files are not valid).
+    event: async ({ id, until } = {}) => {
+      if (!EVENT_RE.test(id ?? '') || read(EVENT_KEY) === id || (until && until <= now())) return null;
+      const list = ((await source?.pool?.()) ?? []).filter(c => c.live && !api.owns(c.entry.id));
+      for (const c of offerOrder(list, seed(), id).slice(0, OFFER_TRIES)) {
+        const t = await trialOf(c, { until });
+        if (!t) continue;
+        const answered = () => write(EVENT_KEY, id);
+        return {
+          entry: t.entry,
+          commit: async replaceId => { const ok = await t.commit(replaceId); if (ok) answered(); return ok; },
+          revert: () => { answered(); t.revert(); },
+        };
+      }
+      return null;
+    },
+    // The dev reveal: every theme of the site's pool, drafts too: Promise<[{ entry, f, live, owned }]> ([] when it is not reachable).
+    pool: async () => ((await source?.pool?.()) ?? []).map(c => ({ ...c, owned: api.owns(c.entry.id) })),
+    // Shows any theme of the pool on trial, with no end and whatever the cap: Promise<{ entry, commit, revert } | null>.
+    tryPool: async id => {
+      const c = ((await source?.pool?.()) ?? []).find(x => x.entry.id === id);
+      return c ? trialOf(c) : null;
+    },
+    // Keeps any theme of the pool: in a full pool it takes the place of one of the player's own (not the one showing). Promise<boolean>.
+    keepPool: async id => {
+      if (api.owns(id)) return false;
+      const t = await api.tryPool(id);
+      if (!t) return false;
+      const full = state.pool.length >= state.cap;
+      const out = full ? evictable(state, activeEntry(state, systemMode()).id)?.id : undefined;
+      return t.commit(out);
     },
     // A bundle (from the console while developing) straight into the pool.
     install: (raw, replaceId) => {

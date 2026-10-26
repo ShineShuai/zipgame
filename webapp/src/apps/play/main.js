@@ -336,7 +336,7 @@ async function initLang() {
   installDevReveal(); await initSoundToggle(); await initLang();
   themeCtl = initTheme($('themeToggle'), (cur, next, classic) => (classic
     ? t(cur.mode === 'dark' ? 'theme.toLight' : 'theme.toDark') : t('theme.switchTo', themeName(next, getLang()))),
-  () => t('theme.pick'), getLang);
+  () => t('theme.pick'), getLang, { text: t, revealed: () => S.showDev });
   document.addEventListener('zip-theme', () => { if (S.screen !== 'generating') render(); }); // a theme's icons, board skin and 3D tints are drawn into the markup: draw the screen again
   installPeek({ selector: '.variant-opt', show: showPeek, hide: hidePeek });
   const howto = await storage.get('howto-seen'); S.howtoSeen = Boolean(howto && howto.value === '1'); S.howtoOpen = !S.howtoSeen;

@@ -1,13 +1,19 @@
 // Static tests of the theme templates (run from anywhere: node themes/tools/test.mjs). No browser, no dependencies: the
 // sources (themes/<id>/theme.json, art.json), the bundle each packs into, and the contract with the app (the app's own validators
 // must accept every bundle; the defaults here must match webapp/css/theme.css).
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { pathToFileURL } from 'node:url';
+import { join } from 'node:path';
 import { audit } from './derive.js';
+import {
+  POOL_FILE, SITE_DIR, buildSite, checkSite,
+} from './build-site.mjs';
 import { BUDGET, loadBase, loadThemes, packTheme, BASE_CSS } from './pack.mjs';
-import { listOffers, publishBundle, withdraw } from './publish.mjs';
-import { TOKEN_RE } from '../../webapp/src/themes/source.js';
+import { THEMES as SITE } from '../../webapp/src/config.js';
+import { FILE_RE, MAX_POOL, cleanPool } from '../../webapp/src/themes/source.js';
 import { LAYOUT, PAIRS, TOKENS } from './schema.js';
 import { isHex } from './color.js';
 import { boardSvg, iconSvg } from '../preview/render.js';
@@ -62,6 +68,7 @@ t('the metadata of every theme is valid, and the app takes it unchanged', () => 
   eq(new Set(ids).size, ids.length, 'unique ids');
   for (const c of THEMES) {
     ok(c.themeApi === 1 && Number.isInteger(c.v) && c.v >= 1, `${c.id}: themeApi and v`);
+    ok(c.live === undefined || typeof c.live === 'boolean', `${c.id}: live is true or false (false: a draft, only the dev reveal lists it)`);
     ok(c.name.en && c.name.zh, `${c.id}: names in both languages`);
     ok(c.swatches.length === 4 && c.swatches.every(isHex), `${c.id}: four hex swatches`);
     for (const [axis, key] of Object.entries(c.layout)) ok(LAYOUT[axis]?.includes(key), `${c.id}: layout ${axis}=${key}`);
@@ -129,25 +136,49 @@ t('the sample board and icons of the preview are well-formed and use tokens only
   }
 });
 
-t('publishing writes one unguessable file the game can read, withdrawing removes it, nothing else is touched', () => {
-  const dir = pathToFileURL(`${mkdtempSync(`${tmpdir()}/offers-`)}/`);
+t('the site build writes one hashed file per theme and a manifest the app accepts; drafts are listed, never offered; no source is copied', () => {
+  const out = mkdtempSync(`${tmpdir()}/site-`);
   try {
-    const { bundle } = PACKED.candy;
-    const a = publishBundle(bundle, dir);
-    const b = publishBundle(bundle, dir);
-    ok(TOKEN_RE.test(a) && TOKEN_RE.test(b) && a !== b, 'a random token per publication, in the shape the game accepts');
-    eq(readdirSync(dir).sort(), ['index.html', `${a}.json`, `${b}.json`].sort(), 'the files, and a blank index so no host lists the folder');
-    eq(readFileSync(new URL('index.html', dir), 'utf8').includes('<script'), false);
-    ok(cleanBundle(JSON.parse(readFileSync(new URL(`${a}.json`, dir), 'utf8')), { known: n => n in BASE.light }), 'the game accepts the published file');
-    eq(listOffers(dir).map(o => [o.id, o.v]), [['candy', bundle.v], ['candy', bundle.v]]);
-    eq(withdraw('../../etc/passwd', dir), [], 'a path is not a key');
-    eq(withdraw('nothere', dir), []);
-    eq(withdraw(a, dir), [a], 'by token');
-    eq(listOffers(dir).length, 1);
-    publishBundle(PACKED.wood.bundle, dir);
-    eq(withdraw('candy', dir).length, 1, 'by theme id: every file of that theme');
-    eq(listOffers(dir).map(o => o.id), ['wood'], 'the other theme stays');
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+    const themes = THEMES.map(th => (th.id === 'wood' ? { ...th, live: false } : th));
+    const manifest = buildSite(out, { themes, base: BASE });
+    eq(manifest.map(m => m.id).sort(), THEMES.map(th => th.id).sort(), 'every theme');
+    eq(manifest.filter(m => !m.live).map(m => m.id), ['wood'], 'the draft is flagged');
+    const dir = join(out, SITE_DIR);
+    eq(readdirSync(dir).sort(), [...manifest.map(m => `${m.f}.json`), POOL_FILE].sort(), 'the bundles and the manifest, nothing else (no theme.json, art.json or font)');
+    eq([SITE_DIR, POOL_FILE], [/([\w-]+)\/$/.exec(SITE.base)[1], SITE.pool], 'the folder and the manifest are the ones config.js names');
+    for (const m of manifest) {
+      ok(FILE_RE.test(m.f), `${m.id}: the shape of the name the app accepts`);
+      const text = readFileSync(join(dir, `${m.f}.json`), 'utf8');
+      eq(createHash('sha256').update(text).digest('hex').slice(0, 24), m.f, `${m.id}: the name is the hash of the content`);
+      const bundle = JSON.parse(text);
+      eq(bundle.id, m.id);
+      ok(cleanBundle(bundle, { known: n => n in BASE.light }), `${m.id}: the app accepts the file`);
+      ok(!m.f.includes(m.id), `${m.id}: the name does not give the theme away`);
+    }
+    const pool = readFileSync(join(dir, POOL_FILE), 'utf8');
+    ok(pool.length < MAX_POOL / 2, 'the manifest stays well inside what the app reads');
+    eq(cleanPool(JSON.parse(pool)).map(c => [c.entry.id, c.live]).sort(), manifest.map(m => [m.id, m.live]).sort(), 'the app reads the manifest as it was written');
+    eq(checkSite(out), [], 'a sound build');
+
+    writeFileSync(join(dir, `${manifest[0].f}.json`), '{}');
+    ok(checkSite(out).some(p => p.includes('not named by its content')), 'a changed file is found');
+    rmSync(join(dir, `${manifest[1].f}.json`));
+    ok(checkSite(out).some(p => p.includes('is missing')), 'a missing file is found');
+    writeFileSync(join(dir, 'stray.json'), '{}');
+    ok(checkSite(out).some(p => p.startsWith('stray.json')), 'a file the manifest does not list is found');
+    writeFileSync(join(dir, POOL_FILE), '[1');
+    eq(checkSite(out), [`${SITE_DIR}/${POOL_FILE}: not JSON`]);
+
+    eq(buildSite(out, { themes, base: BASE }).length, themes.length, 'a new build starts from an empty folder');
+    eq(checkSite(out), []);
+    ok(!existsSync(join(out, SITE_DIR, 'stray.json')));
+    let error = '';
+    try { buildSite(out, { themes: [themes[0], themes[0]], base: BASE }); } catch (e) { error = e.message; }
+    ok(error.includes('same id'), 'two themes with one id fail the build');
+    error = '';
+    try { buildSite(out, { themes: [{ ...themes[0], vars: { ...themes[0].vars, '--ctl-h': '90px' } }], base: BASE }); } catch (e) { error = e.message; }
+    ok(error.includes('themes with problems') && error.includes('--ctl-h'), 'a theme with a problem (a token out of its bounds) fails the build');
+  } finally { rmSync(out, { recursive: true, force: true }); }
 });
 
 let pass = 0;

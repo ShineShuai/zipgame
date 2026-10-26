@@ -44,11 +44,13 @@ export const BEHAVIOUR = {
   backup: 'cloudflare',
 };
 
-// Offered themes (src/themes/source.js): where the bundles of the themes offered at an event are served from. A bundle is one file named by an
-// unguessable token (`<token>.json`, made by themes/tools/publish.mjs); nothing lists them, a page only fetches a token it was given.
-// A path relative to the page ('../offers/' is the folder next to webapp/, like ../assets/) or an https origin (add it to `connect-src`).
+// The themes of the site (src/themes/source.js): plain files built by CI (themes/tools/build-site.mjs) into one folder, `base`. `pool` is the
+// manifest in it, a file name that is not a standard one; every bundle is `<hash of its content>.json`. The app lists none of them: it reads
+// the manifest only when an event offers a theme or the dev reveal is on. This hides the files, it does not protect them.
+// `base`: a path relative to the page ('../t/' is the folder next to webapp/, like ../assets/) or an https origin (add it to `connect-src`).
 export const THEMES = {
-  offers: '../offers/',
+  base: '../t/',
+  pool: 'q7x2k9vd4m3h.json',
 };
 
 // Release of the solid puzzles in the play app (src/features/solid-release.js).

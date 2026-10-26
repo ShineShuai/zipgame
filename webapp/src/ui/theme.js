@@ -1,15 +1,18 @@
 // The theme button of the app bar and the page's link to the theme system (src/themes). The page's <head> runs a tiny
 // inline script that sets <html data-theme data-mode ...> before the first paint (no flash): the active theme from the pool,
-// else the system setting. Here the controller takes over: it keeps the pool in storage, shows the offered theme of an event
-// on trial (the player takes it or leaves it), follows the system setting until the player has chosen, and drives the button.
+// else the system setting. Here the controller takes over: it keeps the pool in storage, follows the system setting until the
+// player has chosen, and drives the button.
 // A theme the player owns is kept on the device (src/themes/store.js): nothing is fetched to show it.
 // With the two built-in themes the button is the light/dark switch it always was; with another pool it steps through the
-// pool and shows the glyph of the theme it switches to.
+// pool and shows the glyph of the theme it switches to; with three or more (or the dev reveal on) it opens a list.
+// An event calls `offerTheme({ id, until })`: a theme of the site's pool goes on trial and the offer sheet asks the player to keep
+// it or leave it (src/ui/theme-offer.js). The dev reveal (hold V) adds the whole pool to the list (src/ui/theme-picker.js).
 import { THEMES } from '../config.js';
 import { createThemes } from '../themes/index.js';
 import { MODE_KEY, parseMode, resolveMode } from '../themes/pool.js';
 import { browserSource } from '../themes/source.js';
 import { createStore } from '../themes/store.js';
+import { showThemeOffer } from './theme-offer.js';
 import { closeThemePicker, toggleThemePicker } from './theme-picker.js';
 
 export const THEME_KEY = MODE_KEY;   // the key the stats page reads; it mirrors the active theme's mode
@@ -23,8 +26,19 @@ export const currentTheme = () => (document.documentElement.dataset.mode === 'da
 export const themeName = (entry, lang) => entry.name[lang] ?? entry.name.en;
 
 let controller = null;
-// The controller (select, setCap, offer(token) -> { commit, revert }, install ...) for the pool picker and the award / offer mechanisms.
+let ui = { text: key => key, lang: () => 'en' };
+// The controller (select, setCap, event(...) -> { commit, revert } ...) for the pool picker and the award mechanisms.
 export const themes = () => controller;
+
+// An event fires (however the app decides that): offers a theme of the pool for the player to keep or leave until `until` (ms, the end
+// of the event). `id` names the event: the same id is answered once, and a reload within it shows the same theme. Promise<boolean>:
+// false when nothing is offered (see controller.event).
+export async function offerTheme({ id, until = null }) {
+  const trial = controller ? await controller.event({ id, until }) : null;
+  if (!trial) return false;
+  showThemeOffer({ controller, trial, until, text: ui.text, lang: ui.lang() });
+  return true;
+}
 
 // A theme's glyph for the button: the symbol of the catalog entry (already whitelisted by pool.cleanEntry).
 function setSymbol(button, entry) {
@@ -42,15 +56,21 @@ function setSymbol(button, entry) {
 
 // button: the header button. label(current, next, classic) -> its text for the screen reader and the tooltip.
 // pickLabel() / pickLang(): the heading of the list and the language of the names (the app passes its translations).
-export function initTheme(button, label = (cur, next, classic) => (classic ? (cur.mode === 'dark' ? 'Light mode' : 'Dark mode') : `Switch to ${next.name.en} theme`), pickLabel = () => 'Choose a theme', pickLang = () => 'en') {
+// text(key, ...args): the app's translation; revealed(): whether the dev reveal is on (the app's S.showDev).
+export function initTheme(button, label = (cur, next, classic) => (classic ? (cur.mode === 'dark' ? 'Light mode' : 'Dark mode') : `Switch to ${next.name.en} theme`), pickLabel = () => 'Choose a theme', pickLang = () => 'en', { text = key => key, revealed = () => false } = {}) {
+  ui = { text, lang: pickLang };
   // a custom property this build defines (css/theme.css): a bundle's token the build does not know is ignored
   const known = name => getComputedStyle(document.documentElement).getPropertyValue(name) !== '';
-  controller = createThemes({ storage: localStorage, media: matchMedia(DARK_QUERY), store: createStore(localStorage), source: browserSource(THEMES.offers), known });
-  const picking = () => controller.state().pool.length >= 3;   // a pool of three or more is chosen from a list, not stepped through
+  controller = createThemes({ storage: localStorage, media: matchMedia(DARK_QUERY), store: createStore(localStorage), source: browserSource(THEMES), known });
+  const picking = () => controller.state().pool.length >= 3 || revealed();   // a pool of three or more (or the dev reveal) is chosen from a list, not stepped through
+  // The dev reveal's rows are English only and not in the translations: no text a player can read mentions the reveal (see the test in tests.js).
+  const labels = { all: 'All themes', draft: 'draft', keep: 'Keep this theme', offer: 'Offer a theme now', none: 'No themes found', nothing: 'Nothing to offer', loading: '…' };
+  const dev = () => (revealed() ? { labels, offerNow: () => offerTheme({ id: `dev-${Date.now()}`, until: Date.now() + 60000 }) } : null);
   const sync = () => {
     if (!button) return;
     const [cur, next, classic] = [controller.current(), controller.upcoming(), controller.isClassic()];
-    if (classic) { button.setAttribute('aria-pressed', String(cur.mode === 'dark')); setSymbol(button, null); } else { button.removeAttribute('aria-pressed'); setSymbol(button, picking() ? cur : next); }
+    if (classic && !picking()) button.setAttribute('aria-pressed', String(cur.mode === 'dark')); else button.removeAttribute('aria-pressed');
+    setSymbol(button, classic ? null : (picking() ? cur : next));
     if (picking()) { button.setAttribute('aria-haspopup', 'menu'); if (!button.hasAttribute('aria-expanded')) button.setAttribute('aria-expanded', 'false'); } else { button.removeAttribute('aria-haspopup'); button.removeAttribute('aria-expanded'); closeThemePicker(); }
     const text = picking() ? pickLabel() : label(cur, next, classic);
     button.setAttribute('aria-label', text);
@@ -59,6 +79,7 @@ export function initTheme(button, label = (cur, next, classic) => (classic ? (cu
   controller.onChange(sync);
   controller.start();
   sync();
-  if (button) button.addEventListener('click', () => (picking() ? toggleThemePicker(button, controller, pickLang(), pickLabel()) : controller.next()));
+  document.addEventListener('zip:reveal', sync);   // the dev reveal turns the button into the list, and back
+  if (button) button.addEventListener('click', () => (picking() ? toggleThemePicker(button, controller, pickLang(), pickLabel(), dev()) : controller.next()));
   return { refresh: sync };
 }

@@ -101,6 +101,9 @@ export function remove(state, id) {
   return { ...state, pool, active: state.active === id ? (handover?.id ?? null) : state.active };
 }
 
+// The theme a dev keeps instead of when the pool is full: the first that is not showing, one of the player's own before a built-in.
+export const evictable = (state, showingId) => state.pool.find(e => e.id !== showingId && !e.builtin) ?? state.pool.find(e => e.id !== showingId);
+
 // The theme after `id` in pool order (the header button's step; with the two built-ins it is the old light/dark toggle).
 export function nextEntry(state, id) {
   const at = state.pool.findIndex(e => e.id === id);
