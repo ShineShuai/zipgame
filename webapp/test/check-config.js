@@ -19,17 +19,17 @@ for (const id of new Set([BEHAVIOUR.primary, BEHAVIOUR.backup])) {
   assert.ok(LEADERBOARD.backends[id], `BEHAVIOUR: unknown backend id ${id}`);
   assert.ok(['turso', 'cloudflare'].includes(LEADERBOARD.backends[id].type), `BEHAVIOUR: ${id} is a ${LEADERBOARD.backends[id].type} backend (only turso and cloudflare receive behaviour rows)`);
 }
-assert.ok(THEMES.stage === null || LEADERBOARD.backends[THEMES.stage]?.type === 'turso', 'THEMES.stage must be null or the id of a turso backend');
 assert.equal(typeof BEHAVIOUR.enabled, 'boolean', 'BEHAVIOUR.enabled must be true or false');
 const [lo, hi] = BEHAVIOUR.localSizes;
 assert.ok(Number.isInteger(lo) && Number.isInteger(hi) && lo >= 2 && hi >= lo && hi <= 16, 'BEHAVIOUR.localSizes must be [min, max] within 2..16');
 releaseDays(SOLID_RELEASE); // throws on a bad date or day count
+assert.ok(/^(\.\.?\/)+[\w-]+\/$|^https:\/\/[^/]+\/(?:[\w-]+\/)*$/.test(THEMES.offers), 'THEMES.offers must be a folder relative to the page (ending in /) or an https URL');
 
 // The Content-Security-Policy of each page (a <meta> tag: GitHub Pages sends no headers) must let the page do what it does and nothing
 // more: scripts only from the page's own files plus its hashed inline scripts, and calls only to the backends of config.js.
 const urlsOf = value => (typeof value === 'string' ? (/^https?:\/\//.test(value) ? [new URL(value).origin] : [])
   : value && typeof value === 'object' ? Object.values(value).flatMap(urlsOf) : []);
-const origins = [...new Set([...urlsOf(LEADERBOARD), ...urlsOf(BEHAVIOUR)])];
+const origins = [...new Set([...urlsOf(LEADERBOARD), ...urlsOf(BEHAVIOUR), ...urlsOf(THEMES)])];
 // The co-op trial can be removed with its folder, so its brokers (src/coop/config.js) are read as
 // text, not imported. They are reached from the play page only.
 const coopConfig = new URL('../src/coop/config.js', import.meta.url);

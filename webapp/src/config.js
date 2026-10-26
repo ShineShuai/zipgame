@@ -44,11 +44,11 @@ export const BEHAVIOUR = {
   backup: 'cloudflare',
 };
 
-// Theme offers (src/themes/source.js, server/turso/theme_stage.sql): the id of the LEADERBOARD.backends entry (type 'turso') whose
-// `theme_stage` table holds the theme(s) offered right now, only for as long as their event runs. null = no stage: no theme is
-// offered and the game has light and dark only. The browser token only needs the read permission it already has.
+// Offered themes (src/themes/source.js): where the bundles of the themes offered at an event are served from. A bundle is one file named by an
+// unguessable token (`<token>.json`, made by themes/tools/publish.mjs); nothing lists them, a page only fetches a token it was given.
+// A path relative to the page ('../offers/' is the folder next to webapp/, like ../assets/) or an https origin (add it to `connect-src`).
 export const THEMES = {
-  stage: null,
+  offers: '../offers/',
 };
 
 // Release of the solid puzzles in the play app (src/features/solid-release.js).

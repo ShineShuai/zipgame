@@ -8,7 +8,7 @@
   "scripts": {
     "check": "node test/check.js && node test/check-config.js",
     "test": "node test/tests.js && npm run test:coop",
-    "test:server": "node server/cloudflare/worker.test.mjs && node server/turso/schema.test.mjs && node server/turso/theme-stage.test.mjs",
+    "test:server": "node server/cloudflare/worker.test.mjs && node server/turso/schema.test.mjs",
     "bench": "node bench/bench.js",
     "bench:save": "node bench/bench.js --save",
     "bench:report": "node bench/report.mjs",
@@ -22,7 +22,7 @@
     "size:level": "node tools/size-level.mjs",
     "gotd:seed": "node tools/gotd-seed.mjs --dry-run",
     "behaviour": "node tools/behaviour.mjs",
-    "test:themes": "node ../themes/tools/test.mjs && node server/turso/theme-stage.test.mjs",
+    "test:themes": "node ../themes/tools/test.mjs",
     "themes:pack": "node ../themes/tools/pack.mjs"
   }
 }

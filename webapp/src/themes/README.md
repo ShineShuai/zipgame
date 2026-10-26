@@ -11,8 +11,8 @@ repo root (see `themes/README.md` for the design, the options that were weighed 
 | `pool.js` | pool state (2..4 themes), migration of the old key, pure functions |
 | `store.js` | the player's own themes on the device (`zip_theme_b_<id>`) |
 | `apply.js` | attributes, the token block `<style id="theme-css">`, brand mark, fonts |
-| `index.js` | the controller: `start`, `next`, `select`, `setCap`, `install`, `trial(bundle, {until}) -> {commit(replaceId), revert}` |
-| `source.js` | the stage adapter: what is on offer now (`server/turso/theme_stage.sql`) |
+| `index.js` | the controller: `start`, `next`, `select`, `setCap`, `offer(token, {until})` / `trial(bundle, {until})` -> `{commit(replaceId), revert}`, `install` |
+| `source.js` | fetches the bundle behind a token: `offers/<token>.json`, nothing lists them (`config.js` THEMES.offers) |
 | `builtin.js` | light and dark (their tokens are `css/theme.css`) |
 
 The page's `<head>` script (`index.html`) paints the active theme from the device copy before the first frame; a test runs it against

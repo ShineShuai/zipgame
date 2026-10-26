@@ -1,33 +1,43 @@
 # Themes: design record and author's guide
 
 `themes/` is the **author's workspace** for themes. It is not part of the web app and is never deployed. The game contains only the
-engine (`webapp/src/themes/`, `webapp/css/theme.css`) and receives a theme as a **bundle**, only when it is offered.
+engine (`webapp/src/themes/`, `webapp/css/theme.css`) and receives a theme as a **bundle**, only when one is offered to the player.
 
 ## What the design has to satisfy
 
 1. Every player has light and dark; every theme has its own symbol; a pool holds up to 4 themes (the cap grows with awards).
-2. A theme reaches a player only by an **offer at an event**: they see it, then take it (it replaces a theme when the pool is full) or
-   leave it. Not taken, or after the choice, it is gone after the event.
-3. Players see only the themes they own and the one on offer. The themes are **not public and not directly reachable**.
+2. A theme reaches a player only by an **offer at an event**; **every player may get a different offer**. They see it, then take it (it
+   replaces a theme when the pool is full) or leave it. Not taken, or after the choice, it is gone after the event.
+3. Players only know the themes they own and the one offered: the themes are not listed or advertised anywhere.
 4. A device downloads nothing it does not use (no catalog, no other theme).
 5. Adding themes must not grow the app: theme content stays out of the app's code.
-6. Constraints of this project: a static site, no accounts, anonymous play, backends that must work in China (Cloudflare does not),
-   a Turso token in the page that is public (and reads every table). The mechanisms (who gets which offer, when, awards) are separate tasks.
+6. No additional backend: the site is static, there are no accounts (the mechanisms for awards and offers are separate tasks).
 
-## Options considered
+## Options and the decision
 
-| | Option | Not public (3) | No catalog / only what's used (4) | App stays small (5) | Fits this project (6) |
-|---|---|---|---|---|---|
-| A | Theme files in a folder next to the app (`../themes/x.css`) | no: any URL can be fetched, a catalog lists all | pool only, but all reachable | yes | yes |
-| B | All themes inside the app, locked by flags | no (everything is shipped) | no | no: grows with every theme | yes |
-| C | Server API that checks who owns what | yes | yes | yes | no: needs accounts (none) and a Worker (blocked in China) |
-| D | Sealed (encrypted) files + keys released per grant | files opaque, keys gated | yes | yes | works, but adds crypto and a key store to an event that is a single row |
-| **E** | **Event stage: the library stays with the author; a theme is on a stage table only while its event runs; the player keeps what they take** | **yes: nothing exists to fetch outside an event** | **yes** | **yes** | **yes: existing Turso, no accounts, no new service** |
+| | Option | Verdict |
+|---|---|---|
+| **A** | **Bundles are static files next to the app, each under a random token name; nothing lists them** | **chosen (by you)** |
+| B | All themes inside the app, locked by flags | rejected: everyone downloads everything, the app grows with every theme |
+| C | A server API that checks who owns what | rejected: needs accounts and a service reachable from China |
+| D | Encrypted files plus keys released per grant | rejected: crypto and a key store for what A does with a file name |
+| E | An "event stage" table in the existing Turso database | rejected (by you): an extra backend for little gain |
 
-**Chosen: E.** A and B break the requirement that themes are not public. C needs identity this app deliberately does not have and
-a service China cannot reach. D protects files that never need to be public in the first place. In E the library is not on any web
-server or database at all; the stage holds only what is on offer; the player's own themes live on their device. The cost is stated
-below.
+**Why A fits.** There is nothing to run: an offered theme is one file, `offers/<token>.json`. The app contains no list of themes or
+addresses, so a player cannot learn the address of a theme that was not offered to them (128-bit random token; a malformed token makes
+no request). A per-player random offer needs no server either: the offer mechanism picks one of the running event's tokens on the device
+and hands it to `themes().offer(token)`. The player's own themes live on their device, so owned themes need no network.
+
+**What A is, honestly: protection by not being listed**, not access control.
+- The file *names* are the secret. **If the repository is public, `offers/` is visible there** and every address is known: keep `offers/`
+  out of a public repo (a private repo, or upload the folder to the host when an event starts).
+- Whoever receives a token can fetch it and keep it. Where the mechanism keeps its tokens decides how many people can see them: tokens in
+  `config.js` are visible to anyone who reads it, but only for the themes of running events, if you publish at the start and withdraw at the
+  end (below). `publish` makes a new token every time, so a leaked token dies with its file.
+- A static host cannot make a file vanish from a browser that already has it: "gone" means the file is removed (404) and the app keeps
+  nothing from a trial.
+- Themes live on the device: clearing the browser's data loses them (the pool falls back to light/dark). Backup/restore would be a
+  separate feature.
 
 ## Structure
 
@@ -36,37 +46,28 @@ themes/                  AUTHOR (private workspace, never deployed)
   <id>/theme.json        metadata, ~25 seed colours, the vars the theme varies
   <id>/art.json          icons, brand mark, board skin
   <id>/fonts/*.woff2     optional, self-hosted, 60 KB at most each
-  tools/                 pack.mjs (theme -> bundle), stage.mjs (publish / withdraw SQL), derive, schema, tests
+  tools/                 pack.mjs (theme -> bundle), publish.mjs (publish / withdraw / list), derive, schema, tests
   preview/               debug page: the real controller on the packed bundles
-  out/                   packed bundles (git-ignored; for preview and stage.mjs)
-webapp/src/themes/       ENGINE (in the app; changes with features, not with the number of themes)
+  out/                   packed bundles (git-ignored; for the preview)
+offers/                  PUBLISHED bundles: <token>.json (+ a blank index.html). Only what is on offer. Deployed next to webapp/
+webapp/src/themes/       ENGINE (changes with features, not with the number of themes)
   tokens.js bundle.js svg.js art.js   the contract and the whitelists: every bundle is rebuilt, never trusted
   pool.js store.js                    the player's themes: the pool (up to 4) and their copies on the device
   index.js apply.js                   the controller (offer -> trial -> take / leave) and the page
-  source.js                           the stage adapter (Turso): reads what is on offer now
-webapp/server/turso/theme_stage.sql  STAGE: one table, one row per running offer
+  source.js                           fetches the bundle behind a token
 ```
 
 ## Flows
 
-- **Offer.** `node themes/tools/pack.mjs` -> `node themes/tools/stage.mjs publish <id> --event E --from D --until D | turso db shell <db>`.
-  The mechanisms read the stage (`themeStage().offers()` in `src/ui/theme.js`) and decide who sees what; the controller shows a bundle with
-  `themes().trial(bundle, { until })`.
+- **Start an event.** `node themes/tools/pack.mjs`, then `node themes/tools/publish.mjs publish <id>` for each theme of the event: it prints
+  a token. Deploy `offers/`. Hand the tokens to the offer mechanism (for example in `config.js`, next to the event's dates).
+- **Offer.** The mechanism picks a token for this player and calls `themes().offer(token, { until })` (`src/ui/theme.js`): the bundle is
+  fetched, validated, and shown on trial.
 - **Take.** `trial.commit(replaceId)`: the copy is saved on the device (`zip_theme_b_<id>`) and the theme enters the pool (it replaces
   `replaceId` when the pool is full; the replaced theme's copy is deleted).
 - **Leave / event over.** `trial.revert()`, a timer at `until`, any choice, or a reload: nothing was kept, the theme is gone.
-- **End the event.** `stage.mjs withdraw --event E`. That, not a clock, ends the offer.
+- **End the event.** `node themes/tools/publish.mjs withdraw <token|id>` and deploy: the files are gone (404), the offer cannot be shown.
 - **Use.** An owned theme needs no network: the page's head script paints it from the device copy before the first frame.
-
-## What this design does not do (decide if it matters)
-
-- It cannot stop a player from keeping or sharing what they were shown (devtools, a copied bundle). It controls *access*, not copying.
-- During an event the offered theme(s) can be read by anyone who asks (the stage is anonymous): per-player randomness is the
-  mechanism's job (for example a local seed picks one of several rows), not an access control.
-- Themes live on the device only: clearing the browser's data loses them (the pool falls back to light/dark). Backup/restore would be a
-  separate feature (the app's export could carry the pool).
-- If this repository is public, `themes/` is public too: keep `themes/` (except `tools/`) in a private repository and run the tools there
-  (they find the app through relative paths, so keep the same layout).
 
 ## Author's guide
 
@@ -74,10 +75,11 @@ webapp/server/turso/theme_stage.sql  STAGE: one table, one row per running offer
    pairs (text 4.5, graphics 3); `pack` prints every nudge: a nudge in a seed you chose is a design decision to review.
 2. `node themes/tools/pack.mjs` and `node themes/tools/test.mjs` (or `npm run themes:pack` / `npm run test:themes` in `webapp/`).
 3. Look: from the repo root `python3 -m http.server 8000`, open `http://localhost:8000/themes/preview/`.
-4. Try it in the game: serve the repo root the same way, open `http://localhost:8000/webapp/`, then in the console
-   `const { themes } = await import('/webapp/src/ui/theme.js'); themes().trial(await (await fetch('/themes/out/candy.bundle.json')).json())`
-   (`.commit('dark')` keeps it, replacing dark; `.revert()` leaves it).
-5. Stage it for an event (see Flows). Raise a theme's `v` when its files change.
+4. Try it in the game: `node themes/tools/publish.mjs publish candy` prints a token; serve the repo root the same way, open
+   `http://localhost:8000/webapp/`, then in the console
+   `const { themes } = await import('/webapp/src/ui/theme.js'); const t = await themes().offer('<token>'); await t.commit('dark')`
+   (`t.revert()` leaves it). `publish.mjs withdraw candy` removes the file again.
+5. Raise a theme's `v` when its files change.
 
 ## Rules a bundle cannot break (checked when it is built and again when the game receives it)
 
@@ -86,4 +88,4 @@ webapp/server/turso/theme_stage.sql  STAGE: one table, one row per running offer
 - Art is shapes only (no ids, style, links, script); fonts are woff2 registered with the FontFace API (binary data: no url, nothing for
   the CSP to allow). A bad token rejects the whole bundle.
 - A theme never pads, borders or transforms the board svg: pointer positions map to cells through its bounding box.
-- Budgets (tested): bundle 24 KB without fonts, a font 60 KB, a stage row 200 KB.
+- Budgets (tested): bundle 24 KB without fonts, a font 60 KB, a published file 220 KB.

@@ -1,5 +1,5 @@
 // A theme bundle as the app accepts it: the one data object that carries a whole theme (made by themes/tools/pack.mjs,
-// held on the stage while its event runs, kept locally once the player takes it). Whatever the bundle says is rebuilt from
+// published as offers/<token>.json while its event runs, kept on the device once the player takes it). Whatever the bundle says is rebuilt from
 // whitelists and bounds (tokens.js, svg.js, art.js, pool.cleanEntry), so a bundle cannot restyle the page beyond what a theme
 // may, cannot carry script, markup or a url, and an out-of-bounds token rejects the whole bundle (a half-applied theme can be
 // unreadable). Shape:

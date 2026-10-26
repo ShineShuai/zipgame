@@ -1,54 +1,30 @@
-// The stage: where an offered theme waits while its event runs. A row of `theme_stage` (server/turso/theme_stage.sql) holds one
-// bundle and the window it is offered in; the author puts it there (themes/tools/stage.mjs) and takes it away when the event
-// ends. The browser may only read the table, and only the offer(s) of the running event are ever in it: the library of themes
-// is not in any database or on any web server, so a player can never fetch a theme that was not offered to them.
-// `offers()` is for the mechanisms that decide who is shown what and when: it returns what is on the stage right now. The
-// adapter is injected (the Turso one below follows platform/leaderboard.js); another backend only has to return the same rows.
-import { hranaInt, pipeline, trim } from '../platform/leaderboard.js';
+// Where an offered theme comes from: a plain file. The bundle of a theme offered at an event is `<token>.json` in the offers folder
+// (config.js THEMES.offers), published by themes/tools/publish.mjs under a random 128-bit token and removed when the event is over. There
+// is no index, no catalog and no list in the app: a page can only fetch a token it was handed, so a player never learns the address of a
+// theme that was not offered to them. (Which token a player is handed, and when, is the offer mechanism's job; it hands it to `offer`.)
+export const TOKEN_RE = /^[A-Za-z0-9_-]{22}$/;
+export const MAX_FILE = 220 * 1024;
 
-export const STAGE_SQL = 'SELECT event, theme, v, from_ms, until_ms, bundle FROM theme_stage WHERE until_ms > ?1 ORDER BY from_ms, event';
-const EVENT = /^[a-z0-9][a-z0-9-]{0,39}$/;
-const MAX_ROW = 220 * 1024;
-
-// A stage row as an offer { event, theme, v, from, until, bundle } (bundle parsed, not yet validated: controller.trial does that),
-// or null for a row that is not one.
-export function cleanOffer(row) {
-  if (!row || !EVENT.test(row.event ?? '') || !Number.isFinite(row.from_ms) || !Number.isFinite(row.until_ms)) return null;
-  if (typeof row.bundle !== 'string' || row.bundle.length > MAX_ROW) return null;
-  let bundle = null;
-  try { bundle = JSON.parse(row.bundle); } catch { return null; }
-  if (!bundle || bundle.id !== row.theme || bundle.v !== row.v) return null;
-  return { event: row.event, theme: row.theme, v: row.v, from: row.from_ms, until: row.until_ms, bundle };
-}
-
-// fetchRows(nowMs) -> Promise<[{ event, theme, v, from_ms, until_ms, bundle }]>. The window is checked here too, but the
-// stage is the authority: a row is withdrawn by deleting it, so an old clock buys nothing.
-export function createStage({ fetchRows, now = Date.now }) {
+// fetchText(url) -> Promise<string>; injected, so the logic is testable. bundle(token) resolves to the parsed JSON (not yet validated:
+// controller.trial does that) or null: not a token, not there (an offer that is over is a 404), too big, not JSON.
+export function createSource({ base, fetchText }) {
   return {
-    async offers() {
-      const t = now();
-      return (await fetchRows(t)).map(cleanOffer).filter(o => o && o.from <= t && t < o.until);
+    async bundle(token) {
+      if (!TOKEN_RE.test(token ?? '')) return null;
+      try {
+        const text = await fetchText(`${base}${token}.json`);
+        return typeof text === 'string' && text.length <= MAX_FILE ? JSON.parse(text) : null;
+      } catch { return null; }
     },
   };
 }
 
-// The rows of a Hrana result as objects (integers as numbers)
-const rowsOf = result => {
-  if (!result || result.type !== 'ok') throw new Error((result?.error?.message) || 'no result');
-  const { cols, rows } = result.response.result;
-  return rows.map(r => Object.fromEntries(cols.map((c, i) => [c.name, r[i].type === 'integer' ? Number(r[i].value) : r[i].type === 'null' ? null : r[i].value])));
-};
-
-// The Turso backend entry of config.js ({ url, key }): the same HTTP API and public read-only token as the leaderboard.
-export const tursoStage = ({ url, key }, fetchFn = (...a) => fetch(...a), timeoutMs = 4000) => ({
-  async fetchRows(nowMs) {
-    const response = await fetchFn(`${trim(url)}/v2/pipeline`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-      body: pipeline([[STAGE_SQL, [hranaInt(nowMs)]]]),
-      signal: AbortSignal.timeout?.(timeoutMs),
-    });
-    if (!response.ok) throw new Error(`stage: ${response.status}`);
-    return rowsOf((await response.json()).results[0]);
+// The page's own fetch. `no-store`: an offer that has ended must not come back from a cache, and none is kept here.
+export const browserSource = (base, fetchFn = (...a) => fetch(...a)) => createSource({
+  base,
+  fetchText: async url => {
+    const response = await fetchFn(url, { cache: 'no-store', credentials: 'omit' });
+    if (!response.ok || Number(response.headers?.get?.('content-length')) > MAX_FILE) throw new Error(`offer: ${response.status}`);
+    return response.text();
   },
 });

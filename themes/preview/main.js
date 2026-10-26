@@ -53,7 +53,7 @@ function render() {
         Layout: menu <b>${entry.layout.menu}</b>, picker <b>${entry.layout.picker}</b>, actions <b>${entry.layout.actions}</b>.</p></section>
     </div>`;
   document.querySelectorAll('[data-pick]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.pick === entry.id)));
-  $('log').textContent = `Bundle of ${entry.id}: ${sizes[entry.id] ? `${sizes[entry.id]} bytes on the stage` : 'built in (css/theme.css)'}. Nothing else is fetched.`;
+  $('log').textContent = `Bundle of ${entry.id}: ${sizes[entry.id] ? `${sizes[entry.id]} bytes as a published file` : 'built in (css/theme.css)'}. Nothing else is fetched.`;
   // apply() put the brand mark of the art in #brandMark before render rebuilt the header: put it back
   if (art?.mark) {
     $('brandMark').classList.add('has-art');

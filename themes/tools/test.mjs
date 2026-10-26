@@ -1,9 +1,13 @@
 // Static tests of the theme templates (run from anywhere: node themes/tools/test.mjs). No browser, no dependencies: the
 // sources (themes/<id>/theme.json, art.json), the bundle each packs into, and the contract with the app (the app's own validators
 // must accept every bundle; the defaults here must match webapp/css/theme.css).
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 import { audit } from './derive.js';
 import { BUDGET, loadBase, loadThemes, packTheme, BASE_CSS } from './pack.mjs';
+import { listOffers, publishBundle, withdraw } from './publish.mjs';
+import { TOKEN_RE } from '../../webapp/src/themes/source.js';
 import { LAYOUT, PAIRS, TOKENS } from './schema.js';
 import { isHex } from './color.js';
 import { boardSvg, iconSvg } from '../preview/render.js';
@@ -123,6 +127,27 @@ t('the sample board and icons of the preview are well-formed and use tokens only
     eq((svg.match(/<text /g) || []).length, 5, `${id}: five numbers`);
     for (const [name, inner] of Object.entries(art.icons)) ok(wellFormed(iconSvg(inner, name)), `${id}/${name}: icon svg`);
   }
+});
+
+t('publishing writes one unguessable file the game can read, withdrawing removes it, nothing else is touched', () => {
+  const dir = pathToFileURL(`${mkdtempSync(`${tmpdir()}/offers-`)}/`);
+  try {
+    const { bundle } = PACKED.candy;
+    const a = publishBundle(bundle, dir);
+    const b = publishBundle(bundle, dir);
+    ok(TOKEN_RE.test(a) && TOKEN_RE.test(b) && a !== b, 'a random token per publication, in the shape the game accepts');
+    eq(readdirSync(dir).sort(), ['index.html', `${a}.json`, `${b}.json`].sort(), 'the files, and a blank index so no host lists the folder');
+    eq(readFileSync(new URL('index.html', dir), 'utf8').includes('<script'), false);
+    ok(cleanBundle(JSON.parse(readFileSync(new URL(`${a}.json`, dir), 'utf8')), { known: n => n in BASE.light }), 'the game accepts the published file');
+    eq(listOffers(dir).map(o => [o.id, o.v]), [['candy', bundle.v], ['candy', bundle.v]]);
+    eq(withdraw('../../etc/passwd', dir), [], 'a path is not a key');
+    eq(withdraw('nothere', dir), []);
+    eq(withdraw(a, dir), [a], 'by token');
+    eq(listOffers(dir).length, 1);
+    publishBundle(PACKED.wood.bundle, dir);
+    eq(withdraw('candy', dir).length, 1, 'by theme id: every file of that theme');
+    eq(listOffers(dir).map(o => o.id), ['wood'], 'the other theme stays');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 let pass = 0;

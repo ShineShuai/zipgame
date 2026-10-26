@@ -14,7 +14,7 @@ import { cleanLayout } from '../src/themes/layout.js';
 import {
   activeEntry, cleanEntry, fresh, isClassicPool, MODE_KEY, nextEntry, parseState, POOL_KEY, remove, save, select, serialize, setCap,
 } from '../src/themes/pool.js';
-import { cleanOffer, createStage, STAGE_SQL, tursoStage } from '../src/themes/source.js';
+import { browserSource, createSource, MAX_FILE, TOKEN_RE } from '../src/themes/source.js';
 import { BUNDLE_KEY, createStore } from '../src/themes/store.js';
 import { cleanTokens, buildCss } from '../src/themes/tokens.js';
 import { cleanInner, cleanSvg } from '../src/themes/svg.js';
@@ -52,7 +52,7 @@ const memoryStorage = (initial = {}, { quota = false } = {}) => {
 };
 const ownedRecord = b => { const c = cleanBundle(b); return JSON.stringify({ v: c.entry.v, css: c.css, art: c.art, fonts: c.fonts }); };
 
-function rig({ stored, owned = [], legacy, dark = false, quota = false, clock = { t: 1000 } } = {}) {
+function rig({ stored, owned = [], legacy, dark = false, quota = false, clock = { t: 1000 }, offers = {} } = {}) {
   const initial = {};
   if (stored) initial[POOL_KEY] = typeof stored === 'string' ? stored : serialize(stored);
   if (legacy) initial[MODE_KEY] = legacy;
@@ -65,7 +65,7 @@ function rig({ stored, owned = [], legacy, dark = false, quota = false, clock = 
   const cleared = [];
   const fontLoads = [];
   const ctl = createThemes({
-    storage, media, store: createStore(storage), now: () => clock.t,
+    storage, media, store: createStore(storage), now: () => clock.t, source: { bundle: async token => offers[token] ?? null },
     apply: (e, loaded) => applied.push(loaded ? `${e.id}+css` : e.id),
     loadFonts: fonts => { fontLoads.push(fonts.length); return { release() { fontLoads.push('released'); } }; },
     timers: { setTimeout: (fn, ms) => { timeouts.push({ fn, ms }); return timeouts.length; }, clearTimeout: id => cleared.push(id) },
@@ -221,34 +221,22 @@ export function themeSystemTests(t, ok, eq, ta) {
     eq(createStore(memoryStorage({}, { quota: true })).save(b), false, 'a device that refuses: not kept');
   });
 
-  t('themes: an offer on the stage is read back as it was published, and only while its window is open', () => {
-    const row = (extra = {}) => ({ event: '202611-autumn', theme: 'candy', v: 3, from_ms: 1000, until_ms: 5000, bundle: JSON.stringify(CANDY), ...extra });
-    eq(cleanOffer(row()).bundle.id, 'candy');
-    for (const bad of [null, row({ event: 'Bad Event' }), row({ theme: 'wood' }), row({ v: 4 }), row({ bundle: '{{' }), row({ bundle: 'x'.repeat(230000) }), row({ from_ms: 'x' }), row({ event: undefined })]) eq(cleanOffer(bad), null);
-    return (async () => {
-      const stage = now => createStage({ fetchRows: async () => [row(), row({ event: 'later', from_ms: 9000, until_ms: 9999 }), row({ event: 'junk', bundle: 'no' })], now: () => now });
-      eq((await stage(2000).offers()).map(o => o.event), ['202611-autumn'], 'running now');
-      eq((await stage(500).offers()).length + (await stage(6000).offers()).length, 0, 'not yet, and over');
-    })();
-  });
-
-  ta('themes: the Turso adapter asks for the running offers with the public read token, in the leaderboard\'s protocol', async () => {
+  ta('themes: an offered theme is a plain file behind an unguessable token: only a token can fetch it, and only while the file exists', async () => {
+    const TOKEN = 'Abcdefghijklmnopqrstuv';   // 22 characters
+    ok(TOKEN_RE.test(TOKEN) && !TOKEN_RE.test('short') && !TOKEN_RE.test(`${TOKEN}x`) && !TOKEN_RE.test('../../etc/passwd-aaaaaaaa') && !TOKEN_RE.test('Abcdefghijklmnopqrst.v'), 'the shape of a token');
+    const fetched = [];
+    const files = { [`../offers/${TOKEN}.json`]: JSON.stringify(CANDY), '../offers/Zzzzzzzzzzzzzzzzzzzzzz.json': 'not json', '../offers/Yyyyyyyyyyyyyyyyyyyyyy.json': 'x'.repeat(MAX_FILE + 1) };
+    const source = createSource({ base: '../offers/', fetchText: async url => { fetched.push(url); if (!(url in files)) throw new Error('404'); return files[url]; } });
+    eq((await source.bundle(TOKEN)).id, 'candy', 'a token fetches its bundle');
+    eq(fetched, [`../offers/${TOKEN}.json`], 'one request, to exactly that file');
+    for (const bad of [undefined, '', 'short', '../x', 'a/b', `${TOKEN}.json`, 'Qqqqqqqqqqqqqqqqqqqqqq', 'Zzzzzzzzzzzzzzzzzzzzzz', 'Yyyyyyyyyyyyyyyyyyyyyy']) eq(await source.bundle(bad), null, String(bad));
+    eq(fetched.length, 4, 'a malformed token makes no request; a missing, broken or oversized file is nothing');
     const calls = [];
-    const fetchFn = async (url, init) => {
-      calls.push([url, init.headers.Authorization, JSON.parse(init.body)]);
-      const text = v => ({ type: 'text', value: v });
-      const int = n => ({ type: 'integer', value: String(n) });
-      return { ok: true, json: async () => ({ results: [{ type: 'ok', response: { type: 'execute', result: {
-        cols: ['event', 'theme', 'v', 'from_ms', 'until_ms', 'bundle'].map(name => ({ name })),
-        rows: [[text('e1'), text('candy'), int(3), int(1000), int(5000), text(JSON.stringify(CANDY))]],
-      } } }, { type: 'ok', response: { type: 'close' } }] }) };
-    };
-    const rows = await tursoStage({ url: 'https://db.example/', key: 'tok' }, fetchFn).fetchRows(2000);
-    eq([calls[0][0], calls[0][1], calls[0][2].requests[0].stmt.sql, calls[0][2].requests[0].stmt.args], ['https://db.example/v2/pipeline', 'Bearer tok', STAGE_SQL, [{ type: 'integer', value: '2000' }]]);
-    eq([rows.length, rows[0].v, rows[0].from_ms, cleanOffer(rows[0]).theme], [1, 3, 1000, 'candy']);
-    let failed = false;
-    try { await tursoStage({ url: 'https://x', key: 'k' }, async () => ({ ok: false, status: 503 })).fetchRows(1); } catch { failed = true; }
-    ok(failed, 'a failing stage is an error the caller can ignore');
+    const fetchFn = async (url, init) => { calls.push([url, init.cache, init.credentials]); return url.includes('gone') ? { ok: false, status: 404 } : { ok: true, headers: { get: () => '100' }, text: async () => JSON.stringify(CANDY) }; };
+    eq((await browserSource('../offers/', fetchFn).bundle(TOKEN)).id, 'candy');
+    eq(calls[0], [`../offers/${TOKEN}.json`, 'no-store', 'omit'], 'not cached, no cookies');
+    eq(await browserSource('../gone/', fetchFn).bundle(TOKEN), null, 'a 404: the offer is over');
+    eq(await browserSource('../offers/', async () => ({ ok: true, headers: { get: () => String(MAX_FILE + 1) }, text: async () => '{}' })).bundle(TOKEN), null, 'too big by its header');
   });
 
   t('themes: the page\'s head script picks what pool.js picks, and paints a theme the player owns from the local copy', () => {
@@ -378,6 +366,17 @@ export function themeSystemTests(t, ok, eq, ta) {
     eq(r.ctl.state().pool.length, 4);
     r.ctl.setCap(2);
     eq([r.ctl.state().pool.length, Object.keys(r.storage.data).filter(k => k.startsWith('zip_theme_b_')).length], [2, r.ctl.state().pool.filter(e => !e.builtin).length], 'lowering the cap removes the cut themes from the device too');
+
+    const TOKEN = 'Abcdefghijklmnopqrstuv';
+    const offered = rig({ offers: { [TOKEN]: CANDY } });
+    offered.ctl.start();
+    eq(await offered.ctl.offer('Qqqqqqqqqqqqqqqqqqqqqq'), null, 'no file: the event is over, nothing shown');
+    eq(offered.ctl.current().id, 'light');
+    const seen = await offered.ctl.offer(TOKEN, { until: 5000 });
+    eq([seen.entry.id, offered.ctl.current().id, offered.ctl.state().pool.length], ['candy', 'candy', 2], 'a token puts its theme on trial');
+    seen.revert();
+    eq([offered.ctl.current().id, BUNDLE_KEY('candy') in offered.storage.data], ['light', false], 'left: gone, nothing kept');
+    eq(await rig({ offers: { [TOKEN]: { ...CANDY, tokens: { ...CANDY.tokens, '--ctl-h': '90px' } } } }).ctl.offer(TOKEN), null, 'a bundle the game refuses is not shown');
 
     const quota = rig({ quota: true });
     quota.ctl.start();

@@ -1,6 +1,6 @@
 // The theme controller: the pool (pool.js), the device's own themes (store.js) and the page (apply.js) put together. Storage
-// and the system's colour scheme are injected. There are two ways a theme reaches a player, both through `trial`:
-// the mechanisms that run an event hand the controller the bundle on the stage; the player sees it (trial), and takes it
+// and the system's colour scheme are injected. A theme reaches a player only as an offer: the mechanism that runs an event hands
+// `offer` a token (or `trial` a bundle); the player sees the theme (trial), and takes it
 // (commit: it is saved on the device and in the pool, replacing a theme when the pool is full) or leaves it (revert: it is
 // gone, nothing was kept). A theme that is in the pool needs no network. The mechanisms that award slots call setCap.
 import { BUILTIN } from './builtin.js';
@@ -13,7 +13,7 @@ import {
 const MAX_TIMEOUT = 2 ** 31 - 1;
 
 export function createThemes({
-  storage, media, store, apply = applyEntry, loadFonts = realLoadFonts, known, now = Date.now, timers = globalThis,
+  storage, media, store, source, apply = applyEntry, loadFonts = realLoadFonts, known, now = Date.now, timers = globalThis,
 }) {
   const read = key => { try { return storage.getItem(key); } catch { return null; } };
   const write = (key, value) => {
@@ -93,14 +93,20 @@ export function createThemes({
       persist();
       showActive();
     },
-    // A bundle (as the stage holds it, or from the console while developing) straight into the pool.
+    // The offered theme behind `token` (see source.js), shown on trial: Promise<{ entry, commit, revert } | null>. null when the file is not
+    // there (the event is over), is not a valid bundle, or `until` has passed.
+    offer: async (token, opts) => {
+      const raw = await source?.bundle(token);
+      return raw ? api.trial(raw, opts) : null;
+    },
+    // A bundle (from the console while developing) straight into the pool.
     install: (raw, replaceId) => {
       const bundle = cleanBundle(raw, { known });
       if (!bundle || !keep(bundle, replaceId)) return false;
       persist();
       return true;
     },
-    // Shows an offered theme without keeping anything. `until` (ms, the end of the event): the theme goes by itself then.
+    // Shows a bundle without keeping anything. `until` (ms, the end of the event): the theme goes by itself then.
     // Returns null for something that is not a valid bundle (or an event already over), else { entry, commit, revert }:
     // commit(replaceId) -> Promise<boolean> keeps it and makes it the active theme; revert() puts the previous theme back.
     trial: (raw, { until } = {}) => {
