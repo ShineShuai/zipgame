@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  deriveRoom, fingerprint, isPublicKey, makeToken, newId, newPair, newSecret, pairKey, seal,
+  deriveResume, deriveRoom, fingerprint, isPublicKey, keyOfSecret, makeToken, newId, newPair,
+  newSecret, pairKey, pairSecret, seal,
   signalSupported, splitToken, unseal,
 } from '../../src/coop/secret.js';
 
@@ -70,4 +71,26 @@ test('the token: the secret, then the fingerprint that pins the host key', async
   assert.throws(() => splitToken(secret), /bad code/, 'a bare secret is no token');
   assert.throws(() => splitToken(`${token}x`), /bad code/);
   assert.throws(() => splitToken(null), /bad code/);
+});
+
+test('the pair secret: the same on both sides; gives a join key and a resume room', async () => {
+  const host = await newPair();
+  const guest = await newPair();
+  const mine = await pairSecret(host.priv, guest.pub, 'r');
+  const theirs = await pairSecret(guest.priv, host.pub, 'r');
+  assert.equal(mine.length, 16);
+  assert.deepEqual(mine, theirs);
+  assert.notDeepEqual(await pairSecret(host.priv, guest.pub, 'other'), mine);
+  const sealed = await seal(await keyOfSecret(mine), 't', { x: 1 });
+  assert.deepEqual(await unseal(await pairKey(guest.priv, host.pub, 'r'), 't', sealed), { x: 1 });
+
+  const a = await deriveResume(mine);
+  const b = await deriveResume(theirs);
+  assert.equal(a.room, b.room);
+  assert.match(a.room, /^[A-Za-z0-9_-]{22}$/);
+  assert.deepEqual(await unseal(b.key, 't', await seal(a.key, 't', { y: 2 })), { y: 2 });
+  const third = await pairSecret(host.priv, (await newPair()).pub, 'r');
+  assert.notEqual((await deriveResume(third)).room, a.room);
+  const stranger = (await deriveRoom(newSecret())).key;
+  assert.equal(await unseal(stranger, 't', await seal(a.key, 't', {})), null);
 });

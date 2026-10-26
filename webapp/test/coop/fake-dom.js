@@ -16,6 +16,9 @@ export function installFakeDom() {
       markup = value;
       live = {};
     },
+    insertAdjacentHTML(_where, html) {
+      markup += html; // always 'beforeend' here
+    },
     scrollTop: 0,
     style: {},
     classList: { toggle() {}, add() {}, remove() {} },
@@ -39,9 +42,11 @@ export function installFakeDom() {
         return typed.has(id) ? typed.get(id) : /\schecked/.test(tag);
       },
       set textContent(text) {
-        live.status = text;
+        live[id] = text;
       },
       style: {},
+      focus() {},
+      remove() {},
       classList: {
         toggle(name, on) {
           if (name === 'error') {
@@ -72,8 +77,10 @@ export function installFakeDom() {
     typed,
     html: () => root.innerHTML,
     // the text of the status note
-    status: () => live.status
+    status: () => live.coopStatus
       ?? unescape(/id="coopStatus"[^>]*>([^<]*)</.exec(markup)?.[1] ?? ''),
+    // the text of the message line under the board
+    message: () => live.coopMsg ?? '',
     failed: () => live.error ?? /class="note error" id="coopStatus"/.test(markup),
     click(act, dataset = {}) {
       const button = { dataset: { act, ...dataset } };

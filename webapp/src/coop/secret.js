@@ -108,26 +108,32 @@ export async function newPair() {
   return { priv: pair.privateKey, pub: toBase64Url(raw) };
 }
 
-// The key two sides share: own private key + the other's public key; `room` is mixed in.
-export async function pairKey(priv, theirPub, room) {
+// What two sides share: own private key + the other's public key, `room` mixed in -> 16 bytes.
+// It is kept with a game in progress: it lets the two devices find each other again (resumeSecret).
+export async function pairSecret(priv, theirPub, room) {
   if (!isPublicKey(theirPub)) {
     throw new Error('bad key');
   }
   const other = await subtle().importKey(
     'raw', fromBase64Url(theirPub), { name: 'ECDH', namedCurve: 'P-256' }, false, [],
   );
-  const bits = await subtle().deriveBits({ name: 'ECDH', public: other }, priv, 256);
-  const base = await subtle().importKey('raw', bits, 'HKDF', false, ['deriveKey']);
-  return subtle().deriveKey(
-    {
-      name: 'HKDF',
-      hash: 'SHA-256',
-      salt: text.encode(`zipcoop ${room}`),
-      info: text.encode('pair'),
-    },
-    base,
-    { name: 'AES-GCM', length: 128 },
-    false,
-    ['encrypt', 'decrypt'],
-  );
+  const params = { name: 'ECDH', public: other };
+  const bits = new Uint8Array(await subtle().deriveBits(params, priv, 256));
+  return hkdf(bits, `zipcoop ${room}`, 'pair', 'bits');
+}
+
+// The AES key of a pair secret: what seals the offer and the answer of a join.
+export const keyOfSecret = secret => hkdf(secret, 'zipcoop', 'pair key', 'key');
+
+export async function pairKey(priv, theirPub, room) {
+  return keyOfSecret(await pairSecret(priv, theirPub, room));
+}
+
+// Where and how two devices that played together meet again: { room, key } from their pair
+// secret. Nobody else has the secret, so nobody else can read or write there.
+export async function deriveResume(secret) {
+  return {
+    room: toBase64Url(await hkdf(secret, 'zipcoop', 'resume room', 'bits')),
+    key: await hkdf(secret, 'zipcoop', 'resume key', 'key'),
+  };
 }

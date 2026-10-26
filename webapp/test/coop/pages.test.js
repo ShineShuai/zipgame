@@ -179,3 +179,11 @@ test('a solid game: the title has the size, and the button swaps the solid and i
   assert.ok(html.includes('data-act="view" id="coopView">Net</button>'));
   assert.ok(!gamePage(view()).includes('data-act="view"'));
 });
+
+test('the game page has a button to invite a friend, hidden while the friend is there', () => {
+  assert.ok(!gamePage(view()).includes('invite-help'), 'not where it cannot be done');
+  const alone = gamePage(view({ online: true, peerHere: false, helpAvailable: true }));
+  assert.ok(alone.includes('data-act="invite-help" id="coopHelp">'));
+  const together = gamePage(view({ online: true, peerHere: true, helpAvailable: true }));
+  assert.ok(together.includes('id="coopHelp" style="display:none"'));
+});
