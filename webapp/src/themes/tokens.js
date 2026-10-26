@@ -51,6 +51,14 @@ export const TOKENS = {
   '--b-path-hi': { d: 'var(--b-path)', kind: 'colour', group: 'board' },
   '--b-depth': { d: 'transparent', kind: 'colour', group: 'board' },
 
+  // the colours of the Teleport portal pairs (each pair also has its own shape): the play app draws them with these
+  '--portal-1': { d: '#8b5cf6', kind: 'colour', group: 'board' },
+  '--portal-2': { d: '#0d9488', kind: 'colour', group: 'board' },
+  '--portal-3': { d: '#db2777', kind: 'colour', group: 'board' },
+  '--portal-4': { d: '#65a30d', kind: 'colour', group: 'board' },
+  '--portal-5': { d: '#0284c7', kind: 'colour', group: 'board' },
+  '--portal-6': { d: '#ea580c', kind: 'colour', group: 'board' },
+
   // icon set colours (the theme's art.js uses only these, currentColor and --ic-paper)
   '--ic-1': { d: 'var(--accent)', kind: 'colour', group: 'icons' },
   '--ic-2': { d: 'var(--orange)', kind: 'colour', group: 'icons' },

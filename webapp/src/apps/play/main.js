@@ -335,8 +335,9 @@ async function initLang() {
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));
   installDevReveal(); await initSoundToggle(); await initLang();
   themeCtl = initTheme($('themeToggle'), (cur, next, classic) => (classic
-    ? t(cur.mode === 'dark' ? 'theme.toLight' : 'theme.toDark') : t('theme.switchTo', themeName(next, getLang()))));
-  document.addEventListener('zip-theme', () => { if (S.screen === 'solid') render(); }); // the 3D cells are tinted inline: draw them again
+    ? t(cur.mode === 'dark' ? 'theme.toLight' : 'theme.toDark') : t('theme.switchTo', themeName(next, getLang()))),
+  () => t('theme.pick'), getLang);
+  document.addEventListener('zip-theme', () => { if (S.screen !== 'generating') render(); }); // a theme's icons, board skin and 3D tints are drawn into the markup: draw the screen again
   installPeek({ selector: '.variant-opt', show: showPeek, hide: hidePeek });
   const howto = await storage.get('howto-seen'); S.howtoSeen = Boolean(howto && howto.value === '1'); S.howtoOpen = !S.howtoSeen;
   render();

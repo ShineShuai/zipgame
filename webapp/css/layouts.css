@@ -1,0 +1,58 @@
+/* Layout presets a theme can choose (src/themes/layout.js LAYOUT; the keys are set on <html> as data-menu / data-picker / data-actions).
+   The default preset of each axis (dashboard, tiles, side) has no rule here: it IS css/play.css. A preset only rearranges; every colour,
+   radius and size still comes from the tokens, so a preset works with any theme. Add a preset: list it in layout.js, write its block here. */
+
+/* ---------- menu ---------- */
+
+/* stack: one centred column on every width: the rules line, Today, Free play, the shared games */
+:root[data-menu="stack"] .menu-layout {
+  grid-template-columns: minmax(0, 1fr); grid-template-areas: "intro" "today" "play" "shared";
+  max-width: 680px; margin-inline: auto;
+}
+:root[data-menu="stack"] .menu-layout.has-gift { grid-template-areas: "intro" "gift" "today" "play" "shared"; }
+
+/* bento: tiles on the page ground instead of cards. The cards lose their chrome, the variant picker is a three-column board of tiles in the
+   theme's four tile colours (--vt-N: fill, --vt-N-on: ink, --vt-N-counter: the second colour of the icon, see art.json --ic-1 / --ic-2). */
+:root[data-menu="bento"] .menu-layout > .card, :root[data-menu="bento"] .menu-layout .play-col > .tab-pane > .card {
+  background: transparent; border-color: transparent; box-shadow: none; padding: 0;
+}
+:root[data-menu="bento"] .variant-options { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap); }
+:root[data-menu="bento"] .variant-opt:nth-child(4n + 1) { --tile: var(--vt-1); --tile-on: var(--vt-1-on); --tile-counter: var(--vt-1-counter); }
+:root[data-menu="bento"] .variant-opt:nth-child(4n + 2) { --tile: var(--vt-2); --tile-on: var(--vt-2-on); --tile-counter: var(--vt-2-counter); }
+:root[data-menu="bento"] .variant-opt:nth-child(4n + 3) { --tile: var(--vt-3); --tile-on: var(--vt-3-on); --tile-counter: var(--vt-3-counter); }
+:root[data-menu="bento"] .variant-opt:nth-child(4n) { --tile: var(--vt-4); --tile-on: var(--vt-4-on); --tile-counter: var(--vt-4-counter); }
+:root[data-menu="bento"] .variant-card {
+  background: var(--tile, var(--surface-2)); border-color: transparent; color: var(--tile-on, var(--heading));
+  --ic-1: var(--tile-on); --ic-2: var(--tile-counter); /* (no fallback to themselves: a custom property that refers to itself is invalid) */
+}
+:root[data-menu="bento"] .variant-name { color: inherit; }
+/* the chosen tile keeps its colour and gets a ring of its ink */
+:root[data-menu="bento"] .variant-opt input:checked + .variant-card {
+  background: var(--tile, var(--accent-soft)); border-color: transparent;
+  box-shadow: 0 0 0 3px var(--bg), 0 0 0 6px var(--tile-on, var(--accent));
+}
+:root[data-menu="bento"] .variant-opt input:not(:checked):hover + .variant-card { border-color: transparent; }
+
+/* ---------- variant picker ---------- */
+
+/* list: one row per variant, with its one-line description (the tagline is in the markup, hidden by default) */
+:root[data-picker="list"] .variant-options { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+:root[data-picker="list"] .variant-card { grid-template-areas: "icon name" "icon tag"; row-gap: 2px; }
+:root[data-picker="list"] .variant-tag { display: block; grid-area: tag; min-width: 0; font-size: 0.78rem; line-height: 1.25; color: var(--muted); }
+
+/* ---------- game actions ---------- */
+
+/* bar: the action bar fixed to the bottom edge on every width (as on a phone, see the phone block of play.css), icon over label */
+@media (min-width: 641px) {
+  :root[data-actions="bar"] #app.has-actions { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0)); }
+  :root[data-actions="bar"] .actions {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; margin: 0; padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0));
+    border-width: 1px 0 0; border-radius: var(--r-3) var(--r-3) 0 0; background: var(--glass);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  }
+  :root[data-actions="bar"] .actions .button-row { display: flex; gap: 8px; max-width: 720px; margin: 0 auto; }
+  :root[data-actions="bar"] .actions .btn {
+    flex: 1 1 0; flex-direction: column; gap: 2px; min-height: 54px; padding: 6px 4px; font-size: 0.74rem; line-height: 1.15; border-radius: var(--r-2);
+  }
+  :root[data-actions="bar"] .actions .btn .bi { width: 22px; height: 22px; }
+}

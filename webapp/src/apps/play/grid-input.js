@@ -80,7 +80,7 @@ export function setupGridInput(svg) {
     const colors = two
       ? badgeColorsTwo(+badge.dataset.colour, visited)
       : badgeColors(visited, visited && stepWrong(p, S.path, i));
-    const shape = badge.querySelector(two ? '.num-shape' : 'circle'); // Two paths: circle or square
+    const shape = badge.querySelector('.num-shape, circle'); // Two paths and a themed square number: .num-shape; else the circle
     shape.setAttribute('fill', colors.fill);
     shape.setAttribute('stroke', colors.stroke);
     badge.querySelector('text').setAttribute('fill', colors.text);

@@ -28,6 +28,7 @@
   "wallCap": "round",
   "num": "disc",
   "numR": 0.267,
-  "numRingW": 0.042
+  "numRingW": 0.042,
+  "solid": "light"
  }
 }

@@ -66,7 +66,11 @@ try { index = await (await fetch('../out/index.json')).json(); } catch { /* not 
 const bundles = {};
 const entries = [...BUILTIN, ...index.map(i => ({ id: i.id, file: i.file, name: { en: i.id }, symbol: '<circle cx="12" cy="12" r="6"/>' }))];
 $('picker').innerHTML = entries.map(t => `<button data-pick="${t.id}" aria-pressed="false">${glyph(t.symbol)}<span>${t.name.en}</span></button>`).join('');
-if (!index.length) $('log').textContent = 'No bundles yet: run  node themes/tools/pack.mjs  and reload.';
+if (!index.length) {
+  // themes/out/ is generated (and git-ignored): until it is packed there is nothing but light and dark to show
+  $('picker').insertAdjacentHTML('afterend', '<p class="pv-note" role="alert" style="margin:12px 16px"><b>Only the built-in themes are listed: themes/out/index.json is not there (404).</b> '
+    + 'Run <code>node themes/tools/serve.mjs</code> (packs every theme, then serves this page), or <code>node themes/tools/pack.mjs</code> and reload.</p>');
+}
 $('picker').addEventListener('click', async e => {
   const b = e.target.closest('[data-pick]');
   const entry = b && entries.find(t => t.id === b.dataset.pick);

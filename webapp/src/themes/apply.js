@@ -2,6 +2,8 @@
 // data-menu / data-picker / data-actions = the layout presets), the theme's token block (one <style id="theme-css">, the
 // same element the page's <head> script created from the local copy before the first paint), the browser bar colour and the
 // brand mark. Idempotent: calling it again with the same theme changes nothing.
+import { setArt } from './art-state.js';
+
 export const THEME_EVENT = 'zip-theme';
 const STYLE_ID = 'theme-css';
 
@@ -40,6 +42,7 @@ export function applyEntry(entry, loaded, doc = document) {
   setStyle(doc, entry.builtin ? null : loaded?.css ?? null);
   doc.querySelector('meta[name="theme-color"]')?.setAttribute('content', entry.chrome);
   setMark(doc, loaded?.art?.mark ?? null);
+  setArt(loaded?.art ?? null);
   doc.dispatchEvent(new CustomEvent(THEME_EVENT, { detail: { id: entry.id, mode: entry.mode, art: loaded?.art ?? null } }));
 }
 

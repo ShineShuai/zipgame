@@ -6,6 +6,9 @@ export const PORTAL_COLORS = ['#8b5cf6', '#0d9488', '#db2777', '#65a30d', '#0284
 export const PORTAL_SHAPES = ['ring', 'diamond', 'square', 'triangle'];
 export const portalColor = index => PORTAL_COLORS[index % PORTAL_COLORS.length];
 export const portalShape = index => PORTAL_SHAPES[index % PORTAL_SHAPES.length];
+// The play app draws the portals with the theme's tokens (--portal-1..6, css/theme.css: the same colours as above by default); the
+// Design app has no theme and keeps the hex above.
+export const portalColorVar = index => `var(--portal-${(index % PORTAL_COLORS.length) + 1})`;
 
 const num = value => +value.toFixed(3);
 const pts = list => list.map(([px, py]) => `${num(px)},${num(py)}`).join(' ');

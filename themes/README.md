@@ -46,7 +46,7 @@ themes/                  AUTHOR (private workspace, never deployed)
   <id>/theme.json        metadata, ~25 seed colours, the vars the theme varies
   <id>/art.json          icons, brand mark, board skin
   <id>/fonts/*.woff2     optional, self-hosted, 60 KB at most each
-  tools/                 pack.mjs (theme -> bundle), publish.mjs (publish / withdraw / list), derive, schema, tests
+  tools/                 pack.mjs (theme -> bundle), serve.mjs (pack + dev server), publish.mjs (publish / withdraw / list), derive, schema, tests
   preview/               debug page: the real controller on the packed bundles
   out/                   packed bundles (git-ignored; for the preview)
 offers/                  PUBLISHED bundles: <token>.json (+ a blank index.html). Only what is on offer. Deployed next to webapp/
@@ -74,12 +74,27 @@ webapp/src/themes/       ENGINE (changes with features, not with the number of t
 1. Write `themes/<id>/theme.json` (copy a sibling) and `art.json`. Everything not stated is derived and nudged to pass the contrast
    pairs (text 4.5, graphics 3); `pack` prints every nudge: a nudge in a seed you chose is a design decision to review.
 2. `node themes/tools/pack.mjs` and `node themes/tools/test.mjs` (or `npm run themes:pack` / `npm run test:themes` in `webapp/`).
-3. Look: from the repo root `python3 -m http.server 8000`, open `http://localhost:8000/themes/preview/`.
-4. Try it in the game: `node themes/tools/publish.mjs publish candy` prints a token; serve the repo root the same way, open
+3. Look: `node themes/tools/serve.mjs` (or `npm run themes:preview` in `webapp/`) packs every theme and serves the repo root; open
+   `http://localhost:8000/themes/preview/`. Without the pack step `themes/out/` does not exist (it is generated, git-ignored) and the preview
+   lists only light and dark.
+4. Try it in the game: `node themes/tools/publish.mjs publish candy` prints a token; with the same server running, open
    `http://localhost:8000/webapp/`, then in the console
    `const { themes } = await import('/webapp/src/ui/theme.js'); const t = await themes().offer('<token>'); await t.commit('dark')`
    (`t.revert()` leaves it). `publish.mjs withdraw candy` removes the file again.
 5. Raise a theme's `v` when its files change.
+
+## What a theme changes in the game
+
+- **Tokens** (`css/theme.css` defaults, bundle overrides): colours, radii, borders, sizes, fonts, shadows, the number discs, the portal colours.
+- **Art** (`art.json`): the variant icons (`variantIcon` in `apps/play/icons.js` draws the theme's icon, the classic one for any it does not draw),
+  the brand mark, and the **board skin** (`apps/play/board.js`): inset rounded tiles with an edge and a lower edge on an optional plate, path
+  width / cap / join and a top-to-bottom gradient, wall width and cap, number disc or square. The skin applies to plain boards; Cutout,
+  Wrap-around and Pentagon keep their own tiles (in the theme's colours), Two paths keeps its circle and square. `board.solid` picks the
+  light or dark 3D palette (a light board on a dark page, like wood).
+- **Layout** (`css/layouts.css`, chosen by the theme's `layout` keys): menu `dashboard` (default) | `stack` | `bento`; picker `tiles` (default) |
+  `list`; actions `side` (default) | `bar`. The defaults have no rule: they are `play.css`.
+- **The pool picker** (`ui/theme-picker.js`): with two themes the header button switches (as light/dark always did), with three or more it opens a list.
+- Every change of theme redraws the screen (`zip-theme`), so icons, boards and 3D tints follow.
 
 ## Rules a bundle cannot break (checked when it is built and again when the game receives it)
 

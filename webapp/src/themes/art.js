@@ -11,6 +11,8 @@ export const CLASSIC_BOARD = {
   gradient: false, wallW: 0.1, wallCap: 'round', num: 'disc', numR: 0.32, numRingW: 0.05,
 };
 const ENUMS = { grid: ['lines', 'tiles'], cap: ['round', 'square', 'butt'], join: ['round', 'miter'], wallCap: ['round', 'square', 'butt'], num: ['disc', 'square'] };
+// `solid`: which of the two 3D palettes (light, dark) the 3D puzzles use; a theme whose board is light on a dark page says 'light'.
+const SOLID = ['light', 'dark'];
 const UNITS = ['tileRx', 'tileInset', 'tileEdgeW', 'depth', 'plateRx', 'pathW', 'wallW', 'numR', 'numRingW'];
 
 export function cleanBoard(raw) {
@@ -18,6 +20,7 @@ export function cleanBoard(raw) {
   for (const [key, values] of Object.entries(ENUMS)) if (values.includes(raw?.[key])) out[key] = raw[key];
   for (const key of UNITS) if (typeof raw?.[key] === 'number' && raw[key] >= 0 && raw[key] <= 0.5) out[key] = raw[key];
   if (typeof raw?.gradient === 'boolean') out.gradient = raw.gradient;
+  if (SOLID.includes(raw?.solid)) out.solid = raw.solid;
   return out;
 }
 

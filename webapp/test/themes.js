@@ -6,6 +6,11 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { applyEntry, loadFonts } from '../src/themes/apply.js';
+import { currentArt, setArt, solidIsDark } from '../src/themes/art-state.js';
+import { variantIcon } from '../src/apps/play/icons.js';
+import { boardSvg, COLORS } from '../src/apps/play/board.js';
+import { makePuzzle } from '../src/core/model.js';
+import { portalColorVar, PORTAL_COLORS } from '../src/view/portal-icons.js';
 import { cleanArt, CLASSIC_BOARD } from '../src/themes/art.js';
 import { cleanBundle } from '../src/themes/bundle.js';
 import { BUILTIN } from '../src/themes/builtin.js';
@@ -17,6 +22,8 @@ import {
 import { browserSource, createSource, MAX_FILE, TOKEN_RE } from '../src/themes/source.js';
 import { BUNDLE_KEY, createStore } from '../src/themes/store.js';
 import { cleanTokens, buildCss } from '../src/themes/tokens.js';
+import { DEFAULT_LAYOUT, LAYOUT as PRESETS } from '../src/themes/layout.js';
+import { pickerHtml, pickerItems } from '../src/themes/picker.js';
 import { cleanInner, cleanSvg } from '../src/themes/svg.js';
 
 const INDEX = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
@@ -311,6 +318,84 @@ export function themeSystemTests(t, ok, eq, ta) {
     handle.release();
     eq(added.length, 0);
     eq(typeof loadFonts([{ family: 'F', weight: '400', data: woff2 }], {}).release, 'function', 'no FontFace API: nothing to do');
+  });
+
+  t('themes: variant icons come from the theme on screen, with the classic icon for what it does not draw', () => {
+    const classic = variantIcon('cutout');
+    ok(classic.includes('class="variant-icon vi-cutout"') && classic.includes('vi-bg'), 'no theme: the classic icon');
+    setArt(cleanArt({ icons: { standard: '<path d="M1 1"/>', cutout: '<path d="M2 2"/>' }, board: {} }));
+    try {
+      eq(variantIcon('cutout'), '<svg class="variant-icon vi-cutout" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><path d="M2 2"/></svg>');
+      eq(variantIcon('anything-else').includes('<path d="M1 1"/>'), true, 'an unknown variant is the standard one');
+      eq(variantIcon('lucky').includes('vi-q'), true, 'lucky is not drawn by this theme: the classic icon');
+      eq(variantIcon('cube').includes('vi-cube'), true, 'so are the solids');
+    } finally { setArt(null); }
+    eq(variantIcon('cutout'), classic, 'back to the classic icon');
+  });
+
+  t('themes: the board is drawn in the theme\'s skin; the classic skin is what the game always drew; the svg\'s box never changes', () => {
+    const puzzle = makePuzzle(3);
+    puzzle.cp[0] = 1; puzzle.cp[8] = 2;
+    const S = { puzzle, path: [0, 1], hintCell: null, hintWrongCell: null };
+    const classic = boardSvg(S);
+    ok(classic.includes('stroke-width="1.5"') && classic.includes('stroke-width="6" stroke-linecap="round"') && classic.includes('stroke-width="16.8"') && classic.includes('r="19.2"') && classic.includes('stroke-width="3"'), 'the classic numbers');
+    ok(!classic.includes('skin-tiles') && !classic.includes('url(#zip-path)') && !classic.includes('num-shape'));
+    const skin = { grid: 'tiles', tileRx: 0.2, tileInset: 0.05, tileEdgeW: 0.02, depth: 0.03, plateRx: 0.15, pathW: 0.2, cap: 'square', join: 'miter', gradient: true, wallW: 0.12, wallCap: 'butt', num: 'square', numR: 0.25, numRingW: 0, solid: 'light' };
+    setArt(cleanArt({ board: skin }));
+    try {
+      const themed = boardSvg(S);
+      eq(themed.match(/viewBox="[^"]*"/)[0], classic.match(/viewBox="[^"]*"/)[0], 'same viewBox: the pointer maps through the same box');
+      ok(themed.includes('class="zip-svg skin-tiles"') && themed.includes('<g data-skin="tiles">'), 'tiles skin');
+      eq([(themed.match(/fill="var\(--b-bg\)"/g) || []).length, (themed.match(/fill="var\(--b-depth\)"/g) || []).length], [9, 9], 'nine tiles, nine lower edges');
+      ok(themed.includes(`<rect width="180" height="180" rx="9" fill="${COLORS.stage}"/>`), 'the plate');
+      ok(themed.includes('stroke="url(#zip-path)"') && themed.includes('<linearGradient id="zip-path" gradientUnits="userSpaceOnUse"'), 'the path gradient is in the board\'s own defs');
+      ok(themed.includes('stroke-width="12" fill="none" stroke-linecap="square" stroke-linejoin="miter"'), 'path width, cap, join');
+      ok(themed.includes('stroke-width="7.2" stroke-linecap="butt"'), 'wall width and cap');
+      ok(themed.includes('<rect class="num-shape"') && themed.includes('width="30"') && themed.includes('stroke-width="0"'), 'square numbers, no ring');
+      eq(solidIsDark({ documentElement: { dataset: { mode: 'dark' } } }), false, 'the theme names the light 3D palette on a dark page');
+    } finally { setArt(null); }
+    eq(boardSvg(S), classic, 'back to the classic board, byte for byte');
+    eq(solidIsDark({ documentElement: { dataset: { mode: 'dark' } } }), true, 'no theme: the page\'s mode');
+    eq(currentArt(), null);
+    eq(cleanArt({ board: { solid: 'purple' } }).board.solid, undefined, 'only light or dark');
+  });
+
+  t('themes: portals are drawn in tokens (the Design app keeps its hex), the defaults being the same colours', () => {
+    eq(portalColorVar(0), 'var(--portal-1)');
+    eq(portalColorVar(6), 'var(--portal-1)', 'wraps round');
+    const css = readFileSync(new URL('../css/theme.css', import.meta.url), 'utf8');
+    PORTAL_COLORS.forEach((hex, i) => ok(css.includes(`--portal-${i + 1}: ${hex};`), `--portal-${i + 1} defaults to ${hex}`));
+  });
+
+  t('themes: layouts.css has a block for every preset except the defaults (which are play.css), and only tokens', () => {
+    const css = readFileSync(new URL('../css/layouts.css', import.meta.url), 'utf8');
+    const theme = readFileSync(new URL('../css/theme.css', import.meta.url), 'utf8');
+    for (const [axis, keys] of Object.entries(PRESETS)) {
+      for (const key of keys) {
+        const has = css.includes(`:root[data-${axis}="${key}"]`);
+        eq(has, key !== DEFAULT_LAYOUT[axis], `${axis}=${key}: ${key === DEFAULT_LAYOUT[axis] ? 'the default has no rule (it is play.css)' : 'a preset needs a block'}`);
+      }
+    }
+    for (const attr of css.matchAll(/data-(\w+)="([\w-]+)"/g)) ok(PRESETS[attr[1]]?.includes(attr[2]), `unknown preset ${attr[0]}`);
+    ok(!/#[0-9a-f]{3,8}\b|rgba?\(/i.test(css), 'colour literals: use tokens');
+    const local = new Set(['--tile', '--tile-on', '--tile-counter']);
+    ok(!/(--ic-[12]):[^;]*var\(\1/.test(css), 'a custom property must not refer to itself');
+    for (const m of css.matchAll(/var\((--[\w-]+)/g)) ok(local.has(m[1]) || theme.includes(`${m[1]}:`), `${m[1]} is not defined in theme.css`);
+    ok(INDEX.includes('<link rel="stylesheet" href="css/layouts.css">') && INDEX.indexOf('css/play.css') < INDEX.indexOf('css/layouts.css'), 'index.html loads it after play.css');
+  });
+
+  t('themes: the pool picker lists the pool in order, marks the current theme, and escapes what it shows', () => {
+    const [candy, wood] = [entryOf(CANDY), entryOf(WOOD)];
+    const st = withPool([BUILTIN[0], candy, wood], null, 3);
+    const items = pickerItems(st, 'candy', 'zh');
+    eq(items.map(i => [i.id, i.name, i.current]), [['light', '浅色', false], ['candy', '主题', true], ['wood', '主题', false]]);
+    eq(pickerItems(st, 'wood', 'xx').map(i => i.name), ['Light', 'CANDY', 'WOOD'], 'an unknown language: English');
+    const html = pickerHtml(items, 'Choose a theme');
+    ok(html.includes('data-theme-id="candy"') && html.includes('aria-checked="true"') && html.includes('role="menuitemradio"') && html.includes('class="current"'));
+    eq((html.match(/<button /g) || []).length, 3);
+    const hostile = pickerHtml([{ id: 'x"><script>', name: '<img src=x onerror=alert(1)>', symbol: SYMBOL, swatches: ['#fff"><i'], current: false }], '<b>t</b>');
+    ok(!hostile.includes('<img') && !hostile.includes('<script>') && !hostile.includes('<b>'), 'no tag of theirs');
+    ok(['&lt;img src=x onerror=alert(1)&gt;', 'x&quot;&gt;&lt;script&gt;', '&lt;b&gt;t&lt;/b&gt;', '#fff&quot;&gt;&lt;i'].every(piece => hostile.includes(piece)), 'shown as text');
   });
 
   ta('themes: the controller shows, steps, persists, follows the system, and shows what the player owns without any network', async () => {

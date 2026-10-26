@@ -70,7 +70,7 @@ export function teleportPlayTests(t, ta, ok, eq) {
         `pair ${i}`);
     });
     ok(/class="zip-svg teleport/.test(svg), 'teleport class');
-    ok(/<polygon[^>]*stroke="#0d9488"/.test(svg) && /<circle[^>]*stroke="#8b5cf6"/.test(svg),
+    ok(/<polygon[^>]*stroke="var\(--portal-2\)"/.test(svg) && /<circle[^>]*stroke="var\(--portal-1\)"/.test(svg),
       'pair 0 a ring, pair 1 a diamond');
     ok(svg.includes('data-role="jump"'), 'the jump layer');
     // the portal icons are under the path, the numbers above it

@@ -23,6 +23,7 @@
     "gotd:seed": "node tools/gotd-seed.mjs --dry-run",
     "behaviour": "node tools/behaviour.mjs",
     "test:themes": "node ../themes/tools/test.mjs",
-    "themes:pack": "node ../themes/tools/pack.mjs"
+    "themes:pack": "node ../themes/tools/pack.mjs",
+    "themes:preview": "node ../themes/tools/serve.mjs"
   }
 }

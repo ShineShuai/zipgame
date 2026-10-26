@@ -105,6 +105,22 @@ button, select, input { font-family: inherit; }
 /* a pool beyond light and dark: the button shows the glyph of the theme it switches to */
 :root .theme-toggle[data-custom] .ico-sun, :root .theme-toggle[data-custom] .ico-moon { display: none; }
 .theme-symbol { width: var(--glyph); height: var(--glyph); }
+/* the pool picker (src/ui/theme-picker.js): a menu under the theme button, once the pool holds three or more themes */
+.theme-picker {
+  position: fixed; z-index: 60; min-width: 220px; max-width: calc(100vw - 16px); padding: 6px;
+  background: var(--pop-bg); border: var(--bw-card) solid var(--line); border-radius: var(--r-3); box-shadow: var(--pop-shadow);
+}
+.theme-picker-title { padding: 6px 10px 8px; font-size: 0.78rem; font-weight: 700; color: var(--muted); }
+.theme-picker button {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: calc(var(--ctl-h) - 4px); padding: 6px 10px;
+  border: 0; border-radius: var(--r-2); background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.theme-picker button:hover, .theme-picker button:focus-visible { background: var(--accent-soft); outline: none; }
+.theme-picker button.current { background: var(--accent-soft); color: var(--accent-text); font-weight: 700; }
+.theme-picker svg { flex: none; width: var(--glyph); height: var(--glyph); }
+.theme-picker .theme-name { flex: 1; min-width: 0; }
+.theme-picker .theme-swatches { display: flex; gap: 3px; }
+.theme-picker .theme-swatches i { width: 10px; height: 18px; border-radius: 3px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 25%, transparent); }
 
 /* ---------- page, cards ---------- */
 
@@ -637,7 +653,8 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
   touch-action: none; cursor: pointer;
 }
 /* Cutout, Wrap-around, Pentagon: the tiles carry the white and the outline, so the holes show the page behind them */
-.zip-svg.cutout, .zip-svg.wrap, .zip-svg.pentagon { background: transparent; box-shadow: none; }
+.zip-svg.cutout, .zip-svg.wrap, .zip-svg.pentagon, .zip-svg.skin-tiles { background: transparent; box-shadow: none; }
+.zip-svg text { font-family: var(--font-num); } /* a theme's number font (default: the page's) */
 .zip-svg.cutout, .zip-svg.pentagon { overflow: visible; }
 /* One way arrows: a step against an arrow flashes it (the polygon gets .blocked, see flashBlockedArrow in apps/play/grid-input.js). */
 .arrow-mark polygon { transform-box: fill-box; transform-origin: center; }

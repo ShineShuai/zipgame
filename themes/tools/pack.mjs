@@ -65,22 +65,26 @@ export function packTheme(theme, base) {
   return { bundle, notes, problems, missingFonts, size };
 }
 
-if (import.meta.url === new URL(process.argv[1], 'file://').href) {
-  const only = process.argv.slice(2);
+// Packs `only` (every theme when empty) into themes/out/; returns the number of themes with problems.
+export function packAll(only = [], log = console.log) {
   const base = loadBase();
   let bad = 0;
   mkdirSync(OUT, { recursive: true });
   const index = [];
   for (const theme of loadThemes().filter(t => !only.length || only.includes(t.id))) {
     const { bundle, notes, problems, missingFonts, size } = packTheme(theme, base);
-    console.log(`${theme.id}: ${notes.length} nudged, ${problems.length} problems, ${size} bytes`);
-    notes.forEach(n => console.log(`  nudge  ${n}`));
-    problems.forEach(p => console.log(`  PROBLEM ${p}`));
-    missingFonts.forEach(f => console.log(`  warn   themes/${f} is not there: the theme uses its system font stack`));
+    log(`${theme.id}: ${notes.length} nudged, ${problems.length} problems, ${size} bytes`);
+    notes.forEach(n => log(`  nudge  ${n}`));
+    problems.forEach(p => log(`  PROBLEM ${p}`));
+    missingFonts.forEach(f => log(`  warn   themes/${f} is not there: the theme uses its system font stack`));
     if (problems.length) { bad++; continue; }
     writeFileSync(new URL(`${theme.id}.bundle.json`, OUT), JSON.stringify(bundle));
     index.push({ id: theme.id, file: `${theme.id}.bundle.json`, bytes: size });
   }
   writeFileSync(new URL('index.json', OUT), `${JSON.stringify(index, null, 1)}\n`);
-  process.exit(bad ? 1 : 0);
+  return bad;
+}
+
+if (import.meta.url === new URL(process.argv[1], 'file://').href) {
+  process.exit(packAll(process.argv.slice(2)) ? 1 : 0);
 }

@@ -10,6 +10,7 @@ import { createThemes } from '../themes/index.js';
 import { MODE_KEY, parseMode, resolveMode } from '../themes/pool.js';
 import { browserSource } from '../themes/source.js';
 import { createStore } from '../themes/store.js';
+import { closeThemePicker, toggleThemePicker } from './theme-picker.js';
 
 export const THEME_KEY = MODE_KEY;   // the key the stats page reads; it mirrors the active theme's mode
 export const parseTheme = parseMode;
@@ -40,21 +41,24 @@ function setSymbol(button, entry) {
 }
 
 // button: the header button. label(current, next, classic) -> its text for the screen reader and the tooltip.
-export function initTheme(button, label = (cur, next, classic) => (classic ? (cur.mode === 'dark' ? 'Light mode' : 'Dark mode') : `Switch to ${next.name.en} theme`)) {
+// pickLabel() / pickLang(): the heading of the list and the language of the names (the app passes its translations).
+export function initTheme(button, label = (cur, next, classic) => (classic ? (cur.mode === 'dark' ? 'Light mode' : 'Dark mode') : `Switch to ${next.name.en} theme`), pickLabel = () => 'Choose a theme', pickLang = () => 'en') {
   // a custom property this build defines (css/theme.css): a bundle's token the build does not know is ignored
   const known = name => getComputedStyle(document.documentElement).getPropertyValue(name) !== '';
   controller = createThemes({ storage: localStorage, media: matchMedia(DARK_QUERY), store: createStore(localStorage), source: browserSource(THEMES.offers), known });
+  const picking = () => controller.state().pool.length >= 3;   // a pool of three or more is chosen from a list, not stepped through
   const sync = () => {
     if (!button) return;
     const [cur, next, classic] = [controller.current(), controller.upcoming(), controller.isClassic()];
-    if (classic) { button.setAttribute('aria-pressed', String(cur.mode === 'dark')); setSymbol(button, null); } else { button.removeAttribute('aria-pressed'); setSymbol(button, next); }
-    const text = label(cur, next, classic);
+    if (classic) { button.setAttribute('aria-pressed', String(cur.mode === 'dark')); setSymbol(button, null); } else { button.removeAttribute('aria-pressed'); setSymbol(button, picking() ? cur : next); }
+    if (picking()) { button.setAttribute('aria-haspopup', 'menu'); if (!button.hasAttribute('aria-expanded')) button.setAttribute('aria-expanded', 'false'); } else { button.removeAttribute('aria-haspopup'); button.removeAttribute('aria-expanded'); closeThemePicker(); }
+    const text = picking() ? pickLabel() : label(cur, next, classic);
     button.setAttribute('aria-label', text);
     button.title = text;
   };
   controller.onChange(sync);
   controller.start();
   sync();
-  if (button) button.addEventListener('click', () => controller.next());
+  if (button) button.addEventListener('click', () => (picking() ? toggleThemePicker(button, controller, pickLang(), pickLabel()) : controller.next()));
   return { refresh: sync };
 }
