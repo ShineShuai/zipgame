@@ -44,6 +44,13 @@ export const BEHAVIOUR = {
   backup: 'cloudflare',
 };
 
+// Offered themes (src/themes/source.js): where the bundles of the themes offered at an event are served from. A bundle is one file named by an
+// unguessable token (`<token>.json`, made by themes/tools/publish.mjs); nothing lists them, a page only fetches a token it was given.
+// A path relative to the page ('../offers/' is the folder next to webapp/, like ../assets/) or an https origin (add it to `connect-src`).
+export const THEMES = {
+  offers: '../offers/',
+};
+
 // Release of the solid puzzles in the play app (src/features/solid-release.js).
 // Dates are UTC days, YYYYMMDD.
 //   first   the day the first solid puzzle goes live: from then on everyone sees the

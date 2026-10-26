@@ -4,6 +4,8 @@
 // Plain SVG strings, no DOM. Colours come from css/play.css (.vi-*, currentColor), so the
 // icons follow the page theme and the same markup serves the picker, the HUD and the cards.
 
+import { currentArt } from '../../themes/art-state.js';
+
 const CELLS = 4; // the variant icons draw a 4x4 board
 const UNIT = 9; // one cell, in viewBox units (48 x 48 box)
 const ORIGIN = 6; // left and top edge of the board
@@ -215,12 +217,23 @@ function solidIcon(kind) {
     `${SOLID_ICONS[kind]}</svg>`;
 }
 
+// The icon of the theme on screen (its art): the same ids as below, anything else = standard. null when the theme does not draw it
+// (a built-in theme, or one that leaves lucky and the solids to the classic icons): the classic icon is drawn then.
+const ART_ICONS = ['standard', 'cutout', 'arrows', 'exact', 'wrap', 'loop', 'teleport', 'twopaths', 'pentagon', 'lucky', 'tetra', 'cube', 'ball'];
+function themedIcon(variant) {
+  const id = ART_ICONS.includes(variant) ? variant : 'standard';
+  const inner = currentArt()?.icons?.[id];
+  return inner ? `<svg class="variant-icon vi-${id}" viewBox="0 0 48 48" aria-hidden="true" focusable="false">${inner}</svg>` : null;
+}
+
 // variant: 'cutout', 'arrows', 'exact', 'wrap', 'loop', 'teleport', 'twopaths', 'pentagon',
 // 'lucky' (the mystery of the lucky game), the solid puzzles 'tetra', 'cube' and 'ball', or
 // anything else (= standard). Class: variant-icon vi-standard | vi-cutout | vi-arrows |
 // vi-exact | vi-wrap | vi-loop | vi-teleport | vi-twopaths | vi-pentagon | vi-lucky |
 // vi-tetra | vi-cube | vi-ball.
 export function variantIcon(variant) {
+  const themed = themedIcon(variant);
+  if (themed) return themed;
   if (variant === 'lucky') return luckyIcon();
   if (SOLID_ICONS[variant]) return solidIcon(variant);
   const cutout = variant === 'cutout';

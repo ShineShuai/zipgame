@@ -94,6 +94,7 @@ import { ballViewTests } from './ball-view.js';
 import { solidTests } from './solid.js';
 import { generationTests } from './generation.js';
 import { themeTests } from './theme.js';
+import { themeSystemTests } from './themes.js';
 import { teleportTests } from './teleport.js';
 import { teleportGenTests } from './teleport-gen.js';
 import { teleportPlayTests } from './play-teleport.js';
@@ -3071,11 +3072,11 @@ t('share: makeShareRecord -> shareUrl -> parseShareLink round trip; the text car
   ok(url.startsWith('https://x.example/zip/?s=') && !url.includes('%'), url);
   const parsed = parseShareLink(new URL(url).search);
   eq([sorted(parsed.rec), parsed.bad], [sorted(g), false]);
-  eq(shareText(g, url, tr), `Zip · Game of Day 2026-10-07 · 7x7 · Hard 3/5\n⏱ 72.4s · beat 83%\n🟩🟨🟥\n${url}`);
+  eq(shareText(g, url, tr), `zigzag · Game of Day 2026-10-07 · 7x7 · Hard 3/5\n⏱ 72.4s · beat 83%\n🟩🟨🟥\n${url}`);
   const l = makeShareRecord({ gotdDate: null, n: 5, grade: null, timeS: 40, pct: null, legs: [], K: maxNumber(LOCAL_PUZZLE), puzzle: LOCAL_PUZZLE });
   eq(sorted({ ...l, puzzle: null }), sorted({ kind: 'local', variant: null, n: 5, grade: null, timeS: 40, levels: Array(maxNumber(LOCAL_PUZZLE) - 1).fill(0), puzzle: null }));
   ok(l.puzzle !== LOCAL_PUZZLE && l.puzzle.cp !== LOCAL_PUZZLE.cp, 'the record holds a copy of the puzzle');
-  eq(shareText(l, 'U', tr), 'Zip · 5x5\n⏱ 40.0s\n' + stripText(l.levels) + '\nU');
+  eq(shareText(l, 'U', tr), 'zigzag · 5x5\n⏱ 40.0s\n' + stripText(l.levels) + '\nU');
   eq(parseShareLink(''), { rec: null, bad: false });
   eq(parseShareLink('?s=garbage'), { rec: null, bad: true });
   ok(sameRec(parseShareLink('?lb=x&s=' + encodeShare(l)).rec, l));
@@ -3419,7 +3420,7 @@ t('share: a Cutout share record has the puzzle, a head line of its own, and is a
   const p = runSync(generateCutout(6, 21, { boards: 1, effort: 0.1 }));
   const rec = makeShareRecord({ n: 6, timeS: 12.5, legs: [], K: maxNumber(p), variant: 'cutout', puzzle: p });
   ok(rec.variant === 'cutout' && rec.kind === 'local' && rec.day === undefined && rec.puzzle.holes !== p.holes);
-  ok(shareText(rec, 'u', tr).startsWith('Zip Cutout · 6x6'));
+  ok(shareText(rec, 'u', tr).startsWith('zigzag Cutout · 6x6'));
   eq(shareStatus(rec, { today: 20000, replayDates: [], attempt: null, sizes: PLAY_SIZES }), { status: 'ok' });
   eq(shareStatus({ ...rec, n: 3 }, { today: 20000, replayDates: [], attempt: null, sizes: PLAY_SIZES }), { status: 'invalid' });
 });
@@ -3457,6 +3458,7 @@ ballViewTests(t, ok, eq);
 solidTests(t, ok, eq, ta);
 generationTests(t, ok, eq, ta);
 themeTests(t, ok, eq);
+themeSystemTests(t, ok, eq, ta);
 
 // ---------- Pentagon (Cairo tiling) boards ----------
 pentagonTests(t, ok, eq);

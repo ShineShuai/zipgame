@@ -148,7 +148,7 @@ export function playExactTests(t, ok, eq) {
     const p = fast(6, 5);
     const rec = record(p);
     const text = shareText(rec, 'https://x/?s=abc', key => EN[key]);
-    ok(text.startsWith('Zip Exact'), text.split('\n')[0]);
+    ok(text.startsWith('zigzag Exact'), text.split('\n')[0]);
     // 3x3, numbers 1, 5, 9 = ranks 1, 2, 3; going back from the end of the snake to length 6
     // undoes cells 7, 8, 9
     const q = exactPuzzle(3, { 0: 1, 4: 5, 8: 9 });
@@ -195,15 +195,15 @@ export function playExactTests(t, ok, eq) {
       return svg.match(new RegExp(`data-num-cell="${cell}"><circle[^>]*fill="([^"]+)"`))[1];
     };
     const right = board(p, [0, 1, 2]);
-    const blue = [COLORS.number, COLORS.number, COLORS.numberFill];
+    const blue = [COLORS.numberVisited, COLORS.numberVisited, COLORS.numberFill];
     eq([badge(right, 0), badge(right, 2), badge(right, 8)], blue);
     const wrong = board(p, [0, 3, 4, 1, 2]); // number 3 reached on step 5
-    eq([badge(wrong, 0), badge(wrong, 2)], [COLORS.number, COLORS.numberWrong]);
+    eq([badge(wrong, 0), badge(wrong, 2)], [COLORS.numberVisited, COLORS.numberWrong]);
     const flags = [[0, 1, 2], [0, 3, 4, 1, 2]].map(path => stepWrong(p, path, 2));
     eq([...flags, stepWrong(makePuzzle(3), [0, 1, 2], 2)], [false, true, false]);
-    const idle = { fill: COLORS.numberFill, stroke: COLORS.number, text: COLORS.number };
+    const idle = { fill: COLORS.numberFill, stroke: COLORS.numberRing, text: COLORS.number };
     eq(badgeColors(false), idle);
-    eq(badgeColors(true).fill, COLORS.number);
+    eq(badgeColors(true), { fill: COLORS.numberVisited, stroke: COLORS.numberVisitedRing, text: COLORS.numberVisitedText });
     const ink = COLORS.numberWrong;
     const red = { fill: ink, stroke: ink, text: COLORS.numberVisitedText };
     eq(badgeColors(true, true), red);

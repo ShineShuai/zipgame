@@ -70,7 +70,7 @@ export function teleportPlayTests(t, ta, ok, eq) {
         `pair ${i}`);
     });
     ok(/class="zip-svg teleport/.test(svg), 'teleport class');
-    ok(/<polygon[^>]*stroke="#0d9488"/.test(svg) && /<circle[^>]*stroke="#8b5cf6"/.test(svg),
+    ok(/<polygon[^>]*stroke="var\(--portal-2\)"/.test(svg) && /<circle[^>]*stroke="var\(--portal-1\)"/.test(svg),
       'pair 0 a ring, pair 1 a diamond');
     ok(svg.includes('data-role="jump"'), 'the jump layer');
     // the portal icons are under the path, the numbers above it
@@ -228,7 +228,7 @@ export function teleportPlayTests(t, ta, ok, eq) {
     eq(rec.grade, null, 'no grade');
     eq(rec.variant, TELEPORT);
     const tr = (key, ...args) => EN[key].replace(/\{0\}/g, args[0]);
-    eq(shareText(rec, 'https://x/?s=abc', tr).split('\n')[0], 'Zip Teleport · 6x6',
+    eq(shareText(rec, 'https://x/?s=abc', tr).split('\n')[0], 'zigzag Teleport · 6x6',
       'the head line');
     const ctx = { sizes: PLAY_SIZES, algo: 0, sizesOf: id => sizesFor(id, PLAY_SIZES) };
     eq(shareStatus(rec, ctx).status, 'ok', 'playable at once');

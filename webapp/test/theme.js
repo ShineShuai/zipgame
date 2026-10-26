@@ -2,6 +2,7 @@
 // of the pairs the screens put together, and the choice logic of src/ui/theme.js. Registered by tests.js: themeTests(t, ok, eq).
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { resolveTheme, parseTheme, THEME_KEY } from '../src/ui/theme.js';
+import { POOL_KEY } from '../src/themes/pool.js';
 
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const THEME = read('css/theme.css');
@@ -55,17 +56,23 @@ export function themeTests(t, ok, eq) {
     eq(THEME_KEY, 'zip_theme', 'the page heads read this key before the first paint');
   });
 
-  t('theme: the inline head scripts read the same key as theme.js', () => {
-    for (const page of ['index.html', 'stats.html']) {
-      const html = read(page);
-      ok(html.includes(`localStorage.getItem('${THEME_KEY}')`), `${page} sets data-theme before the first paint`);
-      ok(html.includes('css/theme.css'), `${page} loads the tokens`);
-    }
+  t('theme: the inline head scripts read the keys the theme code writes', () => {
+    // the play page: the pool (themes/pool.js POOL_KEY) and, for a first run after the update, the old mode key
+    const play = read('index.html');
+    ok(play.includes(`getItem('${POOL_KEY}')`) && play.includes(`getItem('${THEME_KEY}')`), 'index.html sets data-theme before the first paint');
+    ok(play.includes('css/theme.css'), 'index.html loads the tokens');
+    // the stats page follows the mode the play page mirrors under THEME_KEY
+    const stats = read('stats.html');
+    ok(stats.includes(`localStorage.getItem('${THEME_KEY}')`) && stats.includes('css/theme.css'), 'stats.html');
   });
 
   t('theme: dark overrides the light tokens (and only those), except values that hold in both', () => {
     for (const name of Object.keys(DARK)) ok(name in LIGHT, `${name} is only in the dark block`);
-    const same = Object.keys(LIGHT).filter(name => !(name in DARK) && !SAME_IN_BOTH.includes(name));
+    // the template tokens (shape, size, type ...) are the same in both; a theme may override them
+    const block = THEME.slice(THEME.indexOf('template tokens:'), THEME.indexOf('end of template tokens'));
+    const template = [...block.matchAll(/(--[a-z0-9-]+):/g)].map(m => m[1]);
+    ok(template.length > 40 && template.includes('--r-3') && template.includes('--ic-1'), 'the template block is found');
+    const same = Object.keys(LIGHT).filter(name => !(name in DARK) && !SAME_IN_BOTH.includes(name) && !template.includes(name));
     // logo tokens alias the icon tokens, so they follow the dark values without an entry of their own
     eq(same.filter(name => !name.startsWith('--logo-')), [], 'tokens that dark forgot');
   });

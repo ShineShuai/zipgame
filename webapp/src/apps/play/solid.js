@@ -25,6 +25,7 @@ import {
   pickBall,
 } from '../../core/solid/balls.js';
 import { canPush, isSolved, serializeSurface, step } from '../../core/surface/puzzle.js';
+import { solidIsDark } from '../../themes/art-state.js';
 import { HINT_PENALTY_S, computeHint, penalizedTime } from '../../features/hints.js';
 import { IDENTITY, buildView, cellDirection, orbit, turnToward } from '../../view/proj.js';
 import { buildNet, slotBetween } from '../../view/surface-net.js';
@@ -72,7 +73,7 @@ const sec = seconds => `${seconds.toFixed(1)}s`;
 //   luckySolved, luckyFailed, leaveLucky: the lucky game was solved, could not start
 //             (the chance comes back), was left
 // The cell tints of the play app's 3D views follow the theme (css/theme.css); a theme switch redraws the screen.
-const playPalette = () => (typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark'
+const playPalette = () => (typeof document !== 'undefined' && solidIsDark(document)
   ? PLAY_DARK_PALETTE : LIGHT_PALETTE);
 
 export function createSolidPlay(app) {

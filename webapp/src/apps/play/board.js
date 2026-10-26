@@ -6,9 +6,18 @@ import { cellCount } from '../../core/model.js';
 import { colourOfCell, colourNumber } from '../../core/twopaths.js';
 import { isSolved } from '../../core/rules.js';
 import { isPortalPair, portalPartner } from '../../core/geom.js';
-import { portalIcon, portalColor, portalShape } from '../../view/portal-icons.js';
+import { portalIcon, portalColorVar, portalShape } from '../../view/portal-icons.js';
+import { currentArt } from '../../themes/art-state.js';
+import { CLASSIC_BOARD } from '../../themes/art.js';
+
+// The coop trial may import this module but not src/themes: it takes the theme's 3D palette choice through here.
+export { solidIsDark } from '../../themes/art-state.js';
 
 export const CELL = 60; // logical units; on-screen size comes from viewBox scaling
+
+// The theme's board skin (its art; CLASSIC_BOARD = what the game always drew), in cell units: the numbers below are fractions of CELL.
+const skin = () => currentArt()?.board ?? CLASSIC_BOARD;
+const units = v => Math.round(v * CELL * 1000) / 1000;
 
 // One palette for the board, as CSS variables (css/theme.css: light and dark). The numbers are recolored while drawing
 // (grid-input.js), so it is shared. SVG attributes take var() like any CSS value, so a theme switch needs no redraw.
@@ -18,24 +27,30 @@ export const COLORS = {
   wall: 'var(--b-wall)',
   arrow: 'var(--b-wall)',      // one-way arrows (same ink as the walls), with a halo
   path: 'var(--b-path)',
-  number: 'var(--b-num)',      // idle number: ring and text on the board colour; visited: filled, text --b-num-on
+  number: 'var(--b-num)',      // idle number: the digit (on --b-num-fill, inside --b-num-ring)
   numberFill: 'var(--b-num-fill)',
+  numberRing: 'var(--b-num-ring)',
+  numberVisited: 'var(--b-numv-fill)', // visited: filled, ringed with --b-numv-ring, the digit --b-num-on
+  numberVisitedRing: 'var(--b-numv-ring)',
   numberVisitedText: 'var(--b-num-on)',
   numberWrong: 'var(--b-wrong)', // an Exact number the path reached on the wrong step
   hintRing: 'var(--b-hint)',
   hintWrong: 'var(--b-wrong)',
   tile: 'var(--b-bg)',         // a board tile (the cells of Cutout, Wrap-around, Pentagon)
+  depth: 'var(--b-depth)',     // the lower edge of a themed tile
+  stage: 'var(--b-stage)',     // the plate a themed board lies on
   halo: 'var(--b-halo)',       // separates an arrow or a seam mark from the path under it
   // Two paths: the two colours of a path and of its numbers (a ring when idle, filled when visited)
   twoPath: ['var(--b-red)', 'var(--b-blue)'],
 };
 
-// The colours of a number badge: idle (white, blue ring), visited (filled blue), and in an Exact
-// puzzle visited on the wrong step (filled red).
+// The colours of a number badge: idle (the idle disc, its ring), visited (the visited disc; both discs are themed, in
+// light and dark they are white with a blue ring and filled blue), and in an Exact puzzle visited on the wrong step
+// (filled red).
 export function badgeColors(visited, wrong = false) {
-  if (!visited) return { fill: COLORS.numberFill, stroke: COLORS.number, text: COLORS.number };
-  const ink = wrong ? COLORS.numberWrong : COLORS.number;
-  return { fill: ink, stroke: ink, text: COLORS.numberVisitedText };
+  if (!visited) return { fill: COLORS.numberFill, stroke: COLORS.numberRing, text: COLORS.number };
+  if (wrong) return { fill: COLORS.numberWrong, stroke: COLORS.numberWrong, text: COLORS.numberVisitedText };
+  return { fill: COLORS.numberVisited, stroke: COLORS.numberVisitedRing, text: COLORS.numberVisitedText };
 }
 
 // Two paths: the colours of a number badge of `colour` (0 red, 1 blue): idle (white, coloured ring)
@@ -65,7 +80,27 @@ function gridLines(size) {
     const at = i * CELL;
     lines.push(`<line x1="0" y1="${at}" x2="${size}" y2="${at}"/><line x1="${at}" y1="0" x2="${at}" y2="${size}"/>`);
   }
-  return `<g stroke="${COLORS.grid}" stroke-width="1.5">${lines.join('')}</g>`;
+  return `<g stroke="${COLORS.grid}" stroke-width="${units(skin().tileEdgeW || CLASSIC_BOARD.tileEdgeW)}">${lines.join('')}</g>`;
+}
+
+// A plain board in a themed skin: the cells are separate rounded tiles (inset, with an edge and a lower edge for depth), optionally
+// on a plate. Drawn inside the viewBox: the svg's own box, which the pointer is mapped through, does not change.
+function tileLayers(size) {
+  const s = skin();
+  const inset = units(s.tileInset);
+  const side = CELL - 2 * inset;
+  const rx = units(s.tileRx);
+  const edge = s.tileEdgeW ? ` stroke="${COLORS.grid}" stroke-width="${units(s.tileEdgeW)}"` : '';
+  const rects = [];
+  for (let row = 0; row < size / CELL; row++) {
+    for (let col = 0; col < size / CELL; col++) {
+      const [x, y] = [col * CELL + inset, row * CELL + inset];
+      if (s.depth) rects.push(`<rect x="${x}" y="${+(y + units(s.depth)).toFixed(3)}" width="${side}" height="${side}" rx="${rx}" fill="${COLORS.depth}"/>`);
+      rects.push(`<rect x="${x}" y="${y}" width="${side}" height="${side}" rx="${rx}" fill="${COLORS.tile}"${edge}/>`);
+    }
+  }
+  const plate = s.plateRx ? `<rect width="${size}" height="${size}" rx="${units(s.plateRx)}" fill="${COLORS.stage}"/>` : '';
+  return `<g data-skin="tiles">${plate}${rects.join('')}</g>`;
 }
 
 // Wrap-around board: a white square with a dashed outline (its edges are open: leave one side and
@@ -118,7 +153,8 @@ export function cutoutLayers(p) {
 
 function wallLines(puzzle) {
   const lines = wallSegments(puzzle, CELL).map(([x1, y1, x2, y2]) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`);
-  return `<g stroke="${COLORS.wall}" stroke-width="6" stroke-linecap="round">${lines.join('')}</g>`;
+  const s = skin();
+  return `<g stroke="${COLORS.wall}" stroke-width="${units(s.wallW)}" stroke-linecap="${s.wallCap}">${lines.join('')}</g>`;
 }
 
 // One-way arrows (puzzle.arrows): a filled triangle on the middle of the edge it belongs to, pointing the
@@ -152,9 +188,14 @@ function numberBadges(puzzle, visited, path) {
     const colors = badgeColors(isVisited, isVisited && stepWrong(puzzle, path, cell));
     // an Exact number has up to 3 digits
     const fontSize = Math.round(CELL * (number > 99 ? 0.24 : 0.32) * 10) / 10;
+    const s = skin();
+    const r = units(s.numR);
+    const shape = s.num === 'square'
+      ? `<rect class="num-shape" x="${+(x - r).toFixed(3)}" y="${+(y - r).toFixed(3)}" width="${2 * r}" height="${2 * r}" rx="${units(0.1)}"`
+      : `<circle cx="${x}" cy="${y}" r="${r}"`;
     badges.push(
       `<g data-num-cell="${cell}">` +
-      `<circle cx="${x}" cy="${y}" r="${CELL * 0.32}" fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="3"/>` +
+      `${shape} fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="${units(s.numRingW)}"/>` +
       `<text x="${x}" y="${y}" dy=".35em" text-anchor="middle" font-size="${fontSize}" font-weight="700" ` +
       `fill="${colors.text}">${number}</text></g>`
     );
@@ -193,9 +234,10 @@ function twoNumberBadges(p, visited) {
 // Two paths: the drawn line of each colour, one path element each (data-colour 0 = red, 1 = blue).
 export const twoPathsSvg = (p, paths) => paths.map((path, colour) => {
   const d = path.length > 1 ? routeD(p, path) : '';
+  const s = skin();
   return `<path data-role="path" data-colour="${colour}" d="${d}" ` +
-    `stroke="${COLORS.twoPath[colour]}" stroke-width="${CELL * 0.28}" fill="none" ` +
-    'stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>';
+    `stroke="${COLORS.twoPath[colour]}" stroke-width="${units(s.pathW)}" fill="none" ` +
+    `stroke-linecap="${s.cap}" stroke-linejoin="${s.join}" opacity="0.95"/>`;
 }).join('');
 
 // Red cross on the first wrong move of a hint.
@@ -248,7 +290,7 @@ export function portalIconsSvg(p) {
   if (!p.portals) return '';
   return p.portals.map((pair, index) => pair.map(cell => {
     const [x, y] = cellCenter(p.n, cell, CELL);
-    const icon = portalIcon(portalShape(index), portalColor(index), x, y);
+    const icon = portalIcon(portalShape(index), portalColorVar(index), x, y);
     return `<g class="portal" data-portal-cell="${cell}" data-pair="${index}">${icon}</g>`;
   }).join('')).join('');
 }
@@ -319,7 +361,7 @@ export function jumpMarksSvg(p, path, finished = false) {
       const [x, y] = cellCenter(n, partner, CELL);
       const small = CELL * 0.38;
       const large = CELL * 0.46;
-      const color = portalColor(p.portals.findIndex(pair => pair.includes(head)));
+      const color = portalColorVar(p.portals.findIndex(pair => pair.includes(head)));
       marks.push(
         `<circle data-mark="jump-ready" cx="${num(x)}" cy="${num(y)}" r="${CELL * 0.42}" ` +
         `fill="none" stroke="${color}" stroke-width="4" stroke-dasharray="6 4">` +
@@ -332,9 +374,14 @@ export function jumpMarksSvg(p, path, finished = false) {
 }
 
 // The drawn line of a puzzle with one path (`route` = its svg path data).
-export const singlePathSvg = route => `<path data-role="path" d="${route}" stroke="${COLORS.path}" ` +
-  `stroke-width="${CELL * 0.28}" fill="none" stroke-linecap="round" stroke-linejoin="round" ` +
-  'opacity="0.95"/>';
+// `gradient`: the theme's path runs from --b-path-hi at the top of the board to --b-path at the bottom (the defs of the board's own svg,
+// boardSvg; the Pentagon board has none and draws the plain colour).
+export const singlePathSvg = (route, { gradient = false } = {}) => `<path data-role="path" d="${route}" ` +
+  `stroke="${gradient ? 'url(#zip-path)' : COLORS.path}" stroke-width="${units(skin().pathW)}" fill="none" ` +
+  `stroke-linecap="${skin().cap}" stroke-linejoin="${skin().join}" opacity="0.95"/>`;
+
+const pathGradient = size => '<defs><linearGradient id="zip-path" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" ' +
+  `y2="${size}"><stop offset="0" stop-color="var(--b-path-hi)"/><stop offset="1" stop-color="var(--b-path)"/></linearGradient></defs>`;
 
 // Full SVG markup for the play board (S = play state). The svg itself has no border or padding, because
 // pointer positions are mapped to cells through its bounding box; the frame is the .grid-wrap around it.
@@ -350,14 +397,17 @@ export function boardSvg(S) {
   const pad = wrap ? WRAP_PAD : 0, margin = pad * CELL;
   const view = `${-margin} ${-margin} ${size + 2 * margin} ${size + 2 * margin}`;
 
-  let svg = `<svg viewBox="${view}" class="zip-svg${p.holes ? ' cutout' : ''}` +
+  const tiled = skin().grid === 'tiles' && !p.holes && !wrap;
+  const gradient = skin().gradient && !two;
+  let svg = `<svg viewBox="${view}" class="zip-svg${tiled ? ' skin-tiles' : ''}${p.holes ? ' cutout' : ''}` +
     `${p.arrows ? ' arrows' : ''}${wrap ? ' wrap' : ''}${p.portals ? ' teleport' : ''}` +
     `${two ? ' twopaths' : ''}" ` +
     `style="${maxBoardCss(n, pad)}">`;
-  svg += p.holes ? cutoutLayers(p) : wrap ? wrapLayers(size) : gridLines(size);
+  svg += gradient ? pathGradient(size) : '';
+  svg += p.holes ? cutoutLayers(p) : wrap ? wrapLayers(size) : tiled ? tileLayers(size) : gridLines(size);
   svg += wallLines(p);
   svg += portalIconsSvg(p);
-  svg += two ? twoPathsSvg(p, S.paths) : singlePathSvg(route);
+  svg += two ? twoPathsSvg(p, S.paths) : singlePathSvg(route, { gradient });
   if (wrap) svg += `<g data-role="seam">${seamMarksSvg(n, S.path)}</g>`;
   if (p.portals) svg += `<g data-role="jump">${jumpMarksSvg(p, S.path, S.finished)}</g>`;
   if (p.arrows) svg += arrowMarks(p);

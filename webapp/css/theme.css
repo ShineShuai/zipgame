@@ -1,4 +1,4 @@
-/* Zip colour tokens, shared by the play and stats pages. Light is the default; the dark values apply while
+/* zigzag colour tokens, shared by the play and stats pages. Light is the default; the dark values apply while
    <html data-theme="dark"> is set (src/ui/theme.js; an inline script in each page's <head> sets it before the
    first paint, from the saved choice or the system setting). Pages use only these names, never a hex literal;
    the board colours (--b-*) are read by the SVG markup in src/apps/play/board.js. WCAG contrast: text >= 4.5,
@@ -47,7 +47,7 @@
   --backdrop: rgba(22, 32, 60, 0.45);
   --glass: rgba(255, 255, 255, 0.86);
   --pop-bg: #ffffff;
-  --radius: 20px;
+  --radius: var(--r-3);
   /* flat board (src/apps/play/board.js) */
   --b-bg: #ffffff;
   --b-stage: #f3f6ff;
@@ -64,7 +64,7 @@
   --b-hint: #ff9f1c;
   --b-red: #e5484d;            /* Two paths */
   --b-blue: #3b68ee;
-  /* the little board icons (variant tiles, shared games) and the logo, assets/images/logo/zip.svg */
+  /* the little board icons (variant tiles, shared games) and the logo */
   --icon-plate: #dde6ff;
   --icon-tile: #ffffff;
   --icon-line: #a9bcf5;
@@ -93,6 +93,75 @@
   --seed-bg: #eef0f7;
   --soft-warn-bg: #fff4e0;
   --soft-warn: #a86400;
+  /* ---- template tokens: what a theme (a bundle, themes/README.md) may vary besides colour. These are the values light and
+     dark use; webapp/src/themes/tokens.js holds the same defaults with their bounds (themes/tools/test.mjs checks they match).
+     Dark does not repeat them. ---- */
+  /* type */
+  --font-body: "Segoe UI", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans", sans-serif;
+  --font-head: var(--font-body);
+  --font-num: var(--font-body);
+  --fw-head: 700;
+  --tt-head: none;
+  --ls-head: 0em;
+  /* shape and elevation */
+  --r-1: 12px;
+  --r-2: 14px;
+  --r-tile: 16px;
+  --r-3: 20px;
+  --r-4: 24px;
+  --r-chip: 999px;
+  --r-icon: 999px;
+  --bw: 2px;
+  --bw-card: 1px;
+  --shadow-btn: none;
+  /* sizes */
+  --bar-h: 58px;
+  --icon-btn: 40px;
+  --glyph: 20px;
+  --icon-stroke: 2;
+  --logo: 34px;
+  --ctl-h: 46px;
+  --vi-scale: 1;
+  --tile-min: 140px;
+  --pad: 20px;
+  --gap: 12px;
+  /* page decoration */
+  --bg-image: none;
+  /* board numbers and path */
+  --b-num-ring: var(--b-num);
+  --b-numv-fill: var(--b-num);
+  --b-numv-ring: var(--b-numv-fill);
+  --b-path-hi: var(--b-path);
+  --b-depth: transparent;
+  --portal-1: #8b5cf6;
+  --portal-2: #0d9488;
+  --portal-3: #db2777;
+  --portal-4: #65a30d;
+  --portal-5: #0284c7;
+  --portal-6: #ea580c;
+  /* icon set colours */
+  --ic-1: var(--accent);
+  --ic-2: var(--orange);
+  --ic-3: var(--green);
+  --ic-4: var(--b-red);
+  --ic-5: var(--violet);
+  --ic-ink: var(--icon-ink);
+  --ic-paper: var(--icon-tile);
+  --ic-shadow: transparent;
+  /* coloured variant tiles */
+  --vt-1: var(--surface-2);
+  --vt-1-on: var(--heading);
+  --vt-1-counter: var(--surface);
+  --vt-2: var(--surface-2);
+  --vt-2-on: var(--heading);
+  --vt-2-counter: var(--surface);
+  --vt-3: var(--surface-2);
+  --vt-3-on: var(--heading);
+  --vt-3-counter: var(--surface);
+  --vt-4: var(--surface-2);
+  --vt-4-on: var(--heading);
+  --vt-4-counter: var(--surface);
+  /* ---- end of template tokens ---- */
 }
 
 :root[data-theme="dark"] {

@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { LEADERBOARD, BEHAVIOUR, SOLID_RELEASE } from '../src/config.js';
+import { LEADERBOARD, BEHAVIOUR, SOLID_RELEASE, THEMES } from '../src/config.js';
 import { releaseDays } from '../src/features/solid-release.js';
 
 const base = [{ t: null, a: ['data_read'] }, { t: ['submit'], a: ['data_add'] }];
@@ -23,12 +23,13 @@ assert.equal(typeof BEHAVIOUR.enabled, 'boolean', 'BEHAVIOUR.enabled must be tru
 const [lo, hi] = BEHAVIOUR.localSizes;
 assert.ok(Number.isInteger(lo) && Number.isInteger(hi) && lo >= 2 && hi >= lo && hi <= 16, 'BEHAVIOUR.localSizes must be [min, max] within 2..16');
 releaseDays(SOLID_RELEASE); // throws on a bad date or day count
+assert.ok(/^(\.\.?\/)+[\w-]+\/$|^https:\/\/[^/]+\/(?:[\w-]+\/)*$/.test(THEMES.offers), 'THEMES.offers must be a folder relative to the page (ending in /) or an https URL');
 
 // The Content-Security-Policy of each page (a <meta> tag: GitHub Pages sends no headers) must let the page do what it does and nothing
 // more: scripts only from the page's own files plus its hashed inline scripts, and calls only to the backends of config.js.
 const urlsOf = value => (typeof value === 'string' ? (/^https?:\/\//.test(value) ? [new URL(value).origin] : [])
   : value && typeof value === 'object' ? Object.values(value).flatMap(urlsOf) : []);
-const origins = [...new Set([...urlsOf(LEADERBOARD), ...urlsOf(BEHAVIOUR)])];
+const origins = [...new Set([...urlsOf(LEADERBOARD), ...urlsOf(BEHAVIOUR), ...urlsOf(THEMES)])];
 // The co-op trial can be removed with its folder, so its brokers (src/coop/config.js) are read as
 // text, not imported. They are reached from the play page only.
 const coopConfig = new URL('../src/coop/config.js', import.meta.url);

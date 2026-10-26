@@ -1,4 +1,5 @@
 import { BALL_KIND } from '../core/surface/topology.js';
+import { solidIsDark } from '../apps/play/board.js';
 import { isSurfacePuzzle, startCell, topologyOf } from '../core/surface/puzzle.js';
 import { behind, buildBallView } from '../view/ball.js';
 import { IDENTITY, buildView, cellDirection, orbit, turnToward } from '../view/proj.js';
@@ -98,7 +99,7 @@ function linesLayer(drawing, hint, net, frame, px) {
 }
 
 const palette = () => (typeof document !== 'undefined'
-  && document.documentElement.dataset.theme === 'dark' ? PLAY_DARK_PALETTE : LIGHT_PALETTE);
+  && solidIsDark(document) ? PLAY_DARK_PALETTE : LIGHT_PALETTE);
 
 // The board of a solid game: { html, layouts, frames }. `layouts` and `frames` are those of the
 // main pictures, for hit-testing (cellUnder, edgeNear, netPoint).

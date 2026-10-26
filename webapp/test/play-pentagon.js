@@ -87,9 +87,9 @@ export function playPentagonTests(t, ok, eq) {
     try {
       setLang('en');
       const text = shareText(rec, 'http://x/?s=abc', translate);
-      ok(text.startsWith('Zip Pentagon · 36 cells\n⏱ 41.2s'), text);
+      ok(text.startsWith('zigzag Pentagon · 36 cells\n⏱ 41.2s'), text);
       setLang('zh');
-      ok(shareText(rec, 'http://x/?s=abc', translate).startsWith('Zip 五边形 · 36 格'), 'zh');
+      ok(shareText(rec, 'http://x/?s=abc', translate).startsWith('zigzag 五边形 · 36 格'), 'zh');
       eq(translate('game.pentagonTitle', 36), '五边形 · 36 格');
       eq(translate('size.cells', 36), '36 格');
     } finally {
@@ -123,7 +123,7 @@ export function playPentagonTests(t, ok, eq) {
       ok(hinted.includes('data-role="hint"'), 'the ring');
       ok(hinted.includes('data-role="hint-wrong"'), 'the cross');
       const filled = pentagonBoardSvg(state(p, [p.path[0]]));
-      ok(filled.includes(`fill="${COLORS.number}"`), 'a visited number is filled');
+      ok(filled.includes(`fill="${COLORS.numberVisited}"`), 'a visited number is filled');
     }
   });
 

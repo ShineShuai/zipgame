@@ -300,8 +300,8 @@ export function twoPathsPlayTests(t, ok, eq) {
       const ctx = { sizes: PLAY_SIZES, algo: 0, sizesOf: id => sizesFor(id, PLAY_SIZES) };
       eq(shareStatus(rec, ctx).status, 'ok', 'playable at once');
       const tr = dict => (key, ...args) => dict[key].replace(/\{0\}/g, args[0]);
-      eq(shareText(rec, 'https://x/?s=abc', tr(EN)).split('\n')[0], `Zip Two paths · ${n}x${n}`);
-      eq(shareText(rec, 'https://x/?s=abc', tr(ZH)).split('\n')[0], `Zip 双路径 · ${n}x${n}`);
+      eq(shareText(rec, 'https://x/?s=abc', tr(EN)).split('\n')[0], `zigzag Two paths · ${n}x${n}`);
+      eq(shareText(rec, 'https://x/?s=abc', tr(ZH)).split('\n')[0], `zigzag 双路径 · ${n}x${n}`);
     }
   });
 
