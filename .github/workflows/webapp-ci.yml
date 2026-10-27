@@ -1,6 +1,7 @@
 name: Webapp CI
 
-# The site is the repository root: index.html, assets/, demo/ and webapp/. Checks and unit tests run on every
+# The site is the repository root: index.html, assets/, demo/ and webapp/, plus the theme files that stage-site.sh builds from themes/
+# (packed bundles and their manifest; the sources stay in the repository). Checks and unit tests run on every
 # push and pull request that touches any of it, or this workflow. When they pass, a push to main (or a manual
 # run on main) deploys to GitHub Pages: only the allowlist in .github/scripts/stage-site.sh is published.
 # The benchmark is slower and its timings depend on the runner, so it only runs on the default branch and on
@@ -13,6 +14,7 @@ on:
       - 'assets/**'
       - 'demo/**'
       - 'webapp/**'
+      - 'themes/**'
       - '.github/workflows/webapp-ci.yml'
       - '.github/scripts/**'
   pull_request:
@@ -21,6 +23,7 @@ on:
       - 'assets/**'
       - 'demo/**'
       - 'webapp/**'
+      - 'themes/**'
       - '.github/workflows/webapp-ci.yml'
       - '.github/scripts/**'
   workflow_dispatch:
@@ -63,6 +66,11 @@ jobs:
       # and ALGO_VERSION has to be bumped (see README).
       - name: Unit tests
         run: npm test
+
+      # The themes themselves: every one packs into a bundle the app accepts, contrast, budgets, the site build.
+      - name: Theme tests
+        if: matrix.node == 22
+        run: npm run test:themes
 
       # What the deploy job publishes: an allowlist, then a scan for files and secrets that must never ship.
       - name: Dry-run site staging
@@ -127,6 +135,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
       - name: Stage allowlisted files
         run: bash .github/scripts/stage-site.sh _site
 
@@ -140,16 +152,18 @@ jobs:
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
 
       # The query string bypasses the CDN cache, which may still hold files of the old branch deployment.
+      # The theme files are every file of the staged theme folder: the manifest and each bundle must be served.
       - name: Smoke test
         env:
           URL: ${{ steps.deployment.outputs.page_url }}
           RUN_ID: ${{ github.run_id }}
         run: |
           base="${URL%/}"
-          for p in index.html webapp/index.html webapp/src/config.js; do
+          themes=$(node themes/tools/build-site.mjs --dir)
+          for p in index.html webapp/index.html webapp/src/config.js $(cd _site && find "$themes" -type f); do
             curl -fsS --retry 5 --retry-all-errors --retry-delay 3 -o /dev/null "$base/$p?cb=$RUN_ID"
           done
-          for p in webapp/package.json webapp/server/README.md webapp/tools/ratings.json; do
+          for p in webapp/package.json webapp/server/README.md webapp/tools/ratings.json themes/candy/theme.json; do
             code=$(curl -s -o /dev/null -w '%{http_code}' "$base/$p?cb=$RUN_ID")
             [ "$code" = 404 ] || { echo "::error::$p is public (HTTP $code)"; exit 1; }
           done

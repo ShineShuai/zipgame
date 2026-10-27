@@ -1,5 +1,5 @@
-// Tests of the theme system (src/themes): the whitelists, the bundle a theme arrives in, the device store, the stage the
-// offers come from, the pool, the controller (offer -> take or leave), and the page's inline head script, run for real
+// Tests of the theme system (src/themes): the whitelists, the bundle a theme arrives in, the device store, the files
+// the site serves, the pool, the controller (event -> offer -> take or leave; the dev reveal), and the page's inline head script, run for real
 // (node:vm) and compared with the pool code it mirrors. Fakes stand in for storage, the network and the page. The templates
 // themselves (the authoring side) are tested by themes/tools/test.mjs. Registered by tests.js.
 import { createHash } from 'node:crypto';
@@ -15,15 +15,17 @@ import { cleanArt, CLASSIC_BOARD } from '../src/themes/art.js';
 import { cleanBundle } from '../src/themes/bundle.js';
 import { BUILTIN } from '../src/themes/builtin.js';
 import { createThemes } from '../src/themes/index.js';
+import { EVENT_KEY, SEED_KEY, hash, newSeed, offerOrder } from '../src/themes/event.js';
 import { cleanLayout } from '../src/themes/layout.js';
 import {
-  activeEntry, cleanEntry, fresh, isClassicPool, MODE_KEY, nextEntry, parseState, POOL_KEY, remove, save, select, serialize, setCap,
+  activeEntry, cleanEntry, evictable, fresh, isClassicPool, MODE_KEY, nextEntry, parseState, POOL_KEY, remove, save, select, serialize, setCap,
 } from '../src/themes/pool.js';
-import { browserSource, createSource, MAX_FILE, TOKEN_RE } from '../src/themes/source.js';
+import { browserSource, cleanPool, createSource, FILE_RE, MAX_FILE, MAX_POOL, MAX_THEMES } from '../src/themes/source.js';
 import { BUNDLE_KEY, createStore } from '../src/themes/store.js';
 import { cleanTokens, buildCss } from '../src/themes/tokens.js';
 import { DEFAULT_LAYOUT, LAYOUT as PRESETS } from '../src/themes/layout.js';
-import { pickerHtml, pickerItems } from '../src/themes/picker.js';
+import { devHtml, devItems, pickerHtml, pickerItems } from '../src/themes/picker.js';
+import { formatLeft, offerHtml } from '../src/themes/offer.js';
 import { cleanInner, cleanSvg } from '../src/themes/svg.js';
 
 const INDEX = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
@@ -59,12 +61,21 @@ const memoryStorage = (initial = {}, { quota = false } = {}) => {
 };
 const ownedRecord = b => { const c = cleanBundle(b); return JSON.stringify({ v: c.entry.v, css: c.css, art: c.art, fonts: c.fonts }); };
 
-function rig({ stored, owned = [], legacy, dark = false, quota = false, clock = { t: 1000 }, offers = {} } = {}) {
+// files: the site's files by name (f -> bundle), pool: its manifest as source.pool() gives it (null: not reachable), calls: what was fetched
+const stem = id => createHash('sha256').update(id).digest('hex').slice(0, 24);
+const poolOf = (bundles, drafts = []) => bundles.map(b => ({ entry: entryOf(b), f: stem(b.id), live: !drafts.includes(b.id) }));
+const manifestOf = (bundles, drafts = []) => bundles.map(b => ({ id: b.id, v: b.v, ...b.meta, f: stem(b.id), live: !drafts.includes(b.id) }));
+const filesOf = bundles => Object.fromEntries(bundles.map(b => [stem(b.id), b]));
+let counter = 0;
+const steady = () => () => { counter = (counter + 0.3819) % 1; return counter; };   // a fixed, spread-out "random"
+
+function rig({ stored, owned = [], legacy, dark = false, quota = false, clock = { t: 1000 }, files = {}, pool = null, storage: given = null } = {}) {
   const initial = {};
   if (stored) initial[POOL_KEY] = typeof stored === 'string' ? stored : serialize(stored);
   if (legacy) initial[MODE_KEY] = legacy;
   for (const b of owned) initial[BUNDLE_KEY(b.id)] = ownedRecord(b);
-  const storage = memoryStorage(initial, { quota });
+  const storage = given ?? memoryStorage(initial, { quota });
+  const calls = [];
   const listeners = [];
   const media = { matches: dark, addEventListener: (_, fn) => listeners.push(fn) };
   const applied = [];
@@ -72,12 +83,13 @@ function rig({ stored, owned = [], legacy, dark = false, quota = false, clock = 
   const cleared = [];
   const fontLoads = [];
   const ctl = createThemes({
-    storage, media, store: createStore(storage), now: () => clock.t, source: { bundle: async token => offers[token] ?? null },
+    storage, media, store: createStore(storage), now: () => clock.t, random: steady(),
+    source: { pool: async () => { calls.push('pool'); return pool; }, bundle: async f => { calls.push(f); return files[f] ?? null; } },
     apply: (e, loaded) => applied.push(loaded ? `${e.id}+css` : e.id),
     loadFonts: fonts => { fontLoads.push(fonts.length); return { release() { fontLoads.push('released'); } }; },
     timers: { setTimeout: (fn, ms) => { timeouts.push({ fn, ms }); return timeouts.length; }, clearTimeout: id => cleared.push(id) },
   });
-  return { storage, ctl, media, listeners, applied, timeouts, cleared, fontLoads, clock };
+  return { storage, ctl, media, listeners, applied, timeouts, cleared, fontLoads, clock, calls };
 }
 
 function runBoot({ storage = {}, dark = false } = {}) {
@@ -228,22 +240,40 @@ export function themeSystemTests(t, ok, eq, ta) {
     eq(createStore(memoryStorage({}, { quota: true })).save(b), false, 'a device that refuses: not kept');
   });
 
-  ta('themes: an offered theme is a plain file behind an unguessable token: only a token can fetch it, and only while the file exists', async () => {
-    const TOKEN = 'Abcdefghijklmnopqrstuv';   // 22 characters
-    ok(TOKEN_RE.test(TOKEN) && !TOKEN_RE.test('short') && !TOKEN_RE.test(`${TOKEN}x`) && !TOKEN_RE.test('../../etc/passwd-aaaaaaaa') && !TOKEN_RE.test('Abcdefghijklmnopqrst.v'), 'the shape of a token');
+  t('themes: the manifest lists themes by metadata and hashed file names; what is not a theme is dropped', () => {
+    const good = manifestOf([CANDY, WOOD], ['wood']);
+    const list = cleanPool([...good, { ...good[0] }, { ...good[0], id: 'light', f: stem('light') }, { ...good[0], id: 'sea', f: '../etc/passwd' }, { id: 'x' }, null, 'text']);
+    eq(list.map(c => [c.entry.id, c.f, c.live]), [['candy', stem('candy'), true], ['wood', stem('wood'), false]], 'a repeat, a built-in, a bad file name and a non-theme are dropped');
+    eq([cleanPool({}), cleanPool(null), cleanPool([]).length], [null, null, 0]);
+    eq(cleanPool(Array.from({ length: 80 }, (_, i) => ({ ...good[0], id: `t${i}`, f: stem(`t${i}`) }))).length, MAX_THEMES, 'bounded');
+    ok(FILE_RE.test(stem('a')) && !FILE_RE.test('A'.repeat(24)) && !FILE_RE.test(`${stem('a')}0`) && !FILE_RE.test('../'.repeat(8)) && !FILE_RE.test('-'.repeat(24)), 'the shape of a file name');
+  });
+
+  ta('themes: the files are fetched by name from one folder: a malformed name makes no request, a missing or broken file is nothing', async () => {
+    const f = stem('candy');
     const fetched = [];
-    const files = { [`../offers/${TOKEN}.json`]: JSON.stringify(CANDY), '../offers/Zzzzzzzzzzzzzzzzzzzzzz.json': 'not json', '../offers/Yyyyyyyyyyyyyyyyyyyyyy.json': 'x'.repeat(MAX_FILE + 1) };
-    const source = createSource({ base: '../offers/', fetchText: async url => { fetched.push(url); if (!(url in files)) throw new Error('404'); return files[url]; } });
-    eq((await source.bundle(TOKEN)).id, 'candy', 'a token fetches its bundle');
-    eq(fetched, [`../offers/${TOKEN}.json`], 'one request, to exactly that file');
-    for (const bad of [undefined, '', 'short', '../x', 'a/b', `${TOKEN}.json`, 'Qqqqqqqqqqqqqqqqqqqqqq', 'Zzzzzzzzzzzzzzzzzzzzzz', 'Yyyyyyyyyyyyyyyyyyyyyy']) eq(await source.bundle(bad), null, String(bad));
-    eq(fetched.length, 4, 'a malformed token makes no request; a missing, broken or oversized file is nothing');
+    const files = {
+      '../t/m.json': JSON.stringify(manifestOf([CANDY])), [`../t/${f}.json`]: JSON.stringify(CANDY), [`../t/${stem('x')}.json`]: 'not json', [`../t/${stem('y')}.json`]: 'x'.repeat(MAX_FILE + 1),
+    };
+    const source = createSource({ base: '../t/', pool: 'm.json', fetchText: async (url, kind) => { fetched.push([url, kind]); if (!(url in files)) throw new Error('404'); return files[url]; } });
+    eq((await source.pool()).map(c => c.entry.id), ['candy'], 'the manifest');
+    eq((await source.bundle(f)).id, 'candy', 'a name fetches its bundle');
+    eq(fetched, [['../t/m.json', 'pool'], [`../t/${f}.json`, 'bundle']], 'one request each, to exactly that file');
+    for (const bad of [undefined, '', 'short', '../x', `${f}.json`, f.toUpperCase(), `${f}0`]) eq(await source.bundle(bad), null, String(bad));
+    eq(fetched.length, 2, 'a malformed name makes no request');
+    eq([await source.bundle(stem('x')), await source.bundle(stem('y')), await source.bundle(stem('z'))], [null, null, null], 'not JSON, too big, not there');
+    eq(await createSource({ base: '../t/', pool: 'm.json', fetchText: async () => 'x'.repeat(MAX_POOL + 1) }).pool(), null, 'a manifest too big');
+    eq(await createSource({ base: '../t/', pool: 'm.json', fetchText: async () => '{"a":1}' }).pool(), null, 'not a manifest');
+
     const calls = [];
-    const fetchFn = async (url, init) => { calls.push([url, init.cache, init.credentials]); return url.includes('gone') ? { ok: false, status: 404 } : { ok: true, headers: { get: () => '100' }, text: async () => JSON.stringify(CANDY) }; };
-    eq((await browserSource('../offers/', fetchFn).bundle(TOKEN)).id, 'candy');
-    eq(calls[0], [`../offers/${TOKEN}.json`, 'no-store', 'omit'], 'not cached, no cookies');
-    eq(await browserSource('../gone/', fetchFn).bundle(TOKEN), null, 'a 404: the offer is over');
-    eq(await browserSource('../offers/', async () => ({ ok: true, headers: { get: () => String(MAX_FILE + 1) }, text: async () => '{}' })).bundle(TOKEN), null, 'too big by its header');
+    const fetchFn = async (url, init) => { calls.push([url, init.cache, init.credentials]); return url.includes('gone') ? { ok: false, status: 404 } : { ok: true, headers: { get: () => '100' }, text: async () => JSON.stringify(url.endsWith('m.json') ? manifestOf([CANDY]) : CANDY) }; };
+    const page = browserSource({ base: '../t/', pool: 'm.json' }, fetchFn);
+    eq([(await page.pool()).length, (await page.bundle(f)).id], [1, 'candy']);
+    eq(calls, [['../t/m.json', 'no-cache', 'omit'], [`../t/${f}.json`, 'default', 'omit']], 'the manifest is revalidated, a bundle (which never changes under its name) may be cached; no cookies');
+    eq(await browserSource({ base: '../gone/', pool: 'm.json' }, fetchFn).pool(), null, 'a 404');
+    const huge = kind => ({ ok: true, headers: { get: () => String((kind === 'pool' ? MAX_POOL : MAX_FILE) + 1) }, text: async () => '[]' });
+    eq(await browserSource({ base: '../t/', pool: 'm.json' }, async () => huge('bundle')).bundle(f), null, 'a bundle too big by its header');
+    eq(await browserSource({ base: '../t/', pool: 'm.json' }, async () => huge('pool')).pool(), null, 'a manifest too big by its header');
   });
 
   t('themes: the page\'s head script picks what pool.js picks, and paints a theme the player owns from the local copy', () => {
@@ -424,7 +454,7 @@ export function themeSystemTests(t, ok, eq, ta) {
     eq(JSON.parse(r.storage.data[POOL_KEY]).pool.length, 2, 'and that is stored');
   });
 
-  ta('themes: an offer is tried, then taken (kept on the device and in the pool) or left (gone, nothing kept)', async () => {
+  ta('themes: a theme on trial is taken (kept on the device and in the pool) or left (gone, nothing kept)', async () => {
     const r = rig();
     r.ctl.start();
     eq(r.ctl.trial({ ...CANDY, tokens: { ...CANDY.tokens, '--ctl-h': '90px' } }), null, 'an invalid bundle is not shown');
@@ -452,17 +482,6 @@ export function themeSystemTests(t, ok, eq, ta) {
     r.ctl.setCap(2);
     eq([r.ctl.state().pool.length, Object.keys(r.storage.data).filter(k => k.startsWith('zip_theme_b_')).length], [2, r.ctl.state().pool.filter(e => !e.builtin).length], 'lowering the cap removes the cut themes from the device too');
 
-    const TOKEN = 'Abcdefghijklmnopqrstuv';
-    const offered = rig({ offers: { [TOKEN]: CANDY } });
-    offered.ctl.start();
-    eq(await offered.ctl.offer('Qqqqqqqqqqqqqqqqqqqqqq'), null, 'no file: the event is over, nothing shown');
-    eq(offered.ctl.current().id, 'light');
-    const seen = await offered.ctl.offer(TOKEN, { until: 5000 });
-    eq([seen.entry.id, offered.ctl.current().id, offered.ctl.state().pool.length], ['candy', 'candy', 2], 'a token puts its theme on trial');
-    seen.revert();
-    eq([offered.ctl.current().id, BUNDLE_KEY('candy') in offered.storage.data], ['light', false], 'left: gone, nothing kept');
-    eq(await rig({ offers: { [TOKEN]: { ...CANDY, tokens: { ...CANDY.tokens, '--ctl-h': '90px' } } } }).ctl.offer(TOKEN), null, 'a bundle the game refuses is not shown');
-
     const quota = rig({ quota: true });
     quota.ctl.start();
     eq(await quota.ctl.trial(CANDY).commit('dark'), false, 'a device that refuses the copy: nothing changes');
@@ -486,5 +505,126 @@ export function themeSystemTests(t, ok, eq, ta) {
     fonts.ctl.start();
     fonts.ctl.trial({ ...CANDY, tokens: { ...CANDY.tokens, '--font-body': '"Fredoka", sans-serif' }, fonts: [{ family: 'Fredoka', weight: '400', data: woff2 }] }).revert();
     eq(fonts.fontLoads, [1, 'released'], 'fonts are registered for the trial and released when it ends');
+  });
+
+  t('themes: the offer is picked by device and event: stable, spread out, in a ring', () => {
+    const cands = poolOf([CANDY, WOOD, bundle('sea'), bundle('sky')]);
+    const seed = newSeed(steady());
+    ok(/^[0-9a-f]{16}$/.test(seed), 'a device seed');
+    eq(hash('a'), hash('a'));
+    ok(hash('a') !== hash('b') && hash('') === 0x811c9dc5, 'FNV-1a');
+    const ids = (list, s = seed, e = 'e1') => offerOrder(list, s, e).map(c => c.entry.id);
+    eq(ids(cands), ids([...cands].reverse()), 'the order of the manifest does not matter');
+    eq([...ids(cands)].sort(), ['candy', 'sea', 'sky', 'wood'], 'every theme comes up, once');
+    const sorted = ['candy', 'sea', 'sky', 'wood'];
+    const first = ids(cands);
+    eq([...sorted.slice(sorted.indexOf(first[0])), ...sorted.slice(0, sorted.indexOf(first[0]))], first, 'a ring: the next one is the fall-back');
+    ok(new Set(Array.from({ length: 12 }, (_, i) => ids(cands, seed, `ev${i}`)[0])).size > 1, 'events differ');
+    ok(new Set(Array.from({ length: 12 }, (_, i) => ids(cands, `${i}`.padStart(16, '0'), 'e1')[0])).size > 1, 'devices differ');
+    eq(offerOrder([], seed, 'e1'), []);
+  });
+
+  ta('themes: an event offers one theme of the pool: the same within the event on this device, never an owned theme or a draft, answered once', async () => {
+    const SEA = bundle('sea');
+    const SKY = bundle('sky');
+    const all = [CANDY, WOOD, SEA, SKY];
+    const site = { files: filesOf(all), pool: poolOf(all, ['sky']) };
+
+    const r = rig(site);
+    r.ctl.start();
+    const first = await r.ctl.event({ id: 'spring', until: 5000 });
+    ok(first && ['candy', 'wood', 'sea'].includes(first.entry.id), 'one of the live themes, never the draft');
+    eq([r.ctl.current().id, r.ctl.state().pool.length, SEED_KEY in r.storage.data, r.timeouts[0].ms, EVENT_KEY in r.storage.data], [first.entry.id, 2, true, 4000, false], 'on trial until the event ends, nothing kept, not answered yet');
+    const reload = rig({ ...site, storage: r.storage });
+    reload.ctl.start();
+    eq((await reload.ctl.event({ id: 'spring', until: 5000 })).entry.id, first.entry.id, 'a reload within the event shows the same theme');
+    first.revert();
+    eq([r.ctl.current().id, r.storage.data[EVENT_KEY], await r.ctl.event({ id: 'spring', until: 5000 })], ['light', 'spring', null], 'left: the event is answered and the theme is gone');
+    const summer = await r.ctl.event({ id: 'summer', until: 5000 });
+    ok(summer, 'another event, another offer');
+    eq(await summer.commit(), false, 'a full pool needs a theme to replace');
+    eq(r.storage.data[EVENT_KEY], 'spring', 'and that does not answer the event');
+    eq(await summer.commit('dark'), true);
+    eq([r.ctl.owns(summer.entry.id), r.ctl.current().id, r.storage.data[EVENT_KEY], await r.ctl.event({ id: 'summer' })], [true, summer.entry.id, 'summer', null], 'taken: kept, answered');
+
+    const roomy = rig({ ...site, stored: withPool([BUILTIN[0]], null, 4) });
+    roomy.ctl.start();
+    const got = [];
+    for (const id of ['a1', 'a2', 'a3', 'a4']) {
+      const offer = await roomy.ctl.event({ id });
+      if (offer) await offer.commit();
+      got.push(offer ? offer.entry.id : null);
+    }
+    eq([got.slice(0, 3).sort(), got[3]], [['candy', 'sea', 'wood'], null], 'what the player owns is not offered again; with only a draft left there is no offer');
+
+    const calls = rig(site);
+    calls.ctl.start();
+    for (const bad of [undefined, {}, { id: '' }, { id: 'a b' }, { id: 'x'.repeat(41) }, { id: '../x' }]) eq(await calls.ctl.event(bad), null, JSON.stringify(bad));
+    eq(await calls.ctl.event({ id: 'late', until: 500 }), null, 'an event that is over');
+    eq(calls.calls, [], 'and none of those asked the network');
+
+    eq(await rig({ files: site.files, pool: null }).ctl.event({ id: 'e' }), null, 'the pool is not reachable');
+    eq(await rig({ files: site.files, pool: [] }).ctl.event({ id: 'e' }), null, 'the pool is empty');
+    eq((await rig({ files: { [stem('wood')]: WOOD }, pool: poolOf([CANDY, WOOD, SEA]) }).ctl.event({ id: 'e' })).entry.id, 'wood', 'a missing file: the next theme is tried');
+    eq(await rig({ files: { [stem('candy')]: WOOD }, pool: poolOf([CANDY]) }).ctl.event({ id: 'e' }), null, 'a file that is not the theme the manifest names');
+    const bad = { ...CANDY, tokens: { ...CANDY.tokens, '--ctl-h': '90px' } };
+    eq(await rig({ files: { [stem('candy')]: bad }, pool: poolOf([CANDY]) }).ctl.event({ id: 'e' }), null, 'a bundle the game refuses');
+    const many = rig({ files: {}, pool: poolOf([CANDY, WOOD, SEA, SKY]) });
+    await many.ctl.event({ id: 'e' });
+    eq(many.calls.length, 1 + 3, 'one read of the pool, and at most three files before there is no offer');
+  });
+
+  ta('themes: the dev reveal lists the whole pool, drafts too, and tries or keeps any theme whatever the cap', async () => {
+    const SEA = bundle('sea');
+    const all = [CANDY, WOOD, SEA];
+    const r = rig({ files: filesOf(all), pool: poolOf(all, ['sea']) });
+    r.ctl.start();
+    eq((await r.ctl.pool()).map(c => [c.entry.id, c.live, c.owned]), [['candy', true, false], ['wood', true, false], ['sea', false, false]], 'drafts too');
+    eq(await rig({ pool: null }).ctl.pool(), [], 'not reachable: nothing');
+
+    await r.ctl.tryPool('sea');
+    eq([r.ctl.current().id, r.ctl.state().pool.length, r.timeouts.length, BUNDLE_KEY('sea') in r.storage.data], ['sea', 2, 0, false], 'a draft shows at once: no end, nothing kept');
+    await r.ctl.tryPool('wood');
+    eq(r.ctl.current().id, 'wood', 'one try replaces the other');
+    eq(await r.ctl.tryPool('nope'), null);
+    r.ctl.select('light');
+    eq(r.ctl.current().id, 'light', 'choosing a theme of the pool ends it');
+
+    eq(await r.ctl.keepPool('candy'), true);
+    eq([r.ctl.state().pool.map(e => e.id), r.ctl.current().id, BUNDLE_KEY('candy') in r.storage.data], [['light', 'candy'], 'candy', true], 'a full pool: it takes the place of the first theme that is not showing');
+    eq(await r.ctl.keepPool('wood'), true);
+    eq(r.ctl.state().pool.map(e => e.id), ['wood', 'candy'], 'and a built-in can be replaced, as a player can');
+    eq(await r.ctl.keepPool('sea'), true);
+    eq([r.ctl.state().pool.map(e => e.id), BUNDLE_KEY('candy') in r.storage.data], [['wood', 'sea'], false], 'one of the player\'s own goes before a built-in, and its copy leaves the device');
+    eq(await r.ctl.keepPool('sea'), false, 'owned already');
+    eq(await r.ctl.keepPool('ghost'), false, 'not in the pool');
+    r.ctl.setCap(4);
+    eq([await r.ctl.keepPool('candy'), r.ctl.state().pool.length], [true, 3], 'with room, nothing is replaced');
+    eq([evictable(withPool([BUILTIN[0], BUILTIN[1]], null, 2), 'light').id, evictable(withPool([BUILTIN[0], entryOf(CANDY)], null, 2), 'light').id], ['dark', 'candy']);
+  });
+
+  t('themes: the dev rows of the picker and the offer sheet are markup, escaped; the time left reads as a clock', () => {
+    const labels = { all: 'All', draft: 'draft', keep: 'Keep', offer: 'Offer', none: 'None' };
+    const list = [{ entry: entryOf(CANDY), f: 'x', live: true, owned: true }, { entry: entryOf(WOOD), f: 'y', live: false, owned: false }];
+    const items = devItems(list, 'wood', 'zh');
+    eq(items.map(i => [i.id, i.name, i.live, i.owned, i.current]), [['candy', '主题', true, true, false], ['wood', '主题', false, false, true]]);
+    const html = devHtml(items, labels);
+    ok(html.includes('data-try-id="candy"') && html.includes('data-try-id="wood"') && html.includes('class="current"') && html.includes('theme-draft') && html.includes('data-offer-now') && html.includes('data-note'));
+    eq((html.match(/data-keep-id/g) || []).length, 1, 'a theme that is owned has no keep button');
+    ok(devHtml([], labels).includes('None'), 'an empty pool says so');
+    const hostile = devHtml([{ id: 'x"><script>', name: '<img src=x>', symbol: SYMBOL, swatches: ['#fff"><i'], live: false, owned: false, current: false }], { ...labels, all: '<b>', draft: '<u>' });
+    ok(!/<(script|img|b|u)[ >]/.test(hostile), 'no tag of theirs');
+    ok(['x&quot;&gt;&lt;script&gt;', '&lt;img src=x&gt;', '&lt;b&gt;', '&lt;u&gt;'].every(piece => hostile.includes(piece)), 'shown as text');
+
+    eq([0, -5, 1, 90000, 3600000, 7325000, 2 * 86400000 + 3 * 3600000].map(formatLeft), ['0:00', '0:00', '0:01', '1:30', '1:00:00', '2:02:05', '2d 3h']);
+    const text = (key, ...args) => (args.length ? `${key}(${args})` : key);
+    const theme = { name: 'Candy <b>', symbol: SYMBOL, swatches: ['#fff'] };
+    const step1 = offerHtml({ theme, left: '0:42 left' }, text);
+    ok(step1.includes('data-offer="keep"') && step1.includes('data-offer="leave"') && step1.includes('data-left') && step1.includes('Candy &lt;b&gt;') && !step1.includes('Candy <b>'), 'keep or leave, the time left, the name as text');
+    ok(!offerHtml({ theme, left: null }, text).includes('data-left'), 'no countdown for an offer with no end');
+    ok(offerHtml({ theme, failed: true }, text).includes('role="alert"') && !offerHtml({ theme }, text).includes('role="alert"'));
+    const step2 = offerHtml({ theme, replace: [{ id: 'light', name: 'Light', symbol: SYMBOL, swatches: [] }, { id: 'x"y', name: 'N', symbol: SYMBOL, swatches: [] }] }, text);
+    ok(step2.includes('data-replace="light"') && step2.includes('data-replace="x&quot;y"') && step2.includes('data-offer="back"') && !step2.includes('data-offer="keep"'), 'which of the player\'s themes it replaces');
+    ok(step2.includes('theme.offer.replace(Candy &lt;b&gt;)') || step2.includes('theme.offer.replace(Candy'), 'and the new theme is named');
   });
 }

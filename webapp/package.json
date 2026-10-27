@@ -24,6 +24,7 @@
     "behaviour": "node tools/behaviour.mjs",
     "test:themes": "node ../themes/tools/test.mjs",
     "themes:pack": "node ../themes/tools/pack.mjs",
-    "themes:preview": "node ../themes/tools/serve.mjs"
+    "themes:preview": "node ../themes/tools/serve.mjs",
+    "themes:build": "node ../themes/tools/build-site.mjs"
   }
 }

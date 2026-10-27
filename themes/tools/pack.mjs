@@ -4,7 +4,7 @@
 //   themes/<id>/fonts/*.woff2  (optional) self-hosted fonts, Latin subset, 60 KB at most each
 //   webapp/css/theme.css     the base tokens every theme starts from
 // Usage (from anywhere):
-//   node themes/tools/pack.mjs [id ...]   writes themes/out/<id>.bundle.json (+ index.json): for the preview page (publish.mjs packs again)
+//   node themes/tools/pack.mjs [id ...]   writes themes/out/<id>.bundle.json (+ index.json): for the preview page (build-site.mjs packs again, into the site)
 // The bundle is run through the app's own validator before it is written, so what is written is what the game accepts.
 // Prints every contrast nudge (a seed that had to move to pass schema.js PAIRS) and every problem; exit 1 on a problem.
 import {
