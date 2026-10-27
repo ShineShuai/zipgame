@@ -867,6 +867,10 @@ export function createSolidPlay(app) {
     cardHtml,
     // whether the menu offers the 3D puzzles at all (a kind unlocked or released, or V held): then it has a Flat | 3D tab
     available: cardShown,
+    // what a player may play of a kind, V not counted: 'all' | 'part' | 'none', and the sizes of it (Patchwork, src/coop, has the
+    // same locks as this card)
+    access: realAccess,
+    openSizes: kind => (realAccess(kind) === 'part' ? openSizes(kind, today(), release) : SOLID_SIZES[kind]),
     screenHtml: () => screenHtml(),
     // wires the page after every render: the card in the menu, the board in a game
     attach: () => (S.screen === 'solid' && game ? attachGame() : attachCard()),

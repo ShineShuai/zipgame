@@ -98,6 +98,11 @@ export const COOP_VARIANTS = [
   },
 ];
 
+// The solids (a 3D tab of their own in the menu, as in the play app's free play).
+export const SOLID_IDS = ['tetra', 'cube', 'ball'];
+export const isSolidId = id => SOLID_IDS.includes(id);
+export const FLAT_IDS = COOP_VARIANTS.map(({ id }) => id).filter(id => !isSolidId(id));
+
 export const variantById = id => COOP_VARIANTS.find(variant => variant.id === id)
   ?? COOP_VARIANTS[0];
 

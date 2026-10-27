@@ -307,3 +307,12 @@ test('when the friend shows up on the brokers, it says so', async t => {
   opened(t, room);
   await until(() => dom.message() === EN.friendBack, 'told that the friend is back');
 });
+
+test('the menu shows the types the player has unlocked, as the app answers', t => {
+  const locked = { access: { standard: 'all', cutout: 'none' }, sizes: {}, solid: false };
+  const screen = opened(t, openScreen({ ...env, access: () => locked }));
+  assert.ok(/id="coopOpt-cutout"[^>]*variant-locked|variant-locked[^>]*id="coopOpt-cutout"/.test(dom.html()));
+  assert.ok(/id="coopOpt-cutout"[^>]*display:none/.test(dom.html()));
+  assert.ok(/id="coopTabs"[^>]*display:none/.test(dom.html()), 'no solid on offer: no 3D tab');
+  screen.setRevealed(true); // revealed: the screen is told, nothing throws, and the answer is asked afresh on the next draw
+});

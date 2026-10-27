@@ -4,6 +4,7 @@ import { RAMP, FREEZE_EVERY, FREEZE_MAX, HEAL_DAYS } from '../../features/streak
 import { dateLabel } from '../../features/share.js';
 import { variantIcon, cardIcon } from './icons.js';
 import { PLAY_VARIANTS, sizesFor, nearestSize } from './variants.js';
+import { SOLID_KINDS } from '../../features/solid-release.js';
 import { BEHAVIOUR } from '../../config.js';
 import { t } from '../../ui/i18n.js';
 import {
@@ -53,6 +54,20 @@ function variantPickerHtml() {
 // (src/coop/config.js RELEASED). The card only asks src/coop to open (main.js): nothing else of the game is known here.
 const coopMode = () => document.documentElement.dataset.coop;
 export const coopShown = () => coopMode() === 'open' || (coopMode() === 'hidden' && S.showDev);
+
+// What the player has unlocked, for Patchwork to lock the same types (it asks, main.js answers): per type 'all' | 'part' | 'none'
+// (the 3D kinds can be 'part': only their first sizes, `sizes`), and whether the menu has the 3D tab at all. V held is not counted:
+// Patchwork has its own reveal.
+export function coopAccess() {
+  const access = {};
+  for (const mode of ['standard', ...PLAY_VARIANTS.map(v => v.id)]) access[mode] = isUnlocked(mode) ? 'all' : 'none';
+  const sizes = {};
+  for (const kind of SOLID_KINDS) {
+    access[kind] = solid.access(kind);
+    sizes[kind] = solid.openSizes(kind);
+  }
+  return { access, sizes, solid: SOLID_KINDS.some(kind => access[kind] !== 'none') };
+}
 
 function coopCardHtml() {
   if (!coopMode()) return '';

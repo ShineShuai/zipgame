@@ -27,6 +27,8 @@
   display: grid; grid-template-columns: minmax(300px, 4fr) minmax(0, 8fr); gap: var(--gap) 16px;
   align-items: start;
 }
+/* the play app's column (css/play.css) is placed by the menu's areas: not here */
+.coop-menu > .play-col { grid-area: auto; }
 .coop-side { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
 .coop-side > .card { margin: 0; }
 .coop-draw { min-width: 0; }
@@ -46,14 +48,10 @@
   background: transparent; border-color: transparent; box-shadow: none; padding: 0;
 }
 
-/* the game: the rules beside the title, and what only some games have, under the board */
+/* the game: the rules beside the title (the view tools, the note and the buttons are the play app's) */
 .coop-rules { margin: 10px 0 0; font-weight: 400; font-size: 0.94rem; color: var(--text); }
 .coop-rules p { margin: 0 0 6px; }
 .coop-rules p:last-child { margin-bottom: 0; }
-.coop-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-.coop-tools:empty { display: none; }
-.coop-tools .btn { flex: 0 1 auto; min-height: 44px; padding: 6px 16px; }
-.coop-tools .btn[style*="display:none"] { display: none; }
 
 /* the invite and the reply: steps with a link or a code to copy, a place to paste */
 .coop-steps { display: flex; flex-direction: column; gap: 16px; margin: 0 0 12px; padding: 0;
@@ -98,8 +96,22 @@
 .coop-chip i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; }
 .coop-chip.gone { opacity: 0.5; text-decoration: line-through; }
 
-.coop-msg { min-height: 1.4em; margin: 8px 0 0; color: var(--muted); font-size: 0.95rem; }
+.coop-msg:empty { display: none; }
 .coop-svg { margin: 0 auto; }
 
 /* a note followed by a button (the invite's waiting line and Cancel) */
 .coop-page .note + .btn, .coop-page .note + .button-row { margin-top: 10px; }
+
+/* Flat | 3D: the tiles of the solids are wider, as in the play app's 3D card, so that no name overflows */
+.variant-options[hidden] { display: none; }
+.coop-draw .solid-options { grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); }
+.coop-draw .variant-name, .coop-page .btn { overflow-wrap: anywhere; }
+.coop-page .btn { min-width: 0; }
+.btn-short { display: none; }
+@media (max-width: 640px) {
+  .coop-draw .solid-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .coop-draw .solid-options .variant-name { font-size: 0.68rem; }
+  /* Invite a friend has a short name on the bar of a phone */
+  .coop-page .actions .btn-long { display: none; }
+  .coop-page .actions .btn-short { display: inline; }
+}

@@ -49,6 +49,16 @@ function guard(fn) {
   };
 }
 
+// What the player has unlocked, asked of the menu (apps/play/menu.js answers zip:coop-access at
+// once). With no answer only the standard type is on offer: a lock is never opened by mistake.
+function askAccess() {
+  let answer = null;
+  document.dispatchEvent(new CustomEvent('zip:coop-access', {
+    detail: { reply: info => { answer = info; } },
+  }));
+  return answer ?? { access: { standard: 'all' }, sizes: {}, solid: false };
+}
+
 // Opens the screen in place of the app's page (the menu); closing it brings the page back.
 export const open = guard(async () => {
   if (screen) {
@@ -62,6 +72,7 @@ export const open = guard(async () => {
     storage,
     saveStats: guard(() => saveStats(storage, stats)),
     isRevealed: () => revealed,
+    access: askAccess,
     onClose: () => {
       screen = null;
     },

@@ -68,6 +68,7 @@ export const EN = {
   friendOffline: 'Your friend is offline or has left the page. Keep playing; waiting for them…',
   friendBack: 'Your friend is back. Reconnecting…',
   inviteHelp: 'Invite a friend',
+  inviteHelpShort: 'Invite', // on the narrow bar of a phone
   friendJoined: 'Your friend joined. Draw together.',
   reconnected: 'Reconnected.',
   reconnectFailed: 'Could not reconnect. You can keep playing alone.',
@@ -169,6 +170,7 @@ export const ZH = {
   friendOffline: '朋友已离线或离开了页面。你可以继续画，等待对方…',
   friendBack: '朋友回来了，正在重新连接…',
   inviteHelp: '邀请朋友',
+  inviteHelpShort: '邀请',
   friendJoined: '朋友加入了，一起画吧。',
   reconnected: '已重新连接。',
   reconnectFailed: '无法重新连接。你可以继续单独画下去。',

@@ -27,7 +27,7 @@ import { createBehaviour, sinksFromConfig } from '../../platform/behaviour.js';
 import { t, getLang, setLang } from '../../ui/i18n.js';
 import { createPlayLog } from '../../features/playlog.js';
 import { isSoundEnabled, setSoundEnabled, sfxMove } from '../../platform/sound.js';
-import { coopShown, renderMenu, sizeOptionsHtml, storageNoteText, typeCaptionHtml, typeShown } from './menu.js';
+import { coopAccess, coopShown, renderMenu, sizeOptionsHtml, storageNoteText, typeCaptionHtml, typeShown } from './menu.js';
 import { genNoticeHtml, paintGenerating, renderGenerating } from './generating.js';
 import { hintShown, renderGame } from './game-view.js';
 import {
@@ -188,7 +188,9 @@ function attachHandlers() {
 }
 
 // ---------- hidden dev reveal: hold "v", or 5 taps on the bare app bar, or a pinned device ----------
-// The hidden trial in src/coop listens for this event; with nothing listening it does nothing.
+// Patchwork (src/coop) listens for this event; with nothing listening it does nothing. It also asks what the player has unlocked
+// (zip:coop-access, answered at once through detail.reply) to lock the same types.
+document.addEventListener('zip:coop-access', event => event.detail.reply(coopAccess()));
 const announceReveal = () => document.dispatchEvent(
   new CustomEvent('zip:reveal', { detail: S.showDev }),
 );

@@ -161,7 +161,8 @@ test('the type and the size are chosen together: the sizes are those of the type
 
 test('the game title names a type that is not the standard one', () => {
   assert.ok(!gamePage(view()).includes(' · Cutout'));
-  assert.ok(gamePage(view({ variantName: 'Cutout' })).includes('7×7 · Cutout'));
+  assert.ok(gamePage(view()).includes('Patchwork 7×7'));
+  assert.ok(gamePage(view({ variantName: 'Cutout' })).includes('Patchwork · Cutout 7×7'));
 });
 
 test('a failed puzzle is told on the menu (alone) and in the lobby, as an error', () => {
@@ -175,7 +176,7 @@ test('a failed puzzle is told on the menu (alone) and in the lobby, as an error'
 
 test('a solid game: the title has the size, and the button swaps the solid and its net', () => {
   const html = gamePage(view({ variantName: 'Cube', sizeName: '3', viewLabel: 'Net' }));
-  assert.ok(html.includes('Patchwork 3 · Cube'));
+  assert.ok(html.includes('Patchwork · Cube 3'));
   assert.ok(html.includes('data-act="view" id="coopView">Net</button>'));
   assert.ok(!gamePage(view()).includes('data-act="view"'));
 });
@@ -186,4 +187,79 @@ test('the game page has a button to invite a friend, hidden while the friend is 
   assert.ok(alone.includes('data-act="invite-help" id="coopHelp">'));
   const together = gamePage(view({ online: true, peerHere: true, helpAvailable: true }));
   assert.ok(together.includes('id="coopHelp" style="display:none"'));
+});
+
+// What the player has unlocked in free play (apps/play/menu.js coopAccess): locked types stay locked.
+const INFO = {
+  access: {
+    standard: 'all', cutout: 'all', arrows: 'none', exact: 'none', wrap: 'none', loop: 'none',
+    teleport: 'none', twopaths: 'none', pentagon: 'none', tetra: 'part', cube: 'none', ball: 'none',
+  },
+  sizes: { tetra: [4] },
+  solid: true,
+};
+const tag = (html, id) => new RegExp(`<label[^>]*id="coopOpt-${id}"[^>]*>`).exec(html)[0];
+
+test('locked types are marked and hidden, as in free play, until revealed or picked', () => {
+  const html = menuPage({ size: 7, rtc: true, access: INFO });
+  assert.ok(!tag(html, 'standard').includes('display:none'));
+  assert.ok(!tag(html, 'cutout').includes('display:none'));
+  assert.ok(!tag(html, 'tetra').includes('display:none'), 'open in part: shown');
+  for (const id of ['arrows', 'exact', 'wrap', 'loop', 'teleport', 'twopaths', 'pentagon', 'cube']) {
+    assert.ok(tag(html, id).includes('variant-locked') && tag(html, id).includes('display:none'), id);
+  }
+  const shown = menuPage({ size: 7, rtc: true, access: INFO, revealed: true });
+  assert.ok(!tag(shown, 'arrows').includes('display:none') && tag(shown, 'arrows').includes('variant-locked'));
+  const held = menuPage({ size: 7, rtc: true, access: INFO, held: new Set(['exact']) });
+  assert.ok(!tag(held, 'exact').includes('display:none'));
+  assert.ok(!tag(menuPage({ size: 7, rtc: true }), 'arrows').includes('variant-locked'), 'no menu: open');
+});
+
+test('the Flat | 3D tabs: two groups of tiles, the tabs only once a solid is on offer', () => {
+  const html = menuPage({ size: 7, rtc: true, access: INFO });
+  const group = (page, tab) => new RegExp(`<div class="variant-options[^"]*" id="coopTiles-${tab}"[^>]*>`)
+    .exec(page)[0];
+  assert.ok(!group(html, 'flat').includes('hidden') && group(html, '3d').includes('hidden'));
+  assert.ok(html.includes('data-coop-tab="flat"') && html.includes('data-coop-tab="3d"'));
+  assert.ok(!/id="coopTabs"[^>]*display:none/.test(html));
+  assert.ok(html.includes('play-col has-tabs'));
+  const cube = menuPage({ size: 3, rtc: true, access: INFO, variant: 'cube', held: new Set(['cube']) });
+  assert.ok(group(cube, '3d') && !group(cube, '3d').includes('hidden'));
+  assert.ok(group(cube, 'flat').includes('hidden'));
+  assert.ok(cube.includes('data-coop-tab="3d" aria-selected="true"'));
+  const none = { ...INFO, solid: false, access: { ...INFO.access, tetra: 'none' } };
+  const plain = menuPage({ size: 7, rtc: true, access: none });
+  assert.ok(/id="coopTabs"[^>]*display:none/.test(plain));
+  assert.ok(!plain.includes('has-tabs'));
+  assert.ok(!/id="coopTabs"[^>]*display:none/.test(menuPage({ size: 7, rtc: true, access: none, revealed: true })));
+});
+
+test('a type open in part offers only its open sizes, all of them while revealed', () => {
+  const sizes = html => [...html.matchAll(/<option value="(\d+)"/g)].map(match => Number(match[1]));
+  const part = menuPage({ size: 4, rtc: true, access: INFO, variant: 'tetra' });
+  assert.deepEqual(sizes(part), [4]);
+  assert.ok(sizes(menuPage({ size: 4, rtc: true, access: INFO, variant: 'tetra', revealed: true })).length > 1);
+  assert.ok(/for="coopSize" id="coopSizeLabel">Size</.test(part));
+  assert.ok(/for="coopSize" id="coopSizeLabel">Shape</.test(menuPage({ size: 0, rtc: true, variant: 'ball' })));
+});
+
+test('the lobby has the tabs and the locks too, for the host only', () => {
+  const host = lobbyPage({ role: 'host', size: 7, status: '', access: INFO });
+  assert.ok(host.includes('data-coop-tab="3d"') && tag(host, 'arrows').includes('display:none'));
+  assert.ok(!lobbyPage({ role: 'guest', size: 7, status: '' }).includes('coopTabs'));
+});
+
+test('the game page has the buttons where the play app has them', () => {
+  const html = gamePage(view({ variantName: 'Cube', sizeName: '3', viewLabel: 'Net', online: true,
+    peerHere: false, helpAvailable: true, revealed: true }));
+  const at = text => html.indexOf(text);
+  assert.ok(at('class="view-tools"') > at('class="hud"') && at('class="view-tools"') < at('class="grid-wrap"'),
+    'the view tools are above the board');
+  const actions = html.slice(at('card actions'));
+  for (const act of ['menu', 'new', 'clear', 'undo', 'hint', 'invite-help', 'export']) {
+    assert.ok(actions.includes(`data-act="${act}"`), `${act} is in the buttons on the right`);
+  }
+  assert.ok(!html.includes('coop-tools'));
+  assert.ok(html.includes('class="note coop-msg"'));
+  assert.ok(actions.includes('btn-short'));
 });
