@@ -55,7 +55,7 @@ test('statistics keys: standard keeps the plain size, other types are told apart
 });
 
 for (const variant of COOP_VARIANTS) {
-  test(`${variant.id}: a puzzle Free draw plays, over the wire too`, async () => {
+  test(`${variant.id}: a puzzle Patchwork plays, over the wire too`, async () => {
     await variant.ready?.();
     const n = variant.sizes()[0];
     const puzzle = runSync(variant.generate(n, 3));

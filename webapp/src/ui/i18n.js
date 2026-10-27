@@ -124,6 +124,12 @@ export const EN = {
   'game.sharedTitle': 'Shared {0}x{0}',
   'game.penalty': (s, n) => ` (incl. +${s} for ${n} hint${n === 1 ? '' : 's'})`,
   'menu.mode': 'Puzzle type',
+  // Patchwork (src/coop): draw pieces anywhere and join them into one path, alone or with a friend. The card
+  // shows while V is held; its other texts are in src/coop/texts.js.
+  'coop.title': 'Patchwork',
+  'coop.sub': 'Draw pieces anywhere, join them into one path.',
+  'coop.blurb': 'Lift your finger and start anywhere, then join the pieces into one path. Alone or with a friend on another device.',
+  'coop.open': 'Open',
   'mode.standard': 'Standard',
   'mode.cutout': 'Cutout',
   'mode.standardTag': 'Full square grid',
@@ -390,6 +396,10 @@ export const ZH = {
   'game.sharedTitle': '分享 {0}x{0}',
   'game.penalty': (s, n) => `（含 ${n} 次提示罚时 +${s}）`,
   'menu.mode': '谜题类型',
+  'coop.title': '拼线',
+  'coop.sub': '随处画线，再拼成一条路径。',
+  'coop.blurb': '可随时抬手、从任意位置重新开始，再把各段拼成一条路径。可以独自玩，也可以与另一台设备上的朋友一起玩。',
+  'coop.open': '打开',
   'mode.standard': '标准',
   'mode.cutout': '镂空',
   'mode.standardTag': '完整的方形棋盘',

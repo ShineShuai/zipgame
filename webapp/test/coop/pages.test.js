@@ -55,7 +55,7 @@ test('what the play app shows only while V is held is hidden here too, until rev
 test('online: the colour chips, and only the host can start a new puzzle', () => {
   const host = gamePage(view({ online: true, pid: 0 }));
   assert.ok(host.includes('coop-players'));
-  assert.ok(host.includes('with a friend'));
+  assert.ok(host.includes('coop-chip'));
   assert.ok(!/id="coopNew" disabled/.test(host));
   assert.ok(/id="coopNew" disabled/.test(gamePage(view({ online: true, pid: 1, canNew: false }))));
   assert.ok(gamePage(view({ online: true, peerHere: false })).includes('coop-chip gone'));
@@ -132,21 +132,21 @@ test('dialogs use the play app\'s modal, and the puzzle text is escaped', () => 
 test('the type and the size are chosen together: the sizes are those of the type', () => {
   const sizes = html => [...html.matchAll(/<option value="(\d+)"/g)].map(match => Number(match[1]));
   const standard = menuPage({ size: 7, rtc: true });
-  assert.ok(standard.includes('id="coopVariant"'));
+  const picked = html => /<input type="radio" name="coopVariant" value="(\w+)" checked /.exec(html)?.[1];
   const all = [
     'standard', 'cutout', 'exact', 'arrows', 'wrap', 'teleport', 'loop', 'twopaths', 'pentagon',
     'tetra', 'cube', 'ball',
   ];
   for (const id of all) {
-    assert.ok(standard.includes(`<option value="${id}"`), id);
+    assert.ok(standard.includes(`<input type="radio" name="coopVariant" value="${id}"`), id);
   }
-  assert.ok(standard.includes('<option value="standard" selected>'));
+  assert.equal(picked(standard), 'standard');
   assert.ok(sizes(standard).includes(16));
   const exact = menuPage({ size: 8, rtc: true, variant: 'exact' });
-  assert.ok(exact.includes('<option value="exact" selected>'));
+  assert.equal(picked(exact), 'exact');
   assert.ok(!sizes(exact).includes(16));
   const arrows = menuPage({ size: 7, rtc: true, variant: 'arrows' });
-  assert.ok(arrows.includes('<option value="arrows" selected>'));
+  assert.equal(picked(arrows), 'arrows');
   assert.deepEqual(sizes(arrows), [5, 6, 7, 8, 9, 10, 11]);
   assert.deepEqual(sizes(menuPage({ size: 7, rtc: true, variant: 'wrap' })), [4, 5, 6, 7, 8]);
   assert.deepEqual(sizes(menuPage({ size: 6, rtc: true, variant: 'pentagon' })), [4, 6, 8, 10]);
@@ -154,7 +154,7 @@ test('the type and the size are chosen together: the sizes are those of the type
   const cube = menuPage({ size: 3, rtc: true, variant: 'cube' });
   assert.match(cube, /<option value="3" selected>3 \(\d+ cells\)/);
   const lobby = lobbyPage({ role: 'host', size: 6, status: '', variant: 'cutout' });
-  assert.ok(lobby.includes('<option value="cutout" selected>'));
+  assert.equal(picked(lobby), 'cutout');
   assert.ok(lobby.includes('<option value="6" selected>'));
   assert.ok(!lobbyPage({ role: 'guest', size: 6, status: '' }).includes('coopVariant'));
 });
@@ -175,7 +175,7 @@ test('a failed puzzle is told on the menu (alone) and in the lobby, as an error'
 
 test('a solid game: the title has the size, and the button swaps the solid and its net', () => {
   const html = gamePage(view({ variantName: 'Cube', sizeName: '3', viewLabel: 'Net' }));
-  assert.ok(html.includes('Free draw 3 · Cube'));
+  assert.ok(html.includes('Patchwork 3 · Cube'));
   assert.ok(html.includes('data-act="view" id="coopView">Net</button>'));
   assert.ok(!gamePage(view()).includes('data-act="view"'));
 });

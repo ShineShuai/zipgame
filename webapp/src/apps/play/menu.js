@@ -48,6 +48,28 @@ function variantPickerHtml() {
       </fieldset>`;
 }
 
+// Patchwork (src/coop): draw pieces anywhere and join them into one path, alone or with a friend. Its card is only in the markup
+// when src/coop is there (boot.js sets data-coop on <html>); it shows while V is held, or always once the game is released
+// (src/coop/config.js RELEASED). The card only asks src/coop to open (main.js): nothing else of the game is known here.
+const coopMode = () => document.documentElement.dataset.coop;
+export const coopShown = () => coopMode() === 'open' || (coopMode() === 'hidden' && S.showDev);
+
+function coopCardHtml() {
+  if (!coopMode()) return '';
+  return `
+      <section class="card coop-card" id="coopCard"${coopShown() ? '' : ' style="display:none"'}>
+        <header class="card-head">
+          <span class="card-badge">${cardIcon('coop')}</span>
+          <div class="card-head-text">
+            <h2 class="card-title">${t('coop.title')}</h2>
+            <p class="card-sub">${t('coop.sub')}</p>
+          </div>
+        </header>
+        <p class="blurb">${t('coop.blurb')}</p>
+        <div class="button-row"><button class="btn" id="coopOpen">${t('coop.open')}</button></div>
+      </section>`;
+}
+
 // Dedicated Game-of-Day card: today's date, one button, the result once played, replay chances and streak.
 function gotdCardHtml() {
   const attempt = store.attempt();
@@ -170,6 +192,7 @@ export function renderMenu() {
       ${gotdCardHtml()}
       ${playColumnHtml()}
       ${sharedCardHtml()}
+      ${coopCardHtml()}
     </div>`;
 }
 

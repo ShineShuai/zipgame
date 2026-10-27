@@ -1,7 +1,7 @@
 import { newStat, statSummary, updateStat } from '../core/stats.js';
 
-// Local statistics of the trial: per board size, how many games, the mean time and the best time.
-// Kept under its own storage key, apart from the stats of the play app, so that removing the trial
+// Local statistics of Patchwork: per board size, how many games, the mean time and the best time.
+// Kept under its own storage key, apart from the stats of the play app, so that removing Patchwork
 // leaves nothing of it in the app's data. Pure functions on a plain record, plus load / save.
 export const STATS_KEY = 'zip_coop_stats';
 

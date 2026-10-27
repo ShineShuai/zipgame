@@ -14,8 +14,9 @@ import { fromBase64Url, toBase64Url } from './invite.js';
 import { hostRoom, joinRoom } from './join.js';
 import { clearGame, loadGame, makeRecord, saveGame } from './keep.js';
 import {
-  confirmDialog, exportDialog, gamePage, generatingPage, invitePage, joinPage, lobbyPage,
-  menuPage, resultCard, roomInvitePage, roomJoinPage, STAGE_TEXT,
+  captionHtml, confirmDialog, exportDialog, gamePage, generatingPage, invitePage, joinPage,
+  lobbyPage, menuPage, resultCard, roomInvitePage, roomJoinPage, sizeOptionsHtml, STAGE_TEXT,
+  variantRulesHtml,
 } from './pages.js';
 import { createReplica } from './replica.js';
 import {
@@ -43,11 +44,12 @@ import {
 } from './solid.js';
 import { boardMarkup } from './view.js';
 
-// The Free draw screens: a full-screen layer on top of the app's page, below its app bar, with its
-// own markup, state and pointer handling. It never reads or writes the app's state. Phases:
+// The Patchwork screens: they take the place of the app's page (the menu) under its app bar, with
+// their own markup, state and pointer handling, and give it back when they close. They never read
+// or write the app's state. Phases:
 //   menu -> (solo) generating -> playing -> solved
 //   menu -> inviting (host) | joining (guest) -> lobby -> generating -> playing -> solved
-// `env` = { stats, saveStats, onClose, isRevealed }: the trial's own statistics record, how to
+// `env` = { stats, saveStats, onClose, isRevealed }: Patchwork's own statistics record, how to
 // store it, what to do when the player leaves, and whether the app's hidden things are revealed.
 const randomSeed = () => (Math.random() * 2 ** 31) >>> 0;
 const seconds = value => `${value.toFixed(1)}s`;
@@ -88,10 +90,19 @@ function gradeOf(puzzle) {
 }
 
 export function openScreen(env) {
+  // The screens sit where the app's page is, in the flow of the page (one scroll, as in the app);
+  // the page is only hidden meanwhile.
+  const host = document.getElementById('app');
+  const pageScroll = window.scrollY;
   const root = document.createElement('div');
   root.id = 'coopRoot';
   root.className = 'coop-root';
-  document.body.append(root);
+  if (host) {
+    host.style.display = 'none';
+    host.after(root);
+  } else {
+    document.body.append(root);
+  }
 
   const state = {
     phase: 'menu',
@@ -165,12 +176,6 @@ export function openScreen(env) {
   const pid = () => (state.session ? state.session.pid : 0);
   const canShare = typeof navigator.share === 'function';
 
-  // ---------- layer ----------
-  function placeRoot() {
-    const bar = document.querySelector('.app-bar');
-    root.style.top = `${bar ? Math.round(bar.getBoundingClientRect().bottom) : 0}px`;
-  }
-
   // ---------- screens ----------
   function render() {
     const rtc = rtcSupported();
@@ -213,7 +218,10 @@ export function openScreen(env) {
         variant: state.variant,
       }),
       generating: () => generatingPage({
-        percent: state.progress, waiting: state.waiting, online: Boolean(state.session),
+        percent: state.progress,
+        waiting: state.waiting,
+        online: Boolean(state.session),
+        variant: state.variant,
       }),
     };
     if (pages[state.phase]) {
@@ -221,7 +229,7 @@ export function openScreen(env) {
     } else {
       renderGame();
     }
-    root.scrollTop = 0;
+    window.scrollTo(0, 0);
   }
 
   const setStatus = (text, error = false) => {
@@ -252,7 +260,7 @@ export function openScreen(env) {
     const online = Boolean(state.session);
     const role = online ? state.role : 'solo';
     return {
-      n: state.puzzle.n,
+      variant: variantOf(state.puzzle),
       online,
       pid: pid(),
       peerHere: state.peerHere,
@@ -1508,7 +1516,7 @@ export function openScreen(env) {
   async function shareFrom(button) {
     const input = el(button.dataset.from);
     try {
-      await navigator.share({ title: tx('title'), url: input.value });
+      await navigator.share({ title: t('coop.title'), url: input.value });
     } catch {
       // the share sheet was closed
     }
@@ -1538,10 +1546,40 @@ export function openScreen(env) {
     window.removeEventListener('offline', refreshNet);
     window.removeEventListener('pagehide', keepNow);
     document.removeEventListener('keydown', onKeyDown);
-    window.removeEventListener('resize', placeRoot);
     languageWatch?.disconnect();
     root.remove();
+    if (host) {
+      host.style.display = '';
+    }
+    window.scrollTo(0, pageScroll);
     env.onClose();
+  }
+
+  // The pick of the type changed: its caption and rules, and the sizes it offers.
+  function refreshPick() {
+    const caption = el('coopCaption');
+    if (caption) {
+      caption.innerHTML = captionHtml(state.variant);
+    }
+    const rules = el('coopVariantRules');
+    if (rules) {
+      rules.textContent = variantRulesHtml(state.variant);
+      rules.hidden = true;
+    }
+    const size = el('coopSize');
+    if (size) {
+      size.innerHTML = sizeOptionsHtml(state.variant, state.size);
+    }
+  }
+
+  // The rules of the type picked (menu) or of the game (the i beside its title).
+  function toggleRules(id, button = null) {
+    const node = el(id);
+    if (!node) {
+      return;
+    }
+    node.hidden = !node.hidden;
+    button?.setAttribute('aria-expanded', String(!node.hidden));
   }
 
   function onClick(event) {
@@ -1582,6 +1620,8 @@ export function openScreen(env) {
       hint: showHint,
       view: toggleView,
       export: openExport,
+      rules: () => toggleRules('coopRules', button),
+      'variant-rules': () => toggleRules('coopVariantRules'),
       'export-close': closeExport,
       'export-copy': copyExport,
       copy: () => copyFrom(button),
@@ -1590,7 +1630,7 @@ export function openScreen(env) {
     actions[button.dataset.act]?.();
   }
 
-  // Esc: closes what is open, else asks before leaving a game, else leaves the trial.
+  // Esc: closes what is open, else asks before leaving a game, else leaves Patchwork.
   function onKeyDown(event) {
     const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(event.target?.tagName ?? '');
     if (ARROW_TURN[event.key] && !typing && solid() && turnable(state.puzzle, state.view)
@@ -1637,17 +1677,17 @@ export function openScreen(env) {
     });
   }
 
-  placeRoot();
-  window.addEventListener('resize', placeRoot);
   root.addEventListener('click', onClick);
+  // The type and the size are read where they are picked; the caption and the sizes follow in
+  // place (a redraw would scroll the page back to the top under the player's finger).
   root.addEventListener('change', event => {
     if (event.target.id === 'coopSize') {
       state.size = Number(event.target.value);
     }
-    if (event.target.id === 'coopVariant') {
+    if (event.target.name === 'coopVariant') {
       state.variant = event.target.value;
       state.size = nearestSize(state.size, sizesFor(state.variant));
-      render();
+      refreshPick();
     }
   });
   root.addEventListener('pointerdown', event => {

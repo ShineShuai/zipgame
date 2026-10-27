@@ -453,6 +453,12 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 .play-col > .tab-pane > .card { height: 100%; }
 .tab-pane[hidden] { display: none; }
 .shared-card { grid-area: shared; }
+/* Patchwork (src/coop): a strip across the page while it is revealed: name, rules line, Open. Auto-placed after the other cards. */
+.coop-card { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr) auto; align-items: center; gap: 12px 24px; }
+.coop-card .card-head { margin: 0; }
+.coop-card .blurb { margin: 0; }
+.coop-card .button-row { margin: 0; }
+.coop-card .btn { min-width: 150px; min-height: 48px; }
 
 .gotd-card .blurb { margin-bottom: 12px; }
 .gotd-card .button-row .btn { min-height: 48px; }
@@ -812,6 +818,8 @@ tr:last-child td { border-bottom: 0; }
 @media (max-width: 1000px) {
   .menu-layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "intro" "today" "play" "shared"; }
   .menu-layout.has-gift { grid-template-areas: "intro" "gift" "today" "play" "shared"; }
+  .coop-card { grid-template-columns: minmax(0, 1fr) auto; }
+  .coop-card .blurb { grid-column: 1 / -1; grid-row: 2; }
   .gotd-card .status-panel { flex-direction: row; }
   .gotd-card .stat-item { flex: 1 1 0; width: auto; }
 }
@@ -846,6 +854,9 @@ tr:last-child td { border-bottom: 0; }
   .variant-card::after { top: -5px; right: -5px; width: 17px; height: 17px; font-size: 0.62rem; }
   .menu-caption { margin: 2px 0 8px; min-height: 2.9em; }
   .gotd-card .blurb { display: none; }
+  .coop-card { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .coop-card .blurb { display: none; }
+  .coop-card .btn { width: 100%; }
   .gotd-card .card-head { margin-bottom: 10px; }
   .gotd-card .status-panel { margin-top: 10px; padding-top: 0; }
   .stat-item { padding: 6px 10px; gap: 8px; }

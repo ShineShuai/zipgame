@@ -11,7 +11,7 @@ import {
   looksLikeSurface, parseSurface, serializeSurface, startCell as surfaceStart, topologyOf,
 } from '../core/surface/puzzle.js';
 
-// What Free draw asks of a board, whatever its geometry (pure). Two kinds of puzzle exist:
+// What Patchwork asks of a board, whatever its geometry (pure). Two kinds of puzzle exist:
 //   flat     the square grid of the play app, any variant (core/model.js, core/rules.js)
 //   surface  a graph of cells: the flat Pentagon board, later the solids (core/surface/)
 // modelOf(puzzle) -> {
@@ -23,7 +23,7 @@ import {
 //   linked(a, b)   do the cells touch (across a seam too), or are they the ends of a portal pair
 //   solved(path)   is `path` a solution
 // }
-// The kinds of surface puzzle that Free draw plays so far (core/surface/puzzle.js `kind`).
+// The kinds of surface puzzle that Patchwork plays so far (core/surface/puzzle.js `kind`).
 export const PLAYED_SURFACES = ['pentagon', 'tetra', 'cube', 'ball'];
 
 const cache = new WeakMap();

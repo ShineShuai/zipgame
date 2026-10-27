@@ -1,37 +1,59 @@
-/* Styles of the hidden Free draw trial (src/coop). Loaded by app.js on the first reveal. The
-   screens are built from the play app's own classes (card, btn, hud, grid-wrap, game-layout,
-   actions, modal ...), so only what the trial adds is styled here, with the tokens of
-   css/theme.css. */
+/* Styles of Patchwork (src/coop). Loaded by app.js when the game is opened. The screens are built
+   from the play app's own classes (card, btn, variant-opt, play-bar, hud, grid-wrap, game-layout,
+   actions, modal ...), so only what Patchwork adds is styled here, with the tokens of css/theme.css.
+   The page is laid out like #app of css/play.css (width, padding, the bar of actions on a phone). */
 
-.coop-pill {
-  position: fixed; left: 10px; bottom: 10px; z-index: 60; padding: 6px 12px;
-  border: 1px solid var(--line-strong); border-radius: var(--r-chip); background: var(--surface);
-  color: var(--accent-text); font: inherit; font-size: 0.85rem; font-weight: 700; cursor: pointer;
-  box-shadow: var(--shadow);
-}
-.coop-pill:hover { background: var(--accent-soft); }
-
-/* a layer over the page, below the app bar (app.js sets its top) */
-.coop-root {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 400; overflow-y: auto;
-  overscroll-behavior: contain; background: var(--bg); color: var(--text);
-  -webkit-overflow-scrolling: touch;
-}
-/* like #app of the play page */
 .coop-page {
-  display: flex; flex-direction: column; gap: 14px; max-width: 1200px; margin: 0 auto;
-  padding: 18px 20px 48px;
+  display: flex; flex-direction: column; gap: var(--gap); max-width: 1200px; margin: 0 auto;
+  padding: 18px var(--pad) 48px;
 }
+.coop-page.medium { max-width: 880px; }
+.coop-page.narrow { max-width: 680px; }
 .coop-page .card { margin: 0; }
+.coop-page .center-stage { width: 100%; }
 @media (max-width: 640px) {
-  .coop-page { padding: 10px 10px calc(24px + env(safe-area-inset-bottom, 0px)); }
-  .coop-page.has-actions { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+  .coop-page { padding: 10px 10px calc(24px + env(safe-area-inset-bottom, 0)); }
+  .coop-page.has-actions { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0)); }
+}
+@media (min-width: 641px) {
+  :root[data-actions="bar"] .coop-page.has-actions { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0)); }
 }
 
-.coop-tag {
-  margin-left: 8px; padding: 1px 8px; border-radius: var(--r-chip); background: var(--accent-soft);
-  color: var(--accent-text); font-size: 0.75rem; font-weight: 700; vertical-align: middle;
+/* the first screen, as the play app's menu: what needs a friend on the left, the puzzle on the right */
+.coop-top { display: flex; }
+.coop-top .btn { flex: none; width: auto; min-height: 44px; padding: 6px 18px; }
+.coop-page > .menu-intro, .coop-page > .howto { margin: 0; }
+.coop-menu {
+  display: grid; grid-template-columns: minmax(300px, 4fr) minmax(0, 8fr); gap: var(--gap) 16px;
+  align-items: start;
 }
+.coop-side { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
+.coop-side > .card { margin: 0; }
+.coop-draw { min-width: 0; }
+.coop-together .blurb { margin-bottom: 12px; }
+.coop-together .button-row .btn { min-height: 48px; }
+.coop-variant-rules { margin: -6px 0 12px; color: var(--muted); }
+.coop-leave { margin-top: 12px; }
+@media (max-width: 1000px) {
+  .coop-menu { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .coop-menu { gap: 10px; }
+  .coop-draw .card-sub { display: none; }
+}
+:root[data-menu="stack"] .coop-menu { grid-template-columns: minmax(0, 1fr); max-width: 680px; margin-inline: auto; width: 100%; }
+:root[data-menu="bento"] .coop-menu > .card, :root[data-menu="bento"] .coop-side > .card {
+  background: transparent; border-color: transparent; box-shadow: none; padding: 0;
+}
+
+/* the game: the rules beside the title, and what only some games have, under the board */
+.coop-rules { margin: 10px 0 0; font-weight: 400; font-size: 0.94rem; color: var(--text); }
+.coop-rules p { margin: 0 0 6px; }
+.coop-rules p:last-child { margin-bottom: 0; }
+.coop-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.coop-tools:empty { display: none; }
+.coop-tools .btn { flex: 0 1 auto; min-height: 44px; padding: 6px 16px; }
+.coop-tools .btn[style*="display:none"] { display: none; }
 
 /* the invite and the reply: steps with a link or a code to copy, a place to paste */
 .coop-steps { display: flex; flex-direction: column; gap: 16px; margin: 0 0 12px; padding: 0;
@@ -78,3 +100,6 @@
 
 .coop-msg { min-height: 1.4em; margin: 8px 0 0; color: var(--muted); font-size: 0.95rem; }
 .coop-svg { margin: 0 auto; }
+
+/* a note followed by a button (the invite's waiting line and Cancel) */
+.coop-page .note + .btn, .coop-page .note + .button-row { margin-top: 10px; }

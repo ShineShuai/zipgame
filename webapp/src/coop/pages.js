@@ -1,4 +1,4 @@
-import { actionIcon, cardIcon } from '../apps/play/icons.js';
+import { actionIcon, cardIcon, variantIcon } from '../apps/play/icons.js';
 import { t } from '../ui/i18n.js';
 import { tx } from './texts.js';
 import { GREETING_MAX } from './join.js';
@@ -6,9 +6,9 @@ import { COOP_VARIANTS, sizesFor } from './variants.js';
 import { surfaceTopology } from '../core/surface/topology.js';
 import { PLAYER_COLORS } from './view.js';
 
-// The markup of the Free draw screens (pure). They are built from the classes of the play app's
-// own menu and game screens (card, btn, hud, grid-wrap, game-layout, actions ...), so that the
-// trial looks and sits like the single-player game. What the game screen shows only while V is
+// The markup of the Patchwork screens (pure). They are built from the classes of the play app's
+// own menu and game screens (card, variant-opt, play-bar, hud, grid-wrap, game-layout, actions ...),
+// so that they look and sit like the single-player game. What the game screen shows only while V is
 // held (the seed, the grade's numbers, Export) carries data-dev; screen.js shows and hides it.
 const attr = text => String(text)
   .replace(/&/g, '&amp;')
@@ -27,16 +27,43 @@ function sizeText(variant, n) {
   return variant === 'ball' ? t('solid.random') : `${n}×${n}`;
 }
 
-// The type and the size of the puzzle: two selects, the sizes being those of the type.
-const pickers = (variant, size) => `<div class="field">`
-  + `<label class="field-label" for="coopVariant">${tx('variant')}</label>`
-  + `<select id="coopVariant">${selectOptions(COOP_VARIANTS.map(v => v.id), variant,
-    id => t(`mode.${id}`))}</select></div>`
-  + `<div class="field size-field">`
+// The sizes of a type as <option>s.
+export const sizeOptionsHtml = (variant, size) => selectOptions(sizesFor(variant), size,
+  n => sizeText(variant, n));
+
+// The type of the puzzle: tiles like the play app's (same classes, so the themes' picker layouts
+// apply), one radio each; screen.js reads the pick from the radios.
+const variantPicker = variant => `<fieldset class="variant-picker">`
+  + `<legend class="field-label">${t('menu.mode')}</legend><div class="variant-options">`
+  + COOP_VARIANTS.map(({ id }) => `<label class="variant-opt" id="coopOpt-${id}">`
+    + `<input type="radio" name="coopVariant" value="${id}"${id === variant ? ' checked' : ''} `
+    + `aria-describedby="coopTip-${id}">`
+    + `<span class="variant-card">${variantIcon(id)}<span class="variant-name">${t(`mode.${id}`)}`
+    + `</span><span class="variant-tag">${t(`mode.${id}Tag`)}</span></span>`
+    // the rules popover of the play app's tiles (its hover handlers expect it)
+    + `<span class="variant-rules" id="coopTip-${id}" role="tooltip"><b class="pop-title">`
+    + `${t(`mode.${id}`)}</b>${variantRulesHtml(id)}</span></label>`).join('')
+  + '</div></fieldset>';
+
+// The line under the tiles: the type picked, its tagline, and a link that opens its rules.
+export const captionHtml = variant => `<b>${t(`mode.${variant}`)}</b> — ${t(`mode.${variant}Tag`)}`
+  + ` <button type="button" class="link-btn rules-link" data-act="variant-rules">`
+  + `${t('menu.rulesLink')}</button>`;
+
+export const variantRulesHtml = variant => t(`mode.${variant}Rules`);
+
+// The size and the button, on one row (a bar fixed to the bottom of the card on a phone).
+const playBar = (variant, size, act) => `<div class="play-bar"><div class="field size-field">`
   + `<label class="field-label" for="coopSize">${t('menu.size')}</label>`
-  + `<select id="coopSize">${selectOptions(sizesFor(variant), size, n => sizeText(variant, n))}`
-  + '</select>'
-  + '</div>';
+  + `<select id="coopSize">${sizeOptionsHtml(variant, size)}</select></div>`
+  + `<div class="button-row"><button class="btn" data-act="${act}">${t('menu.playLocal')}`
+  + '</button></div></div>';
+
+// Type, caption and size: what the setup screens share.
+const setup = (variant, size, act) => `${variantPicker(variant)}`
+  + `<p class="menu-caption" id="coopCaption" aria-live="polite">${captionHtml(variant)}</p>`
+  + `<p class="small coop-variant-rules" id="coopVariantRules" hidden>${variantRulesHtml(variant)}</p>`
+  + `${playBar(variant, size, act)}`;
 
 const seconds = value => `${value.toFixed(1)}s`;
 const dev = revealed => `data-dev style="${revealed ? '' : 'display:none'}"`;
@@ -55,6 +82,8 @@ const cardHead = (icon, title, sub, tag = '') => `<header class="card-head">`
   + `<h2 class="card-title">${title}${tag}</h2><p class="card-sub">${sub}</p></div></header>`;
 
 const page = (body, extra = '') => `<div class="coop-page${extra}">${body}</div>`;
+// the screens of one card (invite, join, generating ...): a column, not the width of the menu
+const narrow = body => page(body, ' narrow');
 
 const note = (text, error = false) => `<p class="note${error ? ' error' : ''}" id="coopStatus" `
   + `role="status" aria-live="polite">${text}</p>`;
@@ -67,18 +96,19 @@ const copyRow = (id, value, canShare) => `<div class="coop-copy">`
     + `${actionIcon('share')}${t('share.btn')}</button>` : '')
   + '</div>';
 
-// The first screen: the solo card (like the play app's Free play card) and the online card.
+// The first screen, laid out like the play app's menu: what needs two devices on the left (the
+// game left open, the invitation), the puzzle to draw on the right (type, size, Play).
 export function menuPage({
   size, rtc, variant = 'standard', status = '', error = false, saved = false,
 }) {
-  const solo = `<section class="card free-card">`
-    + cardHead(cardIcon('free'), tx('title'), tx('menuSub'),
-      ` <span class="coop-tag">${tx('trial')}</span>`)
-    + `<p class="menu-caption">${tx('rules')}</p>`
-    + `<div class="play-bar">${pickers(variant, size)}`
-    + `<div class="button-row"><button class="btn" data-act="solo">${t('menu.playLocal')}`
-    + `</button></div></div>${status ? note(status, error) : ''}</section>`;
-  const online = `<section class="card">`
+  const top = `<div class="coop-top"><button type="button" class="btn secondary" data-act="exit">`
+    + `${actionIcon('menu')}${t('game.menu')}</button></div>`;
+  const intro = `<p class="menu-intro">${tx('rules')}</p>`
+    + `<details class="howto"><summary>${t('menu.howto')}</summary><p>${tx('rules')}</p></details>`;
+  const draw = `<section class="card free-card coop-draw">`
+    + cardHead(cardIcon('coop'), t('coop.title'), t('coop.sub'))
+    + `${status ? note(status, error) : ''}${setup(variant, size, 'solo')}</section>`;
+  const online = `<section class="card coop-together">`
     + cardHead(PEOPLE_ICON, tx('onlineTitle'), tx('onlineSub'))
     + `<p class="blurb">${tx('onlineBlurb')}</p>`
     + `<div class="button-row"><button class="btn" data-act="host"${rtc ? '' : ' disabled'}>`
@@ -90,9 +120,8 @@ export function menuPage({
       + `<button class="btn" data-act="rejoin">${tx('rejoin')}</button>`
       + `<button class="btn secondary" data-act="discard">${tx('discard')}</button></div></section>`
     : '';
-  const back = `<div class="button-row"><button class="btn secondary" data-act="exit">`
-    + `${tx('backToApp')}</button></div>`;
-  return page(`${again}${solo}${online}${back}`);
+  return page(`${top}${intro}<div class="coop-menu"><div class="coop-side">${again}${online}</div>`
+    + `${draw}</div>`);
 }
 
 // Host: the invite link to send, and the reply to paste.
@@ -104,7 +133,7 @@ export function invitePage({ link, status, error, canShare }) {
       + `<div class="button-row"><button class="btn" data-act="connect">${tx('connect')}`
       + '</button></div></li></ol>'
     : '';
-  return page(`<section class="card">${cardHead(PEOPLE_ICON, tx('onlineTitle'), tx('onlineSub'))}`
+  return narrow(`<section class="card">${cardHead(PEOPLE_ICON, tx('onlineTitle'), tx('onlineSub'))}`
     + `${steps}${note(status, error)}`
     + `<div class="button-row"><button class="btn secondary" data-act="cancel">${tx('cancel')}`
     + '</button></div></section>');
@@ -116,7 +145,7 @@ export function joinPage({ code, status, error, canShare }) {
     ? `<ol class="coop-steps"><li><b>${tx('replyTitle')}</b>${copyRow('coopCode', code, canShare)}`
       + `<p class="small">${tx('replyNote')}</p></li></ol>`
     : '';
-  return page(`<section class="card">${cardHead(PEOPLE_ICON, tx('onlineTitle'), tx('onlineSub'))}`
+  return narrow(`<section class="card">${cardHead(PEOPLE_ICON, tx('onlineTitle'), tx('onlineSub'))}`
     + `${reply}${note(status, error)}`
     + `<div class="button-row"><button class="btn secondary" data-act="cancel">${tx('cancel')}`
     + '</button></div></section>');
@@ -148,7 +177,7 @@ export function roomInvitePage({
     ? `<div class="button-row"><button class="btn secondary" data-act="manual">${tx('useCode')}`
       + '</button></div>'
     : '';
-  return page(`<section class="card">${cardHead(PEOPLE_ICON, tx('onlineTitle'), tx('onlineSub'))}`
+  return narrow(`<section class="card">${cardHead(PEOPLE_ICON, tx('onlineTitle'), tx('onlineSub'))}`
     + `${steps}${asks}${note(status, error)}${manual}`
     + `<div class="button-row"><button class="btn secondary" data-act="cancel">${tx('cancel')}`
     + '</button></div></section>');
@@ -182,37 +211,39 @@ export function roomJoinPage({
       + `<div class="button-row"><button class="btn" data-act="join">${tx('joinBtn')}</button>`
       + '</div></div>'
     : '';
-  return page(`<section class="card">${cardHead(PEOPLE_ICON, tx('onlineTitle'), tx('onlineSub'))}`
+  return narrow(`<section class="card">${cardHead(PEOPLE_ICON, tx('onlineTitle'), tx('onlineSub'))}`
     + `${form}${note(status, error)}`
     + `<div class="button-row"><button class="btn secondary" data-act="cancel">${tx('cancel')}`
     + '</button></div></section>');
 }
 
-// Connected, no game yet: the host picks the size, the guest waits.
+// Connected, no game yet: the host picks the type and the size, the guest waits.
 export function lobbyPage({
   role, size, status, variant = 'standard', error = false,
 }) {
-  const choose = role === 'host'
-    ? `<div class="play-bar">${pickers(variant, size)}`
-      + `<div class="button-row"><button class="btn" data-act="start">${t('menu.playLocal')}`
-      + '</button></div></div>'
-    : '';
-  return page(`<section class="card">${cardHead(PEOPLE_ICON, tx('onlineTitle'), tx('onlineSub'))}`
+  const choose = role === 'host' ? setup(variant, size, 'start') : '';
+  return page(`<section class="card free-card coop-draw">`
+    + `${cardHead(PEOPLE_ICON, tx('onlineTitle'), tx('onlineSub'))}`
     + `${note(status, error)}${choose}`
-    + `<div class="button-row"><button class="btn secondary" data-act="cancel">${tx('leave')}`
-    + '</button></div></section>');
+    + `<div class="button-row coop-leave"><button class="btn secondary" data-act="cancel">`
+    + `${tx('leave')}</button></div></section>`, ' medium');
 }
 
-// Making the puzzle (percent), or, for the host, waiting until the other device has it.
-export function generatingPage({ percent, waiting, online }) {
+// Making the puzzle (percent), or, for the host, waiting until the other device has it: the play
+// app's generating screen.
+export function generatingPage({
+  percent, waiting, online, variant = 'standard',
+}) {
   const text = waiting ? tx('waitPuzzle') : tx('generating', percent);
   const leave = online
     ? `<div class="button-row"><button class="btn secondary" data-act="cancel">${tx('leave')}`
       + '</button></div>'
     : '';
-  return page(`<section class="card"><p id="coopGen">${text}</p>`
-    + `<div class="progress"><div style="width:${waiting ? 100 : percent}%"></div></div>${leave}`
-    + '</section>');
+  return page(`<div class="center-stage"><section class="card"><div class="gen-icon">`
+    + `${variantIcon(variant)}</div><h2 class="card-title">${t('gen.title')}</h2>`
+    + `<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" `
+    + `aria-valuenow="${waiting ? 100 : percent}"><div style="width:${waiting ? 100 : percent}%">`
+    + `</div></div><p class="small" id="coopGen">${text}</p>${leave}</section></div>`);
 }
 
 const chips = ({ pid, peerHere }) => `<p class="coop-players">`
@@ -220,22 +251,31 @@ const chips = ({ pid, peerHere }) => `<p class="coop-players">`
   + `<span class="coop-chip${peerHere ? '' : ' gone'}" id="coopPeer"><i `
   + `style="background:${PLAYER_COLORS[1 - pid]}"></i>${tx('friend')}</span></p>`;
 
-// The game: the same arrangement as the play app's game screen. `view` carries the numbers.
+// The game: the same arrangement as the play app's game screen. `view` carries the numbers. The
+// bar of buttons is the one of the single-player game plus Undo (a drawing has many lines); what
+// only some games have (turn a solid, ask a friend, Export) sits under the board, so that the bar
+// stays as short as on a phone it must be.
 export function gamePage(view) {
   const {
-    n, online, pid, peerHere, revealed, grade, seedText, devText, time, hintsLeft, variantName,
-    sizeName = `${n}×${n}`, viewLabel = '', helpAvailable = false,
+    n, online, pid, peerHere, revealed, grade, seedText, devText, time, hintsLeft,
+    variant = 'standard', variantName, sizeName = `${n}×${n}`, viewLabel = '', helpAvailable = false,
   } = view;
   const badge = grade
-    ? `<span class="difficulty-badge">${t('grade.' + grade)} · ${grade}/5</span>` : '';
+    ? `<span class="difficulty-badge">${t(`grade.${grade}`)} · ${grade}/5</span>` : '';
   const kind = variantName ? ` · ${variantName}` : '';
-  const title = `${tx('gameTitle', sizeName)}${kind}${online ? ` · ${tx('withFriend')}` : ''}`;
-  // a solid game: the button that swaps the solid for its net and back (the play app's)
-  const viewButton = viewLabel
-    ? `<button class="btn secondary" data-act="view" id="coopView">${viewLabel}</button>` : '';
+  const title = `${t('coop.title')} ${sizeName}${kind}`;
+  const tools = [
+    viewLabel
+      ? `<button class="btn secondary" data-act="view" id="coopView">${viewLabel}</button>` : '',
+    // ask a friend to join the game that is on (shown while nobody else is in it)
+    helpAvailable
+      ? `<button class="btn secondary" data-act="invite-help" id="coopHelp"`
+        + `${peerHere ? ' style="display:none"' : ''}>${tx('inviteHelp')}</button>`
+      : '',
+    `<button class="btn secondary" data-act="export" ${dev(revealed)}>Export</button>`,
+  ].join('');
   const buttons = [
-    `<button class="btn secondary" data-act="menu">${actionIcon('menu')}`
-      + `${t('game.menu')}</button>`,
+    `<button class="btn secondary" data-act="menu">${actionIcon('menu')}${t('game.menu')}</button>`,
     `<button class="btn secondary" data-act="new" id="coopNew"${view.canNew ? '' : ' disabled'}>`
       + `${actionIcon('new')}${t('game.new')}</button>`,
     `<button class="btn secondary" data-act="clear">${actionIcon('reset')}${t('game.reset')}`
@@ -243,26 +283,23 @@ export function gamePage(view) {
     `<button class="btn secondary" data-act="undo">${UNDO_ICON}${tx('undo')}</button>`,
     `<button class="btn secondary" data-act="hint" id="coopHint">${actionIcon('hint')}`
       + `${t('game.hint', hintsLeft.used, hintsLeft.cap)}</button>`,
-    `<button class="btn secondary" data-act="export" ${dev(revealed)}>Export</button>`,
-    viewButton,
-    // ask a friend to join the game that is on (shown while nobody else is in it)
-    helpAvailable
-      ? `<button class="btn secondary" data-act="invite-help" id="coopHelp"`
-        + `${peerHere ? ' style="display:none"' : ''}>${tx('inviteHelp')}</button>`
-      : '',
   ].join('');
   return page(`<div class="game-layout"><section class="card board-card"><div class="hud">`
-    + `<div class="hud-title"><span class="hud-icon">${cardIcon('free')}</span>`
+    + `<div class="hud-title"><span class="hud-icon">${variantIcon(variant)}</span>`
     + `<span>${title}</span><span class="seed-tag" id="coopSeed" ${dev(revealed)}>`
-    + `${seedText}</span></div>`
-    + badge
+    + `${seedText}</span><button type="button" class="tip-btn rules-btn" data-act="rules" `
+    + `id="coopRulesBtn" aria-label="${attr(t('game.rulesLabel'))}" aria-expanded="false">i`
+    + `</button></div>${badge}`
     + `<span class="seed-tag" ${dev(revealed)}>${devText}</span>`
     + `<div class="hud-time">${t('game.time', `<b id="coopTime">${seconds(time)}</b>`)}</div>`
     + '</div>'
+    + `<div class="note coop-rules" id="coopRules" hidden><p>${tx('rules')}</p>`
+    + `<p><b>${t(`mode.${variant}`)}</b> — ${variantRulesHtml(variant)}</p></div>`
     + `${online ? chips({ pid, peerHere }) : ''}`
     + `<div class="grid-wrap" id="coopBoard"></div><p class="coop-msg" id="coopMsg" role="status" `
-    + `aria-live="polite"></p></section><div class="side"><section class="card actions">`
-    + `<div class="button-row">${buttons}</div></section><div id="coopDone"></div></div></div>`,
+    + `aria-live="polite"></p><div class="coop-tools">${tools}</div></section>`
+    + `<div class="side"><section class="card actions"><div class="button-row">${buttons}</div>`
+    + '</section><div id="coopDone"></div></div></div>',
   ' has-actions');
 }
 

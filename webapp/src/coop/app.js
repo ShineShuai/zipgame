@@ -1,49 +1,35 @@
 import { pickStorage } from '../platform/storage.js';
 import { openScreen } from './screen.js';
 import { loadStats, saveStats } from './stats.js';
-import { tx } from './texts.js';
 
-// The lifecycle of the trial: the pill that appears while the app's hidden things are revealed,
-// and the overlay it opens. Everything the trial does is guarded: a failure removes the trial's
-// own elements and leaves the app as it was.
+// The lifecycle of Patchwork: the screen that the menu's card (or an invite link) opens. Everything
+// it does is guarded: a failure removes its own elements and leaves the app as it was.
 let revealed = false;
-let pill = null;
 let screen = null;
 let styles = null;
 
+// The stylesheet is waited for, so that the screen never shows unstyled for a moment.
 function ensureStyles() {
   if (styles) {
-    return;
+    return styles.ready;
   }
-  styles = document.createElement('link');
-  styles.rel = 'stylesheet';
-  styles.href = new URL('./coop.css', import.meta.url).href;
-  document.head.append(styles);
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = new URL('./coop.css', import.meta.url).href;
+  const ready = new Promise(resolve => {
+    link.addEventListener('load', resolve, { once: true });
+    link.addEventListener('error', resolve, { once: true });
+    setTimeout(resolve, 3000);
+  });
+  document.head.append(link);
+  styles = { link, ready };
+  return ready;
 }
 
-function hidePill() {
-  pill?.remove();
-  pill = null;
-}
-
-function showPill() {
-  if (pill || screen) {
-    return;
-  }
-  pill = document.createElement('button');
-  pill.type = 'button';
-  pill.id = 'coopPill';
-  pill.className = 'coop-pill';
-  pill.textContent = tx('pill');
-  pill.addEventListener('click', () => guard(open)());
-  document.body.append(pill);
-}
-
-// Leaves nothing of the trial behind: no overlay, no pill.
+// Leaves nothing of Patchwork behind: no screen, the app's page as it was.
 export function destroy() {
   screen?.close();
   screen = null;
-  hidePill();
 }
 
 function guard(fn) {
@@ -53,20 +39,24 @@ function guard(fn) {
     } catch (error) {
       console.warn('coop: stopped after an error', error);
       document.getElementById('coopRoot')?.remove();
+      const host = document.getElementById('app');
+      if (host) {
+        host.style.display = '';
+      }
       screen = null;
-      hidePill();
       return undefined;
     }
   };
 }
 
-async function open() {
+// Opens the screen in place of the app's page (the menu); closing it brings the page back.
+export const open = guard(async () => {
   if (screen) {
     return;
   }
+  await ensureStyles();
   const storage = await pickStorage();
   const stats = await loadStats(storage);
-  hidePill();
   screen = openScreen({
     stats,
     storage,
@@ -74,17 +64,13 @@ async function open() {
     isRevealed: () => revealed,
     onClose: () => {
       screen = null;
-      if (revealed) {
-        showPill();
-      }
     },
   });
-}
+});
 
-// Called by boot.js when the page was opened by an invite link: the trial opens by itself, as the
+// Called by boot.js when the page was opened by an invite link: Patchwork opens by itself, as the
 // guest. `code` is the host's connection offer (#c=) or, with `room`, the token of its room (#j=).
 export const openFromLink = guard(async (code, room = false) => {
-  ensureStyles();
   await open();
   screen?.joinFrom(code, room);
 });
@@ -92,11 +78,5 @@ export const openFromLink = guard(async (code, room = false) => {
 // Called by boot.js whenever the app's hidden things are revealed (true) or hidden (false).
 export function reveal(on) {
   revealed = on;
-  ensureStyles();
   screen?.setRevealed(on);
-  if (on) {
-    showPill();
-  } else {
-    hidePill();
-  }
 }

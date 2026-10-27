@@ -3,7 +3,7 @@ import { isSurfacePuzzle } from '../core/surface/puzzle.js';
 import { bridgeCells } from '../core/twopaths.js';
 import { PLAYED_SURFACES, modelOf } from './model.js';
 
-// Free drawing: the lines a player draws are a set of edges between neighbouring cells, in any
+// Patchworking: the lines a player draws are a set of edges between neighbouring cells, in any
 // order and from anywhere (the pen may be lifted). Pure: no DOM, no storage.
 //
 // The rules are those of a single-player game, applied to the drawn edges E instead of to a path
@@ -34,13 +34,13 @@ export const REASONS = [
   'blocked', 'present', 'degree', 'cycle', 'order', 'gap', 'steps', 'direction', 'colours',
 ];
 
-// null when Free draw can play `puzzle`, else a message: every flat puzzle, and the surface kinds
+// null when Patchwork can play `puzzle`, else a message: every flat puzzle, and the surface kinds
 // of model.js PLAYED_SURFACES. Wrap-around and Teleport need no rule of their own: an edge across
 // a seam or between two portals is an edge like any other, and canStep() knows them.
 export function unsupported(puzzle) {
   if (isSurfacePuzzle(puzzle)) {
     return PLAYED_SURFACES.includes(puzzle.kind)
-      ? null : `Free draw does not play ${puzzle.kind} puzzles (yet).`;
+      ? null : `Patchwork does not play ${puzzle.kind} puzzles (yet).`;
   }
   return null;
 }

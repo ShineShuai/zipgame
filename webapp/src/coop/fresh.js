@@ -1,8 +1,8 @@
 // A hard reload (Cmd+Shift+R) makes the browser skip its cache, but only for what the page loads
-// until its load event. The trial's modules are imported later, when the hidden things are first
+// until its load event. Patchwork's modules are imported later, when the hidden things are first
 // revealed, so they came from the cache all the same, old copies included, and mixed with new
 // ones: "the puzzle could not be made" from a new screen.js and an old drawing.js, for a while.
-// So after a reload the loader (boot.js) first fetches every module of the trial afresh
+// So after a reload the loader (boot.js) first fetches every module of Patchwork afresh
 // (cache: 'reload'), which also puts the new copies in the cache that the import() then reads.
 // Best effort: a module that cannot be fetched is left to the import. (The import statements of
 // this code base start a line, which keeps text that only looks like one from being fetched.)

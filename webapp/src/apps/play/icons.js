@@ -285,6 +285,9 @@ const CARD_ICONS = {
     `<polygon points="${star(12, 15.2, 3.3, 1.4)}" fill="currentColor" stroke-width="1"/>`,
   // a play button: free play
   free: '<circle cx="12" cy="12" r="9"/><path d="M10 8.4v7.2l5.8-3.6z" fill="currentColor"/>',
+  // a patchwork: four patches joined by one stitched line (Patchwork, src/coop)
+  coop: '<rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><path d="M12 3.5v17M3.5 12h17"/>' +
+    '<path d="M7 8.6l2.2-2.2 2.2 2.2M12.8 15.4l2.2 2.2 2.2-2.2" stroke-width="1.6"/>',
   // a cube: the solid puzzles
   solid: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/>' +
     '<path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>',

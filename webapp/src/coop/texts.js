@@ -1,19 +1,15 @@
 import { getLang } from '../ui/i18n.js';
 
-// The texts of the trial, in both languages. Kept here (not in ui/i18n.js) so that the trial can
-// be removed as one folder; the language is the app's (getLang). What the game screen shares with
+// The texts of Patchwork, in both languages. Kept here (not in ui/i18n.js) so that it can be removed
+// as one folder; the language is the app's (getLang). Only the name and the menu's card
+// (coop.* in ui/i18n.js) are the app's, because the menu draws them before this folder is loaded. What the game screen shares with
 // the play app (Time, Menu, Hint, Solved in ..., grades) is taken from the app's own texts.
 // {0}, {1} ... are filled by tx().
 export const EN = {
-  pill: 'Free draw (trial)',
-  title: 'Free draw',
-  trial: 'trial',
-  menuSub: 'Draw lines anywhere, then join them into one path.',
   rules: 'Drag across cells to draw lines. Lift your finger and start anywhere. Drag back along '
     + 'a line from its end to erase it, or press and hold on a line to cut it. Join all the lines '
     + 'into one path from 1 to the last number, covering every cell.',
   generating: 'Making a puzzle… {0}%',
-  backToApp: 'Back to zigzag',
   onlineTitle: 'Play together',
   onlineSub: 'Two players, two devices, connected directly.',
   onlineBlurb: 'Send an invite link to a friend. When your friend opens it and you accept, the '
@@ -39,7 +35,7 @@ export const EN = {
   badCode: 'That code does not look right. Copy it again, in full.',
   noRtc: 'This browser cannot connect two devices directly.',
   noConnection: 'Could not connect. Try again, or try another network.',
-  incompatible: 'The other device runs another version of the trial.',
+  incompatible: 'The other device runs another version of the game.',
   peerLeft: 'Your friend left the game.',
   onlyHost: 'Only the host can start a new puzzle.',
   lookingHost: 'Looking for the host…',
@@ -80,8 +76,6 @@ export const EN = {
     + 'kept, and your friend can come back too.',
   rejoin: 'Rejoin the game',
   discard: 'Discard',
-  gameTitle: 'Free draw {0}',
-  withFriend: 'with a friend',
   you: 'You',
   friend: 'Friend',
   undo: 'Undo',
@@ -116,14 +110,9 @@ export const EN = {
 };
 
 export const ZH = {
-  pill: '自由画线（试验）',
-  title: '自由画线',
-  trial: '试验',
-  menuSub: '随处画线，再把它们连成一条路径。',
   rules: '拖动画线，可随时抬手并从任意位置重新开始。从线的末端沿线拖回去即可擦除，'
     + '或长按某条线将其剪断。把所有线连成一条从 1 到最大数字、覆盖每个格子的路径。',
   generating: '正在生成… {0}%',
-  backToApp: '回到 zigzag',
   onlineTitle: '一起玩',
   onlineSub: '两人两台设备，直接连接。',
   onlineBlurb: '把邀请链接发给朋友。朋友打开链接、你同意后，两台设备就会连接。'
@@ -149,7 +138,7 @@ export const ZH = {
   badCode: '这个代码看起来不对。请完整地重新复制。',
   noRtc: '此浏览器无法直接连接两台设备。',
   noConnection: '连接失败。请重试，或换一个网络再试。',
-  incompatible: '对方设备运行的试验版本不同。',
+  incompatible: '对方设备运行的版本不同。',
   peerLeft: '朋友离开了游戏。',
   onlyHost: '只有房主可以开始新题。',
   lookingHost: '正在寻找房主…',
@@ -187,8 +176,6 @@ export const ZH = {
   rejoinBlurb: '这台设备上还留着一局与朋友的游戏。重新加入：你的线都还在，朋友也可以回来。',
   rejoin: '重新加入这局',
   discard: '放弃',
-  gameTitle: '自由画线 {0}',
-  withFriend: '与朋友同玩',
   you: '你',
   friend: '朋友',
   undo: '撤销',
