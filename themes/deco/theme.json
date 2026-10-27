@@ -1,0 +1,67 @@
+{
+ "id": "deco",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-20-deco",
+ "mode": "dark",
+ "name": {
+  "en": "Deco",
+  "zh": "装饰艺术"
+ },
+ "symbol": "<path d=\"M12 20V9M12 20 6 11M12 20l6-9M12 20 3 14M12 20l9-6M3 20h18\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#0c1613",
+  "#0f1c19",
+  "#d9b45a",
+  "#f2d38a"
+ ],
+ "fonts": [
+  {
+   "family": "Josefin Sans",
+   "weight": "400 700",
+   "file": "josefinsans-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#0c1613",
+  "surface": "#0f1c19",
+  "ink": "#f2ead8",
+  "muted": "#b9b19c",
+  "accent": "#d9b45a",
+  "onAccent": "#0c1613",
+  "orange": "#f2d38a",
+  "tile": "#10211d",
+  "tileEdge": "#d9b45a",
+  "wall": "#f2ead8",
+  "path": "#636a68",
+  "red": "#636a68",
+  "blue": "#d9b45a",
+  "numFill": "#d9b45a",
+  "numText": "#0c1613",
+  "numvFill": "#0c1613",
+  "numvText": "#d9b45a",
+  "onOrange": "#000000",
+  "numRing": "#d9b45a",
+  "numvRing": "#d9b45a"
+ },
+ "vars": {
+  "--font-body": "\"Josefin Sans\", Century Gothic, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "0px",
+  "--r-2": "0px",
+  "--r-3": "0px",
+  "--r-4": "0px",
+  "--r-chip": "0px",
+  "--r-icon": "0px",
+  "--bw": "1px",
+  "--bw-card": "1px",
+  "--shadow": "none",
+  "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
+  "--ctl-h": "52px"
+ }
+}

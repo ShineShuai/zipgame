@@ -1,0 +1,94 @@
+{
+ "id": "atomic",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-33-atomic",
+ "mode": "light",
+ "name": {
+  "en": "Atomic",
+  "zh": "原子"
+ },
+ "symbol": "<circle cx=\"12\" cy=\"12\" r=\"2\"/><ellipse cx=\"12\" cy=\"12\" rx=\"10\" ry=\"4\"/><ellipse cx=\"12\" cy=\"12\" rx=\"10\" ry=\"4\" transform=\"rotate(60 12 12)\"/><ellipse cx=\"12\" cy=\"12\" rx=\"10\" ry=\"4\" transform=\"rotate(120 12 12)\"/>",
+ "layout": {
+  "menu": "bento",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#f2e6cf",
+  "#e8d9b8",
+  "#4a2f20",
+  "#c2410c"
+ ],
+ "fonts": [
+  {
+   "family": "DM Sans",
+   "weight": "400 700",
+   "file": "dmsans-latin.woff2"
+  },
+  {
+   "family": "DM Serif Display",
+   "weight": "400",
+   "file": "dmserifdisplay-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#f2e6cf",
+  "surface": "#e8d9b8",
+  "ink": "#4a2f20",
+  "muted": "#6b4a36",
+  "accent": "#4a2f20",
+  "onAccent": "#fbf4e4",
+  "orange": "#c2410c",
+  "tile": "#fbf4e4",
+  "tileEdge": "#d5c5a6",
+  "wall": "#4a2f20",
+  "path": "#c2410c",
+  "red": "#4a2f20",
+  "blue": "#4a2f20",
+  "numFill": "#e2a42b",
+  "numText": "#4a2f20",
+  "numvFill": "#fbf4e4",
+  "numvText": "#4a2f20",
+  "onOrange": "#ffffff",
+  "numRing": "#4a2f20",
+  "numvRing": "#4a2f20",
+  "vt": [
+   [
+    "#5f7a2a",
+    "#fbf4e4",
+    "#4a2f20"
+   ],
+   [
+    "#e2a42b",
+    "#4a2f20",
+    "#e8d9b8"
+   ],
+   [
+    "#1f6f78",
+    "#fbf4e4",
+    "#4a2f20"
+   ],
+   [
+    "#c2410c",
+    "#fbf4e4",
+    "#4a2f20"
+   ]
+  ]
+ },
+ "vars": {
+  "--font-body": "\"DM Sans\", Avenir Next, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "500",
+  "--r-1": "999px",
+  "--r-2": "999px",
+  "--r-3": "0px",
+  "--r-4": "0px",
+  "--r-chip": "999px",
+  "--r-icon": "999px",
+  "--bw": "1px",
+  "--bw-card": "0px",
+  "--shadow": "none",
+  "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
+  "--ctl-h": "52px"
+ }
+}

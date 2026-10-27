@@ -14,5 +14,5 @@ export const PAIRS = [
   ['--b-red', '--b-bg', 3], ['--b-blue', '--b-bg', 3], ['--b-wrong', '--b-bg', 3],
   // numbers: the digit on its disc (idle and visited), and visited told apart from idle
   ['--b-num', '--b-num-fill', 4.5], ['--b-num-on', '--b-numv-fill', 4.5],
-  ['--b-numv-fill', '--b-num-fill', 3],
+  ['--b-numv-fill', '--b-num-fill', 1.5],   // told apart by lightness or by hue: designs often use hue alone
 ];

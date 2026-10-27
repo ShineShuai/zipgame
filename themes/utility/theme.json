@@ -1,0 +1,73 @@
+{
+ "id": "utility",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-37-utility",
+ "mode": "light",
+ "name": {
+  "en": "Utility",
+  "zh": "工业"
+ },
+ "symbol": "<path d=\"M12 3 22 20H2z\"/><path d=\"M12 10v4M12 17v.5\"/>",
+ "layout": {
+  "menu": "stack",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#d6d4cf",
+  "#d6d4cf",
+  "#d14a19",
+  "#ff5a1f"
+ ],
+ "fonts": [
+  {
+   "family": "IBM Plex Mono",
+   "weight": "400 700",
+   "file": "ibmplexmono-latin.woff2"
+  },
+  {
+   "family": "Saira Stencil One",
+   "weight": "400",
+   "file": "sairastencilone-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#d6d4cf",
+  "surface": "#d6d4cf",
+  "ink": "#141414",
+  "muted": "#3b3b3b",
+  "accent": "#d14a19",
+  "onAccent": "#000000",
+  "orange": "#ff5a1f",
+  "tile": "#e9e7e1",
+  "tileEdge": "#141414",
+  "wall": "#141414",
+  "path": "#e6511c",
+  "red": "#141414",
+  "blue": "#e6511c",
+  "numFill": "#ff5a1f",
+  "numText": "#141414",
+  "numvFill": "#e9e7e1",
+  "numvText": "#141414",
+  "onOrange": "#000000",
+  "numRing": "#141414",
+  "numvRing": "#141414"
+ },
+ "vars": {
+  "--font-body": "\"IBM Plex Mono\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", monospace",
+  "--fw-head": "500",
+  "--tt-head": "uppercase",
+  "--r-1": "2px",
+  "--r-2": "0px",
+  "--r-3": "0px",
+  "--r-4": "0px",
+  "--r-chip": "2px",
+  "--r-icon": "2px",
+  "--bw": "2px",
+  "--bw-card": "3px",
+  "--shadow": "none",
+  "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
+  "--ctl-h": "52px"
+ }
+}

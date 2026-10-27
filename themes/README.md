@@ -35,12 +35,16 @@ Anyone who reads the code and the repository can find every theme, build one, or
 
 ```
 themes/                  AUTHOR (the sources; CI reads them, the site never contains them)
-  <id>/theme.json        metadata, ~25 seed colours, the vars the theme varies; "live": false marks a draft
-  <id>/art.json          icons, brand mark, board skin
+  <id>/theme.json        the theme: five colours are enough (bg, surface, ink, muted, accent); everything else has a default
+  <id>/art.json          optional: variant icons, brand mark, board skin (no art: the classic icons)
   <id>/fonts/*.woff2     optional, self-hosted, 60 KB at most each (embedded in the bundle)
-  tools/                 pack.mjs (theme -> bundle), build-site.mjs (CI: bundles + manifest into the site), serve.mjs (preview server), derive, schema, tests
+  _template/             the smallest theme; `manage.mjs new` starts from it (folders starting with _ or . are not themes)
+  tools/                 pack.mjs (theme -> bundle), build-site.mjs (CI: bundles + manifest into the site), manage.mjs (list, new, retire,
+                         remove, fonts), import-proto.mjs (design page -> theme), serve.mjs (preview server), derive, schema, tests
   preview/               author's page: the real controller on mock screens
   out/                   generated, git-ignored (preview bundles; out/site/ = what the dev server serves as the game's theme folder)
+assets/design/           the design pages (zigzag-NN-<id>.html) and assets/images/logo/proto/ their icon sheets (NN-<id>-variants.svg, gen/*.py):
+                         sources of themes, not published (stage-site.sh leaves them out)
 t/                       BUILT by CI into the site (config.js THEMES.base): <hash>.json per theme + the manifest (THEMES.pool)
 webapp/src/themes/       ENGINE (changes with features, not with the number of themes)
   tokens.js bundle.js svg.js art.js   the contract and the whitelists: every bundle is rebuilt, never trusted
@@ -69,18 +73,24 @@ webapp/src/ui/theme*.js              the button, the picker (+ dev rows) and the
 - **Remove a theme.** Delete its folder (or set `"live": false` to keep it out of offers): the next deployment no longer has the file.
   A player who owns it keeps their copy.
 
-## Author's guide
+## Adding and removing a theme
 
-1. Write `themes/<id>/theme.json` (copy a sibling) and `art.json`. Everything not stated is derived and nudged to pass the contrast
-   pairs (text 4.5, graphics 3); `pack` prints every nudge: a nudge in a seed you chose is a design decision to review.
-2. `node themes/tools/pack.mjs` and `node themes/tools/test.mjs` (or `npm run themes:pack` / `npm run test:themes` in `webapp/`).
-3. Look at it while writing: `node themes/tools/serve.mjs` (or `npm run themes:preview` in `webapp/`) packs every theme and serves the repo
-   root: `http://localhost:8000/themes/preview/` (mock screens) and `http://localhost:8000/webapp/` (the game, with the theme files as CI builds
-   them: hold V to try any of them).
-4. Look at the deployed build: open the site, hold V (or tap the app bar 5 times), tap the theme button. Use `"live": false` while a theme
-   is not ready: only the dev reveal lists it.
-5. Raise a theme's `v` when its files change.
-6. `npm run themes:build -- /tmp/site` builds the theme folder into `/tmp/site/t/` (what CI does), `... --check` reads it back.
+A theme is a folder of `themes/`. Nothing else lists it (no registry, no pool file, no test names it), so adding and removing edit nothing else.
+Run everything in `webapp/` as `npm run themes -- <command>` (or `node themes/tools/manage.mjs <command>` from anywhere).
+
+| | |
+|---|---|
+| **Add, from a design page** | Put `zigzag-NN-<id>.html` in `assets/design/` and `NN-<id>-variants.svg` in `assets/images/logo/proto/`, then `npm run themes:import` (one theme: `... -- <id>`). Colours, shapes, fonts, icons, brand mark and board skin are read from the page. The Chinese name, the symbol and the layout are in `tools/proto-meta.json`; a design without an entry gets the English name, a zigzag symbol and the default layout. A theme without `"proto"` in its theme.json was written by hand and is never overwritten (`--force`). |
+| **Add, by hand** | `npm run themes -- new <id>` (or `new <id> --from <other>` to start from another theme), then edit `themes/<id>/theme.json`: five colours and a name are a whole theme. Add `art.json` and fonts when you have them. |
+| **Check** | `node themes/tools/pack.mjs <id>` (contrast nudges and problems), `npm run themes -- list` (every theme: mode, live or draft, bytes, problems), `npm run test:themes`. |
+| **Look at it** | `npm run themes:preview`, then `http://localhost:8000/webapp/` and hold V: every theme of the pool (or `python3 -m http.server` from the repository root after `npm run themes:build -- .`). |
+| **Publish** | Push. CI tests, packs and deploys; the new theme is in the pool of the next deployment and is offered from then on. |
+| **Retire** | `npm run themes -- retire <id>` sets `"live": false`: never offered, still listed in the dev reveal (`restore` undoes it). |
+| **Remove** | `npm run themes -- remove <id>` deletes `themes/<id>/`. The next deployment no longer has it; players who own it keep their copy. |
+| **Fonts** | `npm run themes -- fonts` lists the font files the themes name and do not have, with where to get them; until a file is there, the theme uses its fallback fonts. |
+
+Everything not stated in a theme.json is derived and nudged to pass the contrast pairs (text 4.5, graphics 3; a visited number against an idle one
+1.5, hue counts): `pack` prints every nudge, and a nudge in a seed you chose is a design decision to review. Raise a theme's `v` when its files change.
 
 ## What a theme changes in the game
 
@@ -100,7 +110,9 @@ webapp/src/ui/theme*.js              the button, the picker (+ dev rows) and the
 
 - Token values are held to `webapp/src/themes/tokens.js` (bounds keep touch targets and layouts intact; no `url()`; fonts only the ones the
   bundle ships plus system ones). The defaults there must equal `webapp/css/theme.css` (tested).
-- Art is shapes only (no ids, style, links, script); fonts are woff2 registered with the FontFace API (binary data: no url, nothing for
+- Art is shapes, gradients, clip paths, patterns, a few filters (blur, noise, displacement) and short number labels (`webapp/src/themes/svg.js`): ids only
+  where a `url(#id)` points at them, never a url, a link, a script, an image or free style (one blend mode only); the page gives every drawing
+  of an icon ids of its own. Fonts are woff2 registered with the FontFace API (binary data: no url, nothing for
   the CSP to allow). A bad token rejects the whole bundle.
 - A theme never pads, borders or transforms the board svg: pointer positions map to cells through its bounding box.
-- Budgets (tested): bundle 24 KB without fonts, a font 60 KB, a published file 220 KB.
+- Budgets (tested): bundle 32 KB without fonts, a font 60 KB, a published file 220 KB.

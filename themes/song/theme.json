@@ -1,0 +1,67 @@
+{
+ "id": "song",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-41-song",
+ "mode": "light",
+ "name": {
+  "en": "Song",
+  "zh": "宋画"
+ },
+ "symbol": "<path d=\"M2 19 9 8l4 6 3-4 6 9z\"/><path d=\"M5 5h4M13 4h5\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#ece4cc",
+  "#f3edda",
+  "#b8372a",
+  "#b8372a"
+ ],
+ "fonts": [
+  {
+   "family": "Noto Serif SC",
+   "weight": "400 600",
+   "file": "notoserifsc-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#ece4cc",
+  "surface": "#f3edda",
+  "ink": "#262624",
+  "muted": "#5a584d",
+  "accent": "#b8372a",
+  "onAccent": "#f6f2e4",
+  "orange": "#b8372a",
+  "tile": "#f5f0df",
+  "tileEdge": "#98958b",
+  "wall": "#262624",
+  "path": "#262624",
+  "red": "#b8372a",
+  "blue": "#b8372a",
+  "numFill": "#b8372a",
+  "numText": "#f6f2e4",
+  "numvFill": "#f6f2e4",
+  "numvText": "#262624",
+  "onOrange": "#ffffff",
+  "numRing": "#262624",
+  "numvRing": "#262624"
+ },
+ "vars": {
+  "--font-body": "\"Noto Serif SC\", Songti SC, STSong, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", serif",
+  "--fw-head": "700",
+  "--r-1": "2px",
+  "--r-2": "2px",
+  "--r-3": "2px",
+  "--r-4": "2px",
+  "--r-chip": "2px",
+  "--r-icon": "2px",
+  "--bw": "1px",
+  "--bw-card": "3px",
+  "--shadow": "0 10px 30px rgba(38,38,36,.18)",
+  "--pop-shadow": "0 10px 30px rgba(38,38,36,.18)",
+  "--ctl-h": "52px"
+ }
+}

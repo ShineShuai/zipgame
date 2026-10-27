@@ -1,0 +1,67 @@
+{
+ "id": "doodle",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-23-doodle",
+ "mode": "light",
+ "name": {
+  "en": "Doodle",
+  "zh": "涂鸦"
+ },
+ "symbol": "<path d=\"M4 20l1-4L16 5l3 3L8 19zM14 7l3 3\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#fbfdff",
+  "#ffffff",
+  "#fa5b8c",
+  "#ffe066"
+ ],
+ "fonts": [
+  {
+   "family": "Patrick Hand",
+   "weight": "400",
+   "file": "patrickhand-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#fbfdff",
+  "surface": "#ffffff",
+  "ink": "#1d2b53",
+  "muted": "#4a587f",
+  "accent": "#fa5b8c",
+  "onAccent": "#1d2b53",
+  "orange": "#ffe066",
+  "tile": "#ffffff",
+  "tileEdge": "#1d2b53",
+  "wall": "#1d2b53",
+  "path": "#e06b8f",
+  "red": "#1d2b53",
+  "blue": "#8994a8",
+  "numFill": "#ffe066",
+  "numText": "#1d2b53",
+  "numvFill": "#b8b8b8",
+  "numvText": "#1d2b53",
+  "onOrange": "#000000",
+  "numRing": "#1d2b53",
+  "numvRing": "#1d2b53"
+ },
+ "vars": {
+  "--font-body": "\"Patrick Hand\", Comic Sans MS, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", cursive",
+  "--fw-head": "700",
+  "--r-1": "10px",
+  "--r-2": "12px",
+  "--r-3": "14px",
+  "--r-4": "14px",
+  "--r-chip": "10px",
+  "--r-icon": "10px",
+  "--bw": "1.5px",
+  "--bw-card": "2px",
+  "--shadow": "none",
+  "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
+  "--ctl-h": "52px"
+ }
+}

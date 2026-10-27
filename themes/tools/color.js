@@ -32,7 +32,7 @@ export const contrast = (a, b) => {
 export function ensure(fg, bgs, min) {
   const ok = c => bgs.every(bg => contrast(c, bg) >= min);
   if (ok(fg)) return fg;
-  const light = bgs.reduce((sum, b) => sum + luminance(b), 0) / bgs.length > 0.4;
+  const light = bgs.reduce((sum, b) => sum + luminance(b), 0) / bgs.length > 0.179;   // above this black is the stronger text colour, below it white
   const target = light ? '#000000' : '#ffffff';
   for (let t = 0.02; t <= 1.0001; t += 0.02) {
     const c = mix(fg, target, t);

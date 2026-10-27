@@ -1,0 +1,67 @@
+{
+ "id": "pixel",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-15-pixel",
+ "mode": "dark",
+ "name": {
+  "en": "Pixel",
+  "zh": "像素"
+ },
+ "symbol": "<path d=\"M8 4h2v2H8zM14 4h2v2h-2zM6 6h12v2H6zM4 8h16v6H4zM6 14h2v4H6zM16 14h2v4h-2zM9 16h2v2H9zM13 16h2v2h-2z\" fill=\"currentColor\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#120d2b",
+  "#1d1642",
+  "#3dff8b",
+  "#ffb000"
+ ],
+ "fonts": [
+  {
+   "family": "Silkscreen",
+   "weight": "400 700",
+   "file": "silkscreen-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#120d2b",
+  "surface": "#1d1642",
+  "ink": "#f4f0ff",
+  "muted": "#c3baf0",
+  "accent": "#3dff8b",
+  "onAccent": "#120d2b",
+  "orange": "#ffb000",
+  "tile": "#241a55",
+  "tileEdge": "#3b2f86",
+  "wall": "#41e0ff",
+  "path": "#ffb000",
+  "red": "#6f61be",
+  "blue": "#6f61be",
+  "numFill": "#3dff8b",
+  "numText": "#120d2b",
+  "numvFill": "#120d2b",
+  "numvText": "#3dff8b",
+  "onOrange": "#000000",
+  "numRing": "#3dff8b",
+  "numvRing": "#3dff8b"
+ },
+ "vars": {
+  "--font-body": "\"Silkscreen\", Courier New, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", monospace",
+  "--fw-head": "700",
+  "--r-1": "0px",
+  "--r-2": "0px",
+  "--r-3": "0px",
+  "--r-4": "0px",
+  "--r-chip": "0px",
+  "--r-icon": "0px",
+  "--bw": "2px",
+  "--bw-card": "3px",
+  "--shadow": "none",
+  "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
+  "--ctl-h": "52px"
+ }
+}

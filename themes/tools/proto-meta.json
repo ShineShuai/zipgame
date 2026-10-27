@@ -1,0 +1,325 @@
+{
+ "_readme": "What the design pages do not carry: per theme the id, the Chinese name, the symbol of the theme button (24x24, currentColor) and the layout presets. import-proto.mjs reads the rest (colours, shapes, fonts, art) from assets/design and assets/images/logo/proto. A design not listed here is not imported.",
+ "swiss": {
+  "design": "zigzag-10-swiss",
+  "sheet": "10-swiss",
+  "name": {
+   "en": "Swiss",
+   "zh": "瑞士"
+  },
+  "layout": {
+   "menu": "stack",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<rect x=\"4\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"13\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"4\" y=\"13\" width=\"7\" height=\"7\"/><rect x=\"13\" y=\"13\" width=\"7\" height=\"7\" fill=\"currentColor\"/>"
+ },
+ "neon": {
+  "design": "zigzag-11-neon",
+  "sheet": "11-neon",
+  "name": {
+   "en": "Neon",
+   "zh": "霓虹"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M13 2 5 13.5h6L10 22l9-12h-6z\"/>"
+ },
+ "candy": {
+  "design": "zigzag-12-candy",
+  "sheet": "12-candy",
+  "name": {
+   "en": "Candy",
+   "zh": "糖果"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<circle cx=\"12\" cy=\"12\" r=\"5\"/><path d=\"M7 12 2.5 8.5v7zM17 12l4.5-3.5v7z\"/>"
+ },
+ "blueprint": {
+  "design": "zigzag-13-blueprint",
+  "sheet": "13-blueprint",
+  "name": {
+   "en": "Blueprint",
+   "zh": "蓝图"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M4 20V4l16 16z\"/><circle cx=\"8\" cy=\"16\" r=\"1.5\"/>"
+ },
+ "pixel": {
+  "design": "zigzag-15-pixel",
+  "sheet": "15-pixel",
+  "name": {
+   "en": "Pixel",
+   "zh": "像素"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M8 4h2v2H8zM14 4h2v2h-2zM6 6h12v2H6zM4 8h16v6H4zM6 14h2v4H6zM16 14h2v4h-2zM9 16h2v2H9zM13 16h2v2h-2z\" fill=\"currentColor\"/>"
+ },
+ "clay": {
+  "design": "zigzag-19-clay",
+  "sheet": "19-clay",
+  "name": {
+   "en": "Clay",
+   "zh": "软陶"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<rect x=\"4\" y=\"5\" width=\"16\" height=\"14\" rx=\"6\"/><path d=\"M8 10a4 4 0 0 1 3-2\"/>"
+ },
+ "deco": {
+  "design": "zigzag-20-deco",
+  "sheet": "20-deco",
+  "name": {
+   "en": "Deco",
+   "zh": "装饰艺术"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M12 20V9M12 20 6 11M12 20l6-9M12 20 3 14M12 20l9-6M3 20h18\"/>"
+ },
+ "route": {
+  "design": "zigzag-21-route",
+  "sheet": "21-route",
+  "name": {
+   "en": "Route",
+   "zh": "路线"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M12 21s6-5.2 6-10a6 6 0 1 0-12 0c0 4.8 6 10 6 10z\"/><circle cx=\"12\" cy=\"11\" r=\"2\"/>"
+ },
+ "bounce": {
+  "design": "zigzag-22-bounce",
+  "sheet": "22-bounce",
+  "name": {
+   "en": "Bounce",
+   "zh": "弹跳"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<circle cx=\"12\" cy=\"8\" r=\"4\"/><ellipse cx=\"12\" cy=\"20\" rx=\"6\" ry=\"1.5\"/>"
+ },
+ "doodle": {
+  "design": "zigzag-23-doodle",
+  "sheet": "23-doodle",
+  "name": {
+   "en": "Doodle",
+   "zh": "涂鸦"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M4 20l1-4L16 5l3 3L8 19zM14 7l3 3\"/>"
+ },
+ "metro": {
+  "design": "zigzag-24-metro",
+  "sheet": "24-metro",
+  "name": {
+   "en": "Metro",
+   "zh": "地铁"
+  },
+  "layout": {
+   "menu": "stack",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M3 12h18\"/><circle cx=\"12\" cy=\"12\" r=\"4\" fill=\"currentColor\"/>"
+ },
+ "riso": {
+  "design": "zigzag-26-riso",
+  "sheet": "26-riso",
+  "name": {
+   "en": "Riso",
+   "zh": "双色印刷"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<circle cx=\"9\" cy=\"12\" r=\"6\"/><circle cx=\"15\" cy=\"12\" r=\"6\"/>"
+ },
+ "aurora": {
+  "design": "zigzag-28-aurora",
+  "sheet": "28-aurora",
+  "name": {
+   "en": "Aurora",
+   "zh": "极光"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M3 9c3-3 6 3 9 0s6 3 9 0M3 14c3-3 6 3 9 0s6 3 9 0M3 19c3-3 6 3 9 0s6 3 9 0\"/>"
+ },
+ "cosmic": {
+  "design": "zigzag-29-cosmic",
+  "sheet": "29-cosmic",
+  "name": {
+   "en": "Cosmic",
+   "zh": "星轨"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<circle cx=\"12\" cy=\"12\" r=\"4.5\"/><ellipse cx=\"12\" cy=\"12\" rx=\"10\" ry=\"3.5\" transform=\"rotate(-20 12 12)\"/>"
+ },
+ "botanical": {
+  "design": "zigzag-30-botanical",
+  "sheet": "30-botanical",
+  "name": {
+   "en": "Botanical",
+   "zh": "植物园"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M5 19C5 10 11 5 20 4c0 9-5 15-14 15zM5 19l8-8\"/>"
+ },
+ "origami": {
+  "design": "zigzag-31-origami",
+  "sheet": "31-origami",
+  "name": {
+   "en": "Origami",
+   "zh": "折纸"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M3 12 12 4l9 8-9 8zM12 4v16M3 12h18\"/>"
+ },
+ "atomic": {
+  "design": "zigzag-33-atomic",
+  "sheet": "33-atomic",
+  "name": {
+   "en": "Atomic",
+   "zh": "原子"
+  },
+  "layout": {
+   "menu": "bento",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<circle cx=\"12\" cy=\"12\" r=\"2\"/><ellipse cx=\"12\" cy=\"12\" rx=\"10\" ry=\"4\"/><ellipse cx=\"12\" cy=\"12\" rx=\"10\" ry=\"4\" transform=\"rotate(60 12 12)\"/><ellipse cx=\"12\" cy=\"12\" rx=\"10\" ry=\"4\" transform=\"rotate(120 12 12)\"/>"
+ },
+ "chrome": {
+  "design": "zigzag-36-chrome",
+  "sheet": "36-chrome",
+  "name": {
+   "en": "Chrome",
+   "zh": "镀铬"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M12 2c1 6 4 9 10 10-6 1-9 4-10 10-1-6-4-9-10-10 6-1 9-4 10-10z\"/>"
+ },
+ "utility": {
+  "design": "zigzag-37-utility",
+  "sheet": "37-utility",
+  "name": {
+   "en": "Utility",
+   "zh": "工业"
+  },
+  "layout": {
+   "menu": "stack",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M12 3 22 20H2z\"/><path d=\"M12 10v4M12 17v.5\"/>"
+ },
+ "ukiyo": {
+  "design": "zigzag-40-ukiyo",
+  "sheet": "40-ukiyo",
+  "name": {
+   "en": "Ukiyo-e",
+   "zh": "浮世绘"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<circle cx=\"16\" cy=\"8\" r=\"3.5\"/><path d=\"M2 18c3 0 3-3 5-3s3 3 5 3 3-3 5-3 3 3 5 3\"/>"
+ },
+ "song": {
+  "design": "zigzag-41-song",
+  "sheet": "41-song",
+  "name": {
+   "en": "Song",
+   "zh": "宋画"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M2 19 9 8l4 6 3-4 6 9z\"/><path d=\"M5 5h4M13 4h5\"/>"
+ },
+ "manuscript": {
+  "design": "zigzag-42-manuscript",
+  "sheet": "42-manuscript",
+  "name": {
+   "en": "Manuscript",
+   "zh": "手抄本"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"1\"/><path d=\"M9 17V7h3a3 3 0 0 1 0 6H9\"/>"
+ },
+ "nouveau": {
+  "design": "zigzag-43-nouveau",
+  "sheet": "43-nouveau",
+  "name": {
+   "en": "Nouveau",
+   "zh": "新艺术"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M12 21V11c0-4 4-6 6-4 2 3-2 5-4 3M12 15c-3-1-6-4-6-8\"/>"
+ }
+}

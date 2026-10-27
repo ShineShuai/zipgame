@@ -1,0 +1,67 @@
+{
+ "id": "chrome",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-36-chrome",
+ "mode": "light",
+ "name": {
+  "en": "Chrome",
+  "zh": "镀铬"
+ },
+ "symbol": "<path d=\"M12 2c1 6 4 9 10 10-6 1-9 4-10 10-1-6-4-9-10-10 6-1 9-4 10-10z\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#e4fbff",
+  "#f3fdff",
+  "#f54cbb",
+  "#ff5ac8"
+ ],
+ "fonts": [
+  {
+   "family": "Bricolage Grotesque",
+   "weight": "500 800",
+   "file": "bricolagegrotesque-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#e4fbff",
+  "surface": "#f3fdff",
+  "ink": "#1a1f4d",
+  "muted": "#4a5088",
+  "accent": "#f54cbb",
+  "onAccent": "#1a1f4d",
+  "orange": "#ff5ac8",
+  "tile": "#f7f9ff",
+  "tileEdge": "#ffffff",
+  "wall": "#1a1f4d",
+  "path": "#a3869a",
+  "red": "#8f8f8f",
+  "blue": "#8f8f8f",
+  "numFill": "#ff5ac8",
+  "numText": "#1a1f4d",
+  "numvFill": "#ffffff",
+  "numvText": "#1a1f4d",
+  "onOrange": "#000000",
+  "numRing": "#ffffff",
+  "numvRing": "#ffffff"
+ },
+ "vars": {
+  "--font-body": "\"Bricolage Grotesque\", Trebuchet MS, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "999px",
+  "--r-2": "999px",
+  "--r-3": "38px",
+  "--r-4": "38px",
+  "--r-chip": "999px",
+  "--r-icon": "999px",
+  "--bw": "1px",
+  "--bw-card": "2px",
+  "--shadow": "0 22px 50px rgba(90,100,200,.28),inset 0 0 0 1px rgba(255,255,255,.8)",
+  "--pop-shadow": "0 22px 50px rgba(90,100,200,.28),inset 0 0 0 1px rgba(255,255,255,.8)",
+  "--ctl-h": "52px"
+ }
+}

@@ -1,0 +1,67 @@
+{
+ "id": "clay",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-19-clay",
+ "mode": "light",
+ "name": {
+  "en": "Clay",
+  "zh": "软陶"
+ },
+ "symbol": "<rect x=\"4\" y=\"5\" width=\"16\" height=\"14\" rx=\"6\"/><path d=\"M8 10a4 4 0 0 1 3-2\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#e7ebf2",
+  "#e7ebf2",
+  "#6c63ff",
+  "#ff9f7a"
+ ],
+ "fonts": [
+  {
+   "family": "Nunito",
+   "weight": "500 800",
+   "file": "nunito-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#e7ebf2",
+  "surface": "#e7ebf2",
+  "ink": "#2b3547",
+  "muted": "#4a5568",
+  "accent": "#6c63ff",
+  "onAccent": "#000000",
+  "orange": "#ff9f7a",
+  "tile": "#e7ebf2",
+  "tileEdge": "#d0d5dd",
+  "wall": "#2b3547",
+  "path": "#6c63ff",
+  "red": "#000000",
+  "blue": "#858585",
+  "numFill": "#6c63ff",
+  "numText": "#000000",
+  "numvFill": "#e7ebf2",
+  "numvText": "#2b3547",
+  "onOrange": "#000000",
+  "numRing": "#ffffff",
+  "numvRing": "#ffffff"
+ },
+ "vars": {
+  "--font-body": "\"Nunito\", Segoe UI, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "999px",
+  "--r-2": "26px",
+  "--r-3": "40px",
+  "--r-4": "40px",
+  "--r-chip": "999px",
+  "--r-icon": "999px",
+  "--bw": "1px",
+  "--bw-card": "0px",
+  "--shadow": "-10px -10px 24px #fff,12px 12px 28px #c3cbdc",
+  "--pop-shadow": "-10px -10px 24px #fff,12px 12px 28px #c3cbdc",
+  "--ctl-h": "52px"
+ }
+}

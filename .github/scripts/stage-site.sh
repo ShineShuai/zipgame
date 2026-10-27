@@ -6,7 +6,9 @@ set -euo pipefail
 out=${1:?usage: stage-site.sh OUT_DIR}
 
 rm -rf "$out" && mkdir -p "$out"
-tar -c index.html assets demo/*.html demo/GameOfDay/*.txt webapp/*.html webapp/css webapp/src \
+# assets/ holds the design pages and their icon sheets and generators next to the logos: they are sources of themes, not part of the site
+tar -c --exclude='assets/design' --exclude='assets/images/logo/proto/gen' --exclude='*-variants.svg' \
+  index.html assets demo/*.html demo/GameOfDay/*.txt webapp/*.html webapp/css webapp/src \
   | tar -x -C "$out"
 node themes/tools/build-site.mjs "$out"
 node themes/tools/build-site.mjs --check "$out"

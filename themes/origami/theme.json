@@ -1,0 +1,67 @@
+{
+ "id": "origami",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-31-origami",
+ "mode": "light",
+ "name": {
+  "en": "Origami",
+  "zh": "折纸"
+ },
+ "symbol": "<path d=\"M3 12 12 4l9 8-9 8zM12 4v16M3 12h18\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#f3f0fa",
+  "#ffffff",
+  "#eb7038",
+  "#ff7a3d"
+ ],
+ "fonts": [
+  {
+   "family": "Lexend",
+   "weight": "500 700",
+   "file": "lexend-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#f3f0fa",
+  "surface": "#ffffff",
+  "ink": "#2a2150",
+  "muted": "#5b5385",
+  "accent": "#eb7038",
+  "onAccent": "#2a2150",
+  "orange": "#ff7a3d",
+  "tile": "#ffffff",
+  "tileEdge": "#e5e4ea",
+  "wall": "#2a2150",
+  "path": "#c28668",
+  "red": "#948fa7",
+  "blue": "#948fa7",
+  "numFill": "#6c5ce7",
+  "numText": "#ffffff",
+  "numvFill": "#ffffff",
+  "numvText": "#6c5ce7",
+  "onOrange": "#000000",
+  "numRing": "#ffffff",
+  "numvRing": "#ffffff"
+ },
+ "vars": {
+  "--font-body": "\"Lexend\", Segoe UI, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "10px",
+  "--r-2": "14px",
+  "--r-3": "22px",
+  "--r-4": "22px",
+  "--r-chip": "10px",
+  "--r-icon": "10px",
+  "--bw": "1px",
+  "--bw-card": "0px",
+  "--shadow": "0 10px 0 #d9d2f0,0 22px 40px rgba(76,63,196,.18)",
+  "--pop-shadow": "0 10px 0 #d9d2f0,0 22px 40px rgba(76,63,196,.18)",
+  "--ctl-h": "52px"
+ }
+}

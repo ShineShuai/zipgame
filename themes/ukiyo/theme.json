@@ -1,0 +1,67 @@
+{
+ "id": "ukiyo",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-40-ukiyo",
+ "mode": "light",
+ "name": {
+  "en": "Ukiyo-e",
+  "zh": "浮世绘"
+ },
+ "symbol": "<circle cx=\"16\" cy=\"8\" r=\"3.5\"/><path d=\"M2 18c3 0 3-3 5-3s3 3 5 3 3-3 5-3 3 3 5 3\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#efe6d0",
+  "#efe6d0",
+  "#c43a22",
+  "#d4a24c"
+ ],
+ "fonts": [
+  {
+   "family": "Shippori Mincho",
+   "weight": "500 700",
+   "file": "shipporimincho-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#efe6d0",
+  "surface": "#efe6d0",
+  "ink": "#15130f",
+  "muted": "#4b4a42",
+  "accent": "#c43a22",
+  "onAccent": "#ffffff",
+  "orange": "#d4a24c",
+  "tile": "#f5edda",
+  "tileEdge": "#1b3a5c",
+  "wall": "#1b3a5c",
+  "path": "#c43a22",
+  "red": "#1b3a5c",
+  "blue": "#c43a22",
+  "numFill": "#c43a22",
+  "numText": "#ffffff",
+  "numvFill": "#f6efdc",
+  "numvText": "#1b3a5c",
+  "onOrange": "#000000",
+  "numRing": "#1b3a5c",
+  "numvRing": "#1b3a5c"
+ },
+ "vars": {
+  "--font-body": "\"Shippori Mincho\", Hiragino Mincho ProN, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", serif",
+  "--fw-head": "700",
+  "--r-1": "2px",
+  "--r-2": "2px",
+  "--r-3": "4px",
+  "--r-4": "4px",
+  "--r-chip": "2px",
+  "--r-icon": "2px",
+  "--bw": "1px",
+  "--bw-card": "2px",
+  "--shadow": "none",
+  "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
+  "--ctl-h": "52px"
+ }
+}

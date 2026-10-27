@@ -5,6 +5,7 @@
 // icons follow the page theme and the same markup serves the picker, the HUD and the cards.
 
 import { currentArt } from '../../themes/art-state.js';
+import { freshScope, scopeIds } from '../../themes/svg.js';
 
 const CELLS = 4; // the variant icons draw a 4x4 board
 const UNIT = 9; // one cell, in viewBox units (48 x 48 box)
@@ -223,7 +224,7 @@ const ART_ICONS = ['standard', 'cutout', 'arrows', 'exact', 'wrap', 'loop', 'tel
 function themedIcon(variant) {
   const id = ART_ICONS.includes(variant) ? variant : 'standard';
   const inner = currentArt()?.icons?.[id];
-  return inner ? `<svg class="variant-icon vi-${id}" viewBox="0 0 48 48" aria-hidden="true" focusable="false">${inner}</svg>` : null;
+  return inner ? `<svg class="variant-icon vi-${id}" viewBox="0 0 48 48" aria-hidden="true" focusable="false">${scopeIds(inner, freshScope())}</svg>` : null;
 }
 
 // variant: 'cutout', 'arrows', 'exact', 'wrap', 'loop', 'teleport', 'twopaths', 'pentagon',
