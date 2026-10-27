@@ -1,0 +1,67 @@
+{
+ "id": "nouveau",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-43-nouveau",
+ "mode": "light",
+ "name": {
+  "en": "Nouveau",
+  "zh": "新艺术"
+ },
+ "symbol": "<path d=\"M12 21V11c0-4 4-6 6-4 2 3-2 5-4 3M12 15c-3-1-6-4-6-8\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#ecedd6",
+  "#f4efd9",
+  "#3f4f2f",
+  "#c9a24a"
+ ],
+ "fonts": [
+  {
+   "family": "Marcellus",
+   "weight": "400",
+   "file": "marcellus-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#ecedd6",
+  "surface": "#f4efd9",
+  "ink": "#2a301f",
+  "muted": "#55603f",
+  "accent": "#3f4f2f",
+  "onAccent": "#ffffff",
+  "orange": "#c9a24a",
+  "tile": "#f4efd9",
+  "tileEdge": "#3f4f2f",
+  "wall": "#a5853d",
+  "path": "#3f4f2f",
+  "red": "#a5853d",
+  "blue": "#3f4f2f",
+  "numFill": "#d98e96",
+  "numText": "#2a301f",
+  "numvFill": "#f4efd9",
+  "numvText": "#3f4f2f",
+  "onOrange": "#000000",
+  "numRing": "#c9a24a",
+  "numvRing": "#c9a24a"
+ },
+ "vars": {
+  "--font-body": "\"Marcellus\", Trajan Pro, Georgia, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", serif",
+  "--fw-head": "700",
+  "--r-1": "999px",
+  "--r-2": "999px",
+  "--r-3": "40px",
+  "--r-4": "40px",
+  "--r-chip": "999px",
+  "--r-icon": "999px",
+  "--bw": "1px",
+  "--bw-card": "2px",
+  "--shadow": "0 14px 34px rgba(63,79,47,.2)",
+  "--pop-shadow": "0 14px 34px rgba(63,79,47,.2)",
+  "--ctl-h": "52px"
+ }
+}

@@ -1,0 +1,67 @@
+{
+ "id": "botanical",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-30-botanical",
+ "mode": "light",
+ "name": {
+  "en": "Botanical",
+  "zh": "植物园"
+ },
+ "symbol": "<path d=\"M5 19C5 10 11 5 20 4c0 9-5 15-14 15zM5 19l8-8\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#f1f7f2",
+  "#ffffff",
+  "#2f6b4f",
+  "#f7c948"
+ ],
+ "fonts": [
+  {
+   "family": "Quicksand",
+   "weight": "500 700",
+   "file": "quicksand-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#f1f7f2",
+  "surface": "#ffffff",
+  "ink": "#143d2e",
+  "muted": "#3e5a4d",
+  "accent": "#2f6b4f",
+  "onAccent": "#ffffff",
+  "orange": "#f7c948",
+  "tile": "#dcebdc",
+  "tileEdge": "#e3e8e6",
+  "wall": "#8a5a3c",
+  "path": "#2f6b4f",
+  "red": "#78877c",
+  "blue": "#143d2e",
+  "numFill": "#ff9bb3",
+  "numText": "#143d2e",
+  "numvFill": "#ffffff",
+  "numvText": "#143d2e",
+  "onOrange": "#000000",
+  "numRing": "#143d2e",
+  "numvRing": "#143d2e"
+ },
+ "vars": {
+  "--font-body": "\"Quicksand\", Trebuchet MS, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "999px",
+  "--r-2": "20px",
+  "--r-3": "34px",
+  "--r-4": "34px",
+  "--r-chip": "999px",
+  "--r-icon": "999px",
+  "--bw": "1px",
+  "--bw-card": "1px",
+  "--shadow": "0 14px 34px rgba(47,107,79,.16)",
+  "--pop-shadow": "0 14px 34px rgba(47,107,79,.16)",
+  "--ctl-h": "52px"
+ }
+}

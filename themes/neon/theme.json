@@ -1,0 +1,68 @@
+{
+ "id": "neon",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-11-neon",
+ "mode": "dark",
+ "name": {
+  "en": "Neon",
+  "zh": "霓虹"
+ },
+ "symbol": "<path d=\"M13 2 5 13.5h6L10 22l9-12h-6z\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#070a18",
+  "#0e1330",
+  "#22e4ff",
+  "#070a18"
+ ],
+ "fonts": [
+  {
+   "family": "Space Grotesk",
+   "weight": "400 700",
+   "file": "spacegrotesk-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#070a18",
+  "surface": "#0e1330",
+  "ink": "#e8ecff",
+  "muted": "#a4aee0",
+  "accent": "#22e4ff",
+  "onAccent": "#070a18",
+  "orange": "#070a18",
+  "tile": "#141a38",
+  "tileEdge": "#232c5a",
+  "wall": "#e8ecff",
+  "path": "#22e4ff",
+  "red": "#22e4ff",
+  "blue": "#ff3da8",
+  "numFill": "#070a18",
+  "numText": "#22e4ff",
+  "numvFill": "#2f313d",
+  "numvText": "#e8ecff",
+  "onOrange": "#ffffff",
+  "pathHi": "#ff3da8",
+  "numRing": "#3b4690",
+  "numvRing": "#3b4690"
+ },
+ "vars": {
+  "--font-body": "\"Space Grotesk\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "999px",
+  "--r-2": "16px",
+  "--r-3": "28px",
+  "--r-4": "28px",
+  "--r-chip": "999px",
+  "--r-icon": "999px",
+  "--bw": "1px",
+  "--bw-card": "1px",
+  "--shadow": "0 0 60px rgba(34,228,255,.12)",
+  "--pop-shadow": "0 0 60px rgba(34,228,255,.12)",
+  "--ctl-h": "52px"
+ }
+}

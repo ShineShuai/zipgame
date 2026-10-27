@@ -1,0 +1,11 @@
+{
+ "mode": "light",
+ "name": "My theme",
+ "seeds": {
+  "bg": "#f4f1ea",
+  "surface": "#ffffff",
+  "ink": "#1f2430",
+  "muted": "#5b6270",
+  "accent": "#2f6fed"
+ }
+}

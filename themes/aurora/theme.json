@@ -1,0 +1,67 @@
+{
+ "id": "aurora",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-28-aurora",
+ "mode": "dark",
+ "name": {
+  "en": "Aurora",
+  "zh": "极光"
+ },
+ "symbol": "<path d=\"M3 9c3-3 6 3 9 0s6 3 9 0M3 14c3-3 6 3 9 0s6 3 9 0M3 19c3-3 6 3 9 0s6 3 9 0\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#0b1026",
+  "#1f2337",
+  "#ffffff",
+  "#f5f5f6"
+ ],
+ "fonts": [
+  {
+   "family": "Plus Jakarta Sans",
+   "weight": "500 800",
+   "file": "plusjakartasans-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#0b1026",
+  "surface": "#1f2337",
+  "ink": "#f4f6ff",
+  "muted": "#b5bde0",
+  "accent": "#ffffff",
+  "onAccent": "#0b1026",
+  "orange": "#f5f5f6",
+  "tile": "#333749",
+  "tileEdge": "#6c6f7c",
+  "wall": "#ffffff",
+  "path": "#ffffff",
+  "red": "#ffffff",
+  "blue": "#ffffff",
+  "numFill": "#f5f5f6",
+  "numText": "#0b1026",
+  "numvFill": "#505362",
+  "numvText": "#ffffff",
+  "onOrange": "#000000",
+  "numRing": "#b8b9bf",
+  "numvRing": "#b8b9bf"
+ },
+ "vars": {
+  "--font-body": "\"Plus Jakarta Sans\", Segoe UI, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "999px",
+  "--r-2": "18px",
+  "--r-3": "30px",
+  "--r-4": "30px",
+  "--r-chip": "999px",
+  "--r-icon": "999px",
+  "--bw": "1px",
+  "--bw-card": "1px",
+  "--shadow": "0 20px 50px rgba(0,0,0,.35)",
+  "--pop-shadow": "0 20px 50px rgba(0,0,0,.35)",
+  "--ctl-h": "52px"
+ }
+}

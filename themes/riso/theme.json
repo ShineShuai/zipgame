@@ -1,0 +1,67 @@
+{
+ "id": "riso",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-26-riso",
+ "mode": "light",
+ "name": {
+  "en": "Riso",
+  "zh": "双色印刷"
+ },
+ "symbol": "<circle cx=\"9\" cy=\"12\" r=\"6\"/><circle cx=\"15\" cy=\"12\" r=\"6\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#f5f5f1",
+  "#f5f5f1",
+  "#0078bf",
+  "#ffe800"
+ ],
+ "fonts": [
+  {
+   "family": "Syne",
+   "weight": "500 800",
+   "file": "syne-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#f5f5f1",
+  "surface": "#f5f5f1",
+  "ink": "#12306e",
+  "muted": "#3d5188",
+  "accent": "#0078bf",
+  "onAccent": "#ffffff",
+  "orange": "#ffe800",
+  "tile": "#f5f5f1",
+  "tileEdge": "#0078bf",
+  "wall": "#12306e",
+  "path": "#df5ba5",
+  "red": "#0078bf",
+  "blue": "#0078bf",
+  "numFill": "#0078bf",
+  "numText": "#ffffff",
+  "numvFill": "#ffe800",
+  "numvText": "#12306e",
+  "onOrange": "#000000",
+  "numRing": "#12306e",
+  "numvRing": "#12306e"
+ },
+ "vars": {
+  "--font-body": "\"Syne\", Trebuchet MS, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "6px",
+  "--r-2": "6px",
+  "--r-3": "6px",
+  "--r-4": "6px",
+  "--r-chip": "6px",
+  "--r-icon": "6px",
+  "--bw": "1.5px",
+  "--bw-card": "1.5px",
+  "--shadow": "none",
+  "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
+  "--ctl-h": "52px"
+ }
+}

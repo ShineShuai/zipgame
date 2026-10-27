@@ -25,6 +25,8 @@
     "test:themes": "node ../themes/tools/test.mjs",
     "themes:pack": "node ../themes/tools/pack.mjs",
     "themes:preview": "node ../themes/tools/serve.mjs",
+    "themes": "node ../themes/tools/manage.mjs",
+    "themes:import": "node ../themes/tools/import-proto.mjs",
     "themes:build": "node ../themes/tools/build-site.mjs"
   }
 }

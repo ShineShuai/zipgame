@@ -1,0 +1,66 @@
+{
+ "id": "route",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-21-route",
+ "mode": "light",
+ "name": {
+  "en": "Route",
+  "zh": "路线"
+ },
+ "symbol": "<path d=\"M12 21s6-5.2 6-10a6 6 0 1 0-12 0c0 4.8 6 10 6 10z\"/><circle cx=\"12\" cy=\"11\" r=\"2\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#f4f7ff",
+  "#ffffff",
+  "#2342c4",
+  "#ffb020"
+ ],
+ "fonts": [
+  {
+   "family": "Manrope",
+   "weight": "500 800",
+   "file": "manrope-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#f4f7ff",
+  "surface": "#ffffff",
+  "ink": "#16203c",
+  "muted": "#56628a",
+  "accent": "#2342c4",
+  "onAccent": "#ffffff",
+  "orange": "#ffb020",
+  "tile": "#ffffff",
+  "tileEdge": "#ffffff",
+  "wall": "#0b1b66",
+  "path": "#a88f43",
+  "red": "#2342c4",
+  "blue": "#949494",
+  "numFill": "#ffffff",
+  "numText": "#2342c4",
+  "numvFill": "#d1d1d1",
+  "numvText": "#000000",
+  "onOrange": "#000000",
+  "pathHi": "#d17e19"
+ },
+ "vars": {
+  "--font-body": "\"Manrope\", Segoe UI, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "999px",
+  "--r-2": "16px",
+  "--r-3": "28px",
+  "--r-4": "28px",
+  "--r-chip": "999px",
+  "--r-icon": "999px",
+  "--bw": "1px",
+  "--bw-card": "1px",
+  "--shadow": "0 8px 28px rgba(59,104,238,.14)",
+  "--pop-shadow": "0 8px 28px rgba(59,104,238,.14)",
+  "--ctl-h": "52px"
+ }
+}

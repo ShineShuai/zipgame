@@ -1,5 +1,5 @@
 // Builds a theme's bundle: the one data object the game receives (webapp/src/themes/bundle.js), from the sources
-//   themes/<id>/theme.json   metadata, ~25 seed colours, the vars the theme varies
+//   themes/<id>/theme.json   metadata, the seed colours (five are enough), the vars the theme varies
 //   themes/<id>/art.json     icons, brand mark, board skin
 //   themes/<id>/fonts/*.woff2  (optional) self-hosted fonts, Latin subset, 60 KB at most each
 //   webapp/css/theme.css     the base tokens every theme starts from
@@ -11,18 +11,40 @@ import {
   existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync,
 } from 'node:fs';
 import { cleanBundle } from '../../webapp/src/themes/bundle.js';
+import { cleanLayout } from '../../webapp/src/themes/layout.js';
 import { audit, derive, parseBase, validate } from './derive.js';
 
 const root = new URL('../', import.meta.url);
 export const BASE_CSS = new URL('../../webapp/css/theme.css', import.meta.url);
 export const OUT = new URL('out/', root);
 const read = path => readFileSync(new URL(path, root), 'utf8');
-export const BUDGET = { bundle: 24 * 1024, font: 60 * 1024 };
+export const BUDGET = { bundle: 32 * 1024, font: 60 * 1024 };   // a bundle is fetched once, when it is offered
 
+// A theme.json may leave out what follows from the rest: themeApi and v (1), the id (the folder's name), the Chinese name (the English one;
+// `name` may be a plain string), the layout (dashboard, tiles, side), the symbol (a zigzag), the four swatches (from the seeds).
+export const DEFAULT_SYMBOL = '<path d="M4 7h16L4 17h16"/>';
+export function normalise(raw, dir) {
+  if (raw.id !== undefined && raw.id !== dir) throw new Error(`themes/${dir}/theme.json: the id "${raw.id}" is not the folder name "${dir}"`);
+  const s = raw.seeds ?? {};
+  const name = typeof raw.name === 'string' ? { en: raw.name } : raw.name ?? { en: dir };
+  return {
+    themeApi: 1,
+    v: 1,
+    ...raw,
+    id: dir,
+    name: { ...name, zh: name.zh ?? name.en },
+    layout: cleanLayout(raw.layout),
+    symbol: raw.symbol ?? DEFAULT_SYMBOL,
+    swatches: raw.swatches ?? [s.bg, s.surface, s.accent, s.orange ?? s.ink],
+  };
+}
+
+// Every theme of themes/ (a folder with a theme.json; names starting with _ or . are not themes), in folder order.
 export function loadThemes() {
   return readdirSync(root, { withFileTypes: true })
-    .filter(d => d.isDirectory() && existsSync(new URL(`${d.name}/theme.json`, root)))
-    .map(d => JSON.parse(read(`${d.name}/theme.json`)));
+    .filter(d => d.isDirectory() && !/^[_.]/.test(d.name) && existsSync(new URL(`${d.name}/theme.json`, root)))
+    .map(d => d.name).sort()
+    .map(dir => normalise(JSON.parse(read(`${dir}/theme.json`)), dir));
 }
 
 export const loadBase = () => parseBase(readFileSync(BASE_CSS, 'utf8'));

@@ -3,6 +3,7 @@
 // same element the page's <head> script created from the local copy before the first paint), the browser bar colour and the
 // brand mark. Idempotent: calling it again with the same theme changes nothing.
 import { setArt } from './art-state.js';
+import { freshScope, scopeIds } from './svg.js';
 
 export const THEME_EVENT = 'zip-theme';
 const STYLE_ID = 'theme-css';
@@ -27,7 +28,7 @@ function setMark(doc, svg) {
     const span = doc.createElement('span');
     span.className = 'brand-art';
     span.setAttribute('aria-hidden', 'true');
-    span.innerHTML = svg;   // rebuilt from the whitelist in svg.js
+    span.innerHTML = scopeIds(svg, freshScope());   // rebuilt from the whitelist in svg.js; its ids are its own
     holder.append(span);
   }
 }

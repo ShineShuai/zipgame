@@ -1,0 +1,67 @@
+{
+ "id": "manuscript",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-42-manuscript",
+ "mode": "light",
+ "name": {
+  "en": "Manuscript",
+  "zh": "手抄本"
+ },
+ "symbol": "<rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"1\"/><path d=\"M9 17V7h3a3 3 0 0 1 0 6H9\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#eddcb0",
+  "#f4e8c6",
+  "#26479b",
+  "#d4a72c"
+ ],
+ "fonts": [
+  {
+   "family": "IM Fell English",
+   "weight": "400",
+   "file": "imfellenglish-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#eddcb0",
+  "surface": "#f4e8c6",
+  "ink": "#2b1a10",
+  "muted": "#5a4130",
+  "accent": "#26479b",
+  "onAccent": "#ffffff",
+  "orange": "#d4a72c",
+  "tile": "#f4e8c6",
+  "tileEdge": "#2b1a10",
+  "wall": "#2b1a10",
+  "path": "#26479b",
+  "red": "#a17f21",
+  "blue": "#2b1a10",
+  "numFill": "#c8322a",
+  "numText": "#ffffff",
+  "numvFill": "#f4e8c6",
+  "numvText": "#2b1a10",
+  "onOrange": "#000000",
+  "numRing": "#d4a72c",
+  "numvRing": "#d4a72c"
+ },
+ "vars": {
+  "--font-body": "\"IM Fell English\", Georgia, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", serif",
+  "--fw-head": "700",
+  "--r-1": "2px",
+  "--r-2": "2px",
+  "--r-3": "6px",
+  "--r-4": "6px",
+  "--r-chip": "2px",
+  "--r-icon": "2px",
+  "--bw": "1px",
+  "--bw-card": "3px",
+  "--shadow": "0 10px 30px rgba(60,35,10,.25)",
+  "--pop-shadow": "0 10px 30px rgba(60,35,10,.25)",
+  "--ctl-h": "52px"
+ }
+}

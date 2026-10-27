@@ -1,0 +1,67 @@
+{
+ "id": "swiss",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-10-swiss",
+ "mode": "light",
+ "name": {
+  "en": "Swiss",
+  "zh": "瑞士"
+ },
+ "symbol": "<rect x=\"4\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"13\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"4\" y=\"13\" width=\"7\" height=\"7\"/><rect x=\"13\" y=\"13\" width=\"7\" height=\"7\" fill=\"currentColor\"/>",
+ "layout": {
+  "menu": "stack",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#ffffff",
+  "#ffffff",
+  "#111111",
+  "#111111"
+ ],
+ "fonts": [
+  {
+   "family": "Inter Tight",
+   "weight": "400 800",
+   "file": "intertight-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#ffffff",
+  "surface": "#ffffff",
+  "ink": "#111111",
+  "muted": "#555555",
+  "accent": "#111111",
+  "onAccent": "#ffffff",
+  "orange": "#111111",
+  "tile": "#ffffff",
+  "tileEdge": "#111111",
+  "wall": "#111111",
+  "path": "#e4001b",
+  "red": "#111111",
+  "blue": "#111111",
+  "numFill": "#111111",
+  "numText": "#ffffff",
+  "numvFill": "#ffffff",
+  "numvText": "#111111",
+  "onOrange": "#ffffff",
+  "numRing": "#111111",
+  "numvRing": "#111111"
+ },
+ "vars": {
+  "--font-body": "\"Inter Tight\", Helvetica, Arial, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "0px",
+  "--r-2": "0px",
+  "--r-3": "0px",
+  "--r-4": "0px",
+  "--r-chip": "0px",
+  "--r-icon": "0px",
+  "--bw": "1px",
+  "--bw-card": "2px",
+  "--shadow": "none",
+  "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
+  "--ctl-h": "52px"
+ }
+}

@@ -26,7 +26,9 @@ import { cleanTokens, buildCss } from '../src/themes/tokens.js';
 import { DEFAULT_LAYOUT, LAYOUT as PRESETS } from '../src/themes/layout.js';
 import { devHtml, devItems, pickerHtml, pickerItems } from '../src/themes/picker.js';
 import { formatLeft, offerHtml } from '../src/themes/offer.js';
-import { cleanInner, cleanSvg } from '../src/themes/svg.js';
+import {
+  cleanInner, cleanSvg, freshScope, scopeIds,
+} from '../src/themes/svg.js';
 
 const INDEX = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const SYMBOL = '<circle cx="12" cy="12" r="5"/><path d="M7 12 2.5 8.5v7z"/>';
@@ -110,16 +112,35 @@ function runBoot({ storage = {}, dark = false } = {}) {
 }
 
 export function themeSystemTests(t, ok, eq, ta) {
-  t('themes: the svg whitelist keeps shapes and refuses everything else', () => {
+  t('themes: the svg whitelist keeps shapes and paint servers and refuses everything else', () => {
     eq(cleanSvg(SYMBOL), SYMBOL, 'shapes pass unchanged');
     eq(cleanInner('<path d="M0 0" fill="color-mix(in srgb, var(--ic-1) 70%, #000)"/>') !== null, true, 'tokens and color-mix pass');
     for (const bad of [
       '<script>alert(1)</script>', '<path d="M0 0" onload="x()"/>', '<path d="M0 0" style="fill:red"/>', '<use href="#a"/>',
-      '<image href="x.png"/>', '<path d="M0 0" fill="url(#a)"/>', '<path id="a" d="M0 0"/>', '<g><path d="M0 0"/>', '<path d="M0 0"/></g>',
+      '<image href="x.png"/>', '<path d="M0 0" fill="url(https://evil/x.svg#a)"/>', '<path d="M0 0" fill="url(//evil/x)"/>', '<path d="M0 0" stroke-width="url(#a)"/>',
+      '<path d="M0 0" fill="url(#a b)"/>', '<path id="1a" d="M0 0"/>', '<path id="a b" d="M0 0"/>', '<g><path d="M0 0"/>', '<path d="M0 0"/></g>',
       'text<path d="M0 0"/>', '<path d="M0 0" fill="javascript:x"/>', '<foreignObject/>', '<path d="M0 0" fill="a&b"/>',
+      '<path d="M0 0" style="background:url(x)"/>', '<path d="M0 0" style="mix-blend-mode:multiply;fill:red"/>', '<g>12</g>', '<text>a long caption</text>',
+      '<feImage href="x"/>', '<filter><feOffset dx="1"/></filter>', '<a href="x"/>', '<path d="M0 0" font-family="Evil"/>',
     ]) eq(cleanSvg(bad), null, bad);
     eq(cleanSvg('x'.repeat(30)), null);
     eq(cleanSvg('<path d="M0 0"/>'.repeat(500), 1000), null, 'too long');
+    const rich = '<defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000" stop-opacity="0.5"/></linearGradient>'
+      + '<radialGradient id="g2" cx="0.5" cy="0.5" r="0.5" fx="0.3" fy="0.3"><stop offset="0" stop-color="#fff"/></radialGradient><clipPath id="c1"><rect width="4" height="4"/></clipPath>'
+      + '<pattern id="p1" width="2" height="2" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1" height="2"/></pattern>'
+      + '<filter id="b1" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="2"/></filter></defs>'
+      + '<g clip-path="url(#c1)"><rect width="4" height="4" fill="url(#g1)" filter="url(#b1)" style="mix-blend-mode:multiply"/><rect width="4" height="4" fill="url(#p1)" shape-rendering="crispEdges"/></g>'
+      + '<text x="24" y="24" dy=".35em" text-anchor="middle" font-size="9" font-weight="700" fill="url(#g2)">7</text>';
+    eq(cleanSvg(rich), rich, 'gradients, a clip path, a pattern, a blur, a blend mode and a short label pass unchanged');
+  });
+
+  t('themes: the ids of a drawing are its own: a piece drawn twice does not share a gradient', () => {
+    const piece = '<defs><linearGradient id="g1"><stop offset="0" stop-color="#fff"/></linearGradient></defs><rect fill="url(#g1)" stroke="url(#g1)"/>';
+    eq(scopeIds(piece, 'x'), '<defs><linearGradient id="g1-x"><stop offset="0" stop-color="#fff"/></linearGradient></defs><rect fill="url(#g1-x)" stroke="url(#g1-x)"/>');
+    ok(freshScope() !== freshScope(), 'every call a new scope');
+    eq(scopeIds('<path d="M0 0"/>', 'x'), '<path d="M0 0"/>', 'nothing to rename');
+    const scoped = scopeIds(piece, freshScope());
+    ok(cleanSvg(scoped) === scoped, 'a scoped piece is still clean');
   });
 
   t('themes: tokens are held to the contract: bounds, kinds, no url(), no way out of the rule', () => {
@@ -361,6 +382,14 @@ export function themeSystemTests(t, ok, eq, ta) {
       eq(variantIcon('cube').includes('vi-cube'), true, 'so are the solids');
     } finally { setArt(null); }
     eq(variantIcon('cutout'), classic, 'back to the classic icon');
+    // an icon with a gradient: every drawing of it has ids of its own (it may be on the page twice, once of them hidden)
+    setArt(cleanArt({ icons: { standard: '<defs><linearGradient id="g1"><stop offset="0" stop-color="#fff"/></linearGradient></defs><rect width="8" height="8" fill="url(#g1)"/>' }, board: {} }));
+    try {
+      const [one, two] = [variantIcon('standard'), variantIcon('standard')];
+      const idOf = svg => /id="(g1-[^"]+)"/.exec(svg)?.[1];
+      ok(idOf(one) && idOf(two) && idOf(one) !== idOf(two), 'two drawings, two ids');
+      ok(one.includes(`fill="url(#${idOf(one)})"`) && two.includes(`fill="url(#${idOf(two)})"`), 'each refers to its own');
+    } finally { setArt(null); }
   });
 
   t('themes: the board is drawn in the theme\'s skin; the classic skin is what the game always drew; the svg\'s box never changes', () => {

@@ -25,9 +25,30 @@ export function resolve(map, name) {
   return v;
 }
 
+// A theme has to state five colours (bg, surface, ink, muted, accent); the rest of the seeds default to something that follows from them.
+// Everything a theme does state wins.
+export function completeSeeds(seeds, dark) {
+  const tile = seeds.tile ?? seeds.surface;
+  const numFill = seeds.numFill ?? seeds.accent;
+  const numvFill = seeds.numvFill ?? seeds.ink;
+  return {
+    orange: seeds.accent,
+    ...seeds,
+    tile,
+    tileEdge: seeds.tileEdge ?? mix(tile, seeds.ink, dark ? 0.2 : 0.12),
+    wall: seeds.wall ?? seeds.ink,
+    path: seeds.path ?? seeds.accent,
+    numFill,
+    numText: seeds.numText ?? onColour(numFill),
+    numvFill,
+    numvText: seeds.numvText ?? onColour(numvFill),
+  };
+}
+
 export function derive(theme, base) {
-  const { mode, seeds: S, vars = {} } = theme;
+  const { mode, vars = {} } = theme;
   const dark = mode === 'dark';
+  const S = completeSeeds(theme.seeds, dark);
   const out = { ...base[mode] };
   const notes = [];
   const fix = (name, fg, bgs, min) => {

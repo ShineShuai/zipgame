@@ -1,0 +1,67 @@
+{
+ "id": "metro",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-24-metro",
+ "mode": "light",
+ "name": {
+  "en": "Metro",
+  "zh": "地铁"
+ },
+ "symbol": "<path d=\"M3 12h18\"/><circle cx=\"12\" cy=\"12\" r=\"4\" fill=\"currentColor\"/>",
+ "layout": {
+  "menu": "stack",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#fafafa",
+  "#ffffff",
+  "#1a1a1a",
+  "#ffb000"
+ ],
+ "fonts": [
+  {
+   "family": "Barlow",
+   "weight": "500 700",
+   "file": "barlow-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#fafafa",
+  "surface": "#ffffff",
+  "ink": "#1a1a1a",
+  "muted": "#4d4d4d",
+  "accent": "#1a1a1a",
+  "onAccent": "#ffffff",
+  "orange": "#ffb000",
+  "tile": "#f1f1f1",
+  "tileEdge": "#e4e4e4",
+  "wall": "#1a1a1a",
+  "path": "#0072ce",
+  "red": "#1a1a1a",
+  "blue": "#8b8b8b",
+  "numFill": "#1a1a1a",
+  "numText": "#ffffff",
+  "numvFill": "#ffffff",
+  "numvText": "#1a1a1a",
+  "onOrange": "#000000",
+  "numRing": "#1a1a1a",
+  "numvRing": "#1a1a1a"
+ },
+ "vars": {
+  "--font-body": "\"Barlow\", DIN Alternate, Arial, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "6px",
+  "--r-2": "12px",
+  "--r-3": "24px",
+  "--r-4": "24px",
+  "--r-chip": "6px",
+  "--r-icon": "6px",
+  "--bw": "1px",
+  "--bw-card": "1px",
+  "--shadow": "0 8px 24px rgba(0,0,0,.08)",
+  "--pop-shadow": "0 8px 24px rgba(0,0,0,.08)",
+  "--ctl-h": "52px"
+ }
+}
