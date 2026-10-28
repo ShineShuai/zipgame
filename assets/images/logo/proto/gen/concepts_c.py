@@ -1,9 +1,10 @@
-"""Icon concepts 22-28: bouncing balls, doodles, transit signs, zen ink, riso overprint, aurora."""
+"""Icon concepts 22-28: bouncing balls, doodles, transit signs, zen ink, riso overprint, wood, aurora."""
 
 import math
 import random
 
 from core import (
+    Style,
     circ,
     ell,
     group,
@@ -601,6 +602,39 @@ class Riso(Concept):
         return circ(24, 24, 15, fill=self.BL) + self.mul(
             circ(26, 26, 15, fill=dots(cx, self.PK, 2.4, 1.0))
         )
+
+
+@register
+class Wood(Style):
+    """Wooden game board: maple tiles, a red lacquer route, brass studs. The board scenes of the
+    engine (core.scene) with a palette; Two paths takes the studs from its route colours."""
+
+    key = "27-wood"
+    title = "Wood"
+    font = "'Zilla Slab',Rockwell,serif"
+    pal = {
+        "bg": None,
+        "tile": "#ead7ae",
+        "tile_s": "#b99a66",
+        "shade1": "#d9c08a",
+        "shade2": "#c4a56e",
+        "route": "#a4281f",
+        "route2": "#2b4a7a",
+        "node": "#d4a017",
+        "node_s": "#7a5a14",
+        "ink": "#2b1d14",
+        "acc": "#2b4a7a",
+        "paper": "#f4e6cf",
+    }
+    gap = 0.6
+    radius = 0.9
+    pent_w = 1.0
+
+    def dot(self, cx, x, y, which=0):
+        stud = super().dot(cx, x, y, which)
+        if cx.kind == "two":   # a stud in the colour of its route
+            return stud.replace(self.p("node"), self.p("route") if which == 0 else self.p("route2"), 1)
+        return stud
 
 
 @register

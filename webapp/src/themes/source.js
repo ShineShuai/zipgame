@@ -1,5 +1,5 @@
 // Where the themes of the pool come from: plain static files in one folder (config.js THEMES), built by CI (themes/tools/build-site.mjs).
-//   <pool>        the manifest: one entry per theme (the metadata the picker draws, `f`, and `live`)
+//   <pool>        the manifest: one entry per theme (the metadata the picker draws, `f`, and `live`); the built-ins have no `f`
 //   <f>.json      the bundle of a theme; `f` is a hash of its content, so a name cannot be guessed and a changed theme is a new file
 // The app knows no theme and no file name: it reads the manifest only when an event fires (themes().event) or the dev reveal is on.
 // This hides the files, it does not protect them: anyone who reads the code and the repository can find them.
@@ -11,14 +11,16 @@ export const MAX_POOL = 64 * 1024;
 export const MAX_THEMES = 64;
 
 // The manifest text's JSON -> [{ entry, f, live }] (entry as pool.cleanEntry makes it), or null when it is not a manifest. Entries that are
-// not themes, repeat an id, shadow a built-in or name a malformed file are dropped. `live: false` marks a draft (dev reveal only).
+// not themes, repeat an id or name a malformed file are dropped. `live: false` marks a draft (dev reveal only). The built-in themes (light,
+// dark) are part of the pool like any other, but they are part of the app: their entry is the app's own copy and `f` is null (no file).
 export function cleanPool(raw) {
   if (!Array.isArray(raw)) return null;
   const list = [];
   for (const x of raw.slice(0, MAX_THEMES)) {
     const entry = cleanEntry(x);
-    if (!entry || entry.builtin || !FILE_RE.test(x.f ?? '') || list.some(c => c.entry.id === entry.id)) continue;
-    list.push({ entry, f: x.f, live: x.live !== false });
+    if (!entry || list.some(c => c.entry.id === entry.id)) continue;
+    if (!entry.builtin && !FILE_RE.test(x.f ?? '')) continue;
+    list.push({ entry, f: entry.builtin ? null : x.f, live: x.live !== false });
   }
   return list;
 }
