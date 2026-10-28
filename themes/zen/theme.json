@@ -1,0 +1,67 @@
+{
+ "id": "zen",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-25-zen",
+ "mode": "light",
+ "name": {
+  "en": "Zen",
+  "zh": "禅"
+ },
+ "symbol": "<path d=\"M17.5 17A7.5 7.5 0 1 1 18 8\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#f2f1ee",
+  "#f2f1ee",
+  "#c9301f",
+  "#c9301f"
+ ],
+ "fonts": [
+  {
+   "family": "Zen Kaku Gothic New",
+   "weight": "400 700",
+   "file": "zenkakugothicnew-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#f2f1ee",
+  "surface": "#f2f1ee",
+  "ink": "#15130f",
+  "muted": "#57544d",
+  "accent": "#c9301f",
+  "onAccent": "#ffffff",
+  "orange": "#c9301f",
+  "tile": "#f2f1ee",
+  "tileEdge": "#c8c5bd",
+  "wall": "#15130f",
+  "path": "#15130f",
+  "red": "#c9301f",
+  "blue": "#15130f",
+  "numFill": "#c9301f",
+  "numText": "#ffffff",
+  "numvFill": "#f2f1ee",
+  "numvText": "#15130f",
+  "onOrange": "#ffffff",
+  "numRing": "#15130f",
+  "numvRing": "#15130f"
+ },
+ "vars": {
+  "--font-body": "\"Zen Kaku Gothic New\", Hiragino Sans, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "2px",
+  "--r-2": "2px",
+  "--r-3": "4px",
+  "--r-4": "4px",
+  "--r-chip": "2px",
+  "--r-icon": "2px",
+  "--bw": "1px",
+  "--bw-card": "1px",
+  "--shadow": "none",
+  "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
+  "--ctl-h": "52px"
+ }
+}

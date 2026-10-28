@@ -1,0 +1,67 @@
+{
+ "id": "glass",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-34-glass",
+ "mode": "dark",
+ "name": {
+  "en": "Glass",
+  "zh": "彩窗"
+ },
+ "symbol": "<path d=\"M6 20V10c0-3 3-5 6-7 3 2 6 4 6 7v10zM12 8v12\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#14100e",
+  "#1d1511",
+  "#d9930d",
+  "#fff1b8"
+ ],
+ "fonts": [
+  {
+   "family": "Cinzel",
+   "weight": "500 700",
+   "file": "cinzel-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#14100e",
+  "surface": "#1d1511",
+  "ink": "#f5ead7",
+  "muted": "#cdbb9e",
+  "accent": "#d9930d",
+  "onAccent": "#14100e",
+  "orange": "#fff1b8",
+  "tile": "#1d1511",
+  "tileEdge": "#1a1410",
+  "wall": "#686461",
+  "path": "#ffd34d",
+  "red": "#b9323b",
+  "blue": "#3e62b4",
+  "numFill": "#fff1b8",
+  "numText": "#1a1410",
+  "numvFill": "#1a1410",
+  "numvText": "#ffd34d",
+  "onOrange": "#000000",
+  "numRing": "#ffd34d",
+  "numvRing": "#ffd34d"
+ },
+ "vars": {
+  "--font-body": "\"Cinzel\", Times New Roman, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", serif",
+  "--fw-head": "700",
+  "--r-1": "10px",
+  "--r-2": "12px",
+  "--r-3": "40px",
+  "--r-4": "40px",
+  "--r-chip": "10px",
+  "--r-icon": "10px",
+  "--bw": "1px",
+  "--bw-card": "2px",
+  "--shadow": "0 0 70px rgba(244,183,63,.12)",
+  "--pop-shadow": "0 0 70px rgba(244,183,63,.12)",
+  "--ctl-h": "52px"
+ }
+}

@@ -4,7 +4,7 @@
 // the whole piece (null), and the caller falls back to the classic art.
 //   - gradients, clip paths, patterns and a few filters (blur, noise and displacement for a hand-drawn edge) may be defined (<defs>, ids) and used with url(#id): a reference to an
 //     element of the same piece, never to a url; the page makes the ids of every piece it draws unique (scopeIds)
-//   - <text> holds a short label (a number, a letter), nothing else; it takes the page's font
+//   - <text> holds a short label (a number, a letter, > or <), nothing else; it takes the page's font
 const TAGS = new Set([
   'svg', 'g', 'path', 'circle', 'ellipse', 'rect', 'line', 'polyline', 'polygon',
   'defs', 'linearGradient', 'radialGradient', 'stop', 'clipPath', 'pattern', 'filter', 'feGaussianBlur', 'feTurbulence', 'feDisplacementMap', 'text',
@@ -20,7 +20,7 @@ const URL_ATTRS = new Set(['fill', 'stroke', 'clip-path', 'filter']);   // where
 const ID = /^[A-Za-z][\w-]{0,31}$/;
 const REF = /^url\(#[A-Za-z][\w-]{0,31}\)$/;
 const STYLE = /^mix-blend-mode:(multiply|screen|overlay|darken|lighten|soft-light|hard-light|color-dodge|color-burn|difference|exclusion);?$/;
-const LABEL = /^[\w.]{1,4}$/;
+const LABEL = /^(?:[\w.]|&gt;|&lt;){1,4}$/;   // a number, a letter, a prompt sign (the entity, never a bare angle bracket)
 const NAME = /^[A-Za-z][\w-]{0,15}$/;                 // a filter result and its inputs (SourceGraphic, ...)
 const NOISE = /^(fractalNoise|turbulence)$/;
 const SAFE_VALUE = /^[\w\s.,#%()+*/:;-]*$/;

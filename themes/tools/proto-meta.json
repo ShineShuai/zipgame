@@ -1,5 +1,5 @@
 {
- "_readme": "What the design pages do not carry: per theme the id, the Chinese name, the symbol of the theme button (24x24, currentColor) and the layout presets. import-proto.mjs reads the rest (colours, shapes, fonts, art) from assets/design and assets/images/logo/proto. A design not listed here is not imported.",
+ "_readme": "What the design pages do not carry: per theme the id, the Chinese name, the symbol of the theme button (24x24, currentColor) and the layout presets. import-proto.mjs reads the rest (colours, shapes, fonts, art) from assets/design and assets/images/logo/proto. A design not listed here still imports, with the English name, the default symbol and the default layout.",
  "swiss": {
   "design": "zigzag-10-swiss",
   "sheet": "10-swiss",
@@ -56,6 +56,20 @@
   },
   "symbol": "<path d=\"M4 20V4l16 16z\"/><circle cx=\"8\" cy=\"16\" r=\"1.5\"/>"
  },
+ "brutalist": {
+  "design": "zigzag-14-brutalist",
+  "sheet": "14-brutalist",
+  "name": {
+   "en": "Brutalist",
+   "zh": "粗野主义"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<rect x=\"4\" y=\"4\" width=\"11\" height=\"11\"/><rect x=\"9\" y=\"9\" width=\"11\" height=\"11\" fill=\"currentColor\"/>"
+ },
  "pixel": {
   "design": "zigzag-15-pixel",
   "sheet": "15-pixel",
@@ -69,6 +83,37 @@
    "actions": "side"
   },
   "symbol": "<path d=\"M8 4h2v2H8zM14 4h2v2h-2zM6 6h12v2H6zM4 8h16v6H4zM6 14h2v4H6zM16 14h2v4h-2zM9 16h2v2H9zM13 16h2v2h-2z\" fill=\"currentColor\"/>"
+ },
+ "iso": {
+  "design": "zigzag-16-iso",
+  "sheet": "16-iso",
+  "name": {
+   "en": "Iso",
+   "zh": "等距"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M12 3 20 7.5v9L12 21 4 16.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9\"/>"
+ },
+ "bauhaus-bento": {
+  "skip": "the hand-written themes/bauhaus is the theme of this page (zigzag-17-bauhaus-bento)"
+ },
+ "editorial": {
+  "design": "zigzag-18-editorial",
+  "sheet": "18-editorial",
+  "name": {
+   "en": "Editorial",
+   "zh": "杂志"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<rect x=\"4\" y=\"4\" width=\"16\" height=\"16\"/><path d=\"M4 10h16M10 4v16\"/>"
  },
  "clay": {
   "design": "zigzag-19-clay",
@@ -96,7 +141,11 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<path d=\"M12 20V9M12 20 6 11M12 20l6-9M12 20 3 14M12 20l9-6M3 20h18\"/>"
+  "symbol": "<path d=\"M12 20V9M12 20 6 11M12 20l6-9M12 20 3 14M12 20l9-6M3 20h18\"/>",
+  "routes": [
+   "#d9b45a",
+   "#5fc9a6"
+  ]
  },
  "route": {
   "design": "zigzag-21-route",
@@ -153,6 +202,23 @@
    "actions": "side"
   },
   "symbol": "<path d=\"M3 12h18\"/><circle cx=\"12\" cy=\"12\" r=\"4\" fill=\"currentColor\"/>"
+ },
+ "zen": {
+  "design": "zigzag-25-zen",
+  "sheet": "25-zen",
+  "name": {
+   "en": "Zen",
+   "zh": "禅"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M17.5 17A7.5 7.5 0 1 1 18 8\"/>"
+ },
+ "wood": {
+  "skip": "the hand-made themes/wood is the theme of this page (zigzag-27-wood); its sheet and wood.py are not part of the sources"
  },
  "riso": {
   "design": "zigzag-26-riso",
@@ -224,6 +290,20 @@
   },
   "symbol": "<path d=\"M3 12 12 4l9 8-9 8zM12 4v16M3 12h18\"/>"
  },
+ "modular": {
+  "design": "zigzag-32-modular",
+  "sheet": "32-modular",
+  "name": {
+   "en": "Modular",
+   "zh": "模块"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<rect x=\"4\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"13\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"4\" y=\"13\" width=\"7\" height=\"7\"/>"
+ },
  "atomic": {
   "design": "zigzag-33-atomic",
   "sheet": "33-atomic",
@@ -237,6 +317,34 @@
    "actions": "side"
   },
   "symbol": "<circle cx=\"12\" cy=\"12\" r=\"2\"/><ellipse cx=\"12\" cy=\"12\" rx=\"10\" ry=\"4\"/><ellipse cx=\"12\" cy=\"12\" rx=\"10\" ry=\"4\" transform=\"rotate(60 12 12)\"/><ellipse cx=\"12\" cy=\"12\" rx=\"10\" ry=\"4\" transform=\"rotate(120 12 12)\"/>"
+ },
+ "glass": {
+  "design": "zigzag-34-glass",
+  "sheet": "34-glass",
+  "name": {
+   "en": "Glass",
+   "zh": "彩窗"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M6 20V10c0-3 3-5 6-7 3 2 6 4 6 7v10zM12 8v12\"/>"
+ },
+ "stitch": {
+  "design": "zigzag-35-stitch",
+  "sheet": "35-stitch",
+  "name": {
+   "en": "Stitch",
+   "zh": "针线"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M3 8h4M10 8h4M17 8h4M3 16l4-4 4 4 4-4 4 4\"/>"
  },
  "chrome": {
   "design": "zigzag-36-chrome",
@@ -265,6 +373,38 @@
    "actions": "side"
   },
   "symbol": "<path d=\"M12 3 22 20H2z\"/><path d=\"M12 10v4M12 17v.5\"/>"
+ },
+ "memphis": {
+  "design": "zigzag-38-memphis",
+  "sheet": "38-memphis",
+  "name": {
+   "en": "Memphis",
+   "zh": "孟菲斯"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M3 9l4-4 4 4 4-4 4 4M3 18q2-4 4 0t4 0 4 0 4 0\"/>"
+ },
+ "terminal": {
+  "design": "zigzag-39-terminal",
+  "sheet": "39-terminal",
+  "name": {
+   "en": "Terminal",
+   "zh": "终端"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"m5 7 5 5-5 5M12 18h7\"/>",
+  "routes": [
+   "#37ff8b",
+   "#ffb000"
+  ]
  },
  "ukiyo": {
   "design": "zigzag-40-ukiyo",
