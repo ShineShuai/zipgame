@@ -129,6 +129,16 @@ t('art: the app accepts all of it, it covers the flat variants, and it stays sma
   }
 });
 
+t('every theme draws its own Two paths composition (no two themes share one)', () => {
+  const seen = new Map();
+  for (const [id, art] of Object.entries(ART)) {
+    const mine = art.icons.twopaths;
+    ok(mine, `${id}: a twopaths icon`);
+    ok(!seen.has(mine), `${id}: the same Two paths art as ${seen.get(mine)}`);
+    seen.set(mine, id);
+  }
+});
+
 t('the sample board and icons of the preview are well-formed and use tokens only', () => {
   for (const [id, art] of Object.entries(ART)) {
     const svg = boardSvg(art.board);
