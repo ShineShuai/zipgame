@@ -1,0 +1,67 @@
+{
+ "id": "pinball",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-44-pinball",
+ "mode": "dark",
+ "name": {
+  "en": "Pinball",
+  "zh": "弹球机"
+ },
+ "symbol": "<circle cx=\"12\" cy=\"7\" r=\"2.5\" fill=\"currentColor\"/><path d=\"M4 16l6 3M20 16l-6 3\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#0d0b14",
+  "#120f33",
+  "#ffd60a",
+  "#ffd60a"
+ ],
+ "fonts": [
+  {
+   "family": "Lilita One",
+   "weight": "400",
+   "file": "lilitaone-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#0d0b14",
+  "surface": "#120f33",
+  "ink": "#fff3b0",
+  "muted": "#c9c2ff",
+  "accent": "#ffd60a",
+  "onAccent": "#0d0b14",
+  "orange": "#ffd60a",
+  "tile": "#16204a",
+  "tileEdge": "#6b5fd6",
+  "wall": "#2ee6ff",
+  "path": "#ffd60a",
+  "red": "#ffd60a",
+  "blue": "#ff3b30",
+  "numFill": "#ffd60a",
+  "numText": "#0d0b14",
+  "numvFill": "#16204a",
+  "numvText": "#ffd60a",
+  "onOrange": "#000000",
+  "numRing": "#ff9f0a",
+  "numvRing": "#ff9f0a"
+ },
+ "vars": {
+  "--font-body": "\"Lilita One\", Trebuchet MS, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "999px",
+  "--r-2": "16px",
+  "--r-3": "28px",
+  "--r-4": "28px",
+  "--r-chip": "999px",
+  "--r-icon": "999px",
+  "--bw": "1px",
+  "--bw-card": "2px",
+  "--shadow": "0 0 60px rgba(255,214,10,.2)",
+  "--pop-shadow": "0 0 60px rgba(255,214,10,.2)",
+  "--ctl-h": "52px"
+ }
+}

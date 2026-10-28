@@ -1165,23 +1165,6 @@ class Pinball(Concept):
         )
         return saucer(14, 14) + saucer(34, 34) + wire
 
-    def two(self, cx):
-        def flipper(x, y, ang):
-            return group(
-                rect(-2, -3, 17, 6, 3, fill=self.R, stroke="#fff", stroke_width=0.8)
-                + circ(0, 0, 2.2, fill="#fff"),
-                transform=f"translate({x} {y}) rotate({ang})",
-            )
-
-        return (
-            flipper(7, 28, 28) + group(flipper(0, 0, 0), transform="matrix(-1 0 0 1 48 0)")
-            if False
-            else (
-                flipper(7, 26, 24)
-                + group(flipper(7, 26, 24), transform="translate(48 0) scale(-1 1)")
-            )
-        )
-
     def pent(self, cx):
         pts = pent(24, 24, 14)
         return (

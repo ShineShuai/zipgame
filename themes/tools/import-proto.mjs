@@ -148,8 +148,30 @@ function iconGroups(sheet) {
   return out;
 }
 
+// `compact` in proto-meta.json: three or more equal dots in a row (<circle cx cy r fill/>, as in the marquee lights of a pinball plate) are one
+// path of zero-length segments with round caps: the same picture in a fifth of the bytes, which keeps a design with a ring of lights inside
+// the bundle budget (it moves a few edge pixels, so it is not done for a design that fits without).
+// Not inside a filtered group: a blur region is a share of the group's box, and the box of bare points is smaller than that of dots.
+const DOT = String.raw`<circle cx="[-\d.]+" cy="[-\d.]+" r="([\d.]+)" fill="(#[0-9a-fA-F]{3,8}|var\(--[\w-]+\))"/>`;
+const DOTS = new RegExp(`${DOT}(?:<circle cx="[-\\d.]+" cy="[-\\d.]+" r="\\1" fill="\\2"/>){2,}`, 'g');
+const inFilter = before => {
+  const open = [];
+  for (const m of before.matchAll(/<g\b[^>]*?(\/?)>|<\/g>/g)) {
+    if (m[0] === '</g>') open.pop();
+    else if (!m[1]) open.push(/\sfilter=/.test(m[0]));
+  }
+  return open.includes(true);
+};
+export function compactDots(markup) {
+  return markup.replace(DOTS, (run, r, fill, at) => {
+    if (inFilter(markup.slice(0, at))) return run;
+    const d = [...run.matchAll(/cx="([-\d.]+)" cy="([-\d.]+)"/g)].map(m => `M${m[1]} ${m[2]}h0`).join('');
+    return `<path d="${d}" fill="none" stroke="${fill}" stroke-width="${+(2 * r).toFixed(3)}" stroke-linecap="round"/>`;
+  });
+}
+
 // One icon of a sheet -> the markup the app accepts (shapes, paint servers, short labels), or null with a reason.
-function cleanIcon(inner, notes, label) {
+function cleanIcon(inner, notes, label, compact = false) {
   let s = inner
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/<title>[\s\S]*?<\/title>|<desc>[\s\S]*?<\/desc>/g, '')
@@ -159,6 +181,7 @@ function cleanIcon(inner, notes, label) {
     .replace(/\bid="\d+/g, 'id="').replace(/url\(#\d+/g, 'url(#')           // an id starts with a letter
     .replace(/\s+/g, ' ').replace(/> </g, '><').trim();
   s = s.replace(/<(\w+)([^>]*?)\s*\/>/g, '<$1$2/>');
+  if (compact) s = compactDots(s);
   const ok = cleanInner(s, 9000);
   if (ok === null) { notes.push(`${label}: the app's svg whitelist refuses it`); return null; }
   return ok;
@@ -386,7 +409,7 @@ export function importDesign(id, assets, notes = [], found = discover(assets)[id
   const icons = {};
   for (const [key, name] of Object.entries(ICON_IDS)) {
     if (!groups[key]) { note(`no icon ${key} in the sheet`); continue; }
-    const cleaned = cleanIcon(groups[key], notes, `${id}/${name}`);
+    const cleaned = cleanIcon(groups[key], notes, `${id}/${name}`, meta.compact);
     if (cleaned) icons[name] = cleaned;
   }
   const markRaw = /<svg[^>]*aria-label="zigzag mark"[^>]*>([\s\S]*?)<\/svg>/.exec(html.slice(Math.max(0, mockAt(html))));

@@ -461,5 +461,20 @@
    "actions": "side"
   },
   "symbol": "<path d=\"M12 21V11c0-4 4-6 6-4 2 3-2 5-4 3M12 15c-3-1-6-4-6-8\"/>"
+ },
+ "pinball": {
+  "design": "zigzag-44-pinball",
+  "sheet": "44-pinball",
+  "name": {
+   "en": "Pinball",
+   "zh": "弹球机"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<circle cx=\"12\" cy=\"7\" r=\"2.5\" fill=\"currentColor\"/><path d=\"M4 16l6 3M20 16l-6 3\"/>",
+  "compact": true
  }
 }
