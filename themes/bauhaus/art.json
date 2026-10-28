@@ -9,7 +9,7 @@
   "wrap": "<path d=\"M13 11H35V37H13Z\" fill-rule=\"evenodd\" fill=\"var(--ic-1)\"/><path d=\"M1 18L10 24L1 30Z\" fill=\"var(--ic-2)\"/><path d=\"M37 18L46 24L37 30Z\" fill=\"var(--ic-2)\"/>",
   "loop": "<polyline points=\"32.36,14.04 34.65,16.54 36.22,19.55 36.95,22.87 36.8,26.26 35.78,29.49 33.96,32.36 31.46,34.65 28.45,36.22 25.13,36.95 21.74,36.8 18.51,35.78 15.64,33.96 13.35,31.46 11.78,28.45 11.05,25.13 11.2,21.74 12.22,18.51 14.04,15.64 16.54,13.35 19.55,11.78\" fill=\"none\" stroke=\"var(--ic-1)\" stroke-width=\"6.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M28.01 8.71L17.33 5.68L21.78 17.89Z\" fill=\"var(--ic-1)\"/>",
   "teleport": "<circle cx=\"24\" cy=\"24\" r=\"15\" fill=\"none\" stroke=\"var(--ic-1)\" stroke-width=\"6.4\"/><circle cx=\"24\" cy=\"24\" r=\"5.5\" fill=\"var(--ic-2)\"/>",
-  "twopaths": "<path d=\"M9 26A15 15 0 0 1 39 26H30A6 6 0 0 0 18 26Z\" fill-rule=\"evenodd\" fill=\"var(--ic-2)\"/><path d=\"M9 31H39V39H9Z\" fill-rule=\"evenodd\" fill=\"var(--ic-1)\"/>",
+  "twopaths": "<path d=\"M8 28A18 18 0 0 1 26 10\" fill=\"none\" stroke=\"var(--ic-1)\" stroke-width=\"6\"/><circle cx=\"8\" cy=\"28\" r=\"3.2\" fill=\"var(--ic-2)\"/><path d=\"M27 33H41V39H27Z\" fill=\"var(--ic-1)\"/><circle cx=\"41\" cy=\"36\" r=\"3\" fill=\"var(--ic-2)\"/>",
   "pentagon": "<path d=\"M24 6L42.07 19.13L35.17 40.37L12.83 40.37L5.93 19.13Z\" fill=\"var(--ic-1)\"/>",
   "solids": "<path d=\"M24 6L5 39L24 39Z\" fill=\"var(--ic-1)\"/><path d=\"M24 6L43 39L24 39Z\" fill=\"color-mix(in srgb, var(--ic-1) 70%, var(--ic-2))\"/>"
  },

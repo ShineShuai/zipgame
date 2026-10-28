@@ -81,6 +81,7 @@ Run everything in `webapp/` as `npm run themes -- <command>` (or `node themes/to
 | | |
 |---|---|
 | **Add, from a design page** | Put `zigzag-NN-<id>.html` in `assets/design/` and `NN-<id>-variants.svg` in `assets/images/logo/proto/`, then `npm run themes:import` (one theme: `... -- <id>`). Colours, shapes, fonts, icons, brand mark and board skin are read from the page. The Chinese name, the symbol and the layout are in `tools/proto-meta.json`; a design without an entry gets the English name, a zigzag symbol and the default layout. A theme without `"proto"` in its theme.json was written by hand and is never overwritten (`--force`). |
+| **Change an icon design** | Edit the design's class in `assets/images/logo/proto/gen/concepts_*.py` (the engine is `core.py`, the helpers `kit.py` and `kit2.py`; the Two paths icon is the file `gen/two/NN-<id>.svg`), then from the repository root `python3 assets/images/logo/proto/gen/build_all.py assets` (rewrites every sheet and page in place; a design without a page is skipped), then `npm run themes:import` in `webapp/`. |
 | **Add, by hand** | `npm run themes -- new <id>` (or `new <id> --from <other>` to start from another theme), then edit `themes/<id>/theme.json`: five colours and a name are a whole theme. Add `art.json` and fonts when you have them. |
 | **Check** | `node themes/tools/pack.mjs <id>` (contrast nudges and problems), `npm run themes -- list` (every theme: mode, live or draft, bytes, problems), `npm run test:themes`. |
 | **Look at it** | `npm run themes:preview`, then `http://localhost:8000/webapp/` and hold V: every theme of the pool (or `python3 -m http.server` from the repository root after `npm run themes:build -- .`). |
@@ -97,8 +98,8 @@ Everything not stated in a theme.json is derived and nudged to pass the contrast
 - **Tokens** (`css/theme.css` defaults, bundle overrides): colours, radii, borders, sizes, fonts, shadows, the number discs, the portal colours.
 - **Art** (`art.json`): the variant icons (`variantIcon` in `apps/play/icons.js` draws the theme's icon, the classic one for any it does not draw;
   Two paths is a composition of its own in every theme, matched to the design, always two separate paths that never cross or overlap: the
-  `two` method of the design's class in `assets/images/logo/proto/gen/concepts_*.py` is its source, and the importer takes the two route colours
-  of the game's Two paths boards from that icon),
+  drawing is `assets/images/logo/proto/gen/two/NN-<id>.svg` (a hand-finished SVG, `@` stands for the id prefix; `build_all.py` puts it on the sheet
+  and the page), and the importer takes the two route colours of the game's Two paths boards from it unless `routes` in `proto-meta.json` sets them),
   the brand mark, and the **board skin** (`apps/play/board.js`): inset rounded tiles with an edge and a lower edge on an optional plate, path
   width / cap / join and a top-to-bottom gradient, wall width and cap, number disc or square. The skin applies to plain boards; Cutout,
   Wrap-around and Pentagon keep their own tiles (in the theme's colours), Two paths keeps its circle and square. `board.solid` picks the

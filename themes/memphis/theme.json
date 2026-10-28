@@ -1,0 +1,67 @@
+{
+ "id": "memphis",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-38-memphis",
+ "mode": "light",
+ "name": {
+  "en": "Memphis",
+  "zh": "孟菲斯"
+ },
+ "symbol": "<path d=\"M3 9l4-4 4 4 4-4 4 4M3 18q2-4 4 0t4 0 4 0 4 0\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#ffffff",
+  "#ffffff",
+  "#7a5cff",
+  "#ffd43b"
+ ],
+ "fonts": [
+  {
+   "family": "Rubik",
+   "weight": "500 800",
+   "file": "rubik-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#ffffff",
+  "surface": "#ffffff",
+  "ink": "#111111",
+  "muted": "#3a3a3a",
+  "accent": "#7a5cff",
+  "onAccent": "#000000",
+  "orange": "#ffd43b",
+  "tile": "#ffffff",
+  "tileEdge": "#111111",
+  "wall": "#111111",
+  "path": "#7a5cff",
+  "red": "#14a599",
+  "blue": "#ff4fa3",
+  "numFill": "#ff4fa3",
+  "numText": "#111111",
+  "numvFill": "#ffd43b",
+  "numvText": "#111111",
+  "onOrange": "#000000",
+  "numRing": "#111111",
+  "numvRing": "#111111"
+ },
+ "vars": {
+  "--font-body": "\"Rubik\", Trebuchet MS, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "999px",
+  "--r-2": "999px",
+  "--r-3": "24px",
+  "--r-4": "24px",
+  "--r-chip": "999px",
+  "--r-icon": "999px",
+  "--bw": "2px",
+  "--bw-card": "3px",
+  "--shadow": "none",
+  "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
+  "--ctl-h": "52px"
+ }
+}

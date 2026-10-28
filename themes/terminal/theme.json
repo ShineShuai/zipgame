@@ -1,0 +1,67 @@
+{
+ "id": "terminal",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-39-terminal",
+ "mode": "dark",
+ "name": {
+  "en": "Terminal",
+  "zh": "终端"
+ },
+ "symbol": "<path d=\"m5 7 5 5-5 5M12 18h7\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#04110a",
+  "#071a10",
+  "#37ff8b",
+  "#37ff8b"
+ ],
+ "fonts": [
+  {
+   "family": "Share Tech Mono",
+   "weight": "400",
+   "file": "sharetechmono-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#04110a",
+  "surface": "#071a10",
+  "ink": "#b6ffd0",
+  "muted": "#6fd69c",
+  "accent": "#37ff8b",
+  "onAccent": "#04110a",
+  "orange": "#37ff8b",
+  "tile": "#071a10",
+  "tileEdge": "#1c3527",
+  "wall": "#b6ffd0",
+  "path": "#37ff8b",
+  "red": "#37ff8b",
+  "blue": "#ffb000",
+  "numFill": "#37ff8b",
+  "numText": "#04110a",
+  "numvFill": "#04110a",
+  "numvText": "#37ff8b",
+  "onOrange": "#000000",
+  "numRing": "#37ff8b",
+  "numvRing": "#37ff8b"
+ },
+ "vars": {
+  "--font-body": "\"Share Tech Mono\", Courier New, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", monospace",
+  "--fw-head": "700",
+  "--r-1": "2px",
+  "--r-2": "2px",
+  "--r-3": "14px",
+  "--r-4": "14px",
+  "--r-chip": "2px",
+  "--r-icon": "2px",
+  "--bw": "1px",
+  "--bw-card": "2px",
+  "--shadow": "0 0 50px rgba(55,255,139,.18),inset 0 0 40px rgba(55,255,139,.08)",
+  "--pop-shadow": "0 0 50px rgba(55,255,139,.18),inset 0 0 40px rgba(55,255,139,.08)",
+  "--ctl-h": "52px"
+ }
+}

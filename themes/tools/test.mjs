@@ -246,6 +246,22 @@ t('a theme is easy to add and to remove: new, retire, restore, remove touch only
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+t('the design sources are complete: every page has its icon sheet and its Two paths drawing, every imported theme its page', () => {
+  const assets = fileURLToPath(new URL('../../assets', import.meta.url));
+  const pages = existsSync(`${assets}/design`) ? readdirSync(`${assets}/design`).filter(f => /^zigzag-\d+-[a-z][a-z0-9-]*\.html$/.test(f)) : [];
+  if (!pages.length) return;   // a checkout without the design pages
+  for (const page of pages) {
+    const key = page.slice('zigzag-'.length, -'.html'.length);
+    // the wood page is a hand-made one: its sheet and its generator (wood.py) are not part of the sources
+    if (key !== '27-wood') ok(existsSync(`${assets}/images/logo/proto/${key}-variants.svg`), `${key}: images/logo/proto/${key}-variants.svg (python3 assets/images/logo/proto/gen/build_all.py assets)`);
+    if (key !== '27-wood') ok(existsSync(`${assets}/images/logo/proto/gen/two/${key}.svg`), `${key}: images/logo/proto/gen/two/${key}.svg, the Two paths drawing`);
+  }
+  for (const id of readdirSync(root).filter(d => existsSync(new URL(`${d}/theme.json`, root)))) {
+    const proto = JSON.parse(read(`${id}/theme.json`)).proto;
+    if (proto) ok(pages.includes(`${proto}.html`), `themes/${id} comes from assets/design/${proto}.html, which is not there`);
+  }
+});
+
 t('a design page is a theme: every page of assets/design imports, packs without a problem and reproduces the committed theme', () => {
   const assets = fileURLToPath(new URL('../../assets', import.meta.url));
   const found = discover(assets);

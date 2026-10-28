@@ -1,0 +1,67 @@
+{
+ "id": "stitch",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-35-stitch",
+ "mode": "light",
+ "name": {
+  "en": "Stitch",
+  "zh": "针线"
+ },
+ "symbol": "<path d=\"M3 8h4M10 8h4M17 8h4M3 16l4-4 4 4 4-4 4 4\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#f2ead7",
+  "#fbf6e8",
+  "#c43a31",
+  "#e0a82e"
+ ],
+ "fonts": [
+  {
+   "family": "Mali",
+   "weight": "500 700",
+   "file": "mali-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#f2ead7",
+  "surface": "#fbf6e8",
+  "ink": "#2b3a67",
+  "muted": "#52597f",
+  "accent": "#c43a31",
+  "onAccent": "#ffffff",
+  "orange": "#e0a82e",
+  "tile": "#fbf6e8",
+  "tileEdge": "#d9cdb0",
+  "wall": "#3a3a3a",
+  "path": "#c43a31",
+  "red": "#c43a31",
+  "blue": "#2b5aa8",
+  "numFill": "#2b5aa8",
+  "numText": "#ffffff",
+  "numvFill": "#f2ead7",
+  "numvText": "#2b5aa8",
+  "onOrange": "#000000",
+  "numRing": "#2b5aa8",
+  "numvRing": "#2b5aa8"
+ },
+ "vars": {
+  "--font-body": "\"Mali\", Comic Sans MS, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", cursive",
+  "--fw-head": "700",
+  "--r-1": "10px",
+  "--r-2": "14px",
+  "--r-3": "20px",
+  "--r-4": "20px",
+  "--r-chip": "10px",
+  "--r-icon": "10px",
+  "--bw": "1.5px",
+  "--bw-card": "2px",
+  "--shadow": "none",
+  "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
+  "--ctl-h": "52px"
+ }
+}

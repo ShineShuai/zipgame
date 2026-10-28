@@ -132,6 +132,9 @@ export function themeSystemTests(t, ok, eq, ta) {
       + '<g clip-path="url(#c1)"><rect width="4" height="4" fill="url(#g1)" filter="url(#b1)" style="mix-blend-mode:multiply"/><rect width="4" height="4" fill="url(#p1)" shape-rendering="crispEdges"/></g>'
       + '<text x="24" y="24" dy=".35em" text-anchor="middle" font-size="9" font-weight="700" fill="url(#g2)">7</text>';
     eq(cleanSvg(rich), rich, 'gradients, a clip path, a pattern, a blur, a blend mode and a short label pass unchanged');
+    eq(cleanSvg('<text x=\"2\" y=\"2\">1&gt;</text>'), '<text x=\"2\" y=\"2\">1&gt;</text>', 'a prompt sign is a label too');
+    eq(cleanSvg('<text x=\"2\" y=\"2\">1&amp;</text>'), null, 'any other entity is not');
+    eq(cleanSvg('<text x=\"2\" y=\"2\">1<b>2</b></text>'), null, 'nor is markup in a label');
   });
 
   t('themes: the ids of a drawing are its own: a piece drawn twice does not share a gradient', () => {
