@@ -95,7 +95,10 @@ Everything not stated in a theme.json is derived and nudged to pass the contrast
 ## What a theme changes in the game
 
 - **Tokens** (`css/theme.css` defaults, bundle overrides): colours, radii, borders, sizes, fonts, shadows, the number discs, the portal colours.
-- **Art** (`art.json`): the variant icons (`variantIcon` in `apps/play/icons.js` draws the theme's icon, the classic one for any it does not draw),
+- **Art** (`art.json`): the variant icons (`variantIcon` in `apps/play/icons.js` draws the theme's icon, the classic one for any it does not draw;
+  Two paths is a composition of its own in every theme, matched to the design, always two separate paths that never cross or overlap: the
+  `two` method of the design's class in `assets/images/logo/proto/gen/concepts_*.py` is its source, and the importer takes the two route colours
+  of the game's Two paths boards from that icon),
   the brand mark, and the **board skin** (`apps/play/board.js`): inset rounded tiles with an edge and a lower edge on an optional plate, path
   width / cap / join and a top-to-bottom gradient, wall width and cap, number disc or square. The skin applies to plain boards; Cutout,
   Wrap-around and Pentagon keep their own tiles (in the theme's colours), Two paths keeps its circle and square. `board.solid` picks the
