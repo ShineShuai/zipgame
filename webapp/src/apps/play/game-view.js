@@ -13,6 +13,7 @@ import { rulesTipHtml } from './popups.js';
 import { boardMarkup } from './puzzle-kit.js';
 import { luckyGameHtml } from './lucky-ui.js';
 import { playStatsHtml } from './stats-html.js';
+import { zoomToolsHtml } from './zoom-ui.js';
 
 // Always-visible grade badge (one word + one number, 0-5): the trap grade (core/trap.js). Nothing is
 // rendered when the puzzle couldn't be graded, rather than a misleading placeholder number.
@@ -112,6 +113,7 @@ export function renderGame() {
           <div class="hud-time">${t('game.time', `<b id="hudTime">${time}</b>`)}</div>
         </div>
         ${S.lucky && !S.finished ? `<p class="note lucky-once">${t(S.luckyHolder ? 'lucky.onceChance' : 'lucky.onceFun')}</p>` : ''}
+        ${zoomToolsHtml()}
         <div class="grid-wrap" id="gridWrap">${boardMarkup(S)}</div>
         ${loopNoteHtml()}
         ${teleportNoteHtml()}

@@ -9,6 +9,7 @@ import { isPortalPair, portalPartner } from '../../core/geom.js';
 import { portalIcon, portalColorVar, portalShape } from '../../view/portal-icons.js';
 import { currentArt } from '../../themes/art-state.js';
 import { CLASSIC_BOARD } from '../../themes/art.js';
+import { fitCamera, isZoomed, viewBoxAttr, viewOf } from '../../view/camera.js';
 
 // The coop trial may import this module but not src/themes: it takes the theme's 3D palette choice through here.
 export { solidIsDark } from '../../themes/art-state.js';
@@ -383,6 +384,14 @@ export const singlePathSvg = (route, { gradient = false } = {}) => `<path data-r
 const pathGradient = size => '<defs><linearGradient id="zip-path" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" ' +
   `y2="${size}"><stop offset="0" stop-color="var(--b-path-hi)"/><stop offset="1" stop-color="var(--b-path)"/></linearGradient></defs>`;
 
+// The whole picture of a square board as a view box, the margin of a wrap-around board included
+// (what the zoom camera, view/camera.js, shows a part of).
+export function boardView(p) {
+  const size = p.n * CELL;
+  const margin = (p.wrap ? WRAP_PAD : 0) * CELL;
+  return { x: -margin, y: -margin, w: size + 2 * margin, h: size + 2 * margin };
+}
+
 // Full SVG markup for the play board (S = play state). The svg itself has no border or padding, because
 // pointer positions are mapped to cells through its bounding box; the frame is the .grid-wrap around it.
 export function boardSvg(S) {
@@ -394,14 +403,16 @@ export function boardSvg(S) {
   const wrap = Boolean(p.wrap);
   const line = routeCells(p, S.path, S.finished);
   const route = line.length > 1 ? routeD(p, line) : '';
-  const pad = wrap ? WRAP_PAD : 0, margin = pad * CELL;
-  const view = `${-margin} ${-margin} ${size + 2 * margin} ${size + 2 * margin}`;
+  const pad = wrap ? WRAP_PAD : 0;
+  const full = boardView(p);
+  const cam = S.cam ?? fitCamera(full); // the zoom of this game (S.cam, view/camera.js)
+  const view = viewBoxAttr(viewOf(full, cam));
 
   const tiled = skin().grid === 'tiles' && !p.holes && !wrap;
   const gradient = skin().gradient && !two;
   let svg = `<svg viewBox="${view}" class="zip-svg${tiled ? ' skin-tiles' : ''}${p.holes ? ' cutout' : ''}` +
     `${p.arrows ? ' arrows' : ''}${wrap ? ' wrap' : ''}${p.portals ? ' teleport' : ''}` +
-    `${two ? ' twopaths' : ''}" ` +
+    `${two ? ' twopaths' : ''}${isZoomed(cam) ? ' zoomed' : ''}" ` +
     `style="${maxBoardCss(n, pad)}">`;
   svg += gradient ? pathGradient(size) : '';
   svg += p.holes ? cutoutLayers(p) : wrap ? wrapLayers(size) : tiled ? tileLayers(size) : gridLines(size);

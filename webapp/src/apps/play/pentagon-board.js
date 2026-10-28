@@ -3,6 +3,7 @@ import { topologyOf } from '../../core/surface/puzzle.js';
 import {
   COLORS, CELL, badgeColors, singlePathSvg, wrongMoveMarkAt, correctMoveRingAt,
 } from './board.js';
+import { fitCamera, isZoomed, viewBoxAttr, viewOf } from '../../view/camera.js';
 
 // The play board of a Pentagon puzzle (core/pentagon.js, p.surface === 'pentagon'): a flat
 // patch of pentagon cells, drawn in the same style as the square board (board.js): white tiles on
@@ -163,8 +164,10 @@ export function pentagonBoardSvg(S) {
   const { view } = g;
   const visited = new Set(S.path);
   const route = S.path.length > 1 ? pentagonRouteD(p, S.path) : '';
-  let svg = `<svg viewBox="${num(view.x)} ${num(view.y)} ${num(view.w)} ${num(view.h)}" `
-    + `class="zip-svg pentagon" style="${maxBoardCss(p)}">`;
+  const cam = S.cam ?? fitCamera(view); // the zoom of this game (S.cam, view/camera.js)
+  const zoomed = isZoomed(cam) ? ' zoomed' : '';
+  let svg = `<svg viewBox="${viewBoxAttr(viewOf(view, cam))}" `
+    + `class="zip-svg pentagon${zoomed}" style="${maxBoardCss(p)}">`;
   svg += pentagonLayers(p);
   svg += singlePathSvg(route);
   svg += badges(p, visited);

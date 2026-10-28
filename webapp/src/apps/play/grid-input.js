@@ -4,6 +4,7 @@ import { gridAdjacent } from '../../core/rules.js';
 import { labelRanks } from '../../core/model.js';
 import { legsUndo } from '../../features/share.js';
 import { WRAP_PAD, cellAtPoint } from '../../view/geometry.js';
+import { edgeVelocity, isZoomed } from '../../view/camera.js';
 import {
   routeCells, seamMarksSvg, jumpMarksSvg, loopOpenMarks, loopOpen, badgeColorsTwo, badgeColors,
   stepWrong,
@@ -15,9 +16,42 @@ import { t } from '../../ui/i18n.js';
 import { traceClear, traceStep } from '../../features/playlog.js';
 import { sfxBlocked, sfxCheckpoint, sfxMoveAfterCheckpoint, sfxMove, sfxBack } from '../../platform/sound.js';
 import { $, S, render } from './state.js';
-import { routeOf, solvedOf, stepOf } from './puzzle-kit.js';
+import { cellPoint, fullViewOf, routeOf, solvedOf, stepOf } from './puzzle-kit.js';
+import { createRouter } from './gesture.js';
+import { createZoom } from './zoom.js';
+import { setupZoomTools } from './zoom-ui.js';
 import { loopNoteKey, refreshTwoLegend } from './game-view.js';
 import { onSolved } from './game-flow.js';
+
+// Dragging at the edge of a zoomed board scrolls it, after the pointer has stayed there this long.
+const EDGE_DWELL_MS = 250;
+// The zoom of the board on the page and the picture point a zoom key keeps still (the head of
+// the path).
+let active = null;
+
+// + - 0 and the arrow keys zoom and pan the board (bound once, in main.js).
+export function onZoomKey(event) {
+  const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(event.target?.tagName ?? '');
+  if (!active || typing || S.screen !== 'game' || !active.zoom.svg.isConnected) {
+    return;
+  }
+  if (active.zoom.onKey(event, active.head())) {
+    event.preventDefault();
+  }
+}
+
+// A hint that is out of view on a zoomed board: the view moves to it (to the middle of the cells it
+// is about when there are two).
+export function showHintInView() {
+  if (!active || S.hintCell == null || !isZoomed(active.zoom.cam())) {
+    return;
+  }
+  const cells = [S.hintCell, S.hintWrongCell].filter(cell => cell != null);
+  const points = cells.map(cell => cellPoint(S.puzzle, cell));
+  const x = points.reduce((sum, point) => sum + point[0], 0) / points.length;
+  const y = points.reduce((sum, point) => sum + point[1], 0) / points.length;
+  active.zoom.keepInView([x, y]);
+}
 
 // Reset path: nothing is drawn any more (a Two paths puzzle: neither colour).
 export function resetPaths() {
@@ -41,7 +75,28 @@ export function setupGridInput(svg) {
   const two = Boolean(p.split);
   const pathEls = [...svg.querySelectorAll('[data-role="path"]')];
   const wrap = Boolean(p.wrap), pad = wrap ? WRAP_PAD : 0; // a wrap-around board has a margin
-  let dragging = false, last = null, rect = svg.getBoundingClientRect();
+  let dragging = false, last = null;
+  // The zoom (S.cam): the board's picture is `full`, the part of it on screen is the camera's. The
+  // pointer is mapped to cells through zoom.rect(), where the whole picture is on the page.
+  const full = fullViewOf(p);
+  const router = createRouter();
+  let pinching = false;
+  const zoom = createZoom({
+    svg,
+    full,
+    across: isPentagon(p) ? pentagonAcross(p) : n + 2 * pad,
+    get: () => S.cam,
+    set: cam => {
+      S.cam = cam;
+    },
+    touchBusy: () => pinching || router.mode() !== 'idle',
+  });
+  // the picture point of the head of the path: what a zoom button keeps still, and what follows
+  const head = () => {
+    const cell = S.path[S.path.length - 1];
+    return cell == null ? null : cellPoint(p, cell);
+  };
+  active = { zoom, head };
   // Highest checkpoint number crossed anywhere along the current path (0 = none yet, since
   // checkpoints are visited in ascending order this is just "how many crossed so far") — used to
   // pick a distinct, rising pitch for each post-checkpoint segment's moves. Recomputed from the
@@ -135,6 +190,7 @@ export function setupGridInput(svg) {
   }
   // Two paths: a press picks the colour it draws (a path's own cell, a 1, or the head it continues)
   function chooseColour(x, y) {
+    const rect = zoom.rect();
     const cell = cellAtPoint(n, x - rect.left, y - rect.top, rect.width, rect.height, pad, wrap);
     if (cell < 0) return;
     S.colour = pickColour(p, S.paths, cell, S.colour);
@@ -144,6 +200,7 @@ export function setupGridInput(svg) {
   }
   const across = isPentagon(p) ? pentagonAcross(p) : n; // cells across the board, about
   function move(x, y) { // interpolate so fast drags don't skip cells
+    const rect = zoom.rect();
     const cell = (px, py) => {
       if (isPentagon(p)) return pentagonCellAt(p, ...pentagonPoint(p, rect, px, py));
       return cellAtPoint(n, px - rect.left, py - rect.top, rect.width, rect.height, pad, wrap);
@@ -154,13 +211,151 @@ export function setupGridInput(svg) {
     } else walkTo(cell(x, y));
     last = { x, y };
   }
-  svg.addEventListener('pointerdown', e => {
-    e.preventDefault(); dragging = true; last = null; rect = svg.getBoundingClientRect();
-    try { svg.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-    if (two) chooseColour(e.clientX, e.clientY);
-    move(e.clientX, e.clientY);
+  // Dragging at the edge of a zoomed board scrolls it: a frame loop while the pointer is in the
+  // edge band, after it has stayed there for EDGE_DWELL_MS.
+  let pointer = null;
+  let scrollFrame = 0;
+  let edgeSince = 0;
+  let scrollAt = 0;
+  function stopScroll() {
+    if (scrollFrame) {
+      cancelAnimationFrame(scrollFrame);
+    }
+    scrollFrame = 0;
+    edgeSince = 0;
+    scrollAt = 0;
+  }
+  function scrollTick(now) {
+    scrollFrame = 0;
+    if (!dragging || !pointer || !isZoomed(zoom.cam())) {
+      return;
+    }
+    const velocity = edgeVelocity(pointer.x, pointer.y, zoom.box());
+    if (!velocity[0] && !velocity[1]) {
+      edgeSince = 0;
+      scrollAt = 0;
+      return;
+    }
+    if (!edgeSince) {
+      edgeSince = now;
+    }
+    const seconds = scrollAt ? Math.min(0.05, (now - scrollAt) / 1000) : 0;
+    scrollAt = now;
+    if (now - edgeSince >= EDGE_DWELL_MS) {
+      if (!zoom.driftBy(velocity, seconds)) {
+        return; // at the edge of the board: nothing more until the pointer moves
+      }
+      move(pointer.x, pointer.y);
+    }
+    scrollFrame = requestAnimationFrame(scrollTick);
+  }
+  function watchEdge(x, y) {
+    pointer = { x, y };
+    if (!scrollFrame && isZoomed(zoom.cam())) {
+      scrollFrame = requestAnimationFrame(scrollTick);
+    }
+  }
+
+  // What the router (gesture.js) asks for: a press that draws, a pinch, a pan, and the short wait
+  // before a touch draws.
+  let timer = 0;
+  const actions = {
+    timer: a => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (svg.isConnected) {
+          perform(router.timeout());
+        }
+      }, a.ms);
+    },
+    'timer-clear': () => clearTimeout(timer),
+    'draw-start': a => {
+      dragging = true;
+      last = null;
+      if (two) {
+        chooseColour(a.x, a.y);
+      }
+      move(a.x, a.y);
+      watchEdge(a.x, a.y);
+    },
+    'draw-move': a => {
+      move(a.x, a.y);
+      watchEdge(a.x, a.y);
+    },
+    'draw-end': () => {
+      dragging = false;
+      last = null;
+      stopScroll();
+      render();
+      // the page was drawn again: `active` is the zoom of the new one
+      if (!S.finished && active) {
+        active.zoom.keepInView(active.head());
+      }
+    },
+    'gesture-start': a => {
+      pinching = true;
+      zoom.pinchBegin(a.a, a.b);
+    },
+    'gesture-move': a => zoom.pinchMove(a.a, a.b),
+    'gesture-end': () => {
+      pinching = false;
+      zoom.pinchEnd();
+    },
+    'pan-start': () => {
+      zoom.stop();
+      zoom.refresh();
+    },
+    'pan-move': a => zoom.panBy(a.dx, a.dy),
+  };
+  const perform = list => list.forEach(a => actions[a.do]?.(a));
+  const eventOf = e => ({
+    id: e.pointerId,
+    type: e.pointerType,
+    button: e.button,
+    x: e.clientX,
+    y: e.clientY,
+    cancel: e.type === 'pointercancel',
   });
-  svg.addEventListener('pointermove', e => { if (!dragging) return; e.preventDefault(); move(e.clientX, e.clientY); });
-  const up = e => { if (!dragging) return; dragging = false; last = null; try { svg.releasePointerCapture(e.pointerId); } catch { /* ignore */ } render(); };
-  svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', up);
+  svg.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    zoom.refresh();
+    try {
+      svg.setPointerCapture(e.pointerId);
+    } catch {
+      /* the pointer is gone already */
+    }
+    perform(router.down(eventOf(e)));
+  });
+  svg.addEventListener('pointermove', e => {
+    const list = router.move(eventOf(e));
+    if (!list.length) {
+      return;
+    }
+    e.preventDefault();
+    perform(list);
+  });
+  const up = e => {
+    try {
+      svg.releasePointerCapture(e.pointerId);
+    } catch {
+      /* the pointer is gone already */
+    }
+    perform(router.up(eventOf(e)));
+  };
+  svg.addEventListener('pointerup', up);
+  svg.addEventListener('pointercancel', up);
+  // a right-drag pans a zoomed board: no menu then
+  svg.addEventListener('contextmenu', e => {
+    if (isZoomed(zoom.cam())) {
+      e.preventDefault();
+    }
+  });
+
+  const refreshTools = setupZoomTools(zoom, head);
+  if (typeof ResizeObserver === 'function') {
+    new ResizeObserver(() => {
+      zoom.refresh();
+      refreshTools();
+    }).observe(svg);
+  }
 }
