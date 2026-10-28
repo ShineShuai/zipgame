@@ -5,7 +5,9 @@
 // What is written there:
 //   <hash>.json   one bundle per theme; the name is the first 24 hex digits of the sha256 of the file, so it cannot be guessed from the
 //                 theme's id and a changed theme is a new file (nothing stale in a cache)
-//   <pool>        the manifest (THEMES.pool): [{ id, v, mode, name, chrome, layout, swatches, symbol, f, live }], `f` being the file's name
+//   <pool>        the manifest (THEMES.pool): [{ id, v, mode, name, chrome, layout, swatches, symbol, f, live }], `f` being the file's name.
+//                 The built-in themes (light, dark: webapp/src/themes/builtin.js) are listed first, with no `f` and no file: the app has them,
+//                 so they are in the pool like any other (dev reveal, offered again to a player who replaced them)
 // `"live": false` in a theme's theme.json marks a draft: it is in the manifest (the dev reveal lists it) and is never offered to a player.
 // Nothing of themes/ is copied: no theme.json, art.json or font file, only the packed bundles. A theme with a problem fails the build.
 import { createHash } from 'node:crypto';
@@ -14,23 +16,27 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { THEMES } from '../../webapp/src/config.js';
+import { BUILTIN, BUILTIN_IDS } from '../../webapp/src/themes/builtin.js';
 import { FILE_RE, cleanPool } from '../../webapp/src/themes/source.js';
 import { loadBase, loadThemes, packTheme } from './pack.mjs';
 
 export const SITE_DIR = /([\w-]+)\/$/.exec(THEMES.base)?.[1];
 export const POOL_FILE = THEMES.pool;
+const META_KEYS = ['id', 'v', 'themeApi', 'mode', 'name', 'chrome', 'layout', 'swatches', 'symbol'];
 const stem = text => createHash('sha256').update(text).digest('hex').slice(0, 24);
 
 // Packs `themes` (default: every theme of themes/) into `<out>/<SITE_DIR>/` (emptied first). Returns the manifest; throws on a problem.
 export function buildSite(out, { themes = loadThemes(), base = loadBase(), log = () => {} } = {}) {
   if (!SITE_DIR) throw new Error(`config.js THEMES.base ${THEMES.base}: no folder name to build into`);
   const ids = themes.map(t => t.id);
+  const taken = ids.filter(id => BUILTIN_IDS.includes(id));
+  if (taken.length) throw new Error(`themes named like a built-in theme: ${taken.join(', ')}`);
   const repeated = ids.filter((id, i) => ids.indexOf(id) !== i);
   if (repeated.length) throw new Error(`themes with the same id: ${[...new Set(repeated)].join(', ')}`);
   const dir = join(out, SITE_DIR);
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
-  const manifest = [];
+  const manifest = BUILTIN.map(b => ({ ...Object.fromEntries(META_KEYS.map(k => [k, b[k]])), live: true }));
   const failed = [];
   for (const theme of themes) {
     const { bundle, problems, size } = packTheme(theme, base);
@@ -59,6 +65,7 @@ export function checkSite(out) {
   if (!pool || pool.length !== manifest.length) problems.push(`${SITE_DIR}/${POOL_FILE}: the app drops entries of it`);
   const listed = new Set();
   for (const x of manifest) {
+    if (BUILTIN_IDS.includes(x.id)) continue;   // part of the app: no file
     if (!FILE_RE.test(x.f ?? '')) { problems.push(`${x.id}: malformed file name`); continue; }
     listed.add(`${x.f}.json`);
     const file = join(dir, `${x.f}.json`);
@@ -80,7 +87,7 @@ if (import.meta.url === new URL(process.argv[1], 'file://').href) {
       console.log(`${SITE_DIR}/: ${readdirSync(join(b, SITE_DIR)).length} files, sound`);
     } else if (a && !a.startsWith('--')) {
       const manifest = buildSite(a, { log: console.log });
-      console.log(`${manifest.length} themes (${manifest.filter(m => !m.live).length} drafts) -> ${join(a, SITE_DIR)}/`);
+      console.log(`${manifest.length} themes (${BUILTIN.length} built-in, ${manifest.filter(m => !m.live).length} drafts) -> ${join(a, SITE_DIR)}/`);
     } else {
       console.error('usage: build-site.mjs <site-dir> | --check <site-dir> | --dir');
       process.exit(2);

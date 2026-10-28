@@ -1,11 +1,9 @@
 """Generate every variant sheet and patch the prototype pages.
 
-Usage: build_all.py ASSETS [OUT [WOOD_HTML WOOD_SVG]]
+Usage: build_all.py ASSETS [OUT]
 ASSETS is the assets folder (it holds design/ and images/logo/proto/). Without OUT the files are
 rewritten in place; with OUT (a scratch folder, it is replaced) ASSETS stays untouched. A tree that
-still has the old Users/vs/Downloads/assets prefix works as well. Styles without a page are skipped,
-and so is 27-wood when wood.py is not there. The wood files default to the ones in ASSETS; pass the
-newer mini-board wood files when ASSETS still has the generic ones.
+still has the old Users/vs/Downloads/assets prefix works as well. Styles without a page are skipped.
 """
 
 import os
@@ -21,11 +19,6 @@ import concepts_b  # noqa: F401
 import concepts_c  # noqa: F401
 import concepts_d  # noqa: F401
 import concepts_e  # noqa: F401
-try:
-    import wood
-except ImportError:  # 27-wood is optional
-    wood = None
-
 PROTO = "images/logo/proto"
 DESIGN = "design"
 LEGACY = "Users/vs/Downloads/assets"
@@ -56,7 +49,7 @@ def first_size(block, default=48):
     return int(match.group(1)) if match else default
 
 
-def patch_grid(html, opener, item_re, make_item, suffix, style, label, icons=None):
+def patch_grid(html, opener, item_re, make_item, suffix, style, label):
     """Replace a run of items; returns (html, replaced?)."""
     pattern = re.compile(
         r'(<div class="%s"[^>]*>)((?:\s*%s)+)(\s*</div>)' % (opener, item_re), re.S
@@ -65,7 +58,7 @@ def patch_grid(html, opener, item_re, make_item, suffix, style, label, icons=Non
     if not match:
         return html, False
     size = first_size(match.group(2))
-    icons = icons or icon_items(style, suffix)
+    icons = icon_items(style, suffix)
     items = "".join(
         make_item(i, kind, with_size(icons[kind], size)) for i, kind in enumerate(ORDER)
     )
@@ -85,18 +78,6 @@ def widen(html, selector):
     """Five to six columns for a grid selector like .vg."""
     pattern = re.compile(r"(\.%s\{[^}]*?grid-template-columns:repeat\()5(,1fr\))" % selector)
     return pattern.sub(r"\g<1>6\g<2>", html, count=1)
-
-
-def wood_icons(sheet_text):
-    icons = {}
-    for match in re.finditer(
-        r'<g id="v-([a-z]+)" transform="[^"]+"><title>[^<]*</title>(.*?)</g>', sheet_text, re.S
-    ):
-        icons[match.group(1)] = (
-            f'<svg viewBox="0 0 48 48" width="54" height="54" aria-hidden="true">'
-            f"{match.group(2)}</svg>"
-        )
-    return icons
 
 
 def patch_bento17(html, style):
@@ -170,9 +151,9 @@ def patch_bento33(html, style):
     return widen(html, "av")
 
 
-def patch_page(html, key, style, icons=None):
+def patch_page(html, key, style):
     html, done = patch_grid(
-        html, "vg", r'<div class="vi">.*?</div>', vi_item, "g", style, key, icons
+        html, "vg", r'<div class="vi">.*?</div>', vi_item, "g", style, key
     )
     if not done:
         raise SystemExit(f"{key}: .vg not found")
@@ -191,7 +172,7 @@ def patch_page(html, key, style, icons=None):
     return html
 
 
-def main(src, out=None, wood_html=None, wood_svg=None):
+def main(src, out=None):
     if os.path.isdir(f"{src}/{LEGACY}"):
         src = f"{src}/{LEGACY}"
     if out and os.path.abspath(out) != os.path.abspath(src):
@@ -208,22 +189,8 @@ def main(src, out=None, wood_html=None, wood_svg=None):
         if not os.path.exists(page):
             print("skip", key, "(no page)")
             continue
-        html_source = read(page)
-        icons = None
-        if key == "27-wood":
-            html_source = read(wood_html or page)
-            original = read(wood_svg or sheet)
-
-            def make_group(kind, label, pos, style=style):
-                defs, body = core.scene(style, kind, f"27{kind}")
-                return f'<g id="v-{kind}" transform="{pos}"><title>{label}</title>{body}</g>'
-
-            sheet_text = wood.wood_sheet(original, make_group)
-            write(sheet, sheet_text)
-            icons = wood_icons(sheet_text)
-        else:
-            write(sheet, core.sheet_svg(style))
-        write(page, patch_page(html_source, key, style, icons))
+        write(sheet, core.sheet_svg(style))
+        write(page, patch_page(read(page), key, style))
         if hasattr(style, "ALTS"):
             write(f"{out}/{PROTO}/{key}-teleport-alts.svg", core.alts_svg(style))
         print("ok", key)
@@ -232,4 +199,4 @@ def main(src, out=None, wood_html=None, wood_svg=None):
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         raise SystemExit(__doc__)
-    main(*sys.argv[1:5])
+    main(*sys.argv[1:3])

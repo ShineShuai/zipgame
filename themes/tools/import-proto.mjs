@@ -6,11 +6,14 @@
 // and writes themes/<id>/theme.json and art.json. A design page zigzag-NN-<id>.html is the theme <id>; every page of the folder is imported.
 // What the pages do not carry (Chinese name, symbol, layout) is in proto-meta.json; a design with no entry there gets the English name,
 // the default symbol and the default layout, so a new design page needs no other step (an entry with "skip" keeps a page out: its
-// theme is written by hand). The generated theme.json says `"proto": ...`:
+// theme is written by hand; an entry with "page" says which page is the design when its name differs from the theme id). The generated theme.json says `"proto": ...`:
 // a theme without it was written by hand and is never overwritten (unless --force).
 // Every value is read from the page's own CSS and board mock, so a new version of a design is a new import, not a rewrite. Run it again
 // and the generated files change: edit proto-meta.json (or the design) rather than the generated theme, or drop the theme from the
 // meta and own it by hand. Prints what it could not read and fell back on.
+// `override` (seeds, vars, board, swatches) in a design's entry of proto-meta.json wins over what is read from the page: for the decisions a
+// page cannot carry (a page whose palette or mock the reader misreads, a tuned dark-surface blue, a wood-grain background). That keeps a
+// theme regenerable from its page and its entry, never hand-edited.
 import {
   existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync,
 } from 'node:fs';
@@ -28,6 +31,8 @@ import { DEFAULT_SYMBOL } from './pack.mjs';
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const THEMES = fileURLToPath(new URL('../', import.meta.url));
 const META = JSON.parse(readFileSync(`${HERE}proto-meta.json`, 'utf8'));
+// the page name -> the theme id, for the designs whose page is not named after their theme ("page" in proto-meta.json)
+const THEME_OF_PAGE = Object.fromEntries(Object.entries(META).filter(([, v]) => v.page).map(([id, v]) => [v.page, id]));
 const CELL = 60;   // the mock board is 300 units for 5 cells
 const ICON_IDS = {
   std: 'standard', cut: 'cutout', arr: 'arrows', exact: 'exact', wrap: 'wrap', loop: 'loop', tele: 'teleport', two: 'twopaths', pent: 'pentagon', tetra: 'tetra', cube: 'cube', ball: 'ball',
@@ -188,7 +193,8 @@ function cleanIcon(inner, notes, label, compact = false) {
 }
 
 // ---- the whole design ----
-// The designs of an assets folder: { id: { design, sheet } } from the page names zigzag-NN-<id>.html
+// The designs of an assets folder: { id: { design, sheet } } from the page names zigzag-NN-<page>.html (the page is the id, or the
+// "page" of the id's entry in proto-meta.json)
 export function discover(assets) {
   const found = {};
   const dir = `${assets}/design`;
@@ -196,10 +202,11 @@ export function discover(assets) {
   for (const file of readdirSync(dir).sort()) {
     const m = /^zigzag-(\d+)-([a-z][a-z0-9-]*)\.html$/.exec(file);
     if (!m) continue;
-    if (!ID_RE.test(m[2])) throw new Error(`${file}: "${m[2]}" is not a theme id`);
-    if (META[m[2]]?.skip) continue;   // a page that a hand-written theme already stands for
-    if (found[m[2]]) throw new Error(`${file}: the id ${m[2]} is the design of ${found[m[2]].design} too`);
-    found[m[2]] = { design: file.replace(/\.html$/, ''), sheet: `${m[1]}-${m[2]}` };
+    const id = THEME_OF_PAGE[m[2]] ?? m[2];
+    if (!ID_RE.test(id)) throw new Error(`${file}: "${id}" is not a theme id`);
+    if (META[id]?.skip) continue;   // a page that a hand-written theme already stands for
+    if (found[id]) throw new Error(`${file}: the id ${id} is the design of ${found[id].design} too`);
+    found[id] = { design: file.replace(/\.html$/, ''), sheet: `${m[1]}-${m[2]}` };
   }
   return found;
 }
@@ -362,6 +369,7 @@ export function importDesign(id, assets, notes = [], found = discover(assets)[id
     else note('a bento layout needs four tile colours; the page has ' + tiles.length);
   }
   if (seedOut.pathHi) seedOut.pathHi = ensure(seedOut.pathHi, tiled, 3);
+  Object.assign(seedOut, meta.override?.seeds);   // the design's decisions a page cannot carry (proto-meta.json `override`)
 
   // shape, size and type
   const radius = (v, max) => { const n = px(v); return n === undefined ? undefined : n >= 28 && max === 28 ? '999px' : `${Math.min(n, max)}px`; };
@@ -400,11 +408,13 @@ export function importDesign(id, assets, notes = [], found = discover(assets)[id
   vars['--pop-shadow'] = shadowOk ? shadow : '0 12px 30px rgba(0, 0, 0, 0.22)';
   const h = px(rule('.go', 'height'));
   if (h) vars['--ctl-h'] = `${Math.min(56, Math.max(40, h))}px`;
+  Object.assign(vars, meta.override?.vars);
   for (const [k, v] of Object.entries(vars)) {
     const bad = checkValue(k, v, undefined, fonts.map(f => f.family));
     if (bad.length) { note(`${k} ${v}: ${bad[0]}; left at the default`); delete vars[k]; }
   }
 
+  Object.assign(skin, meta.override?.board);
   // art
   const icons = {};
   for (const [key, name] of Object.entries(ICON_IDS)) {
@@ -420,7 +430,7 @@ export function importDesign(id, assets, notes = [], found = discover(assets)[id
     if (!mark) note('the brand mark of the app bar is refused by the whitelist or too long: the shared mark is used');
   } else note('no brand mark in the app bar');
 
-  const swatches = [bg, surface, seedOut.accent, orange];
+  const swatches = meta.override?.swatches ?? [bg, surface, seedOut.accent, orange];
   const theme = {
     id, v: 1, themeApi: 1, proto: meta.design, mode: dark ? 'dark' : 'light', name: meta.name, symbol: meta.symbol, layout: meta.layout, swatches,
     ...(fonts.length ? { fonts } : {}), seeds: seedOut, vars,

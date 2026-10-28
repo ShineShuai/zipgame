@@ -1,103 +1,104 @@
 {
-  "id": "bauhaus",
-  "v": 1,
-  "themeApi": 1,
-  "mode": "light",
-  "name": {
-    "en": "Bauhaus",
-    "zh": "包豪斯"
-  },
-  "symbol": "<circle cx=\"7.5\" cy=\"8\" r=\"3.8\"/><rect x=\"13\" y=\"4.2\" width=\"7\" height=\"7\"/><path d=\"M12 13.5l4.5 7.5h-9z\"/>",
-  "layout": {
-    "menu": "bento",
-    "picker": "tiles",
-    "actions": "side"
-  },
-  "swatches": [
-    "#ece4d2",
-    "#fbf8f1",
-    "#c8391d",
-    "#e8a920"
-  ],
-  "fonts": [
-    {
-      "family": "Jost",
-      "weight": "400 700",
-      "file": "jost-latin.woff2"
-    }
-  ],
-  "seeds": {
-    "bg": "#ece4d2",
-    "surface": "#fbf8f1",
-    "surface2": "#f4efe2",
-    "line": "#cfc6af",
-    "lineStrong": "#a89f86",
-    "ink": "#1f2a30",
-    "muted": "#4a5459",
-    "accent": "#c8391d",
-    "onAccent": "#ffffff",
-    "orange": "#e8a920",
-    "onOrange": "#1f2a30",
-    "tile": "#fbf8f1",
-    "tileEdge": "#cfc6af",
-    "wall": "#1f2a30",
-    "path": "#c8391d",
-    "red": "#c8391d",
-    "blue": "#2a4d9b",
-    "numFill": "#fbf8f1",
-    "numText": "#1f2a30",
-    "numRing": "#1f2a30",
-    "numvFill": "#1f2a30",
-    "numvText": "#ffffff",
-    "icons": [
-      "#c8391d",
-      "#1f2a30",
-      "#1f7a7a",
-      "#2a4d9b"
-    ],
-    "iconInk": "#1f2a30",
-    "iconPaper": "#fbf8f1",
-    "vt": [
-      [
-        "#c8391d",
-        "#fbf8f1",
-        "#1f2a30"
-      ],
-      [
-        "#e8a920",
-        "#1f2a30",
-        "#fbf8f1"
-      ],
-      [
-        "#1f7a7a",
-        "#fbf8f1",
-        "#1f2a30"
-      ],
-      [
-        "#2a4d9b",
-        "#fbf8f1",
-        "#1f2a30"
-      ]
-    ]
-  },
-  "vars": {
-    "--font-body": "\"Jost\", \"Futura\", \"Century Gothic\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
-    "--fw-head": "700",
-    "--r-1": "12px",
-    "--r-2": "22px",
-    "--r-3": "22px",
-    "--r-4": "22px",
-    "--r-chip": "12px",
-    "--r-icon": "999px",
-    "--bw": "0px",
-    "--bw-card": "0px",
-    "--shadow": "none",
-    "--pop-shadow": "0 10px 24px rgba(31, 42, 48, 0.25)",
-    "--bar-h": "62px",
-    "--ctl-h": "52px",
-    "--vi-scale": "1.1",
-    "--tile-min": "132px",
-    "--pad": "16px",
-    "--gap": "10px"
+ "id": "bauhaus",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-17-bauhaus-bento",
+ "mode": "light",
+ "name": {
+  "en": "Bauhaus",
+  "zh": "包豪斯"
+ },
+ "symbol": "<circle cx=\"7.5\" cy=\"8\" r=\"3.8\"/><rect x=\"13\" y=\"4.2\" width=\"7\" height=\"7\"/><path d=\"M12 13.5l4.5 7.5h-9z\"/>",
+ "layout": {
+  "menu": "bento",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#ece4d2",
+  "#fbf8f1",
+  "#c8391d",
+  "#e8a920"
+ ],
+ "fonts": [
+  {
+   "family": "Jost",
+   "weight": "400 700",
+   "file": "jost-latin.woff2"
   }
+ ],
+ "seeds": {
+  "bg": "#ece4d2",
+  "surface": "#fbf8f1",
+  "ink": "#1f2a30",
+  "muted": "#4a5459",
+  "accent": "#c8391d",
+  "onAccent": "#ffffff",
+  "orange": "#e8a920",
+  "tile": "#fbf8f1",
+  "tileEdge": "#cfc6af",
+  "wall": "#1f2a30",
+  "path": "#c8391d",
+  "red": "#c8391d",
+  "blue": "#2a4d9b",
+  "numFill": "#fbf8f1",
+  "numText": "#1f2a30",
+  "numvFill": "#1f2a30",
+  "numvText": "#ffffff",
+  "onOrange": "#1f2a30",
+  "surface2": "#f4efe2",
+  "line": "#cfc6af",
+  "lineStrong": "#a89f86",
+  "numRing": "#1f2a30",
+  "icons": [
+   "#c8391d",
+   "#1f2a30",
+   "#1f7a7a",
+   "#2a4d9b"
+  ],
+  "iconInk": "#1f2a30",
+  "iconPaper": "#fbf8f1",
+  "vt": [
+   [
+    "#c8391d",
+    "#fbf8f1",
+    "#1f2a30"
+   ],
+   [
+    "#e8a920",
+    "#1f2a30",
+    "#fbf8f1"
+   ],
+   [
+    "#1f7a7a",
+    "#fbf8f1",
+    "#1f2a30"
+   ],
+   [
+    "#2a4d9b",
+    "#fbf8f1",
+    "#1f2a30"
+   ]
+  ]
+ },
+ "vars": {
+  "--font-body": "\"Jost\", Futura, Century Gothic, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "12px",
+  "--r-2": "22px",
+  "--r-3": "22px",
+  "--r-4": "22px",
+  "--r-chip": "12px",
+  "--r-icon": "999px",
+  "--bw": "0px",
+  "--bw-card": "0px",
+  "--shadow": "none",
+  "--pop-shadow": "0 10px 24px rgba(31, 42, 48, 0.25)",
+  "--ctl-h": "52px",
+  "--bar-h": "62px",
+  "--vi-scale": "1.1",
+  "--tile-min": "132px",
+  "--pad": "16px",
+  "--gap": "10px"
+ }
 }

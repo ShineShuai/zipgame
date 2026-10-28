@@ -17,6 +17,7 @@ import {
 } from './pack.mjs';
 import { create, remove, setLive } from './manage.mjs';
 import { discover, importDesign } from './import-proto.mjs';
+import { FONT_TEXT, cssUrl, fetchFont, fetchMissing, woff2Url } from './fonts-fetch.mjs';
 import { THEMES as SITE } from '../../webapp/src/config.js';
 import { FILE_RE, MAX_POOL, cleanPool } from '../../webapp/src/themes/source.js';
 import { LAYOUT, PAIRS, TOKENS } from './schema.js';
@@ -25,6 +26,7 @@ import { boardSvg, iconSvg } from '../preview/render.js';
 import { cleanArt, ICON_IDS } from '../../webapp/src/themes/art.js';
 import { cleanBundle } from '../../webapp/src/themes/bundle.js';
 import { cleanLayout } from '../../webapp/src/themes/layout.js';
+import { BUILTIN, BUILTIN_IDS } from '../../webapp/src/themes/builtin.js';
 import { cleanEntry } from '../../webapp/src/themes/pool.js';
 import { cleanInner, cleanSvg } from '../../webapp/src/themes/svg.js';
 
@@ -150,18 +152,21 @@ t('the sample board and icons of the preview are well-formed and use tokens only
   }
 });
 
-t('the site build writes one hashed file per theme and a manifest the app accepts; drafts are listed, never offered; no source is copied', () => {
+t('the site build writes one hashed file per theme and a manifest the app accepts (light and dark in it, with no file); drafts are listed, never offered; no source is copied', () => {
   const out = mkdtempSync(`${tmpdir()}/site-`);
   try {
     const draft = THEMES[THEMES.length - 1].id;
     const themes = THEMES.map(th => (th.id === draft ? { ...th, live: false } : th));
     const manifest = buildSite(out, { themes, base: BASE });
-    eq(manifest.map(m => m.id).sort(), THEMES.map(th => th.id).sort(), 'every theme');
+    const files = manifest.filter(m => !BUILTIN_IDS.includes(m.id));
+    eq(manifest.map(m => m.id).sort(), [...THEMES.map(th => th.id), ...BUILTIN_IDS].sort(), 'every theme, and the built-ins');
+    eq(manifest.filter(m => !m.f).map(m => m.id), BUILTIN_IDS, 'light and dark are in the pool, offered like the others, and have no file: the app has them');
     eq(manifest.filter(m => !m.live).map(m => m.id), [draft], 'the draft is flagged');
+    for (const b of BUILTIN) eq(cleanEntry(manifest.find(m => m.id === b.id)), b, `${b.id}: the app takes its own copy`);
     const dir = join(out, SITE_DIR);
-    eq(readdirSync(dir).sort(), [...manifest.map(m => `${m.f}.json`), POOL_FILE].sort(), 'the bundles and the manifest, nothing else (no theme.json, art.json or font)');
+    eq(readdirSync(dir).sort(), [...files.map(m => `${m.f}.json`), POOL_FILE].sort(), 'the bundles and the manifest, nothing else (no theme.json, art.json or font)');
     eq([SITE_DIR, POOL_FILE], [/([\w-]+)\/$/.exec(SITE.base)[1], SITE.pool], 'the folder and the manifest are the ones config.js names');
-    for (const m of manifest) {
+    for (const m of files) {
       ok(FILE_RE.test(m.f), `${m.id}: the shape of the name the app accepts`);
       const text = readFileSync(join(dir, `${m.f}.json`), 'utf8');
       eq(createHash('sha256').update(text).digest('hex').slice(0, 24), m.f, `${m.id}: the name is the hash of the content`);
@@ -175,27 +180,69 @@ t('the site build writes one hashed file per theme and a manifest the app accept
     eq(cleanPool(JSON.parse(pool)).map(c => [c.entry.id, c.live]).sort(), manifest.map(m => [m.id, m.live]).sort(), 'the app reads the manifest as it was written');
     eq(checkSite(out), [], 'a sound build');
 
-    writeFileSync(join(dir, `${manifest[0].f}.json`), '{}');
+    writeFileSync(join(dir, `${files[0].f}.json`), '{}');
     ok(checkSite(out).some(p => p.includes('not named by its content')), 'a changed file is found');
-    rmSync(join(dir, `${manifest[1].f}.json`));
+    rmSync(join(dir, `${files[1].f}.json`));
     ok(checkSite(out).some(p => p.includes('is missing')), 'a missing file is found');
     writeFileSync(join(dir, 'stray.json'), '{}');
     ok(checkSite(out).some(p => p.startsWith('stray.json')), 'a file the manifest does not list is found');
     writeFileSync(join(dir, POOL_FILE), '[1');
     eq(checkSite(out), [`${SITE_DIR}/${POOL_FILE}: not JSON`]);
 
-    eq(buildSite(out, { themes, base: BASE }).length, themes.length, 'a new build starts from an empty folder');
+    eq(buildSite(out, { themes, base: BASE }).length, themes.length + BUILTIN.length, 'a new build starts from an empty folder');
     eq(checkSite(out), []);
     ok(!existsSync(join(out, SITE_DIR, 'stray.json')));
     let error = '';
     try { buildSite(out, { themes: [themes[0], themes[0]], base: BASE }); } catch (e) { error = e.message; }
     ok(error.includes('same id'), 'two themes with one id fail the build');
     error = '';
+    try { buildSite(out, { themes: [{ ...themes[0], id: 'dark' }], base: BASE }); } catch (e) { error = e.message; }
+    ok(error.includes('built-in'), 'a theme named like a built-in fails the build');
+    error = '';
     try { buildSite(out, { themes: [{ ...themes[0], vars: { ...themes[0].vars, '--ctl-h': '90px' } }], base: BASE }); } catch (e) { error = e.message; }
     ok(error.includes('themes with problems') && error.includes('--ctl-h'), 'a theme with a problem (a token out of its bounds) fails the build');
   } finally { rmSync(out, { recursive: true, force: true }); }
 });
 
+
+t('fonts --fetch asks Google Fonts for the UI glyphs only, checks what comes back and writes it next to the theme (network mocked)', async () => {
+  const css = u => `@font-face{font-family:'X';font-weight:400 700;src:url(https://fonts.gstatic.com/l/font?kit=abc&v=1) format('woff2');}`;
+  const woff = n => Buffer.concat([Buffer.from('wOF2'), Buffer.alloc(n)]);
+  const net = ({ range = true, body = woff(2000), size = 200 } = {}) => {
+    const seen = [];
+    const get = async url => {
+      seen.push(url);
+      if (url.startsWith('https://fonts.googleapis.com/')) return /wght@\d+\.\.\d+/.test(url) && !range ? { ok: false, status: 400 } : { ok: true, status: 200, text: async () => css(url) };
+      return { ok: true, status: 200, bytes: async () => (size ? body : Buffer.alloc(0)) };
+    };
+    return { get, seen };
+  };
+  ok(cssUrl('Baloo 2', '500 800').includes('family=Baloo+2:wght@500..800&text=') && cssUrl('Patrick Hand', '400').includes('wght@400&'), 'a range or one weight');
+  ok(decodeURIComponent(cssUrl('A', '400').split('text=')[1].split('&')[0]) === FONT_TEXT && FONT_TEXT.length < 120, 'the glyphs: ASCII and a few marks, not a whole font');
+  eq(woff2Url(css()), 'https://fonts.gstatic.com/l/font?kit=abc&v=1');
+  eq(woff2Url("src:url(https://evil.example/x.woff2) format('woff2')"), null, 'only the font host');
+  const a = net();
+  eq((await fetchFont({ family: 'Fredoka', weight: '400 700' }, a.get)).weight, '400 700');
+  eq(a.seen.length, 2, 'the css, then the file');
+  const b = net({ range: false });
+  const r = await fetchFont({ family: 'Zilla Slab', weight: '500 700' }, b.get);
+  ok(r.weight === '500' && r.note.includes('static'), 'a static family: the lowest weight, and it says so');
+  for (const [bad, why] of [[{ body: Buffer.from('<html>') }, 'not a woff2'], [{ body: woff(BUDGET.font + 1) }, 'over the budget']]) {
+    let msg = '';
+    try { await fetchFont({ family: 'F', weight: '400' }, net(bad).get); } catch (e) { msg = e.message; }
+    ok(msg, why);
+  }
+  const dir = mkdtempSync(`${tmpdir()}/fonts-`);
+  try {
+    const themes = [{ id: 'one', fonts: [{ family: 'Fredoka', weight: '400 700', file: 'fredoka-latin.woff2' }] }, { id: 'two', fonts: [{ family: 'Sora', weight: '400', file: 'sora-latin.woff2' }] }];
+    const lines = [];
+    eq(await fetchMissing({ themes, only: ['one'], get: net().get, root: `${dir}/`, log: l => lines.push(l) }), { got: 1, failed: 0 });
+    ok(existsSync(join(dir, 'one/fonts/fredoka-latin.woff2')) && !existsSync(join(dir, 'two')), 'only the asked theme, in its own folder');
+    eq(await fetchMissing({ themes, get: net().get, root: `${dir}/`, log: l => lines.push(l) }), { got: 1, failed: 0 }, 'a file that is there is not fetched again');
+    eq(await fetchMissing({ themes: [{ id: 'three', fonts: [{ family: 'Nope', weight: '400', file: 'nope-latin.woff2' }] }], get: async () => ({ ok: false, status: 404 }), root: `${dir}/`, log: l => lines.push(l) }), { got: 0, failed: 1 }, 'a failure is counted, nothing is written');
+    ok(!existsSync(join(dir, 'three')));
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
 
 t('a theme is easy to add: five colours and a name are a whole theme, and the template is one', () => {
   const minimal = { mode: 'light', name: 'Plain', seeds: { bg: '#f4f1ea', surface: '#ffffff', ink: '#1f2430', muted: '#5b6270', accent: '#2f6fed' } };
@@ -252,8 +299,8 @@ t('the design sources are complete: every page has its icon sheet and its Two pa
   if (!pages.length) return;   // a checkout without the design pages
   for (const page of pages) {
     const key = page.slice('zigzag-'.length, -'.html'.length);
-    // the wood page is a hand-made one: its sheet and its generator (wood.py) are not part of the sources
-    if (key !== '27-wood') ok(existsSync(`${assets}/images/logo/proto/${key}-variants.svg`), `${key}: images/logo/proto/${key}-variants.svg (python3 assets/images/logo/proto/gen/build_all.py assets)`);
+    ok(existsSync(`${assets}/images/logo/proto/${key}-variants.svg`), `${key}: images/logo/proto/${key}-variants.svg (python3 assets/images/logo/proto/gen/build_all.py assets)`);
+    // wood has no hand-finished drawing: its Two paths is the engine's board scene (two routes, studs in their colours)
     if (key !== '27-wood') ok(existsSync(`${assets}/images/logo/proto/gen/two/${key}.svg`), `${key}: images/logo/proto/gen/two/${key}.svg, the Two paths drawing`);
   }
   for (const id of readdirSync(root).filter(d => existsSync(new URL(`${d}/theme.json`, root)))) {
@@ -297,7 +344,7 @@ t('a design page is a theme: every page of assets/design imports, packs without 
 let pass = 0;
 let fail = 0;
 for (const [name, fn] of tests) {
-  try { fn(); pass++; console.log(`ok    ${name}`); } catch (e) { fail++; console.log(`FAIL  ${name}: ${e.message}`); }
+  try { await fn(); pass++; console.log(`ok    ${name}`); } catch (e) { fail++; console.log(`FAIL  ${name}: ${e.message}`); }
 }
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

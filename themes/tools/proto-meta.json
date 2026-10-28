@@ -1,5 +1,5 @@
 {
- "_readme": "What the design pages do not carry: per theme the id, the Chinese name, the symbol of the theme button (24x24, currentColor) and the layout presets. import-proto.mjs reads the rest (colours, shapes, fonts, art) from assets/design and assets/images/logo/proto. A design not listed here still imports, with the English name, the default symbol and the default layout.",
+ "_readme": "What the design pages do not carry: per theme the id, the Chinese name, the symbol of the theme button (24x24, currentColor) and the layout presets. import-proto.mjs reads the rest (colours, shapes, fonts, art) from assets/design and assets/images/logo/proto. A design not listed here still imports, with the English name, the default symbol and the default layout. \"page\" names the design page when it differs from the theme id (zigzag-17-bauhaus-bento.html is the theme bauhaus).",
  "swiss": {
   "design": "zigzag-10-swiss",
   "sheet": "10-swiss",
@@ -98,8 +98,90 @@
   },
   "symbol": "<path d=\"M12 3 20 7.5v9L12 21 4 16.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9\"/>"
  },
- "bauhaus-bento": {
-  "skip": "the hand-written themes/bauhaus is the theme of this page (zigzag-17-bauhaus-bento)"
+ "bauhaus": {
+  "page": "bauhaus-bento",
+  "name": {
+   "en": "Bauhaus",
+   "zh": "包豪斯"
+  },
+  "layout": {
+   "menu": "bento",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<circle cx=\"7.5\" cy=\"8\" r=\"3.8\"/><rect x=\"13\" y=\"4.2\" width=\"7\" height=\"7\"/><path d=\"M12 13.5l4.5 7.5h-9z\"/>",
+  "override": {
+   "seeds": {
+    "surface": "#fbf8f1",
+    "surface2": "#f4efe2",
+    "line": "#cfc6af",
+    "lineStrong": "#a89f86",
+    "onOrange": "#1f2a30",
+    "tile": "#fbf8f1",
+    "tileEdge": "#cfc6af",
+    "red": "#c8391d",
+    "blue": "#2a4d9b",
+    "numFill": "#fbf8f1",
+    "numText": "#1f2a30",
+    "numRing": "#1f2a30",
+    "numvText": "#ffffff",
+    "icons": [
+     "#c8391d",
+     "#1f2a30",
+     "#1f7a7a",
+     "#2a4d9b"
+    ],
+    "iconInk": "#1f2a30",
+    "iconPaper": "#fbf8f1",
+    "vt": [
+     [
+      "#c8391d",
+      "#fbf8f1",
+      "#1f2a30"
+     ],
+     [
+      "#e8a920",
+      "#1f2a30",
+      "#fbf8f1"
+     ],
+     [
+      "#1f7a7a",
+      "#fbf8f1",
+      "#1f2a30"
+     ],
+     [
+      "#2a4d9b",
+      "#fbf8f1",
+      "#1f2a30"
+     ]
+    ]
+   },
+   "vars": {
+    "--r-2": "22px",
+    "--r-3": "22px",
+    "--r-4": "22px",
+    "--r-icon": "999px",
+    "--bw": "0px",
+    "--bar-h": "62px",
+    "--vi-scale": "1.1",
+    "--tile-min": "132px",
+    "--pad": "16px",
+    "--gap": "10px",
+    "--pop-shadow": "0 10px 24px rgba(31, 42, 48, 0.25)"
+   },
+   "board": {
+    "tileRx": 0.233,
+    "tileInset": 0.067,
+    "pathW": 0.233,
+    "numRingW": 0.033
+   },
+   "swatches": [
+    "#ece4d2",
+    "#fbf8f1",
+    "#c8391d",
+    "#e8a920"
+   ]
+  }
  },
  "editorial": {
   "design": "zigzag-18-editorial",
@@ -218,7 +300,61 @@
   "symbol": "<path d=\"M17.5 17A7.5 7.5 0 1 1 18 8\"/>"
  },
  "wood": {
-  "skip": "the hand-made themes/wood is the theme of this page (zigzag-27-wood); its sheet and wood.py are not part of the sources"
+  "name": {
+   "en": "Wood",
+   "zh": "木纹"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<ellipse cx=\"12\" cy=\"12\" rx=\"9\" ry=\"8\"/><ellipse cx=\"12.5\" cy=\"12\" rx=\"5.5\" ry=\"4.8\"/><circle cx=\"13\" cy=\"12\" r=\"1.4\"/>",
+  "override": {
+   "seeds": {
+    "bgTop": "#3a281c",
+    "surface2": "#4a3324",
+    "line": "#6b4a30",
+    "lineStrong": "#86603f",
+    "orange": "#d4a017",
+    "onOrange": "#2b1d14",
+    "tileEdge": "#b99a66",
+    "depth": "#b99a66",
+    "stage": "#4a3324",
+    "red": "#a4281f",
+    "blue": "#41689a",
+    "numFill": "#3a281c",
+    "numText": "#f4e6cf",
+    "numvFill": "#d4a017",
+    "numvText": "#2b1d14",
+    "icons": [
+     "#d4a017",
+     "#ead7ae",
+     "#b3402f",
+     "#6d8bb5",
+     "#5a3d22"
+    ],
+    "iconInk": "#120a05",
+    "iconPaper": "#ffffff"
+   },
+   "vars": {
+    "--bw-card": "1px",
+    "--bg-image": "repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 2px, transparent 2px 9px)",
+    "--bar-h": "62px",
+    "--ctl-h": "48px",
+    "--vi-scale": "1.05"
+   },
+   "board": {
+    "depth": 0.033,
+    "plateRx": 0.2
+   },
+   "swatches": [
+    "#2b1d14",
+    "#3a281c",
+    "#d4a017",
+    "#a4281f"
+   ]
+  }
  },
  "riso": {
   "design": "zigzag-26-riso",
