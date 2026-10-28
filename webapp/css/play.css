@@ -700,6 +700,9 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 .zoom-btn { flex: none; width: 40px; min-height: 40px; padding: 0; }
 .zoom-btn .bi { width: 20px; height: 20px; }
 .zoom-btn:disabled { opacity: 0.4; cursor: default; }
+.zoom-btn[hidden], .zoom-tools[hidden] { display: none; }
+.zoom-inline { display: inline-flex; gap: 8px; margin: 0 0 0 auto; }
+.zip-svg.panmode, .solid-wrap.panmode { cursor: grab; }
 @media (pointer: coarse) { .zoom-btn { width: 44px; min-height: 44px; } }
 /* One way arrows: a step against an arrow flashes it (the polygon gets .blocked, see flashBlockedArrow in apps/play/grid-input.js). */
 .arrow-mark polygon { transform-box: fill-box; transform-origin: center; }

@@ -28,7 +28,12 @@ import {
   viewOf,
   zoomAt,
 } from '../src/view/camera.js';
-import { COMMIT_SLOP, createRouter } from '../src/apps/play/gesture.js';
+import {
+  ANCHOR_MOVE, COMMIT_SLOP, FINGER_MOVED, classifyPair, createRouter,
+} from '../src/apps/play/gesture.js';
+import { SLOTS, surfaceTopology } from '../src/core/surface/topology.js';
+import { IDENTITY, buildView, orbit } from '../src/view/proj.js';
+import { headTurnedAway } from '../src/view/solid-nav.js';
 import { CELL, boardSvg, boardView } from '../src/apps/play/board.js';
 import {
   pentagonBoardSvg, pentagonCellAt, pentagonPoint, pentagonView,
@@ -232,6 +237,21 @@ export function zoomTests(t, ok, eq) {
     }
   });
 
+  t('zoom solid: a head, or a cell it can step to, that is out of the zoomed view counts as turned away', () => {
+    const top = surfaceTopology('cube', 3);
+    const layout = buildView(top, orbit(IDENTITY, 0.6, 0.5));
+    const heads = [...Array(top.T).keys()].filter(c => !headTurnedAway(top, layout, [c], false));
+    ok(heads.length > 0, 'a corner view has cells that see only visible cells');
+    const head = heads[0];
+    const next = [...Array(top.deg[head]).keys()].map(k => top.nb[head * SLOTS + k]);
+    const far = [...Array(top.T).keys()].find(c => c !== head && !next.includes(c));
+    eq(headTurnedAway(top, layout, [head], false, () => false), false, 'no zoom: as before');
+    eq(headTurnedAway(top, layout, [head], false, c => c === head), true, 'the head is out');
+    eq(headTurnedAway(top, layout, [head], false, c => c === next[0]), true, 'a next cell is out');
+    eq(headTurnedAway(top, layout, [head], false, c => c === far), false, 'a far cell is not asked');
+    eq(headTurnedAway(top, layout, [head, next[0]], false, c => c === head), false, 'passed cells');
+  });
+
   // ---------------- the router ----------------
   const ev = (id, type, x, y, extra = {}) => ({ id, type, x, y, button: 0, ...extra });
   const kinds = list => list.map(a => a.do);
@@ -334,6 +354,44 @@ export function zoomTests(t, ok, eq) {
     eq(r.mode(), 'spent');
     r.up(ev(3, 'touch', 90, 10));
     eq(r.mode(), 'idle');
+  });
+
+  t('gesture: in pan mode every press pans (a mouse, a finger); a second finger pinches', () => {
+    let panning = true;
+    const r = createRouter({ pan: () => panning });
+    eq(r.down(ev(1, 'mouse', 10, 10)), [{ do: 'pan-start' }]);
+    eq(r.move(ev(1, 'mouse', 13, 14)), [{ do: 'pan-move', dx: 3, dy: 4 }]);
+    eq(r.up(ev(1, 'mouse', 13, 14)), [{ do: 'pan-end' }]);
+    eq(r.down(ev(2, 'touch', 50, 50)), [{ do: 'pan-start' }], 'no wait for a touch');
+    eq(r.move(ev(2, 'touch', 40, 50)), [{ do: 'pan-move', dx: -10, dy: 0 }]);
+    eq(r.down(ev(3, 'touch', 150, 50)), [
+      { do: 'pan-end' }, { do: 'gesture-start', a: [40, 50], b: [150, 50] },
+    ]);
+    eq(r.move(ev(3, 'touch', 170, 50)), [{ do: 'gesture-move', a: [40, 50], b: [170, 50] }]);
+    r.up(ev(2, 'touch', 40, 50));
+    r.up(ev(3, 'touch', 170, 50));
+    eq(r.mode(), 'idle');
+    panning = false;
+    eq(r.down(ev(4, 'touch', 1, 1)), [{ do: 'timer', ms: 70 }], 'out of pan mode a touch waits');
+  });
+
+  t('gesture: two fingers on a solid are a pinch or a drag together, called once both have moved', () => {
+    const start = [[100, 100], [160, 100]];
+    // the events come one finger at a time: a lone finger that moved is not yet a pinch
+    eq(classifyPair(start, [[100, 100], [160, 100]]), null, 'nothing moved');
+    eq(classifyPair(start, [[120, 100], [160, 100]]), null, 'one finger, a little');
+    eq(FINGER_MOVED < ANCHOR_MOVE, true);
+    // together to the right (one finger ahead of the other)
+    eq(classifyPair(start, [[120, 100], [165, 100]]), 'turn');
+    eq(classifyPair(start, [[120, 108], [180, 108]]), 'turn');
+    // apart / together
+    eq(classifyPair(start, [[90, 100], [170, 100]]), 'zoom');
+    eq(classifyPair(start, [[110, 100], [150, 100]]), 'zoom');
+    // a pinch about a finger that stays: once the other has gone far
+    eq(classifyPair(start, [[100, 100], [180, 100]]), null);
+    eq(classifyPair(start, [[100, 100], [160 + ANCHOR_MOVE, 100]]), 'zoom');
+    // across each other (a twist): nothing until it is clear
+    eq(classifyPair(start, [[100, 104], [160, 96]]), null);
   });
 
   t('gesture: a touch while a mouse button is down is ignored', () => {

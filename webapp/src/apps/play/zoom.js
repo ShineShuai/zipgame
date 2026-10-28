@@ -1,13 +1,20 @@
 // The zoom of one board on the page: it writes the camera (view/camera.js) into the viewBox of the
 // board's svg and takes the inputs that are not the drawing pointer: the wheel, the trackpad
 // pinch, the keys and the zoom buttons. The pinch of two fingers and the drag-to-pan are routed by
-// the page (gesture.js) and come in through pinch() and panBy().
+// the page (gesture.js) and come in through pinchBegin(), pinchMove() and panBy().
 //
 //   svg      the board's svg; its box on the page does not change with the zoom
 //   full     the view box of the whole picture
 //   across   how many cells are across the picture (the size of a cell on the page, for the limit)
 //   get()    the camera kept for this puzzle, or null (not zoomed yet)
 //   set(cam) keeps it (it survives the page being drawn again)
+// For a board that is not one svg (the 3D board is drawn again at every turn), instead of svg:
+//   target   the element that gets the wheel and the gestures
+//   measure()  the box of the picture on the page
+//   show(cam)  puts the camera on the picture (the default writes it into the viewBox of svg)
+//   centred()  true when the picture is zoomed about its middle only (a solid turns instead of
+//              being panned)
+// Pan mode (setPanning): a drag pans instead of drawing; it ends by itself at s = 1.
 import {
   ZOOM_STEP,
   blend,
@@ -41,9 +48,26 @@ const reducedMotion = () => (
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 );
 
-export function createZoom({ svg, full, across, get, set, touchBusy = () => false }) {
-  let box = svg.getBoundingClientRect();
+export function createZoom({
+  svg,
+  target = svg,
+  measure = () => svg.getBoundingClientRect(),
+  show = cam => {
+    svg.setAttribute('viewBox', viewBoxAttr(viewOf(full, cam)));
+    svg.classList.toggle('zoomed', isZoomed(cam));
+  },
+  centred = () => false,
+  full,
+  across,
+  get,
+  set,
+  touchBusy = () => false,
+  getPan = null,
+  setPan = null,
+}) {
+  let box = measure();
   let frame = 0;
+  let panOn = false;
   let listener = () => {};
   let pinchStart = null;
   let gestureStart = null;
@@ -58,12 +82,33 @@ export function createZoom({ svg, full, across, get, set, touchBusy = () => fals
     }
   };
 
+  const panning = () => (getPan ? getPan() : panOn);
+
+  function setPanning(on) {
+    if (panning() === on) {
+      return;
+    }
+    if (setPan) {
+      setPan(on);
+    } else {
+      panOn = on;
+    }
+    target.classList.toggle('panmode', on);
+    listener(cam());
+  }
+
   // Shows camera `next` (kept inside the picture) and keeps it.
   function apply(next) {
     const clamped = clampCamera(full, next, limit());
+    if (centred()) {
+      clamped.cx = full.x + full.w / 2;
+      clamped.cy = full.y + full.h / 2;
+    }
     set(clamped);
-    svg.setAttribute('viewBox', viewBoxAttr(viewOf(full, clamped)));
-    svg.classList.toggle('zoomed', isZoomed(clamped));
+    show(clamped);
+    if (!isZoomed(clamped) && panning()) {
+      setPanning(false);
+    }
     listener(clamped);
     return clamped;
   }
@@ -102,7 +147,7 @@ export function createZoom({ svg, full, across, get, set, touchBusy = () => fals
   }
 
   const refresh = () => {
-    box = svg.getBoundingClientRect();
+    box = measure();
   };
 
   // ----- the controls the page calls -----
@@ -168,7 +213,7 @@ export function createZoom({ svg, full, across, get, set, touchBusy = () => fals
       apply(zoomAt(full, cam(), Math.exp(step), limit(), fx, fy));
       return;
     }
-    if (!isZoomed(cam())) {
+    if (!isZoomed(cam()) || centred()) {
       return; // the page scrolls
     }
     const next = clampCamera(full, panCamera(
@@ -227,7 +272,7 @@ export function createZoom({ svg, full, across, get, set, touchBusy = () => fals
       return true;
     }
     const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
-    if (arrows[e.key] && isZoomed(cam())) {
+    if (arrows[e.key] && isZoomed(cam()) && !centred()) {
       refresh();
       const view = viewOf(full, cam());
       const [dx, dy] = arrows[e.key];
@@ -242,14 +287,20 @@ export function createZoom({ svg, full, across, get, set, touchBusy = () => fals
     return false;
   }
 
-  svg.addEventListener('wheel', onWheel, { passive: false });
-  svg.addEventListener('gesturestart', onGestureStart);
-  svg.addEventListener('gesturechange', onGestureChange);
-  svg.addEventListener('gestureend', onGestureEnd);
+  target.addEventListener('wheel', onWheel, { passive: false });
+  target.addEventListener('gesturestart', onGestureStart);
+  target.addEventListener('gesturechange', onGestureChange);
+  target.addEventListener('gestureend', onGestureEnd);
+  if (panning()) {
+    target.classList.add('panmode');
+  }
 
   return {
-    svg,
+    target,
     across,
+    centred,
+    panning,
+    setPanning,
     cam,
     limit,
     refresh,

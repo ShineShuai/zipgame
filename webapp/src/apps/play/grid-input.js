@@ -32,7 +32,7 @@ let active = null;
 // + - 0 and the arrow keys zoom and pan the board (bound once, in main.js).
 export function onZoomKey(event) {
   const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(event.target?.tagName ?? '');
-  if (!active || typing || S.screen !== 'game' || !active.zoom.svg.isConnected) {
+  if (!active || typing || S.screen !== 'game' || !active.zoom.target.isConnected) {
     return;
   }
   if (active.zoom.onKey(event, active.head())) {
@@ -79,7 +79,7 @@ export function setupGridInput(svg) {
   // The zoom (S.cam): the board's picture is `full`, the part of it on screen is the camera's. The
   // pointer is mapped to cells through zoom.rect(), where the whole picture is on the page.
   const full = fullViewOf(p);
-  const router = createRouter();
+  const router = createRouter({ pan: () => zoom.panning() });
   let pinching = false;
   const zoom = createZoom({
     svg,
@@ -88,6 +88,10 @@ export function setupGridInput(svg) {
     get: () => S.cam,
     set: cam => {
       S.cam = cam;
+    },
+    getPan: () => Boolean(S.pan),
+    setPan: on => {
+      S.pan = on;
     },
     touchBusy: () => pinching || router.mode() !== 'idle',
   });

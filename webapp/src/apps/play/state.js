@@ -11,7 +11,7 @@ export const S = { screen: 'menu', mode: 'standard', variant: null, genMode: 'st
   gen: { frac: 0, walls: null, K: null }, gameIndex: 0, seed: 0, nextIdx: {}, isGotd: false, isReplay: false, replayPick: null, gotdDate: null, gotdHint: null, hintsUsed: 0,
   penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, behaviourOn: false, difficulty: null,
   lucky: false, luckyHolder: false, luckyResult: null, luckyNote: null, genJob: null, genNotice: null, healed: false, giftTest: null,
-  legs: [], paths: [[], []], colour: 0, gameDay: null, isShared: false, cam: null,
+  legs: [], paths: [[], []], colour: 0, gameDay: null, isShared: false, cam: null, pan: false,
   sharedGames: [], sharedFocus: null, sharedAll: false, sharedArmed: null, sharedNotice: null, sharedMsg: null,
   menuTab: 'flat', howtoOpen: false, sharedOpen: false, statsOpen: null };
 

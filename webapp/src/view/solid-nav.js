@@ -24,9 +24,12 @@ export const FOLLOW_DONE = 0.9995;
 export const FOLLOW_EDGE = 0.25;
 
 // Whether the head of `path`, or a cell it can step to, is turned away in `layout` (a view of
-// the solid): out of sight on a tetrahedron or cube, near the rim on a ball.
-export function headTurnedAway(top, layout, path, ball) {
-  const away = cell => (ball ? layout.depth[cell] < FOLLOW_EDGE : Boolean(layout.hidden[cell]));
+// the solid): out of sight on a tetrahedron or cube, near the rim on a ball. `outside(cell)`: a
+// cell that is out of the part of the picture the zoom shows counts as turned away too.
+export function headTurnedAway(top, layout, path, ball, outside = () => false) {
+  const away = cell => (
+    (ball ? layout.depth[cell] < FOLLOW_EDGE : Boolean(layout.hidden[cell])) || outside(cell)
+  );
   const head = path[path.length - 1];
   let turnedAway = away(head);
   for (let k = 0; k < top.deg[head]; k++) {
