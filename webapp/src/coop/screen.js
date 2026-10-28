@@ -14,8 +14,12 @@ import { fromBase64Url, toBase64Url } from './invite.js';
 import { hostRoom, joinRoom } from './join.js';
 import { clearGame, loadGame, makeRecord, saveGame } from './keep.js';
 import {
-  confirmDialog, exportDialog, gamePage, generatingPage, invitePage, joinPage, lobbyPage,
-  menuPage, resultCard, roomInvitePage, roomJoinPage, STAGE_TEXT,
+  firstShown, hasSolidTab, isShown, levelOf, offeredSizes,
+} from './access.js';
+import {
+  captionHtml, confirmDialog, exportDialog, gamePage, generatingPage, invitePage, joinPage,
+  lobbyPage, menuPage, resultCard, roomInvitePage, roomJoinPage, sizeOptionsHtml, STAGE_TEXT,
+  sizeLabel, tabOf, variantRulesHtml,
 } from './pages.js';
 import { createReplica } from './replica.js';
 import {
@@ -31,7 +35,7 @@ import {
 } from './stroke.js';
 import { tx } from './texts.js';
 import {
-  nearestSize, sizeName, sizesFor, statKey, variantById, variantOf,
+  FLAT_IDS, isSolidId, nearestSize, SOLID_IDS, sizeName, statKey, variantById, variantOf,
 } from './variants.js';
 import { portalPartner } from '../core/geom.js';
 import { topologyOf } from '../core/surface/puzzle.js';
@@ -43,11 +47,12 @@ import {
 } from './solid.js';
 import { boardMarkup } from './view.js';
 
-// The Free draw screens: a full-screen layer on top of the app's page, below its app bar, with its
-// own markup, state and pointer handling. It never reads or writes the app's state. Phases:
+// The Patchwork screens: they take the place of the app's page (the menu) under its app bar, with
+// their own markup, state and pointer handling, and give it back when they close. They never read
+// or write the app's state. Phases:
 //   menu -> (solo) generating -> playing -> solved
 //   menu -> inviting (host) | joining (guest) -> lobby -> generating -> playing -> solved
-// `env` = { stats, saveStats, onClose, isRevealed }: the trial's own statistics record, how to
+// `env` = { stats, saveStats, onClose, isRevealed }: Patchwork's own statistics record, how to
 // store it, what to do when the player leaves, and whether the app's hidden things are revealed.
 const randomSeed = () => (Math.random() * 2 ** 31) >>> 0;
 const seconds = value => `${value.toFixed(1)}s`;
@@ -88,10 +93,19 @@ function gradeOf(puzzle) {
 }
 
 export function openScreen(env) {
+  // The screens sit where the app's page is, in the flow of the page (one scroll, as in the app);
+  // the page is only hidden meanwhile.
+  const host = document.getElementById('app');
+  const pageScroll = window.scrollY;
   const root = document.createElement('div');
   root.id = 'coopRoot';
   root.className = 'coop-root';
-  document.body.append(root);
+  if (host) {
+    host.style.display = 'none';
+    host.after(root);
+  } else {
+    document.body.append(root);
+  }
 
   const state = {
     phase: 'menu',
@@ -122,6 +136,9 @@ export function openScreen(env) {
     peerHere: false,
     waiting: false, // the host waits for the other device to take the new puzzle
     variant: 'standard', // the type of the next puzzle (variants.js)
+    picks: { flat: 'standard', '3d': 'ball' }, // the type picked in each tab
+    held: new Set(), // the locked types picked while revealed: they stay until the screen closes
+    access: null, // what the player has unlocked (access.js); null = all
     jumpFrom: null, // Teleport: the portal where this player's last stroke ended
     view: '3d', // a solid: '3d' or 'net', kept from game to game until the page is reloaded
     rotation: null, // a solid: how it is turned (view/proj.js), this device only
@@ -165,12 +182,6 @@ export function openScreen(env) {
   const pid = () => (state.session ? state.session.pid : 0);
   const canShare = typeof navigator.share === 'function';
 
-  // ---------- layer ----------
-  function placeRoot() {
-    const bar = document.querySelector('.app-bar');
-    root.style.top = `${bar ? Math.round(bar.getBoundingClientRect().bottom) : 0}px`;
-  }
-
   // ---------- screens ----------
   function render() {
     const rtc = rtcSupported();
@@ -179,11 +190,14 @@ export function openScreen(env) {
       state.greeting = typed.value;
     }
     const room = state.mode === 'room';
+    if (state.phase === 'menu' || state.phase === 'lobby') {
+      loadAccess();
+    }
     const pages = {
       menu: () => menuPage({
         size: state.size,
         rtc,
-        variant: state.variant,
+        ...pickView(),
         status: state.status,
         error: state.error,
         saved: Boolean(state.kept) && rtc && signalSupported(),
@@ -210,10 +224,13 @@ export function openScreen(env) {
       })),
       lobby: () => lobbyPage({
         role: state.role, size: state.size, status: state.status, error: state.error,
-        variant: state.variant,
+        ...pickView(),
       }),
       generating: () => generatingPage({
-        percent: state.progress, waiting: state.waiting, online: Boolean(state.session),
+        percent: state.progress,
+        waiting: state.waiting,
+        online: Boolean(state.session),
+        variant: state.variant,
       }),
     };
     if (pages[state.phase]) {
@@ -221,7 +238,7 @@ export function openScreen(env) {
     } else {
       renderGame();
     }
-    root.scrollTop = 0;
+    window.scrollTo(0, 0);
   }
 
   const setStatus = (text, error = false) => {
@@ -252,7 +269,7 @@ export function openScreen(env) {
     const online = Boolean(state.session);
     const role = online ? state.role : 'solo';
     return {
-      n: state.puzzle.n,
+      variant: variantOf(state.puzzle),
       online,
       pid: pid(),
       peerHere: state.peerHere,
@@ -1508,7 +1525,7 @@ export function openScreen(env) {
   async function shareFrom(button) {
     const input = el(button.dataset.from);
     try {
-      await navigator.share({ title: tx('title'), url: input.value });
+      await navigator.share({ title: t('coop.title'), url: input.value });
     } catch {
       // the share sheet was closed
     }
@@ -1538,10 +1555,100 @@ export function openScreen(env) {
     window.removeEventListener('offline', refreshNet);
     window.removeEventListener('pagehide', keepNow);
     document.removeEventListener('keydown', onKeyDown);
-    window.removeEventListener('resize', placeRoot);
     languageWatch?.disconnect();
     root.remove();
+    if (host) {
+      host.style.display = '';
+    }
+    window.scrollTo(0, pageScroll);
     env.onClose();
+  }
+
+  // What the picker is drawn from (pages.js).
+  const pickView = () => ({
+    variant: state.variant,
+    tab: tabOf(state.variant),
+    access: state.access,
+    revealed: state.revealed,
+    held: state.held,
+  });
+
+  // What the player has unlocked is asked of the menu whenever a screen with the picker is drawn:
+  // the types that are locked in free play are locked here (access.js). The pick and the size are
+  // kept to what is on offer.
+  function loadAccess() {
+    state.access = env.access ? env.access() : null;
+    fitPick();
+  }
+
+  function fitPick() {
+    const ctx = { revealed: state.revealed, held: state.held };
+    state.picks['3d'] = firstShown(SOLID_IDS, state.picks['3d'], state.access, ctx);
+    state.picks.flat = firstShown(FLAT_IDS, state.picks.flat, state.access, ctx);
+    state.variant = isSolidId(state.variant) && hasSolidTab(state.access, ctx)
+      ? state.picks['3d'] : state.picks.flat;
+    state.size = nearestSize(state.size, offeredSizes(state.access, state.variant, state.revealed));
+  }
+
+  // Redraws, in place, what depends on the pick, the lock and the tab: the tiles that are shown,
+  // the tabs, the caption and the sizes (a redraw would scroll the page back to the top).
+  function syncPick() {
+    fitPick();
+    const ctx = { revealed: state.revealed, held: state.held };
+    root.querySelectorAll('.variant-opt[data-locked]').forEach(node => {
+      node.style.display = isShown(state.access, node.id.replace('coopOpt-', ''), ctx) ? '' : 'none';
+    });
+    const tab = tabOf(state.variant);
+    const tabs = el('coopTabs');
+    if (tabs) {
+      tabs.style.display = hasSolidTab(state.access, ctx) ? '' : 'none';
+      root.querySelectorAll('[data-coop-tab]').forEach(button => {
+        button.setAttribute('aria-selected', String(button.dataset.coopTab === tab));
+      });
+    }
+    el('coopPlayCol')?.classList.toggle('has-tabs', hasSolidTab(state.access, ctx));
+    for (const name of ['flat', '3d']) {
+      const group = el(`coopTiles-${name}`);
+      if (group) {
+        group.hidden = name !== tab;
+      }
+    }
+    const radio = root.querySelector(`input[name="coopVariant"][value="${state.variant}"]`);
+    if (radio) {
+      radio.checked = true;
+    }
+    refreshPick();
+  }
+
+  // The pick of the type changed: its caption and rules, and the sizes it offers.
+  function refreshPick() {
+    const caption = el('coopCaption');
+    if (caption) {
+      caption.innerHTML = captionHtml(state.variant);
+    }
+    const rules = el('coopVariantRules');
+    if (rules) {
+      rules.textContent = variantRulesHtml(state.variant);
+      rules.hidden = true;
+    }
+    const size = el('coopSize');
+    if (size) {
+      size.innerHTML = sizeOptionsHtml(state.variant, state.size, state.access, state.revealed);
+    }
+    const label = el('coopSizeLabel');
+    if (label) {
+      label.textContent = sizeLabel(state.variant);
+    }
+  }
+
+  // The rules of the type picked (menu) or of the game (the i beside its title).
+  function toggleRules(id, button = null) {
+    const node = el(id);
+    if (!node) {
+      return;
+    }
+    node.hidden = !node.hidden;
+    button?.setAttribute('aria-expanded', String(!node.hidden));
   }
 
   function onClick(event) {
@@ -1582,6 +1689,12 @@ export function openScreen(env) {
       hint: showHint,
       view: toggleView,
       export: openExport,
+      rules: () => toggleRules('coopRules', button),
+      'variant-rules': () => toggleRules('coopVariantRules'),
+      tab: () => {
+        state.variant = state.picks[button.dataset.coopTab];
+        syncPick();
+      },
       'export-close': closeExport,
       'export-copy': copyExport,
       copy: () => copyFrom(button),
@@ -1590,7 +1703,7 @@ export function openScreen(env) {
     actions[button.dataset.act]?.();
   }
 
-  // Esc: closes what is open, else asks before leaving a game, else leaves the trial.
+  // Esc: closes what is open, else asks before leaving a game, else leaves Patchwork.
   function onKeyDown(event) {
     const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(event.target?.tagName ?? '');
     if (ARROW_TURN[event.key] && !typing && solid() && turnable(state.puzzle, state.view)
@@ -1635,19 +1748,26 @@ export function openScreen(env) {
     root.querySelectorAll('[data-dev]').forEach(node => {
       node.style.display = on ? '' : 'none';
     });
+    if (el('coopTiles-flat')) {
+      syncPick(); // the locked types and the 3D tab show while V is held
+    }
   }
 
-  placeRoot();
-  window.addEventListener('resize', placeRoot);
   root.addEventListener('click', onClick);
+  // The type and the size are read where they are picked; the caption and the sizes follow in
+  // place (a redraw would scroll the page back to the top under the player's finger).
   root.addEventListener('change', event => {
     if (event.target.id === 'coopSize') {
       state.size = Number(event.target.value);
     }
-    if (event.target.id === 'coopVariant') {
+    if (event.target.name === 'coopVariant') {
       state.variant = event.target.value;
-      state.size = nearestSize(state.size, sizesFor(state.variant));
-      render();
+      state.picks[tabOf(state.variant)] = state.variant;
+      if (levelOf(state.access, state.variant) === 'none') {
+        state.held.add(state.variant);
+      }
+      state.size = nearestSize(state.size, offeredSizes(state.access, state.variant, state.revealed));
+      syncPick();
     }
   });
   root.addEventListener('pointerdown', event => {

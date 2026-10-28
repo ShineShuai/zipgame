@@ -67,7 +67,9 @@ export function installFakeDom() {
     addEventListener() {},
     removeEventListener() {},
   };
-  globalThis.window = { addEventListener() {}, removeEventListener() {} };
+  globalThis.window = {
+    scrollY: 0, scrollTo() {}, addEventListener() {}, removeEventListener() {},
+  };
   if (typeof globalThis.navigator === 'undefined') {
     // Node 20 has none (it came with Node 21); the screen asks it whether the page can share
     Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true });

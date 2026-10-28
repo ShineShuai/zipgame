@@ -14,7 +14,7 @@ import {
 import { generate, PLAY_SIZES, WRAP_SIZES } from '../core/gen/generate.js';
 import { generateTeleport, TELEPORT_SIZES } from '../core/gen/teleport.js';
 
-// The puzzle types Free draw plays, one entry each (drawing.js unsupported() refuses the rest).
+// The puzzle types Patchwork plays, one entry each (drawing.js unsupported() refuses the rest).
 // The ids are those of the play app, so its texts (`mode.<id>`) name them.
 //
 //   id        'standard' or the play app's variant id
@@ -46,14 +46,14 @@ export const COOP_VARIANTS = [
     generate: (n, seed) => generateCutout(n, seed, { maxMs: CUTOUT_MAX_MS }),
   },
   {
-    id: 'exact',
-    sizes: () => PLAY_SIZES.filter(n => EXACT_SIZES.includes(n)),
-    generate: (n, seed) => generateExact(n, seed),
-  },
-  {
     id: 'arrows',
     sizes: () => PLAY_SIZES.filter(n => ARROW_SIZES.includes(n)),
     generate: (n, seed) => generateArrows(n, seed),
+  },
+  {
+    id: 'exact',
+    sizes: () => PLAY_SIZES.filter(n => EXACT_SIZES.includes(n)),
+    generate: (n, seed) => generateExact(n, seed),
   },
   {
     id: 'wrap',
@@ -61,14 +61,14 @@ export const COOP_VARIANTS = [
     generate: (n, seed) => generate(n, seed, { wrap: true }),
   },
   {
-    id: 'teleport',
-    sizes: () => TELEPORT_SIZES,
-    generate: (n, seed) => generateTeleport(n, seed),
-  },
-  {
     id: 'loop',
     sizes: () => LOOP_SIZES,
     generate: (n, seed) => generateLoop(n, seed),
+  },
+  {
+    id: 'teleport',
+    sizes: () => TELEPORT_SIZES,
+    generate: (n, seed) => generateTeleport(n, seed),
   },
   {
     id: 'twopaths',
@@ -97,6 +97,11 @@ export const COOP_VARIANTS = [
     ready: loadBalls,
   },
 ];
+
+// The solids (a 3D tab of their own in the menu, as in the play app's free play).
+export const SOLID_IDS = ['tetra', 'cube', 'ball'];
+export const isSolidId = id => SOLID_IDS.includes(id);
+export const FLAT_IDS = COOP_VARIANTS.map(({ id }) => id).filter(id => !isSolidId(id));
 
 export const variantById = id => COOP_VARIANTS.find(variant => variant.id === id)
   ?? COOP_VARIANTS[0];

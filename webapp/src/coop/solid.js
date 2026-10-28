@@ -12,7 +12,7 @@ import {
 } from '../view/solid-nav.js';
 import { PLAYER_COLORS } from './view.js';
 
-// The solids of Free draw (a tetrahedron, a cube, a ball), drawn with the pictures of the play app
+// The solids of Patchwork (a tetrahedron, a cube, a ball), drawn with the pictures of the play app
 // (view/surface-board.js): the solid you turn, or its net. The lines of the players go in the
 // layer that surfaceSvg() leaves for them. Turning and hit-testing follow the play app
 // (apps/play/solid.js):

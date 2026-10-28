@@ -1,8 +1,11 @@
-// Switches of the hidden "Free draw" trial (everything in src/coop). The trial is revealed like
-// the other hidden things of the play app: hold V, five taps on the bare app bar, or a pinned
-// dev link.
+// Switches of Patchwork (everything in src/coop): draw pieces anywhere and join them into one path,
+// alone or with a friend on another device. It is revealed like the other hidden things of the play
+// app: hold V, five taps on the bare app bar, or a pinned dev link.
 // ENABLED = false: boot.js registers nothing and nothing else of src/coop is loaded.
 export const ENABLED = true;
+
+// RELEASED = true: the menu's Patchwork card is shown to everyone, not only while V is held.
+export const RELEASED = false;
 
 // The board size that is preselected (the setup screen offers every size of the play app). This
 // file is loaded at page start by boot.js, so it imports nothing.

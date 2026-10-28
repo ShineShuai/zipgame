@@ -13,7 +13,7 @@ import {
   cellCentre, edgeMiddleOf, edgeSegments, jumpCurve, padOf,
 } from './layout.js';
 
-// The Free draw board as SVG markup (pure). One line per drawn edge, so lines drawn in any order
+// The Patchwork board as SVG markup (pure). One line per drawn edge, so lines drawn in any order
 // and from anywhere look alike; a number is filled once a line touches its cell.
 // The colour of each player's lines: the orange of the single path and blue, a pair that stays
 // apart for colour-blind players too (both are tokens of css/theme.css, so dark mode follows).

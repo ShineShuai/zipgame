@@ -1,11 +1,12 @@
-import { ENABLED } from './config.js';
+import { ENABLED, RELEASED } from './config.js';
 import { refreshModules, wasReloaded } from './fresh.js';
 
-// The only file of the trial that the app loads up front (one <script type="module"> tag in
-// index.html, placed before the app's own script). It stays tiny: until the app's hidden things
-// are revealed for the first time (or an invite link is opened) it does nothing, and then it loads
-// the rest. Delete src/coop to remove the trial; with ENABLED = false this file registers nothing.
-let wanted = false;
+// The only file of Patchwork that the app loads up front (one <script type="module"> tag in
+// index.html, placed before the app's own script). It stays tiny: it tells the menu that the game is
+// there (data-coop on <html>: the menu draws its card from it) and does nothing else until the
+// card is pressed (or an invite link is opened); then it loads the rest. Delete src/coop to remove
+// Patchwork; with ENABLED = false this file registers nothing.
+let revealed = false;
 let loading = null;
 let app = null;
 
@@ -22,20 +23,25 @@ function load() {
   return loading;
 }
 
-async function onReveal(event) {
-  wanted = Boolean(event.detail);
+// The app's hidden things are revealed (true) or hidden (false): passed on once Patchwork is loaded.
+function onReveal(event) {
+  revealed = Boolean(event.detail);
+  app?.reveal(revealed);
+}
+
+// The menu's card was pressed.
+async function onOpen() {
   try {
-    if (wanted) {
-      await load();
-    }
-    app?.reveal(wanted);
+    await load();
+    app.reveal(revealed);
+    await app.open();
   } catch (error) {
     loading = null;
     console.warn('coop: not loaded', error);
   }
 }
 
-// A page opened by an invite link opens the trial as the guest, with no reveal: #j=<token> (the
+// A page opened by an invite link opens Patchwork as the guest, with no reveal: #j=<token> (the
 // host's room, join.js) or #c=<code> (older: #coop=<code>), the host's connection offer itself.
 const INVITE = /^#(?:c|coop|j)=/;
 
@@ -53,7 +59,9 @@ async function openInvite() {
 }
 
 if (ENABLED) {
+  document.documentElement.dataset.coop = RELEASED ? 'open' : 'hidden';
   document.addEventListener('zip:reveal', onReveal);
+  document.addEventListener('zip:coop-open', onOpen);
   if (INVITE.test(location.hash)) {
     openInvite();
   }

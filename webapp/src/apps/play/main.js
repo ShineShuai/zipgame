@@ -27,7 +27,7 @@ import { createBehaviour, sinksFromConfig } from '../../platform/behaviour.js';
 import { t, getLang, setLang } from '../../ui/i18n.js';
 import { createPlayLog } from '../../features/playlog.js';
 import { isSoundEnabled, setSoundEnabled, sfxMove } from '../../platform/sound.js';
-import { renderMenu, sizeOptionsHtml, storageNoteText, typeCaptionHtml, typeShown } from './menu.js';
+import { coopAccess, coopShown, renderMenu, sizeOptionsHtml, storageNoteText, typeCaptionHtml, typeShown } from './menu.js';
 import { genNoticeHtml, paintGenerating, renderGenerating } from './generating.js';
 import { hintShown, renderGame } from './game-view.js';
 import {
@@ -152,6 +152,7 @@ function attachHandlers() {
   on('shareBtn', shareResult);
   on('shareTip', toggleShareTip);
   on('openReplay', () => openReplay());
+  on('coopOpen', () => document.dispatchEvent(new CustomEvent('zip:coop-open'))); // Patchwork (src/coop) opens in place of the menu
   on('replayBack', () => { S.replayPick = null; S.screen = 'menu'; render(); });
   on('toReplay', () => openReplay());
   document.querySelectorAll('.replay-day').forEach(b => { b.onclick = () => startReplay(b.dataset.date); });
@@ -187,7 +188,9 @@ function attachHandlers() {
 }
 
 // ---------- hidden dev reveal: hold "v", or 5 taps on the bare app bar, or a pinned device ----------
-// The hidden trial in src/coop listens for this event; with nothing listening it does nothing.
+// Patchwork (src/coop) listens for this event; with nothing listening it does nothing. It also asks what the player has unlocked
+// (zip:coop-access, answered at once through detail.reply) to lock the same types.
+document.addEventListener('zip:coop-access', event => event.detail.reply(coopAccess()));
 const announceReveal = () => document.dispatchEvent(
   new CustomEvent('zip:reveal', { detail: S.showDev }),
 );
@@ -207,6 +210,7 @@ function setDevReveal(on) {
   if (S.screen === 'menu' && solid.available() !== Boolean($('pane-3d'))) { render(); return; } // the Flat | 3D tabs come and go with the 3D card
   const d = $('difficultyDev'); if (d) d.style.display = on ? 'inline' : 'none';
   const g = $('genDev'); if (g) g.style.display = on ? 'inline' : 'none';
+  const coopCard = $('coopCard'); if (coopCard) coopCard.style.display = coopShown() ? '' : 'none';
   for (const { id } of PLAY_VARIANTS) { const tile = $('variantOpt-' + id); if (tile) tile.style.display = typeShown(id) ? '' : 'none'; }
   const shown = S.screen === 'game' && S.isGotd ? store.attemptOn(S.gotdDate) : store.attempt(), st = shown && shown.stats;
   if (st) document.querySelectorAll('.gotd-stats').forEach(e => { e.textContent = statsLineT(st, on); });
