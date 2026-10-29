@@ -118,8 +118,8 @@ const LAYERS = [
 const COOP_DIRS = ['src/coop/', 'test/coop/'];
 const COOP_MAY_IMPORT = [
   /^src\/core\//,
-  /^src\/view\/(geometry|proj|ball|surface-net|surface-board|solid-nav)\.js$/,
-  /^src\/apps\/play\/(board|icons|pentagon-board)\.js$/,
+  /^src\/view\/(geometry|proj|ball|surface-net|surface-board|solid-nav|camera)\.js$/,
+  /^src\/apps\/play\/(board|icons|pentagon-board|gesture|zoom|zoom-ui)\.js$/,
   /^src\/features\/hints\.js$/,
   /^src\/platform\/(run|sound|storage)\.js$/,
   /^src\/ui\/i18n\.js$/,

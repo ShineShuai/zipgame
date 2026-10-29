@@ -48,7 +48,9 @@ import { luckyGameHtml } from './lucky-ui.js';
 import { peekNext, todayText } from './counters.js';
 import { claimGift, forgetTestGift, syncGift, watchGift } from './gift-ui.js';
 import { initShared, removeShared, shareResult, startShared, stripShareParam } from './shared-ui.js';
-import { resetPaths, setupGridInput } from './grid-input.js';
+import {
+  onZoomKey, resetPaths, setupGridInput, showHintInView,
+} from './grid-input.js';
 
 let devPinned = false, devTimer = null; // a device kept revealed (features/dev-reveal.js); the tap reveal's fall-back timer
 // ---------- render ----------
@@ -182,6 +184,7 @@ function attachHandlers() {
     if (correctCell == null) return;
     if (two) { S.colour = colour; S.path = S.paths[colour]; } // the hint is for that colour
     S.hintsUsed++; S.hintCell = correctCell; S.hintWrongCell = wrongCell; render();
+    showHintInView();
   });
   const svg = document.querySelector('#gridWrap svg'); if (svg) setupGridInput(svg);
   solid.attach();
@@ -334,6 +337,7 @@ async function initLang() {
     if (!e.target.closest('.variant-opt, .rules-host')) closeRules();
   }, true);
   document.addEventListener('keydown', solid.onKey);
+  document.addEventListener('keydown', onZoomKey);
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { setShareTip(false); setLuckyTip(false); setChanceTip(false); setGiftTip(false); closeStatTips(); closeRules(); } });
   bind({ modal: bindModal($('exportModal')) });
   $('exportClose').onclick = modal.close; $('exportCopy').onclick = () => copyText($('exportText'), $('exportMsg'));

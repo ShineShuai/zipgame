@@ -149,6 +149,19 @@ function pentagonMarkup(puzzle, drawing, hint) {
     + '</svg>';
 }
 
+// The whole picture of a flat board as a view box (what the zoom camera shows a part of): the same
+// as the viewBox boardMarkup draws.
+export function boardView(puzzle) {
+  if (isPentagon(puzzle)) {
+    const { x, y, w, h } = pentagonView(puzzle);
+    return { x, y, w, h };
+  }
+  const size = puzzle.n * CELL;
+  const margin = padOf(puzzle) * CELL;
+  const origin = margin ? -margin : 0; // not -0
+  return { x: origin, y: origin, w: size + 2 * margin, h: size + 2 * margin };
+}
+
 export function boardMarkup(puzzle, drawing, hint = null, ring = null) {
   if (isPentagon(puzzle)) {
     return pentagonMarkup(puzzle, drawing, hint);

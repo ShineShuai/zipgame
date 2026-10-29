@@ -101,7 +101,7 @@ export function beginGame(puzzle, gotdDate, isReplay = false, isShared = false, 
   S.sharedFocus = null;
   const variant = variantOf(puzzle);
   const difficulty = gradePuzzle(puzzle);
-  Object.assign(S, { variant, lucky, luckyResult: null, luckyNote: null, genNotice: null, healed: false, trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty });
+  Object.assign(S, { variant, lucky, luckyResult: null, luckyNote: null, genNotice: null, healed: false, trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty, cam: null, pan: false });
   // Two paths: the red and the blue path, and the colour drawn now (S.path is that colour's path)
   S.paths = newPaths();
   S.colour = 0;

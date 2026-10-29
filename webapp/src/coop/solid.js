@@ -153,11 +153,15 @@ function pictureAt(root, clientX, clientY) {
 }
 
 // A pointer as a point of picture `index`: [x, y] in its pixels (the units of its frame).
+// The svg shows the part of the picture its viewBox says (the zoom), the whole of it by default.
 function framePoint(svg, frame, clientX, clientY) {
   const rect = svg.getBoundingClientRect();
+  const view = svg.viewBox?.baseVal;
+  const [x, y] = view ? [view.x, view.y] : [0, 0];
+  const [width, height] = view ? [view.width, view.height] : [frame.width, frame.height];
   return [
-    (clientX - rect.left) * (frame.width / rect.width),
-    (clientY - rect.top) * (frame.height / rect.height),
+    x + ((clientX - rect.left) / rect.width) * width,
+    y + ((clientY - rect.top) / rect.height) * height,
   ];
 }
 
