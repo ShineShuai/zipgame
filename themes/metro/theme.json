@@ -10,7 +10,7 @@
  },
  "symbol": "<path d=\"M3 12h18\"/><circle cx=\"12\" cy=\"12\" r=\"4\" fill=\"currentColor\"/>",
  "layout": {
-  "menu": "stack",
+  "menu": "dashboard",
   "picker": "tiles",
   "actions": "side"
  },

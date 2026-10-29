@@ -10,7 +10,7 @@
  },
  "symbol": "<rect x=\"4\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"13\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"4\" y=\"13\" width=\"7\" height=\"7\"/><rect x=\"13\" y=\"13\" width=\"7\" height=\"7\" fill=\"currentColor\"/>",
  "layout": {
-  "menu": "stack",
+  "menu": "dashboard",
   "picker": "tiles",
   "actions": "side"
  },

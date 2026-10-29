@@ -8,7 +8,7 @@
    "zh": "瑞士"
   },
   "layout": {
-   "menu": "stack",
+   "menu": "dashboard",
    "picker": "tiles",
    "actions": "side"
   },
@@ -126,7 +126,7 @@
    "seeds": {
     "surface": "#fbf8f1",
     "surface2": "#f4efe2",
-    "line": "#cfc6af",
+    "line": "#1f2a30",
     "lineStrong": "#a89f86",
     "onOrange": "#1f2a30",
     "tile": "#fbf8f1",
@@ -179,7 +179,8 @@
     "--tile-min": "132px",
     "--pad": "16px",
     "--gap": "10px",
-    "--pop-shadow": "0 10px 24px rgba(31, 42, 48, 0.25)"
+    "--pop-shadow": "0 10px 24px rgba(31, 42, 48, 0.25)",
+    "--bw-card": "2px"
    },
    "board": {
     "tileRx": 0.233,
@@ -298,7 +299,7 @@
    "zh": "地铁"
   },
   "layout": {
-   "menu": "stack",
+   "menu": "dashboard",
    "picker": "tiles",
    "actions": "side"
   },
@@ -541,7 +542,7 @@
    "zh": "工业"
   },
   "layout": {
-   "menu": "stack",
+   "menu": "dashboard",
    "picker": "tiles",
    "actions": "side"
   },

@@ -10,7 +10,7 @@
  },
  "symbol": "<path d=\"M12 3 22 20H2z\"/><path d=\"M12 10v4M12 17v.5\"/>",
  "layout": {
-  "menu": "stack",
+  "menu": "dashboard",
   "picker": "tiles",
   "actions": "side"
  },

@@ -16,7 +16,10 @@
 /* bento: tiles on the page ground instead of cards. The cards lose their chrome, the variant picker is a three-column board of tiles in the
    theme's four tile colours (--vt-N: fill, --vt-N-on: ink, --vt-N-counter: the second colour of the icon, see art.json --ic-1 / --ic-2). */
 :root[data-menu="bento"] .menu-layout > .card, :root[data-menu="bento"] .menu-layout .play-col > .tab-pane > .card {
-  background: transparent; border-color: transparent; box-shadow: none; padding: 0;
+  background: transparent; box-shadow: none;
+  /* no frame (--bw-card 0, the default of a bento theme): no padding either, the text starts at the page's edge; a theme that gives the cards a
+     frame gets the page's padding inside it (2 px or more of frame = 200 px, clamped to --pad) */
+  padding: clamp(0px, calc(var(--bw-card) * 100), var(--pad));
 }
 /* a phone: the Play bar of a card bleeds to the edge of the card's padding (css/play.css); these cards have none, so it stays inside the page */
 @media (max-width: 640px) {
