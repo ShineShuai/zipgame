@@ -679,7 +679,7 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 /* The board sits straight on the card; no border or padding on the svg itself: pointer positions are mapped to cells through its
    bounding box. Its max-width is set inline (board.js): about 84 px a cell, and short enough to fit the window's height. */
 .grid-wrap {
-  display: flex; justify-content: center; margin-top: 14px;
+  position: relative; display: flex; justify-content: center; margin-top: 14px;
   user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none;
 }
 .zip-svg {
@@ -691,6 +691,27 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 .zip-svg.cutout, .zip-svg.wrap, .zip-svg.pentagon, .zip-svg.skin-tiles { background: transparent; box-shadow: none; }
 .zip-svg text { font-family: var(--font-num); } /* a theme's number font (default: the page's) */
 .zip-svg.cutout, .zip-svg.pentagon { overflow: visible; }
+/* Zoom (apps/play/zoom.js): a zoomed board shows a part of its picture through the svg's box, so nothing may be
+   drawn outside it. The buttons sit above the board (not over its cells); the hint is for touch screens. */
+.zip-svg.zoomed { overflow: hidden; }
+.zoom-tools { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.zoom-tools[hidden], .zoom-hint[hidden] { display: none; }
+.zoom-tools .zoom-hint { margin: 0 auto 0 0; min-width: 0; font-size: 0.8rem; line-height: 1.2; max-height: 2.4em; overflow: hidden; }
+.zoom-btn { flex: none; width: 40px; min-height: 40px; padding: 0; }
+.zoom-btn .bi { width: 20px; height: 20px; }
+.zoom-btn:disabled { opacity: 0.4; cursor: default; }
+.zoom-btn[hidden], .zoom-tools[hidden] { display: none; }
+.zoom-inline { display: inline-flex; gap: 8px; margin: 0 0 0 auto; }
+/* The overview of a zoomed board (zoom-map.js): small, in the corner farthest from the head of the path */
+.zoom-map { position: absolute; z-index: 2; border-radius: 8px; overflow: hidden; opacity: 0.94; cursor: pointer; touch-action: none;
+  box-shadow: 0 0 0 2px var(--b-frame), var(--shadow); }
+.zoom-map[hidden] { display: none; }
+.zoom-map svg { display: block; width: 100%; height: 100%; }
+.zm-board { fill: var(--b-bg); }
+.zm-dots circle { fill: var(--accent); opacity: 0.5; }
+.zm-view { fill: var(--accent-soft); fill-opacity: 0.55; stroke: var(--accent); }
+.zip-svg.panmode, .solid-wrap.panmode { cursor: grab; }
+@media (pointer: coarse) { .zoom-btn { width: 44px; min-height: 44px; } }
 /* One way arrows: a step against an arrow flashes it (the polygon gets .blocked, see flashBlockedArrow in apps/play/grid-input.js). */
 .arrow-mark polygon { transform-box: fill-box; transform-origin: center; }
 .arrow-mark polygon.blocked { animation: arrow-blocked 0.45s ease-out; }

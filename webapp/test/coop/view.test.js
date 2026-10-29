@@ -8,7 +8,9 @@ import { runSync } from '../../src/core/run.js';
 import { maxNumber } from '../../src/core/model.js';
 import { solutionOf } from '../../src/features/hints.js';
 import { createDrawing } from '../../src/coop/drawing.js';
-import { PLAYER_COLORS, boardMarkup, edgeMiddle } from '../../src/coop/view.js';
+import {
+  PLAYER_COLORS, boardMarkup, boardView, edgeMiddle,
+} from '../../src/coop/view.js';
 
 const puzzle = runSync(generate(6, 3));
 const solution = solutionOf(puzzle);
@@ -135,4 +137,19 @@ test('a Two paths board: red numbers are circles, blue ones rounded squares coun
   // a standard board has neither
   const standard = boardMarkup(runSync(generate(6, 2)), createDrawing(runSync(generate(6, 2))));
   assert.equal(count(standard, /data-colour=/g), 0);
+});
+
+test('boardView is the whole picture of the board: the viewBox boardMarkup draws', () => {
+  const viewBoxOf = html => /viewBox="([^"]+)"/.exec(html)[1].split(' ').map(Number);
+  const wrapped = runSync(generate(6, 3));
+  wrapped.wrap = true;
+  const pentagon = runSync(generatePentagon(6, 3));
+  for (const p of [puzzle, wrapped, pentagon]) {
+    const view = boardView(p);
+    const drawn = viewBoxOf(boardMarkup(p, createDrawing(p)));
+    [view.x, view.y, view.w, view.h].forEach((value, i) => {
+      assert.ok(Math.abs(value - drawn[i]) < 0.01, JSON.stringify([view, drawn]));
+    });
+  }
+  assert.deepEqual(boardView(puzzle), { x: 0, y: 0, w: 360, h: 360 });
 });

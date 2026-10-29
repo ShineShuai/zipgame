@@ -351,8 +351,20 @@ export function solidTests(t, ok, eq, ta) {
     // a page that does nothing: every element takes any property and any call
     const els = {};
     const calls = () => new Proxy({}, { get: () => () => null });
+    const rect = { left: 0, top: 0, width: 100, height: 100 };
     const element = () => new Proxy({ style: {}, classList: calls(), innerHTML: '' }, {
-      get: (target, key) => (key in target ? target[key] : () => null),
+      get: (target, key) => {
+        if (key in target) {
+          return target[key];
+        }
+        // what the zoom asks of the board: its svgs and their box
+        const own = {
+          querySelectorAll: () => [],
+          querySelector: () => element(),
+          getBoundingClientRect: () => rect,
+        };
+        return own[key] ?? (() => null);
+      },
       set: (target, key, value) => Object.assign(target, { [key]: value }) && true,
     });
     const play = createSolidPlay({

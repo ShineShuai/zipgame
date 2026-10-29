@@ -90,6 +90,7 @@ import { ballTests } from './ball.js';
 import { pentagonTests } from './pentagon.js';
 import { surfaceFastTests } from './surface-fast.js';
 import { playPentagonTests } from './play-pentagon.js';
+import { zoomTests } from './zoom.js';
 import { ballViewTests } from './ball-view.js';
 import { solidTests } from './solid.js';
 import { generationTests } from './generation.js';
@@ -3464,6 +3465,7 @@ themeSystemTests(t, ok, eq, ta);
 pentagonTests(t, ok, eq);
 surfaceFastTests(t, ok, eq);
 playPentagonTests(t, ok, eq);
+zoomTests(t, ok, eq);
 
 // ---------- Teleport pairs (linked portal cells) ----------
 teleportTests(t, ok, eq);

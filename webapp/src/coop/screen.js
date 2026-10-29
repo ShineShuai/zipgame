@@ -38,14 +38,22 @@ import {
   FLAT_IDS, isSolidId, nearestSize, SOLID_IDS, sizeName, statKey, variantById, variantOf,
 } from './variants.js';
 import { portalPartner } from '../core/geom.js';
+import { isPentagon } from '../core/pentagon.js';
 import { topologyOf } from '../core/surface/puzzle.js';
-import { cellAtClient, cellPxOf, pressPoint } from './layout.js';
+import {
+  cellAtClient, cellPxOf, padOf, pressPoint,
+} from './layout.js';
 import { serializePuzzle } from './model.js';
 import {
   ARROW_TURN, FOLLOW_EDGE, ORBIT_SLOP, cellUnder, createTurner, crossedCut, edgeNear, isSolid,
   netPoint, solidBoard, startRotation, turnBy, turnByKey, turnable,
 } from './solid.js';
-import { boardMarkup } from './view.js';
+import { boardView, boardMarkup } from './view.js';
+import { pentagonAcross } from '../apps/play/pentagon-board.js';
+import { classifyPair, createRouter } from '../apps/play/gesture.js';
+import { createZoom } from '../apps/play/zoom.js';
+import { setupZoomTools } from '../apps/play/zoom-ui.js';
+import { fitCamera, isZoomed, viewBoxAttr, viewOf } from '../view/camera.js';
 
 // The Patchwork screens: they take the place of the app's page (the menu) under its app bar, with
 // their own markup, state and pointer handling, and give it back when they close. They never read
@@ -115,6 +123,8 @@ export function openScreen(env) {
     progress: 0,
     puzzle: null,
     seed: null,
+    cam: null, // the zoom of the board (view/camera.js), null = the whole picture
+    pan: false, // a drag moves the board instead of drawing (a flat board, a net)
     grade: null,
     drawing: null, // a replica (replica.js), also when playing alone
     history: [],
@@ -290,6 +300,7 @@ export function openScreen(env) {
   function renderGame() {
     root.innerHTML = gamePage(gameView());
     redrawBoard();
+    setupZoom();
     if (state.phase === 'solved') {
       renderDone();
     }
@@ -306,6 +317,96 @@ export function openScreen(env) {
     return partner >= 0 && state.drawing.check(from, partner) === null ? partner : -1;
   }
 
+  // ---------- zoom ----------
+  // The zoom of a flat board or of a net is a camera on its picture (view/camera.js): two fingers
+  // draw two lines there, so a pinch and a pan need the pan mode (the hand button); the wheel, the
+  // keys and the buttons work as they are. A turnable solid is zoomed about its middle (it turns
+  // instead of being panned) and its two fingers are a pinch or a turn (classifyPair).
+  let zoom = null;
+  const panRouter = createRouter({ pan: () => true }); // pan mode only: pans and pinches
+  let pair = null; // two fingers on a turnable solid: { start, mode: null | 'zoom' | 'turn' }
+  const zoomOn = () => Boolean(zoom) && isZoomed(state.cam);
+  const turnsHere = () => solid() && turnable(state.puzzle, state.view);
+
+  // The whole picture of view `i` as a view box.
+  const fullOf = i => (solid()
+    ? { x: 0, y: 0, w: state.solidFrames[i].width, h: state.solidFrames[i].height }
+    : boardView(state.puzzle));
+
+  // Writes the camera into the viewBox of every svg of the board.
+  function showZoom() {
+    const board = el('coopBoard');
+    if (!board) {
+      return;
+    }
+    const svgs = solid() ? [...board.querySelectorAll('.sf-view svg')] : [board.firstElementChild];
+    svgs.forEach((svg, i) => {
+      const full = fullOf(i);
+      const cam = state.cam ?? fitCamera(full);
+      const shown = turnsHere() ? { s: cam.s, cx: full.w / 2, cy: full.h / 2 } : cam;
+      svg.setAttribute('viewBox', viewBoxAttr(viewOf(full, shown)));
+      svg.classList.toggle('zoomed', isZoomed(shown));
+    });
+  }
+
+  function setupZoom() {
+    zoom?.destroy();
+    const board = el('coopBoard');
+    if (!board || !state.puzzle) {
+      zoom = null;
+      return;
+    }
+    const isSolid = solid();
+    const full = fullOf(0);
+    const across = (() => {
+      if (isSolid) {
+        return full.w / (state.solidLayouts[0].side * state.solidFrames[0].scale);
+      }
+      return isPentagon(state.puzzle)
+        ? pentagonAcross(state.puzzle) : state.puzzle.n + 2 * padOf(state.puzzle);
+    })();
+    const picture = () => (isSolid ? board.querySelector('.sf-view svg') : board.firstElementChild);
+    zoom = createZoom({
+      target: board,
+      measure: () => picture()?.getBoundingClientRect(),
+      show: showZoom,
+      centred: turnsHere,
+      full,
+      across,
+      get: () => state.cam,
+      set: cam => {
+        state.cam = cam;
+      },
+      getPan: () => state.pan,
+      setPan: on => {
+        state.pan = on;
+      },
+      touchBusy: () => pair !== null || panRouter.mode() !== 'idle',
+    });
+    setupZoomTools(zoom, () => null, { always: isSolid, byId: el });
+  }
+
+  // What the pan router asks for.
+  const panActions = {
+    'pan-start': () => {
+      zoom.stop();
+      zoom.refresh();
+    },
+    'pan-move': a => zoom.panBy(a.dx, a.dy),
+    'gesture-start': a => zoom.pinchBegin(a.a, a.b),
+    'gesture-move': a => zoom.pinchMove(a.a, a.b),
+    'gesture-end': () => zoom.pinchEnd(),
+  };
+  const routeEvent = event => ({
+    id: event.pointerId,
+    type: event.pointerType,
+    button: event.button,
+    x: event.clientX,
+    y: event.clientY,
+    cancel: event.type === 'pointercancel',
+  });
+  const perform = list => list.forEach(a => panActions[a.do]?.(a));
+
   function redrawBoard() {
     const board = el('coopBoard');
     if (board && solid()) {
@@ -321,6 +422,9 @@ export function openScreen(env) {
       const cell = ringCell();
       const ring = cell < 0 ? null : { cell, player: pid() };
       board.innerHTML = boardMarkup(state.puzzle, state.drawing, state.hint, ring);
+    }
+    if (board && state.cam) {
+      showZoom();
     }
   }
 
@@ -1079,11 +1183,12 @@ export function openScreen(env) {
     state.grade = gradeOf(state.puzzle);
     Object.assign(state, {
       phase: 'playing', history: [], hint: null, hintsUsed: hints, elapsed, waiting: false,
-      jumpFrom: null, startedWall: Date.now() - elapsed * 1000,
+      jumpFrom: null, startedWall: Date.now() - elapsed * 1000, cam: null, pan: false,
     });
     strokes.clear();
     pointers.clear();
     orbiting = null;
+    pair = null;
     turner.stop();
     state.rotation = solid() ? startRotation(state.puzzle) : null;
     renderGame();
@@ -1156,7 +1261,8 @@ export function openScreen(env) {
   }
 
   // ---------- pointer input ----------
-  const drawingRect = board => board.firstElementChild.getBoundingClientRect();
+  // where the whole picture is on the page (the zoom moves it: see view/camera.js boardRect)
+  const drawingRect = board => (zoom ? zoom.rect() : board.firstElementChild.getBoundingClientRect());
 
   // A Wrap-around board has a margin: a drag that leaves the board comes in on the other side.
   const cellAt = (board, event) => (solid()
@@ -1233,13 +1339,24 @@ export function openScreen(env) {
     }
     const board = el('coopBoard');
     pointers.set(event.pointerId, [event.clientX, event.clientY]);
-    const turns = solid() && turnable(state.puzzle, state.view);
+    zoom?.refresh();
+    if (zoom?.panning()) {
+      // pan mode: this press pans the board, two fingers pinch it
+      event.preventDefault();
+      capture(board, event);
+      perform(panRouter.down(routeEvent(event)));
+      return;
+    }
+    const turns = turnsHere();
     if (turns && pointers.size >= 2) {
-      // two fingers turn the solid at once, and a line that was begun is let go
+      // two fingers are a pinch or a turn (classifyPair), and a line that was begun is let go
       strokes.forEach(endHold);
       strokes.clear();
       capture(board, event);
-      orbiting = { start: pointerCentre(), last: pointerCentre(), active: true };
+      const [a, b] = [...pointers.values()];
+      zoom?.pinchBegin(a, b);
+      orbiting = null;
+      pair = { start: [a, b], mode: null };
       return;
     }
     const cell = cellAt(board, event);
@@ -1302,7 +1419,11 @@ export function openScreen(env) {
       turner.stop();
       capture(el('coopBoard'), event);
     }
-    state.rotation = turnBy(state.rotation, x - orbiting.last[0], y - orbiting.last[1]);
+    // zoomed in, the same drag turns the solid less: the surface keeps up with the finger
+    const slower = state.cam ? 1 / state.cam.s : 1;
+    state.rotation = turnBy(
+      state.rotation, (x - orbiting.last[0]) * slower, (y - orbiting.last[1]) * slower,
+    );
     orbiting.last = [x, y];
     redrawBoard();
   }
@@ -1336,6 +1457,14 @@ export function openScreen(env) {
     if (pointers.has(event.pointerId)) {
       pointers.set(event.pointerId, [event.clientX, event.clientY]);
     }
+    if (panRouter.mode() !== 'idle') {
+      perform(panRouter.move(routeEvent(event)));
+      return;
+    }
+    if (pair) {
+      movePair(event);
+      return;
+    }
     if (orbiting) {
       turnSolid(event);
       return;
@@ -1364,8 +1493,31 @@ export function openScreen(env) {
     entry.y = event.clientY;
   }
 
+  // Two fingers on a turnable solid: a pinch zooms it, the two of them dragged together turn it.
+  function movePair(event) {
+    const [a, b] = [...pointers.values()];
+    if (!pair.mode) {
+      pair.mode = classifyPair(pair.start, [a, b]);
+      if (pair.mode === 'turn') {
+        orbiting = { start: pointerCentre(), last: pointerCentre(), active: true };
+      }
+    }
+    if (pair.mode === 'zoom') {
+      zoom?.pinchMove(a, b);
+    } else if (pair.mode === 'turn') {
+      turnSolid(event);
+    }
+  }
+
   function onPointerEnd(event) {
     pointers.delete(event.pointerId);
+    if (panRouter.mode() !== 'idle') {
+      perform(panRouter.up(routeEvent(event)));
+    }
+    if (pair && pointers.size < 2) {
+      zoom?.pinchEnd();
+      pair = null;
+    }
     orbiting = null;
     const entry = strokes.get(event.pointerId);
     if (!entry) {
@@ -1451,8 +1603,11 @@ export function openScreen(env) {
     }
     turner.stop();
     state.view = state.view === '3d' ? 'net' : '3d';
+    state.cam = null; // the two views are not the same picture
+    state.pan = false;
     el('coopView').textContent = viewLabel();
     redrawBoard();
+    setupZoom();
     setMessage(solidNote());
   }
 
@@ -1706,6 +1861,11 @@ export function openScreen(env) {
   // Esc: closes what is open, else asks before leaving a game, else leaves Patchwork.
   function onKeyDown(event) {
     const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(event.target?.tagName ?? '');
+    const onBoard = state.phase === 'playing' || state.phase === 'solved';
+    if (zoom && !typing && onBoard && el('coopBoard') && zoom.onKey(event, null)) {
+      event.preventDefault(); // + - 0 zoom, the arrows pan a zoomed board
+      return;
+    }
     if (ARROW_TURN[event.key] && !typing && solid() && turnable(state.puzzle, state.view)
       && (state.phase === 'playing' || state.phase === 'solved')) {
       event.preventDefault();

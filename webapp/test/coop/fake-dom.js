@@ -47,6 +47,13 @@ export function installFakeDom() {
       style: {},
       focus() {},
       remove() {},
+      // what the zoom of the board asks of it (apps/play/zoom.js): listeners, attributes, its svg
+      addEventListener() {},
+      removeEventListener() {},
+      setAttribute() {},
+      firstElementChild: null,
+      querySelector: () => null,
+      querySelectorAll: () => [],
       classList: {
         toggle(name, on) {
           if (name === 'error') {

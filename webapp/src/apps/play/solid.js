@@ -52,8 +52,19 @@ import {
 } from '../../platform/sound.js';
 import { SOLID_KINDS, SOLID_SIZES, openSizes, stageOf } from '../../features/solid-release.js';
 import { actionIcon, cardIcon, variantIcon } from './icons.js';
+import {
+  edgeVelocity, fitCamera, isZoomed, viewBoxAttr, viewOf,
+} from '../../view/camera.js';
+import { classifyPair, createRouter } from './gesture.js';
+import { createZoom } from './zoom.js';
+import { setupZoomTools, zoomToolsHtml } from './zoom-ui.js';
 
 export { SOLID_KINDS };
+
+// Dragging at the edge of a zoomed net scrolls it, after the pointer has stayed there this long.
+const EDGE_DWELL_MS = 250;
+// A cell this close to the edge of the zoomed view (a share of its size) counts as out of it.
+const VIEW_MARGIN = 0.15;
 export const isSolidKind = kind => SOLID_KINDS.includes(kind);
 
 // Numbers have to be met in order, and nothing follows the highest number.
@@ -99,6 +110,7 @@ export function createSolidPlay(app) {
   let over = -1;
   let segment = 0;
   let lastPoint = null; // the pointer in net coordinates, while a drag crosses a net
+  let zoom = null; // the zoom of the board on the screen (apps/play/zoom.js)
   const turner = createTurner({
     getRotation: () => game.rotation,
     setRotation: R => {
@@ -377,6 +389,8 @@ export function createSolidPlay(app) {
       penalized: false,
       noteKey: null, // the line under the board, when not the usual one
       lucky, // the lucky game: one try, no hint, no new puzzle
+      zoom: null, // the camera of the zoom (view/camera.js), null = the whole picture
+      pan: false, // a drag moves the board instead of drawing (a net, when zoomed)
     };
     drawing = false;
     orbiting = null;
@@ -399,6 +413,7 @@ export function createSolidPlay(app) {
       app.leaveLucky(); // an unsolved lucky game forfeits its unlock chance
     }
     game = null;
+    zoom = null;
     S.screen = 'menu';
     app.render();
   }
@@ -470,6 +485,7 @@ export function createSolidPlay(app) {
           <button class="btn secondary${follow}" id="solidFollow" aria-pressed="${game.follow}"
             title="${t('solid.followTip')}" aria-label="${t('solid.followTip')}">
             ${t('solid.follow')}</button>
+          ${zoomToolsHtml({ hint: false, inline: true })}
         </div>
         <p class="small view-hint">${t('solid.followTip')}</p>
         <div class="grid-wrap solid-wrap" id="solidWrap"></div>
@@ -544,6 +560,55 @@ export function createSolidPlay(app) {
       + (inset ? `<div class="sf-mini">${small}</div>` : '');
     wrap.classList.toggle('ball', isBall());
     wrap.classList.toggle('turnable', turnable());
+    showZoom();
+  }
+
+  // ---------- zoom ----------
+
+  // The whole picture of view `i` as a view box (the frame of the svg).
+  const fullOf = i => ({ x: 0, y: 0, w: frames[i].width, h: frames[i].height });
+
+  // The camera of view `i`: a turnable solid is zoomed about its middle (turning is its pan), a
+  // net as the camera says.
+  function cameraOf(i) {
+    const full = fullOf(i);
+    const cam = game.zoom ?? fitCamera(full);
+    return turnable() ? { s: cam.s, cx: full.w / 2, cy: full.h / 2 } : cam;
+  }
+
+  // Writes the camera into the viewBox of the svg of every view on the screen.
+  function showZoom() {
+    const wrap = $('solidWrap');
+    if (!wrap) {
+      return;
+    }
+    wrap.querySelectorAll('.sf-view svg').forEach((svg, i) => {
+      svg.setAttribute('viewBox', viewBoxAttr(viewOf(fullOf(i), cameraOf(i))));
+    });
+  }
+
+  const zoomOn = () => Boolean(zoom) && isZoomed(game.zoom);
+
+  // The picture (frame pixels) of the centre of a cell in the first view.
+  const pixelOf = cell => frames[0].toPixels(layouts[0].centers[cell]);
+
+  // Whether a cell is out of the middle of the zoomed view (never when the view is not zoomed).
+  function outsideView(cell) {
+    if (!zoomOn()) {
+      return false;
+    }
+    const [x, y] = pixelOf(cell);
+    const view = viewOf(fullOf(0), cameraOf(0));
+    return x < view.x + VIEW_MARGIN * view.w
+      || x > view.x + (1 - VIEW_MARGIN) * view.w
+      || y < view.y + VIEW_MARGIN * view.h
+      || y > view.y + (1 - VIEW_MARGIN) * view.h;
+  }
+
+  // The head of the path in the first view (frame pixels), or null.
+  function headPixel() {
+    const head = game.path[game.path.length - 1];
+    return head === undefined || !layouts.length ? null : pixelOf(head);
   }
 
   // ---------- playing ----------
@@ -649,10 +714,10 @@ export function createSolidPlay(app) {
   function netPointOf(event) {
     const svg = $('solidWrap').querySelector('.sf-view[data-view="0"] svg');
     const rect = svg.getBoundingClientRect();
-    const frame = frames[0];
-    return frame.toNet(
-      (event.clientX - rect.left) * (frame.width / rect.width),
-      (event.clientY - rect.top) * (frame.height / rect.height),
+    const view = svg.viewBox.baseVal; // the part of the picture on screen (the zoom)
+    return frames[0].toNet(
+      view.x + ((event.clientX - rect.left) / rect.width) * view.width,
+      view.y + ((event.clientY - rect.top) / rect.height) * view.height,
     );
   }
 
@@ -669,13 +734,19 @@ export function createSolidPlay(app) {
 
   // After a hint: a hinted cell that is turned away is turned into view.
   function showHint() {
-    if (game.view !== '3d' || game.hintCell === null) {
+    if (game.hintCell === null) {
       return;
     }
     const { top } = game;
     const cell = game.hintCell;
+    if (game.view !== '3d') {
+      if (!turnable() && zoomOn() && outsideView(cell)) {
+        zoom.keepInView(pixelOf(cell)); // a net: the view moves to the hint
+      }
+      return;
+    }
     const away = isBall() ? layouts[0].depth[cell] < FOLLOW_EDGE : Boolean(layouts[0].hidden[cell]);
-    if (away) {
+    if (away || outsideView(cell)) {
       turner.toward(top, cell);
     }
   }
@@ -684,10 +755,17 @@ export function createSolidPlay(app) {
   // face it.
   function followHead() {
     const { path, top } = game;
-    if (!game.follow || game.view !== '3d' || !path.length || game.finished) {
+    if (!path.length || game.finished) {
       return;
     }
-    if (headTurnedAway(top, layouts[0], path, isBall())) {
+    if (!turnable() && zoomOn()) {
+      zoom.keepInView(pixelOf(path[path.length - 1])); // a zoomed net: the view follows the head
+      return;
+    }
+    if (!game.follow || game.view !== '3d') {
+      return;
+    }
+    if (headTurnedAway(top, layouts[0], path, isBall(), outsideView)) {
       turner.toward(top, path[path.length - 1]);
     }
   }
@@ -707,10 +785,12 @@ export function createSolidPlay(app) {
       turner.stop();
       wrap.setPointerCapture(event.pointerId);
     }
+    // zoomed in, the same drag turns the solid less: the surface keeps up with the finger
+    const speed = ORBIT_SPEED / (game.zoom ? game.zoom.s : 1);
     game.rotation = orbit(
       game.rotation,
-      (x - orbiting.last[0]) * ORBIT_SPEED,
-      (y - orbiting.last[1]) * ORBIT_SPEED,
+      (x - orbiting.last[0]) * speed,
+      (y - orbiting.last[1]) * speed,
     );
     orbiting.last = [x, y];
     draw();
@@ -757,6 +837,8 @@ export function createSolidPlay(app) {
     $('solidView').onclick = () => {
       turner.stop();
       game.view = view = game.view === '3d' ? 'net' : '3d';
+      game.zoom = null; // the two views are not the same picture
+      game.pan = false;
       app.render();
     };
     $('solidFollow').onclick = () => {
@@ -765,26 +847,41 @@ export function createSolidPlay(app) {
       app.render();
     };
 
-    wrap.addEventListener('pointerdown', event => {
-      pointers.set(event.pointerId, [event.clientX, event.clientY]);
-      if (game.noteKey) {
-        game.noteKey = null;
-        $('solidNote').textContent = t(noteKey());
-      }
-      if (turnable() && (pointers.size >= 2 || event.button === 2)) {
-        // the right button or two fingers turn the solid at once
-        turner.stop();
-        drawing = false;
-        wrap.setPointerCapture(event.pointerId);
-        orbiting = { start: pointerCentre(), last: pointerCentre(), active: true };
-        return;
-      }
-      const cell = cellUnder(event);
+    // The zoom of this board (apps/play/zoom.js), on the wrap: the svgs are drawn again at every
+    // turn.
+    const full = fullOf(0);
+    const router = createRouter({ pan: () => zoom.panning() });
+    zoom = createZoom({
+      target: wrap,
+      measure: () => wrap.querySelector('.sf-view svg').getBoundingClientRect(),
+      show: showZoom,
+      centred: turnable,
+      full,
+      across: full.w / (layouts[0].side * frames[0].scale),
+      get: () => game.zoom,
+      set: cam => {
+        game.zoom = cam;
+      },
+      getPan: () => game.pan,
+      setPan: on => {
+        game.pan = on;
+      },
+      touchBusy: () => router.mode() !== 'idle',
+    });
+    setupZoomTools(zoom, headPixel, { always: true, byId: $ });
+
+    // Who gets the fingers (apps/play/gesture.js): the drawing pointer, a pinch of two fingers (a
+    // zoom, or on a solid a turn: classifyPair says), a pan (the right button turns a solid), and
+    // the short wait before a touch draws, so that a pinch draws nothing.
+    let current = null; // the pointer event being handled
+    let timer = 0;
+    let pair = null; // two fingers: { start, mode: null | 'zoom' | 'turn' }
+
+    function pressAt(point) {
+      const cell = cellUnder(point);
       if (!game.finished && cell >= 0) {
-        event.preventDefault();
-        wrap.setPointerCapture(event.pointerId);
         over = cell;
-        lastPoint = crossing() ? netPointOf(event) : null;
+        lastPoint = crossing() ? netPointOf(point) : null;
         if (pressCell(cell)) {
           return;
         }
@@ -793,22 +890,20 @@ export function createSolidPlay(app) {
         // anything else turns the solid once the pointer has moved a little
         orbiting = { start: pointerCentre(), last: pointerCentre(), active: false };
       }
-    });
-    wrap.addEventListener('pointermove', event => {
-      if (pointers.has(event.pointerId)) {
-        pointers.set(event.pointerId, [event.clientX, event.clientY]);
-      }
+    }
+
+    function dragMove() {
       if (orbiting) {
-        turnSolid(wrap, event);
+        turnSolid(wrap, current);
         return;
       }
       if (!drawing || game.finished) {
         return;
       }
       // a fast drag reaches the page as one event per frame: follow the positions in between too
-      const moves = event.getCoalescedEvents ? event.getCoalescedEvents() : [];
+      const moves = current.getCoalescedEvents ? current.getCoalescedEvents() : [];
       let changed = false;
-      for (const move of moves.length ? moves : [event]) {
+      for (const move of moves.length ? moves : [current]) {
         const cell = cellUnder(move);
         const at = crossing() ? netPointOf(move) : null;
         let next = cell;
@@ -829,9 +924,55 @@ export function createSolidPlay(app) {
       if (changed) {
         draw();
       }
-    });
-    const release = event => {
-      pointers.delete(event.pointerId);
+    }
+
+    // Drawing at the edge of a zoomed net scrolls it: a frame loop while the pointer is in the edge
+    // band (a solid is not scrolled: it turns, and Follow turns it to the head).
+    let pointer = null;
+    let scrollFrame = 0;
+    let edgeSince = 0;
+    let scrollAt = 0;
+    function stopScroll() {
+      if (scrollFrame) {
+        cancelAnimationFrame(scrollFrame);
+      }
+      scrollFrame = 0;
+      edgeSince = 0;
+      scrollAt = 0;
+    }
+    function scrollTick(now) {
+      scrollFrame = 0;
+      if (!drawing || !pointer || turnable() || !zoomOn()) {
+        return;
+      }
+      const velocity = edgeVelocity(pointer.x, pointer.y, zoom.box());
+      if (!velocity[0] && !velocity[1]) {
+        edgeSince = 0;
+        scrollAt = 0;
+        return;
+      }
+      if (!edgeSince) {
+        edgeSince = now;
+      }
+      const seconds = scrollAt ? Math.min(0.05, (now - scrollAt) / 1000) : 0;
+      scrollAt = now;
+      if (now - edgeSince >= EDGE_DWELL_MS) {
+        if (!zoom.driftBy(velocity, seconds)) {
+          return; // at the edge of the net: nothing more until the pointer moves
+        }
+        dragMove(); // the cell under the pointer has changed
+      }
+      scrollFrame = requestAnimationFrame(scrollTick);
+    }
+    function watchEdge(x, y) {
+      pointer = { x, y };
+      if (!scrollFrame && drawing && !turnable() && zoomOn()) {
+        scrollFrame = requestAnimationFrame(scrollTick);
+      }
+    }
+
+    function endDraw() {
+      stopScroll();
       orbiting = null;
       if (drawing) {
         drawing = false;
@@ -841,20 +982,141 @@ export function createSolidPlay(app) {
         }
         followHead();
       }
+    }
+
+    function startPair(a, b) {
+      stopScroll();
+      turner.stop();
+      drawing = false;
+      orbiting = null;
+      zoom.pinchBegin(a, b);
+      // a net has nothing to turn: its two fingers are a pinch and a pan at once
+      pair = { start: [a, b], mode: turnable() ? null : 'zoom' };
+    }
+
+    function movePair(a, b) {
+      if (!pair) {
+        return;
+      }
+      if (!pair.mode) {
+        pair.mode = classifyPair(pair.start, [a, b]);
+        if (pair.mode === 'turn') {
+          orbiting = { start: pointerCentre(), last: pointerCentre(), active: true };
+        }
+      }
+      if (pair.mode === 'zoom') {
+        zoom.pinchMove(a, b);
+      } else if (pair.mode === 'turn') {
+        turnSolid(wrap, current);
+      }
+    }
+
+    function endPair() {
+      zoom.pinchEnd();
+      pair = null;
+      orbiting = null;
+    }
+
+    const actions = {
+      timer: a => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          if (wrap.isConnected) {
+            perform(router.timeout());
+          }
+        }, a.ms);
+      },
+      'timer-clear': () => clearTimeout(timer),
+      'draw-start': a => {
+        pressAt({ clientX: a.x, clientY: a.y });
+        watchEdge(a.x, a.y);
+      },
+      'draw-move': a => {
+        dragMove();
+        watchEdge(a.x, a.y);
+      },
+      'draw-end': endDraw,
+      'gesture-start': a => startPair(a.a, a.b),
+      'gesture-move': a => movePair(a.a, a.b),
+      'gesture-end': endPair,
+      'pan-start': () => {
+        turner.stop();
+        zoom.refresh();
+        if (turnable()) {
+          orbiting = { start: pointerCentre(), last: pointerCentre(), active: true };
+        }
+      },
+      'pan-move': a => {
+        if (turnable()) {
+          turnSolid(wrap, current);
+        } else {
+          zoom.panBy(a.dx, a.dy);
+        }
+      },
+      'pan-end': () => {
+        orbiting = null;
+      },
+    };
+    const perform = list => list.forEach(a => actions[a.do]?.(a));
+    const eventOf = e => ({
+      id: e.pointerId,
+      type: e.pointerType,
+      button: e.button,
+      x: e.clientX,
+      y: e.clientY,
+      cancel: e.type === 'pointercancel',
+    });
+
+    wrap.addEventListener('pointerdown', event => {
+      pointers.set(event.pointerId, [event.clientX, event.clientY]);
+      if (game.noteKey) {
+        game.noteKey = null;
+        $('solidNote').textContent = t(noteKey());
+      }
+      event.preventDefault();
+      zoom.refresh();
+      try {
+        wrap.setPointerCapture(event.pointerId);
+      } catch {
+        /* the pointer is gone already */
+      }
+      current = event;
+      perform(router.down(eventOf(event)));
+    });
+    wrap.addEventListener('pointermove', event => {
+      if (pointers.has(event.pointerId)) {
+        pointers.set(event.pointerId, [event.clientX, event.clientY]);
+      }
+      current = event;
+      perform(router.move(eventOf(event)));
+    });
+    const release = event => {
+      pointers.delete(event.pointerId);
+      current = event;
+      perform(router.up(eventOf(event)));
     };
     wrap.addEventListener('pointerup', release);
     wrap.addEventListener('pointercancel', release);
+    // a right-drag turns a solid and pans a zoomed net: no menu then
     wrap.addEventListener('contextmenu', event => {
-      if (turnable()) {
+      if (turnable() || zoomOn()) {
         event.preventDefault();
       }
     });
   }
 
-  // The arrow keys turn the solid (one listener for the page, see main.js boot).
+  // + - 0 zoom, and the arrow keys turn the solid or pan a zoomed net (one listener for the page,
+  // see main.js boot).
   function onKey(event) {
     const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(event.target?.tagName ?? '');
-    if (S.screen !== 'solid' || !game || typing || !ARROW_TURN[event.key] || !turnable()) {
+    if (S.screen !== 'solid' || !game || typing) {
+      return;
+    }
+    if (zoom && zoom.target.isConnected && zoom.onKey(event, headPixel())) {
+      event.preventDefault();
+      return;
+    }
+    if (!ARROW_TURN[event.key] || !turnable()) {
       return;
     }
     event.preventDefault();
