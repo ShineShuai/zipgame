@@ -1,5 +1,5 @@
 {
- "_readme": "What the design pages do not carry: per theme the id, the Chinese name, the symbol of the theme button (24x24, currentColor) and the layout presets. import-proto.mjs reads the rest (colours, shapes, fonts, art) from assets/design and assets/images/logo/proto. A design not listed here still imports, with the English name, the default symbol and the default layout. \"page\" names the design page when it differs from the theme id (zigzag-17-bauhaus-bento.html is the theme bauhaus).",
+ "_readme": "What the design pages do not carry: per theme the id, the Chinese name, the symbol of the theme button (24x24, currentColor) the layout presets and `zhFace`, the face of the Chinese name 之折 (themes/tools/zh-fonts.py: \"<sans|serif|mono|round|pixel|hand|stencil>-<weight>\"). import-proto.mjs reads the rest (colours, shapes, fonts, art) from assets/design and assets/images/logo/proto. A design not listed here still imports, with the English name, the default symbol and the default layout. \"page\" names the design page when it differs from the theme id (zigzag-17-bauhaus-bento.html is the theme bauhaus).",
  "swiss": {
   "design": "zigzag-10-swiss",
   "sheet": "10-swiss",
@@ -8,11 +8,12 @@
    "zh": "瑞士"
   },
   "layout": {
-   "menu": "stack",
+   "menu": "dashboard",
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<rect x=\"4\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"13\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"4\" y=\"13\" width=\"7\" height=\"7\"/><rect x=\"13\" y=\"13\" width=\"7\" height=\"7\" fill=\"currentColor\"/>"
+  "symbol": "<rect x=\"4\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"13\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"4\" y=\"13\" width=\"7\" height=\"7\"/><rect x=\"13\" y=\"13\" width=\"7\" height=\"7\" fill=\"currentColor\"/>",
+  "zhFace": "sans-700"
  },
  "neon": {
   "design": "zigzag-11-neon",
@@ -26,7 +27,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<path d=\"M13 2 5 13.5h6L10 22l9-12h-6z\"/>"
+  "symbol": "<path d=\"M13 2 5 13.5h6L10 22l9-12h-6z\"/>",
+  "zhFace": "sans-700"
  },
  "candy": {
   "design": "zigzag-12-candy",
@@ -40,7 +42,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<circle cx=\"12\" cy=\"12\" r=\"5\"/><path d=\"M7 12 2.5 8.5v7zM17 12l4.5-3.5v7z\"/>"
+  "symbol": "<circle cx=\"12\" cy=\"12\" r=\"5\"/><path d=\"M7 12 2.5 8.5v7zM17 12l4.5-3.5v7z\"/>",
+  "zhFace": "round-700"
  },
  "blueprint": {
   "design": "zigzag-13-blueprint",
@@ -54,7 +57,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<path d=\"M4 20V4l16 16z\"/><circle cx=\"8\" cy=\"16\" r=\"1.5\"/>"
+  "symbol": "<path d=\"M4 20V4l16 16z\"/><circle cx=\"8\" cy=\"16\" r=\"1.5\"/>",
+  "zhFace": "sans-300"
  },
  "brutalist": {
   "design": "zigzag-14-brutalist",
@@ -68,7 +72,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<rect x=\"4\" y=\"4\" width=\"11\" height=\"11\"/><rect x=\"9\" y=\"9\" width=\"11\" height=\"11\" fill=\"currentColor\"/>"
+  "symbol": "<rect x=\"4\" y=\"4\" width=\"11\" height=\"11\"/><rect x=\"9\" y=\"9\" width=\"11\" height=\"11\" fill=\"currentColor\"/>",
+  "zhFace": "sans-900"
  },
  "pixel": {
   "design": "zigzag-15-pixel",
@@ -82,7 +87,13 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<path d=\"M8 4h2v2H8zM14 4h2v2h-2zM6 6h12v2H6zM4 8h16v6H4zM6 14h2v4H6zM16 14h2v4h-2zM9 16h2v2H9zM13 16h2v2h-2z\" fill=\"currentColor\"/>"
+  "symbol": "<path d=\"M8 4h2v2H8zM14 4h2v2h-2zM6 6h12v2H6zM4 8h16v6H4zM6 14h2v4H6zM16 14h2v4h-2zM9 16h2v2H9zM13 16h2v2h-2z\" fill=\"currentColor\"/>",
+  "zhFace": "pixel-700",
+  "override": {
+   "vars": {
+    "--tile-min": "152px"
+   }
+  }
  },
  "iso": {
   "design": "zigzag-16-iso",
@@ -96,7 +107,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<path d=\"M12 3 20 7.5v9L12 21 4 16.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9\"/>"
+  "symbol": "<path d=\"M12 3 20 7.5v9L12 21 4 16.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9\"/>",
+  "zhFace": "sans-500"
  },
  "bauhaus": {
   "page": "bauhaus-bento",
@@ -181,7 +193,8 @@
     "#c8391d",
     "#e8a920"
    ]
-  }
+  },
+  "zhFace": "sans-500"
  },
  "editorial": {
   "design": "zigzag-18-editorial",
@@ -195,7 +208,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<rect x=\"4\" y=\"4\" width=\"16\" height=\"16\"/><path d=\"M4 10h16M10 4v16\"/>"
+  "symbol": "<rect x=\"4\" y=\"4\" width=\"16\" height=\"16\"/><path d=\"M4 10h16M10 4v16\"/>",
+  "zhFace": "serif-900"
  },
  "clay": {
   "design": "zigzag-19-clay",
@@ -209,7 +223,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<rect x=\"4\" y=\"5\" width=\"16\" height=\"14\" rx=\"6\"/><path d=\"M8 10a4 4 0 0 1 3-2\"/>"
+  "symbol": "<rect x=\"4\" y=\"5\" width=\"16\" height=\"14\" rx=\"6\"/><path d=\"M8 10a4 4 0 0 1 3-2\"/>",
+  "zhFace": "round-700"
  },
  "deco": {
   "design": "zigzag-20-deco",
@@ -227,7 +242,8 @@
   "routes": [
    "#d9b45a",
    "#5fc9a6"
-  ]
+  ],
+  "zhFace": "sans-300"
  },
  "route": {
   "design": "zigzag-21-route",
@@ -241,7 +257,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<path d=\"M12 21s6-5.2 6-10a6 6 0 1 0-12 0c0 4.8 6 10 6 10z\"/><circle cx=\"12\" cy=\"11\" r=\"2\"/>"
+  "symbol": "<path d=\"M12 21s6-5.2 6-10a6 6 0 1 0-12 0c0 4.8 6 10 6 10z\"/><circle cx=\"12\" cy=\"11\" r=\"2\"/>",
+  "zhFace": "sans-700"
  },
  "bounce": {
   "design": "zigzag-22-bounce",
@@ -255,7 +272,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<circle cx=\"12\" cy=\"8\" r=\"4\"/><ellipse cx=\"12\" cy=\"20\" rx=\"6\" ry=\"1.5\"/>"
+  "symbol": "<circle cx=\"12\" cy=\"8\" r=\"4\"/><ellipse cx=\"12\" cy=\"20\" rx=\"6\" ry=\"1.5\"/>",
+  "zhFace": "round-900"
  },
  "doodle": {
   "design": "zigzag-23-doodle",
@@ -269,7 +287,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<path d=\"M4 20l1-4L16 5l3 3L8 19zM14 7l3 3\"/>"
+  "symbol": "<path d=\"M4 20l1-4L16 5l3 3L8 19zM14 7l3 3\"/>",
+  "zhFace": "hand-500"
  },
  "metro": {
   "design": "zigzag-24-metro",
@@ -279,11 +298,12 @@
    "zh": "地铁"
   },
   "layout": {
-   "menu": "stack",
+   "menu": "dashboard",
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<path d=\"M3 12h18\"/><circle cx=\"12\" cy=\"12\" r=\"4\" fill=\"currentColor\"/>"
+  "symbol": "<path d=\"M3 12h18\"/><circle cx=\"12\" cy=\"12\" r=\"4\" fill=\"currentColor\"/>",
+  "zhFace": "sans-700"
  },
  "zen": {
   "design": "zigzag-25-zen",
@@ -297,7 +317,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<path d=\"M17.5 17A7.5 7.5 0 1 1 18 8\"/>"
+  "symbol": "<path d=\"M17.5 17A7.5 7.5 0 1 1 18 8\"/>",
+  "zhFace": "sans-400"
  },
  "wood": {
   "name": {
@@ -354,7 +375,8 @@
     "#d4a017",
     "#a4281f"
    ]
-  }
+  },
+  "zhFace": "serif-700"
  },
  "riso": {
   "design": "zigzag-26-riso",
@@ -368,7 +390,13 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<circle cx=\"9\" cy=\"12\" r=\"6\"/><circle cx=\"15\" cy=\"12\" r=\"6\"/>"
+  "symbol": "<circle cx=\"9\" cy=\"12\" r=\"6\"/><circle cx=\"15\" cy=\"12\" r=\"6\"/>",
+  "zhFace": "sans-900",
+  "override": {
+   "vars": {
+    "--tile-min": "176px"
+   }
+  }
  },
  "aurora": {
   "design": "zigzag-28-aurora",
@@ -382,7 +410,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<path d=\"M3 9c3-3 6 3 9 0s6 3 9 0M3 14c3-3 6 3 9 0s6 3 9 0M3 19c3-3 6 3 9 0s6 3 9 0\"/>"
+  "symbol": "<path d=\"M3 9c3-3 6 3 9 0s6 3 9 0M3 14c3-3 6 3 9 0s6 3 9 0M3 19c3-3 6 3 9 0s6 3 9 0\"/>",
+  "zhFace": "sans-500"
  },
  "cosmic": {
   "design": "zigzag-29-cosmic",
@@ -396,7 +425,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<circle cx=\"12\" cy=\"12\" r=\"4.5\"/><ellipse cx=\"12\" cy=\"12\" rx=\"10\" ry=\"3.5\" transform=\"rotate(-20 12 12)\"/>"
+  "symbol": "<circle cx=\"12\" cy=\"12\" r=\"4.5\"/><ellipse cx=\"12\" cy=\"12\" rx=\"10\" ry=\"3.5\" transform=\"rotate(-20 12 12)\"/>",
+  "zhFace": "sans-500"
  },
  "botanical": {
   "design": "zigzag-30-botanical",
@@ -410,7 +440,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<path d=\"M5 19C5 10 11 5 20 4c0 9-5 15-14 15zM5 19l8-8\"/>"
+  "symbol": "<path d=\"M5 19C5 10 11 5 20 4c0 9-5 15-14 15zM5 19l8-8\"/>",
+  "zhFace": "round-500"
  },
  "origami": {
   "design": "zigzag-31-origami",
@@ -424,7 +455,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<path d=\"M3 12 12 4l9 8-9 8zM12 4v16M3 12h18\"/>"
+  "symbol": "<path d=\"M3 12 12 4l9 8-9 8zM12 4v16M3 12h18\"/>",
+  "zhFace": "sans-500"
  },
  "modular": {
   "design": "zigzag-32-modular",
@@ -438,7 +470,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<rect x=\"4\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"13\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"4\" y=\"13\" width=\"7\" height=\"7\"/>"
+  "symbol": "<rect x=\"4\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"13\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"4\" y=\"13\" width=\"7\" height=\"7\"/>",
+  "zhFace": "sans-500"
  },
  "atomic": {
   "design": "zigzag-33-atomic",
@@ -452,7 +485,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<circle cx=\"12\" cy=\"12\" r=\"2\"/><ellipse cx=\"12\" cy=\"12\" rx=\"10\" ry=\"4\"/><ellipse cx=\"12\" cy=\"12\" rx=\"10\" ry=\"4\" transform=\"rotate(60 12 12)\"/><ellipse cx=\"12\" cy=\"12\" rx=\"10\" ry=\"4\" transform=\"rotate(120 12 12)\"/>"
+  "symbol": "<circle cx=\"12\" cy=\"12\" r=\"2\"/><ellipse cx=\"12\" cy=\"12\" rx=\"10\" ry=\"4\"/><ellipse cx=\"12\" cy=\"12\" rx=\"10\" ry=\"4\" transform=\"rotate(60 12 12)\"/><ellipse cx=\"12\" cy=\"12\" rx=\"10\" ry=\"4\" transform=\"rotate(120 12 12)\"/>",
+  "zhFace": "serif-700"
  },
  "glass": {
   "design": "zigzag-34-glass",
@@ -466,7 +500,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<path d=\"M6 20V10c0-3 3-5 6-7 3 2 6 4 6 7v10zM12 8v12\"/>"
+  "symbol": "<path d=\"M6 20V10c0-3 3-5 6-7 3 2 6 4 6 7v10zM12 8v12\"/>",
+  "zhFace": "serif-600"
  },
  "stitch": {
   "design": "zigzag-35-stitch",
@@ -480,7 +515,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<path d=\"M3 8h4M10 8h4M17 8h4M3 16l4-4 4 4 4-4 4 4\"/>"
+  "symbol": "<path d=\"M3 8h4M10 8h4M17 8h4M3 16l4-4 4 4 4-4 4 4\"/>",
+  "zhFace": "round-500"
  },
  "chrome": {
   "design": "zigzag-36-chrome",
@@ -494,7 +530,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<path d=\"M12 2c1 6 4 9 10 10-6 1-9 4-10 10-1-6-4-9-10-10 6-1 9-4 10-10z\"/>"
+  "symbol": "<path d=\"M12 2c1 6 4 9 10 10-6 1-9 4-10 10-1-6-4-9-10-10 6-1 9-4 10-10z\"/>",
+  "zhFace": "sans-900"
  },
  "utility": {
   "design": "zigzag-37-utility",
@@ -504,11 +541,12 @@
    "zh": "工业"
   },
   "layout": {
-   "menu": "stack",
+   "menu": "dashboard",
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<path d=\"M12 3 22 20H2z\"/><path d=\"M12 10v4M12 17v.5\"/>"
+  "symbol": "<path d=\"M12 3 22 20H2z\"/><path d=\"M12 10v4M12 17v.5\"/>",
+  "zhFace": "stencil-900"
  },
  "memphis": {
   "design": "zigzag-38-memphis",
@@ -522,7 +560,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<path d=\"M3 9l4-4 4 4 4-4 4 4M3 18q2-4 4 0t4 0 4 0 4 0\"/>"
+  "symbol": "<path d=\"M3 9l4-4 4 4 4-4 4 4M3 18q2-4 4 0t4 0 4 0 4 0\"/>",
+  "zhFace": "round-700"
  },
  "terminal": {
   "design": "zigzag-39-terminal",
@@ -540,7 +579,8 @@
   "routes": [
    "#37ff8b",
    "#ffb000"
-  ]
+  ],
+  "zhFace": "mono-700"
  },
  "ukiyo": {
   "design": "zigzag-40-ukiyo",
@@ -554,7 +594,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<circle cx=\"16\" cy=\"8\" r=\"3.5\"/><path d=\"M2 18c3 0 3-3 5-3s3 3 5 3 3-3 5-3 3 3 5 3\"/>"
+  "symbol": "<circle cx=\"16\" cy=\"8\" r=\"3.5\"/><path d=\"M2 18c3 0 3-3 5-3s3 3 5 3 3-3 5-3 3 3 5 3\"/>",
+  "zhFace": "serif-700"
  },
  "song": {
   "design": "zigzag-41-song",
@@ -568,7 +609,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<path d=\"M2 19 9 8l4 6 3-4 6 9z\"/><path d=\"M5 5h4M13 4h5\"/>"
+  "symbol": "<path d=\"M2 19 9 8l4 6 3-4 6 9z\"/><path d=\"M5 5h4M13 4h5\"/>",
+  "zhFace": "serif-700"
  },
  "manuscript": {
   "design": "zigzag-42-manuscript",
@@ -582,7 +624,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"1\"/><path d=\"M9 17V7h3a3 3 0 0 1 0 6H9\"/>"
+  "symbol": "<rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"1\"/><path d=\"M9 17V7h3a3 3 0 0 1 0 6H9\"/>",
+  "zhFace": "serif-600"
  },
  "nouveau": {
   "design": "zigzag-43-nouveau",
@@ -596,7 +639,8 @@
    "picker": "tiles",
    "actions": "side"
   },
-  "symbol": "<path d=\"M12 21V11c0-4 4-6 6-4 2 3-2 5-4 3M12 15c-3-1-6-4-6-8\"/>"
+  "symbol": "<path d=\"M12 21V11c0-4 4-6 6-4 2 3-2 5-4 3M12 15c-3-1-6-4-6-8\"/>",
+  "zhFace": "serif-500"
  },
  "pinball": {
   "design": "zigzag-44-pinball",
@@ -611,6 +655,7 @@
    "actions": "side"
   },
   "symbol": "<circle cx=\"12\" cy=\"7\" r=\"2.5\" fill=\"currentColor\"/><path d=\"M4 16l6 3M20 16l-6 3\"/>",
-  "compact": true
+  "compact": true,
+  "zhFace": "round-900"
  }
 }

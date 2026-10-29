@@ -30,6 +30,11 @@
    "family": "DM Serif Display",
    "weight": "400",
    "file": "dmserifdisplay-latin.woff2"
+  },
+  {
+   "family": "Noto Serif SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -78,6 +83,7 @@
  },
  "vars": {
   "--font-body": "\"DM Sans\", Avenir Next, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Noto Serif SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "500",
   "--r-1": "999px",
   "--r-2": "999px",

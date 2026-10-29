@@ -25,6 +25,11 @@
    "family": "Quicksand",
    "weight": "500 700",
    "file": "quicksand-latin.woff2"
+  },
+  {
+   "family": "Zigzag Round",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -47,10 +52,12 @@
   "numvText": "#143d2e",
   "onOrange": "#000000",
   "numRing": "#143d2e",
-  "numvRing": "#143d2e"
+  "numvRing": "#143d2e",
+  "line": "#cfe3d3"
  },
  "vars": {
   "--font-body": "\"Quicksand\", Trebuchet MS, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Zigzag Round\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "999px",
   "--r-2": "20px",
@@ -62,6 +69,7 @@
   "--bw-card": "1px",
   "--shadow": "0 14px 34px rgba(47,107,79,.16)",
   "--pop-shadow": "0 14px 34px rgba(47,107,79,.16)",
-  "--ctl-h": "52px"
+  "--ctl-h": "52px",
+  "--bar-bw": "1px"
  }
 }

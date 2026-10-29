@@ -42,7 +42,7 @@ themes/                  AUTHOR (the sources; CI reads them, the site never cont
   <id>/fonts/*.woff2     optional, self-hosted, 60 KB at most each (embedded in the bundle)
   _template/             the smallest theme; `manage.mjs new` starts from it (folders starting with _ or . are not themes)
   tools/                 pack.mjs (theme -> bundle), build-site.mjs (CI: bundles + manifest into the site), manage.mjs (list, new, retire,
-                         remove, fonts), import-proto.mjs (design page -> theme), serve.mjs (preview server), derive, schema, tests
+                         remove, fonts), import-proto.mjs (design page -> theme), zh-fonts.py (the Chinese name's face, below), serve.mjs (preview server), derive, schema, tests
   preview/               author's page: the real controller on mock screens
   out/                   generated, git-ignored (preview bundles; out/site/ = what the dev server serves as the game's theme folder)
 assets/design/           the design pages (zigzag-NN-<id>.html) and assets/images/logo/proto/ their icon sheets (NN-<id>-variants.svg, gen/*.py):
@@ -101,6 +101,7 @@ Run everything in `webapp/` as `npm run themes -- <command>` (or `node themes/to
 | **Publish** | Push. CI tests, packs and deploys; the new theme is in the pool of the next deployment and is offered from then on. |
 | **Retire** | `npm run themes -- retire <id>` sets `"live": false`: never offered, still listed in the dev reveal (`restore` undoes it). |
 | **Remove** | `npm run themes -- remove <id>` deletes `themes/<id>/`. The next deployment no longer has it; players who own it keep their copy. |
+| **The Chinese name** | `zhFace` in the design's entry of `tools/proto-meta.json`: `<face>-<weight>`, the face being `sans`, `serif` or `mono` (Noto Sans / Serif / Sans Mono CJK SC, weights 100-900 as Noto has them) or a restyle of the sans: `round` (rounded terminals), `pixel` (a 24 x 24 grid), `hand` (a wobbling marker), `stencil` (condensed, bridges cut open). Pick the weight and style of the theme's Latin face (Fredoka: `round-700`, Playfair Display: `serif-900`, Saira Stencil One: `stencil-900`). Then `python3 themes/tools/zh-fonts.py [id ...]` (needs fontTools, numpy, opencv-python, Pillow, brotli and the Noto CJK .ttc files; `NOTO_DIR` names their folder; `--specimen FILE.html` writes a sheet of the faces) cuts the two glyphs of 之折 into `themes/<id>/fonts/zh.woff2` (about 1.3 KB), and `npm run themes:import` puts the font entry (`"weight": "100 900"`: never faked bold) and `--font-zh` in the theme. The file is committed; CI never runs the script. The Noto faces are OFL 1.1 (the licence and copyright stay in the font's name table; the restyles carry the name Zigzag Round / Pixel / Hand / Stencil, as the OFL asks of a modified font). A bundle carries three fonts at most: the importer takes two Latin fonts and this one. To use a real display face instead (ZCOOL KuaiLe for Candy, say): change `family` in theme.json, drop the file and run `fonts --fetch` with the text `之折` (`cssUrl(family, weight, '之折')`). |
 | **Fonts** | `npm run themes -- fonts` lists the font files the themes name and do not have; `npm run themes -- fonts --fetch [id ...]` downloads them once from Google Fonts, already subset to the glyphs the UI uses (`FONT_TEXT` in `tools/fonts-fetch.mjs`: ASCII and a few marks, a few KB to some tens of KB each). Commit the files: `build-site` embeds them in that theme's bundle, so a player never contacts Google and downloads a font only with its theme. Until a file is there, the theme uses its fallback fonts. Fonts are OFL: keep the licence text with them. |
 
 Everything not stated in a theme.json is derived and nudged to pass the contrast pairs (text 4.5, graphics 3; a visited number against an idle one
@@ -109,6 +110,16 @@ Everything not stated in a theme.json is derived and nudged to pass the contrast
 ## What a theme changes in the game
 
 - **Tokens** (`css/theme.css` defaults, bundle overrides): colours, radii, borders, sizes, fonts, shadows, the number discs, the portal colours.
+- **The frame** (what the design's phone is): `--bw-card` (0 to 8 px), `--bs-card` (solid, dashed, double, dotted; a double line needs 3 px) and the theme's `line`
+  / `lineStrong` colours, which the importer reads from the design's phone and small controls (a Memphis card is 3 px of ink, a Manuscript card a 6 px double
+  line); `--bar-bw`, the line under the app bar, follows the frame (at most 3 px; a design without a frame keeps the light 1 px line). Cards take the frame as it
+  is; popovers, nested cards and the pickers take at most 3 px of it (`--bw-sub`, `css/play.css`).
+- **Radii of boxes with text.** A theme's `--r-1`, `--r-2` and `--r-tile` may be `999px` (pill buttons, round chips). Boxes that hold several lines (stat pills,
+  shared games, notes, popovers, the lucky game) use `--rb-1`, `--rb-2` and `--rb-tile` (`css/play.css`: the theme's radius, at most 16, 18 and 20 px; `--rb-3`, 20 px, for the corners of the action bar), so a pill
+  theme never cuts a corner through a text or an icon. Write new boxes with those, and one-line controls with `--r-*`.
+- **The brand and its Chinese name.** The app bar shows the mark (the theme's `art.json` mark, else the shared one) and `#brandName`: `zigzag`, in Chinese 之折
+  (`brand.name` in `src/ui/i18n.js`, set with the language; the same name heads the shared texts). In Chinese the name is set in `--font-zh`, a face the theme
+  brings for those two glyphs (below).
 - **Art** (`art.json`): the variant icons (`variantIcon` in `apps/play/icons.js` draws the theme's icon, the classic one for any it does not draw;
   Two paths is a composition of its own in every theme, matched to the design, always two separate paths that never cross or overlap: the
   drawing is `assets/images/logo/proto/gen/two/NN-<id>.svg` (a hand-finished SVG, `@` stands for the id prefix; `build_all.py` puts it on the sheet

@@ -25,6 +25,11 @@
    "family": "Marcellus",
    "weight": "400",
    "file": "marcellus-latin.woff2"
+  },
+  {
+   "family": "Noto Serif SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -47,10 +52,13 @@
   "numvText": "#3f4f2f",
   "onOrange": "#000000",
   "numRing": "#c9a24a",
-  "numvRing": "#c9a24a"
+  "numvRing": "#c9a24a",
+  "line": "#c9a24a",
+  "lineStrong": "#c9a24a"
  },
  "vars": {
   "--font-body": "\"Marcellus\", Trajan Pro, Georgia, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", serif",
+  "--font-zh": "\"Noto Serif SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "999px",
   "--r-2": "999px",
@@ -62,6 +70,7 @@
   "--bw-card": "2px",
   "--shadow": "0 14px 34px rgba(63,79,47,.2)",
   "--pop-shadow": "0 14px 34px rgba(63,79,47,.2)",
-  "--ctl-h": "52px"
+  "--ctl-h": "52px",
+  "--bar-bw": "2px"
  }
 }

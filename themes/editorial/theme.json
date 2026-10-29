@@ -25,6 +25,11 @@
    "family": "Playfair Display",
    "weight": "500 900",
    "file": "playfairdisplay-latin.woff2"
+  },
+  {
+   "family": "Noto Serif SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -47,10 +52,13 @@
   "numvText": "#111111",
   "onOrange": "#000000",
   "numRing": "#111111",
-  "numvRing": "#111111"
+  "numvRing": "#111111",
+  "line": "#111111",
+  "lineStrong": "#111111"
  },
  "vars": {
   "--font-body": "\"Playfair Display\", Georgia, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", serif",
+  "--font-zh": "\"Noto Serif SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "900",
   "--r-1": "0px",
   "--r-2": "0px",
@@ -62,6 +70,7 @@
   "--bw-card": "2px",
   "--shadow": "none",
   "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
-  "--ctl-h": "52px"
+  "--ctl-h": "52px",
+  "--bar-bw": "2px"
  }
 }

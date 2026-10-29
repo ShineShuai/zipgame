@@ -9,12 +9,18 @@
   grid-template-columns: minmax(0, 1fr); grid-template-areas: "intro" "today" "play" "shared";
   max-width: 680px; margin-inline: auto;
 }
+/* the app bar keeps to the column on that screen: the mark starts where the cards do (a browser without :has() keeps the wide bar) */
+:root[data-menu="stack"]:has(.menu-layout) .app-bar-inner { max-width: calc(680px + 2 * var(--pad)); }
 :root[data-menu="stack"] .menu-layout.has-gift { grid-template-areas: "intro" "gift" "today" "play" "shared"; }
 
 /* bento: tiles on the page ground instead of cards. The cards lose their chrome, the variant picker is a three-column board of tiles in the
    theme's four tile colours (--vt-N: fill, --vt-N-on: ink, --vt-N-counter: the second colour of the icon, see art.json --ic-1 / --ic-2). */
 :root[data-menu="bento"] .menu-layout > .card, :root[data-menu="bento"] .menu-layout .play-col > .tab-pane > .card {
   background: transparent; border-color: transparent; box-shadow: none; padding: 0;
+}
+/* a phone: the Play bar of a card bleeds to the edge of the card's padding (css/play.css); these cards have none, so it stays inside the page */
+@media (max-width: 640px) {
+  :root[data-menu="bento"] .play-bar { margin: 0; padding-inline: 0; }
 }
 :root[data-menu="bento"] .variant-options { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap); }
 :root[data-menu="bento"] .variant-opt:nth-child(4n + 1) { --tile: var(--vt-1); --tile-on: var(--vt-1-on); --tile-counter: var(--vt-1-counter); }
@@ -47,12 +53,12 @@
   :root[data-actions="bar"] #app.has-actions { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0)); }
   :root[data-actions="bar"] .actions {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; margin: 0; padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0));
-    border-width: 1px 0 0; border-radius: var(--r-3) var(--r-3) 0 0; background: var(--glass);
+    border-width: 1px 0 0; border-radius: var(--rb-3) var(--rb-3) 0 0; background: var(--glass);
     -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
   }
   :root[data-actions="bar"] .actions .button-row { display: flex; gap: 8px; max-width: 720px; margin: 0 auto; }
   :root[data-actions="bar"] .actions .btn {
-    flex: 1 1 0; flex-direction: column; gap: 2px; min-height: 54px; padding: 6px 4px; font-size: 0.74rem; line-height: 1.15; border-radius: var(--r-2);
+    flex: 1 1 0; flex-direction: column; gap: 2px; min-height: 54px; padding: 6px 4px; font-size: 0.74rem; line-height: 1.15; border-radius: var(--rb-2);   /* icon over label: not a pill */
   }
   :root[data-actions="bar"] .actions .btn .bi { width: 22px; height: 22px; }
 }

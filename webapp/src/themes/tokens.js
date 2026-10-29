@@ -12,6 +12,7 @@ export const TOKENS = {
   '--font-body': { d: BASE_FONT, kind: 'font', group: 'type' },
   '--font-head': { d: 'var(--font-body)', kind: 'font', group: 'type' },
   '--font-num': { d: 'var(--font-body)', kind: 'font', group: 'type' },
+  '--font-zh': { d: 'var(--font-head)', kind: 'font', group: 'type' },   // the Chinese name of the game in the app bar (the brand name, two glyphs)
   '--fw-head': { d: '700', kind: 'int', min: 500, max: 900, group: 'type' },
   '--tt-head': { d: 'none', kind: 'enum', values: ['none', 'uppercase'], group: 'type' },
   '--ls-head': { d: '0em', kind: 'len', unit: 'em', min: -0.05, max: 0.15, group: 'type' },
@@ -24,7 +25,8 @@ export const TOKENS = {
   '--r-chip': { d: '999px', kind: 'radius', max: 28, group: 'shape' }, // badges, tabs, stat pills
   '--r-icon': { d: '999px', kind: 'radius', max: 28, group: 'shape' }, // round icon buttons
   '--bw': { d: '2px', kind: 'len', min: 0, max: 3, group: 'shape' },       // controls
-  '--bw-card': { d: '1px', kind: 'len', min: 0, max: 3, group: 'shape' },  // cards and popovers
+  '--bw-card': { d: '1px', kind: 'len', min: 0, max: 8, group: 'shape' },  // cards (inside and above them: at most 3 px, css/play.css --bw-sub)
+  '--bs-card': { d: 'solid', kind: 'enum', values: ['solid', 'dashed', 'double', 'dotted'], group: 'shape' },   // the line of cards, popovers, nested cards
   '--shadow-btn': { d: 'none', kind: 'shadow', group: 'shape' },
   // elevation tokens that css/theme.css already defines; a theme may restyle them (still plain shadows)
   '--shadow': { d: 'none', kind: 'shadow', group: 'shape', base: true },
@@ -32,6 +34,7 @@ export const TOKENS = {
   '--sheet-shadow': { d: 'none', kind: 'shadow', group: 'shape', base: true },
 
   '--bar-h': { d: '58px', kind: 'len', min: 48, max: 72, group: 'size' },
+  '--bar-bw': { d: '1px', kind: 'len', min: 0, max: 4, group: 'size' },   // the line under the app bar
   '--icon-btn': { d: '40px', kind: 'len', min: 36, max: 48, group: 'size' },
   '--glyph': { d: '20px', kind: 'len', min: 16, max: 26, group: 'size' },
   '--icon-stroke': { d: '2', kind: 'num', min: 1.5, max: 3, group: 'size' },

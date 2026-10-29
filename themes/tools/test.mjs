@@ -131,6 +131,35 @@ t('art: the app accepts all of it, it covers the flat variants, and it stays sma
   }
 });
 
+t('every theme brings the Chinese name of the game in a face of its own style: two glyphs, a few KB, the app bar names it', () => {
+  const i18n = readFileSync(new URL('../../webapp/src/ui/i18n.js', import.meta.url), 'utf8');
+  ok(/'brand\.name': '之折'/.test(i18n) && /'brand\.name': 'zigzag'/.test(i18n), 'webapp/src/ui/i18n.js: brand.name is zigzag / 之折');
+  const faces = new Set();
+  for (const th of THEMES) {
+    const zh = (th.fonts ?? []).find(f => f.file === 'zh.woff2');
+    ok(zh, `${th.id}: no zh.woff2 in its fonts (\`zhFace\` in proto-meta.json, then python3 themes/tools/zh-fonts.py ${th.id})`);
+    const file = readFileSync(new URL(`${th.id}/fonts/zh.woff2`, root));
+    ok(file.subarray(0, 4).toString('latin1') === 'wOF2' && file.length < 4096, `${th.id}: zh.woff2 is not a small woff2 (${file.length} bytes)`);
+    ok((th.fonts ?? []).length <= 3, `${th.id}: a bundle carries three fonts at most`);
+    const { bundle } = PACKED[th.id];
+    ok(bundle.tokens['--font-zh'].startsWith(`"${zh.family}"`), `${th.id}: --font-zh does not lead with ${zh.family}`);
+    ok(bundle.fonts.some(f => f.family === zh.family && f.weight === '100 900'), `${th.id}: the face is not in the bundle for the whole weight range`);
+    faces.add(zh.family);
+  }
+  ok(faces.size >= 4, 'the faces of the themes should differ in style (sans, serif and at least two restyles)');
+});
+
+t('a card is a frame of the design: the line colour follows the page, the width and style are in bounds, the app bar line follows the frame', () => {
+  for (const th of THEMES) {
+    const tk = PACKED[th.id].bundle.tokens;
+    const bw = parseFloat(tk['--bw-card']);
+    ok(bw >= 0 && bw <= 8, `${th.id}: --bw-card ${tk['--bw-card']}`);
+    ok(['solid', 'dashed', 'double', 'dotted'].includes(tk['--bs-card']), `${th.id}: --bs-card ${tk['--bs-card']}`);
+    if (tk['--bs-card'] === 'double') ok(bw >= 3, `${th.id}: a double line needs 3 px or more`);
+    ok(parseFloat(tk['--bar-bw']) <= Math.max(1, Math.min(3, bw)), `${th.id}: the line under the app bar (${tk['--bar-bw']}) is heavier than the card frame (${tk['--bw-card']})`);
+  }
+});
+
 t('every theme draws its own Two paths composition (no two themes share one)', () => {
   const seen = new Map();
   for (const [id, art] of Object.entries(ART)) {

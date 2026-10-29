@@ -10,7 +10,7 @@
  },
  "symbol": "<path d=\"M12 3 22 20H2z\"/><path d=\"M12 10v4M12 17v.5\"/>",
  "layout": {
-  "menu": "stack",
+  "menu": "dashboard",
   "picker": "tiles",
   "actions": "side"
  },
@@ -30,6 +30,11 @@
    "family": "Saira Stencil One",
    "weight": "400",
    "file": "sairastencilone-latin.woff2"
+  },
+  {
+   "family": "Zigzag Stencil",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -52,10 +57,13 @@
   "numvText": "#141414",
   "onOrange": "#000000",
   "numRing": "#141414",
-  "numvRing": "#141414"
+  "numvRing": "#141414",
+  "line": "#141414",
+  "lineStrong": "#141414"
  },
  "vars": {
   "--font-body": "\"IBM Plex Mono\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", monospace",
+  "--font-zh": "\"Zigzag Stencil\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "500",
   "--tt-head": "uppercase",
   "--r-1": "2px",
@@ -68,6 +76,7 @@
   "--bw-card": "3px",
   "--shadow": "none",
   "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
-  "--ctl-h": "52px"
+  "--ctl-h": "52px",
+  "--bar-bw": "3px"
  }
 }

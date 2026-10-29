@@ -25,6 +25,11 @@
    "family": "Plus Jakarta Sans",
    "weight": "500 800",
    "file": "plusjakartasans-latin.woff2"
+  },
+  {
+   "family": "Noto Sans SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -47,10 +52,13 @@
   "numvText": "#ffffff",
   "onOrange": "#000000",
   "numRing": "#b8b9bf",
-  "numvRing": "#b8b9bf"
+  "numvRing": "#b8b9bf",
+  "line": "#575a69",
+  "lineStrong": "#575a69"
  },
  "vars": {
   "--font-body": "\"Plus Jakarta Sans\", Segoe UI, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "999px",
   "--r-2": "18px",
@@ -62,6 +70,7 @@
   "--bw-card": "1px",
   "--shadow": "0 20px 50px rgba(0,0,0,.35)",
   "--pop-shadow": "0 20px 50px rgba(0,0,0,.35)",
-  "--ctl-h": "52px"
+  "--ctl-h": "52px",
+  "--bar-bw": "1px"
  }
 }

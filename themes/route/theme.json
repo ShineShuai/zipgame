@@ -25,6 +25,11 @@
    "family": "Manrope",
    "weight": "500 800",
    "file": "manrope-latin.woff2"
+  },
+  {
+   "family": "Noto Sans SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -46,10 +51,12 @@
   "numvFill": "#d1d1d1",
   "numvText": "#000000",
   "onOrange": "#000000",
-  "pathHi": "#d17e19"
+  "pathHi": "#d17e19",
+  "line": "#e1e8fa"
  },
  "vars": {
   "--font-body": "\"Manrope\", Segoe UI, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "999px",
   "--r-2": "16px",
@@ -61,6 +68,7 @@
   "--bw-card": "1px",
   "--shadow": "0 8px 28px rgba(59,104,238,.14)",
   "--pop-shadow": "0 8px 28px rgba(59,104,238,.14)",
-  "--ctl-h": "52px"
+  "--ctl-h": "52px",
+  "--bar-bw": "1px"
  }
 }

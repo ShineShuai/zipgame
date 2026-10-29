@@ -25,6 +25,11 @@
    "family": "Sora",
    "weight": "400 800",
    "file": "sora-latin.woff2"
+  },
+  {
+   "family": "Noto Sans SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -47,10 +52,13 @@
   "numvText": "#e8ecff",
   "onOrange": "#000000",
   "numRing": "#7fd8ff",
-  "numvRing": "#7fd8ff"
+  "numvRing": "#7fd8ff",
+  "line": "#2d4b70",
+  "lineStrong": "#2a456a"
  },
  "vars": {
   "--font-body": "\"Sora\", Segoe UI, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "999px",
   "--r-2": "16px",
@@ -62,6 +70,7 @@
   "--bw-card": "1px",
   "--shadow": "0 0 60px rgba(138,107,255,.25)",
   "--pop-shadow": "0 0 60px rgba(138,107,255,.25)",
-  "--ctl-h": "52px"
+  "--ctl-h": "52px",
+  "--bar-bw": "1px"
  }
 }

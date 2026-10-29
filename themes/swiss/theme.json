@@ -10,7 +10,7 @@
  },
  "symbol": "<rect x=\"4\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"13\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"4\" y=\"13\" width=\"7\" height=\"7\"/><rect x=\"13\" y=\"13\" width=\"7\" height=\"7\" fill=\"currentColor\"/>",
  "layout": {
-  "menu": "stack",
+  "menu": "dashboard",
   "picker": "tiles",
   "actions": "side"
  },
@@ -25,6 +25,11 @@
    "family": "Inter Tight",
    "weight": "400 800",
    "file": "intertight-latin.woff2"
+  },
+  {
+   "family": "Noto Sans SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -47,10 +52,13 @@
   "numvText": "#111111",
   "onOrange": "#ffffff",
   "numRing": "#111111",
-  "numvRing": "#111111"
+  "numvRing": "#111111",
+  "line": "#111111",
+  "lineStrong": "#111111"
  },
  "vars": {
   "--font-body": "\"Inter Tight\", Helvetica, Arial, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "0px",
   "--r-2": "0px",
@@ -62,6 +70,7 @@
   "--bw-card": "2px",
   "--shadow": "none",
   "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
-  "--ctl-h": "52px"
+  "--ctl-h": "52px",
+  "--bar-bw": "2px"
  }
 }

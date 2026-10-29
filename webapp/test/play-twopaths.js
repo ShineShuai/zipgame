@@ -301,7 +301,7 @@ export function twoPathsPlayTests(t, ok, eq) {
       eq(shareStatus(rec, ctx).status, 'ok', 'playable at once');
       const tr = dict => (key, ...args) => dict[key].replace(/\{0\}/g, args[0]);
       eq(shareText(rec, 'https://x/?s=abc', tr(EN)).split('\n')[0], `zigzag Two paths · ${n}x${n}`);
-      eq(shareText(rec, 'https://x/?s=abc', tr(ZH)).split('\n')[0], `zigzag 双路径 · ${n}x${n}`);
+      eq(shareText(rec, 'https://x/?s=abc', tr(ZH)).split('\n')[0], `之折 双路径 · ${n}x${n}`);
     }
   });
 

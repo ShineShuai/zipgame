@@ -25,6 +25,11 @@
    "family": "IM Fell English",
    "weight": "400",
    "file": "imfellenglish-latin.woff2"
+  },
+  {
+   "family": "Noto Serif SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -47,10 +52,13 @@
   "numvText": "#2b1a10",
   "onOrange": "#000000",
   "numRing": "#d4a72c",
-  "numvRing": "#d4a72c"
+  "numvRing": "#d4a72c",
+  "line": "#c99a1c",
+  "lineStrong": "#2b1a10"
  },
  "vars": {
   "--font-body": "\"IM Fell English\", Georgia, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", serif",
+  "--font-zh": "\"Noto Serif SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "2px",
   "--r-2": "2px",
@@ -59,9 +67,11 @@
   "--r-chip": "2px",
   "--r-icon": "2px",
   "--bw": "1px",
-  "--bw-card": "3px",
+  "--bw-card": "6px",
+  "--bs-card": "double",
   "--shadow": "0 10px 30px rgba(60,35,10,.25)",
   "--pop-shadow": "0 10px 30px rgba(60,35,10,.25)",
-  "--ctl-h": "52px"
+  "--ctl-h": "52px",
+  "--bar-bw": "3px"
  }
 }

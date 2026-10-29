@@ -60,6 +60,7 @@ export async function fetchMissing({
     for (const f of th.fonts ?? []) {
       const file = `${root}${th.id}/fonts/${f.file}`;
       if (existsSync(file)) continue;
+      if (f.file === 'zh.woff2') { failed++; log(`MISSING themes/${th.id}/fonts/zh.woff2: the face of the Chinese name is cut by zh-fonts.py (not on Google Fonts): python3 themes/tools/zh-fonts.py ${th.id}`); continue; }
       try {
         const { bytes, note } = await fetchFont(f, get);
         mkdirSync(`${root}${th.id}/fonts`, { recursive: true });

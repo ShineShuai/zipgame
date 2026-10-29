@@ -25,6 +25,11 @@
    "family": "Bricolage Grotesque",
    "weight": "500 800",
    "file": "bricolagegrotesque-latin.woff2"
+  },
+  {
+   "family": "Noto Sans SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -47,10 +52,13 @@
   "numvText": "#1a1f4d",
   "onOrange": "#000000",
   "numRing": "#ffffff",
-  "numvRing": "#ffffff"
+  "numvRing": "#ffffff",
+  "line": "#ffffff",
+  "lineStrong": "#b9c4ec"
  },
  "vars": {
   "--font-body": "\"Bricolage Grotesque\", Trebuchet MS, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "999px",
   "--r-2": "999px",
@@ -62,6 +70,7 @@
   "--bw-card": "2px",
   "--shadow": "0 22px 50px rgba(90,100,200,.28),inset 0 0 0 1px rgba(255,255,255,.8)",
   "--pop-shadow": "0 22px 50px rgba(90,100,200,.28),inset 0 0 0 1px rgba(255,255,255,.8)",
-  "--ctl-h": "52px"
+  "--ctl-h": "52px",
+  "--bar-bw": "2px"
  }
 }

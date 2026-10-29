@@ -25,6 +25,11 @@
    "family": "Space Grotesk",
    "weight": "400 700",
    "file": "spacegrotesk-latin.woff2"
+  },
+  {
+   "family": "Noto Sans SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -48,10 +53,13 @@
   "onOrange": "#ffffff",
   "pathHi": "#ff3da8",
   "numRing": "#3b4690",
-  "numvRing": "#3b4690"
+  "numvRing": "#3b4690",
+  "line": "#232c5a",
+  "lineStrong": "#232c5a"
  },
  "vars": {
   "--font-body": "\"Space Grotesk\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "999px",
   "--r-2": "16px",
@@ -63,6 +71,7 @@
   "--bw-card": "1px",
   "--shadow": "0 0 60px rgba(34,228,255,.12)",
   "--pop-shadow": "0 0 60px rgba(34,228,255,.12)",
-  "--ctl-h": "52px"
+  "--ctl-h": "52px",
+  "--bar-bw": "1px"
  }
 }

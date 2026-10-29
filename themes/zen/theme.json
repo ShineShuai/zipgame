@@ -25,6 +25,11 @@
    "family": "Zen Kaku Gothic New",
    "weight": "400 700",
    "file": "zenkakugothicnew-latin.woff2"
+  },
+  {
+   "family": "Noto Sans SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -47,10 +52,13 @@
   "numvText": "#15130f",
   "onOrange": "#ffffff",
   "numRing": "#15130f",
-  "numvRing": "#15130f"
+  "numvRing": "#15130f",
+  "line": "#15130f",
+  "lineStrong": "#15130f"
  },
  "vars": {
   "--font-body": "\"Zen Kaku Gothic New\", Hiragino Sans, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "2px",
   "--r-2": "2px",
@@ -62,6 +70,7 @@
   "--bw-card": "1px",
   "--shadow": "none",
   "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
-  "--ctl-h": "52px"
+  "--ctl-h": "52px",
+  "--bar-bw": "1px"
  }
 }

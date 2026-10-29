@@ -25,6 +25,11 @@
    "family": "Lilita One",
    "weight": "400",
    "file": "lilitaone-latin.woff2"
+  },
+  {
+   "family": "Zigzag Round",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -47,10 +52,13 @@
   "numvText": "#ffd60a",
   "onOrange": "#000000",
   "numRing": "#ff9f0a",
-  "numvRing": "#ff9f0a"
+  "numvRing": "#ff9f0a",
+  "line": "#4a3fa8",
+  "lineStrong": "#4a3fa8"
  },
  "vars": {
   "--font-body": "\"Lilita One\", Trebuchet MS, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Zigzag Round\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "999px",
   "--r-2": "16px",
@@ -62,6 +70,7 @@
   "--bw-card": "2px",
   "--shadow": "0 0 60px rgba(255,214,10,.2)",
   "--pop-shadow": "0 0 60px rgba(255,214,10,.2)",
-  "--ctl-h": "52px"
+  "--ctl-h": "52px",
+  "--bar-bw": "2px"
  }
 }

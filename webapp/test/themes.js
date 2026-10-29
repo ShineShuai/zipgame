@@ -450,7 +450,7 @@ export function themeSystemTests(t, ok, eq, ta) {
     }
     for (const attr of css.matchAll(/data-(\w+)="([\w-]+)"/g)) ok(PRESETS[attr[1]]?.includes(attr[2]), `unknown preset ${attr[0]}`);
     ok(!/#[0-9a-f]{3,8}\b|rgba?\(/i.test(css), 'colour literals: use tokens');
-    const local = new Set(['--tile', '--tile-on', '--tile-counter']);
+    const local = new Set(['--tile', '--tile-on', '--tile-counter', '--rb-2', '--rb-3']);   // --rb-* are derived in play.css (the radii of boxes with text)
     ok(!/(--ic-[12]):[^;]*var\(\1/.test(css), 'a custom property must not refer to itself');
     for (const m of css.matchAll(/var\((--[\w-]+)/g)) ok(local.has(m[1]) || theme.includes(`${m[1]}:`), `${m[1]} is not defined in theme.css`);
     ok(INDEX.includes('<link rel="stylesheet" href="css/layouts.css">') && INDEX.indexOf('css/play.css') < INDEX.indexOf('css/layouts.css'), 'index.html loads it after play.css');
