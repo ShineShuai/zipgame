@@ -89,7 +89,7 @@ export function playPentagonTests(t, ok, eq) {
       const text = shareText(rec, 'http://x/?s=abc', translate);
       ok(text.startsWith('zigzag Pentagon · 36 cells\n⏱ 41.2s'), text);
       setLang('zh');
-      ok(shareText(rec, 'http://x/?s=abc', translate).startsWith('zigzag 五边形 · 36 格'), 'zh');
+      ok(shareText(rec, 'http://x/?s=abc', translate).startsWith('之折 五边形 · 36 格'), 'zh');
       eq(translate('game.pentagonTitle', 36), '五边形 · 36 格');
       eq(translate('size.cells', 36), '36 格');
     } finally {

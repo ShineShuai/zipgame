@@ -62,9 +62,9 @@ export function packTheme(theme, base) {
     if (data.length > BUDGET.font) problems.push(`${f.file}: ${data.length} bytes, budget ${BUDGET.font}`);
     fonts.push({ family: f.family, weight: f.weight, data: data.toString('base64') });
   }
-  // a font token naming a family whose file is missing would be refused by the game: until the file exists, use the system stack
+  // a font token naming a family whose file is missing would be refused by the game: until the file exists, use the system stack (`zh.woff2` is made by zh-fonts.py, the others fetched: `npm run themes -- fonts`)
   const shipped = fonts.map(f => f.family);
-  for (const name of ['--font-body', '--font-head', '--font-num']) {
+  for (const name of ['--font-body', '--font-head', '--font-num', '--font-zh']) {
     if (tokens[name] && /"([^"]+)"/.test(tokens[name])) {
       const unshipped = [...tokens[name].matchAll(/"([^"]+)"/g)].map(m => m[1]).filter(fam => (theme.fonts ?? []).some(f => f.family === fam) && !shipped.includes(fam));
       if (unshipped.length) tokens[name] = tokens[name].replace(new RegExp(`"(?:${unshipped.join('|')})", `, 'g'), '');
