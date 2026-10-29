@@ -7,12 +7,13 @@ import { dayOfDate } from '../../features/share.js';
 import { penalizedTime } from '../../features/hints.js';
 import { newPaths } from '../../features/twopaths-play.js';
 import { variantOf, nearestSize, sizesFor } from './variants.js';
-import { BEHAVIOUR } from '../../config.js';
+import { BEHAVIOUR, THEMES } from '../../config.js';
 import { submitAttempt } from '../../platform/leaderboard.js';
 import { rowFromGame, skillBucket } from '../../core/behaviour.js';
 import { buildRecord, newTrace } from '../../features/playlog.js';
 import { sfxSolved } from '../../platform/sound.js';
-import { awardSlots } from '../../ui/theme.js';
+import { eventAt } from '../../themes/calendar.js';
+import { awardSlots, offerTheme, watchDay } from '../../ui/theme.js';
 import {
   $, S, SIZES, behaviour, daily, dayNo, lb, playlog, randomInt, randomSeed, render, replay, sec,
   solid, storage, store, streak, unlock,
@@ -80,6 +81,17 @@ async function healStreak(date) {
 // chance (none left to unlock: a replay, as before).
 // The theme slots follow the player's activity (src/themes/slots.js): Game-of-Day solves in total and the best streak.
 export function awardThemeSlots() { awardSlots({ gotdSolves: store.gotdSolves(), bestStreak: streak?.view()?.best ?? 0 }); }
+// An offer day (src/themes/calendar.js, the digits in config.js THEMES): a theme of the site's
+// pool is offered until the local day ends. Promise<boolean>: false when today is no offer day
+// or nothing could be offered; the next check tries again.
+export function checkThemeEvent(now = new Date()) {
+  const event = eventAt(now, THEMES.digits);
+  if (!event) return Promise.resolve(false);
+  return offerTheme({ id: event.id }).catch(() => false);
+}
+// Checks now, when the page is seen again, when the network is back and at local midnight, so an
+// offer day needs no reload.
+export const watchThemeEvents = () => watchDay(() => checkThemeEvent());
 export async function onStreakMilestone() {
   if (unlock && !unlock.view().allUnlocked) await unlock.addChoice(); else await replay.addBonus();
   if (S.screen === 'game' || S.screen === 'menu') render();

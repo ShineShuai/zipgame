@@ -18,6 +18,7 @@ repo root; CI packs it into the site (see `themes/README.md` for the design, the
 | `event.js` | which theme an event offers: a hash of the device seed and the event id, in a ring; the keys of the seed and of the last answered event; `endOfDay`, `watchDay` |
 | `trial.js` | the offer record on the device (pending, trial, final), rebuilt from the whitelists when read; the trial and last-question times |
 | `slots.js` | the theme slots earned by Game-of-Day solves (12) and the best streak (30 days) |
+| `calendar.js` | the offer days: which local days offer a theme (the public rule, the secret digits in `config.js` `THEMES.digits`, the seeded draw of 1-2 days a month) |
 | `offer.js` | the markup of the offer chip and sheet (`ui/theme-offer.js`) and the time left |
 | `builtin.js` | light and dark (their tokens are `css/theme.css`) |
 
