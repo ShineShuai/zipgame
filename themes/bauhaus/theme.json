@@ -52,7 +52,7 @@
   "numvText": "#ffffff",
   "onOrange": "#1f2a30",
   "surface2": "#f4efe2",
-  "line": "#1f2a30",
+  "line": "#cfc6af",
   "lineStrong": "#a89f86",
   "numRing": "#1f2a30",
   "icons": [
@@ -97,7 +97,7 @@
   "--r-chip": "12px",
   "--r-icon": "999px",
   "--bw": "0px",
-  "--bw-card": "2px",
+  "--bw-card": "0px",
   "--shadow": "none",
   "--pop-shadow": "0 10px 24px rgba(31, 42, 48, 0.25)",
   "--ctl-h": "52px",
