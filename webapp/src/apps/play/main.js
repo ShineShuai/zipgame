@@ -36,7 +36,7 @@ import {
 } from './state.js';
 import { openReplay, renderReplay, startGameOfDay, startReplay } from './replay-ui.js';
 import {
-  claimReward, finishLucky, leaveLucky, logPlay, onStreakMilestone, shareGotd, startLocal,
+  awardThemeSlots, claimReward, finishLucky, leaveLucky, logPlay, onStreakMilestone, shareGotd, startLocal,
   startLucky, startTimer, stopTimer,
 } from './game-flow.js';
 import {
@@ -340,7 +340,8 @@ async function initLang() {
   installDevReveal(); await initSoundToggle(); await initLang();
   themeCtl = initTheme($('themeToggle'), (cur, next, classic) => (classic
     ? t(cur.mode === 'dark' ? 'theme.toLight' : 'theme.toDark') : t('theme.switchTo', themeName(next, getLang()))),
-  () => t('theme.pick'), getLang, { text: t, revealed: () => S.showDev });
+  () => t('theme.pick'), getLang, { text: t, revealed: () => S.showDev, idle: () => S.screen === 'menu' });
+  awardThemeSlots(); // the slots the player's activity has earned so far
   document.addEventListener('zip-theme', () => { if (S.screen !== 'generating') render(); }); // a theme's icons, board skin and 3D tints are drawn into the markup: draw the screen again
   installPeek({ selector: '.variant-opt', show: showPeek, hide: hidePeek });
   const howto = await storage.get('howto-seen'); S.howtoSeen = Boolean(howto && howto.value === '1'); S.howtoOpen = !S.howtoSeen;

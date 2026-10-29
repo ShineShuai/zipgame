@@ -6,6 +6,8 @@ import { cleanArt } from './art.js';
 
 export const BUNDLE_KEY = id => `zip_theme_b_${id}`;
 const CSS = id => new RegExp(`^:root\\[data-theme="${id}"\\]\\{[^<>{}]*\\}$`);
+// a theme's token block as buildCss makes it: one rule for the theme's own attribute, no markup, no url, no import
+export const validCss = (id, css) => typeof css === 'string' && CSS(id).test(css) && !/url\s*\(|@import/i.test(css);
 
 export function createStore(storage) {
   const read = key => { try { return storage.getItem(key); } catch { return null; } };
@@ -21,7 +23,7 @@ export function createStore(storage) {
     load(id) {
       let rec = null;
       try { rec = JSON.parse(read(BUNDLE_KEY(id))); } catch { /* damaged */ }
-      if (!rec || typeof rec.css !== 'string' || !CSS(id).test(rec.css) || /url\s*\(|@import/i.test(rec.css)) return null;
+      if (!rec || !validCss(id, rec.css)) return null;
       return { css: rec.css, art: cleanArt(rec.art), fonts: Array.isArray(rec.fonts) ? rec.fonts : [] };
     },
     has(id) { return this.load(id) !== null; },

@@ -5,14 +5,16 @@
 // A theme the player owns is kept on the device (src/themes/store.js): nothing is fetched to show it.
 // With the two built-in themes the button is the light/dark switch it always was; with another pool it steps through the
 // pool and shows the glyph of the theme it switches to; with three or more (or the dev reveal on) it opens a list.
-// An event calls `offerTheme({ id, until })`: a theme of the site's pool goes on trial and the offer sheet asks the player to keep
-// it or leave it (src/ui/theme-offer.js). The dev reveal (hold V) adds the whole pool to the list (src/ui/theme-picker.js).
+// An event calls `offerTheme({ id, until })`: a theme of the site's pool waits for the player as a chip (src/ui/theme-offer.js); a tap starts
+// the trial, then the player keeps the theme or leaves it. `watchDay(check)` calls the app's event check when a day may have begun, with
+// no reload. `awardSlots` raises the theme slots from the player's activity. The dev reveal (hold V) adds the whole pool to the list (src/ui/theme-picker.js).
 import { THEMES } from '../config.js';
+import { watchDay as watchDayOf } from '../themes/event.js';
 import { createThemes } from '../themes/index.js';
 import { MODE_KEY, parseMode, resolveMode } from '../themes/pool.js';
 import { browserSource } from '../themes/source.js';
 import { createStore } from '../themes/store.js';
-import { showThemeOffer } from './theme-offer.js';
+import { initThemeOffer, showSlotToast } from './theme-offer.js';
 import { closeThemePicker, toggleThemePicker } from './theme-picker.js';
 
 export const THEME_KEY = MODE_KEY;   // the key the stats page reads; it mirrors the active theme's mode
@@ -30,13 +32,21 @@ let ui = { text: key => key, lang: () => 'en' };
 // The controller (select, setCap, event(...) -> { commit, revert } ...) for the pool picker and the award mechanisms.
 export const themes = () => controller;
 
-// An event fires (however the app decides that): offers a theme of the pool for the player to keep or leave until `until` (ms, the end
-// of the event). `id` names the event: the same id is answered once, and a reload within it shows the same theme. Promise<boolean>:
-// false when nothing is offered (see controller.event).
+// An event fires (however the app decides that): a theme of the pool waits for the player to try, keep or leave, until `until` (ms; default
+// the end of the local day). `id` names the event: the same id is answered once, and a reload within it finds the same offer.
+// Promise<boolean>: false when nothing is offered (see controller.offer); the next trigger of the app's check tries again.
 export async function offerTheme({ id, until = null }) {
-  const trial = controller ? await controller.event({ id, until }) : null;
-  if (!trial) return false;
-  showThemeOffer({ controller, trial, until, text: ui.text, lang: ui.lang() });
+  return controller ? controller.offer({ id, until: until ?? undefined }) : false;
+}
+
+// Calls check() when an event day may have come: now, when the page is seen again, when the network is back, at local midnight. The page
+// needs no reload. Deciding that today is an event day, and calling offerTheme, is check's business. -> a function that stops it.
+export const watchDay = check => watchDayOf(check);
+
+// The player's activity ({ gotdSolves, bestStreak }) may have earned theme slots (src/themes/slots.js): they are raised, and a notice shows.
+export function awardSlots(counts) {
+  if (!controller?.awardSlots(counts)) return false;
+  showSlotToast({ text: ui.text, cap: controller.state().cap });
   return true;
 }
 
@@ -57,15 +67,18 @@ function setSymbol(button, entry) {
 // button: the header button. label(current, next, classic) -> its text for the screen reader and the tooltip.
 // pickLabel() / pickLang(): the heading of the list and the language of the names (the app passes its translations).
 // text(key, ...args): the app's translation; revealed(): whether the dev reveal is on (the app's S.showDev).
-export function initTheme(button, label = (cur, next, classic) => (classic ? (cur.mode === 'dark' ? 'Light mode' : 'Dark mode') : `Switch to ${next.name.en} theme`), pickLabel = () => 'Choose a theme', pickLang = () => 'en', { text = key => key, revealed = () => false } = {}) {
+export function initTheme(button, label = (cur, next, classic) => (classic ? (cur.mode === 'dark' ? 'Light mode' : 'Dark mode') : `Switch to ${next.name.en} theme`), pickLabel = () => 'Choose a theme', pickLang = () => 'en', { text = key => key, revealed = () => false, idle = () => true } = {}) {
   ui = { text, lang: pickLang };
   // a custom property this build defines (css/theme.css): a bundle's token the build does not know is ignored
   const known = name => getComputedStyle(document.documentElement).getPropertyValue(name) !== '';
-  controller = createThemes({ storage: localStorage, media: matchMedia(DARK_QUERY), store: createStore(localStorage), source: browserSource(THEMES), known });
+  controller = createThemes({
+    storage: localStorage, media: matchMedia(DARK_QUERY), store: createStore(localStorage), source: browserSource(THEMES), known,
+    trialMs: THEMES.trialMs, idle, focused: document.visibilityState !== 'hidden',
+  });
   const picking = () => controller.state().pool.length >= 3 || revealed();   // a pool of three or more (or the dev reveal) is chosen from a list, not stepped through
   // The dev reveal's rows are English only and not in the translations: no text a player can read mentions the reveal (see the test in tests.js).
   const labels = { all: 'All themes', draft: 'draft', keep: 'Keep this theme', offer: 'Offer a theme now', none: 'No themes found', nothing: 'Nothing to offer', loading: '…' };
-  const dev = () => (revealed() ? { labels, offerNow: () => offerTheme({ id: `dev-${Date.now()}`, until: Date.now() + 60000 }) } : null);
+  const dev = () => (revealed() ? { labels, offerNow: () => { controller.dropOffer(); return offerTheme({ id: `dev-${Date.now()}` }); } } : null);
   const sync = () => {
     if (!button) return;
     const [cur, next, classic] = [controller.current(), controller.upcoming(), controller.isClassic()];
@@ -78,6 +91,11 @@ export function initTheme(button, label = (cur, next, classic) => (classic ? (cu
   };
   controller.onChange(sync);
   controller.start();
+  initThemeOffer({ controller, text, lang: pickLang, idle });
+  // only the time the page is seen counts for a trial
+  document.addEventListener('visibilitychange', () => controller.focus(document.visibilityState !== 'hidden'));
+  addEventListener('pagehide', () => controller.focus(false));
+  addEventListener('pageshow', () => controller.focus(document.visibilityState !== 'hidden'));
   sync();
   document.addEventListener('zip:reveal', sync);   // the dev reveal turns the button into the list, and back
   if (button) button.addEventListener('click', () => (picking() ? toggleThemePicker(button, controller, pickLang(), pickLabel(), dev()) : controller.next()));

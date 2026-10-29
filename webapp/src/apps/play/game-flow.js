@@ -12,6 +12,7 @@ import { submitAttempt } from '../../platform/leaderboard.js';
 import { rowFromGame, skillBucket } from '../../core/behaviour.js';
 import { buildRecord, newTrace } from '../../features/playlog.js';
 import { sfxSolved } from '../../platform/sound.js';
+import { awardSlots } from '../../ui/theme.js';
 import {
   $, S, SIZES, behaviour, daily, dayNo, lb, playlog, randomInt, randomSeed, render, replay, sec,
   solid, storage, store, streak, unlock,
@@ -43,7 +44,7 @@ function uploadBehaviour(history, ms, mode) {
 
 export function onSolved() {
   logPlay(true); // before the hint penalty below: the log keeps the raw time
-  if (streak) streak.record().then(milestone => milestone && onStreakMilestone()).catch(e => console.warn('streak record failed:', e)); // a streak reward earned: a replay or unlock chance
+  if (streak) streak.record().then(milestone => { if (milestone) onStreakMilestone(); awardThemeSlots(); }).catch(e => console.warn('streak record failed:', e)); // a streak reward earned: a replay or unlock chance; a best streak of 30 days: a theme slot
   S.finished = true; stopTimer(); sfxSolved();
   if (S.lucky) finishLucky();
   if (!S.penaltyApplied) { S.elapsed = penalizedTime(S.elapsed, S.hintsUsed); S.penaltyApplied = true; } // once, even if the path is reset and re-solved
@@ -57,6 +58,7 @@ export function onSolved() {
 // (stats are stored in the attempt record, so no refetch is needed). A replay is submitted like the live game: it counts in that day's averages.
 async function finishGotd(n, date, time, isReplay) {
   await store.recordGotd(n, date, time, lb.enabled, isReplay);
+  awardThemeSlots(); // the 12th Game of Day solved: a theme slot
   if (isReplay) await healStreak(date);
   await replay.addSolved();
   if (lb.enabled) await shareGotd(date);
@@ -70,11 +72,14 @@ async function healStreak(date) {
     if (!healed) return;
     S.healed = true;
     for (let i = 0; i < healed.rewards; i++) await onStreakMilestone();
+    awardThemeSlots(); // a healed day can lift the best streak
     if (S.screen === 'game') render();
   } catch (e) { console.warn('streak heal failed:', e); }
 }
 // Unlock chances (features/unlock.js) come from the streak: with every streak reward the player picks a replay chance or an unlock
 // chance (none left to unlock: a replay, as before).
+// The theme slots follow the player's activity (src/themes/slots.js): Game-of-Day solves in total and the best streak.
+export function awardThemeSlots() { awardSlots({ gotdSolves: store.gotdSolves(), bestStreak: streak?.view()?.best ?? 0 }); }
 export async function onStreakMilestone() {
   if (unlock && !unlock.view().allUnlocked) await unlock.addChoice(); else await replay.addBonus();
   if (S.screen === 'game' || S.screen === 'menu') render();

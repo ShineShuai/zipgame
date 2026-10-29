@@ -15,7 +15,13 @@ import { cleanArt, CLASSIC_BOARD } from '../src/themes/art.js';
 import { cleanBundle } from '../src/themes/bundle.js';
 import { BUILTIN, BUILTIN_IDS } from '../src/themes/builtin.js';
 import { createThemes } from '../src/themes/index.js';
-import { EVENT_KEY, SEED_KEY, hash, newSeed, offerOrder } from '../src/themes/event.js';
+import {
+  EVENT_KEY, SEED_KEY, endOfDay, hash, newSeed, offerOrder, watchDay,
+} from '../src/themes/event.js';
+import { SLOT_GOTD_SOLVES, SLOT_STREAK_DAYS, slotsFor } from '../src/themes/slots.js';
+import {
+  FINAL_MS, OFFER_KEY, parseOffer, serializeOffer,
+} from '../src/themes/trial.js';
 import { cleanLayout } from '../src/themes/layout.js';
 import {
   activeEntry, cleanEntry, evictable, fresh, isClassicPool, MODE_KEY, nextEntry, parseState, POOL_KEY, remove, save, select, serialize, setCap,
@@ -25,7 +31,7 @@ import { BUNDLE_KEY, createStore } from '../src/themes/store.js';
 import { cleanTokens, buildCss } from '../src/themes/tokens.js';
 import { DEFAULT_LAYOUT, LAYOUT as PRESETS } from '../src/themes/layout.js';
 import { devHtml, devItems, pickerHtml, pickerItems } from '../src/themes/picker.js';
-import { formatLeft, offerHtml } from '../src/themes/offer.js';
+import { chipHtml, formatLeft, offerHtml } from '../src/themes/offer.js';
 import {
   cleanInner, cleanSvg, freshScope, scopeIds,
 } from '../src/themes/svg.js';
@@ -71,7 +77,9 @@ const filesOf = bundles => Object.fromEntries(bundles.map(b => [stem(b.id), b]))
 let counter = 0;
 const steady = () => () => { counter = (counter + 0.3819) % 1; return counter; };   // a fixed, spread-out "random"
 
-function rig({ stored, owned = [], legacy, dark = false, quota = false, clock = { t: 1000 }, files = {}, pool = null, storage: given = null } = {}) {
+function rig({
+  stored, owned = [], legacy, dark = false, quota = false, clock = { t: 1000 }, files = {}, pool = null, storage: given = null, trialMs = 1800000, idle = () => true,
+} = {}) {
   const initial = {};
   if (stored) initial[POOL_KEY] = typeof stored === 'string' ? stored : serialize(stored);
   if (legacy) initial[MODE_KEY] = legacy;
@@ -85,7 +93,7 @@ function rig({ stored, owned = [], legacy, dark = false, quota = false, clock = 
   const cleared = [];
   const fontLoads = [];
   const ctl = createThemes({
-    storage, media, store: createStore(storage), now: () => clock.t, random: steady(),
+    storage, media, store: createStore(storage), now: () => clock.t, random: steady(), trialMs, idle,
     source: { pool: async () => { calls.push('pool'); return pool; }, bundle: async f => { calls.push(f); return files[f] ?? null; } },
     apply: (e, loaded) => applied.push(loaded ? `${e.id}+css` : e.id),
     loadFonts: fonts => { fontLoads.push(fonts.length); return { release() { fontLoads.push('released'); } }; },
@@ -636,6 +644,185 @@ export function themeSystemTests(t, ok, eq, ta) {
     eq(await d.ctl.keepPool('light'), true);
     eq([d.ctl.state().pool.map(e => e.id), d.ctl.current().id], [['candy', 'light'], 'light'], 'kept: it takes the place of one of the player\'s own, not the one showing');
     eq([await d.ctl.keepPool('light'), d.ctl.owns('light')], [false, true], 'owned already');
+  });
+
+  const HOUR = 3600000;
+  const site = bundles => ({ files: filesOf(bundles), pool: poolOf(bundles) });
+
+  ta('themes: an offer waits as a chip, a tap starts the trial, only seen time counts, the time up leaves a last question, keeping takes the theme', async () => {
+    const clock = { t: 1000000 };
+    const until = clock.t + 10 * HOUR;
+    const r = rig({ clock, ...site([CANDY, WOOD]), trialMs: 60000 });
+    r.ctl.start();
+    const before = r.applied.length;
+    eq(await r.ctl.offer({ id: 'e1', until }), true);
+    const v = r.ctl.offerView();
+    const id = v.entry.id;
+    eq([v.phase, v.left, v.until, v.trialMs, r.applied.length, OFFER_KEY in r.storage.data], ['pending', 60000, until, 60000, before, true], 'it waits: the page does not wear it, the record is on the device');
+    eq([r.ctl.startOffer(), r.applied[r.applied.length - 1], r.ctl.offerView().phase, r.timeouts[r.timeouts.length - 1].ms], [true, `${id}+css`, 'trial', 60000], 'a tap starts it: on the page, the clock runs');
+    clock.t += 20000;
+    r.ctl.focus(false);
+    eq(r.ctl.offerView().left, 40000, 'the time seen is counted');
+    clock.t += 5 * HOUR;
+    eq([r.ctl.offerView().left, r.ctl.offerView().phase], [40000, 'trial'], 'hidden: it waits');
+    r.ctl.focus(true);
+    eq([r.ctl.offerView().left, r.timeouts[r.timeouts.length - 1].ms], [40000, 40000], 'seen again: the rest runs');
+    clock.t += 10000;
+    r.ctl.holdOffer(true);
+    clock.t += HOUR;
+    eq(r.ctl.offerView().left, 30000, 'a choice is being made: the clock waits');
+    r.ctl.holdOffer(false);
+    clock.t += 30000;
+    r.timeouts[r.timeouts.length - 1].fn();
+    const f = r.ctl.offerView();
+    eq([f.phase, f.left, r.applied[r.applied.length - 1], f.until >= clock.t + FINAL_MS], ['final', 0, 'light', true], 'time up: the theme leaves the page, the question stays');
+    eq(JSON.parse(r.storage.data[OFFER_KEY]).phase, 'final');
+    eq(await r.ctl.keepOffer(), false, 'the pool is full: a theme to replace is needed');
+    eq(await r.ctl.keepOffer('dark'), true);
+    eq([r.ctl.state().pool.map(e => e.id), r.ctl.state().active, BUNDLE_KEY(id) in r.storage.data, OFFER_KEY in r.storage.data, r.storage.data[EVENT_KEY], r.ctl.offerView(), r.applied[r.applied.length - 1]],
+      [['light', id], id, true, false, 'e1', null, `${id}+css`], 'kept: in the pool and active, the offer answered and gone');
+  });
+
+  ta('themes: the trial never ends in the middle of a puzzle; it waits for a menu screen', async () => {
+    const clock = { t: 1000000 };
+    let busy = true;
+    const r = rig({ clock, ...site([CANDY, WOOD]), trialMs: 60000, idle: () => !busy });
+    r.ctl.start();
+    await r.ctl.offer({ id: 'e1', until: clock.t + HOUR });
+    r.ctl.startOffer();
+    clock.t += 60000;
+    r.timeouts[r.timeouts.length - 1].fn();
+    eq([r.ctl.offerView().phase, r.timeouts[r.timeouts.length - 1].ms], ['trial', 1000], 'still on trial, asking again in a second');
+    busy = false;
+    r.timeouts[r.timeouts.length - 1].fn();
+    eq(r.ctl.offerView().phase, 'final');
+  });
+
+  ta('themes: a reload keeps the offer: the trial resumes with its time left, painted by the page before the first frame; the day ending takes a waiting offer', async () => {
+    const clock = { t: 1000000 };
+    const first = rig({ clock, ...site([CANDY, WOOD]), trialMs: 60000 });
+    first.ctl.start();
+    await first.ctl.offer({ id: 'e1', until: clock.t + HOUR });
+    first.ctl.startOffer();
+    const id = first.ctl.offerView().entry.id;
+    clock.t += 10000;
+    first.ctl.focus(false);   // the tab goes: saved
+    const boot = runBoot({ storage: first.storage.data });
+    eq([boot.dataset.theme, boot.appended.length], [id, 1], 'the head script paints the trial theme');
+    const second = rig({ clock, ...site([CANDY, WOOD]), trialMs: 60000, storage: first.storage });
+    second.ctl.start();
+    eq([second.ctl.offerView().phase, second.ctl.offerView().left, second.applied[second.applied.length - 1], second.timeouts[second.timeouts.length - 1].ms], ['trial', 50000, `${id}+css`, 50000]);
+    eq(await second.ctl.offer({ id: 'e1' }), true, 'the same event again finds the offer');
+    eq(await second.ctl.offer({ id: 'e2' }), false, 'one offer at a time');
+    // a waiting offer: gone when its day ends, and answered
+    const w = rig({ clock, ...site([CANDY, WOOD]) });
+    w.ctl.start();
+    await w.ctl.offer({ id: 'e5', until: clock.t + HOUR });
+    eq(runBoot({ storage: w.storage.data }).appended.length, 0, 'a waiting offer is not on the page');
+    clock.t += HOUR + 5;
+    w.timeouts[w.timeouts.length - 1].fn();
+    eq([w.ctl.offerView(), w.storage.data[EVENT_KEY], OFFER_KEY in w.storage.data, await w.ctl.offer({ id: 'e5' })], [null, 'e5', false, false]);
+    ok(await w.ctl.offer({ id: 'e6', until: clock.t + HOUR }), 'the next event offers again');
+    // no end given: the end of the local day
+    const d = rig({ clock, ...site([CANDY, WOOD]) });
+    await d.ctl.offer({ id: 'e7' });
+    eq(d.ctl.offerView().until, endOfDay(clock.t));
+  });
+
+  ta('themes: a trial interrupted by another choice waits with its time left; leaving answers the event; a built-in can be the offer', async () => {
+    const clock = { t: 1000000 };
+    const r = rig({ clock, ...site([CANDY, WOOD]), trialMs: 60000 });
+    r.ctl.start();
+    await r.ctl.offer({ id: 'e1', until: clock.t + 5 * HOUR });
+    r.ctl.startOffer();
+    clock.t += 15000;
+    r.ctl.select('dark');
+    const v = r.ctl.offerView();
+    eq([v.phase, v.left, r.applied[r.applied.length - 1]], ['pending', 45000, 'dark'], 'the chosen theme shows; the trial waits');
+    r.ctl.startOffer();
+    eq(r.ctl.offerView().left, 45000);
+    r.ctl.leaveOffer();
+    eq([r.ctl.offerView(), r.storage.data[EVENT_KEY], r.applied[r.applied.length - 1]], [null, 'e1', 'dark'], 'left: answered, the active theme is back');
+    // a player who replaced both built-ins is offered one of them
+    const BUILTIN_POOL = BUILTIN.map(b => ({ entry: b, f: null, live: true }));
+    const away = rig({ stored: withPool([entryOf(CANDY), entryOf(WOOD)], null, 2), owned: [CANDY, WOOD], pool: BUILTIN_POOL, files: {}, clock });
+    away.ctl.start();
+    ok(await away.ctl.offer({ id: 'e9', until: clock.t + HOUR }));
+    const id = away.ctl.offerView().entry.id;
+    ok(BUILTIN_IDS.includes(id));
+    away.ctl.startOffer();
+    eq(await away.ctl.keepOffer('wood'), true);
+    eq([away.ctl.state().pool.map(e => e.id), BUNDLE_KEY(id) in away.storage.data, away.calls.filter(c => c !== 'pool')], [['candy', id], false, []], 'taken without a copy or a fetch');
+  });
+
+  t('themes: the slots follow the activity: 2, +1 at 12 Game-of-Day solves, +1 at a best streak of 30 days, 4 at most, never lowered', () => {
+    eq([SLOT_GOTD_SOLVES, SLOT_STREAK_DAYS], [12, 30]);
+    eq([{}, { gotdSolves: 11, bestStreak: 29 }, { gotdSolves: 12 }, { bestStreak: 30 }, { gotdSolves: 12, bestStreak: 30 }, { gotdSolves: 999, bestStreak: 999 }, { gotdSolves: NaN, bestStreak: undefined }, undefined].map(slotsFor), [2, 2, 3, 3, 4, 4, 2, 2]);
+    const r = rig();
+    r.ctl.start();
+    let changes = 0;
+    r.ctl.onChange(() => { changes++; });
+    eq([r.ctl.awardSlots({ gotdSolves: 11 }), r.ctl.state().cap, changes], [false, 2, 0]);
+    eq([r.ctl.awardSlots({ gotdSolves: 12 }), r.ctl.state().cap], [true, 3]);
+    eq([r.ctl.awardSlots({ gotdSolves: 12, bestStreak: 30 }), r.ctl.state().cap, JSON.parse(r.storage.data[POOL_KEY]).cap], [true, 4, 4], 'kept on the device');
+    eq([r.ctl.awardSlots({ gotdSolves: 99, bestStreak: 99 }), r.ctl.awardSlots({}), r.ctl.state().cap], [false, false, 4], 'never lowered, never above four');
+  });
+
+  t('themes: the offer record is rebuilt from the whitelists, whatever the device holds', () => {
+    const good = { event: 'e1', phase: 'trial', until: 5000, left: 40000, theme: cleanBundle(CANDY) };
+    const text = serializeOffer(good);
+    eq(parseOffer(text).theme.entry, good.theme.entry);
+    eq(parseOffer(text, 10000).left, 10000, 'the time left is cut to the trial time of this build');
+    const bad = patch => { const o = JSON.parse(text); patch(o); return parseOffer(JSON.stringify(o)); };
+    for (const [name, got] of [
+      ['not json', parseOffer('{')], ['nothing', parseOffer(null)], ['version', bad(o => { o.v = 2; })], ['phase', bad(o => { o.phase = 'now'; })], ['event', bad(o => { o.event = 'a b'; })],
+      ['until', bad(o => { o.until = 'x'; })], ['left', bad(o => { o.left = -1; })], ['entry', bad(o => { o.theme.entry = { id: 'x' }; })],
+      ['css url', bad(o => { o.theme.css = o.theme.css.replace('}', ';background:url(x)}'); })], ['css markup', bad(o => { o.theme.css += '<'; })],
+      ['css of another theme', bad(o => { o.theme.css = o.theme.css.replace('"candy"', '"wood"'); })], ['font', bad(o => { o.theme.fonts = [{ family: 'F', weight: '400', data: '!!' }]; })],
+      ['size', parseOffer(text + ' '.repeat(400 * 1024))],
+    ]) eq(got, null, name);
+    eq(parseOffer(serializeOffer({ ...good, theme: { entry: BUILTIN[0], css: null, art: null, fonts: [] } })).theme, { entry: BUILTIN[0], css: null, art: null, fonts: [] }, 'a built-in has no css');
+    eq(runBoot({ storage: { [OFFER_KEY]: serializeOffer({ ...good, phase: 'pending' }) } }).appended.length, 0, 'only a trial is painted');
+    eq(runBoot({ storage: { [OFFER_KEY]: serializeOffer({ ...good, left: 0 }) } }).appended.length, 0, 'a trial with no time left is not');
+    eq(runBoot({ storage: { [OFFER_KEY]: serializeOffer({ ...good, theme: { entry: BUILTIN[1], css: null, art: null, fonts: [] } }) } }).dataset.theme, 'dark', 'a built-in on trial');
+    eq(runBoot({ storage: { [OFFER_KEY]: text.replace('"mode":"light"', '"mode":"x"') } }).dataset.theme, 'light', 'a damaged record shows the usual theme');
+  });
+
+  t('themes: the chip and the sheet draw each phase; a name cannot inject markup', () => {
+    const text = (k, ...a) => `${k}|${a.join('|')}`;
+    const theme = { name: '<b>x</b>', symbol: SYMBOL, swatches: ['#fff'] };
+    const pend = chipHtml({ phase: 'pending', theme, left: '', trialMs: 1800000 }, text);
+    ok(pend.includes('theme.offer.try|30') && !pend.includes('<b>x'), pend);
+    ok(chipHtml({ phase: 'pending', theme, left: '12:00', trialMs: 1800000 }, text).includes('theme.offer.resume|12:00'));
+    const on = chipHtml({ phase: 'trial', theme, left: '29:59' }, text);
+    ok(on.includes('data-left>29:59<') && on.includes('&lt;b&gt;x'), on);
+    ok(chipHtml({ phase: 'final', theme }, text).includes('theme.offer.finalChip|<b>x</b>'.replace('<b>x</b>', '&lt;b&gt;x&lt;/b&gt;')));
+    const sheetFinal = offerHtml({ theme, left: '1:00', phase: 'final', minimize: true }, text);
+    ok(sheetFinal.includes('theme.offer.finalTitle') && sheetFinal.includes('theme.offer.finalText') && sheetFinal.includes('data-offer="minimize"'));
+    const sheetTrial = offerHtml({ theme, left: '1:00' }, text);
+    ok(sheetTrial.includes('theme.offer.title') && !sheetTrial.includes('data-offer="minimize"'), 'no minimize unless asked');
+  });
+
+  t('themes: watchDay checks now, when the page is seen again, when the network is back and at local midnight, and stops on request', () => {
+    const calls = [];
+    const doc = { visibilityState: 'visible', listeners: {}, addEventListener(n, f) { this.listeners[n] = f; }, removeEventListener(n) { delete this.listeners[n]; } };
+    const win = { listeners: {}, addEventListener(n, f) { this.listeners[n] = f; }, removeEventListener(n) { delete this.listeners[n]; } };
+    const timers = []; const cleared = [];
+    const clock = { t: new Date(2026, 10, 3, 21, 0, 0).getTime() };
+    const stop = watchDay(() => calls.push('check'), { doc, win, now: () => clock.t, timers: { setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimeout: id => cleared.push(id) } });
+    eq([calls.length, timers[0].ms], [1, 3 * HOUR + 1000], 'at once; the timer is at the next local midnight');
+    doc.visibilityState = 'hidden'; doc.listeners.visibilitychange();
+    eq(calls.length, 1, 'hidden: nothing');
+    doc.visibilityState = 'visible'; doc.listeners.visibilitychange();
+    win.listeners.online();
+    eq(calls.length, 3);
+    clock.t = endOfDay(clock.t) + 1000;
+    timers[timers.length - 1].fn();
+    eq([calls.length, timers[timers.length - 1].ms], [4, 24 * HOUR + 1000 - 1000], 'midnight: checked, the next midnight armed');
+    stop();
+    eq([Object.keys(doc.listeners), Object.keys(win.listeners)], [[], []]);
+    const throwing = watchDay(() => { throw new Error('x'); }, { doc, win, now: () => clock.t, timers: { setTimeout: () => 1, clearTimeout() {} } });
+    throwing();
   });
 
   ta('themes: the dev reveal lists the whole pool, drafts too, and tries or keeps any theme whatever the cap', async () => {

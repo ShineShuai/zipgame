@@ -48,9 +48,12 @@ export const BEHAVIOUR = {
 // manifest in it, a file name that is not a standard one; every bundle is `<hash of its content>.json`. The app lists none of them: it reads
 // the manifest only when an event offers a theme or the dev reveal is on. This hides the files, it does not protect them.
 // `base`: a path relative to the page ('../t/' is the folder next to webapp/, like ../assets/) or an https origin (add it to `connect-src`).
+// `trialMs`: how long a player may try an offered theme, in ms of foreground time (the clock stops while the page is hidden): short on purpose,
+// the offer is rare and the decision should come quickly.
 export const THEMES = {
   base: '../t/',
   pool: 'q7x2k9vd4m3h.json',
+  trialMs: 30 * 60 * 1000,
 };
 
 // Release of the solid puzzles in the play app (src/features/solid-release.js).
