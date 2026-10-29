@@ -13,6 +13,9 @@ import { scopeKey } from './daily.js';
 export const attemptKey = date => 'zip_gotd_attempt_' + date;
 export const GOTD_KEY = 'zip_gotd_v2', ATTEMPT_KEEP_DAYS = 120;
 const dayOf = date => Date.UTC(+date.slice(0, 4), +date.slice(4, 6) - 1, +date.slice(6, 8)) / 86400000;
+// Game-of-Day solves in total: one per date, replays included. The records are pruned (ATTEMPT_KEEP_DAYS), the count is not: it is kept in the blob
+// as `n` and only ever grows (the theme slots are earned by it, features of src/themes/slots.js).
+const solvedCount = b => Math.max(Number.isInteger(b.n) && b.n > 0 ? b.n : 0, Object.values(b.a).filter(r => isRecord(r) && r.solved).length);
 const isRecord = r => r && typeof r === 'object' && typeof r.solved === 'boolean';
 const parseGotd = text => { try { const b = JSON.parse(text); return b && b.v === 2 && b.a && typeof b.a === 'object' ? b : { v: 2, a: {} }; } catch { return { v: 2, a: {} }; } };
 // Drops malformed date keys and every date more than ATTEMPT_KEEP_DAYS before `anchor` (a day number): the date just saved, or, for the
@@ -51,7 +54,7 @@ async function convertLegacy(storage, known) {
 }
 
 export function createStore(storage, sizes, scopes = {}) {
-  const total = {}, today = {}, best = {}, attempts = {}; let attemptDate = null; // attempts: date -> record|null, every date loaded so far (today and replays)
+  const total = {}, today = {}, best = {}, attempts = {}; let attemptDate = null, gotdCount = 0; // attempts: date -> record|null, every date loaded so far (today and replays)
   const get = async k => { try { const r = await storage.get(k); return r ? JSON.parse(r.value) : null; } catch { return null; } };
   // One read-modify-write at a time: the app calls recordSolve without awaiting it and recordGotd right after, and two overlapping
   // patches would each write a blob that lacks the other's change.
@@ -121,18 +124,26 @@ export function createStore(storage, sizes, scopes = {}) {
       if (!replay) { const prev = best[n]; if (!prev || prev.date !== date || prev.time > time) { best[n] = { date, time }; await patch(b => { b.b[n] = [date, time]; }); } }
       await store.saveAttempt(date, pending ? { solved: true, time, sent: false } : { solved: true, time });
     },
+    gotdSolves: () => gotdCount, // Game-of-Day dates solved in total (as of the last load or save)
     attempt: () => attempts[attemptDate] || null, attemptDate: () => attemptDate, // today's record (as of the last hydrateAttempt)
     attemptOn: date => attempts[date] || null,                                     // any loaded date's record
     async loadAttempt(date) {
       await convertAttempts();
-      const r = await storage.get(GOTD_KEY), rec = r ? parseGotd(r.value).a[date] : null;
+      const r = await storage.get(GOTD_KEY), blob = r ? parseGotd(r.value) : null, rec = blob ? blob.a[date] : null;
+      if (blob) gotdCount = Math.max(gotdCount, solvedCount(blob));
       attempts[date] = isRecord(rec) ? rec : converted ? null : await get(attemptKey(date));
       return attempts[date];
     },
     async hydrateAttempt(date) { await store.loadAttempt(date); attemptDate = date; },
     async saveAttempt(date, a) {
       attempts[date] = a; await convertAttempts();
-      await patchGotd(b => { b.a[date] = a; pruneAttempts(b, dayOf(date)); }); // read-modify-write: another tab's dates stay
+      await patchGotd(b => { // read-modify-write: another tab's dates stay
+        const before = solvedCount(b), prev = b.a[date];
+        b.a[date] = a;
+        b.n = a.solved && !(isRecord(prev) && prev.solved) ? before + 1 : before;
+        pruneAttempts(b, dayOf(date));
+        gotdCount = Math.max(gotdCount, b.n);
+      });
     },
   };
   return store;

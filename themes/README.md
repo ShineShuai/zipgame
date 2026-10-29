@@ -63,13 +63,23 @@ webapp/src/ui/theme*.js              the button, the picker (+ dev rows) and the
 - **Add or change a theme.** Write `themes/<id>/`, push. CI (`webapp-ci.yml`) runs the theme tests; on `main`, `stage-site.sh` calls
   `build-site.mjs`, which packs every theme (a problem fails the build), writes `t/<hash>.json` for each and the manifest, and `--check` reads
   the folder back. Only those files are published: no `theme.json`, `art.json` or font file (the stage scan fails if one is staged).
-- **Event.** The app's own trigger (not this system) calls `offerTheme({ id, until })` (`src/ui/theme.js`). The controller reads the manifest,
-  drops drafts and themes the player owns, and picks one from a hash of the device's random seed and the event id: a reload within the event shows
-  the same theme, devices differ. The bundle is fetched, validated and shown **on trial**; the offer sheet asks the player to keep or leave it
-  until `until`. An event id is answered once (kept or left). No theme to offer (nothing reachable, all owned, only drafts): nothing happens.
-- **Take.** `commit(replaceId)`: the copy is saved on the device (`zip_theme_b_<id>`) and the theme enters the pool (it replaces `replaceId` when
+- **Event.** The app's own trigger (not this system) calls `offerTheme({ id, until })` (`src/ui/theme.js`; `until` defaults to the end of the
+  local day); `watchDay(check)` runs that check now, when the page is seen again, when the network is back and at local midnight, so the page needs
+  no reload. The controller reads the manifest, drops drafts and themes the player owns, and picks one from a hash of the device's random seed and
+  the event id: a reload within the event finds the same offer, devices differ. The bundle is fetched, validated and kept **waiting** (record
+  `zip_theme_o`, `src/themes/trial.js`): a chip says "rare theme today, try it for 30 min". An event id is answered once. No theme to offer
+  (nothing reachable, all owned, only drafts) or another offer still open: nothing happens, the next trigger tries again.
+- **Trial.** A tap on the chip starts it: the page wears the theme for `THEMES.trialMs` (`config.js`, 30 min) of *foreground* time. The clock stops
+  while the page is hidden or the player is choosing which theme to replace, and never ends in the middle of a puzzle (the next menu screen). The chip
+  shows the countdown; a tap opens the sheet (keep / leave / minimize). The chip and the sheet show on menu screens only. The record survives a reload
+  (the head script paints the trial theme before the first frame). Choosing another theme during the trial pauses it (the chip says "resume").
+- **Time up.** The theme leaves the page and the sheet asks "keep it?" until the day ends (at least 30 min). No answer: it is gone and answered.
+- **Take.** `keepOffer(replaceId)`: the copy is saved on the device (`zip_theme_b_<id>`) and the theme enters the pool (it replaces `replaceId` when
   the pool is full; the replaced theme's copy is deleted). The sheet asks which theme to replace.
-- **Leave / event over.** `revert()`, a timer at `until`, any choice, or a reload: nothing was kept, the theme is gone.
+- **Leave / day over.** `leaveOffer()`, or the end of the day for a waiting or final offer: nothing was kept, the theme is gone.
+- **Slots.** A pool has 2 slots; 12 Game-of-Day solves in total (replays count, one per date) earn a third, a best streak of 30 days a fourth
+  (`src/themes/slots.js`; the count is kept in the Game-of-Day blob as `n` so it survives the pruning of old dates). `awardSlots` only raises the
+  cap; a notice shows when a slot is earned.
 - **Use.** An owned theme needs no network: the page's head script paints it from the device copy before the first frame.
 - **Dev reveal.** Hold V (or 5 taps on the bare app bar, or a pinned device): the theme button always opens the list, which gains "All themes"
   (from the manifest, drafts marked). Try, keep, or offer now (see above). Nothing of this is in the translations.
@@ -110,7 +120,7 @@ Everything not stated in a theme.json is derived and nudged to pass the contrast
 - **Layout** (`css/layouts.css`, chosen by the theme's `layout` keys): menu `dashboard` (default) | `stack` | `bento`; picker `tiles` (default) |
   `list`; actions `side` (default) | `bar`. The defaults have no rule: they are `play.css`.
 - **The pool picker** (`ui/theme-picker.js`): with two themes the header button switches (as light/dark always did), with three or more (or with the dev reveal on) it opens a list.
-- **The offer sheet** (`ui/theme-offer.js`): keep or leave a theme on trial, with the time left, and which theme to replace when the pool is full.
+- **The offer chip and sheet** (`ui/theme-offer.js`): try, keep or leave a theme, with the time left, and which theme to replace when the pool is full; menu screens only.
 - Every change of theme redraws the screen (`zip-theme`), so icons, boards and 3D tints follow.
 
 ## Rules a bundle cannot break (checked when it is built and again when the game receives it)

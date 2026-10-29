@@ -26,3 +26,24 @@ export function offerOrder(candidates, seed, eventId) {
   const at = hash(`${seed}|${eventId}`) % list.length;
   return [...list.slice(at), ...list.slice(0, at)];
 }
+
+// The end of the local day of `ms` (the next local midnight): when a day's offer ends.
+export const endOfDay = ms => { const d = new Date(ms); return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime(); };
+
+// Calls check() now and whenever a new day, or a new look at the page, may have come: the page becomes visible again, the network is back,
+// the next local midnight passes. The page needs no reload to learn that it is an event day; deciding that (and calling offerTheme) is
+// check's business. -> a function that stops the watching.
+export function watchDay(check, { doc = globalThis.document, win = globalThis, now = Date.now, timers = globalThis } = {}) {
+  let timer = null;
+  const run = () => { try { check(); } catch { /* the next trigger tries again */ } };
+  const arm = () => {
+    if (timer) timers.clearTimeout(timer);
+    timer = timers.setTimeout(() => { run(); arm(); }, Math.min(endOfDay(now()) - now() + 1000, 2 ** 31 - 1));
+  };
+  const look = () => { if (doc.visibilityState !== 'hidden') { run(); arm(); } };
+  doc.addEventListener('visibilitychange', look);
+  win.addEventListener('online', look);
+  run();
+  arm();
+  return () => { doc.removeEventListener('visibilitychange', look); win.removeEventListener('online', look); if (timer) timers.clearTimeout(timer); timer = null; };
+}

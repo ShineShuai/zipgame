@@ -20,7 +20,7 @@ const REQUIRED = ['--bg', '--surface', '--text', '--accent'];
 
 const bytesOf = b64 => (globalThis.Buffer ? Buffer.from(b64, 'base64') : Uint8Array.from(atob(b64), c => c.charCodeAt(0)));
 
-function cleanFonts(raw) {
+export function cleanFonts(raw) {
   if (raw === undefined) return [];
   if (!Array.isArray(raw) || raw.length > MAX_FONTS) return null;
   const out = [];

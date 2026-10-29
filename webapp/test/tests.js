@@ -2033,6 +2033,21 @@ ta('attempts: legacy per-date keys are converted to one key; records are kept as
   eq(await st.keys('zip_gotd_attempt_'), [], 'every old key is gone');
   eq(Object.keys(JSON.parse((await st.get(GOTD_KEY)).value).a).sort(), ['20260918', '20260919']);
 });
+ta('attempts: the Game-of-Day solves in total only grow: one per date (a repeat or a late submit flag adds nothing), replays count, pruned dates stay counted, an old blob counts its solved dates', async () => {
+  const st = fakeStorage(), S = createStore(st, [5]); await S.hydrate('20260101');
+  eq(S.gotdSolves(), 0);
+  await S.saveAttempt('20260101', { solved: false, time: null }); eq(S.gotdSolves(), 0, 'a try is not a solve');
+  await S.recordGotd(5, '20260101', 30); eq(S.gotdSolves(), 1);
+  await S.saveAttempt('20260101', { solved: true, time: 30, sent: true }); eq(S.gotdSolves(), 1, 'the same date again');
+  await S.recordGotd(5, '20251231', 40, false, true); eq(S.gotdSolves(), 2, 'a replay of another date');
+  const dateAt = i => new Date(Date.UTC(2025, 0, 1) + i * 86400000).toISOString().slice(0, 10).replace(/-/g, '');
+  for (let i = 0; i < 300; i++) await S.saveAttempt(dateAt(i), { solved: true, time: 30 });
+  ok(Object.keys(JSON.parse((await st.get(GOTD_KEY)).value).a).length < 2 * ATTEMPT_KEEP_DAYS, 'the old dates went');
+  const total = S.gotdSolves(); ok(total >= 300, 'the pruned dates stay counted: ' + total);
+  const again = createStore(st, [5]); await again.hydrate('20260101'); eq(again.gotdSolves(), total, 'it is read back');
+  const old = fakeStorage(); await old.set(GOTD_KEY, JSON.stringify({ v: 2, a: { 20260918: { solved: true, time: 7 }, 20260919: { solved: false, time: null }, 20260920: { solved: true, time: 8 } } }));
+  const O = createStore(old, [5]); await O.hydrate('20260921'); eq(O.gotdSolves(), 2, 'a blob without a count: its solved dates');
+});
 ta('attempts: only the last 120 days before the newest date are kept; 400 days of play stay in one small key', async () => {
   const st = fakeStorage(), S = createStore(st, [5]); await S.hydrate('20260101');
   const dateAt = i => new Date(Date.UTC(2025, 0, 1) + i * 86400000).toISOString().slice(0, 10).replace(/-/g, '');

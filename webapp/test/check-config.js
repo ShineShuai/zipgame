@@ -25,6 +25,7 @@ assert.ok(Number.isInteger(lo) && Number.isInteger(hi) && lo >= 2 && hi >= lo &&
 releaseDays(SOLID_RELEASE); // throws on a bad date or day count
 assert.ok(/^(\.\.?\/)+[\w-]+\/$|^https:\/\/[^/]+\/(?:[\w-]+\/)*$/.test(THEMES.base), 'THEMES.base must be a folder relative to the page (ending in /) or an https URL');
 assert.ok(/^[\w-]+\.json$/.test(THEMES.pool), 'THEMES.pool must be the file name of the manifest (themes/tools/build-site.mjs writes it)');
+assert.ok(Number.isInteger(THEMES.trialMs) && THEMES.trialMs >= 60000 && THEMES.trialMs <= 86400000, 'THEMES.trialMs must be a whole number of ms, from one minute to a day');
 
 // The Content-Security-Policy of each page (a <meta> tag: GitHub Pages sends no headers) must let the page do what it does and nothing
 // more: scripts only from the page's own files plus its hashed inline scripts, and calls only to the backends of config.js.
