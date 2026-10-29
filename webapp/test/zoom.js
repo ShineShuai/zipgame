@@ -40,6 +40,7 @@ import {
 } from '../src/apps/play/pentagon-board.js';
 import { cellPoint, fullViewOf } from '../src/apps/play/puzzle-kit.js';
 import { EN, ZH } from '../src/ui/i18n.js';
+import { MAP_MIN_CELLS, MAP_PX, zoomMapHtml } from '../src/apps/play/zoom-map.js';
 
 const FULL = { x: 0, y: 0, w: 960, h: 960 }; // a 16x16 board
 const BOX = { left: 20, top: 100, width: 350, height: 350 }; // the svg on a phone
@@ -231,8 +232,29 @@ export function zoomTests(t, ok, eq) {
     eq(cellPoint(p, 8), [90, 90]);
   });
 
+  t('zoom map: the overview has the whole picture, a dot per checkpoint and the paths', () => {
+    const p = makePuzzle(12);
+    p.cp[0] = 1;
+    p.cp[50] = 2;
+    p.cp[143] = 3;
+    const html = zoomMapHtml(state(p, { path: [0, 1, 2, 14], finished: false }));
+    ok(html.includes('id="zoomMap" hidden'), 'drawn hidden');
+    ok(html.includes('viewBox="0 0 720 720"'), 'the whole picture');
+    eq((html.match(/<circle /g) ?? []).length, 3, 'a dot per checkpoint');
+    ok(html.includes('<path data-colour="0" d="M30 30'), 'the path starts at the middle of cell 0');
+    ok(html.includes(`width:${MAP_PX}px`), 'its size');
+    const none = zoomMapHtml(state(p, { path: [], finished: false }));
+    ok(none.includes('d=""'), 'no path, no line');
+    eq(MAP_MIN_CELLS, 12);
+    const two = makePuzzle(8);
+    two.split = true;
+    two.cp[0] = 1;
+    const both = zoomMapHtml(state(two, { path: [], paths: [[0, 1], [9, 10]], finished: false }));
+    eq((both.match(/<path data-colour=/g) ?? []).length, 2, 'one line per colour');
+  });
+
   t('zoom texts: English and Chinese have the same keys', () => {
-    for (const key of ['zoom.in', 'zoom.out', 'zoom.fit', 'zoom.hint']) {
+    for (const key of ['zoom.in', 'zoom.out', 'zoom.fit', 'zoom.pan', 'zoom.map', 'zoom.hint']) {
       ok(typeof EN[key] === 'string' && typeof ZH[key] === 'string', key);
     }
   });

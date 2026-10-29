@@ -6,7 +6,6 @@
 import { ZOOM_STEP, isZoomed } from '../../view/camera.js';
 import { t } from '../../ui/i18n.js';
 import { actionIcon } from './icons.js';
-import { storage } from './state.js';
 
 // Below this many pixels a cell the buttons are offered on a touch screen (the numbers get hard
 // to read).
@@ -32,12 +31,13 @@ export function zoomToolsHtml({ hint = true, inline = false } = {}) {
 let hintSeen = null;
 let hintLoading = false;
 
-function loadHint(done) {
-  if (hintSeen !== null || hintLoading || !storage) {
+// `store` keeps it on the device: { read(): Promise<value>, write() }, or null (no hint then).
+function loadHint(store, done) {
+  if (hintSeen !== null || hintLoading || !store) {
     return;
   }
   hintLoading = true;
-  storage.get(HINT_KEY).then(found => {
+  store.read().then(found => {
     hintSeen = Boolean(found);
     done();
   }, () => {
@@ -46,14 +46,12 @@ function loadHint(done) {
   });
 }
 
-function markHint() {
+function markHint(store) {
   if (hintSeen) {
     return;
   }
   hintSeen = true;
-  if (storage) {
-    storage.set(HINT_KEY, '1');
-  }
+  store?.write();
 }
 
 const media = query => typeof matchMedia === 'function' && matchMedia(query).matches;
@@ -63,8 +61,11 @@ const defaultById = id => document.getElementById(id);
 
 // Wires the buttons to `zoom` (apps/play/zoom.js); `head()` is the picture point a button keeps
 // still (the head of the path), or null; always: shown on a touch screen too; byId: how to find an
-// element of the page. Returns the function that brings what is shown up to date.
-export function setupZoomTools(zoom, head, { always = false, byId = defaultById } = {}) {
+// element of the page; hintStore: where the pinch hint is remembered (see loadHint). Returns the
+// function that brings what is shown up to date.
+export function setupZoomTools(zoom, head, {
+  always = false, byId = defaultById, hintStore = null,
+} = {}) {
   const tools = byId('zoomTools');
   if (!tools) {
     return () => {};
@@ -85,14 +86,13 @@ export function setupZoomTools(zoom, head, { always = false, byId = defaultById 
     tools.hidden = !(always || !coarsePointer() || width / zoom.across < TOOLS_BELOW_PX);
     const zoomed = isZoomed(cam);
     zoomPan.hidden = zoom.centred();
-    zoomPan.disabled = !zoomed;
     zoomPan.classList.toggle('active', zoom.panning());
     zoomPan.setAttribute('aria-pressed', String(zoom.panning()));
     zoomIn.disabled = cam.s >= zoom.limit() - 1e-6;
     zoomOut.disabled = !zoomed;
     zoomFit.disabled = !zoomed;
     if (zoomed) {
-      markHint();
+      markHint(hintStore);
     }
     if (hint) {
       hint.hidden = !hintOn;
@@ -105,7 +105,7 @@ export function setupZoomTools(zoom, head, { always = false, byId = defaultById 
   zoomFit.onclick = () => zoom.fit();
   zoom.listen(update);
   decideHint();
-  loadHint(() => {
+  loadHint(hintStore, () => {
     decideHint();
     update(zoom.cam());
   });

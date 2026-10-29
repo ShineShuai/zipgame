@@ -389,7 +389,8 @@ const pathGradient = size => '<defs><linearGradient id="zip-path" gradientUnits=
 export function boardView(p) {
   const size = p.n * CELL;
   const margin = (p.wrap ? WRAP_PAD : 0) * CELL;
-  return { x: -margin, y: -margin, w: size + 2 * margin, h: size + 2 * margin };
+  const origin = margin ? -margin : 0; // not -0
+  return { x: origin, y: origin, w: size + 2 * margin, h: size + 2 * margin };
 }
 
 // Full SVG markup for the play board (S = play state). The svg itself has no border or padding, because

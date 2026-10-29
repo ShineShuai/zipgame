@@ -6,7 +6,7 @@ import { topologyOf } from '../../src/core/surface/puzzle.js';
 import { cellDirection, turn } from '../../src/view/proj.js';
 import { createDrawing } from '../../src/coop/drawing.js';
 import {
-  IDENTITY, isSolid, layoutsFor, solidBoard, startRotation, turnBy, turnByKey, turnable,
+  IDENTITY, isSolid, layoutsFor, netPoint, solidBoard, startRotation, turnBy, turnByKey, turnable,
 } from '../../src/coop/solid.js';
 import { COOP_VARIANTS } from '../../src/coop/variants.js';
 import { solutionFor } from '../../src/coop/model.js';
@@ -80,4 +80,19 @@ test('the board: a cell per polygon, the drawn lines, the hint mark', async () =
   assert.equal(count(next.html, /class="sf-hint"/g), 1);
   const wrong = solidBoard(cube, drawing, { ...options, hint: { kind: 'wrong', edge } });
   assert.equal(count(wrong.html, /class="sf-wrong"/g), 1);
+});
+
+test('a pointer on a zoomed net is a point of the picture through the svg viewBox', () => {
+  const rect = { left: 10, top: 20, width: 400, height: 200 };
+  const svg = {
+    getBoundingClientRect: () => rect,
+    viewBox: { baseVal: { x: 100, y: 50, width: 200, height: 100 } },
+  };
+  const root = { querySelector: () => svg };
+  const frames = [{ width: 800, height: 400, toNet: (x, y) => [x, y] }];
+  assert.deepEqual(netPoint(root, frames, 210, 120), [200, 100], 'the middle of the box');
+  assert.deepEqual(netPoint(root, frames, 10, 20), [100, 50], 'its corner');
+  // an svg without a viewBox (a fake page, or not zoomed yet): the whole frame
+  const whole = { getBoundingClientRect: () => rect };
+  assert.deepEqual(netPoint({ querySelector: () => whole }, frames, 210, 120), [400, 200]);
 });

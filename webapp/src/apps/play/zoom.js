@@ -14,7 +14,8 @@
 //   show(cam)  puts the camera on the picture (the default writes it into the viewBox of svg)
 //   centred()  true when the picture is zoomed about its middle only (a solid turns instead of
 //              being panned)
-// Pan mode (setPanning): a drag pans instead of drawing; it ends by itself at s = 1.
+// Pan mode (setPanning): a drag pans instead of drawing, two fingers pinch; it ends by itself when
+// the view is back at s = 1 from a zoom.
 import {
   ZOOM_STEP,
   blend,
@@ -65,10 +66,12 @@ export function createZoom({
   getPan = null,
   setPan = null,
 }) {
-  let box = measure();
+  // the box of the picture on the page; a board that is not drawn yet has none
+  const measured = () => measure() ?? { left: 0, top: 0, width: 1, height: 1 };
+  let box = measured();
   let frame = 0;
   let panOn = false;
-  let listener = () => {};
+  const listeners = [];
   let pinchStart = null;
   let gestureStart = null;
 
@@ -94,11 +97,12 @@ export function createZoom({
       panOn = on;
     }
     target.classList.toggle('panmode', on);
-    listener(cam());
+    listeners.forEach(listener => listener(cam()));
   }
 
   // Shows camera `next` (kept inside the picture) and keeps it.
   function apply(next) {
+    const wasZoomed = isZoomed(cam());
     const clamped = clampCamera(full, next, limit());
     if (centred()) {
       clamped.cx = full.x + full.w / 2;
@@ -106,10 +110,12 @@ export function createZoom({
     }
     set(clamped);
     show(clamped);
-    if (!isZoomed(clamped) && panning()) {
+    // back to the whole board from a zoom: drawing again (pan mode may be entered at fit, though:
+    // it is how a pinch is begun where two fingers draw two lines)
+    if (wasZoomed && !isZoomed(clamped) && panning()) {
       setPanning(false);
     }
-    listener(clamped);
+    listeners.forEach(listener => listener(clamped));
     return clamped;
   }
 
@@ -147,7 +153,7 @@ export function createZoom({
   }
 
   const refresh = () => {
-    box = measure();
+    box = measured();
   };
 
   // ----- the controls the page calls -----
@@ -156,6 +162,18 @@ export function createZoom({
     refresh();
     const [fx, fy] = anchorOf(point);
     animateTo(zoomAt(full, cam(), factor, limit(), fx, fy));
+  }
+
+  // The middle of the view moves to picture point `point` (eased, or at once for a drag).
+  function centreOn(point, animate = true) {
+    refresh();
+    const target = { s: cam().s, cx: point[0], cy: point[1] };
+    if (animate) {
+      animateTo(target);
+    } else {
+      stop();
+      apply(target);
+    }
   }
 
   function fit() {
@@ -295,8 +313,19 @@ export function createZoom({
     target.classList.add('panmode');
   }
 
+  // The board is taken off the page (or zoomed anew): its listeners go.
+  function destroy() {
+    stop();
+    target.removeEventListener('wheel', onWheel);
+    target.removeEventListener('gesturestart', onGestureStart);
+    target.removeEventListener('gesturechange', onGestureChange);
+    target.removeEventListener('gestureend', onGestureEnd);
+    target.classList.remove('panmode');
+  }
+
   return {
     target,
+    destroy,
     across,
     centred,
     panning,
@@ -308,6 +337,7 @@ export function createZoom({
     apply,
     animateTo,
     zoomBy,
+    centreOn,
     fit,
     panBy,
     driftBy,
@@ -317,8 +347,9 @@ export function createZoom({
     keepInView,
     anchorOf,
     onKey,
+    // fn(cam) is called whenever the camera or the pan mode changes
     listen: fn => {
-      listener = fn;
+      listeners.push(fn);
     },
     // The svg's box on the page, as last measured (refresh() measures it again).
     box: () => box,

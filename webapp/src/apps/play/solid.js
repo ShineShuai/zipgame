@@ -52,13 +52,17 @@ import {
 } from '../../platform/sound.js';
 import { SOLID_KINDS, SOLID_SIZES, openSizes, stageOf } from '../../features/solid-release.js';
 import { actionIcon, cardIcon, variantIcon } from './icons.js';
-import { fitCamera, isZoomed, viewBoxAttr, viewOf } from '../../view/camera.js';
+import {
+  edgeVelocity, fitCamera, isZoomed, viewBoxAttr, viewOf,
+} from '../../view/camera.js';
 import { classifyPair, createRouter } from './gesture.js';
 import { createZoom } from './zoom.js';
 import { setupZoomTools, zoomToolsHtml } from './zoom-ui.js';
 
 export { SOLID_KINDS };
 
+// Dragging at the edge of a zoomed net scrolls it, after the pointer has stayed there this long.
+const EDGE_DWELL_MS = 250;
 // A cell this close to the edge of the zoomed view (a share of its size) counts as out of it.
 const VIEW_MARGIN = 0.15;
 export const isSolidKind = kind => SOLID_KINDS.includes(kind);
@@ -922,7 +926,53 @@ export function createSolidPlay(app) {
       }
     }
 
+    // Drawing at the edge of a zoomed net scrolls it: a frame loop while the pointer is in the edge
+    // band (a solid is not scrolled: it turns, and Follow turns it to the head).
+    let pointer = null;
+    let scrollFrame = 0;
+    let edgeSince = 0;
+    let scrollAt = 0;
+    function stopScroll() {
+      if (scrollFrame) {
+        cancelAnimationFrame(scrollFrame);
+      }
+      scrollFrame = 0;
+      edgeSince = 0;
+      scrollAt = 0;
+    }
+    function scrollTick(now) {
+      scrollFrame = 0;
+      if (!drawing || !pointer || turnable() || !zoomOn()) {
+        return;
+      }
+      const velocity = edgeVelocity(pointer.x, pointer.y, zoom.box());
+      if (!velocity[0] && !velocity[1]) {
+        edgeSince = 0;
+        scrollAt = 0;
+        return;
+      }
+      if (!edgeSince) {
+        edgeSince = now;
+      }
+      const seconds = scrollAt ? Math.min(0.05, (now - scrollAt) / 1000) : 0;
+      scrollAt = now;
+      if (now - edgeSince >= EDGE_DWELL_MS) {
+        if (!zoom.driftBy(velocity, seconds)) {
+          return; // at the edge of the net: nothing more until the pointer moves
+        }
+        dragMove(); // the cell under the pointer has changed
+      }
+      scrollFrame = requestAnimationFrame(scrollTick);
+    }
+    function watchEdge(x, y) {
+      pointer = { x, y };
+      if (!scrollFrame && drawing && !turnable() && zoomOn()) {
+        scrollFrame = requestAnimationFrame(scrollTick);
+      }
+    }
+
     function endDraw() {
+      stopScroll();
       orbiting = null;
       if (drawing) {
         drawing = false;
@@ -935,6 +985,7 @@ export function createSolidPlay(app) {
     }
 
     function startPair(a, b) {
+      stopScroll();
       turner.stop();
       drawing = false;
       orbiting = null;
@@ -976,8 +1027,14 @@ export function createSolidPlay(app) {
         }, a.ms);
       },
       'timer-clear': () => clearTimeout(timer),
-      'draw-start': a => pressAt({ clientX: a.x, clientY: a.y }),
-      'draw-move': dragMove,
+      'draw-start': a => {
+        pressAt({ clientX: a.x, clientY: a.y });
+        watchEdge(a.x, a.y);
+      },
+      'draw-move': a => {
+        dragMove();
+        watchEdge(a.x, a.y);
+      },
       'draw-end': endDraw,
       'gesture-start': a => startPair(a.a, a.b),
       'gesture-move': a => movePair(a.a, a.b),

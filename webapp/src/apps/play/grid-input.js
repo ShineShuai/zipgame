@@ -15,11 +15,14 @@ import { legsUndoTwo, newPaths, walkColour, solvedPaths, pickColour } from '../.
 import { t } from '../../ui/i18n.js';
 import { traceClear, traceStep } from '../../features/playlog.js';
 import { sfxBlocked, sfxCheckpoint, sfxMoveAfterCheckpoint, sfxMove, sfxBack } from '../../platform/sound.js';
-import { $, S, render } from './state.js';
+import {
+  $, S, render, storage,
+} from './state.js';
 import { cellPoint, fullViewOf, routeOf, solvedOf, stepOf } from './puzzle-kit.js';
 import { createRouter } from './gesture.js';
 import { createZoom } from './zoom.js';
-import { setupZoomTools } from './zoom-ui.js';
+import { HINT_KEY, setupZoomTools } from './zoom-ui.js';
+import { setupZoomMap } from './zoom-map.js';
 import { loopNoteKey, refreshTwoLegend } from './game-view.js';
 import { onSolved } from './game-flow.js';
 
@@ -112,6 +115,7 @@ export function setupGridInput(svg) {
   const seamEl = wrap ? svg.querySelector('[data-role="seam"]') : null;
   const loopEl = p.loop ? svg.querySelector('[data-role="loop-open"]') : null;
   const jumpEl = p.portals ? svg.querySelector('[data-role="jump"]') : null;
+  let refreshMap = () => {}; // the overview of a zoomed board (zoom-map.js), set up below
   const setD = () => {
     if (two) {
       S.paths.forEach((path, colour) => {
@@ -132,6 +136,7 @@ export function setupGridInput(svg) {
     }
     const stepNow = $('hudStep'); // Exact: the step the head is on
     if (stepNow) stepNow.textContent = S.path.length;
+    refreshMap();
   };
   const fill = (i, visited) => {
     const badge = svg.querySelector(`[data-num-cell="${i}"]`);
@@ -355,11 +360,17 @@ export function setupGridInput(svg) {
     }
   });
 
-  const refreshTools = setupZoomTools(zoom, head);
+  // the pinch hint is told once per device
+  const hintStore = storage
+    ? { read: () => storage.get(HINT_KEY), write: () => storage.set(HINT_KEY, '1') }
+    : null;
+  const refreshTools = setupZoomTools(zoom, head, { hintStore });
+  refreshMap = setupZoomMap(zoom, S, head);
   if (typeof ResizeObserver === 'function') {
     new ResizeObserver(() => {
       zoom.refresh();
       refreshTools();
+      refreshMap();
     }).observe(svg);
   }
 }

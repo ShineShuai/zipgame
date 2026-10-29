@@ -6,6 +6,7 @@ import { hasSolidTab, isShown, levelOf, offeredSizes } from './access.js';
 import { FLAT_IDS, isSolidId, SOLID_IDS } from './variants.js';
 import { surfaceTopology } from '../core/surface/topology.js';
 import { PLAYER_COLORS } from './view.js';
+import { zoomToolsHtml } from '../apps/play/zoom-ui.js';
 
 // The markup of the Patchwork screens (pure). They are built from the classes of the play app's
 // own menu and game screens (card, variant-opt, play-bar, hud, grid-wrap, game-layout, actions ...),
@@ -314,9 +315,11 @@ export function gamePage(view) {
     ? `<span class="difficulty-badge">${t(`grade.${grade}`)} · ${grade}/5</span>` : '';
   const kind = variantName ? ` · ${variantName}` : '';
   const title = `${t('coop.title')}${kind} ${sizeName}`;
+  // the zoom buttons: in the row of the view button of a solid, else in a row of their own
+  const zoomTools = zoomToolsHtml({ hint: false, inline: Boolean(viewLabel) });
   const tools = viewLabel
     ? `<div class="view-tools"><button class="btn secondary" data-act="view" id="coopView">`
-      + `${viewLabel}</button></div>` : '';
+      + `${viewLabel}</button>${zoomTools}</div>` : zoomTools;
   const buttons = [
     `<button class="btn secondary" data-act="menu">${actionIcon('menu')}${t('game.menu')}</button>`,
     `<button class="btn secondary" data-act="new" id="coopNew"${view.canNew ? '' : ' disabled'}>`
