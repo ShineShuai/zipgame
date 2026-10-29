@@ -163,6 +163,11 @@ button, select, input { font-family: inherit; }
 .theme-offer-title span { font-size: 0.78rem; color: var(--muted); }
 .theme-offer-text { margin: 0; font-size: 0.9rem; color: var(--muted); }
 .theme-offer-text [data-left] { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
+.theme-offer-rule { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 0.82rem; color: var(--muted); }
+.theme-offer-rule .tip-btn { margin-left: auto; }
+.sheet-body .theme-rule-steps { margin: 8px 0; padding-left: 1.3em; }
+.sheet-body .theme-rule-steps li { margin: 4px 0; }
+.sheet-body .theme-rule-example { color: var(--muted); }
 .theme-offer-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .theme-offer-list { display: flex; flex-direction: column; gap: 4px; }
 .theme-offer-list button {

@@ -4,8 +4,12 @@
 //   final    the time is up and the theme has left the page: "Keep it?" -- the sheet is open until the player answers or the day ends
 // The chip (top right, under the app bar) and the sheet (bottom) show on menu screens only (`idle()`): during a puzzle the trial's clock
 // runs and nothing is drawn. Keeping a theme with a full pool asks which of the player's themes it replaces; the clock waits meanwhile.
+// The sheet states the public rule of the offer days; its (i) opens the info panel, a sheet that
+// explains the rule (src/themes/calendar.js).
 // Markup: src/themes/offer.js. A theme slot earned shows a short notice (`showSlotToast`).
-import { chipHtml, formatLeft, offerHtml } from '../themes/offer.js';
+import { ruleExample } from '../themes/calendar.js';
+import { chipHtml, formatLeft, offerHtml, ruleHtml } from '../themes/offer.js';
+import { openSheet } from './info.js';
 
 const TOAST_MS = 6000;
 
@@ -70,6 +74,11 @@ export function initThemeOffer({
     }
   }
 
+  const showRule = () => openSheet({
+    title: text('theme.rule.title'),
+    html: ruleHtml(text, ruleExample()),
+    closeText: text('sheet.close'),
+  });
   const keep = async replaceId => {
     if (await controller.keepOffer(replaceId)) return;
     failed = true;
@@ -89,6 +98,7 @@ export function initThemeOffer({
     const { offer, replace } = button.dataset;
     if (replace) keep(replace);
     else if (offer === 'leave') controller.leaveOffer();
+    else if (offer === 'rule') showRule();
     else if (offer === 'minimize') { expanded = false; lastKey = ''; render(); }
     else if (offer === 'back') { step = 'offer'; lastKey = ''; render(); }
     else if (offer === 'keep') {

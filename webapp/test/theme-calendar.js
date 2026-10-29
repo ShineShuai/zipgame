@@ -2,12 +2,20 @@
 // spread over the month, the offer day of a local date, and what a player can learn from the
 // days. Registered by tests.js.
 import {
-  MIN_GAP, candidates, dateValue, daysInMonth, eventAt, monthPlan, validDigits,
+  MIN_GAP, candidates, dateValue, daysInMonth, eventAt, monthPlan, ruleExample, validDigits,
 } from '../src/themes/calendar.js';
 import { EVENT_RE } from '../src/themes/event.js';
+import { offerHtml, ruleHtml } from '../src/themes/offer.js';
+import { EN, ZH } from '../src/ui/i18n.js';
 import { THEMES } from '../src/config.js';
 
 const DIGITS = [2, 1, 9, 0];
+const SYMBOL = '<circle cx="12" cy="12" r="5"/>';
+const RULE_KEYS = ['offer.rule', 'rule.open', 'rule.title', 'rule.lead', 'rule.step1',
+  'rule.step2', 'rule.step3', 'rule.step4', 'rule.example', 'rule.last']
+  .map(key => `theme.${key}`);
+const keyText = (key, ...args) => (args.length ? `${key}(${args})` : key);
+const fill = dict => (key, ...args) => String(dict[key]).replace(/\{(\d+)\}/g, (_, i) => args[i]);
 const YEARS = Array.from({ length: 100 }, (_, i) => 2026 + i);
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 
@@ -151,5 +159,42 @@ export function themeCalendarTests(t, ok, eq) {
       worst = Math.max(worst, used);
     }
     ok(worst <= 30, `worst ${worst} months`);
+  });
+
+  t('offer days: the rule text has a worked example that is computed, and is no offer day', () => {
+    const example = ruleExample();
+    eq(example, {
+      date: '2031-06-27', day: 27, month: 6, last: 1, first: 29, xor: 28, value: 12,
+    });
+    eq(example.value, dateValue(2031, 6, 27));
+    ok(example.value > 9, 'a value of 10 or more is no digit');
+    ok(!monthPlan(2031, 6, DIGITS).includes(27));
+  });
+
+  t('offer days: the offer sheet states the public rule and opens the info panel', () => {
+    const theme = { name: 'Candy', symbol: SYMBOL, swatches: [] };
+    const sheet = offerHtml({ theme, left: '1:00' }, keyText);
+    ok(sheet.includes('theme.offer.rule') && sheet.includes('data-offer="rule"'), 'in the trial');
+    ok(offerHtml({ theme, phase: 'final' }, keyText).includes('data-offer="rule"'), 'when over');
+    const replacing = offerHtml({ theme, replace: [] }, keyText);
+    ok(!replacing.includes('data-offer="rule"'), 'not when replacing');
+    ok(sheet.includes('data-offer="keep"') && sheet.includes('data-offer="leave"'), 'still there');
+  });
+
+  t('offer days: the info panel tells the rule, in both languages, and never the digits', () => {
+    const example = ruleExample();
+    for (const dict of [EN, ZH]) {
+      for (const key of RULE_KEYS) ok(typeof dict[key] === 'string' && dict[key], key);
+      const html = ruleHtml(fill(dict), example);
+      eq((html.match(/<li>/g) || []).length, 4, 'four steps');
+      ok(html.includes('2031-06-27') && html.includes('27 ⊕ 6 = 29'), 'the worked example');
+      ok(html.includes('29 ⊕ 1 = 28') && html.includes('12'), 'and its steps');
+      ok(html.includes('110 ⊕ 011 = 101 = 5'), 'the XOR example');
+      ok(dict['theme.offer.rule'].includes('16') && dict['theme.rule.step3'].includes('16'));
+    }
+    const bits = n => n.toString(2).padStart(3, '0');
+    eq([bits(6), bits(3), bits(6 ^ 3)], ['110', '011', '101']);
+    const hostile = ruleHtml(() => '<b>x</b>', example);
+    ok(!hostile.includes('<b>x'), 'the texts are escaped');
   });
 }

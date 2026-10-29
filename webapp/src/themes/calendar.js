@@ -69,6 +69,17 @@ export function monthPlan(year, month, digits) {
   return plan.sort((a, b) => a - b);
 }
 
+// A date worked through by hand, for the rule text (src/themes/offer.js ruleHtml). Its value is 10
+// or more, which is no digit, so it is no offer day and shows nothing of the secret.
+export function ruleExample(year = 2031, month = 6, day = 27) {
+  const last = year % 10;
+  const first = day ^ month;
+  const xor = first ^ last;
+  return {
+    date: `${year}-${pad(month)}-${pad(day)}`, day, month, last, first, xor, value: xor & 15,
+  };
+}
+
 // The offer day of a local date (a Date: its local year, month and day count), or null:
 // { id, year, month, day }. The id names the event for the offer ('d20271129'), see EVENT_RE.
 export function eventAt(date, digits) {

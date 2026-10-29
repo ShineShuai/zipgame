@@ -19,7 +19,7 @@ repo root; CI packs it into the site (see `themes/README.md` for the design, the
 | `trial.js` | the offer record on the device (pending, trial, final), rebuilt from the whitelists when read; the trial and last-question times |
 | `slots.js` | the theme slots earned by Game-of-Day solves (12) and the best streak (30 days) |
 | `calendar.js` | the offer days: which local days offer a theme (the public rule, the secret digits in `config.js` `THEMES.digits`, the seeded draw of 1-2 days a month) |
-| `offer.js` | the markup of the offer chip and sheet (`ui/theme-offer.js`) and the time left |
+| `offer.js` | the markup of the offer chip and sheet (`ui/theme-offer.js`), the time left and the public rule text of the offer days (the info panel) |
 | `builtin.js` | light and dark (their tokens are `css/theme.css`) |
 
 The page's `<head>` script (`index.html`) paints the active theme (or the theme on trial) from the device copy before the first frame; a test runs it against
