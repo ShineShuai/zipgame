@@ -25,6 +25,11 @@
    "family": "Mali",
    "weight": "500 700",
    "file": "mali-latin.woff2"
+  },
+  {
+   "family": "Zigzag Round",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -47,10 +52,13 @@
   "numvText": "#2b5aa8",
   "onOrange": "#000000",
   "numRing": "#2b5aa8",
-  "numvRing": "#2b5aa8"
+  "numvRing": "#2b5aa8",
+  "line": "#2b5aa8",
+  "lineStrong": "#2b5aa8"
  },
  "vars": {
   "--font-body": "\"Mali\", Comic Sans MS, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", cursive",
+  "--font-zh": "\"Zigzag Round\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "10px",
   "--r-2": "14px",
@@ -60,8 +68,10 @@
   "--r-icon": "10px",
   "--bw": "1.5px",
   "--bw-card": "2px",
+  "--bs-card": "dashed",
   "--shadow": "none",
   "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
-  "--ctl-h": "52px"
+  "--ctl-h": "52px",
+  "--bar-bw": "2px"
  }
 }

@@ -281,6 +281,10 @@ function applyLang() {
   const lang = getLang(), b = $('langToggle');
   document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
   document.querySelector('.brand').setAttribute('aria-label', t('brand.home'));
+  const brandName = $('brandName');   // the name of the game: zigzag, in Chinese 之折 (its own face in a theme, css/play.css)
+  brandName.textContent = t('brand.name');
+  brandName.lang = lang === 'zh' ? 'zh-Hans' : 'en';
+  document.title = t('brand.name');
   b.dataset.on = lang;
   b.firstElementChild.textContent = lang === 'zh' ? 'EN' : '中'; // like the theme button: it shows what a tap switches to
   b.setAttribute('aria-label', t('lang.switch'));

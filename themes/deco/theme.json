@@ -25,6 +25,11 @@
    "family": "Josefin Sans",
    "weight": "400 700",
    "file": "josefinsans-latin.woff2"
+  },
+  {
+   "family": "Noto Sans SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -47,10 +52,13 @@
   "numvText": "#d9b45a",
   "onOrange": "#000000",
   "numRing": "#d9b45a",
-  "numvRing": "#d9b45a"
+  "numvRing": "#d9b45a",
+  "line": "#d9b45a",
+  "lineStrong": "#d9b45a"
  },
  "vars": {
   "--font-body": "\"Josefin Sans\", Century Gothic, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "0px",
   "--r-2": "0px",
@@ -62,6 +70,7 @@
   "--bw-card": "1px",
   "--shadow": "none",
   "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
-  "--ctl-h": "52px"
+  "--ctl-h": "52px",
+  "--bar-bw": "1px"
  }
 }

@@ -25,6 +25,11 @@
    "family": "Lexend",
    "weight": "500 700",
    "file": "lexend-latin.woff2"
+  },
+  {
+   "family": "Noto Sans SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -51,6 +56,7 @@
  },
  "vars": {
   "--font-body": "\"Lexend\", Segoe UI, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "10px",
   "--r-2": "14px",

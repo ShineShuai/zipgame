@@ -25,6 +25,11 @@
    "family": "Zilla Slab",
    "weight": "500 700",
    "file": "zillaslab-latin.woff2"
+  },
+  {
+   "family": "Noto Serif SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -66,6 +71,7 @@
  },
  "vars": {
   "--font-body": "\"Zilla Slab\", Rockwell, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", serif",
+  "--font-zh": "\"Noto Serif SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "8px",
   "--r-2": "10px",
@@ -80,6 +86,7 @@
   "--ctl-h": "48px",
   "--bg-image": "repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 2px, transparent 2px 9px)",
   "--bar-h": "62px",
-  "--vi-scale": "1.05"
+  "--vi-scale": "1.05",
+  "--bar-bw": "1px"
  }
 }

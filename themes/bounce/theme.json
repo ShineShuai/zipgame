@@ -25,6 +25,11 @@
    "family": "Baloo 2",
    "weight": "500 800",
    "file": "baloo2-latin.woff2"
+  },
+  {
+   "family": "Zigzag Round",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -52,6 +57,7 @@
  },
  "vars": {
   "--font-body": "\"Baloo 2\", Nunito, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Zigzag Round\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "999px",
   "--r-2": "20px",

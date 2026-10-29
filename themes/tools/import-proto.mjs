@@ -33,6 +33,11 @@ const THEMES = fileURLToPath(new URL('../', import.meta.url));
 const META = JSON.parse(readFileSync(`${HERE}proto-meta.json`, 'utf8'));
 // the page name -> the theme id, for the designs whose page is not named after their theme ("page" in proto-meta.json)
 const THEME_OF_PAGE = Object.fromEntries(Object.entries(META).filter(([, v]) => v.page).map(([id, v]) => [v.page, id]));
+// the families of the faces themes/tools/zh-fonts.py makes (a `zhFace` of proto-meta.json is "<face>-<weight>")
+export const ZH_FAMILY = {
+  sans: 'Noto Sans SC', serif: 'Noto Serif SC', mono: 'Noto Sans Mono SC',
+  round: 'Zigzag Round', pixel: 'Zigzag Pixel', hand: 'Zigzag Hand', stencil: 'Zigzag Stencil',
+};
 const CELL = 60;   // the mock board is 300 units for 5 cells
 const ICON_IDS = {
   std: 'standard', cut: 'cutout', arr: 'arrows', exact: 'exact', wrap: 'wrap', loop: 'loop', tele: 'teleport', two: 'twopaths', pent: 'pentagon', tetra: 'tetra', cube: 'cube', ball: 'ball',
@@ -380,7 +385,7 @@ export function importDesign(id, assets, notes = [], found = discover(assets)[id
       const weights = (m[2] ?? '400').split(';').map(Number);
       const family = decodeURIComponent(m[1]).replace(/\+/g, ' ');
       return { family, weight: `${Math.max(100, Math.min(...weights))} ${Math.min(900, Math.max(...weights))}`.replace(/^(\d+) \1$/, '$1'), file: `${family.toLowerCase().replace(/[^a-z0-9]+/g, '')}-latin.woff2` };
-    }).slice(0, 3);
+    }).slice(0, 2);   // the third slot of a bundle is the Chinese face of the name (`zhFace` in proto-meta.json)
   const stack = splitTop(fam).map(f => f.replace(/^['"]|['"]$/g, '').trim()).filter(Boolean);
   const shipped = new Set(fonts.map(f => f.family));
   const generic = stack.filter(f => /^(sans-serif|serif|monospace|cursive)$/.test(f));
@@ -389,6 +394,12 @@ export function importDesign(id, assets, notes = [], found = discover(assets)[id
   const cjk = SYSTEM_FONTS.replace(/, sans-serif$/, '');
   const body = [...stack.filter(f => shipped.has(f)).map(f => `"${f}"`), ...fallback, cjk, generic[generic.length - 1] ?? 'sans-serif'].join(', ');
   vars['--font-body'] = body;
+  if (meta.zhFace) {   // the Chinese name 之折 in a face of the theme's style: themes/tools/zh-fonts.py cuts themes/<id>/fonts/zh.woff2
+    const family = ZH_FAMILY[meta.zhFace.replace(/-\d+$/, '')];
+    if (!family) throw new Error(`${id}: zhFace "${meta.zhFace}": not a face zh-fonts.py makes`);
+    fonts.push({ family, weight: '100 900', file: 'zh.woff2' });   // the whole range: a face is never made bolder than it was cut
+    vars['--font-zh'] = `"${family}", ${SYSTEM_FONTS}`;
+  } else note('no zh face: the Chinese name of the game uses the theme\'s head font');
   const fw = parseInt(rule('.t b', 'font-weight') ?? '700', 10);
   vars['--fw-head'] = String(Math.min(900, Math.max(500, Number.isFinite(fw) ? fw : 700)));
   if (/uppercase/.test(rule('.t b', 'text-transform') ?? '')) vars['--tt-head'] = 'uppercase';
@@ -401,7 +412,19 @@ export function importDesign(id, assets, notes = [], found = discover(assets)[id
   set('--r-icon', radius(rule('.ab i', 'border-radius'), 28));
   const bw = v => { const n = px(first(v, /(-?[\d.]+px\s+(?:solid|dashed|double))/)); return n === undefined ? undefined : `${Math.min(3, n)}px`; };
   set('--bw', bw(rule('.ab i', 'border')) ?? '1px');
-  set('--bw-card', bw(rule('.ph', 'border')) ?? '0px');
+  // the frame of the design's phone is the card: its width (up to 8 px), line style and colour. The colour is the theme's `line` (cards, tiles,
+  // dividers); the border of the design's small controls (`.ab i`, else its tiles) is `lineStrong`. Without a frame the derived light lines stay.
+  const frame = /(-?[\d.]+)px\s+(solid|dashed|double|dotted)\s+(#[0-9a-fA-F]{3,8}|rgba?\([^)]*\))/.exec(rule(card, 'border') ?? '');
+  set('--bw-card', frame ? `${Math.min(8, +frame[1])}px` : '0px');
+  if (frame && frame[2] !== 'solid') vars['--bs-card'] = frame[2];
+  const ctl = /(#[0-9a-fA-F]{3,8}|rgba?\([^)]*\))/.exec(first(rule('.ab i', 'border') ?? rule('.vi', 'border') ?? '', /(\d[^;]*)/) ?? '');
+  const frameC = frame && +frame[1] > 0 ? parseColour(frame[3]) : null;
+  const ctlC = ctl && parseColour(ctl[1]);
+  if (frameC && frameC.a > 0.05) seedOut.line ??= flatten(frameC, surface);
+  if (seedOut.line) {
+    if (ctlC && ctlC.a > 0.05) seedOut.lineStrong ??= flatten(ctlC, surface);
+    else if (+frame?.[1] >= 2) seedOut.lineStrong ??= seedOut.line;
+  }
   const shadow = (rule('.ph', 'box-shadow') ?? '').replace(/\s+/g, ' ').trim();
   const shadowOk = shadow && shadow !== 'none' && checkValue('--shadow', shadow).length === 0;
   vars['--shadow'] = shadowOk ? shadow : 'none';
@@ -409,6 +432,8 @@ export function importDesign(id, assets, notes = [], found = discover(assets)[id
   const h = px(rule('.go', 'height'));
   if (h) vars['--ctl-h'] = `${Math.min(56, Math.max(40, h))}px`;
   Object.assign(vars, meta.override?.vars);
+  // the line under the app bar follows the card frame as it ends up (after the overrides), at most 3 px; a design without a frame keeps the light 1 px line
+  if (frame && +frame[1] > 0 && !meta.override?.vars?.['--bar-bw']) vars['--bar-bw'] = `${Math.min(3, Math.max(1, Math.floor(parseFloat(vars['--bw-card']) || 1)))}px`;
   for (const [k, v] of Object.entries(vars)) {
     const bad = checkValue(k, v, undefined, fonts.map(f => f.family));
     if (bad.length) { note(`${k} ${v}: ${bad[0]}; left at the default`); delete vars[k]; }

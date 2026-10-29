@@ -25,6 +25,11 @@
    "family": "Cinzel",
    "weight": "500 700",
    "file": "cinzel-latin.woff2"
+  },
+  {
+   "family": "Noto Serif SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -47,10 +52,13 @@
   "numvText": "#ffd34d",
   "onOrange": "#000000",
   "numRing": "#ffd34d",
-  "numvRing": "#ffd34d"
+  "numvRing": "#ffd34d",
+  "line": "#3a2a20",
+  "lineStrong": "#4a3426"
  },
  "vars": {
   "--font-body": "\"Cinzel\", Times New Roman, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", serif",
+  "--font-zh": "\"Noto Serif SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "10px",
   "--r-2": "12px",
@@ -62,6 +70,7 @@
   "--bw-card": "2px",
   "--shadow": "0 0 70px rgba(244,183,63,.12)",
   "--pop-shadow": "0 0 70px rgba(244,183,63,.12)",
-  "--ctl-h": "52px"
+  "--ctl-h": "52px",
+  "--bar-bw": "2px"
  }
 }

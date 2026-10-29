@@ -25,6 +25,11 @@
    "family": "Jost",
    "weight": "400 700",
    "file": "jost-latin.woff2"
+  },
+  {
+   "family": "Noto Sans SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -83,6 +88,7 @@
  },
  "vars": {
   "--font-body": "\"Jost\", Futura, Century Gothic, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "12px",
   "--r-2": "22px",

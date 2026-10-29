@@ -25,6 +25,11 @@
    "family": "Archivo",
    "weight": "500 800",
    "file": "archivo-latin.woff2"
+  },
+  {
+   "family": "Noto Sans SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -45,10 +50,13 @@
   "numText": "#ffffff",
   "numvFill": "#000000",
   "numvText": "#ffffff",
-  "onOrange": "#ffffff"
+  "onOrange": "#ffffff",
+  "line": "#000000",
+  "lineStrong": "#000000"
  },
  "vars": {
   "--font-body": "\"Archivo\", Arial Black, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "0px",
   "--r-2": "0px",
@@ -60,6 +68,7 @@
   "--bw-card": "3px",
   "--shadow": "8px 8px 0 #000",
   "--pop-shadow": "8px 8px 0 #000",
-  "--ctl-h": "52px"
+  "--ctl-h": "52px",
+  "--bar-bw": "3px"
  }
 }

@@ -25,6 +25,11 @@
    "family": "Patrick Hand",
    "weight": "400",
    "file": "patrickhand-latin.woff2"
+  },
+  {
+   "family": "Zigzag Hand",
+   "weight": "100 900",
+   "file": "zh.woff2"
   }
  ],
  "seeds": {
@@ -47,10 +52,13 @@
   "numvText": "#1d2b53",
   "onOrange": "#000000",
   "numRing": "#1d2b53",
-  "numvRing": "#1d2b53"
+  "numvRing": "#1d2b53",
+  "line": "#1d2b53",
+  "lineStrong": "#1d2b53"
  },
  "vars": {
   "--font-body": "\"Patrick Hand\", Comic Sans MS, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", cursive",
+  "--font-zh": "\"Zigzag Hand\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
   "--fw-head": "700",
   "--r-1": "10px",
   "--r-2": "12px",
@@ -62,6 +70,7 @@
   "--bw-card": "2px",
   "--shadow": "none",
   "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
-  "--ctl-h": "52px"
+  "--ctl-h": "52px",
+  "--bar-bw": "2px"
  }
 }

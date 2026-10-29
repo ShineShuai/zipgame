@@ -97,7 +97,9 @@ export function themeTests(t, ok, eq) {
       const literals = (text.replace(/url\("data:[^"]*"\)/g, '').match(/#[0-9a-fA-F]{3,8}\b|rgba?\(/g) || []);
       eq(literals, [], `${file}: colour literals`);
       // --arrow is not a colour: main.js sets it on a popover to keep its arrow on the tile
-      for (const m of text.matchAll(/var\((--[a-z0-9-]+)/g)) ok(m[1] in LIGHT || m[1] === '--arrow', `${file}: ${m[1]} is not in theme.css`);
+      // --rb-* and --bw-sub are derived in play.css itself from template tokens (the radii of boxes with text, the border of nested boxes)
+      const LOCAL = ['--arrow', '--rb-1', '--rb-2', '--rb-tile', '--rb-3', '--bw-sub'];
+      for (const m of text.matchAll(/var\((--[a-z0-9-]+)/g)) ok(m[1] in LIGHT || LOCAL.includes(m[1]), `${file}: ${m[1]} is not in theme.css`);
     }
   });
 

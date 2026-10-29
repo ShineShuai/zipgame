@@ -5,6 +5,17 @@
 
 * { box-sizing: border-box; }
 
+/* Boxes that hold lines of text, a popover or a nested card take these radii, not the theme's raw ones: a theme's 999px (a pill) is for one-line
+   controls and would cut the corners of a box through its text. Cards (--r-3) and sheets (--r-4) are bounded by the template (<= 40 px) and
+   padded for it. --bw-sub: the border of what sits inside or above a card (a card itself may be a thick frame, --bw-card up to 8 px). */
+:root {
+  --rb-1: min(var(--r-1), 16px);
+  --rb-2: min(var(--r-2), 18px);
+  --rb-tile: min(var(--r-tile), 20px);
+  --rb-3: min(var(--r-3), 20px);   /* the top corners of the action bar fixed to the bottom edge: buttons sit 8-10 px from them */
+  --bw-sub: min(var(--bw-card), 3px);
+}
+
 html {
   -webkit-text-size-adjust: 100%;
   touch-action: manipulation; /* no double-tap zoom on buttons; pinch zoom still works */
@@ -43,7 +54,7 @@ button, select, input { font-family: inherit; }
   background: var(--glass);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--bar-bw) solid var(--line);
 }
 .app-bar-inner {
   display: flex;
@@ -67,6 +78,9 @@ button, select, input { font-family: inherit; }
   letter-spacing: var(--ls-head);
   text-decoration: none;
 }
+.brand-name { min-width: 0; white-space: nowrap; }
+/* the Chinese name has its own face in a theme (themes/README.md, two glyphs cut for it): never faked bold or italic */
+.brand-name:lang(zh) { font-family: var(--font-zh); font-synthesis: none; }
 .logo { flex: none; width: var(--logo); height: var(--logo); }
 /* the brand mark: the shared variety-Z in two files (light, dark), or the inline mark of the active theme's art */
 .brand-mark { display: flex; flex: none; }
@@ -108,7 +122,7 @@ button, select, input { font-family: inherit; }
 /* the pool picker (src/ui/theme-picker.js): a menu under the theme button, once the pool holds three or more themes */
 .theme-picker {
   position: fixed; z-index: 130; min-width: 220px; max-width: calc(100vw - 16px); padding: 6px;
-  background: var(--pop-bg); border: var(--bw-card) solid var(--line); border-radius: var(--r-3); box-shadow: var(--pop-shadow);
+  background: var(--pop-bg); border: var(--bw-sub) var(--bs-card) var(--line); border-radius: var(--r-3); box-shadow: var(--pop-shadow);
 }
 .theme-picker-title { padding: 6px 10px 8px; font-size: 0.78rem; font-weight: 700; color: var(--muted); }
 .theme-picker button {
@@ -124,7 +138,7 @@ button, select, input { font-family: inherit; }
 .theme-picker { max-height: calc(100vh - 80px); overflow-y: auto; }
 .theme-picker-empty { padding: 6px 10px; font-size: 0.85rem; color: var(--muted); }
 /* the dev reveal: every theme of the site's pool below the player's own (src/ui/theme-picker.js) */
-.theme-dev { margin-top: 6px; padding-top: 6px; border-top: var(--bw-card) solid var(--line); }
+.theme-dev { margin-top: 6px; padding-top: 6px; border-top: var(--bw-sub) solid var(--line); }
 .theme-dev-row { display: flex; align-items: stretch; gap: 4px; }
 .theme-dev-row > button:first-child { flex: 1; min-width: 0; }
 .theme-picker .theme-keep { flex: none; width: auto; justify-content: center; padding: 6px 14px; font-weight: 700; color: var(--accent-text); }
@@ -134,13 +148,13 @@ button, select, input { font-family: inherit; }
 .theme-offer {
   position: fixed; z-index: 55; left: 50%; bottom: max(8px, env(safe-area-inset-bottom)); transform: translateX(-50%);
   display: flex; flex-direction: column; gap: 8px; width: min(440px, calc(100vw - 16px)); padding: 12px;
-  background: var(--pop-bg); border: var(--bw-card) solid var(--line-strong); border-radius: var(--r-3); box-shadow: var(--pop-shadow); color: var(--text);
+  background: var(--pop-bg); border: var(--bw-sub) var(--bs-card) var(--line-strong); border-radius: var(--r-3); box-shadow: var(--pop-shadow); color: var(--text);
 }
 /* the chip (src/ui/theme-offer.js): the offer folded small, top right under the app bar; shown on menu screens only */
 .theme-chip {
   position: fixed; z-index: 55; right: 8px; top: calc(env(safe-area-inset-top, 0px) + var(--bar-h) + 6px);
   display: inline-flex; align-items: center; gap: 8px; max-width: calc(100vw - 16px); padding: 6px 12px; cursor: pointer;
-  background: var(--pop-bg); border: var(--bw-card) solid var(--line-strong); border-radius: 999px; box-shadow: var(--pop-shadow);
+  background: var(--pop-bg); border: var(--bw-sub) solid var(--line-strong); border-radius: 999px; box-shadow: var(--pop-shadow);
   color: var(--text); font: inherit; font-size: 0.85rem; line-height: 1.2;
 }
 .theme-chip[hidden] { display: none; }
@@ -155,7 +169,7 @@ button, select, input { font-family: inherit; }
 .theme-toast {
   position: fixed; z-index: 56; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%);
   width: max-content; max-width: calc(100vw - 32px); padding: 10px 16px; text-align: center; font-size: 0.9rem;
-  background: var(--pop-bg); border: var(--bw-card) solid var(--line-strong); border-radius: var(--r-3); box-shadow: var(--pop-shadow); color: var(--text);
+  background: var(--pop-bg); border: var(--bw-sub) var(--bs-card) var(--line-strong); border-radius: var(--r-3); box-shadow: var(--pop-shadow); color: var(--text);
 }
 .theme-offer-head { display: flex; align-items: center; gap: 10px; }
 .theme-offer-head > svg, .theme-offer-list svg { flex: none; width: var(--glyph); height: var(--glyph); }
@@ -167,7 +181,7 @@ button, select, input { font-family: inherit; }
 .theme-offer-list { display: flex; flex-direction: column; gap: 4px; }
 .theme-offer-list button {
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: calc(var(--ctl-h) - 4px); padding: 6px 10px;
-  border: var(--bw-card) solid var(--line); border-radius: var(--r-2); background: var(--surface-2); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+  border: var(--bw-sub) solid var(--line); border-radius: var(--r-2); background: var(--surface-2); color: var(--text); font: inherit; text-align: left; cursor: pointer;
 }
 .theme-offer-list button:hover, .theme-offer-list button:focus-visible { background: var(--accent-soft); outline: none; }
 .theme-offer-list .theme-name { flex: 1; min-width: 0; }
@@ -184,14 +198,14 @@ button, select, input { font-family: inherit; }
   margin-bottom: 16px;
   padding: var(--pad);
   background: var(--surface);
-  border: var(--bw-card) solid var(--line);
+  border: var(--bw-card) var(--bs-card) var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
 .card-title { font-size: 1.3rem; margin-bottom: 2px; overflow-wrap: anywhere; }
 .blurb { margin: 0 0 14px; color: var(--muted); }
 .small { font-size: 0.9rem; color: var(--muted); }
-.note { margin-top: 12px; padding: 10px 14px; border-radius: var(--r-1); background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+.note { margin-top: 12px; padding: 10px 14px; border-radius: var(--rb-1); background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
 .note.error { background: var(--danger-bg); color: var(--danger); }
 .storage-note { margin-top: 14px; }
 .btn-hint { margin: 8px 2px 0; font-size: 0.85rem; color: var(--muted); }
@@ -279,7 +293,7 @@ select option, select optgroup { background: var(--surface); color: var(--headin
 .status-panel { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 .stat-item {
   position: relative; flex: 1 1 200px; display: flex; align-items: center; gap: 12px; min-width: 0; padding: 10px 14px;
-  border: var(--bw) solid var(--line); border-radius: var(--r-tile); background: var(--surface-2); color: var(--heading); font: inherit; text-align: left; cursor: help;
+  border: var(--bw) solid var(--line); border-radius: var(--rb-tile); background: var(--surface-2); color: var(--heading); font: inherit; text-align: left; cursor: help;
 }
 .stat-icon { flex: none; width: 28px; height: 28px; color: var(--muted); }
 .stat-replay.ready { border-color: var(--accent); background: var(--accent-soft); }
@@ -305,7 +319,7 @@ select option, select optgroup { background: var(--surface); color: var(--headin
 
 .stat-tip, .variant-rules, .tip-pop {
   display: none; position: absolute; z-index: 30; padding: 11px 14px;
-  border: 1px solid var(--line-strong); border-radius: var(--r-2); background: var(--pop-bg); color: var(--text);
+  border: var(--bw-sub) var(--bs-card) var(--line-strong); border-radius: var(--rb-2); background: var(--pop-bg); color: var(--text);
   box-shadow: var(--pop-shadow); font-size: 0.88rem; font-weight: 400; line-height: 1.45; letter-spacing: 0; text-align: left;
   overflow-wrap: anywhere;
 }
@@ -352,7 +366,7 @@ select option, select optgroup { background: var(--surface); color: var(--headin
 .sheet {
   width: 100%; max-width: 560px; max-height: 82vh; max-height: 82dvh; overflow: auto; overscroll-behavior: contain;
   padding: 10px 18px calc(18px + env(safe-area-inset-bottom, 0)); background: var(--surface); color: var(--text);
-  border: var(--bw-card) solid var(--line); border-bottom: 0; border-radius: var(--r-4) var(--r-4) 0 0; box-shadow: var(--sheet-shadow);
+  border: var(--bw-card) var(--bs-card) var(--line); border-bottom: 0; border-radius: var(--r-4) var(--r-4) 0 0; box-shadow: var(--sheet-shadow);
   animation: sheet-up 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .sheet-grab { width: 42px; height: 5px; margin: 0 auto 14px; border-radius: 3px; background: var(--line-strong); }
@@ -371,14 +385,14 @@ select option, select optgroup { background: var(--surface); color: var(--headin
 
 /* ---------- unlock chances and the lucky game ---------- */
 
-.lucky-box { margin: 0 0 14px; border: var(--bw) solid var(--line); border-radius: var(--r-tile); background: var(--surface-2); }
+.lucky-box { margin: 0 0 14px; border: var(--bw) solid var(--line); border-radius: var(--rb-tile); background: var(--surface-2); }
 .lucky-box.ready { border-color: var(--warn-line); background: var(--warn-bg); }
 .lucky-box .note { margin: 0; padding: 10px 12px; }
 .lucky-row {
   position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px;
 }
 .lucky-box > * + * { border-top: 1px solid var(--line); }
-.lucky-row.reward { background: var(--accent-soft); border-radius: var(--r-2) var(--r-2) 0 0; }
+.lucky-row.reward { background: var(--accent-soft); border-radius: var(--rb-2) var(--rb-2) 0 0; }
 .lucky-icon { flex: none; display: grid; place-items: center; }
 .lucky-icon .variant-icon { width: calc(36px * var(--vi-scale)); height: calc(36px * var(--vi-scale)); }
 .lucky-text { flex: 1 1 150px; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
@@ -414,7 +428,7 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 .gift-toast {
   position: fixed; z-index: 120; top: calc(env(safe-area-inset-top, 0px) + 64px); right: max(12px, env(safe-area-inset-right, 0px));
   display: flex; align-items: center; gap: 10px; width: min(380px, calc(100vw - 24px)); padding: 10px 12px;
-  border: 2px solid var(--warn-line); border-radius: var(--r-tile); background: var(--warn-bg); color: var(--text); box-shadow: var(--pop-shadow);
+  border: 2px solid var(--warn-line); border-radius: var(--rb-tile); background: var(--warn-bg); color: var(--text); box-shadow: var(--pop-shadow);
   animation: gift-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .gift-dev { margin: 0; padding: 8px 12px; color: var(--muted); font-variant-numeric: tabular-nums; line-height: 1.45; overflow-wrap: anywhere; }
@@ -439,7 +453,7 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 .lucky-chip { margin-left: 8px; padding: 2px 10px; border-radius: 999px; background: var(--warn-bg); color: var(--warn); font-size: 0.75rem; font-weight: 800; }
 .lucky-once { margin: 12px 0 0; }
 .lucky-result {
-  display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 14px; border-radius: var(--r-1);
+  display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 14px; border-radius: var(--rb-1);
   background: var(--ok-bg); color: var(--ok); font-weight: 700;
 }
 .lucky-result.same { background: var(--accent-soft); color: var(--accent-text); }
@@ -524,7 +538,7 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 .variant-card {
   position: relative;
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-columns: calc(38px * var(--vi-scale)) minmax(0, 1fr);
   grid-template-areas: "icon name";
   align-items: center;
   column-gap: 8px;
@@ -532,7 +546,7 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
   min-height: 60px;
   padding: 8px 6px 8px 8px;
   border: var(--bw) solid var(--line);
-  border-radius: var(--r-tile);
+  border-radius: var(--rb-tile);
   background: var(--surface-2);
   text-align: left;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
@@ -545,7 +559,8 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
   content: "\2713"; position: absolute; top: -7px; right: -7px; display: none; place-items: center; width: 18px; height: 18px;
   border-radius: 50%; background: var(--accent); color: var(--on-accent); font-size: 0.7rem; font-weight: 800; line-height: 1;
 }
-.variant-name { grid-area: name; min-width: 0; font-weight: 800; font-size: 0.88rem; color: var(--heading); line-height: 1.2; overflow-wrap: normal; word-break: normal; hyphens: manual; }
+.variant-name { grid-area: name; min-width: 0; font-weight: 800; font-size: 0.88rem; color: var(--heading); line-height: 1.2; overflow-wrap: break-word; word-break: normal; hyphens: manual; }
+/* a name wider than its tile (a wide display face): the theme sets --tile-min for its font (themes/README.md); break-word is the last resort, never a name across the border */
 .variant-tag { display: none; }
 .variant-opt input:checked + .variant-card {
   border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent);
@@ -599,8 +614,8 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 .shared-more { grid-area: 1 / 2; min-height: calc(var(--ctl-h) - 10px); padding: 4px 14px; font-size: 0.88rem; }
 .shared-list { grid-area: 2 / 1 / 3 / 3; margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 10px; }
 .shared-item {
-  display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 10px 12px;
-  border: var(--bw-card) solid var(--line); border-radius: var(--r-2); background: var(--surface-2);
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 10px 14px;
+  border: var(--bw-sub) var(--bs-card) var(--line); border-radius: var(--rb-2); background: var(--surface-2);
 }
 .shared-item.is-new { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); background: var(--surface); }
 .shared-info { min-width: 0; }
@@ -633,7 +648,7 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 .replay-day {
   display: flex; flex-direction: column; justify-content: center; gap: 2px;
   min-width: 0; min-height: 64px; padding: 10px 12px 10px 16px;
-  border: var(--bw) solid var(--line); border-radius: var(--r-tile); background: var(--surface-2);
+  border: var(--bw) solid var(--line); border-radius: var(--rb-tile); background: var(--surface-2);
   color: var(--heading); font: inherit; text-align: left; cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
@@ -798,7 +813,7 @@ tr:last-child td { border-bottom: 0; }
 }
 .modal-backdrop.show { display: flex; }
 .modal {
-  width: 100%; max-width: 540px; padding: 24px; background: var(--surface); border: var(--bw-card) solid var(--line);
+  width: 100%; max-width: 540px; padding: 24px; background: var(--surface); border: var(--bw-card) var(--bs-card) var(--line);
   border-radius: var(--radius); box-shadow: var(--pop-shadow);
 }
 .modal h2 { margin-bottom: 12px; font-size: 1.2rem; }
@@ -901,7 +916,7 @@ tr:last-child td { border-bottom: 0; }
   .coop-card .btn { width: 100%; }
   .gotd-card .card-head { margin-bottom: 10px; }
   .gotd-card .status-panel { margin-top: 10px; padding-top: 0; }
-  .stat-item { padding: 6px 10px; gap: 8px; }
+  .stat-item { padding: 8px 10px; gap: 8px; }
   .stat-item .stat-icon { width: 24px; height: 24px; }
   /* the Play bar of a card: size + Play, kept at the bottom of the card while it is on screen */
   .free-card, .solid-card { padding-bottom: 0; }
@@ -926,7 +941,7 @@ tr:last-child td { border-bottom: 0; }
   .shared-card > .shared-state { padding: 0 14px 8px; }
   .shared-icon { display: none; }
   .replay-grid { grid-template-columns: 1fr; }
-  .board-card { padding: 10px; border-radius: calc(var(--r-3) - 2px); }
+  .board-card { padding: max(10px, calc(var(--r-3) * 0.3)); border-radius: calc(var(--r-3) - 2px); }
   .hud { gap: 6px 10px; }
   .hud-title { flex: 1 1 100%; order: 1; font-size: 0.95rem; }
   .difficulty-badge { order: 2; font-size: 0.78rem; padding: 2px 10px; }
@@ -939,12 +954,12 @@ tr:last-child td { border-bottom: 0; }
   #app.has-actions { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0)); }
   .actions {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; margin: 0; padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0));
-    border-width: 1px 0 0; border-radius: var(--r-3) var(--r-3) 0 0; background: var(--glass);
+    border-width: 1px 0 0; border-radius: var(--rb-3) var(--rb-3) 0 0; background: var(--glass);
     -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
   }
   .actions .button-row { display: flex; gap: 8px; }
   .actions .btn {
-    flex: 1 1 0; flex-direction: column; gap: 2px; min-height: 54px; padding: 6px 4px; font-size: 0.74rem; line-height: 1.15; border-radius: var(--r-2);
+    flex: 1 1 0; flex-direction: column; gap: 2px; min-height: 54px; padding: 6px 4px; font-size: 0.74rem; line-height: 1.15; border-radius: var(--rb-2);   /* icon over label: not a pill */
   }
   .actions .btn .bi { width: 22px; height: 22px; }
   .result-card { padding: 12px; }
@@ -955,7 +970,7 @@ tr:last-child td { border-bottom: 0; }
   /* the wide stats table becomes one small card per grid size */
   table.responsive, table.responsive tbody, table.responsive tr, table.responsive td { display: block; width: 100%; }
   table.responsive .head-row { display: none; }
-  table.responsive tr { margin-bottom: 10px; padding: 8px 14px; background: var(--surface-2); border: var(--bw-card) solid var(--line); border-radius: var(--r-2); }
+  table.responsive tr { margin-bottom: 10px; padding: 8px 14px; background: var(--surface-2); border: var(--bw-sub) var(--bs-card) var(--line); border-radius: var(--rb-2); }
   table.responsive td { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border: 0; white-space: normal; }
   table.responsive td::before { content: attr(data-label); color: var(--muted); font-weight: 600; }
   table.responsive td:first-child { padding-bottom: 6px; color: var(--heading); font-size: 1.1rem; font-weight: 800; }
