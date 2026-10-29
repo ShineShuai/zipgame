@@ -37,7 +37,7 @@ import {
 import { openReplay, renderReplay, startGameOfDay, startReplay } from './replay-ui.js';
 import {
   awardThemeSlots, claimReward, finishLucky, leaveLucky, logPlay, onStreakMilestone, shareGotd, startLocal,
-  startLucky, startTimer, stopTimer,
+  startLucky, startTimer, stopTimer, watchThemeEvents,
 } from './game-flow.js';
 import {
   closeRules, closeStatTips, hidePeek, openExport, openRulesSheet, setChanceTip, setGiftTip,
@@ -346,6 +346,7 @@ async function initLang() {
     ? t(cur.mode === 'dark' ? 'theme.toLight' : 'theme.toDark') : t('theme.switchTo', themeName(next, getLang()))),
   () => t('theme.pick'), getLang, { text: t, revealed: () => S.showDev, idle: () => S.screen === 'menu' });
   awardThemeSlots(); // the slots the player's activity has earned so far
+  watchThemeEvents(); // an offer day (src/themes/calendar.js): the theme waits as a chip
   document.addEventListener('zip-theme', () => { if (S.screen !== 'generating') render(); }); // a theme's icons, board skin and 3D tints are drawn into the markup: draw the screen again
   installPeek({ selector: '.variant-opt', show: showPeek, hide: hidePeek });
   const howto = await storage.get('howto-seen'); S.howtoSeen = Boolean(howto && howto.value === '1'); S.howtoOpen = !S.howtoSeen;
