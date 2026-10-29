@@ -6,6 +6,7 @@ import {
 } from '../src/themes/calendar.js';
 import { EVENT_RE } from '../src/themes/event.js';
 import { offerHtml, ruleHtml } from '../src/themes/offer.js';
+import { pickerHtml } from '../src/themes/picker.js';
 import { EN, ZH } from '../src/ui/i18n.js';
 import { THEMES } from '../src/config.js';
 
@@ -196,5 +197,18 @@ export function themeCalendarTests(t, ok, eq) {
     eq([bits(6), bits(3), bits(6 ^ 3)], ['110', '011', '101']);
     const hostile = ruleHtml(() => '<b>x</b>', example);
     ok(!hostile.includes('<b>x'), 'the texts are escaped');
+  });
+
+  t('offer days: the theme picker shows the public rule and a button for the info panel', () => {
+    const items = [{ id: 'a', name: 'A', symbol: SYMBOL, swatches: [], current: true }];
+    const rule = { line: 'the rule', open: 'How it works' };
+    const html = pickerHtml(items, 'Choose', rule);
+    ok(html.includes('the rule') && html.includes('How it works'), 'both texts');
+    ok(html.includes('data-rule') && html.includes('role="menuitem"'), 'a menu item');
+    ok(html.indexOf('data-theme-id') < html.indexOf('data-rule'), 'under the list');
+    eq(pickerHtml(items, 'Choose', null), pickerHtml(items, 'Choose'), 'the rule is optional');
+    ok(!pickerHtml(items, 'Choose').includes('data-rule'), 'without it: no footer');
+    const hostile = pickerHtml(items, 'Choose', { line: '<i>x</i>', open: '"><b>' });
+    ok(!hostile.includes('<i>x') && !hostile.includes('"><b>'), 'the texts are escaped');
   });
 }

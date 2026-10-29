@@ -16,6 +16,7 @@ import { browserSource } from '../themes/source.js';
 import { createStore } from '../themes/store.js';
 import { initThemeOffer, showSlotToast } from './theme-offer.js';
 import { closeThemePicker, toggleThemePicker } from './theme-picker.js';
+import { showThemeRule } from './theme-rule.js';
 
 export const THEME_KEY = MODE_KEY;   // the key the stats page reads; it mirrors the active theme's mode
 export const parseTheme = parseMode;
@@ -79,6 +80,9 @@ export function initTheme(button, label = (cur, next, classic) => (classic ? (cu
   // The dev reveal's rows are English only and not in the translations: no text a player can read mentions the reveal (see the test in tests.js).
   const labels = { all: 'All themes', draft: 'draft', keep: 'Keep this theme', offer: 'Offer a theme now', none: 'No themes found', nothing: 'Nothing to offer', loading: '…' };
   const dev = () => (revealed() ? { labels, offerNow: () => { controller.dropOffer(); return offerTheme({ id: `dev-${Date.now()}` }); } } : null);
+  const rule = () => ({
+    line: text('theme.offer.rule'), open: text('theme.rule.open'), show: () => showThemeRule(text),
+  });
   const sync = () => {
     if (!button) return;
     const [cur, next, classic] = [controller.current(), controller.upcoming(), controller.isClassic()];
@@ -98,6 +102,6 @@ export function initTheme(button, label = (cur, next, classic) => (classic ? (cu
   addEventListener('pageshow', () => controller.focus(document.visibilityState !== 'hidden'));
   sync();
   document.addEventListener('zip:reveal', sync);   // the dev reveal turns the button into the list, and back
-  if (button) button.addEventListener('click', () => (picking() ? toggleThemePicker(button, controller, pickLang(), pickLabel(), dev()) : controller.next()));
+  if (button) button.addEventListener('click', () => (picking() ? toggleThemePicker(button, controller, pickLang(), pickLabel(), dev(), rule()) : controller.next()));
   return { refresh: sync };
 }

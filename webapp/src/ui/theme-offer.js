@@ -7,9 +7,8 @@
 // The sheet states the public rule of the offer days; its (i) opens the info panel, a sheet that
 // explains the rule (src/themes/calendar.js).
 // Markup: src/themes/offer.js. A theme slot earned shows a short notice (`showSlotToast`).
-import { ruleExample } from '../themes/calendar.js';
-import { chipHtml, formatLeft, offerHtml, ruleHtml } from '../themes/offer.js';
-import { openSheet } from './info.js';
+import { chipHtml, formatLeft, offerHtml } from '../themes/offer.js';
+import { showThemeRule } from './theme-rule.js';
 
 const TOAST_MS = 6000;
 
@@ -74,11 +73,7 @@ export function initThemeOffer({
     }
   }
 
-  const showRule = () => openSheet({
-    title: text('theme.rule.title'),
-    html: ruleHtml(text, ruleExample()),
-    closeText: text('sheet.close'),
-  });
+  const showRule = () => showThemeRule(text);
   const keep = async replaceId => {
     if (await controller.keepOffer(replaceId)) return;
     failed = true;

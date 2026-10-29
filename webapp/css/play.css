@@ -123,6 +123,14 @@ button, select, input { font-family: inherit; }
 .theme-picker .theme-swatches i, .theme-offer .theme-swatches i { width: 10px; height: 18px; border-radius: 3px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 25%, transparent); }
 .theme-picker { max-height: calc(100vh - 80px); overflow-y: auto; }
 .theme-picker-empty { padding: 6px 10px; font-size: 0.85rem; color: var(--muted); }
+/* the public rule of the offer days, under the list (src/themes/picker.js pickerRuleHtml) */
+.theme-picker-rule { margin-top: 6px; padding-top: 6px; border-top: var(--bw-card) solid var(--line); }
+.theme-picker-rule p { max-width: 260px; margin: 0; padding: 4px 10px 2px; font-size: 0.8rem; color: var(--muted); }
+.theme-picker .tip-i {
+  flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px;
+  border: 2px solid var(--accent-text); border-radius: 50%; color: var(--accent-text);
+  font: italic 700 0.8rem/1 Georgia, serif;
+}
 /* the dev reveal: every theme of the site's pool below the player's own (src/ui/theme-picker.js) */
 .theme-dev { margin-top: 6px; padding-top: 6px; border-top: var(--bw-card) solid var(--line); }
 .theme-dev-row { display: flex; align-items: stretch; gap: 4px; }
