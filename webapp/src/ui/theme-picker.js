@@ -17,7 +17,9 @@ export function closeThemePicker() {
 
 // anchor: the header button; controller: src/themes/index.js; lang and title: for the names and the heading;
 // dev: null, or { labels: { all, draft, keep, offer, none, nothing, loading }, offerNow() -> Promise<boolean> }.
-export function toggleThemePicker(anchor, controller, lang, title, dev = null) {
+// rule: null, or { line, open, show }: the public rule of the offer days under the list and a
+// button (open: its label) that calls show() to open the info panel (src/ui/theme-rule.js).
+export function toggleThemePicker(anchor, controller, lang, title, dev = null, rule = null) {
   if (open) { closeThemePicker(); return; }
   const menu = document.createElement('div');
   menu.className = 'theme-picker';
@@ -26,7 +28,7 @@ export function toggleThemePicker(anchor, controller, lang, title, dev = null) {
   let list = null;    // the site's pool, once it has been read
   const here = () => open?.menu === menu;
   const draw = (focus = null) => {
-    menu.innerHTML = pickerHtml(pickerItems(controller.state(), controller.current().id, lang), title) + (dev ? '<div class="theme-dev" data-dev></div>' : '');
+    menu.innerHTML = pickerHtml(pickerItems(controller.state(), controller.current().id, lang), title, rule) + (dev ? '<div class="theme-dev" data-dev></div>' : '');
     const host = menu.querySelector('[data-dev]');
     if (host) host.innerHTML = list ? devHtml(devItems(list, controller.current().id, lang), dev.labels) : `<div class="theme-picker-title">${esc(dev.labels.all)}</div><div class="theme-picker-empty">${esc(dev.labels.loading)}</div>`;
     if (focus) menu.querySelector(focus)?.focus();
@@ -56,6 +58,12 @@ export function toggleThemePicker(anchor, controller, lang, title, dev = null) {
       controller.select(item.dataset.themeId);
       closeThemePicker();
       anchor.focus();
+      return;
+    }
+    if (rule && e.target.closest('[data-rule]')) {
+      closeThemePicker();
+      anchor.focus();
+      rule.show();
       return;
     }
     if (!dev) return;

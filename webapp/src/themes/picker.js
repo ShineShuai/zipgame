@@ -8,13 +8,21 @@ export const pickerItems = (state, activeId, lang) => state.pool.map(e => ({
   id: e.id, name: e.name[lang] ?? e.name.en, symbol: e.symbol, swatches: e.swatches ?? [], current: e.id === activeId,
 }));
 
-export function pickerHtml(items, title) {
+// rule: { line, open } texts: the public rule of the offer days and the label of the button that
+// opens the info panel (src/ui/theme-rule.js). Both are escaped here.
+const pickerRuleHtml = ({ line, open }) => `<div class="theme-picker-rule"><p>${esc(line)}</p>`
+  + '<button type="button" role="menuitem" data-rule>'
+  + '<span class="tip-i" aria-hidden="true">i</span>'
+  + `<span class="theme-name">${esc(open)}</span></button></div>`;
+
+export function pickerHtml(items, title, rule = null) {
   const rows = items.map(i => `<button type="button" role="menuitemradio" aria-checked="${i.current}" data-theme-id="${esc(i.id)}"`
     + `${i.current ? ' class="current"' : ''}>`
     + `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="var(--icon-stroke)" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${i.symbol}</svg>`
     + `<span class="theme-name">${esc(i.name)}</span>`
     + `<span class="theme-swatches" aria-hidden="true">${i.swatches.map(c => `<i style="background:${esc(c)}"></i>`).join('')}</span></button>`);
-  return `<div class="theme-picker-title">${esc(title)}</div>${rows.join('')}`;
+  return `<div class="theme-picker-title">${esc(title)}</div>${rows.join('')}`
+    + `${rule ? pickerRuleHtml(rule) : ''}`;
 }
 
 // ---- the dev reveal: every theme of the site's pool (controller.pool()), drafts included ----

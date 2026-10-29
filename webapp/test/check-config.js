@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { LEADERBOARD, BEHAVIOUR, SOLID_RELEASE, THEMES } from '../src/config.js';
 import { releaseDays } from '../src/features/solid-release.js';
+import { validDigits } from '../src/themes/calendar.js';
 
 const base = [{ t: null, a: ['data_read'] }, { t: ['submit'], a: ['data_add'] }];
 const want = [base, [...base, { t: ['play'], a: ['data_add'] }]]; // the token made before the behaviour upload, and the one made for it
@@ -26,6 +27,7 @@ releaseDays(SOLID_RELEASE); // throws on a bad date or day count
 assert.ok(/^(\.\.?\/)+[\w-]+\/$|^https:\/\/[^/]+\/(?:[\w-]+\/)*$/.test(THEMES.base), 'THEMES.base must be a folder relative to the page (ending in /) or an https URL');
 assert.ok(/^[\w-]+\.json$/.test(THEMES.pool), 'THEMES.pool must be the file name of the manifest (themes/tools/build-site.mjs writes it)');
 assert.ok(Number.isInteger(THEMES.trialMs) && THEMES.trialMs >= 60000 && THEMES.trialMs <= 86400000, 'THEMES.trialMs must be a whole number of ms, from one minute to a day');
+assert.ok(validDigits(THEMES.digits), 'THEMES.digits must be four different digits (0-9): the secret of the offer days');
 
 // The Content-Security-Policy of each page (a <meta> tag: GitHub Pages sends no headers) must let the page do what it does and nothing
 // more: scripts only from the page's own files plus its hashed inline scripts, and calls only to the backends of config.js.

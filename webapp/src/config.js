@@ -54,6 +54,9 @@ export const THEMES = {
   base: '../t/',
   pool: 'q7x2k9vd4m3h.json',
   trialMs: 30 * 60 * 1000,
+  // The four secret digits behind the offer days (src/themes/calendar.js): the rule that turns a
+  // date into a value is public, the digits are what a player works out from the offer days.
+  digits: [2, 1, 9, 0],
 };
 
 // Release of the solid puzzles in the play app (src/features/solid-release.js).

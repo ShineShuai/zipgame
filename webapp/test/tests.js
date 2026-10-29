@@ -96,6 +96,7 @@ import { solidTests } from './solid.js';
 import { generationTests } from './generation.js';
 import { themeTests } from './theme.js';
 import { themeSystemTests } from './themes.js';
+import { themeCalendarTests } from './theme-calendar.js';
 import { teleportTests } from './teleport.js';
 import { teleportGenTests } from './teleport-gen.js';
 import { teleportPlayTests } from './play-teleport.js';
@@ -3475,6 +3476,7 @@ solidTests(t, ok, eq, ta);
 generationTests(t, ok, eq, ta);
 themeTests(t, ok, eq);
 themeSystemTests(t, ok, eq, ta);
+themeCalendarTests(t, ok, eq);
 
 // ---------- Pentagon (Cairo tiling) boards ----------
 pentagonTests(t, ok, eq);

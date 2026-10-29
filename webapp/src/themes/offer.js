@@ -37,7 +37,24 @@ export function offerHtml({
   return `<div class="theme-offer-head">${glyph(theme.symbol)}<div class="theme-offer-title"><b>${esc(theme.name)}</b><span>${esc(text(phase === 'final' ? 'theme.offer.finalTitle' : 'theme.offer.title'))}</span></div>${swatches(theme.swatches)}`
     + `${minimize ? `<button class="theme-offer-min" type="button" data-offer="minimize" aria-label="${esc(text('theme.offer.minimize'))}" title="${esc(text('theme.offer.minimize'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/></svg></button>` : ''}</div>`
     + `<p class="theme-offer-text">${esc(text(phase === 'final' ? 'theme.offer.finalText' : 'theme.offer.text'))}${left === null ? '' : ` <span data-left>${esc(left)}</span>`}</p>`
+    + `<p class="theme-offer-rule"><span>${esc(text('theme.offer.rule'))}</span>`
+    + '<button type="button" class="tip-btn" data-offer="rule"'
+    + ` title="${esc(text('theme.rule.open'))}"`
+    + ` aria-label="${esc(text('theme.rule.open'))}">i</button></p>`
     + `${failed ? `<p class="theme-offer-text" role="alert">${esc(text('theme.offer.fail'))}</p>` : ''}`
     + `<div class="theme-offer-actions"><button class="btn secondary" type="button" data-offer="leave">${esc(text('theme.offer.leave'))}</button>`
     + `<button class="btn" type="button" data-offer="keep">${esc(text('theme.offer.keep'))}</button></div>`;
+}
+
+// The public rule of the offer days as the info panel shows it (src/ui/theme-offer.js opens it, in
+// a sheet of src/ui/info.js). example: calendar.js ruleExample(). Only the rule is told, never the
+// digits.
+export function ruleHtml(text, example) {
+  const steps = [1, 2, 3, 4].map(n => `<li>${esc(text(`theme.rule.step${n}`))}</li>`).join('');
+  const { date, day, month, last, first, xor, value } = example;
+  const worked = text('theme.rule.example', date, day, month, last, first, xor, value);
+  return `<p>${esc(text('theme.rule.lead'))}</p>`
+    + `<ol class="theme-rule-steps">${steps}</ol>`
+    + `<p class="theme-rule-example">${esc(worked)}</p>`
+    + `<p><b>${esc(text('theme.rule.last'))}</b></p>`;
 }
