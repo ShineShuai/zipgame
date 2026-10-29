@@ -1,0 +1,65 @@
+{
+ "id": "modular",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-32-modular",
+ "mode": "light",
+ "name": {
+  "en": "Modular",
+  "zh": "模块"
+ },
+ "symbol": "<rect x=\"4\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"13\" y=\"4\" width=\"7\" height=\"7\"/><rect x=\"4\" y=\"13\" width=\"7\" height=\"7\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#eeeae0",
+  "#eeeae0",
+  "#14161c",
+  "#f0b429"
+ ],
+ "fonts": [
+  {
+   "family": "Inter Tight",
+   "weight": "500 800",
+   "file": "intertight-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#eeeae0",
+  "surface": "#eeeae0",
+  "ink": "#14161c",
+  "muted": "#4d4d4d",
+  "accent": "#14161c",
+  "onAccent": "#ffffff",
+  "orange": "#f0b429",
+  "tile": "#eeeae0",
+  "tileEdge": "#d4d1c8",
+  "wall": "#14161c",
+  "path": "#14161c",
+  "red": "#a87e1d",
+  "blue": "#1f45d6",
+  "numFill": "#14161c",
+  "numText": "#ffffff",
+  "numvFill": "#35373c",
+  "numvText": "#eeeae0",
+  "onOrange": "#000000"
+ },
+ "vars": {
+  "--font-body": "\"Inter Tight\", Helvetica, Arial, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "0px",
+  "--r-2": "0px",
+  "--r-3": "0px",
+  "--r-4": "0px",
+  "--r-chip": "0px",
+  "--r-icon": "0px",
+  "--bw": "1px",
+  "--bw-card": "0px",
+  "--shadow": "none",
+  "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
+  "--ctl-h": "52px"
+ }
+}

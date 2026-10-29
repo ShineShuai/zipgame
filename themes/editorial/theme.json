@@ -1,0 +1,67 @@
+{
+ "id": "editorial",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-18-editorial",
+ "mode": "light",
+ "name": {
+  "en": "Editorial",
+  "zh": "杂志"
+ },
+ "symbol": "<rect x=\"4\" y=\"4\" width=\"16\" height=\"16\"/><path d=\"M4 10h16M10 4v16\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#fbfbfa",
+  "#fbfbfa",
+  "#111111",
+  "#ffe14d"
+ ],
+ "fonts": [
+  {
+   "family": "Playfair Display",
+   "weight": "500 900",
+   "file": "playfairdisplay-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#fbfbfa",
+  "surface": "#fbfbfa",
+  "ink": "#111111",
+  "muted": "#555555",
+  "accent": "#111111",
+  "onAccent": "#fbfbfa",
+  "orange": "#ffe14d",
+  "tile": "#fbfbfa",
+  "tileEdge": "#111111",
+  "wall": "#111111",
+  "path": "#a3923f",
+  "red": "#a39031",
+  "blue": "#6798b8",
+  "numFill": "#111111",
+  "numText": "#fbfbfa",
+  "numvFill": "#fbfbfa",
+  "numvText": "#111111",
+  "onOrange": "#000000",
+  "numRing": "#111111",
+  "numvRing": "#111111"
+ },
+ "vars": {
+  "--font-body": "\"Playfair Display\", Georgia, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", serif",
+  "--fw-head": "900",
+  "--r-1": "0px",
+  "--r-2": "0px",
+  "--r-3": "0px",
+  "--r-4": "0px",
+  "--r-chip": "0px",
+  "--r-icon": "0px",
+  "--bw": "1px",
+  "--bw-card": "2px",
+  "--shadow": "none",
+  "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
+  "--ctl-h": "52px"
+ }
+}

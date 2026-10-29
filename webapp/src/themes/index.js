@@ -2,7 +2,8 @@
 // and the system's colour scheme are injected. A theme reaches a player as an offer: when an event fires, `event({ id, until })` picks a
 // theme from the pool of the site (source.js, event.js), the player sees it (trial), and takes it (commit: it is saved on the device and in
 // the pool, replacing a theme when the pool is full) or leaves it (revert: it is gone, nothing was kept). A theme that is in the
-// player's pool needs no network. The mechanisms that award slots call setCap. The dev reveal lists the whole pool of the site
+// player's pool needs no network. The built-ins (light, dark) are in the site's pool too (no file: the app has them), so they can be
+// offered again to a player who replaced them. The mechanisms that award slots call setCap. The dev reveal lists the whole pool of the site
 // (`pool`) and tries (`tryPool`) or keeps (`keepPool`) any theme of it, whatever the cap.
 import { BUILTIN } from './builtin.js';
 import { applyEntry, loadFonts as realLoadFonts } from './apply.js';
@@ -69,7 +70,7 @@ export function createThemes({
   // names no theme, or the device refuses it). Nothing changes on false.
   function keep(bundle, replaceId) {
     const next = save(state, bundle.entry, replaceId);
-    if (!next || !store.save(bundle)) return false;
+    if (!next || (!bundle.entry.builtin && !store.save(bundle))) return false;   // a built-in is the app's own: no copy to keep
     for (const e of state.pool) if (!next.pool.some(p => p.id === e.id) && !e.builtin) store.remove(e.id);
     state = next;
     return true;
@@ -84,9 +85,33 @@ export function createThemes({
 
   // The bundle of a pool entry, on trial (null: the file is missing, is not a valid bundle, or is not the theme the manifest says).
   const trialOf = async (c, opts) => {
+    if (c.entry.builtin) return begin({ entry: c.entry, css: null, art: null, fonts: [] }, opts);   // light, dark: nothing to fetch
     const raw = await source?.bundle?.(c.f);
     return raw && raw.id === c.entry.id ? api.trial(raw, opts) : null;
   };
+
+  // Puts a valid bundle (or a built-in's { entry, css: null, art: null, fonts: [] }) on trial: { entry, commit, revert }, or null when
+  // the event it belongs to is already over.
+  function begin(bundle, { until } = {}) {
+    if (until && until <= now()) return null;
+    clearTrial();
+    trialing = bundle;
+    show(bundle.entry, bundle.entry.builtin ? null : { css: bundle.css, art: bundle.art, fonts: bundle.fonts });
+    const revert = () => { if (trialing !== bundle) return; clearTrial(); showActive(); };
+    if (until) timer = timers.setTimeout(revert, Math.min(until - now(), MAX_TIMEOUT));
+    return {
+      entry: bundle.entry,
+      commit: async replaceId => {
+        if (trialing !== bundle || !keep(bundle, replaceId)) return false;
+        clearTrial();
+        state = select(state, bundle.entry.id);
+        persist();
+        notify();
+        return true;
+      },
+      revert,
+    };
+  }
 
   const api = {
     state: () => state,
@@ -156,26 +181,9 @@ export function createThemes({
     // Shows a bundle without keeping anything. `until` (ms, the end of the event): the theme goes by itself then.
     // Returns null for something that is not a valid bundle (or an event already over), else { entry, commit, revert }:
     // commit(replaceId) -> Promise<boolean> keeps it and makes it the active theme; revert() puts the previous theme back.
-    trial: (raw, { until } = {}) => {
+    trial: (raw, opts) => {
       const bundle = cleanBundle(raw, { known });
-      if (!bundle || (until && until <= now())) return null;
-      clearTrial();
-      trialing = bundle;
-      show(bundle.entry, { css: bundle.css, art: bundle.art, fonts: bundle.fonts });
-      const revert = () => { if (trialing !== bundle) return; clearTrial(); showActive(); };
-      if (until) timer = timers.setTimeout(revert, Math.min(until - now(), MAX_TIMEOUT));
-      return {
-        entry: bundle.entry,
-        commit: async replaceId => {
-          if (trialing !== bundle || !keep(bundle, replaceId)) return false;
-          clearTrial();
-          state = select(state, bundle.entry.id);
-          persist();
-          notify();
-          return true;
-        },
-        revert,
-      };
+      return bundle ? begin(bundle, opts) : null;
     },
   };
   return api;

@@ -13,7 +13,7 @@ import { makePuzzle } from '../src/core/model.js';
 import { portalColorVar, PORTAL_COLORS } from '../src/view/portal-icons.js';
 import { cleanArt, CLASSIC_BOARD } from '../src/themes/art.js';
 import { cleanBundle } from '../src/themes/bundle.js';
-import { BUILTIN } from '../src/themes/builtin.js';
+import { BUILTIN, BUILTIN_IDS } from '../src/themes/builtin.js';
 import { createThemes } from '../src/themes/index.js';
 import { EVENT_KEY, SEED_KEY, hash, newSeed, offerOrder } from '../src/themes/event.js';
 import { cleanLayout } from '../src/themes/layout.js';
@@ -132,6 +132,9 @@ export function themeSystemTests(t, ok, eq, ta) {
       + '<g clip-path="url(#c1)"><rect width="4" height="4" fill="url(#g1)" filter="url(#b1)" style="mix-blend-mode:multiply"/><rect width="4" height="4" fill="url(#p1)" shape-rendering="crispEdges"/></g>'
       + '<text x="24" y="24" dy=".35em" text-anchor="middle" font-size="9" font-weight="700" fill="url(#g2)">7</text>';
     eq(cleanSvg(rich), rich, 'gradients, a clip path, a pattern, a blur, a blend mode and a short label pass unchanged');
+    eq(cleanSvg('<text x=\"2\" y=\"2\">1&gt;</text>'), '<text x=\"2\" y=\"2\">1&gt;</text>', 'a prompt sign is a label too');
+    eq(cleanSvg('<text x=\"2\" y=\"2\">1&amp;</text>'), null, 'any other entity is not');
+    eq(cleanSvg('<text x=\"2\" y=\"2\">1<b>2</b></text>'), null, 'nor is markup in a label');
   });
 
   t('themes: the ids of a drawing are its own: a piece drawn twice does not share a gradient', () => {
@@ -261,10 +264,12 @@ export function themeSystemTests(t, ok, eq, ta) {
     eq(createStore(memoryStorage({}, { quota: true })).save(b), false, 'a device that refuses: not kept');
   });
 
-  t('themes: the manifest lists themes by metadata and hashed file names; what is not a theme is dropped', () => {
+  t('themes: the manifest lists themes by metadata and hashed file names; what is not a theme is dropped; light and dark need no file', () => {
     const good = manifestOf([CANDY, WOOD], ['wood']);
-    const list = cleanPool([...good, { ...good[0] }, { ...good[0], id: 'light', f: stem('light') }, { ...good[0], id: 'sea', f: '../etc/passwd' }, { id: 'x' }, null, 'text']);
-    eq(list.map(c => [c.entry.id, c.f, c.live]), [['candy', stem('candy'), true], ['wood', stem('wood'), false]], 'a repeat, a built-in, a bad file name and a non-theme are dropped');
+    const forged = { ...good[0], id: 'dark', mode: 'light', chrome: '#ffffff', name: { en: 'Forged' }, f: 'x' };
+    const list = cleanPool([...good, { ...good[0] }, { ...good[0], id: 'light', f: undefined }, forged, { ...good[0], id: 'sea', f: '../etc/passwd' }, { id: 'x' }, null, 'text']);
+    eq(list.map(c => [c.entry.id, c.f, c.live]), [['candy', stem('candy'), true], ['wood', stem('wood'), false], ['light', null, true], ['dark', null, true]], 'a repeat, a bad file name and a non-theme are dropped; a built-in has no file');
+    eq([list[2].entry, list[3].entry], BUILTIN, 'a built-in is the app\'s own copy, whatever the manifest says');
     eq([cleanPool({}), cleanPool(null), cleanPool([]).length], [null, null, 0]);
     eq(cleanPool(Array.from({ length: 80 }, (_, i) => ({ ...good[0], id: `t${i}`, f: stem(`t${i}`) }))).length, MAX_THEMES, 'bounded');
     ok(FILE_RE.test(stem('a')) && !FILE_RE.test('A'.repeat(24)) && !FILE_RE.test(`${stem('a')}0`) && !FILE_RE.test('../'.repeat(8)) && !FILE_RE.test('-'.repeat(24)), 'the shape of a file name');
@@ -601,6 +606,36 @@ export function themeSystemTests(t, ok, eq, ta) {
     const many = rig({ files: {}, pool: poolOf([CANDY, WOOD, SEA, SKY]) });
     await many.ctl.event({ id: 'e' });
     eq(many.calls.length, 1 + 3, 'one read of the pool, and at most three files before there is no offer');
+  });
+
+  ta('themes: light and dark are in the pool like any other theme: listed, offered again, tried and kept with no file', async () => {
+    const BUILTIN_POOL = BUILTIN.map(b => ({ entry: b, f: null, live: true }));
+    const site = { files: filesOf([CANDY, WOOD]), pool: [...BUILTIN_POOL, ...poolOf([CANDY, WOOD])] };
+    const away = { ...site, stored: withPool([entryOf(CANDY), entryOf(WOOD)], null, 2), owned: [CANDY, WOOD] };   // a player who replaced both
+
+    const r = rig(away);
+    r.ctl.start();
+    eq((await r.ctl.pool()).map(c => [c.entry.id, c.f, c.owned]), [['light', null, false], ['dark', null, false], ['candy', stem('candy'), true], ['wood', stem('wood'), true]], 'the dev reveal lists them, not owned');
+    const offer = await r.ctl.event({ id: 'autumn', until: 5000 });
+    ok(offer && BUILTIN_IDS.includes(offer.entry.id), 'the only themes this player does not own are light and dark: one is offered');
+    eq([r.calls.filter(c => c !== 'pool'), r.ctl.current().id, r.applied[r.applied.length - 1]], [[], offer.entry.id, offer.entry.id], 'on trial with no file fetched, drawn from the app\'s own css');
+    eq(await offer.commit(), false, 'a full pool needs a theme to replace');
+    eq(await offer.commit('wood'), true);
+    eq([r.ctl.state().pool.map(e => e.id), r.ctl.state().active, r.storage.data[EVENT_KEY]], [['candy', offer.entry.id], offer.entry.id, 'autumn'], 'taken: in the pool again, answered');
+    eq([BUNDLE_KEY(offer.entry.id) in r.storage.data, BUNDLE_KEY('wood') in r.storage.data], [false, false], 'a built-in has no copy on the device, and the replaced theme\'s copy is gone');
+    eq((await rig({ ...away, storage: r.storage }).ctl.event({ id: 'autumn', until: 5000 })), null, 'an answered event is not offered again');
+
+    const left = await rig(away).ctl.event({ id: 'winter', until: 5000 });
+    left.revert();
+    eq([left.entry.id === 'light' || left.entry.id === 'dark', left.entry.builtin], [true, true], 'a built-in offer can be left like any other');
+
+    const d = rig(away);
+    d.ctl.start();
+    await d.ctl.tryPool('dark');
+    eq([d.ctl.current().id, d.ctl.state().pool.length, d.timeouts.length], ['dark', 2, 0], 'the dev reveal tries dark: shown, nothing kept');
+    eq(await d.ctl.keepPool('light'), true);
+    eq([d.ctl.state().pool.map(e => e.id), d.ctl.current().id], [['candy', 'light'], 'light'], 'kept: it takes the place of one of the player\'s own, not the one showing');
+    eq([await d.ctl.keepPool('light'), d.ctl.owns('light')], [false, true], 'owned already');
   });
 
   ta('themes: the dev reveal lists the whole pool, drafts too, and tries or keeps any theme whatever the cap', async () => {

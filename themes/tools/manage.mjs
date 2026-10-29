@@ -1,16 +1,18 @@
 // Adding, retiring and removing themes. A theme is a folder of themes/; nothing else lists it, so none of this edits anything else.
-//   node themes/tools/manage.mjs list                    every theme: mode, live or draft, bundle size, problems (npm run themes -- list)
+//   node themes/tools/manage.mjs list                    every theme (light and dark too): mode, live, draft or built-in, bundle size, problems (npm run themes -- list)
 //   node themes/tools/manage.mjs new <id> [--from <id>]  a new theme from themes/_template, or a copy of another theme to start from
 //   node themes/tools/manage.mjs retire <id>             "live": false: out of every offer, still in the dev reveal (restore: live again)
 //   node themes/tools/manage.mjs remove <id>             deletes themes/<id>/. Players who own it keep it; nobody is offered it again
-//   node themes/tools/manage.mjs fonts                   the font files the themes name and do not have yet, with where to get them
+//   node themes/tools/manage.mjs fonts [--fetch [id ...]]  the font files the themes name and do not have yet, with where to get them;
+//                                                        --fetch downloads them from Google Fonts, subset to the glyphs the UI uses (fonts-fetch.mjs)
 // Pushing is what publishes: CI builds the site from whatever themes/ holds (build-site.mjs).
 import {
   cpSync, existsSync, readFileSync, rmSync, writeFileSync,
 } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { BUILTIN_IDS } from '../../webapp/src/themes/builtin.js';
+import { BUILTIN, BUILTIN_IDS } from '../../webapp/src/themes/builtin.js';
 import { ID_RE } from '../../webapp/src/themes/pool.js';
+import { fetchMissing } from './fonts-fetch.mjs';
 import { loadBase, loadThemes, packTheme } from './pack.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
@@ -28,13 +30,14 @@ function theme(id, root) {
   return `${dirOf(id, root)}/theme.json`;
 }
 
-// Rows for `list`: [{ id, mode, state, bytes, problems, fonts }]
+// Rows for `list`: [{ id, mode, state, bytes, problems, fonts }]; the built-ins (light, dark) first: in the pool, no file
 export function rows() {
   const base = loadBase();
-  return loadThemes().map(th => {
+  const builtin = BUILTIN.map(b => ({ id: b.id, mode: b.mode, state: 'built-in', bytes: 0, problems: 0, fonts: 0 }));
+  return builtin.concat(loadThemes().map(th => {
     const { problems, size, missingFonts } = packTheme(th, base);
     return { id: th.id, mode: th.mode, state: th.live === false ? 'draft' : 'live', bytes: size, problems: problems.length, fonts: missingFonts.length };
-  });
+  }));
 }
 
 // themes/<id>/ from the template, or from another theme (its fonts and art too). Returns the folder.
@@ -72,8 +75,8 @@ function main([cmd, id, ...rest]) {
     case 'list': {
       const list = rows();
       const w = Math.max(2, ...list.map(r => r.id.length));
-      list.forEach(r => console.log(`${r.id.padEnd(w)}  ${r.mode.padEnd(5)}  ${r.state.padEnd(5)}  ${String(r.bytes).padStart(6)} bytes${r.problems ? `  ${r.problems} PROBLEMS` : ''}${r.fonts ? `  ${r.fonts} font file(s) missing` : ''}`));
-      console.log(`${list.length} themes (${list.filter(r => r.state === 'draft').length} drafts)`);
+      list.forEach(r => console.log(`${r.id.padEnd(w)}  ${r.mode.padEnd(5)}  ${r.state.padEnd(8)}  ${String(r.bytes).padStart(6)} bytes${r.problems ? `  ${r.problems} PROBLEMS` : ''}${r.fonts ? `  ${r.fonts} font file(s) missing` : ''}`));
+      console.log(`${list.length} themes (${list.filter(r => r.state === 'built-in').length} built-in, ${list.filter(r => r.state === 'draft').length} drafts)`);
       process.exitCode = list.some(r => r.problems) ? 1 : 0;
       break;
     }
@@ -84,6 +87,10 @@ function main([cmd, id, ...rest]) {
       break;
     }
     case 'fonts': {
+      if (id === '--fetch') {
+        fetchMissing({ only: rest }).then(({ got, failed }) => { console.log(`${got} font file(s) fetched, ${failed} failed (npm run themes -- fonts lists what is still missing)`); process.exitCode = failed ? 1 : 0; });
+        break;
+      }
       let missing = 0;
       for (const th of loadThemes()) {
         for (const f of th.fonts ?? []) {
@@ -100,7 +107,7 @@ function main([cmd, id, ...rest]) {
     case 'restore': setLive(id, true); console.log(`${id}: live`); break;
     case 'remove': remove(id); console.log(`themes/${id}/ removed. The next deployment no longer has it; players who own it keep it.`); break;
     default:
-      console.error('usage: manage.mjs list | new <id> [--from <id>] | retire <id> | restore <id> | remove <id> | fonts');
+      console.error('usage: manage.mjs list | new <id> [--from <id>] | retire <id> | restore <id> | remove <id> | fonts [--fetch [id ...]]');
       process.exitCode = 2;
   }
 }

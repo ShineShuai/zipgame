@@ -1,0 +1,65 @@
+{
+ "id": "iso",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-16-iso",
+ "mode": "dark",
+ "name": {
+  "en": "Iso",
+  "zh": "等距"
+ },
+ "symbol": "<path d=\"M12 3 20 7.5v9L12 21 4 16.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#0b1220",
+  "#111a2e",
+  "#fbbf24",
+  "#fbbf24"
+ ],
+ "fonts": [
+  {
+   "family": "Outfit",
+   "weight": "400 700",
+   "file": "outfit-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#0b1220",
+  "surface": "#111a2e",
+  "ink": "#e2e8f0",
+  "muted": "#a3b1c6",
+  "accent": "#fbbf24",
+  "onAccent": "#1a1202",
+  "orange": "#fbbf24",
+  "tile": "#111a2e",
+  "tileEdge": "#2a3345",
+  "wall": "#e2e8f0",
+  "path": "#fbbf24",
+  "red": "#0f766e",
+  "blue": "#fbbf24",
+  "numFill": "#fbbf24",
+  "numText": "#1a1202",
+  "numvFill": "#9ea2a8",
+  "numvText": "#111a2e",
+  "onOrange": "#000000"
+ },
+ "vars": {
+  "--font-body": "\"Outfit\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "999px",
+  "--r-2": "14px",
+  "--r-3": "28px",
+  "--r-4": "28px",
+  "--r-chip": "999px",
+  "--r-icon": "999px",
+  "--bw": "1px",
+  "--bw-card": "1px",
+  "--shadow": "none",
+  "--pop-shadow": "0 12px 30px rgba(0, 0, 0, 0.22)",
+  "--ctl-h": "52px"
+ }
+}

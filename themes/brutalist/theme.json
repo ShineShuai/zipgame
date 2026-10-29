@@ -1,0 +1,65 @@
+{
+ "id": "brutalist",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-14-brutalist",
+ "mode": "light",
+ "name": {
+  "en": "Brutalist",
+  "zh": "粗野主义"
+ },
+ "symbol": "<rect x=\"4\" y=\"4\" width=\"11\" height=\"11\"/><rect x=\"9\" y=\"9\" width=\"11\" height=\"11\" fill=\"currentColor\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#ffdc4a",
+  "#ffffff",
+  "#3d5afe",
+  "#3d5afe"
+ ],
+ "fonts": [
+  {
+   "family": "Archivo",
+   "weight": "500 800",
+   "file": "archivo-latin.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#ffdc4a",
+  "surface": "#ffffff",
+  "ink": "#000000",
+  "muted": "#1a1a1a",
+  "accent": "#3d5afe",
+  "onAccent": "#ffffff",
+  "orange": "#3d5afe",
+  "tile": "#ffffff",
+  "tileEdge": "#e0e0e0",
+  "wall": "#000000",
+  "path": "#3d5afe",
+  "red": "#a89131",
+  "blue": "#f55b9c",
+  "numFill": "#3d5afe",
+  "numText": "#ffffff",
+  "numvFill": "#000000",
+  "numvText": "#ffffff",
+  "onOrange": "#ffffff"
+ },
+ "vars": {
+  "--font-body": "\"Archivo\", Arial Black, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "0px",
+  "--r-2": "0px",
+  "--r-3": "0px",
+  "--r-4": "0px",
+  "--r-chip": "0px",
+  "--r-icon": "0px",
+  "--bw": "2px",
+  "--bw-card": "3px",
+  "--shadow": "8px 8px 0 #000",
+  "--pop-shadow": "8px 8px 0 #000",
+  "--ctl-h": "52px"
+ }
+}

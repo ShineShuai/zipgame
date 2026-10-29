@@ -5,7 +5,9 @@ engine (`webapp/src/themes/`, `webapp/css/theme.css`); CI packs the themes into 
 
 ## What the design has to satisfy
 
-1. Every player has light and dark; every theme has its own symbol; a pool holds up to 4 themes (the cap grows with awards).
+1. Every player has light and dark; every theme has its own symbol; a pool holds up to 4 themes (the cap grows with awards). Light and dark are
+   themes of the site's pool like all others: the manifest lists them (no file: the app has them), so an event can offer one again to a player
+   who replaced it, and the dev reveal lists them.
 2. A theme reaches a player by an **offer at an event**; **every player may get a different offer**. They see it, then take it (it replaces
    a theme when the pool is full) or leave it. Not taken, or after the choice or the event, it is gone.
 3. How an event is triggered is not the theme system's business: it is handed an event id and the time the offer ends.
@@ -47,6 +49,7 @@ assets/design/           the design pages (zigzag-NN-<id>.html) and assets/image
                          sources of themes, not published (stage-site.sh leaves them out)
 t/                       BUILT by CI into the site (config.js THEMES.base): <hash>.json per theme + the manifest (THEMES.pool)
 webapp/src/themes/       ENGINE (changes with features, not with the number of themes)
+  builtin.js                          light and dark: the metadata the manifest lists, the css is css/theme.css (no file, no fetch)
   tokens.js bundle.js svg.js art.js   the contract and the whitelists: every bundle is rebuilt, never trusted
   pool.js store.js                    the player's themes: the pool (up to 4) and their copies on the device
   index.js apply.js                   the controller (event -> trial -> take / leave; dev pool) and the page
@@ -80,14 +83,15 @@ Run everything in `webapp/` as `npm run themes -- <command>` (or `node themes/to
 
 | | |
 |---|---|
-| **Add, from a design page** | Put `zigzag-NN-<id>.html` in `assets/design/` and `NN-<id>-variants.svg` in `assets/images/logo/proto/`, then `npm run themes:import` (one theme: `... -- <id>`). Colours, shapes, fonts, icons, brand mark and board skin are read from the page. The Chinese name, the symbol and the layout are in `tools/proto-meta.json`; a design without an entry gets the English name, a zigzag symbol and the default layout. A theme without `"proto"` in its theme.json was written by hand and is never overwritten (`--force`). |
+| **Add, from a design page** | Put `zigzag-NN-<id>.html` in `assets/design/` and `NN-<id>-variants.svg` in `assets/images/logo/proto/`, then `npm run themes:import` (one theme: `... -- <id>`). Colours, shapes, fonts, icons, brand mark and board skin are read from the page. The Chinese name, the symbol and the layout are in `tools/proto-meta.json`; a design without an entry gets the English name, a zigzag symbol and the default layout. A design whose page name differs from its theme id says so with `"page"` (the theme `bauhaus` is the page `zigzag-17-bauhaus-bento`). What a page cannot carry or the reader misreads (a tuned colour, a wood-grain background, a bento's sizes) is the entry's `"override"` (`seeds`, `vars`, `board`, `swatches`): edit that, never the generated theme. A theme without `"proto"` in its theme.json was written by hand and is never overwritten (`--force`); every theme of the pool is generated today. |
+| **Change an icon design** | Edit the design's class in `assets/images/logo/proto/gen/concepts_*.py` (the engine is `core.py`, the helpers `kit.py` and `kit2.py`; the Two paths icon is the file `gen/two/NN-<id>.svg`), then from the repository root `python3 assets/images/logo/proto/gen/build_all.py assets` (rewrites every sheet and page in place; a design without a page is skipped), then `npm run themes:import` in `webapp/`. A design drawn on the board scenes (Wood: a palette on `core.Style`) needs no drawing of its own for Two paths; the others have `gen/two/NN-<id>.svg`. Run both only after a design changed: CI and the deployment read the committed `themes/`; `npm run test:themes` fails when a committed theme is not what its design gives. |
 | **Add, by hand** | `npm run themes -- new <id>` (or `new <id> --from <other>` to start from another theme), then edit `themes/<id>/theme.json`: five colours and a name are a whole theme. Add `art.json` and fonts when you have them. |
 | **Check** | `node themes/tools/pack.mjs <id>` (contrast nudges and problems), `npm run themes -- list` (every theme: mode, live or draft, bytes, problems), `npm run test:themes`. |
 | **Look at it** | `npm run themes:preview`, then `http://localhost:8000/webapp/` and hold V: every theme of the pool (or `python3 -m http.server` from the repository root after `npm run themes:build -- .`). |
 | **Publish** | Push. CI tests, packs and deploys; the new theme is in the pool of the next deployment and is offered from then on. |
 | **Retire** | `npm run themes -- retire <id>` sets `"live": false`: never offered, still listed in the dev reveal (`restore` undoes it). |
 | **Remove** | `npm run themes -- remove <id>` deletes `themes/<id>/`. The next deployment no longer has it; players who own it keep their copy. |
-| **Fonts** | `npm run themes -- fonts` lists the font files the themes name and do not have, with where to get them; until a file is there, the theme uses its fallback fonts. |
+| **Fonts** | `npm run themes -- fonts` lists the font files the themes name and do not have; `npm run themes -- fonts --fetch [id ...]` downloads them once from Google Fonts, already subset to the glyphs the UI uses (`FONT_TEXT` in `tools/fonts-fetch.mjs`: ASCII and a few marks, a few KB to some tens of KB each). Commit the files: `build-site` embeds them in that theme's bundle, so a player never contacts Google and downloads a font only with its theme. Until a file is there, the theme uses its fallback fonts. Fonts are OFL: keep the licence text with them. |
 
 Everything not stated in a theme.json is derived and nudged to pass the contrast pairs (text 4.5, graphics 3; a visited number against an idle one
 1.5, hue counts): `pack` prints every nudge, and a nudge in a seed you chose is a design decision to review. Raise a theme's `v` when its files change.
@@ -97,8 +101,8 @@ Everything not stated in a theme.json is derived and nudged to pass the contrast
 - **Tokens** (`css/theme.css` defaults, bundle overrides): colours, radii, borders, sizes, fonts, shadows, the number discs, the portal colours.
 - **Art** (`art.json`): the variant icons (`variantIcon` in `apps/play/icons.js` draws the theme's icon, the classic one for any it does not draw;
   Two paths is a composition of its own in every theme, matched to the design, always two separate paths that never cross or overlap: the
-  `two` method of the design's class in `assets/images/logo/proto/gen/concepts_*.py` is its source, and the importer takes the two route colours
-  of the game's Two paths boards from that icon),
+  drawing is `assets/images/logo/proto/gen/two/NN-<id>.svg` (a hand-finished SVG, `@` stands for the id prefix; `build_all.py` puts it on the sheet
+  and the page), and the importer takes the two route colours of the game's Two paths boards from it unless `routes` in `proto-meta.json` sets them),
   the brand mark, and the **board skin** (`apps/play/board.js`): inset rounded tiles with an edge and a lower edge on an optional plate, path
   width / cap / join and a top-to-bottom gradient, wall width and cap, number disc or square. The skin applies to plain boards; Cutout,
   Wrap-around and Pentagon keep their own tiles (in the theme's colours), Two paths keeps its circle and square. `board.solid` picks the
