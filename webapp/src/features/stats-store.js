@@ -53,7 +53,10 @@ async function convertLegacy(storage, known) {
   return { blob, any, names };
 }
 
-export function createStore(storage, sizes, scopes = {}) {
+// sync (platform/sync/engine.js, optional): the blobs in storage stay this device's own copy (what it played); what the store shows is the
+// group's, `view(key, copy)`: the statistics and records of every device of the player, merged (core/sync/merge.js). refresh() reads it again.
+export function createStore(storage, sizes, scopes = {}, sync = null) {
+  const view = (key, copy) => (sync ? sync.view(key, copy) : copy);
   const total = {}, today = {}, best = {}, attempts = {}; let attemptDate = null, gotdCount = 0; // attempts: date -> record|null, every date loaded so far (today and replays)
   const get = async k => { try { const r = await storage.get(k); return r ? JSON.parse(r.value) : null; } catch { return null; } };
   // One read-modify-write at a time: the app calls recordSolve without awaiting it and recordGotd right after, and two overlapping
@@ -100,13 +103,22 @@ export function createStore(storage, sizes, scopes = {}) {
       converted = true;
     } catch { /* the old keys stay and are read as before */ }
   })());
+  // The statistics as shown (the group's) from the blob in storage.
+  async function derive() {
+    const r = await storage.get(STATS_KEY), b = view(STATS_KEY, r ? parseBlob(r.value) : emptyBlob());
+    for (const k of allKeys()) { total[k] = unpackStat(b.t[k]) || newStat(); today[k] = unpackToday(b.d[k]); }
+    for (const n of sizes) best[n] = b.b[n] ? { date: b.b[n][0], time: b.b[n][1] } : null;
+  }
   const store = {
     async hydrate(dateStr) {
       try { await migrate(); } catch { /* the old keys stay; hydrate reads what the blob has */ }
-      const r = await storage.get(STATS_KEY), b = r ? parseBlob(r.value) : emptyBlob();
-      for (const k of allKeys()) { total[k] = unpackStat(b.t[k]) || newStat(); today[k] = unpackToday(b.d[k]); }
-      for (const n of sizes) best[n] = b.b[n] ? { date: b.b[n][0], time: b.b[n][1] } : null;
+      await derive();
       await store.hydrateAttempt(dateStr);
+    },
+    // After the group's data changed (another device's slice came, sync was turned on or off): shows it again.
+    async refresh() {
+      await derive();
+      for (const date of Object.keys(attempts)) await store.loadAttempt(date);
     },
     total: (n, scope) => total[scopeKey(n, scope)] || newStat(),
     today: (n, day, scope) => { const r = today[scopeKey(n, scope)]; return r && r.day === day ? r.stat : newStat(); },
@@ -114,22 +126,37 @@ export function createStore(storage, sizes, scopes = {}) {
       const k = scopeKey(n, scope);
       total[k] = updateStat(total[k] || newStat(), time);
       today[k] = { day, stat: updateStat(store.today(n, day, scope), time) };
-      // today's entries of earlier days can never be shown again: they go with this write
-      await patch(b => { for (const id of Object.keys(b.d)) if (!Array.isArray(b.d[id]) || b.d[id][0] < day) delete b.d[id]; b.t[k] = packStat(total[k]); b.d[k] = [day, ...packStat(today[k].stat)]; });
+      // today's entries of earlier days can never be shown again: they go with this write. The blob gets this device's own
+      // statistics plus the solve (what is shown above also holds the other devices' games, which are not ours to store).
+      await patch(b => {
+        for (const id of Object.keys(b.d)) if (!Array.isArray(b.d[id]) || b.d[id][0] < day) delete b.d[id];
+        b.t[k] = packStat(updateStat(unpackStat(b.t[k]) || newStat(), time));
+        const mine = unpackToday(b.d[k]);
+        b.d[k] = [day, ...packStat(updateStat(mine && mine.day === day ? mine.stat : newStat(), time))];
+      });
     },
     gotdBest: n => best[n] || null,
     // pending: also submit to the averages backend (sent:false until it answers).
     // replay: the date is a past one; the per-size Game-of-Day time (b in the stats blob, shown in the menu table) belongs to the live game and stays as it is.
     async recordGotd(n, date, time, pending = false, replay = false) {
-      if (!replay) { const prev = best[n]; if (!prev || prev.date !== date || prev.time > time) { best[n] = { date, time }; await patch(b => { b.b[n] = [date, time]; }); } }
+      if (!replay) {
+        const prev = best[n];
+        if (!prev || prev.date !== date || prev.time > time) {
+          best[n] = { date, time };
+          await patch(b => { const mine = b.b[n]; if (!mine || mine[0] !== date || mine[1] > time) b.b[n] = [date, time]; });
+        }
+      }
       await store.saveAttempt(date, pending ? { solved: true, time, sent: false } : { solved: true, time });
     },
     gotdSolves: () => gotdCount, // Game-of-Day dates solved in total (as of the last load or save)
     attempt: () => attempts[attemptDate] || null, attemptDate: () => attemptDate, // today's record (as of the last hydrateAttempt)
     attemptOn: date => attempts[date] || null,                                     // any loaded date's record
-    async loadAttempt(date) {
+    // localOnly: this device's own record, not the group's, and nothing remembered (the first run of replay.js counts what this device played).
+    async loadAttempt(date, localOnly = false) {
       await convertAttempts();
-      const r = await storage.get(GOTD_KEY), blob = r ? parseGotd(r.value) : null, rec = blob ? blob.a[date] : null;
+      const r = await storage.get(GOTD_KEY), own = r ? parseGotd(r.value) : null;
+      if (localOnly) { const mine = own ? own.a[date] : null; return isRecord(mine) ? mine : converted ? null : await get(attemptKey(date)); }
+      const blob = view(GOTD_KEY, own), rec = blob ? blob.a[date] : null;
       if (blob) gotdCount = Math.max(gotdCount, solvedCount(blob));
       attempts[date] = isRecord(rec) ? rec : converted ? null : await get(attemptKey(date));
       return attempts[date];

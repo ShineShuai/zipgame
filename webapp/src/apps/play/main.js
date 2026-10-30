@@ -21,7 +21,8 @@ import { createUnlock } from '../../features/unlock.js';
 import { createGift } from '../../features/gift.js';
 import { createRulesSeen } from '../../features/rules-seen.js';
 import { VERSION } from '../../version.js';
-import { LEADERBOARD, BEHAVIOUR } from '../../config.js';
+import { LEADERBOARD, BEHAVIOUR, SYNC } from '../../config.js';
+import { createSync } from '../../platform/sync/engine.js';
 import { createLeaderboard, backendsFromConfig } from '../../platform/leaderboard.js';
 import { createBehaviour, sinksFromConfig } from '../../platform/behaviour.js';
 import { t, getLang, setLang } from '../../ui/i18n.js';
@@ -32,7 +33,7 @@ import { genNoticeHtml, paintGenerating, renderGenerating } from './generating.j
 import { hintShown, renderGame } from './game-view.js';
 import {
   $, S, SIZES, bind, behaviour, dayNo, gift, giftRef, lastPointer, lb, modal, playlog, randomSeed,
-  replay, rulesSeen, solidRelease, statsLineT, storage, store, streak, today, unlock,
+  replay, rulesSeen, solidRelease, statsLineT, storage, store, streak, sync, today, unlock,
 } from './state.js';
 import { openReplay, renderReplay, startGameOfDay, startReplay } from './replay-ui.js';
 import {
@@ -309,23 +310,32 @@ async function initLang() {
 // ---------- boot ----------
 (async function boot() {
   bind({ storage: await pickStorage() });
+  // Syncing the player's data across their devices does nothing until the player turns it on (platform/sync/engine.js).
+  if (SYNC.available) {
+    try {
+      const engine = createSync({ storage, maxDevices: SYNC.maxDevices });
+      await engine.init();
+      bind({ sync: engine, storage: engine.wrap(storage) });
+    } catch (e) { console.warn('sync init failed:', e); }
+  }
   bind({
-    store: createStore(storage, SIZES, Object.fromEntries(PLAY_VARIANTS.map(v => [v.id, v.sizes(SIZES)]))),
+    store: createStore(storage, SIZES, Object.fromEntries(PLAY_VARIANTS.map(v => [v.id, v.sizes(SIZES)])), sync),
     daily: createDaily(storage),
     playlog: createPlayLog(storage),
   });
   try { await store.hydrate(today()); } catch (e) { console.warn('stats hydration failed:', e); }
   bind({ lb: createLeaderboard(backendsFromConfig(LEADERBOARD, new URLSearchParams(location.search).get('lb'))) });
-  bind({ replay: createReplay(storage, store) });
+  bind({ replay: createReplay(storage, store, undefined, sync) });
   try { await replay.init(); } catch (e) { console.warn('replay init failed:', e); }
-  bind({ streak: createStreak(storage, playlog) });
+  bind({ streak: createStreak(storage, playlog, undefined, sync) });
   let streakRewards = 0; // rewards of healed days a saved streak had not counted yet: granted once the rest is loaded
   try { streakRewards = (await streak.init()).rewards; } catch (e) { console.warn('streak init failed:', e); }
-  bind({ unlock: createUnlock(storage, luckyDefs(SIZES, solidRelease)) });
+  bind({ unlock: createUnlock(storage, luckyDefs(SIZES, solidRelease), undefined, sync) });
   try { await unlock.init(); } catch (e) { console.warn('unlock init failed:', e); }
-  bind({ gift: createGift(storage, giftRef) });
+  bind({ gift: createGift(storage, giftRef, undefined, sync) });
   try { await gift.init(); } catch (e) { console.warn('gift init failed:', e); }
-  bind({ rulesSeen: createRulesSeen(storage, PLAY_VARIANTS.map(v => v.id)) });
+  bind({ rulesSeen: createRulesSeen(storage, PLAY_VARIANTS.map(v => v.id), sync) });
+  if (sync) sync.onChange(() => store.refresh().catch(e => console.warn('stats refresh failed:', e)));
   await rulesSeen.init();
   bind({ shared: createSharedGames(storage) });
   if (lb.enabled) for (const { date } of await replay.unsent()) shareGotd(date); // today's and replayed days whose submit never got an answer

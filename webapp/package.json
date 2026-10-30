@@ -7,7 +7,8 @@
   },
   "scripts": {
     "check": "node test/check.js && node test/check-config.js",
-    "test": "node test/tests.js && npm run test:coop",
+    "test": "node test/tests.js && npm run test:coop && npm run test:sync",
+    "test:sync": "node --test test/sync/words.test.js test/sync/slice.test.js test/sync/merge.test.js test/sync/engine.test.js test/sync/exchange.test.js test/sync/features.test.js",
     "test:server": "node server/cloudflare/worker.test.mjs && node server/turso/schema.test.mjs",
     "bench": "node bench/bench.js",
     "bench:save": "node bench/bench.js --save",

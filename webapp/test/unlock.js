@@ -197,7 +197,7 @@ export function unlockTests(t, ta, ok, eq) {
 
   ta('unlock: a corrupt, foreign or hostile record is replaced; old '
     + 'records convert; storage errors are harmless', async () => {
-    for (const junk of ['not json', '{}', '[]', 'null', '{"v":2}', '{"v":1,"unlocked":{},"tokens":-1,"choices":0}',
+    for (const junk of ['not json', '{}', '[]', 'null', '{"v":2}',
       '{"v":1,"unlocked":{},"tokens":1.5,"choices":0}', '{"v":1,"unlocked":5,"tokens":0,"choices":0}',
       '{"v":1,"unlocked":{},"tokens":0,"choices":0,"played":["x"]}']) {
       const u = createUnlock(memory({ [UNLOCK_KEY]: junk }), defs, at(MON)); await u.init();
@@ -206,6 +206,8 @@ export function unlockTests(t, ta, ok, eq) {
     const rec = { v: 1, unlocked: { a: 5, gone: 9, b: 'x' }, tokens: 2, choices: 1, played: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], active: { id: 'a' } };
     eq(sanitize(rec, ['a', 'b']), { v: 1, unlocked: { a: 5 }, tokens: 2, choices: 1, played: [3, 4, 5, 6, 7, 8, 9, 10], active: null });
     eq(sanitize({ v: 1, unlocked: {}, tokens: [20000, 20001], choices: 0, solves: 4 }, ['a']).tokens, 2, 'an older record: a list');
+    // a device's chances are what it earned minus what it spent: below 0 while it spends another device's (device sync)
+    eq(sanitize({ v: 1, unlocked: {}, tokens: -1, choices: -2 }, ['a']), { v: 1, unlocked: {}, tokens: -1, choices: -2, played: [], active: null });
     const broken = { async get() { throw new Error('no'); }, async set() { throw new Error('full'); } };
     const u = createUnlock(broken, defs, at(MON)); await u.init(); await give(u);
     eq(u.view().tokens, 1);

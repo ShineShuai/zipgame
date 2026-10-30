@@ -39,7 +39,7 @@ export const giftRef = solidRelease ? solidRelease.first : null;
 export let storageUsed = '';
 export let lastPointer = 'mouse'; // pointerType of the last press: 'mouse', 'pen' or 'touch'
 // Play log (features/playlog.js): one record per puzzle, on the solve or when the puzzle is left unsolved. Local only.
-export let playlog = null, behaviour = null;
+export let playlog = null, behaviour = null, sync = null;
 
 // What only main.js can make (the render router, the solid play) is late-bound: modules import these names and main.js
 // sets them once at load, before anything is drawn.
@@ -51,7 +51,7 @@ const setters = {
   storage: v => { storage = v; }, store: v => { store = v; }, daily: v => { daily = v; }, replay: v => { replay = v; },
   streak: v => { streak = v; }, unlock: v => { unlock = v; }, gift: v => { gift = v; }, rulesSeen: v => { rulesSeen = v; },
   shared: v => { shared = v; }, modal: v => { modal = v; }, lb: v => { lb = v; }, playlog: v => { playlog = v; },
-  behaviour: v => { behaviour = v; }, storageUsed: v => { storageUsed = v; }, lastPointer: v => { lastPointer = v; },
+  behaviour: v => { behaviour = v; }, sync: v => { sync = v; }, storageUsed: v => { storageUsed = v; }, lastPointer: v => { lastPointer = v; },
   render: v => { render = v; }, solid: v => { solid = v; },
 };
 export function bind(values) {
