@@ -19,6 +19,8 @@ import concepts_b  # noqa: F401
 import concepts_c  # noqa: F401
 import concepts_d  # noqa: F401
 import concepts_e  # noqa: F401
+import concepts_f  # noqa: F401
+import concepts_g  # noqa: F401
 PROTO = "images/logo/proto"
 DESIGN = "design"
 LEGACY = "Users/vs/Downloads/assets"
