@@ -15,8 +15,9 @@ export function sanitize(c, ids) {
 }
 
 // storage: { get(key) -> { value } | null, set(key, value) } (platform/storage.js); ids: the puzzle
-// types that have rules to show.
-export function createRulesSeen(storage, ids) {
+// types that have rules to show. sync (platform/sync/engine.js, optional): the rules seen on
+// the player's other devices count as seen here.
+export function createRulesSeen(storage, ids, sync = null) {
   let state = fresh();
   const save = async () => { try { await storage.set(RULES_SEEN_KEY, JSON.stringify(state)); } catch { /* ignore */ } };
   return {
@@ -28,7 +29,7 @@ export function createRulesSeen(storage, ids) {
         state = clean || fresh();
       } catch { state = fresh(); }
     },
-    seen: id => state.seen[id] === true,
+    seen: id => (sync ? sync.view(RULES_SEEN_KEY, state) : state).seen[id] === true,
     async mark(id) {
       if (!ids.includes(id) || state.seen[id]) return;
       state.seen[id] = true;

@@ -34,22 +34,30 @@ export function sanitize(c, ids) {
   if (!c || typeof c !== 'object' || c.v !== VERSION || !c.unlocked || typeof c.unlocked !== 'object') return null;
   const tokens = Array.isArray(c.tokens) ? c.tokens.length : c.tokens;
   const played = c.played === undefined ? [] : c.played;
-  if (!isCount(tokens) || !isCount(c.choices) || !Array.isArray(played) || !played.every(isCount)) return null;
+  // tokens and choices are this device's earned minus spent: below 0 while it spends what another device earned (sync)
+  if (!Number.isInteger(tokens) || !Number.isInteger(c.choices) || !Array.isArray(played) || !played.every(isCount)) return null;
   const unlocked = {};
   for (const id of ids) if (isCount(c.unlocked[id])) unlocked[id] = c.unlocked[id];
   return { v: VERSION, unlocked, tokens, choices: c.choices, played: played.slice(-PLAYED_KEPT), active: null };
 }
 
-export function createUnlock(storage, defs, now = () => new Date()) {
+// sync (platform/sync/engine.js, optional): `s` stays this device's own record (what it earned, spent and
+// unlocked); what is read is the group's (`group()`: unlocks of every device, the sum of the chances).
+export function createUnlock(storage, defs, now = () => new Date(), sync = null) {
   const ids = defs.map(d => d.id);
   const today = () => utcDayNumber(now());
   let s = null; // null until init()
   const save = async () => { try { await storage.set(UNLOCK_KEY, JSON.stringify(s)); } catch { /* ignore */ } };
   // Unlocked by the player, or open to everyone today (a solid kind after its release).
+  const group = () => {
+    if (!s || !sync) return s;
+    const g = sync.view(UNLOCK_KEY, s);
+    return g === s ? s : { ...g, active: s.active }; // a game in progress belongs to its device
+  };
   const isUnlocked = id => {
     if (!s) return false;
     const def = defs.find(d => d.id === id);
-    return s.unlocked[id] !== undefined || Boolean(def && def.open && def.open(today()));
+    return group().unlocked[id] !== undefined || Boolean(def && def.open && def.open(today()));
   };
   // The variants the lucky game draws from and "all unlocked" looks at.
   const live = () => {
@@ -65,10 +73,10 @@ export function createUnlock(storage, defs, now = () => new Date()) {
   // offerLast = its last day. nextLucky is the first lucky day after today.
   const view = () => {
     if (!s) return null;
-    const day = today(), next = nextLucky(day);
-    const offer = activeOffers(day).find(o => !s.played.includes(o));
+    const day = today(), next = nextLucky(day), g = group();
+    const offer = activeOffers(day).find(o => !g.played.includes(o));
     return {
-      tokens: s.tokens, choices: s.choices, offer: offer ?? null, open: offer !== undefined && !s.active && !all(),
+      tokens: g.tokens, choices: g.choices, offer: offer ?? null, open: offer !== undefined && !s.active && !all(),
       offerLast: offer === undefined ? null : offerEnd(offer) - 1, luckyToday: isLucky(day),
       nextLucky: next, daysToNext: next - day, active: s.active, allUnlocked: all(),
     };
@@ -87,7 +95,7 @@ export function createUnlock(storage, defs, now = () => new Date()) {
     allUnlocked: all,
     view,
     async addChoice() { if (s) { s.choices++; await save(); } },
-    async takeChoice() { if (!s || s.choices < 1) return false; s.choices--; await save(); return true; },
+    async takeChoice() { if (!s || group().choices < 1) return false; s.choices--; await save(); return true; },
     async addToken() { if (s) { s.tokens++; await save(); } },
     // Starts the lucky game of the open offer and draws the variant (rand(n) -> integer 0..n-1). A
     // locked variant gets one of its LUCKY sizes, an unlocked one any of its sizes. A player with an
@@ -97,7 +105,7 @@ export function createUnlock(storage, defs, now = () => new Date()) {
       const v = view(), list = live();
       if (!v || !v.open || !list.length) return null;
       const def = list[rand(list.length)], isNew = !isUnlocked(def.id);
-      const sizes = isNew ? def.locked : def.pool, holder = s.tokens > 0;
+      const sizes = isNew ? def.locked : def.pool, holder = group().tokens > 0;
       if (holder) s.tokens--;
       s.played = [...s.played, v.offer].slice(-PLAYED_KEPT);
       s.active = { id: def.id, size: sizes[rand(sizes.length)], day: today(), offer: v.offer, holder };

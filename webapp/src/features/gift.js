@@ -37,8 +37,11 @@ export const present = (view, told, busy) => {
   return { button: waits, toast: waits && !busy && told !== view.day };
 };
 
-export function createGift(storage, ref, now = () => new Date()) {
+// sync (platform/sync/engine.js, optional): a gift opened on another device is opened here too;
+// `s` stays this device's own record, what is read is the group's (`group()`).
+export function createGift(storage, ref, now = () => new Date(), sync = null) {
   let s = null; // null until init()
+  const group = () => (s && sync ? sync.view(GIFT_KEY, s) : s);
   const save = async () => { try { await storage.set(GIFT_KEY, JSON.stringify(s)); } catch { /* ignore */ } };
   const today = () => utcDayNumber(now());
   // The happiest day whose gift can be opened today, else null.
@@ -57,18 +60,18 @@ export function createGift(storage, ref, now = () => new Date()) {
       await save();
     },
     // The stored record: { day, kind } of the gift opened last (day null = none yet); null before init().
-    record() { return s && { day: s.day, kind: s.kind }; },
+    record() { const g = group(); return g && { day: g.day, kind: g.kind }; },
     // null: no gift today. Else { day (the happiest day), opened, kind (what the opened gift was, else null) }.
     view() {
-      const day = s && open();
+      const g = group(), day = g && open();
       if (day === null || day === undefined) return null;
-      return { day, opened: s.day === day, kind: s.day === day ? s.kind : null };
+      return { day, opened: g.day === day, kind: g.day === day ? g.kind : null };
     },
     // Opens today's gift: draws the kind (rand(n) -> integer 0..n-1; onlyReplay: nothing left to unlock, so a
     // replay chance). null = no gift to open (none today, or already opened), so calling it twice is harmless.
     async claim(rand, onlyReplay = false) {
-      const day = s && open();
-      if (day === null || day === undefined || s.day === day) return null;
+      const g = group(), day = g && open();
+      if (day === null || day === undefined || g.day === day) return null;
       const kind = drawKind(rand, onlyReplay);
       s = { v: VERSION, day, kind }; // set before the first await: a second tap meets an opened gift
       await save();
