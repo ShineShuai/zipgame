@@ -35,8 +35,7 @@ def refused(p, sqlstate):
 root = pathlib.Path(__file__).parent
 psql('drop database if exists sync_test', 'postgres'); psql('create database sync_test', 'postgres')
 psql("do $$ begin if not exists (select 1 from pg_roles where rolname='anon') then create role anon nologin; end if; end $$")
-psql((root / 'schema.sql').read_text())  # gotd_secret
-psql((root / 'sync.sql').read_text())
+psql((root / 'sync.sql').read_text())  # needs nothing from schema.sql
 psql((root / 'sync.sql').read_text())  # idempotent
 
 # the tables are not readable by the anon role: only the functions are
@@ -88,7 +87,7 @@ assert result(call('sync_delete', ID, AUTH)) == {'deleted': False}
 assert result(call('sync_get', ID, '{}')) == {'slices': []}
 assert result(call('sync_put', ID, AUTH, DEV, 1, data(1)))['stored'] is True
 refused(call('sync_prune', 'nope', 180), '42501')
-psql("insert into gotd_secret (name, hash) values ('sync-prune', encode(sha256(convert_to('prune-token', 'UTF8')), 'hex'))")
+psql("insert into sync_secret (name, hash) values ('prune', encode(sha256(convert_to('prune-token', 'UTF8')), 'hex'))")
 refused(call('sync_prune', 'prune-token', 3), '22023')
 assert result(call('sync_prune', 'prune-token', 180)) == {'deleted': 0}
 psql("update sync_owner set touched = now() - interval '200 days'")

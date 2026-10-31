@@ -13,9 +13,9 @@ It is **off for everybody until the player turns it on** on their device
 | Identity, group view, exchange protocol | `src/platform/sync/engine.js`, `proto.js` | done, tested |
 | Features read the group's data | `stats-store`, `streak`, `unlock`, `replay`, `gift`, `rules-seen` (optional `sync` argument) | done, tested |
 | Device-to-device link (option D) | `p2p.js`, wraps `coop/join.js`, `resume.js`, `rtc.js` | done, tested with fakes |
-| Cloud (option C: sync phrase, Supabase primary, Turso second) | `cloud.js`, `cloud/`, `server/supabase/sync.sql`, `server/turso/schema.sql`, `tools/sync-prune.mjs` | done; Turso side run for real on SQLite, Supabase SQL **not run** (no Postgres here), see below |
+| Cloud (option C: sync phrase, Supabase primary, Turso second; its own config `SYNC.cloud` and its own SQL, apart from the averages and behaviour rows) | `cloud.js`, `cloud/`, `server/supabase/sync.sql`, `server/turso/sync.sql`, `tools/sync-prune.mjs` | done; Turso side run for real on SQLite, Supabase SQL **not run** (no Postgres here), see below |
 | Menu card "Your devices" (the player's choice) | `src/apps/play/sync-card.js`, `sync-ui.js` | done; the card HTML is tested, the page itself is not run here |
-| Hardening, rollout flag | | next patch |
+| Hardening (caps, rotation, errors) | | next patch |
 
 Sync is off for everybody until the player taps "Link another device" (host), confirms a link they
 opened (guest: a link that joins devices must not join them by itself), or makes / types a sync
@@ -30,10 +30,13 @@ link buttons are then not shown; the cloud way needs only WebCrypto and a config
   a secret.
 * From the 80 bits (PBKDF2, 600,000 rounds, then HKDF) come the group id, an auth value and an
   AES-GCM key (`core/sync/cloud-keys.js`). A device seals its slice (id and device id are in the
-  tag) and puts it on the servers of `SYNC.cloud`: Supabase (primary: the first write claims the
+  tag) and puts it on the servers of `SYNC.cloud.backends` (their own urls, keys, SQL and tokens;
+  the averages and the behaviour rows keep theirs, Turso first): Supabase (primary: the first write claims the
   group, writes and the delete show the auth value, ids cannot be listed) and Turso (second:
   append-only with the public token, junk possible, skipped by the page). A pull asks both and
   keeps what opens. Server setup, tokens and pruning: `server/README.md`, "Device sync".
+* The card says in two sentences what the servers can see (that a group exists, when it changes,
+  how many devices write to it, their IP addresses) and what they cannot (the data).
 * A device pushes after a change (5 s later, never twice within 60 s), when the page is hidden
   (`keepalive`), and pulls when it starts or is shown again.
 * Links and phrase are one group: a linked device that has the cloud secret hands it to one that

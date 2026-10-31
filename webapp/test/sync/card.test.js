@@ -228,3 +228,19 @@ test('every text of the phrase and cloud screens exists in English and Chinese',
   }
   assert.ok([...used].some(key => key.startsWith('sync.cloud')));
 });
+
+test('the privacy line is on the card in every state, and says what the servers can see', () => {
+  const models = [{}, { phase: 'confirm' }, { phase: 'inviting', link: 'x' }, { phase: 'enter' },
+    { phase: 'phrase', phrase: ['a'] }, { enabled: true }, { phase: 'failed', reason: 'down' }];
+  for (const model of models) {
+    assert.match(html(model), /\[sync\.privacy\]/, JSON.stringify(model));
+  }
+  assert.ok(!html({ shown: false }).includes('sync.privacy'));
+  for (const text of [EN['sync.privacy'], ZH['sync.privacy']]) {
+    assert.ok(text.length < 330, 'short');
+  }
+  for (const word of ['encrypted', 'IP', 'no account']) {
+    assert.ok(EN['sync.privacy'].toLowerCase().includes(word.toLowerCase()), word);
+  }
+  assert.ok(ZH['sync.privacy'].includes('IP'));
+});

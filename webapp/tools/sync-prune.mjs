@@ -10,7 +10,8 @@
 //              server/supabase/sync.sql)
 //
 // Environment: TURSO_URL + TURSO_PRUNE_TOKEN and/or
-//              SUPABASE_URL + SUPABASE_KEY (the anon key) + SYNC_PRUNE_TOKEN.
+//              SUPABASE_URL + SUPABASE_KEY (the anon key) + SYNC_PRUNE_TOKEN: those of the SYNC
+//              backends (src/config.js SYNC.cloud.backends), not of the averages.
 // It cannot tell junk from real rows (it has no key), so it prunes by age and count only.
 import { hranaInt, pipeline, trim } from '../src/platform/leaderboard.js';
 

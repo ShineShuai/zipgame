@@ -1,5 +1,6 @@
 -- Device sync (src/platform/sync/cloud): the encrypted slices of a player's devices, so that devices that are never
--- open together can still meet. Run once in the Supabase SQL editor (idempotent). Run schema.sql first (it makes gotd_secret).
+-- open together can still meet. A scheme of its own: it needs nothing from schema.sql (Game-of-Day aggregates) and may run in a
+-- project of its own (SYNC.cloud.backends of src/config.js has its own url and key). Run once in the Supabase SQL editor (idempotent).
 --
 -- What is stored is ciphertext made on the player's device with a key the server never sees (src/core/sync/cloud-keys.js):
 -- a group id (random-looking), the verifier of an auth value, and per device one sealed slice with a counter and a time.
@@ -30,13 +31,13 @@ create table if not exists sync_slice (
 --   update sync_cfg set n = 100000 where name = 'max_groups';  the default
 create table if not exists sync_cfg (name text primary key, n bigint not null);
 insert into sync_cfg (name, n) values ('max_groups', 100000) on conflict (name) do nothing;
--- sha256 (hex) of the pruning token, inserted once by hand with name 'sync-prune' (server/README.md, "Device sync").
-create table if not exists gotd_secret (name text primary key, hash text not null);
+-- sha256 (hex) of the pruning token, inserted once by hand with name 'prune' (server/README.md, "Device sync"). anon can neither read nor write it.
+create table if not exists sync_secret (name text primary key, hash text not null);
 
 alter table sync_owner enable row level security;
 alter table sync_slice enable row level security;
 alter table sync_cfg enable row level security;
-alter table gotd_secret enable row level security;
+alter table sync_secret enable row level security;
 
 -- Writes this device's slice. A repeat with a seq that is not newer changes nothing (stored: false).
 create or replace function sync_put(p_id text, p_auth text, p_dev text, p_seq bigint, p_data text) returns json
@@ -133,7 +134,7 @@ language plpgsql security definer set search_path = public as $$
 declare
   v_rows int;
 begin
-  if p_token is null or not exists (select 1 from gotd_secret where name = 'sync-prune' and hash = encode(sha256(convert_to(p_token, 'UTF8')), 'hex')) then
+  if p_token is null or not exists (select 1 from sync_secret where name = 'prune' and hash = encode(sha256(convert_to(p_token, 'UTF8')), 'hex')) then
     raise exception 'unauthorized' using errcode = '42501';
   end if;
   if p_days is null or p_days not between 7 and 3650 then

@@ -174,5 +174,6 @@ export function syncCardHtml(model, t, icon) {
         <div class="button-row">${buttons}</div>
         ${second ? `<div class="button-row">${second}</div>` : ''}
         ${line}
+        <p class="sync-privacy">${t('sync.privacy')}</p>
       </section>`;
 }

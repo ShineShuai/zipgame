@@ -30,15 +30,29 @@ export const LEADERBOARD = {
 
 // Syncing a player's data across their own devices (platform/sync, core/sync). OFF for everybody until the player chooses it on their
 // device; `available: false` removes the feature. maxDevices: how many devices one player may link (2..8).
-// cloud: the servers that keep the encrypted copies of the devices that are not open together (server/README.md "Device sync"): ids of
-// LEADERBOARD.backends of type supabase or turso, the same urls and public keys. A push goes to both, a pull asks both. `primary: null`
-// (or no entry that is configured) leaves the cloud way out and the card offers links only. minPushMs: the least time between two pushes.
-// Turso needs a token that also allows `sync:data_add` (server/turso/schema.sql); until it is replaced there, its writes are refused
-// and only Supabase keeps copies.
+// cloud: the servers that keep the encrypted copies of devices that are not open together (server/README.md "Device sync"). It has its
+// OWN backends, apart from LEADERBOARD (the Game-of-Day averages and the behaviour rows keep theirs, with Turso first): its own urls,
+// public keys, SQL (server/supabase/sync.sql, server/turso/sync.sql) and tokens, so that it can live in other projects or databases.
+//   backends   ids -> { type: 'supabase' | 'turso', url, key }; an entry without url or key is not used
+//   primary    the server that checks who writes (Supabase); second: a backup. A push goes to both, a pull asks both.
+//              `primary: null` leaves the cloud way out (the card then offers links only).
+//   minPushMs  the least time between two pushes of one device
+// The Supabase key is the public anon/publishable key (RLS blocks all direct table access). The Turso key is the public browser token of
+// its own, safe in the client because it can only read and INSERT into `sync` (server/turso/sync.sql):
+//   turso db tokens create <db> -e never -p all:data_read -p sync:data_add     (`npm run check` fails for any other permission list)
+// Every origin used here also goes into `connect-src` of index.html, and `npm run check` fails until it does.
 export const SYNC = {
   available: true,
   maxDevices: 4,
-  cloud: { primary: 'supabase-asia', second: 'turso-asia', minPushMs: 60000 },
+  cloud: {
+    backends: {
+      'sync-supabase': { type: 'supabase', url: 'https://tjaidjrjcugkxkluxvrc.supabase.co', key: 'sb_publishable_x3Mq5hbPn9o5Xsg5FDZNSQ_4OWqZ-1N' },
+      'sync-turso': { type: 'turso', url: '', key: '' },   // e.g. 'https://<db>-<org>.<region>.turso.io' and its token
+    },
+    primary: 'sync-supabase',
+    second: 'sync-turso',
+    minPushMs: 60000,
+  },
 };
 
 // Anonymous play behaviour (src/core/behaviour.js, server/README.md "Behaviour rows"): for each solved game the page uploads the puzzle, the time and how

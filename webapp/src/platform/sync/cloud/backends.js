@@ -1,7 +1,9 @@
-// The backends of the cloud way, from SYNC.cloud of config.js and the entries of
-// LEADERBOARD.backends it names (the same urls and public keys; the cloud needs nothing else):
-//   { primary: <id>, second: <id> }  -> [primary, second], the ones that are configured and
-//                                       that know how to keep slices (Supabase and Turso)
+// The backends of the cloud way, from SYNC.cloud of config.js: its `primary` and `second` ids and
+// its own `backends` entries (their own urls and public keys; nothing is shared with the
+// leaderboard's backends):
+//   cloud = { primary: <id>, second: <id> }, entries = SYNC.cloud.backends
+//   -> [primary, second], the ones that are configured (url and key) and that know how to keep
+//      slices (Supabase and Turso)
 import { supabaseCloud } from './supabase.js';
 import { tursoCloud } from './turso.js';
 

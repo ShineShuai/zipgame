@@ -3,7 +3,7 @@
 // this file is the player's side of it. NOTHING STARTS BY ITSELF: sync is off until the player
 // taps "Link another device", "Make a sync phrase" or "I have a sync phrase", or confirms a link
 // they opened (a link opened on a page only asks).
-import { LEADERBOARD, SYNC } from '../../config.js';
+import { SYNC } from '../../config.js';
 import { fromWords, PhraseError, toWords } from '../../core/sync/words.js';
 import { createCloud } from '../../platform/sync/cloud.js';
 import { cloudBackends } from '../../platform/sync/cloud/backends.js';
@@ -258,7 +258,7 @@ export function bindSyncCard(on) {
 export async function initSyncUi() {
   if (!SYNC.available || !sync) return;
   const webcrypto = Boolean(globalThis.crypto && crypto.subtle);
-  const backends = webcrypto ? cloudBackends(SYNC.cloud, LEADERBOARD.backends) : [];
+  const backends = webcrypto ? cloudBackends(SYNC.cloud, SYNC.cloud.backends) : [];
   cloud = createCloud({ sync, backends, minPushMs: SYNC.cloud.minPushMs });
   p2p = createP2p({ sync, name: () => deviceLabel(navigator.userAgent) });
   linkable = await p2p.supported();

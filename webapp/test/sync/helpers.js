@@ -122,13 +122,13 @@ export function fakeSupabase({ maxGroups = 100000, now = () => Date.now() } = {}
   return { fetchFn, groups, calls, entry };
 }
 
-// A Turso database as the tests need it: the REAL schema.sql (tables and trigger of the sync part
-// included) on SQLite, and a stand-in for its HTTP API (Hrana over HTTP) in front of it.
+// A Turso database as the tests need it: the REAL server/turso/sync.sql (tables and trigger) on
+// SQLite, and a stand-in for its HTTP API (Hrana over HTTP) in front of it.
 export async function tursoDatabase() {
   const { DatabaseSync } = await import('node:sqlite');
   const { readFileSync } = await import('node:fs');
   const db = new DatabaseSync(':memory:');
-  db.exec(readFileSync(new URL('../../server/turso/schema.sql', import.meta.url), 'utf8'));
+  db.exec(readFileSync(new URL('../../server/turso/sync.sql', import.meta.url), 'utf8'));
   return db;
 }
 
