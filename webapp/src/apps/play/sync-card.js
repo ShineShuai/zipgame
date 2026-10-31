@@ -2,12 +2,18 @@
 // from a plain model. Pure, so that it can be tested without a page.
 //
 //   model = { shown, phase, enabled, peers: [{ name, at }], link, status, note, reason, armed,
-//             canShare, copied, now }
+//             canShare, copied, now, linkable, cloud, phrase, phraseInput, phraseError,
+//             phraseCopied }
 //   phase: 'idle' | 'confirm' (a link was opened here: the player decides) | 'inviting' (a link
 //          was made, waiting for the other device) | 'working' (connecting or syncing) |
-//          'done' (just linked) | 'failed'
+//          'done' (just linked or joined) | 'failed' | 'phrase' (the sync phrase is shown) |
+//          'enter' (the player types a sync phrase) | 'joining' (it is being used)
 //   status: 'waiting' | 'connecting' | 'syncing' | 'looking', or ''
-//   note: { name } after a link was made, else null; reason: why it failed (p2p.js)
+//   note: { kind: 'linked' | 'cloud-on' | 'joined' | 'erased', name } or null
+//   reason: why it failed (p2p.js reasons)
+//   linkable: this browser can link devices (WebRTC); false hides the link buttons
+//   cloud: { available, on, busy, error, lastOk, armed } (platform/sync/cloud.js status)
+//   phrase: the eight words while they are shown; phraseError: { reason, position } or null
 import { esc } from '../../ui/esc.js';
 
 // How long ago `at` was, as [text key, number]; `at` 0 = never.
@@ -31,10 +37,15 @@ export function failKey(reason) {
   const keys = {
     down: 'sync.failDown', expired: 'sync.failExpired', declined: 'sync.failUsed',
     taken: 'sync.failUsed', timeout: 'sync.failTimeout', connect: 'sync.failConnect',
-    closed: 'sync.failConnect', failed: 'sync.failConnect',
+    closed: 'sync.failConnect', failed: 'sync.failConnect', erase: 'sync.eraseFail',
   };
   return keys[reason] || 'sync.failOther';
 }
+
+// The text key for a sync phrase that was refused (core/sync/words.js PhraseError reasons).
+export const phraseKey = reason => (
+  { count: 'sync.phraseCount', word: 'sync.phraseWord', checksum: 'sync.phraseCheck' }[reason]
+  || 'sync.phraseCheck');
 
 const STATUS_KEYS = {
   waiting: 'sync.waiting', connecting: 'sync.connecting', syncing: 'sync.syncing',
@@ -49,11 +60,24 @@ export function syncCardHtml(model, t, icon) {
     return '';
   }
   const { phase } = model;
+  const cloud = model.cloud || { available: false, on: false };
   const note = (text, kind = '') =>
     (text ? `<p class="sync-note${kind ? ' ' + kind : ''}" role="status">${text}</p>` : '');
+  const cloudLine = () => {
+    if (cloud.busy) return note(t('sync.cloudBusy'));
+    if (cloud.error) return note(t('sync.cloudFail'), 'bad');
+    if (!cloud.lastOk) return note(t('sync.cloudNever'));
+    const [key, n] = agoKey(cloud.lastOk, model.now);
+    return note(t('sync.cloudSynced', t(key, n)));
+  };
+  const linkable = model.linkable !== false;
+  const linkButton = (cls = '') => (linkable ? button('syncLink', t('sync.link'), cls) : '');
   let blurb = t('sync.blurb');
   let extra = '';
-  let buttons = button('syncLink', t('sync.link'));
+  let buttons = linkButton()
+    + (cloud.available ? button('syncMakePhrase', t('sync.makePhrase'), 'secondary')
+      + button('syncHavePhrase', t('sync.havePhrase'), 'secondary') : '');
+  let second = '';
   let line = '';
 
   if (phase === 'confirm') {
@@ -72,14 +96,44 @@ export function syncCardHtml(model, t, icon) {
     blurb = t('sync.linkSteps');
     buttons = button('syncCancel', t('sync.cancel'), 'secondary');
     line = note(t(STATUS_KEYS[model.status] || 'sync.connecting'));
+  } else if (phase === 'phrase') {
+    blurb = t('sync.phraseShow');
+    const words = (model.phrase || []).map(esc).join(' ');
+    extra = `<p class="sync-phrase" id="syncPhrase">${words}</p>`;
+    const copy = model.phraseCopied ? 'sync.phraseCopied' : 'sync.copyPhrase';
+    buttons = button('syncCopyPhrase', t(copy))
+      + button('syncPhraseDone', t('sync.done'), 'secondary');
+    line = cloudLine();
+  } else if (phase === 'enter') {
+    blurb = t('sync.phraseEnter');
+    extra = `<textarea class="sync-link sync-phrase-field" id="syncPhraseField" rows="2"
+      spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"
+      aria-label="${t('sync.havePhrase')}">${esc(model.phraseInput || '')}</textarea>`;
+    buttons = button('syncJoin', t('sync.phraseJoin'))
+      + button('syncCancel', t('sync.cancel'), 'secondary');
+    const error = model.phraseError;
+    line = error ? note(t(phraseKey(error.reason), error.position + 1), 'bad') : '';
+  } else if (phase === 'joining') {
+    blurb = t('sync.phraseEnter');
+    buttons = '';
+    line = note(t('sync.joining'));
   } else if (phase === 'failed') {
     line = note(t(failKey(model.reason)), 'bad');
   } else if (phase === 'done' && model.note) {
-    const { name } = model.note;
-    line = note(name ? t('sync.linked', esc(name)) : t('sync.linkedNoName'), 'ok');
+    const { kind, name } = model.note;
+    if (kind === 'linked') {
+      line = note(name ? t('sync.linked', esc(name)) : t('sync.linkedNoName'), 'ok');
+    } else if (kind === 'cloud-on') {
+      line = note(t('sync.cloudOnNote', esc(name || t('sync.device'))), 'ok');
+    } else if (kind === 'joined') {
+      line = note(t('sync.joined'), 'ok');
+    } else if (kind === 'erased') {
+      line = note(t('sync.erased'), 'ok');
+    }
   }
 
-  if (model.enabled && (phase === 'idle' || phase === 'done' || phase === 'failed')) {
+  const resting = phase === 'idle' || phase === 'done' || phase === 'failed';
+  if (model.enabled && resting) {
     const rows = model.peers.map(peer => {
       const [key, n] = agoKey(peer.at, model.now);
       const name = esc(peer.name || t('sync.device'));
@@ -87,12 +141,23 @@ export function syncCardHtml(model, t, icon) {
     });
     extra = rows.length ? `<ul class="sync-peers">${rows.join('')}</ul>` : '';
     blurb = model.peers.length ? t('sync.on', model.peers.length) : t('sync.onNone');
-    buttons = (model.peers.length ? button('syncNow', t('sync.syncNow')) : '')
-      + button('syncLink', t('sync.link'), 'secondary')
+    buttons = (model.peers.length || cloud.on ? button('syncNow', t('sync.syncNow')) : '')
+      + linkButton('secondary')
       + button('syncOff', t(model.armed ? 'sync.offConfirm' : 'sync.off'),
         `secondary sync-off${model.armed ? ' armed' : ''}`);
     if (model.status === 'looking') {
-      line = note(t('sync.looking'));
+      line = note(t('sync.looking')) + line;
+    }
+    if (cloud.on) {
+      line += cloudLine();
+      second = button('syncShowPhrase', t('sync.cloudShow'), 'secondary')
+        + button('syncCloudStop', t('sync.cloudStop'), 'secondary')
+        + button('syncCloudDelete',
+          t(cloud.armed ? 'sync.cloudDeleteConfirm' : 'sync.cloudDelete'),
+          `secondary sync-off${cloud.armed ? ' armed' : ''}`);
+    } else if (cloud.available) {
+      second = button('syncCloudOn', t('sync.cloudOn'), 'secondary')
+        + button('syncHavePhrase', t('sync.havePhrase'), 'secondary');
     }
   }
 
@@ -107,6 +172,7 @@ export function syncCardHtml(model, t, icon) {
         <p class="blurb">${blurb}</p>
         ${extra}
         <div class="button-row">${buttons}</div>
+        ${second ? `<div class="button-row">${second}</div>` : ''}
         ${line}
       </section>`;
 }

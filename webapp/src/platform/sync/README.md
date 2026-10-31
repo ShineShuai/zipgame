@@ -5,20 +5,41 @@ chances, gift, rules shown) the same on all their devices, **without an account 
 It is **off for everybody until the player turns it on** on their device
 (`SYNC.available` in `src/config.js` only lets them; `false` removes the feature).
 
-## What is here (patches 1 and 2 of 4)
+## What is here (patches 1 to 3 of 4)
 
 | Layer | Files | State |
 |---|---|---|
-| Merge rules, slice codec, sync phrase | `src/core/sync/` | done, tested |
+| Merge rules, slice codec, sync phrase, key derivation and sealing | `src/core/sync/` | done, tested |
 | Identity, group view, exchange protocol | `src/platform/sync/engine.js`, `proto.js` | done, tested |
 | Features read the group's data | `stats-store`, `streak`, `unlock`, `replay`, `gift`, `rules-seen` (optional `sync` argument) | done, tested |
-| Device-to-device link (option D) | `src/platform/sync/p2p.js`, wraps `coop/join.js`, `resume.js`, `rtc.js` | done, tested with fakes |
+| Device-to-device link (option D) | `p2p.js`, wraps `coop/join.js`, `resume.js`, `rtc.js` | done, tested with fakes |
+| Cloud (option C: sync phrase, Supabase primary, Turso second) | `cloud.js`, `cloud/`, `server/supabase/sync.sql`, `server/turso/schema.sql`, `tools/sync-prune.mjs` | done; Turso side run for real on SQLite, Supabase SQL **not run** (no Postgres here), see below |
 | Menu card "Your devices" (the player's choice) | `src/apps/play/sync-card.js`, `sync-ui.js` | done; the card HTML is tested, the page itself is not run here |
-| Cloud (option C: phrase, Turso primary, Supabase backup) | `cloud/`, `server/` | next patch |
+| Hardening, rollout flag | | next patch |
 
-Sync is off for everybody until the player taps "Link another device" (host) or confirms a link
-they opened (guest: a link that joins devices must not join them by itself). `SYNC.available:
-false` removes the card and the engine; `src/coop` may be deleted (the card is then not shown).
+Sync is off for everybody until the player taps "Link another device" (host), confirms a link they
+opened (guest: a link that joins devices must not join them by itself), or makes / types a sync
+phrase. `SYNC.available: false` removes the card and the engine; `src/coop` may be deleted (the
+link buttons are then not shown; the cloud way needs only WebCrypto and a configured server).
+
+## The sync phrase and the cloud (option C)
+
+* "Make a sync phrase" turns the cloud way on and shows 8 words (80 secret bits + a 16-bit checksum,
+  `core/sync/words.js`). "I have a sync phrase" takes them on another device (every wrong word is
+  caught). Anyone who knows the words can read and change that player's game data: they are shown as
+  a secret.
+* From the 80 bits (PBKDF2, 600,000 rounds, then HKDF) come the group id, an auth value and an
+  AES-GCM key (`core/sync/cloud-keys.js`). A device seals its slice (id and device id are in the
+  tag) and puts it on the servers of `SYNC.cloud`: Supabase (primary: the first write claims the
+  group, writes and the delete show the auth value, ids cannot be listed) and Turso (second:
+  append-only with the public token, junk possible, skipped by the page). A pull asks both and
+  keeps what opens. Server setup, tokens and pruning: `server/README.md`, "Device sync".
+* A device pushes after a change (5 s later, never twice within 60 s), when the page is hidden
+  (`keepalive`), and pulls when it starts or is shown again.
+* Links and phrase are one group: a linked device that has the cloud secret hands it to one that
+  has none (over the sealed connection); two groups become one, the secret with the smaller short
+  name wins on both. "Stop cloud sync" keeps the phrase; "Delete cloud copy" deletes the Supabase
+  group at once and forgets the phrase (Turso's rows become unreadable and are pruned).
 
 ## The link, step by step (option D)
 
@@ -31,9 +52,9 @@ false` removes the card and the engine; `src/coop` may be deleted (the card is t
 3. Later, with nobody asked: while the page is visible, linked devices look for each other
    (20 minutes, then not again for 10, or 30 seconds after a change of the player's data, or
    "Sync now") and trade what is new. Both pages must be open together: devices that are not use
-   the cloud (next patch).
-4. "Turn off" (tap twice) forgets the identity, the linked devices and their slices; the
-   player's own data stays untouched.
+   the cloud.
+4. "Turn off" (tap twice) deletes the cloud copy where it can, then forgets the identity, the
+   linked devices and their slices; the player's own data stays untouched.
 
 ## How it works
 

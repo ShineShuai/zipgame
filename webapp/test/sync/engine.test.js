@@ -369,3 +369,47 @@ test('leave() forgets the name and the linked devices too', async () => {
   await sync.leave();
   assert.deepEqual([sync.label(), sync.peers()], [null, []]);
 });
+
+test('enable() takes a typed-in secret; another group\'s slices go, the '
+  + 'same group\'s stay', async () => {
+  const { sync } = await device();
+  await sync.enable({ cloud: true });
+  const mine = sync.secret();
+  await sync.receive([{ v: 1, dev: b2, seq: 1, keys: {} }]);
+  await sync.enable({ cloud: true, secret: mine });
+  assert.equal(sync.status().devices, 2, 'the same secret changes nothing');
+  const other = new Uint8Array(SECRET_BYTES).fill(9);
+  await sync.enable({ cloud: true, secret: other });
+  assert.deepEqual(sync.secret(), other);
+  assert.equal(sync.status().devices, 1, 'strangers are dropped');
+  await sync.enable({ cloud: true, secret: new Uint8Array(3) });
+  assert.deepEqual(sync.secret(), other, 'a secret of the wrong size is ignored');
+});
+
+test('adoptSecret(keep) joins the group of a secret and keeps the slices known', async () => {
+  const { sync } = await device();
+  await sync.enable({ p2p: true });
+  await sync.receive([{ v: 1, dev: b2, seq: 1, keys: {} }]);
+  assert.equal(sync.cloudOn(), false);
+  const next = new Uint8Array(SECRET_BYTES).fill(5);
+  assert.equal(await sync.adoptSecret(next, { keep: true }), true);
+  assert.equal(sync.cloudOn(), true);
+  assert.equal(sync.status().devices, 2);
+});
+
+test('forgetSecret() turns the cloud way off and forgets the secret and its '
+  + 'short name', async () => {
+  const { storage, sync } = await device();
+  await sync.enable({ p2p: true, cloud: true });
+  const sid = await sync.secretId();
+  assert.match(sid, /^[A-Za-z0-9_-]{8}$/);
+  assert.equal(await sync.secretId(), sid);
+  await sync.forgetSecret();
+  assert.deepEqual([sync.secret(), sync.cloudOn(), await sync.secretId()], [null, false, null]);
+  assert.equal(sync.status().p2p, true, 'the other way stays');
+  const again = createSync({ storage });
+  await again.init();
+  assert.equal(again.secret(), null);
+  const never = await device();
+  assert.equal(await never.sync.secretId(), null);
+});

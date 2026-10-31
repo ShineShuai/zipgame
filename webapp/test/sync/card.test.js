@@ -80,9 +80,9 @@ test('turning off needs a second tap', () => {
 });
 
 test('a link that just worked says so, with the name when there is one', () => {
-  assert.match(html({ phase: 'done', enabled: true, note: { name: 'Phone' } }),
+  assert.match(html({ phase: 'done', enabled: true, note: { kind: 'linked', name: 'Phone' } }),
     /\[sync\.linked Phone\]/);
-  assert.match(html({ phase: 'done', enabled: true, note: { name: '' } }),
+  assert.match(html({ phase: 'done', enabled: true, note: { kind: 'linked', name: '' } }),
     /\[sync\.linkedNoName\]/);
 });
 
@@ -113,7 +113,8 @@ test('every text the card can show exists in English and Chinese', () => {
   const models = [
     {}, { phase: 'confirm' }, { phase: 'inviting', link: 'x', canShare: true },
     { phase: 'working', status: 'looking' }, { phase: 'working', status: 'syncing' },
-    { phase: 'done', enabled: true, note: { name: 'a' }, peers: [{ name: 'a', at: 1 }] },
+    { phase: 'done', enabled: true, note: { kind: 'linked', name: 'a' },
+      peers: [{ name: 'a', at: 1 }] },
     { enabled: true, peers: [{ name: '', at: 0 }, { name: 'x', at: 9_990_000 },
       { name: 'y', at: 1_000_000 }, { name: 'z', at: 9_000_000 }], armed: true,
     status: 'looking' },
@@ -126,4 +127,104 @@ test('every text the card can show exists in English and Chinese', () => {
     assert.ok(key in EN, `${key} in EN`);
     assert.ok(key in ZH, `${key} in ZH`);
   }
+});
+
+const cloud = (over = {}) => ({ available: true, on: false, busy: false, error: null, lastOk: 0,
+  armed: false, ...over });
+
+test('OFF with the cloud available: link, make a phrase, or enter one', () => {
+  const card = html({ cloud: cloud() });
+  assert.deepEqual(ids(card), ['syncCard', 'syncLink', 'syncMakePhrase', 'syncHavePhrase']);
+  const noLink = html({ cloud: cloud(), linkable: false });
+  assert.deepEqual(ids(noLink), ['syncCard', 'syncMakePhrase', 'syncHavePhrase']);
+});
+
+test('the sync phrase is shown as eight words (escaped), with copy and '
+  + 'done, and the cloud line', () => {
+  const words = ['baba', 'beba', 'biba', 'bobo', 'daba', 'deba', 'diba', '<b>x</b>'];
+  const card = html({ phase: 'phrase', phrase: words, cloud: cloud({ on: true }), enabled: true });
+  assert.match(card, /baba beba biba bobo daba deba diba &lt;b&gt;x&lt;\/b&gt;/);
+  assert.deepEqual(ids(card), ['syncCard', 'syncPhrase', 'syncCopyPhrase', 'syncPhraseDone']);
+  assert.match(card, /\[sync\.cloudNever\]/);
+  assert.match(html({ phase: 'phrase', phrase: words, phraseCopied: true }),
+    /\[sync\.phraseCopied\]/);
+  assert.match(html({ phase: 'phrase', phrase: words, cloud: cloud({ busy: true }) }),
+    /\[sync\.cloudBusy\]/);
+});
+
+test('entering a phrase: a field that keeps what was typed, errors by kind, a join button', () => {
+  const card = html({ phase: 'enter', phraseInput: 'baba "x" <b>', cloud: cloud() });
+  assert.match(card,
+    /<textarea[^>]*id="syncPhraseField"[^>]*>baba &quot;x&quot; &lt;b&gt;<\/textarea>/);
+  assert.deepEqual(ids(card), ['syncCard', 'syncPhraseField', 'syncJoin', 'syncCancel']);
+  assert.ok(!card.includes('sync-note'));
+  const wrong = html({ phase: 'enter', phraseError: { reason: 'word', position: 2 } });
+  assert.match(wrong, /\[sync\.phraseWord 3\]/, 'the position is told from 1');
+  assert.match(html({ phase: 'enter', phraseError: { reason: 'count', position: -1 } }),
+    /\[sync\.phraseCount 0\]/);
+  assert.match(html({ phase: 'enter', phraseError: { reason: 'checksum', position: -1 } }),
+    /\[sync\.phraseCheck 0\]/);
+  const joining = html({ phase: 'joining' });
+  assert.match(joining, /\[sync\.joining\]/);
+  assert.deepEqual(ids(joining), ['syncCard']);
+});
+
+test('ON with the cloud: its line, show phrase, stop, delete (two taps)', () => {
+  const now = 10_000_000;
+  const card = html({ enabled: true, peers: [{ name: 'Phone', at: now }],
+    cloud: cloud({ on: true, lastOk: now - 3 * 60000 }) });
+  assert.match(card, /\[sync\.cloudSynced \[sync\.minutesAgo 3\]\]/);
+  assert.deepEqual(ids(card), ['syncCard', 'syncNow', 'syncLink', 'syncOff', 'syncShowPhrase',
+    'syncCloudStop', 'syncCloudDelete']);
+  const armed = html({ enabled: true, cloud: cloud({ on: true, armed: true }) });
+  assert.match(armed, /\[sync\.cloudDeleteConfirm\]/);
+  assert.match(armed, /sync-off armed/);
+  assert.match(html({ enabled: true, cloud: cloud({ on: true, error: 'network' }) }),
+    /sync-note bad[^>]*>\[sync\.cloudFail\]/);
+});
+
+test('ON by links only, with the cloud available: turn it on, or enter a phrase', () => {
+  const card = html({ enabled: true, peers: [{ name: 'P', at: 1 }], cloud: cloud() });
+  assert.deepEqual(ids(card), ['syncCard', 'syncNow', 'syncLink', 'syncOff', 'syncCloudOn',
+    'syncHavePhrase']);
+});
+
+test('ON by the cloud alone: sync now works, and there is no link button where it cannot', () => {
+  const card = html({ enabled: true, cloud: cloud({ on: true }), linkable: false });
+  assert.deepEqual(ids(card), ['syncCard', 'syncNow', 'syncOff', 'syncShowPhrase',
+    'syncCloudStop', 'syncCloudDelete']);
+});
+
+test('notes after a link, a phrase joined, a cloud copy deleted, cloud '
+  + 'turned on from a device', () => {
+  const done = note => html({ phase: 'done', enabled: true, note, cloud: cloud() });
+  assert.match(done({ kind: 'joined' }), /\[sync\.joined\]/);
+  assert.match(done({ kind: 'erased' }), /\[sync\.erased\]/);
+  assert.match(done({ kind: 'cloud-on', name: 'Phone' }), /\[sync\.cloudOnNote Phone\]/);
+  assert.match(done({ kind: 'cloud-on', name: '' }), /\[sync\.cloudOnNote \[sync\.device\]\]/);
+  assert.match(html({ phase: 'failed', reason: 'erase' }), /\[sync\.eraseFail\]/);
+});
+
+test('every text of the phrase and cloud screens exists in English and Chinese', () => {
+  const used = new Set();
+  const record = key => { used.add(key); return key; };
+  const words = Array(8).fill('baba');
+  const models = [
+    { cloud: cloud() }, { phase: 'phrase', phrase: words, phraseCopied: true, cloud: cloud() },
+    { phase: 'enter', phraseError: { reason: 'word', position: 0 } },
+    { phase: 'enter', phraseError: { reason: 'count', position: -1 } },
+    { phase: 'enter', phraseError: { reason: 'checksum', position: -1 } }, { phase: 'joining' },
+    { enabled: true, cloud: cloud({ on: true, lastOk: 1, armed: true }) },
+    { enabled: true, cloud: cloud({ on: true, busy: true }) },
+    { enabled: true, cloud: cloud({ on: true, error: 'x' }) },
+    { enabled: true, cloud: cloud() }, { phase: 'failed', reason: 'erase' },
+    ...['joined', 'erased', 'cloud-on'].map(kind => (
+      { phase: 'done', enabled: true, note: { kind, name: 'a' } })),
+  ];
+  for (const model of models) syncCardHtml({ ...base, ...model }, record, '');
+  for (const key of used) {
+    assert.ok(key in EN, `${key} in EN`);
+    assert.ok(key in ZH, `${key} in ZH`);
+  }
+  assert.ok([...used].some(key => key.startsWith('sync.cloud')));
 });

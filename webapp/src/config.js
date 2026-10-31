@@ -30,7 +30,16 @@ export const LEADERBOARD = {
 
 // Syncing a player's data across their own devices (platform/sync, core/sync). OFF for everybody until the player chooses it on their
 // device; `available: false` removes the feature. maxDevices: how many devices one player may link (2..8).
-export const SYNC = { available: true, maxDevices: 4 };
+// cloud: the servers that keep the encrypted copies of the devices that are not open together (server/README.md "Device sync"): ids of
+// LEADERBOARD.backends of type supabase or turso, the same urls and public keys. A push goes to both, a pull asks both. `primary: null`
+// (or no entry that is configured) leaves the cloud way out and the card offers links only. minPushMs: the least time between two pushes.
+// Turso needs a token that also allows `sync:data_add` (server/turso/schema.sql); until it is replaced there, its writes are refused
+// and only Supabase keeps copies.
+export const SYNC = {
+  available: true,
+  maxDevices: 4,
+  cloud: { primary: 'supabase-asia', second: 'turso-asia', minPushMs: 60000 },
+};
 
 // Anonymous play behaviour (src/core/behaviour.js, server/README.md "Behaviour rows"): for each solved game the page uploads the puzzle, the time and how
 // many cells the player took back. No identifier. Only Turso and Cloudflare receive it (never Supabase): each row goes to `primary`, to `backup` only when

@@ -133,7 +133,11 @@ export function createP2p({
         peer: { dev: peer.dev, name: peer.name },
         received: result.received,
         sent: result.sent,
+        secret: result.secret,
       });
+      if (result.secret === 'adopted') {
+        emit({ type: 'cloud-on', peer: { dev: peer.dev, name: peer.name } });
+      }
       return true;
     } catch (error) {
       emit({ type: 'failed', kind, reason: reasonOf(error) });

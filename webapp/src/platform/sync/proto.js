@@ -1,14 +1,19 @@
 // What two devices say to each other over a channel (the data channel of coop/rtc.js, or any
 // object with send(text), onmessage and onclose): one exchange of slices, both ways.
 //
-//   hello  {t, v, dev, have, name}  who I am (and what I am called) and which slices I have
+//   hello  {t, v, dev, have, name, sid}  who I am (and what I am called), which slices I have, and
+//                              the short name of my cloud secret, or null (cloud-keys.js secretId)
 //   slice  {t, d}              one slice, packed (core/sync/slice.js) and base64url
+//   secret {t, s}              my cloud secret (base64url): sent when the other device has none,
+//                              or when mine has the smaller short name (two groups become one)
 //   done   {t}                 that was all I have for you
 //   part   {t, id, i, n, d}    piece i of n of a message too long for one channel message
 //
 // Both sides send hello, then the slices the other lacks, then done; the exchange ends when
 // both have sent and received done. Slices of other devices go along (gossip), so devices
 // that never meet still converge through a third. Whatever arrives is checked, never trusted.
+import { fromBase64Url, toBase64Url } from '../../core/sync/base64.js';
+import { secretId } from '../../core/sync/cloud-keys.js';
 import { SHRINKS } from '../../core/sync/merge.js';
 import { cleanLabel } from './engine.js';
 import {
@@ -117,6 +122,10 @@ export function exchange({
     const frames = createReassembler();
     let peer = null;
     let peerName = '';
+    let mySid = null;
+    let peerSid = null;
+    let secretSent = false;
+    let secretAdopted = false;
     let sentDone = false;
     let gotDone = false;
     let received = 0;
@@ -137,7 +146,8 @@ export function exchange({
     const send = message => toFrames(message).forEach(frame => channel.send(frame));
     const check = () => {
       if (sentDone && gotDone) {
-        end(null, { peer, name: peerName, received, sent });
+        const secret = secretAdopted ? 'adopted' : secretSent ? 'sent' : null;
+        end(null, { peer, name: peerName, received, sent, secret });
       }
     };
     const tooBad = () => {
@@ -160,6 +170,7 @@ export function exchange({
       }
       peer = message.dev;
       peerName = cleanLabel(message.name);
+      peerSid = /^[A-Za-z0-9_-]{8}$/.test(String(message.sid)) ? message.sid : null;
       for (const slice of sync.slicesFor(have)) {
         const bytes = await packSlice(slice, { shrink: SHRINKS });
         if (bytes) {
@@ -167,8 +178,26 @@ export function exchange({
           sent += 1;
         }
       }
+      if (mySid && (!peerSid || mySid < peerSid)) { // my secret is the one both will use
+        send({ t: 'secret', s: toBase64Url(sync.secret()) });
+        secretSent = true;
+      }
       send({ t: 'done' });
       sentDone = true;
+    }
+
+    async function onSecret(message) {
+      let bytes = null;
+      try {
+        bytes = fromBase64Url(message.s);
+      } catch { /* not base64url */ }
+      const named = bytes && bytes.length > 0 ? await secretId(bytes) : null;
+      const mine = !mySid || (peerSid !== null && peerSid < mySid);
+      if (!named || named !== peerSid || !mine) {
+        tooBad();
+        return;
+      }
+      secretAdopted = await sync.adoptSecret(bytes, { keep: true });
     }
 
     async function onSlice(message) {
@@ -196,6 +225,8 @@ export function exchange({
         await onHello(message);
       } else if (message.t === 'slice' && peer !== null) {
         await onSlice(message);
+      } else if (message.t === 'secret' && peer !== null) {
+        await onSecret(message);
       } else if (message.t === 'done' && peer !== null) {
         gotDone = true;
       } else {
@@ -209,7 +240,10 @@ export function exchange({
     let queue = (async () => {
       await sync.refresh();
       const name = typeof sync.label === 'function' ? sync.label() || '' : '';
-      send({ t: 'hello', v: PROTO_VERSION, dev: sync.status().dev, have: sync.have(), name });
+      mySid = typeof sync.secretId === 'function' ? await sync.secretId() : null;
+      send({
+        t: 'hello', v: PROTO_VERSION, dev: sync.status().dev, have: sync.have(), name, sid: mySid,
+      });
     })();
     channel.onmessage = text => {
       queue = queue.then(() => handle(text)).catch(error => end(error));

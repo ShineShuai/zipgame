@@ -132,10 +132,10 @@ await test('bin_edge gives binOf(ms) for every accepted time', () => {
   }
 });
 
-await test('the triggers only read and raise: the public token needs no write permission besides submit and play', () => {
+await test('the triggers only read and raise: the public token needs no write permission besides submit, play and sync', () => {
   const db = open();
   const triggers = db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger'").all();
-  assert.deepEqual(triggers.map(t => t.name).sort(), ['play_ai', 'submit_ai']);
+  assert.deepEqual(triggers.map(t => t.name).sort(), ['play_ai', 'submit_ai', 'sync_ai']);
   assert.match(triggers.map(t => t.sql).join('\n'), /RAISE\(ABORT, 'invalid'\)/);
   for (const t of triggers) assert.doesNotMatch(t.sql.slice(t.sql.indexOf('BEGIN')), /\b(INSERT|UPDATE|DELETE|REPLACE)\b/i, `the body of ${t.name} (after its header AFTER INSERT ON)`);
 });

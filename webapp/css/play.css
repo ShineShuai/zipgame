@@ -516,6 +516,8 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 .sync-peers li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: var(--rb-1); background: var(--surface-2); }
 .sync-peers small { color: var(--muted); }
 .sync-link { width: 100%; box-sizing: border-box; margin: 0 0 12px; padding: 10px 12px; font: inherit; font-size: 0.85rem; color: inherit; border: 1px solid var(--line-strong); border-radius: var(--rb-1); background: var(--surface-2); }
+.sync-phrase { margin: 0 0 12px; padding: 12px; font-size: 1.15rem; line-height: 1.6; letter-spacing: 0.02em; word-spacing: 0.35em; text-align: center; user-select: all; border: 1px solid var(--line-strong); border-radius: var(--rb-1); background: var(--surface-2); }
+.sync-phrase-field { resize: vertical; min-height: 3.2em; }
 .sync-note { margin: 10px 0 0; font-size: 0.9rem; color: var(--muted); }
 .sync-note.bad { color: var(--danger); }
 .sync-note.ok { color: var(--ok); }
