@@ -5,19 +5,35 @@ chances, gift, rules shown) the same on all their devices, **without an account 
 It is **off for everybody until the player turns it on** on their device
 (`SYNC.available` in `src/config.js` only lets them; `false` removes the feature).
 
-## What is here (patch 1 of 4)
+## What is here (patches 1 and 2 of 4)
 
 | Layer | Files | State |
 |---|---|---|
 | Merge rules, slice codec, sync phrase | `src/core/sync/` | done, tested |
 | Identity, group view, exchange protocol | `src/platform/sync/engine.js`, `proto.js` | done, tested |
 | Features read the group's data | `stats-store`, `streak`, `unlock`, `replay`, `gift`, `rules-seen` (optional `sync` argument) | done, tested |
-| Device-to-device link (option D) | wraps `coop/join.js`, `resume.js`, `rtc.js` | next patch |
+| Device-to-device link (option D) | `src/platform/sync/p2p.js`, wraps `coop/join.js`, `resume.js`, `rtc.js` | done, tested with fakes |
+| Menu card "Your devices" (the player's choice) | `src/apps/play/sync-card.js`, `sync-ui.js` | done; the card HTML is tested, the page itself is not run here |
 | Cloud (option C: phrase, Turso primary, Supabase backup) | `cloud/`, `server/` | next patch |
-| Menu: "Sync my devices" (the player's choice) | `src/apps/play/` | next patch |
 
-Until the menu exists nothing can turn sync on, so this patch changes no behaviour (the 750
-existing tests pass; one expectation changed: a negative chance count is a valid record now).
+Sync is off for everybody until the player taps "Link another device" (host) or confirms a link
+they opened (guest: a link that joins devices must not join them by itself). `SYNC.available:
+false` removes the card and the engine; `src/coop` may be deleted (the card is then not shown).
+
+## The link, step by step (option D)
+
+1. Host: "Link another device" turns the P2P way on, opens a room on the public brokers
+   (`coop/join.js`) and shows `<page>#y=<token>`. The page must stay open (15 minutes).
+2. Guest: opening the link shows a card that asks once ("Link this device"); then everything
+   is in the background: ask to join, the host lets the first in and closes the room, a WebRTC
+   connection, one exchange of slices both ways (`proto.js`), and each remembers the other
+   (`zip_sync.peers`: id, name, the secret they share, when they last traded).
+3. Later, with nobody asked: while the page is visible, linked devices look for each other
+   (20 minutes, then not again for 10, or 30 seconds after a change of the player's data, or
+   "Sync now") and trade what is new. Both pages must be open together: devices that are not use
+   the cloud (next patch).
+4. "Turn off" (tap twice) forgets the identity, the linked devices and their slices; the
+   player's own data stays untouched.
 
 ## How it works
 

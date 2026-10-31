@@ -16,6 +16,7 @@ import { luckyBoxHtml, unlockView } from './lucky-ui.js';
 import { genNoticeHtml } from './generating.js';
 import { refreshAttemptIfStale, refreshNext, todayText } from './counters.js';
 import { pruneShared, sharedCardHtml } from './shared-ui.js';
+import { syncCardHtmlNow } from './sync-ui.js';
 import { giftBoxHtml, giftOf, noteGiftShown } from './gift-ui.js';
 
 // Radio tiles, each an icon of the board it plays (full square, square with holes, ...), a name and a tagline.
@@ -208,6 +209,7 @@ export function renderMenu() {
       ${playColumnHtml()}
       ${sharedCardHtml()}
       ${coopCardHtml()}
+      ${syncCardHtmlNow()}
     </div>`;
 }
 

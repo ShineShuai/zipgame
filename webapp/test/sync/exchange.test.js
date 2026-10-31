@@ -179,3 +179,30 @@ test('the reassembler refuses what is out of order, too long, or not a message',
   assert.deepEqual(re.push('{"t":"done"}'), { t: 'done' }, 'a whole message drops a half one');
   assert.ok(SLICE_MAX > 0);
 });
+
+test('messages that came before the exchange started are handled first', async () => {
+  const [a, b] = [await device({ [RULES_SEEN_KEY]: rules('cutout') }), await device()];
+  const { a: ca, b: cb, log } = channelPair();
+  const early = [];
+  ca.onmessage = text => early.push(text); // what the page does while the channel opens
+  const askedB = exchange({ channel: cb, sync: b.sync });
+  await nextTurn();
+  await nextTurn();
+  assert.ok(early.length >= 1, 'B said hello before A was ready');
+  const askedA = exchange({ channel: ca, sync: a.sync, early });
+  const [ra] = await Promise.all([askedA, askedB]);
+  assert.equal(ra.peer, b.sync.status().dev);
+  assert.ok(log.b.length >= 2);
+  assert.ok(await seenOf(b, 'cutout'));
+});
+
+test('the name of the other device comes with its hello, cleaned', async () => {
+  const [a, b] = [await device(), await device()];
+  await a.sync.setLabel('Chrome · Mac');
+  const { a: ca, b: cb } = channelPair();
+  const [ra, rb] = await Promise.all([
+    exchange({ channel: ca, sync: a.sync }), exchange({ channel: cb, sync: b.sync }),
+  ]);
+  assert.equal(rb.name, 'Chrome · Mac');
+  assert.equal(ra.name, '', 'no name given: none told');
+});

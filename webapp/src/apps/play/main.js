@@ -23,6 +23,7 @@ import { createRulesSeen } from '../../features/rules-seen.js';
 import { VERSION } from '../../version.js';
 import { LEADERBOARD, BEHAVIOUR, SYNC } from '../../config.js';
 import { createSync } from '../../platform/sync/engine.js';
+import { bindSyncCard, initSyncUi } from './sync-ui.js';
 import { createLeaderboard, backendsFromConfig } from '../../platform/leaderboard.js';
 import { createBehaviour, sinksFromConfig } from '../../platform/behaviour.js';
 import { t, getLang, setLang } from '../../ui/i18n.js';
@@ -156,6 +157,7 @@ function attachHandlers() {
   on('shareTip', toggleShareTip);
   on('openReplay', () => openReplay());
   on('coopOpen', () => document.dispatchEvent(new CustomEvent('zip:coop-open'))); // Patchwork (src/coop) opens in place of the menu
+  bindSyncCard(on);
   on('replayBack', () => { S.replayPick = null; S.screen = 'menu'; render(); });
   on('toReplay', () => openReplay());
   document.querySelectorAll('.replay-day').forEach(b => { b.onclick = () => startReplay(b.dataset.date); });
@@ -366,5 +368,6 @@ async function initLang() {
   const howto = await storage.get('howto-seen'); S.howtoSeen = Boolean(howto && howto.value === '1'); S.howtoOpen = !S.howtoSeen;
   render();
   watchGift();
+  initSyncUi().catch(e => console.warn('device sync not started:', e));
   for (let i = 0; i < streakRewards; i++) await onStreakMilestone();
 })();

@@ -301,3 +301,71 @@ test('slicesFor(): a device gets what it lacks, never what it has; garbage in '
   }
   assert.equal(a.sync.slicesFor(a.sync.have()).length, 0);
 });
+
+const peerOf = (dev, over = {}) => ({
+  dev, secret: 'abcdefghijklmnopqrstuv', pid: 0, name: 'Phone', at: 0, ...over,
+});
+
+test('a device has a name (cleaned, 40 characters at most) and a list of linked '
+  + 'devices', async () => {
+  const { storage, sync } = await device();
+  assert.equal(sync.label(), null);
+  assert.deepEqual(sync.peers(), []);
+  assert.equal(await sync.addPeer(peerOf(b2)), false, 'sync is off: nobody is remembered');
+  await sync.enable({ p2p: true });
+  await sync.setLabel('  Safari\n· iPhone  ');
+  assert.equal(sync.label(), 'Safari · iPhone');
+  await sync.setLabel('x'.repeat(80));
+  assert.equal(sync.label().length, 40);
+  await sync.setLabel('   ');
+  assert.equal(sync.label(), null);
+
+  assert.equal(await sync.addPeer(peerOf(b2)), true);
+  assert.equal(await sync.addPeer(peerOf(b2, { name: 'Renamed', at: 5 })), true);
+  assert.deepEqual(sync.peers(), [peerOf(b2, { name: 'Renamed', at: 5 })],
+    'a known one is replaced');
+  await sync.touchPeer(b2, 99);
+  assert.equal(sync.peers()[0].at, 99);
+  const again = createSync({ storage });
+  await again.init();
+  assert.deepEqual(again.peers(), sync.peers(), 'kept over a reload');
+  sync.peers()[0].name = 'changed outside';
+  assert.equal(sync.peers()[0].name, 'Renamed', 'a copy comes back');
+  await sync.removePeer(b2);
+  assert.deepEqual(sync.peers(), []);
+});
+
+test('only valid peers are kept, and no more than the group has room for', async () => {
+  const { sync } = await device({}, { maxDevices: 3 });
+  await sync.enable({ p2p: true });
+  for (const bad of [null, {}, peerOf('short'), peerOf(b2, { secret: 'x' }),
+    peerOf(b2, { pid: 2 }), peerOf(b2, { at: -1 }), peerOf(b2, { name: 5 })]) {
+    assert.equal(await sync.addPeer(bad), false, JSON.stringify(bad));
+  }
+  assert.equal(await sync.addPeer(peerOf('CCCCCCCCCCC')), true);
+  assert.equal(await sync.addPeer(peerOf('DDDDDDDDDDD')), true);
+  assert.equal(await sync.addPeer(peerOf('EEEEEEEEEEE')), false, 'this device and two others');
+  assert.equal(sync.peers().length, 2);
+});
+
+test('an identity with a broken peer list is ignored; one without a list is fine', async () => {
+  const base = {
+    v: 1, dev: 'AAAAAAAAAAA', seq: 0, digest: '', p2p: true, cloud: false, secret: null,
+  };
+  const broken = json({ ...base, peers: [{}] });
+  const bad = createSync({ storage: memoryStorage({ [IDENTITY_KEY]: broken }) });
+  await bad.init();
+  assert.equal(bad.enabled(), false);
+  const old = createSync({ storage: memoryStorage({ [IDENTITY_KEY]: json(base) }) });
+  await old.init();
+  assert.deepEqual([old.enabled(), old.peers(), old.label()], [true, [], null]);
+});
+
+test('leave() forgets the name and the linked devices too', async () => {
+  const { sync } = await device();
+  await sync.enable({ p2p: true });
+  await sync.setLabel('Phone');
+  await sync.addPeer(peerOf(b2));
+  await sync.leave();
+  assert.deepEqual([sync.label(), sync.peers()], [null, []]);
+});

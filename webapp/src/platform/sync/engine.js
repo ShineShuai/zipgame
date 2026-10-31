@@ -7,7 +7,9 @@
 // did not exist. Only enable() (the player's choice) creates an identity and a device id.
 //
 // Kept on the device, and never synced themselves:
-//   zip_sync    { v, dev, seq, digest, p2p, cloud, secret }  who this device is and what is on
+//   zip_sync    { v, dev, seq, digest, p2p, cloud, secret, label, peers }
+//               who this device is, what is on, how it is called, and the devices it was
+//               linked with (p2p.js)
 //   zip_sync_f  { v, slices: { dev: { seq, keys } } }        the other devices' latest slices
 // `seq` counts the changes of this device's own copy; `digest` says which copy `seq` stands for,
 // so that a page load without a change does not make a new slice.
@@ -43,10 +45,24 @@ function validSecret(text) {
   }
 }
 
+const PEER_LABEL_MAX = 40; // characters of a device's name
+const CONTROL = /[\u0000-\u001f\u007f]/g;
+export const cleanLabel = text =>
+  [...String(text ?? '').replace(CONTROL, ' ').trim()].slice(0, PEER_LABEL_MAX).join('');
+
+// A device this one was linked with: who it is, the secret the two share (coop/secret.js, 22
+// characters) to find each other again, which side of the pair this device is (0 = it made the
+// link), its name and when they last traded slices (ms since 1970, 0 = never).
+const validPeer = peer => isObject(peer) && isDev(peer.dev)
+  && /^[A-Za-z0-9_-]{22}$/.test(String(peer.secret)) && (peer.pid === 0 || peer.pid === 1)
+  && typeof peer.name === 'string' && natural(peer.at);
+
 const validIdentity = value => isObject(value) && value.v === 1 && isDev(value.dev)
   && natural(value.seq) && typeof value.digest === 'string'
   && typeof value.p2p === 'boolean' && typeof value.cloud === 'boolean'
-  && (value.secret === null || validSecret(value.secret));
+  && (value.secret === null || validSecret(value.secret))
+  && (value.label === undefined || value.label === null || typeof value.label === 'string')
+  && (value.peers === undefined || (Array.isArray(value.peers) && value.peers.every(validPeer)));
 
 // The synced keys of a slice, each cleaned by its rule; what is not one of ours is dropped.
 function cleanKeys(keys) {
@@ -137,7 +153,10 @@ export function createSync({ storage, maxDevices = MAX_DEVICES }) {
     // The player's choice. mode = { p2p?: true, cloud?: true }: turns that way on (the first
     // call makes the device id; cloud also makes the group's secret, when there is none).
     enable: mode => queued(async () => {
-      id ??= { v: 1, dev: newDevId(), seq: 0, digest: '', p2p: false, cloud: false, secret: null };
+      id ??= {
+        v: 1, dev: newDevId(), seq: 0, digest: '', p2p: false, cloud: false, secret: null,
+        label: null, peers: [],
+      };
       id.p2p ||= Boolean(mode && mode.p2p);
       if (mode && mode.cloud) {
         id.cloud = true;
@@ -167,6 +186,45 @@ export function createSync({ storage, maxDevices = MAX_DEVICES }) {
         await storage.remove(FOREIGN_KEY);
       } catch { /* nothing kept, nothing to remove */ }
       emit();
+    }),
+
+    // How this device is called to the others (at most 40 characters), or null.
+    label: () => (id && id.label) || null,
+    setLabel: text => queued(async () => {
+      if (id) {
+        id.label = cleanLabel(text) || null;
+        await saveId();
+      }
+    }),
+    // The devices this one was linked with (p2p.js finds them again by their shared secret).
+    peers: () => (id && id.peers ? id.peers.map(peer => ({ ...peer })) : []),
+    // Remembers a linked device (a known one is replaced); at most maxDevices - 1 of them.
+    addPeer: peer => queued(async () => {
+      if (!id || !validPeer(peer)) {
+        return false;
+      }
+      const others = (id.peers || []).filter(known => known.dev !== peer.dev);
+      if (others.length + 2 > maxDevices) {
+        return false;
+      }
+      id.peers = [...others, { ...peer, name: cleanLabel(peer.name) }];
+      await saveId();
+      return true;
+    }),
+    removePeer: dev => queued(async () => {
+      if (id && (id.peers || []).some(peer => peer.dev === dev)) {
+        id.peers = id.peers.filter(peer => peer.dev !== dev);
+        await saveId();
+        emit();
+      }
+    }),
+    // They traded slices just now (`at`, ms since 1970).
+    touchPeer: (dev, at) => queued(async () => {
+      const peer = id && (id.peers || []).find(known => known.dev === dev);
+      if (peer && natural(at)) {
+        peer.at = at;
+        await saveId();
+      }
     }),
 
     // The group's secret (10 bytes) for the cloud, or null.

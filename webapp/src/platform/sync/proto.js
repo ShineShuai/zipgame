@@ -1,7 +1,7 @@
 // What two devices say to each other over a channel (the data channel of coop/rtc.js, or any
 // object with send(text), onmessage and onclose): one exchange of slices, both ways.
 //
-//   hello  {t, v, dev, have}   who I am and which slices I have (engine.have())
+//   hello  {t, v, dev, have, name}  who I am (and what I am called) and which slices I have
 //   slice  {t, d}              one slice, packed (core/sync/slice.js) and base64url
 //   done   {t}                 that was all I have for you
 //   part   {t, id, i, n, d}    piece i of n of a message too long for one channel message
@@ -10,6 +10,7 @@
 // both have sent and received done. Slices of other devices go along (gossip), so devices
 // that never meet still converge through a third. Whatever arrives is checked, never trusted.
 import { SHRINKS } from '../../core/sync/merge.js';
+import { cleanLabel } from './engine.js';
 import {
   isDev, packSlice, sliceFromText, sliceToText, unpackSlice,
 } from '../../core/sync/slice.js';
@@ -101,10 +102,13 @@ export function createReassembler() {
 }
 
 // One exchange over an open channel with `sync` (platform/sync/engine.js).
-// -> Promise of { peer, received, sent }: the other device's id, how many slices were new to
-// this device, how many were sent. Rejects with Error('off' | 'timeout' | 'closed' | 'version' |
-// 'self' | 'bad') and leaves the channel open: the caller closes it.
-export function exchange({ channel, sync, timers = realTimers, timeoutMs = 60000 }) {
+// `early`: channel messages that came before the exchange was started, handled first.
+// -> Promise of { peer, name, received, sent }: the other device's id and name, how many slices
+// were new to this device, how many were sent. Rejects with Error('off' | 'timeout' | 'closed' |
+// 'version' | 'self' | 'bad') and leaves the channel open: the caller closes it.
+export function exchange({
+  channel, sync, timers = realTimers, timeoutMs = 60000, early = [],
+}) {
   return new Promise((resolve, reject) => {
     if (!sync.status().enabled) {
       reject(new Error('off'));
@@ -112,6 +116,7 @@ export function exchange({ channel, sync, timers = realTimers, timeoutMs = 60000
     }
     const frames = createReassembler();
     let peer = null;
+    let peerName = '';
     let sentDone = false;
     let gotDone = false;
     let received = 0;
@@ -132,7 +137,7 @@ export function exchange({ channel, sync, timers = realTimers, timeoutMs = 60000
     const send = message => toFrames(message).forEach(frame => channel.send(frame));
     const check = () => {
       if (sentDone && gotDone) {
-        end(null, { peer, received, sent });
+        end(null, { peer, name: peerName, received, sent });
       }
     };
     const tooBad = () => {
@@ -154,6 +159,7 @@ export function exchange({ channel, sync, timers = realTimers, timeoutMs = 60000
         throw new Error('self');
       }
       peer = message.dev;
+      peerName = cleanLabel(message.name);
       for (const slice of sync.slicesFor(have)) {
         const bytes = await packSlice(slice, { shrink: SHRINKS });
         if (bytes) {
@@ -202,7 +208,8 @@ export function exchange({ channel, sync, timers = realTimers, timeoutMs = 60000
     // while this device is still reading its own copy for its hello.
     let queue = (async () => {
       await sync.refresh();
-      send({ t: 'hello', v: PROTO_VERSION, dev: sync.status().dev, have: sync.have() });
+      const name = typeof sync.label === 'function' ? sync.label() || '' : '';
+      send({ t: 'hello', v: PROTO_VERSION, dev: sync.status().dev, have: sync.have(), name });
     })();
     channel.onmessage = text => {
       queue = queue.then(() => handle(text)).catch(error => end(error));
@@ -210,5 +217,6 @@ export function exchange({ channel, sync, timers = realTimers, timeoutMs = 60000
     queue.catch(error => end(error));
     channel.onclose = () => end(new Error('closed'));
     timer = timers.set(() => end(new Error('timeout')), timeoutMs);
+    early.forEach(text => channel.onmessage?.(text)); // sent before this side was ready
   });
 }
