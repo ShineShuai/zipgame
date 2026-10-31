@@ -119,6 +119,8 @@ export function createStore(storage, sizes, scopes = {}, sync = null) {
     async refresh() {
       await derive();
       for (const date of Object.keys(attempts)) await store.loadAttempt(date);
+      const r = await storage.get(GOTD_KEY), blob = view(GOTD_KEY, r ? parseGotd(r.value) : null);
+      if (blob) gotdCount = Math.max(gotdCount, solvedCount(blob)); // the group's number of dates solved, even when no date was loaded
     },
     total: (n, scope) => total[scopeKey(n, scope)] || newStat(),
     today: (n, day, scope) => { const r = today[scopeKey(n, scope)]; return r && r.day === day ? r.stat : newStat(); },

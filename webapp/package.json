@@ -8,7 +8,7 @@
   "scripts": {
     "check": "node test/check.js && node test/check-config.js",
     "test": "node test/tests.js && npm run test:coop && npm run test:sync",
-    "test:sync": "node --test test/sync/words.test.js test/sync/slice.test.js test/sync/merge.test.js test/sync/engine.test.js test/sync/exchange.test.js test/sync/features.test.js test/sync/p2p.test.js test/sync/card.test.js test/sync/cloud-keys.test.js test/sync/cloud-adapters.test.js test/sync/cloud.test.js test/sync/config.test.js",
+    "test:sync": "node --test test/sync/words.test.js test/sync/slice.test.js test/sync/merge.test.js test/sync/engine.test.js test/sync/exchange.test.js test/sync/features.test.js test/sync/p2p.test.js test/sync/card.test.js test/sync/cloud-keys.test.js test/sync/cloud-adapters.test.js test/sync/cloud.test.js test/sync/config.test.js test/sync/health.test.js test/sync/notice.test.js",
     "test:server": "node server/cloudflare/worker.test.mjs && node server/turso/schema.test.mjs && node server/turso/sync.test.mjs",
     "bench": "node bench/bench.js",
     "bench:save": "node bench/bench.js --save",

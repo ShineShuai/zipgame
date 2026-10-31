@@ -6,12 +6,14 @@
 import { SYNC } from '../../config.js';
 import { fromWords, PhraseError, toWords } from '../../core/sync/words.js';
 import { createCloud } from '../../platform/sync/cloud.js';
+import { createHealth } from '../../platform/sync/health.js';
 import { cloudBackends } from '../../platform/sync/cloud/backends.js';
 import { createP2p, deviceLabel, tokenOfHash } from '../../platform/sync/p2p.js';
 import { t } from '../../ui/i18n.js';
 import { cardIcon } from './icons.js';
 import { S, render, sync } from './state.js';
 import { syncCardHtml } from './sync-card.js';
+import { showSyncNotice } from './sync-notice.js';
 
 // after a change of the player's data: before the linked devices are looked for, and before the
 // cloud is written to (which keeps at least minPushMs between two writes)
@@ -27,6 +29,8 @@ const fresh = () => ({
 
 let p2p = null;
 let cloud = null;
+let health = null; // when a failure is told as a notice (platform/sync/health.js)
+let manualCloud = false; // the cloud round that is running was asked for by the player
 let linkable = false; // this browser can link devices (WebRTC)
 let ui = fresh();
 let active = null; // the link being made or opened: { cancel() }
@@ -78,10 +82,22 @@ export const syncCardHtmlNow = () =>
 
 const STAGE_STATUS = { ready: 'waiting', asked: 'waiting', seen: 'waiting', quiet: 'waiting' };
 
-function startCloud(options) {
+// manual: the player asked for this round, so a failure is told at once.
+function startCloud(options, manual = false) {
   if (cloud && cloud.on()) {
+    manualCloud ||= manual;
     cloud.sync(options).then(redraw).catch(() => {});
   }
+}
+
+// What the cloud says about a round: a failure may be told (health.js), a success clears it.
+function onCloudEvent(event) {
+  if (event.type === 'cloud' && event.state === 'ok') health.cloudOk();
+  if (event.type === 'cloud' && event.state === 'failed') {
+    health.cloudFailed({ error: event.error, manual: manualCloud });
+  }
+  if (event.state !== 'syncing') manualCloud = false;
+  redraw();
 }
 
 function onEvent(event) {
@@ -101,11 +117,17 @@ function onEvent(event) {
       set({ phase: 'done', note: { kind: 'cloud-on', name: event.peer.name } });
       startCloud({ force: true });
       break;
-    case 'synced': set({ status: '' }); break;
+    case 'synced':
+      health.meetOk();
+      set({ status: '' });
+      break;
     case 'failed':
       if (linking) {
         active = null;
+        health.linkFailed({ reason: event.reason, seen: S.screen === 'menu' });
         set({ phase: 'failed', reason: event.reason, status: '' });
+      } else {
+        health.meetFailed({ reason: event.reason });
       }
       break;
     case 'cancelled': set(fresh()); break;
@@ -125,7 +147,7 @@ function startMeeting(force = false) {
 function pushSoon(wait = PUSH_WAIT_MS) {
   clearTimeout(pushTimer);
   pushTimer = setTimeout(async () => {
-    const result = await cloud.push().catch(() => ({}));
+    const result = await cloud.pushRound().catch(() => ({}));
     if (result.skipped === 'soon') {
       pushSoon(PUSH_RETRY_MS);
     } else {
@@ -175,7 +197,7 @@ async function showPhrase(makeNew) {
   const secret = sync.secret();
   if (!secret) return;
   set({ ...fresh(), phase: 'phrase', phrase: toWords(secret) });
-  startCloud({ force: true });
+  startCloud({ force: true }, true);
 }
 
 async function joinPhrase() {
@@ -189,6 +211,7 @@ async function joinPhrase() {
   }
   set({ phase: 'joining', phraseError: null });
   await sync.enable({ cloud: true, secret });
+  manualCloud = true;
   const result = await cloud.sync({ force: true });
   set(result.ok
     ? { ...fresh(), phase: 'done', note: { kind: 'joined' } }
@@ -233,7 +256,7 @@ export function bindSyncCard(on) {
   on('syncNow', () => {
     set({ status: 'looking' });
     startMeeting(true);
-    startCloud({ force: true });
+    startCloud({ force: true }, true);
   });
   on('syncOff', turnOff);
   on('syncMakePhrase', () => showPhrase(true));
@@ -263,8 +286,13 @@ export async function initSyncUi() {
   p2p = createP2p({ sync, name: () => deviceLabel(navigator.userAgent) });
   linkable = await p2p.supported();
   if (!shown()) return;
-  cloud.onEvent(redraw);
+  health = createHealth({ notify: showSyncNotice, online: () => navigator.onLine !== false });
+  cloud.onEvent(onCloudEvent);
   sync.onChange(redraw);
+  window.addEventListener('online', () => { // the network is back: look again
+    startMeeting();
+    startCloud();
+  });
   if (linkable) {
     p2p.onEvent(onEvent);
     const token = tokenOfHash(location.hash);
@@ -276,7 +304,7 @@ export async function initSyncUi() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       if (p2p) p2p.stop();
-      if (cloud.on()) cloud.push({ force: true, keepalive: true }).catch(() => {});
+      if (cloud.on()) cloud.pushRound({ force: true, keepalive: true }).catch(() => {});
     } else {
       startMeeting();
       startCloud();

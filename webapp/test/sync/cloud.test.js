@@ -194,7 +194,8 @@ test('a device without data, or without the cloud way, pushes nothing', async ()
   assert.equal((await empty.cloud.push({ force: true })).skipped, 'empty');
   await empty.sync.disable({ cloud: true });
   assert.equal((await empty.cloud.push({ force: true })).skipped, 'off');
-  assert.deepEqual(await empty.cloud.sync(), { accepted: 0, pushed: 0, ok: false });
+  assert.deepEqual(await empty.cloud.sync(),
+    { accepted: 0, pushed: 0, ok: false, error: null });
   assert.equal(empty.cloud.status().on, false);
 });
 
@@ -264,7 +265,7 @@ test('without backends the cloud way is not available', async () => {
   const cloud = createCloud({ sync, backends: [] });
   assert.equal(cloud.available(), false);
   assert.equal(cloud.on(), false);
-  assert.deepEqual(await cloud.sync(), { accepted: 0, pushed: 0, ok: false });
+  assert.deepEqual(await cloud.sync(), { accepted: 0, pushed: 0, ok: false, error: null });
 });
 
 test('a slice too big even after shrinking is not sent, and says so', async () => {
@@ -279,4 +280,67 @@ test('a slice too big even after shrinking is not sent, and says so', async () =
   assert.equal(result.skipped, 'toobig');
   assert.equal(a.cloud.status().error, 'toobig');
   assert.equal(world.supa.groups.size, 0, 'nothing was sent');
+});
+
+test('a failed round says so as an event and in the status; the next good '
+  + 'one clears it', async () => {
+  const world = await servers().make();
+  const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('x') } });
+  const events = [];
+  a.cloud.onEvent(event => events.push(`${event.state}${event.error ? ':' + event.error : ''}`));
+  world.flags.supabaseDown = true;
+  world.flags.tursoDown = true;
+  const failed = await a.cloud.sync();
+  assert.deepEqual([failed.ok, failed.error], [false, 'network']);
+  assert.equal(a.cloud.status().error, 'network');
+  world.flags.supabaseDown = false;
+  world.flags.tursoDown = false;
+  const good = await a.cloud.sync({ force: true });
+  assert.deepEqual([good.ok, good.error], [true, null]);
+  assert.equal(a.cloud.status().error, null);
+  assert.deepEqual(events, ['syncing', 'failed:network', 'syncing', 'ok']);
+});
+
+test('a slice that is too big is an error of the round even when a server answered', async () => {
+  const world = await servers().make();
+  const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('x') } });
+  const records = {};
+  for (let i = 0; i < 3000; i++) {
+    records[String(20100101 + i)] = { solved: true, time: Math.random() * 1000, n: Math.random() };
+  }
+  await a.storage.set('zip_gotd_v2', JSON.stringify({ v: 2, a: records, n: 3000 }));
+  const events = [];
+  a.cloud.onEvent(event => events.push(`${event.state}${event.error ? ':' + event.error : ''}`));
+  const result = await a.cloud.sync({ force: true });
+  assert.deepEqual([result.ok, result.error], [true, 'toobig']);
+  assert.deepEqual(events, ['syncing', 'failed:toobig']);
+  assert.equal(a.cloud.status().error, 'toobig');
+});
+
+test('a push round of its own tells its result; one with nothing to push is quiet', async () => {
+  const world = await servers().make();
+  const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('x') } });
+  const events = [];
+  a.cloud.onEvent(event => events.push(event.state));
+  const pushed = await a.cloud.pushRound({ force: true });
+  assert.deepEqual([pushed.ok, pushed.pushed, pushed.error], [true, 2, null]);
+  assert.deepEqual(events, ['syncing', 'ok']);
+  events.length = 0;
+  const quiet = await a.cloud.pushRound({ force: true });
+  assert.equal(quiet.skipped, 'current');
+  assert.deepEqual(events, ['syncing', 'idle'], 'no ok or failed event');
+  world.flags.supabaseDown = true;
+  world.flags.tursoDown = true;
+  await a.storage.set(RULES_SEEN_KEY, rules('x', 'y'));
+  events.length = 0;
+  const failed = await a.cloud.pushRound({ force: true });
+  assert.deepEqual([failed.ok, failed.error], [false, 'network']);
+  assert.deepEqual(events, ['syncing', 'failed']);
+});
+
+test('a push round while the cloud way is off does nothing', async () => {
+  const world = await servers().make();
+  const a = await device(world);
+  await a.sync.disable({ cloud: true });
+  assert.equal((await a.cloud.pushRound({ force: true })).skipped, 'off');
 });

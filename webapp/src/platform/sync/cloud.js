@@ -79,6 +79,43 @@ export function createCloud({
     return slices;
   }
 
+  // What a round came to: the status, and one event.
+  function conclude(pulled, pushed) {
+    const ok = pulled.ok > 0 || pushed.ok > 0;
+    // a slice that does not fit is a failure of the round even when a server answered:
+    // this device's data is not getting to the others
+    const tooBig = pushed.skipped === 'toobig';
+    const noAnswer = (Object.values(state.backends)[0] || {}).error || 'network';
+    state.error = tooBig ? 'toobig' : ok ? null : noAnswer;
+    if (ok) {
+      state.lastOk = now();
+    }
+    emit({ type: 'cloud', state: state.error ? 'failed' : 'ok', error: state.error });
+    return { accepted: pulled.accepted, pushed: pushed.ok, ok, error: state.error };
+  }
+
+  // One round at a time: a call while one runs gets that one's answer.
+  function round(work) {
+    running ??= (async () => {
+      emit({ type: 'cloud', state: 'syncing' });
+      try {
+        const result = await work();
+        if (result.quiet) {
+          // nothing to say, but the card may stop saying "syncing"
+          emit({ type: 'cloud', state: 'idle' });
+        }
+        return result;
+      } catch (error) {
+        state.error = (error && error.code) || 'network';
+        emit({ type: 'cloud', state: 'failed', error: state.error });
+        return { accepted: 0, pushed: 0, ok: false, error: state.error };
+      } finally {
+        running = null;
+      }
+    })();
+    return running;
+  }
+
   const api = {
     available,
     on,
@@ -155,32 +192,34 @@ export function createCloud({
     },
 
     // Pull, then push: one at a time (a second call while one runs gets the same answer).
-    // -> { accepted, pushed, ok } where ok says that some server answered.
+    // -> { accepted, pushed, ok, error } where ok says that some server answered and error is
+    // the code of what went wrong (or null). Tells what happened as events and in status().
     sync(options) {
       if (!on()) {
-        return Promise.resolve({ accepted: 0, pushed: 0, ok: false });
+        return Promise.resolve({ accepted: 0, pushed: 0, ok: false, error: null });
       }
-      running ??= (async () => {
-        emit({ type: 'cloud', state: 'syncing' });
-        try {
-          const pulled = await api.pull();
-          const pushed = await api.push(options);
-          const ok = pulled.ok > 0 || pushed.ok > 0;
-          state.error = ok ? null : (Object.values(state.backends)[0] || {}).error || 'network';
-          if (ok) {
-            state.lastOk = now();
-          }
-          emit({ type: 'cloud', state: ok ? 'ok' : 'failed', error: state.error });
-          return { accepted: pulled.accepted, pushed: pushed.ok, ok };
-        } catch (error) {
-          state.error = (error && error.code) || 'network';
-          emit({ type: 'cloud', state: 'failed', error: state.error });
-          return { accepted: 0, pushed: 0, ok: false };
-        } finally {
-          running = null;
+      return round(async () => {
+        const pulled = await api.pull();
+        const pushed = await api.push(options);
+        return conclude(pulled, pushed);
+      });
+    },
+
+    // Only the push, as a round of its own (after a change, or when the page is closing): the
+    // same events and status as sync(), but nothing is said when there was nothing to push.
+    // -> { pushed, ok, error, skipped? }
+    pushRound(options) {
+      if (!on()) {
+        return Promise.resolve({ pushed: 0, ok: false, error: null, skipped: 'off' });
+      }
+      return round(async () => {
+        const pushed = await api.push(options);
+        if (pushed.skipped && pushed.skipped !== 'toobig') {
+          const { skipped } = pushed;
+          return { pushed: 0, ok: false, error: state.error, skipped, quiet: true };
         }
-      })();
-      return running;
+        return conclude({ ok: 0, accepted: 0 }, pushed);
+      });
     },
 
     // Deletes the cloud copy where the server lets a player do it (Supabase), then forgets the

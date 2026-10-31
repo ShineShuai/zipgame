@@ -47,6 +47,13 @@ export const phraseKey = reason => (
   { count: 'sync.phraseCount', word: 'sync.phraseWord', checksum: 'sync.phraseCheck' }[reason]
   || 'sync.phraseCheck');
 
+// The text key for a cloud error code (platform/sync/cloud/http.js, cloud.js).
+export function cloudErrorKey(code) {
+  if (code === 'toobig') return 'sync.cloudTooBig';
+  const refused = ['denied', 'rejected', 'unauthorized'].includes(code);
+  return refused ? 'sync.cloudRefused' : 'sync.cloudFail';
+}
+
 const STATUS_KEYS = {
   waiting: 'sync.waiting', connecting: 'sync.connecting', syncing: 'sync.syncing',
   looking: 'sync.looking',
@@ -65,7 +72,7 @@ export function syncCardHtml(model, t, icon) {
     (text ? `<p class="sync-note${kind ? ' ' + kind : ''}" role="status">${text}</p>` : '');
   const cloudLine = () => {
     if (cloud.busy) return note(t('sync.cloudBusy'));
-    if (cloud.error) return note(t('sync.cloudFail'), 'bad');
+    if (cloud.error) return note(t(cloudErrorKey(cloud.error)), 'bad');
     if (!cloud.lastOk) return note(t('sync.cloudNever'));
     const [key, n] = agoKey(cloud.lastOk, model.now);
     return note(t('sync.cloudSynced', t(key, n)));

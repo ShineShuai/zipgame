@@ -244,3 +244,16 @@ test('the privacy line is on the card in every state, and says what the servers 
   }
   assert.ok(ZH['sync.privacy'].includes('IP'));
 });
+
+test('the cloud line says what went wrong: unreachable, refused, too big', () => {
+  const line = error => html({ enabled: true, cloud: { available: true, on: true, error } });
+  assert.match(line('network'), /sync-note bad[^>]*>\[sync\.cloudFail\]/);
+  assert.match(line('closed'), /\[sync\.cloudFail\]/);
+  for (const code of ['denied', 'rejected', 'unauthorized']) {
+    assert.match(line(code), /\[sync\.cloudRefused\]/, code);
+  }
+  assert.match(line('toobig'), /\[sync\.cloudTooBig\]/);
+  for (const key of ['sync.cloudFail', 'sync.cloudRefused', 'sync.cloudTooBig']) {
+    assert.ok(key in EN && key in ZH, key);
+  }
+});

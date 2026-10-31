@@ -22,6 +22,21 @@ opened (guest: a link that joins devices must not join them by itself), or makes
 phrase. `SYNC.available: false` removes the card and the engine; `src/coop` may be deleted (the
 link buttons are then not shown; the cloud way needs only WebCrypto and a configured server).
 
+## Theme slots, and what is told when sync fails
+
+* Only the **number** of theme slots follows the player across devices; the themes do not. The
+  slots are earned by activity (`src/themes/slots.js`: 12 Game-of-Day dates solved, a best streak
+  of 30 days), and that activity is what is synced, so a device that learns of the others' solves
+  or streak raises its slots too (never lowers them, and turning sync off takes none back). Which
+  themes a device has, the active theme, the trial and the event state are in `zip_theme*` keys that
+  are never synced (a test checks it), so every device may have other themes.
+* A failure is always on the card, but a player who is playing never sees the card, so some are
+  told as a notice (`health.js`): the cloud could not be reached twice in a row (or once when the
+  player asked: Sync now, a phrase), the server refused the data, the data is too big, two open
+  linked devices could not connect (twice), or a link failed while the card is not on screen. The
+  same trouble is told once per six hours, "works again" once after a notice, and nothing is told
+  while the device is offline. Every notice says that the data is safe on the device.
+
 ## The sync phrase and the cloud (option C)
 
 * "Make a sync phrase" turns the cloud way on and shows 8 words (80 secret bits + a 16-bit checksum,
