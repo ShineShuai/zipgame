@@ -657,5 +657,225 @@
   "symbol": "<circle cx=\"12\" cy=\"7\" r=\"2.5\" fill=\"currentColor\"/><path d=\"M4 16l6 3M20 16l-6 3\"/>",
   "compact": true,
   "zhFace": "round-900"
+ },
+ "circuit": {
+  "design": "zigzag-45-circuit",
+  "sheet": "45-circuit",
+  "name": {
+   "en": "Circuit",
+   "zh": "电路板"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M2 12h4l2-5 3 10 3-10 2 5h6\"/>",
+  "routes": [
+   "#ff7a45",
+   "#62b6ff"
+  ],
+  "zhFace": "mono-700"
+ },
+ "papercut": {
+  "design": "zigzag-46-papercut",
+  "sheet": "46-papercut",
+  "name": {
+   "en": "Papercut",
+   "zh": "剪纸"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M3 9c3-4 6-4 9 0s6 4 9 0\"/><path d=\"M3 16c3-4 6-4 9 0s6 4 9 0\"/>",
+  "zhFace": "round-700"
+ },
+ "opart": {
+  "design": "zigzag-47-opart",
+  "sheet": "47-opart",
+  "name": {
+   "en": "Op Art",
+   "zh": "欧普"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><circle cx=\"12\" cy=\"12\" r=\"5\"/><circle cx=\"12\" cy=\"12\" r=\"1.2\"/>",
+  "zhFace": "sans-900"
+ },
+ "celadon": {
+  "design": "zigzag-48-celadon",
+  "sheet": "48-celadon",
+  "name": {
+   "en": "Celadon",
+   "zh": "青瓷"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M10.5 3h3M10.8 3v3.5C7.5 8 6 10.5 6 14c0 4 2.7 7 6 7s6-3 6-7c0-3.5-1.5-6-4.8-7.5V3\"/>",
+  "routes": [
+   "#3f7a68",
+   "#9a2f2b"
+  ],
+  "zhFace": "serif-500"
+ },
+ "slalom": {
+  "design": "zigzag-49-slalom",
+  "sheet": "49-slalom",
+  "name": {
+   "en": "Slalom",
+   "zh": "回转"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M6 21V4M6 5l8 3-8 3M18 21V9M18 10l-7 3 7 3\"/>",
+  "routes": [
+   "#e63b2e",
+   "#1f6fd1"
+  ],
+  "zhFace": "sans-700"
+ },
+ "mosaic": {
+  "design": "zigzag-50-mosaic",
+  "sheet": "50-mosaic",
+  "name": {
+   "en": "Mosaic",
+   "zh": "马赛克"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z\"/>",
+  "routes": [
+   "#c0603a",
+   "#23396b"
+  ],
+  "zhFace": "serif-700"
+ },
+ "magma": {
+  "design": "zigzag-51-magma",
+  "sheet": "51-magma",
+  "name": {
+   "en": "Magma",
+   "zh": "熔岩"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M12 3c3.500 4 6.500 6.500 6.500 11a6.500 6.500 0 0 1-13 0c0-2.200 1-3.800 2.500-5.200.500 2 1.500 3 2.800 3.200C10.500 9.500 11 6 12 3z\"/>",
+  "routes": [
+   "#ffb23a",
+   "#ff5a1a"
+  ],
+  "zhFace": "sans-900"
+ },
+ "critters": {
+  "design": "zigzag-52-critters",
+  "sheet": "52-critters",
+  "name": {
+   "en": "Critters",
+   "zh": "小伙伴"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><circle cx=\"9\" cy=\"10\" r=\"1\"/><circle cx=\"15\" cy=\"10\" r=\"1\"/><path d=\"M8.5 14c1.500 2 5.500 2 7 0\"/>",
+  "routes": [
+   "#8cc64f",
+   "#ff9a3c"
+  ],
+  "zhFace": "round-700"
+ },
+ "rebus": {
+  "design": "zigzag-53-rebus",
+  "sheet": "53-rebus",
+  "name": {
+   "en": "Rebus",
+   "zh": "画谜"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M3 8h6v8H3zM15 8h6v8h-6zM12 9v6M9 12h6\"/>",
+  "routes": [
+   "#d7263d",
+   "#1b6ca8"
+  ],
+  "zhFace": "serif-900"
+ },
+ "pointillism": {
+  "design": "zigzag-54-pointillism",
+  "sheet": "54-pointillism",
+  "name": {
+   "en": "Pointillism",
+   "zh": "点彩"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<circle cx=\"6\" cy=\"6\" r=\"1.800\"/><circle cx=\"12\" cy=\"6\" r=\"1.800\"/><circle cx=\"18\" cy=\"6\" r=\"1.800\"/><circle cx=\"9\" cy=\"12\" r=\"1.800\"/><circle cx=\"15\" cy=\"12\" r=\"1.800\"/><circle cx=\"6\" cy=\"18\" r=\"1.800\"/><circle cx=\"12\" cy=\"18\" r=\"1.800\"/><circle cx=\"18\" cy=\"18\" r=\"1.800\"/>",
+  "routes": [
+   "#2f5fb3",
+   "#d8402f"
+  ],
+  "zhFace": "serif-500"
+ },
+ "sketch": {
+  "design": "zigzag-55-sketch",
+  "sheet": "55-sketch",
+  "name": {
+   "en": "Concept Sketch",
+   "zh": "概念草图"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M4 20l1-5L16 4l4 4L9 19zM14 6l4 4\"/>",
+  "routes": [
+   "#ff5a36",
+   "#2a9fd0"
+  ],
+  "zhFace": "hand-700"
+ },
+ "boho": {
+  "design": "zigzag-56-boho",
+  "sheet": "56-boho",
+  "name": {
+   "en": "Bohemian",
+   "zh": "波西米亚"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<circle cx=\"12\" cy=\"9\" r=\"6\"/><path d=\"M12 15v6M9 14l-2 6M15 14l2 6M6 9h12M12 3v12\"/>",
+  "routes": [
+   "#c8674a",
+   "#3f7f7a"
+  ],
+  "zhFace": "serif-600"
  }
 }

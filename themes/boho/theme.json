@@ -1,0 +1,77 @@
+{
+ "id": "boho",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-56-boho",
+ "mode": "light",
+ "name": {
+  "en": "Bohemian",
+  "zh": "波西米亚"
+ },
+ "symbol": "<circle cx=\"12\" cy=\"9\" r=\"6\"/><path d=\"M12 15v6M9 14l-2 6M15 14l2 6M6 9h12M12 3v12\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#f1e2cc",
+  "#fbf2e2",
+  "#c8674a",
+  "#d9a441"
+ ],
+ "fonts": [
+  {
+   "family": "Lora",
+   "weight": "500 700",
+   "file": "lora-latin.woff2"
+  },
+  {
+   "family": "Noto Serif SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#f1e2cc",
+  "surface": "#fbf2e2",
+  "ink": "#4a3226",
+  "muted": "#7a5238",
+  "accent": "#c8674a",
+  "onAccent": "#000000",
+  "orange": "#d9a441",
+  "tile": "#fdf6e8",
+  "tileEdge": "#e6cfa8",
+  "wall": "#6b3f5a",
+  "path": "#c8674a",
+  "red": "#c8674a",
+  "blue": "#3f7f7a",
+  "numFill": "#a8744a",
+  "numText": "#000000",
+  "numvFill": "#fbf2e2",
+  "numvText": "#7a5238",
+  "onOrange": "#000000",
+  "numRing": "#e6c9a3",
+  "numvRing": "#7a5238",
+  "line": "#c8674a",
+  "lineStrong": "#c8674a"
+ },
+ "vars": {
+  "--font-body": "\"Lora\", Georgia, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", serif",
+  "--font-zh": "\"Noto Serif SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "16px",
+  "--r-2": "26px",
+  "--r-3": "26px",
+  "--r-4": "26px",
+  "--r-chip": "14px",
+  "--r-icon": "14px",
+  "--bw": "1px",
+  "--bw-card": "8px",
+  "--bs-card": "double",
+  "--shadow": "0 12px 28px rgba(74,50,38,.25)",
+  "--pop-shadow": "0 12px 28px rgba(74,50,38,.25)",
+  "--ctl-h": "52px",
+  "--bar-bw": "3px"
+ }
+}

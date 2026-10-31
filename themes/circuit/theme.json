@@ -1,0 +1,78 @@
+{
+ "id": "circuit",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-45-circuit",
+ "mode": "dark",
+ "name": {
+  "en": "Circuit",
+  "zh": "电路板"
+ },
+ "symbol": "<path d=\"M2 12h4l2-5 3 10 3-10 2 5h6\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#0b6a45",
+  "#0a5a3b",
+  "#f0c350",
+  "#e8743b"
+ ],
+ "fonts": [
+  {
+   "family": "Chakra Petch",
+   "weight": "400 700",
+   "file": "chakrapetch-latin.woff2"
+  },
+  {
+   "family": "Noto Sans Mono SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#0b6a45",
+  "surface": "#0a5a3b",
+  "ink": "#f5f2e7",
+  "muted": "#b9d9c6",
+  "accent": "#f0c350",
+  "onAccent": "#06261a",
+  "orange": "#e8743b",
+  "tile": "#138055",
+  "tileEdge": "#06402b",
+  "wall": "#f5f2e7",
+  "path": "#f9bd9a",
+  "red": "#ffba9e",
+  "blue": "#9bd0ff",
+  "numFill": "#f0c350",
+  "numText": "#06261a",
+  "numvFill": "#0a5a3b",
+  "numvText": "#f0c350",
+  "onOrange": "#000000",
+  "numRing": "#8a5f12",
+  "numvRing": "#f0c350",
+  "line": "#f0c350",
+  "lineStrong": "#f5f2e7"
+ },
+ "vars": {
+  "--font-body": "\"Chakra Petch\", Share Tech Mono, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", monospace",
+  "--font-zh": "\"Noto Sans Mono SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--tt-head": "uppercase",
+  "--r-1": "6px",
+  "--r-2": "4px",
+  "--r-3": "12px",
+  "--r-4": "12px",
+  "--r-chip": "3px",
+  "--r-icon": "3px",
+  "--bw": "1px",
+  "--bw-card": "6px",
+  "--bs-card": "dotted",
+  "--shadow": "0 10px 30px rgba(3,30,20,.45)",
+  "--pop-shadow": "0 10px 30px rgba(3,30,20,.45)",
+  "--ctl-h": "52px",
+  "--bar-bw": "3px"
+ }
+}

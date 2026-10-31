@@ -1,0 +1,76 @@
+{
+ "id": "rebus",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-53-rebus",
+ "mode": "light",
+ "name": {
+  "en": "Rebus",
+  "zh": "画谜"
+ },
+ "symbol": "<path d=\"M3 8h6v8H3zM15 8h6v8h-6zM12 9v6M9 12h6\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#f6f0dc",
+  "#fffdf4",
+  "#d7263d",
+  "#ffd166"
+ ],
+ "fonts": [
+  {
+   "family": "Bitter",
+   "weight": "500 800",
+   "file": "bitter-latin.woff2"
+  },
+  {
+   "family": "Noto Serif SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#f6f0dc",
+  "surface": "#fffdf4",
+  "ink": "#1a1a1a",
+  "muted": "#4a4a44",
+  "accent": "#d7263d",
+  "onAccent": "#ffffff",
+  "orange": "#ffd166",
+  "tile": "#fffdf4",
+  "tileEdge": "#1a1a1a",
+  "wall": "#1a1a1a",
+  "path": "#d7263d",
+  "red": "#d7263d",
+  "blue": "#1b6ca8",
+  "numFill": "#1a1a1a",
+  "numText": "#fffdf4",
+  "numvFill": "#fffdf4",
+  "numvText": "#1a1a1a",
+  "onOrange": "#000000",
+  "numRing": "#fffdf4",
+  "numvRing": "#1a1a1a",
+  "line": "#1a1a1a",
+  "lineStrong": "#1a1a1a"
+ },
+ "vars": {
+  "--font-body": "\"Bitter\", Georgia, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", serif",
+  "--font-zh": "\"Noto Serif SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "800",
+  "--r-1": "3px",
+  "--r-2": "3px",
+  "--r-3": "4px",
+  "--r-4": "4px",
+  "--r-chip": "3px",
+  "--r-icon": "3px",
+  "--bw": "2.5px",
+  "--bw-card": "5px",
+  "--shadow": "9px 9px 0 #ffd166",
+  "--pop-shadow": "9px 9px 0 #ffd166",
+  "--ctl-h": "52px",
+  "--bar-bw": "3px"
+ }
+}

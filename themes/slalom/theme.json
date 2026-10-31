@@ -1,0 +1,77 @@
+{
+ "id": "slalom",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-49-slalom",
+ "mode": "light",
+ "name": {
+  "en": "Slalom",
+  "zh": "回转"
+ },
+ "symbol": "<path d=\"M6 21V4M6 5l8 3-8 3M18 21V9M18 10l-7 3 7 3\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#e3edf7",
+  "#ffffff",
+  "#e63b2e",
+  "#ff8a1f"
+ ],
+ "fonts": [
+  {
+   "family": "Oswald",
+   "weight": "400 700",
+   "file": "oswald-latin.woff2"
+  },
+  {
+   "family": "Noto Sans SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#e3edf7",
+  "surface": "#ffffff",
+  "ink": "#12315a",
+  "muted": "#3d5f86",
+  "accent": "#e63b2e",
+  "onAccent": "#000000",
+  "orange": "#ff8a1f",
+  "tile": "#f6fbff",
+  "tileEdge": "#c9dff0",
+  "wall": "#12315a",
+  "path": "#5b94c9",
+  "red": "#e63b2e",
+  "blue": "#1f6fd1",
+  "numFill": "#e63b2e",
+  "numText": "#000000",
+  "numvFill": "#1b5fb4",
+  "numvText": "#ffffff",
+  "onOrange": "#000000",
+  "numRing": "#ffffff",
+  "numvRing": "#ffffff",
+  "line": "#12315a",
+  "lineStrong": "#12315a"
+ },
+ "vars": {
+  "--font-body": "\"Oswald\", Arial Narrow, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--tt-head": "uppercase",
+  "--r-1": "12px",
+  "--r-2": "10px",
+  "--r-3": "16px",
+  "--r-4": "16px",
+  "--r-chip": "8px",
+  "--r-icon": "8px",
+  "--bw": "1px",
+  "--bw-card": "6px",
+  "--shadow": "0 14px 32px rgba(18,49,90,.3)",
+  "--pop-shadow": "0 14px 32px rgba(18,49,90,.3)",
+  "--ctl-h": "52px",
+  "--bar-bw": "3px"
+ }
+}
