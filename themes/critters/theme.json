@@ -1,0 +1,76 @@
+{
+ "id": "critters",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-52-critters",
+ "mode": "light",
+ "name": {
+  "en": "Critters",
+  "zh": "小伙伴"
+ },
+ "symbol": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><circle cx=\"9\" cy=\"10\" r=\"1\"/><circle cx=\"15\" cy=\"10\" r=\"1\"/><path d=\"M8.5 14c1.500 2 5.500 2 7 0\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#fff1cf",
+  "#fffaf0",
+  "#5ea03a",
+  "#fff7e3"
+ ],
+ "fonts": [
+  {
+   "family": "Sniglet",
+   "weight": "400 800",
+   "file": "sniglet-latin.woff2"
+  },
+  {
+   "family": "Zigzag Round",
+   "weight": "100 900",
+   "file": "zh.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#fff1cf",
+  "surface": "#fffaf0",
+  "ink": "#3a2a24",
+  "muted": "#7a5a45",
+  "accent": "#5ea03a",
+  "onAccent": "#000000",
+  "orange": "#fff7e3",
+  "tile": "#fff2cf",
+  "tileEdge": "#e7d3a8",
+  "wall": "#3a2a24",
+  "path": "#6a963c",
+  "red": "#6a963c",
+  "blue": "#c7782f",
+  "numFill": "#ef4d3f",
+  "numText": "#000000",
+  "numvFill": "#fff7e3",
+  "numvText": "#3a2a24",
+  "onOrange": "#000000",
+  "numRing": "#3a2a24",
+  "numvRing": "#3a2a24",
+  "line": "#3a2a24",
+  "lineStrong": "#3a2a24"
+ },
+ "vars": {
+  "--font-body": "\"Sniglet\", Comic Sans MS, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Zigzag Round\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "800",
+  "--r-1": "18px",
+  "--r-2": "27px",
+  "--r-3": "30px",
+  "--r-4": "30px",
+  "--r-chip": "14px",
+  "--r-icon": "14px",
+  "--bw": "2.5px",
+  "--bw-card": "5px",
+  "--shadow": "7px 9px 0 #e7c27a",
+  "--pop-shadow": "7px 9px 0 #e7c27a",
+  "--ctl-h": "54px",
+  "--bar-bw": "3px"
+ }
+}

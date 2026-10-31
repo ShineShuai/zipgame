@@ -1,0 +1,77 @@
+{
+ "id": "celadon",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-48-celadon",
+ "mode": "light",
+ "name": {
+  "en": "Celadon",
+  "zh": "青瓷"
+ },
+ "symbol": "<path d=\"M10.5 3h3M10.8 3v3.5C7.5 8 6 10.5 6 14c0 4 2.7 7 6 7s6-3 6-7c0-3.5-1.5-6-4.8-7.5V3\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#e6eee8",
+  "#f4f8f4",
+  "#3f7a68",
+  "#3f7a68"
+ ],
+ "fonts": [
+  {
+   "family": "Fraunces",
+   "weight": "400 700",
+   "file": "fraunces-latin.woff2"
+  },
+  {
+   "family": "Noto Serif SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#e6eee8",
+  "surface": "#f4f8f4",
+  "ink": "#1f2e29",
+  "muted": "#56706a",
+  "accent": "#3f7a68",
+  "onAccent": "#f4f8f4",
+  "orange": "#3f7a68",
+  "tile": "#eaf3ed",
+  "tileEdge": "#86ad9a",
+  "wall": "#7b4a2b",
+  "path": "#2e5547",
+  "red": "#3f7a68",
+  "blue": "#9a2f2b",
+  "numFill": "#3f7a68",
+  "numText": "#f4f8f4",
+  "numvFill": "#f4f8f4",
+  "numvText": "#2e5547",
+  "onOrange": "#ffffff",
+  "numRing": "#f4f8f4",
+  "numvRing": "#3f7a68",
+  "line": "#86ad9a",
+  "lineStrong": "#9cbbab"
+ },
+ "vars": {
+  "--font-body": "\"Fraunces\", Georgia, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", serif",
+  "--font-zh": "\"Noto Serif SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "600",
+  "--r-1": "14px",
+  "--r-2": "12px",
+  "--r-3": "16px",
+  "--r-4": "16px",
+  "--r-chip": "10px",
+  "--r-icon": "10px",
+  "--bw": "1px",
+  "--bw-card": "8px",
+  "--bs-card": "double",
+  "--shadow": "0 12px 32px rgba(31,46,41,.2)",
+  "--pop-shadow": "0 12px 32px rgba(31,46,41,.2)",
+  "--ctl-h": "52px",
+  "--bar-bw": "3px"
+ }
+}

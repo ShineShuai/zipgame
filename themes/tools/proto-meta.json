@@ -675,7 +675,7 @@
    "#ff7a45",
    "#62b6ff"
   ],
-  "zhFace": "mono-600"
+  "zhFace": "mono-700"
  },
  "papercut": {
   "design": "zigzag-46-papercut",
@@ -781,6 +781,101 @@
    "#ffb23a",
    "#ff5a1a"
   ],
-  "zhFace": "sans-800"
+  "zhFace": "sans-900"
+ },
+ "critters": {
+  "design": "zigzag-52-critters",
+  "sheet": "52-critters",
+  "name": {
+   "en": "Critters",
+   "zh": "小伙伴"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><circle cx=\"9\" cy=\"10\" r=\"1\"/><circle cx=\"15\" cy=\"10\" r=\"1\"/><path d=\"M8.5 14c1.500 2 5.500 2 7 0\"/>",
+  "routes": [
+   "#8cc64f",
+   "#ff9a3c"
+  ],
+  "zhFace": "round-700"
+ },
+ "rebus": {
+  "design": "zigzag-53-rebus",
+  "sheet": "53-rebus",
+  "name": {
+   "en": "Rebus",
+   "zh": "画谜"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M3 8h6v8H3zM15 8h6v8h-6zM12 9v6M9 12h6\"/>",
+  "routes": [
+   "#d7263d",
+   "#1b6ca8"
+  ],
+  "zhFace": "serif-900"
+ },
+ "pointillism": {
+  "design": "zigzag-54-pointillism",
+  "sheet": "54-pointillism",
+  "name": {
+   "en": "Pointillism",
+   "zh": "点彩"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<circle cx=\"6\" cy=\"6\" r=\"1.800\"/><circle cx=\"12\" cy=\"6\" r=\"1.800\"/><circle cx=\"18\" cy=\"6\" r=\"1.800\"/><circle cx=\"9\" cy=\"12\" r=\"1.800\"/><circle cx=\"15\" cy=\"12\" r=\"1.800\"/><circle cx=\"6\" cy=\"18\" r=\"1.800\"/><circle cx=\"12\" cy=\"18\" r=\"1.800\"/><circle cx=\"18\" cy=\"18\" r=\"1.800\"/>",
+  "routes": [
+   "#2f5fb3",
+   "#d8402f"
+  ],
+  "zhFace": "serif-500"
+ },
+ "sketch": {
+  "design": "zigzag-55-sketch",
+  "sheet": "55-sketch",
+  "name": {
+   "en": "Concept Sketch",
+   "zh": "概念草图"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<path d=\"M4 20l1-5L16 4l4 4L9 19zM14 6l4 4\"/>",
+  "routes": [
+   "#ff5a36",
+   "#2a9fd0"
+  ],
+  "zhFace": "hand-700"
+ },
+ "boho": {
+  "design": "zigzag-56-boho",
+  "sheet": "56-boho",
+  "name": {
+   "en": "Bohemian",
+   "zh": "波西米亚"
+  },
+  "layout": {
+   "menu": "dashboard",
+   "picker": "tiles",
+   "actions": "side"
+  },
+  "symbol": "<circle cx=\"12\" cy=\"9\" r=\"6\"/><path d=\"M12 15v6M9 14l-2 6M15 14l2 6M6 9h12M12 3v12\"/>",
+  "routes": [
+   "#c8674a",
+   "#3f7f7a"
+  ],
+  "zhFace": "serif-600"
  }
 }

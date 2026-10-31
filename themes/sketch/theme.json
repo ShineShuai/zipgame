@@ -1,0 +1,76 @@
+{
+ "id": "sketch",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-55-sketch",
+ "mode": "light",
+ "name": {
+  "en": "Concept Sketch",
+  "zh": "概念草图"
+ },
+ "symbol": "<path d=\"M4 20l1-5L16 4l4 4L9 19zM14 6l4 4\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#ecebe2",
+  "#f6f4ea",
+  "#f55634",
+  "#ff5a36"
+ ],
+ "fonts": [
+  {
+   "family": "Architects Daughter",
+   "weight": "400",
+   "file": "architectsdaughter-latin.woff2"
+  },
+  {
+   "family": "Zigzag Hand",
+   "weight": "100 900",
+   "file": "zh.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#ecebe2",
+  "surface": "#f6f4ea",
+  "ink": "#34343a",
+  "muted": "#6b6b68",
+  "accent": "#f55634",
+  "onAccent": "#000000",
+  "orange": "#ff5a36",
+  "tile": "#f6f4ea",
+  "tileEdge": "#34343a",
+  "wall": "#34343a",
+  "path": "#f55634",
+  "red": "#f55634",
+  "blue": "#2795c4",
+  "numFill": "#ff5a36",
+  "numText": "#000000",
+  "numvFill": "#f6f4ea",
+  "numvText": "#34343a",
+  "onOrange": "#000000",
+  "numRing": "#34343a",
+  "numvRing": "#34343a",
+  "line": "#34343a",
+  "lineStrong": "#34343a"
+ },
+ "vars": {
+  "--font-body": "\"Architects Daughter\", Comic Sans MS, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", cursive",
+  "--font-zh": "\"Zigzag Hand\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "500",
+  "--r-1": "2px",
+  "--r-2": "2px",
+  "--r-3": "2px",
+  "--r-4": "2px",
+  "--r-chip": "2px",
+  "--r-icon": "2px",
+  "--bw": "1.5px",
+  "--bw-card": "2px",
+  "--shadow": "5px 6px 0 #cfcdc3",
+  "--pop-shadow": "5px 6px 0 #cfcdc3",
+  "--ctl-h": "52px",
+  "--bar-bw": "2px"
+ }
+}

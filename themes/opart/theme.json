@@ -1,0 +1,70 @@
+{
+ "id": "opart",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-47-opart",
+ "mode": "light",
+ "name": {
+  "en": "Op Art",
+  "zh": "欧普"
+ },
+ "symbol": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><circle cx=\"12\" cy=\"12\" r=\"5\"/><circle cx=\"12\" cy=\"12\" r=\"1.2\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#f1f1f6",
+  "#ffffff",
+  "#2b2bff",
+  "#c8ff1a"
+ ],
+ "fonts": [
+  {
+   "family": "Unbounded",
+   "weight": "400 700",
+   "file": "unbounded-latin.woff2"
+  },
+  {
+   "family": "Noto Sans SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#f1f1f6",
+  "surface": "#ffffff",
+  "ink": "#0b0b0f",
+  "muted": "#4a4a5c",
+  "accent": "#2b2bff",
+  "onAccent": "#ffffff",
+  "orange": "#c8ff1a",
+  "tile": "#ffffff",
+  "tileEdge": "#0b0b0f",
+  "wall": "#0b0b0f",
+  "path": "#2b2bff",
+  "red": "#7c9e10",
+  "blue": "#2b2bff",
+  "numFill": "#c8ff1a",
+  "numText": "#0b0b0f",
+  "numvFill": "#0b0b0f",
+  "numvText": "#ffffff",
+  "onOrange": "#000000",
+  "numRing": "#0b0b0f",
+  "numvRing": "#0b0b0f",
+  "line": "#0b0b0f",
+  "lineStrong": "#0b0b0f"
+ },
+ "vars": {
+  "--font-body": "\"Unbounded\", Arial Black, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Noto Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--bw": "2px",
+  "--bw-card": "6px",
+  "--shadow": "10px 10px 0 #2b2bff",
+  "--pop-shadow": "10px 10px 0 #2b2bff",
+  "--ctl-h": "52px",
+  "--bar-bw": "3px"
+ }
+}

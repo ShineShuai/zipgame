@@ -1,0 +1,72 @@
+{
+ "id": "papercut",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-46-papercut",
+ "mode": "light",
+ "name": {
+  "en": "Papercut",
+  "zh": "剪纸"
+ },
+ "symbol": "<path d=\"M3 9c3-4 6-4 9 0s6 4 9 0\"/><path d=\"M3 16c3-4 6-4 9 0s6 4 9 0\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#fde6d8",
+  "#fff6ee",
+  "#eb6652",
+  "#ffc65a"
+ ],
+ "fonts": [
+  {
+   "family": "Poppins",
+   "weight": "500 700",
+   "file": "poppins-latin.woff2"
+  },
+  {
+   "family": "Zigzag Round",
+   "weight": "100 900",
+   "file": "zh.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#fde6d8",
+  "surface": "#fff6ee",
+  "ink": "#2a2358",
+  "muted": "#6d5a86",
+  "accent": "#eb6652",
+  "onAccent": "#000000",
+  "orange": "#ffc65a",
+  "tile": "#ffe3d3",
+  "tileEdge": "#e5dddc",
+  "wall": "#3b2f78",
+  "path": "#d65d4b",
+  "red": "#a37f3a",
+  "blue": "#4a1f5c",
+  "numFill": "#ffc65a",
+  "numText": "#2a2358",
+  "numvFill": "#ada7a2",
+  "numvText": "#8a3f84",
+  "onOrange": "#000000",
+  "numvRing": "#8a3f84"
+ },
+ "vars": {
+  "--font-body": "\"Poppins\", Trebuchet MS, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Zigzag Round\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "16px",
+  "--r-2": "999px",
+  "--r-3": "30px",
+  "--r-4": "30px",
+  "--r-chip": "14px",
+  "--r-icon": "14px",
+  "--bw": "1px",
+  "--bw-card": "0px",
+  "--shadow": "0 14px 34px rgba(74,31,92,.32)",
+  "--pop-shadow": "0 14px 34px rgba(74,31,92,.32)",
+  "--ctl-h": "52px"
+ }
+}

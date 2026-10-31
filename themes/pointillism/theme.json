@@ -1,0 +1,77 @@
+{
+ "id": "pointillism",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-54-pointillism",
+ "mode": "light",
+ "name": {
+  "en": "Pointillism",
+  "zh": "点彩"
+ },
+ "symbol": "<circle cx=\"6\" cy=\"6\" r=\"1.800\"/><circle cx=\"12\" cy=\"6\" r=\"1.800\"/><circle cx=\"18\" cy=\"6\" r=\"1.800\"/><circle cx=\"9\" cy=\"12\" r=\"1.800\"/><circle cx=\"15\" cy=\"12\" r=\"1.800\"/><circle cx=\"6\" cy=\"18\" r=\"1.800\"/><circle cx=\"12\" cy=\"18\" r=\"1.800\"/><circle cx=\"18\" cy=\"18\" r=\"1.800\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#f1e8d2",
+  "#fbf6ea",
+  "#2f5fb3",
+  "#ff9f3c"
+ ],
+ "fonts": [
+  {
+   "family": "Spectral",
+   "weight": "400 800",
+   "file": "spectral-latin.woff2"
+  },
+  {
+   "family": "Noto Serif SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#f1e8d2",
+  "surface": "#fbf6ea",
+  "ink": "#2a2f4a",
+  "muted": "#4b5072",
+  "accent": "#2f5fb3",
+  "onAccent": "#ffffff",
+  "orange": "#ff9f3c",
+  "tile": "#fbf6ea",
+  "tileEdge": "#d9cdb4",
+  "wall": "#2a2f4a",
+  "path": "#2f5fb3",
+  "red": "#2f5fb3",
+  "blue": "#d8402f",
+  "numFill": "#d8402f",
+  "numText": "#000000",
+  "numvFill": "#fbf6ea",
+  "numvText": "#2f5fb3",
+  "onOrange": "#000000",
+  "numRing": "#fbf6ea",
+  "numvRing": "#2f5fb3",
+  "line": "#2f5fb3",
+  "lineStrong": "#2f5fb3"
+ },
+ "vars": {
+  "--font-body": "\"Spectral\", Georgia, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", serif",
+  "--font-zh": "\"Noto Serif SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "800",
+  "--r-1": "14px",
+  "--r-2": "26px",
+  "--r-3": "20px",
+  "--r-4": "20px",
+  "--r-chip": "12px",
+  "--r-icon": "12px",
+  "--bw": "1px",
+  "--bw-card": "8px",
+  "--bs-card": "dotted",
+  "--shadow": "0 12px 30px rgba(42,47,74,.28)",
+  "--pop-shadow": "0 12px 30px rgba(42,47,74,.28)",
+  "--ctl-h": "52px",
+  "--bar-bw": "3px"
+ }
+}

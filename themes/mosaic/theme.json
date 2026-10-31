@@ -1,0 +1,76 @@
+{
+ "id": "mosaic",
+ "v": 1,
+ "themeApi": 1,
+ "proto": "zigzag-50-mosaic",
+ "mode": "light",
+ "name": {
+  "en": "Mosaic",
+  "zh": "马赛克"
+ },
+ "symbol": "<path d=\"M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z\"/>",
+ "layout": {
+  "menu": "dashboard",
+  "picker": "tiles",
+  "actions": "side"
+ },
+ "swatches": [
+  "#e6d8b8",
+  "#f1e6cc",
+  "#23396b",
+  "#b5532e"
+ ],
+ "fonts": [
+  {
+   "family": "Philosopher",
+   "weight": "400 700",
+   "file": "philosopher-latin.woff2"
+  },
+  {
+   "family": "Noto Serif SC",
+   "weight": "100 900",
+   "file": "zh.woff2"
+  }
+ ],
+ "seeds": {
+  "bg": "#e6d8b8",
+  "surface": "#f1e6cc",
+  "ink": "#23396b",
+  "muted": "#4a5878",
+  "accent": "#23396b",
+  "onAccent": "#f6ead0",
+  "orange": "#b5532e",
+  "tile": "#f3e8cf",
+  "tileEdge": "#b9a57e",
+  "wall": "#1d1a17",
+  "path": "#23396b",
+  "red": "#c0603a",
+  "blue": "#23396b",
+  "numFill": "#c0603a",
+  "numText": "#000000",
+  "numvFill": "#f1e6cc",
+  "numvText": "#23396b",
+  "onOrange": "#ffffff",
+  "numRing": "#dba43d",
+  "numvRing": "#23396b",
+  "line": "#23396b",
+  "lineStrong": "#23396b"
+ },
+ "vars": {
+  "--font-body": "\"Philosopher\", Trebuchet MS, \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--font-zh": "\"Noto Serif SC\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans\", sans-serif",
+  "--fw-head": "700",
+  "--r-1": "2px",
+  "--r-2": "2px",
+  "--r-3": "2px",
+  "--r-4": "2px",
+  "--r-chip": "2px",
+  "--r-icon": "2px",
+  "--bw": "2px",
+  "--bw-card": "8px",
+  "--shadow": "0 12px 30px rgba(40,15,5,.5)",
+  "--pop-shadow": "0 12px 30px rgba(40,15,5,.5)",
+  "--ctl-h": "52px",
+  "--bar-bw": "3px"
+ }
+}
