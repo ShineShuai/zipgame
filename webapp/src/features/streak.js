@@ -15,7 +15,8 @@ import { utcDayNumber } from './daily.js';
 //   x (a broken gap: how many of the healed days right before `to` are already counted in the streak; absent = 0) }.
 export const RAMP = [2, 3, 5], FREEZE_EVERY = 7, FREEZE_MAX = 2, HEAL_DAYS = 7;
 const GAP_MAX = HEAL_DAYS + FREEZE_MAX; // a longer gap can never be repaired (at most 2 days stay for the freezes): nothing is kept
-const KEY = 'zip_streak';
+export const STREAK_KEY = 'zip_streak';
+const KEY = STREAK_KEY;
 
 export const fresh = () => ({ last: null, streak: 0, best: 0, freezes: 0, earned: 0, prog: 0, brk: null });
 export const needFor = earned => RAMP[earned] ?? FREEZE_EVERY; // streak days the next reward needs
@@ -105,8 +106,11 @@ const validGap = b => b && [b.from, b.to, b.a, b.e, b.p].every(natural) && b.to 
 const load = c => ({ ...c, brk: validGap(c.brk) ? c.brk : null,
   earned: c.earned ?? RAMP.length, prog: c.earned === undefined ? c.streak % FREEZE_EVERY : c.prog });
 
-export function createStreak(storage, playlog, now = () => new Date()) {
+// sync (platform/sync/engine.js, optional): `s` stays this device's own state; what is read, and what a solve builds on, is the
+// group's (`group()`: the state that has got furthest, core/sync/merge.js).
+export function createStreak(storage, playlog, now = () => new Date(), sync = null) {
   let s = null; // null until init()
+  const group = () => (s && sync ? sync.view(STREAK_KEY, s) : s);
   const save = async () => { try { await storage.set(KEY, JSON.stringify(s)); } catch { /* ignore */ } };
   return {
     // Loads the state; the very first time (nothing stored) it replays the solved days of the play log, so existing players keep their streak.
@@ -127,17 +131,17 @@ export function createStreak(storage, playlog, now = () => new Date()) {
       return { rewards: 0 };
     },
     // Call on every solve. true = the solve earned a reward (the day's first solve only).
-    async record() { if (!s) return false; const n = play(s, utcDayNumber(now())); if (n === s) return false; const won = n.earned > s.earned; s = n; await save(); return won; },
+    async record() { if (!s) return false; const g = group(), n = play(g, utcDayNumber(now())); if (n === g) return false; const won = n.earned > g.earned; s = n; await save(); return won; },
     // Call after record() when the Game of Day of UTC day `day` was replayed and solved: null = nothing to heal, else { rewards } (the
     // rewards the heal reached; the caller grants them).
     async heal(day) {
       if (!s) return null;
-      const r = healDay(s, day, utcDayNumber(now()));
+      const r = healDay(group(), day, utcDayNumber(now()));
       if (!r) return null;
       s = r.state; await save(); return { rewards: r.rewards };
     },
-    healable() { return s ? healable(s, utcDayNumber(now())) : []; }, // UTC day numbers, newest first
-    progress() { return s && progress(s, utcDayNumber(now())); },
-    view() { const today = utcDayNumber(now()); return s && { streak: current(s, today), best: s.best, freezes: s.freezes, today: s.last === today }; },
+    healable() { return s ? healable(group(), utcDayNumber(now())) : []; }, // UTC day numbers, newest first
+    progress() { return s && progress(group(), utcDayNumber(now())); },
+    view() { const today = utcDayNumber(now()), g = group(); return g && { streak: current(g, today), best: g.best, freezes: g.freezes, today: g.last === today }; },
   };
 }

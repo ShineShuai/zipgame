@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { LEADERBOARD, BEHAVIOUR, SOLID_RELEASE, THEMES } from '../src/config.js';
+import { LEADERBOARD, BEHAVIOUR, SOLID_RELEASE, SYNC, THEMES } from '../src/config.js';
 import { releaseDays } from '../src/features/solid-release.js';
 import { validDigits } from '../src/themes/calendar.js';
 
@@ -23,6 +23,8 @@ for (const id of new Set([BEHAVIOUR.primary, BEHAVIOUR.backup])) {
 assert.equal(typeof BEHAVIOUR.enabled, 'boolean', 'BEHAVIOUR.enabled must be true or false');
 const [lo, hi] = BEHAVIOUR.localSizes;
 assert.ok(Number.isInteger(lo) && Number.isInteger(hi) && lo >= 2 && hi >= lo && hi <= 16, 'BEHAVIOUR.localSizes must be [min, max] within 2..16');
+assert.equal(typeof SYNC.available, 'boolean', 'SYNC.available must be true or false');
+assert.ok(Number.isInteger(SYNC.maxDevices) && SYNC.maxDevices >= 2 && SYNC.maxDevices <= 8, 'SYNC.maxDevices must be a whole number from 2 to 8');
 releaseDays(SOLID_RELEASE); // throws on a bad date or day count
 assert.ok(/^(\.\.?\/)+[\w-]+\/$|^https:\/\/[^/]+\/(?:[\w-]+\/)*$/.test(THEMES.base), 'THEMES.base must be a folder relative to the page (ending in /) or an https URL');
 assert.ok(/^[\w-]+\.json$/.test(THEMES.pool), 'THEMES.pool must be the file name of the manifest (themes/tools/build-site.mjs writes it)');

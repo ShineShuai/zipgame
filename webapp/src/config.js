@@ -28,6 +28,10 @@ export const LEADERBOARD = {
   replicatedFrom: 20261003,
 };
 
+// Syncing a player's data across their own devices (platform/sync, core/sync). OFF for everybody until the player chooses it on their
+// device; `available: false` removes the feature. maxDevices: how many devices one player may link (2..8).
+export const SYNC = { available: true, maxDevices: 4 };
+
 // Anonymous play behaviour (src/core/behaviour.js, server/README.md "Behaviour rows"): for each solved game the page uploads the puzzle, the time and how
 // many cells the player took back. No identifier. Only Turso and Cloudflare receive it (never Supabase): each row goes to `primary`, to `backup` only when
 // the primary does not answer. Both are ids of LEADERBOARD.backends. The Turso token must also allow `play:data_add` (server/README.md).

@@ -508,6 +508,19 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 .coop-card .button-row { margin: 0; }
 .coop-card .btn { min-width: 150px; min-height: 48px; }
 
+/* The device sync (src/platform/sync): a strip across the menu, after the other cards. */
+.sync-card { grid-column: 1 / -1; }
+.sync-card .blurb { margin: 0 0 12px; }
+.sync-card .button-row .btn { min-height: 44px; }
+.sync-peers { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
+.sync-peers li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: var(--rb-1); background: var(--surface-2); }
+.sync-peers small { color: var(--muted); }
+.sync-link { width: 100%; box-sizing: border-box; margin: 0 0 12px; padding: 10px 12px; font: inherit; font-size: 0.85rem; color: inherit; border: 1px solid var(--line-strong); border-radius: var(--rb-1); background: var(--surface-2); }
+.sync-note { margin: 10px 0 0; font-size: 0.9rem; color: var(--muted); }
+.sync-note.bad { color: var(--danger); }
+.sync-note.ok { color: var(--ok); }
+.sync-off.armed { color: var(--danger); border-color: var(--danger); }
+
 .gotd-card .blurb { margin-bottom: 12px; }
 .gotd-card .button-row .btn { min-height: 48px; }
 .gotd-card .status-panel { margin-top: auto; padding-top: 14px; flex-direction: column; gap: 10px; }

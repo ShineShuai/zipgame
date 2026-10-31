@@ -17,10 +17,14 @@ export const thresholdOf = k => (k < 1 ? 0 : k <= CUM.length ? CUM[k - 1] : CUM.
 export const solvesToNext = solved => thresholdOf(earned(solved) + 1) - solved; // 1..CHANCE_STEP
 export const stepOf = solved => { const e = earned(solved); return { done: solved - thresholdOf(e), total: thresholdOf(e + 1) - thresholdOf(e) }; }; // progress inside the current price step
 export const BACKFILL_DAYS = 90; // first run: solved Game-of-Day records of the last 90 days (incl. today) count as already solved
-const KEY = 'zip_gotd_credit'; // { solved, used, bonus }
+export const CREDIT_KEY = 'zip_gotd_credit'; // { solved, used, bonus }
+const KEY = CREDIT_KEY;
 
-export function createReplay(storage, store, now = () => new Date()) {
+// sync (platform/sync/engine.js, optional): `credit` stays this device's own counters; the chances are computed from the group's
+// (`group()`: the sums over all devices).
+export function createReplay(storage, store, now = () => new Date(), sync = null) {
   let credit = null; // null until init(): no chances before that
+  const group = () => (credit && sync ? sync.view(CREDIT_KEY, credit) : credit);
   const save = async () => { try { await storage.set(KEY, JSON.stringify(credit)); } catch { /* ignore */ } };
   const valid = c => c && Number.isInteger(c.solved) && Number.isInteger(c.used) && c.solved >= 0 && c.used >= 0 && (c.bonus === undefined || (Number.isInteger(c.bonus) && c.bonus >= 0));
   const today = () => utcDayNumber(now());
@@ -32,13 +36,13 @@ export function createReplay(storage, store, now = () => new Date()) {
     async init() {
       try { const r = await storage.get(KEY), c = r && JSON.parse(r.value); if (valid(c)) { credit = { solved: c.solved, used: c.used, bonus: c.bonus || 0 }; return; } } catch { /* fall through */ }
       let solved = 0;
-      for (let k = 0; k <= BACKFILL_DAYS; k++) { const a = await store.loadAttempt(dateOfDay(today() - k)); if (a && a.solved) solved++; }
+      for (let k = 0; k <= BACKFILL_DAYS; k++) { const a = await store.loadAttempt(dateOfDay(today() - k), true); if (a && a.solved) solved++; } // this device's records only: the others count their own
       credit = { solved, used: 0, bonus: 0 };
       await save();
     },
-    chances: () => (credit ? Math.max(0, earned(credit.solved) + credit.bonus - credit.used) : 0),
-    toNext: () => solvesToNext(credit ? credit.solved : 0), // solves still needed for the next chance
-    step: () => stepOf(credit ? credit.solved : 0),        // { done, total }: solves made / needed in the current step (for the progress dots)
+    chances: () => { const g = group(); return g ? Math.max(0, earned(g.solved) + g.bonus - g.used) : 0; },
+    toNext: () => solvesToNext(credit ? group().solved : 0), // solves still needed for the next chance
+    step: () => stepOf(credit ? group().solved : 0),        // { done, total }: solves made / needed in the current step (for the progress dots)
     // The replay window, newest first: yesterday .. REPLAY_DAYS days back.
     dates: () => Array.from({ length: REPLAY_DAYS }, (_, i) => dateOfDay(today() - 1 - i)),
     // Every window date with its stored attempt record, newest first: null = missed, { solved: false } = abandoned, { solved: true, time, stats? } = played.
