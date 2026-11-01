@@ -200,6 +200,8 @@ export function renderMenu() {
   pruneShared();
   const g = giftOf();
   noteGiftShown(g);
+  // the device sync's card is below the grid: inside it, a card that is not placed would fill an empty area
+  // (a missing shared card's) and land among the others
   return `
     <div class="menu-layout${g ? ' has-gift' : ''}">
       <p class="menu-intro">${t('menu.blurb')}</p>
@@ -209,8 +211,8 @@ export function renderMenu() {
       ${playColumnHtml()}
       ${sharedCardHtml()}
       ${coopCardHtml()}
-      ${syncCardHtmlNow()}
-    </div>`;
+    </div>
+    ${syncCardHtmlNow()}`;
 }
 
 // Status panel under the menu buttons: two cards, each with a tooltip (hover on a desktop, tap on a phone; Esc or a tap elsewhere closes it).

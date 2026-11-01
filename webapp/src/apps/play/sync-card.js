@@ -1,13 +1,18 @@
 // The menu card of the device sync (platform/sync): what it says and which buttons it shows,
 // from a plain model. Pure, so that it can be tested without a page.
 //
-//   model = { shown, phase, enabled, peers: [{ name, at }], link, status, note, reason, armed,
-//             canShare, copied, now, linkable, cloud, phrase, phraseInput, phraseError,
-//             phraseCopied }
+// The card is ONE LINE until the player opens it (a header that is a button: icon, title, a
+// summary of the state, a pill, a chevron). Opened, it shows what the state allows. While a
+// flow is under way (a link opened here or made, a phrase shown or typed) it is open by itself.
+//
+//   model = { shown, open, more, phase, enabled, peers: [{ name, at }], link, status, note,
+//             reason, armed, canShare, copied, now, linkable, cloud, phrase, phraseInput,
+//             phraseError, phraseCopied }
 //   phase: 'idle' | 'confirm' (a link was opened here: the player decides) | 'inviting' (a link
 //          was made, waiting for the other device) | 'working' (connecting or syncing) |
 //          'done' (just linked or joined) | 'failed' | 'phrase' (the sync phrase is shown) |
 //          'enter' (the player types a sync phrase) | 'joining' (it is being used)
+//   open / more: the player opened the card / its further options
 //   status: 'waiting' | 'connecting' | 'syncing' | 'looking', or ''
 //   note: { kind: 'linked' | 'cloud-on' | 'joined' | 'erased', name } or null
 //   reason: why it failed (p2p.js reasons)
@@ -58,16 +63,57 @@ const STATUS_KEYS = {
   waiting: 'sync.waiting', connecting: 'sync.connecting', syncing: 'sync.syncing',
   looking: 'sync.looking',
 };
+// Phases in which a flow is under way: the card is open and cannot be closed
+const FLOW = ['confirm', 'inviting', 'working', 'phrase', 'enter', 'joining'];
+export const isFlow = phase => FLOW.includes(phase);
+
+// What the closed card says: { text, pill, tone }; tone: off | on | busy | problem | ask.
+export function summaryOf(model, t) {
+  const cloud = model.cloud || {};
+  const flows = {
+    confirm: ['sync.sumConfirm', 'sync.pillReview', 'ask'],
+    inviting: ['sync.sumLinking', '', 'busy'],
+    working: ['sync.sumLinking', '', 'busy'],
+    joining: ['sync.sumLinking', '', 'busy'],
+    phrase: ['sync.sumPhrase', '', 'busy'],
+    enter: ['sync.sumEnter', '', 'busy'],
+  };
+  const flow = flows[model.phase];
+  if (flow) {
+    return { text: t(flow[0]), pill: flow[1] ? t(flow[1]) : '', tone: flow[2] };
+  }
+  if (model.phase === 'failed' || (cloud.on && cloud.error)) {
+    return { text: t('sync.sumProblem'), pill: t('sync.pillCheck'), tone: 'problem' };
+  }
+  if (model.enabled) {
+    const last = Math.max(0, cloud.on ? cloud.lastOk || 0 : 0, ...model.peers.map(p => p.at || 0));
+    const what = model.peers.length ? t('sync.on', model.peers.length)
+      : cloud.on ? t('sync.sumCloud') : t('sync.onNone');
+    const [key, n] = agoKey(last, model.now);
+    return {
+      text: last ? `${what} · ${t(key, n)}` : what, pill: t('sync.pillManage'), tone: 'on',
+    };
+  }
+  return { text: t('sync.sumOff'), pill: t('sync.pillSetUp'), tone: 'off' };
+}
 
 const button = (id, text, cls = '') =>
   `<button type="button" class="btn${cls ? ' ' + cls : ''}" id="${id}">${text}</button>`;
+const option = (id, title, hint) => `<button type="button" class="sync-option" id="${id}">
+          <span class="sync-option-title">${title}</span>
+          <span class="sync-option-hint">${hint}</span></button>`;
+const actions = html => (html ? `<div class="sync-actions">${html}</div>` : '');
 
 export function syncCardHtml(model, t, icon) {
   if (!model.shown) {
     return '';
   }
   const { phase } = model;
+  const flow = isFlow(phase);
+  const open = flow || Boolean(model.open);
+  const summary = summaryOf(model, t);
   const cloud = model.cloud || { available: false, on: false };
+  const linkable = model.linkable !== false;
   const note = (text, kind = '') =>
     (text ? `<p class="sync-note${kind ? ' ' + kind : ''}" role="status">${text}</p>` : '');
   const cloudLine = () => {
@@ -77,14 +123,10 @@ export function syncCardHtml(model, t, icon) {
     const [key, n] = agoKey(cloud.lastOk, model.now);
     return note(t('sync.cloudSynced', t(key, n)));
   };
-  const linkable = model.linkable !== false;
-  const linkButton = (cls = '') => (linkable ? button('syncLink', t('sync.link'), cls) : '');
-  let blurb = t('sync.blurb');
+  let blurb = '';
   let extra = '';
-  let buttons = linkButton()
-    + (cloud.available ? button('syncMakePhrase', t('sync.makePhrase'), 'secondary')
-      + button('syncHavePhrase', t('sync.havePhrase'), 'secondary') : '');
-  let second = '';
+  let buttons = '';
+  let folded = ''; // the further options, below the buttons
   let line = '';
 
   if (phase === 'confirm') {
@@ -122,65 +164,89 @@ export function syncCardHtml(model, t, icon) {
     line = error ? note(t(phraseKey(error.reason), error.position + 1), 'bad') : '';
   } else if (phase === 'joining') {
     blurb = t('sync.phraseEnter');
-    buttons = '';
     line = note(t('sync.joining'));
-  } else if (phase === 'failed') {
-    line = note(t(failKey(model.reason)), 'bad');
-  } else if (phase === 'done' && model.note) {
-    const { kind, name } = model.note;
-    if (kind === 'linked') {
-      line = note(name ? t('sync.linked', esc(name)) : t('sync.linkedNoName'), 'ok');
-    } else if (kind === 'cloud-on') {
-      line = note(t('sync.cloudOnNote', esc(name || t('sync.device'))), 'ok');
-    } else if (kind === 'joined') {
-      line = note(t('sync.joined'), 'ok');
-    } else if (kind === 'erased') {
-      line = note(t('sync.erased'), 'ok');
+  } else {
+    // idle, done, failed: what the player can do now
+    if (phase === 'failed') {
+      line = note(t(failKey(model.reason)), 'bad');
+    } else if (phase === 'done' && model.note) {
+      const { kind, name } = model.note;
+      if (kind === 'linked') {
+        line = note(name ? t('sync.linked', esc(name)) : t('sync.linkedNoName'), 'ok');
+      } else if (kind === 'cloud-on') {
+        line = note(t('sync.cloudOnNote', esc(name || t('sync.device'))), 'ok');
+      } else if (kind === 'joined') {
+        line = note(t('sync.joined'), 'ok');
+      } else if (kind === 'erased') {
+        line = note(t('sync.erased'), 'ok');
+      }
+    }
+    if (!model.enabled) {
+      blurb = t('sync.blurb');
+      extra = `<div class="sync-options">${
+        (linkable ? option('syncLink', t('sync.link'), t('sync.linkHint')) : '')
+        + (cloud.available ? option('syncMakePhrase', t('sync.makePhrase'), t('sync.makeHint'))
+          + option('syncHavePhrase', t('sync.havePhrase'), t('sync.haveHint')) : '')}</div>`;
+    } else {
+      const rows = model.peers.map(peer => {
+        const [key, n] = agoKey(peer.at, model.now);
+        const name = esc(peer.name || t('sync.device'));
+        return `<li><span>${name}</span><small>${t(key, n)}</small></li>`;
+      });
+      extra = rows.length ? `<ul class="sync-peers">${rows.join('')}</ul>` : '';
+      if (model.status === 'looking') {
+        line = note(t('sync.looking')) + line;
+      }
+      if (cloud.on) {
+        line += cloudLine();
+      }
+      const armedOff = model.armed;
+      const armedDelete = cloud.on && cloud.armed;
+      if (armedOff) line += note(t('sync.offConfirm'), 'bad');
+      if (armedDelete) line += note(t('sync.cloudDeleteConfirm'), 'bad');
+      buttons = (model.peers.length || cloud.on ? button('syncNow', t('sync.syncNow')) : '')
+        + (linkable ? button('syncLink', t('sync.link'), 'secondary') : '')
+        + (cloud.on ? button('syncShowPhrase', t('sync.cloudShow'), 'secondary')
+          : cloud.available ? button('syncCloudOn', t('sync.cloudOn'), 'secondary') : '')
+        + button('syncMore', t(model.more ? 'sync.less' : 'sync.more'), 'secondary');
+      if (model.more) {
+        const more = (cloud.available && !cloud.on
+          ? button('syncHavePhrase', t('sync.havePhrase'), 'secondary') : '')
+          + (cloud.on ? button('syncCloudStop', t('sync.cloudStop'), 'secondary')
+            + button('syncCloudDelete', t(armedDelete ? 'sync.tapAgain' : 'sync.cloudDelete'),
+              `secondary sync-off${armedDelete ? ' armed' : ''}`) : '')
+          + button('syncOff', t(armedOff ? 'sync.tapAgain' : 'sync.off'),
+            `secondary sync-off${armedOff ? ' armed' : ''}`);
+        folded = `<div class="sync-more"><p class="sync-more-title">${t('sync.more')}</p>${
+          actions(more)}</div>`;
+      }
     }
   }
 
-  const resting = phase === 'idle' || phase === 'done' || phase === 'failed';
-  if (model.enabled && resting) {
-    const rows = model.peers.map(peer => {
-      const [key, n] = agoKey(peer.at, model.now);
-      const name = esc(peer.name || t('sync.device'));
-      return `<li><span>${name}</span><small>${t(key, n)}</small></li>`;
-    });
-    extra = rows.length ? `<ul class="sync-peers">${rows.join('')}</ul>` : '';
-    blurb = model.peers.length ? t('sync.on', model.peers.length) : t('sync.onNone');
-    buttons = (model.peers.length || cloud.on ? button('syncNow', t('sync.syncNow')) : '')
-      + linkButton('secondary')
-      + button('syncOff', t(model.armed ? 'sync.offConfirm' : 'sync.off'),
-        `secondary sync-off${model.armed ? ' armed' : ''}`);
-    if (model.status === 'looking') {
-      line = note(t('sync.looking')) + line;
-    }
-    if (cloud.on) {
-      line += cloudLine();
-      second = button('syncShowPhrase', t('sync.cloudShow'), 'secondary')
-        + button('syncCloudStop', t('sync.cloudStop'), 'secondary')
-        + button('syncCloudDelete',
-          t(cloud.armed ? 'sync.cloudDeleteConfirm' : 'sync.cloudDelete'),
-          `secondary sync-off${cloud.armed ? ' armed' : ''}`);
-    } else if (cloud.available) {
-      second = button('syncCloudOn', t('sync.cloudOn'), 'secondary')
-        + button('syncHavePhrase', t('sync.havePhrase'), 'secondary');
-    }
-  }
-
-  return `<section class="card sync-card" id="syncCard">
-        <header class="card-head">
-          <span class="card-badge">${icon}</span>
-          <div class="card-head-text">
-            <h2 class="card-title">${t('sync.title')}</h2>
-            <p class="card-sub">${t('sync.sub')}</p>
-          </div>
-        </header>
-        <p class="blurb">${blurb}</p>
+  const pill = summary.pill
+    ? `<span class="sync-pill sync-pill-${summary.tone}">${summary.pill}</span>` : '';
+  const head = `<span class="card-badge">${icon}</span>
+          <span class="sync-head-text">
+            <span class="card-title">${t('sync.title')}</span>
+            <span class="card-sub">${esc(summary.text)}</span>
+          </span>
+          ${pill}`;
+  const header = flow
+    ? `<div class="sync-head sync-head-static">${head}</div>`
+    : `<button type="button" class="sync-head" id="syncToggle" aria-expanded="${open}"
+          aria-controls="syncBody">${head}
+          <span class="sync-chevron" aria-hidden="true">›</span></button>`;
+  const body = open ? `<div class="sync-body" id="syncBody">
+        ${blurb ? `<p class="blurb">${blurb}</p>` : ''}
         ${extra}
-        <div class="button-row">${buttons}</div>
-        ${second ? `<div class="button-row">${second}</div>` : ''}
+        ${actions(buttons)}
+        ${folded}
         ${line}
         <p class="sync-privacy">${t('sync.privacy')}</p>
+      </div>` : '';
+
+  return `<section class="card sync-card sync-${summary.tone}${open ? ' open' : ''}" id="syncCard">
+        ${header}
+        ${body}
       </section>`;
 }

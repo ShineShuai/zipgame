@@ -3,13 +3,18 @@
 // src/platform/sync/cloud/turso.js) and the REAL pruning statements (tools/sync-prune.mjs).
 // A small stand-in for Turso's HTTP API sits between them.
 // Run: node server/turso/sync.test.mjs
-import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { tursoCloud, SYNC_SQL } from '../../src/platform/sync/cloud/turso.js';
 import { CloudError } from '../../src/platform/sync/cloud/http.js';
 import { PRUNE_SQL } from '../../tools/sync-prune.mjs';
 
+const sqlite = await import('node:sqlite').catch(() => null);
+if (!sqlite) {
+  console.log('skipped: node:sqlite needs Node 22.5 or newer');
+  process.exit(0);
+}
+const { DatabaseSync } = sqlite;
 const schema = readFileSync(new URL('./sync.sql', import.meta.url), 'utf8');
 const DAY_MS = 86400000;
 const today = Math.floor(Date.now() / DAY_MS);

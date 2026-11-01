@@ -22,6 +22,7 @@ const PUSH_WAIT_MS = 5000;
 const PUSH_RETRY_MS = 20000;
 const ARMED_MS = 5000; // how long "tap again" waits
 const fresh = () => ({
+  open: false, more: false, // the card is one line until the player opens it
   phase: 'idle', link: '', status: '', note: null, reason: '', armed: false, copied: false,
   token: null, phrase: null, phraseInput: '', phraseError: null, phraseCopied: false,
   cloudArmed: false,
@@ -51,6 +52,8 @@ function model() {
   return {
     shown: shown(),
     linkable,
+    open: ui.open,
+    more: ui.more,
     phase: ui.phase,
     enabled: sync.enabled(),
     peers: sync.peers().map(({ name, at }) => ({ name, at })),
@@ -114,7 +117,7 @@ function onEvent(event) {
       set({ phase: 'done', note: { kind: 'linked', name: event.peer.name }, status: '' });
       break;
     case 'cloud-on':
-      set({ phase: 'done', note: { kind: 'cloud-on', name: event.peer.name } });
+      set({ phase: 'done', open: true, note: { kind: 'cloud-on', name: event.peer.name } });
       startCloud({ force: true });
       break;
     case 'synced':
@@ -124,7 +127,7 @@ function onEvent(event) {
     case 'failed':
       if (linking) {
         active = null;
-        health.linkFailed({ reason: event.reason, seen: S.screen === 'menu' });
+        health.linkFailed({ reason: event.reason, seen: S.screen === 'menu' && ui.open });
         set({ phase: 'failed', reason: event.reason, status: '' });
       } else {
         health.meetFailed({ reason: event.reason });
@@ -157,7 +160,7 @@ function pushSoon(wait = PUSH_WAIT_MS) {
 }
 
 async function makeLink() {
-  set({ ...fresh(), phase: 'working', status: 'waiting' });
+  set({ ...fresh(), open: true, phase: 'working', status: 'waiting' });
   try {
     active = await p2p.invite();
   } catch {
@@ -167,7 +170,7 @@ async function makeLink() {
 
 async function openLink() {
   const { token } = ui;
-  set({ ...fresh(), phase: 'working', status: 'waiting' });
+  set({ ...fresh(), open: true, phase: 'working', status: 'waiting' });
   try {
     active = await p2p.join(token);
   } catch {
@@ -196,7 +199,7 @@ async function showPhrase(makeNew) {
   }
   const secret = sync.secret();
   if (!secret) return;
-  set({ ...fresh(), phase: 'phrase', phrase: toWords(secret) });
+  set({ ...fresh(), open: true, phase: 'phrase', phrase: toWords(secret) });
   startCloud({ force: true }, true);
 }
 
@@ -214,8 +217,8 @@ async function joinPhrase() {
   manualCloud = true;
   const result = await cloud.sync({ force: true });
   set(result.ok
-    ? { ...fresh(), phase: 'done', note: { kind: 'joined' } }
-    : { ...fresh(), phase: 'idle' });
+    ? { ...fresh(), open: true, phase: 'done', note: { kind: 'joined' } }
+    : { ...fresh(), open: true, phase: 'idle' });
 }
 
 async function deleteCloud() {
@@ -249,8 +252,14 @@ async function turnOff() {
 export function bindSyncCard(on) {
   on('syncLink', makeLink);
   on('syncConfirm', openLink);
-  on('syncDecline', () => set(fresh()));
-  on('syncCancel', async () => { await active?.cancel(); active = null; set(fresh()); });
+  on('syncToggle', () => set({ open: !ui.open, more: false }));
+  on('syncMore', () => set({ more: !ui.more }));
+  on('syncDecline', () => set({ ...fresh(), open: true }));
+  on('syncCancel', async () => {
+    await active?.cancel();
+    active = null;
+    set({ ...fresh(), open: true });
+  });
   on('syncCopy', () => copy(ui.link, 'copied'));
   on('syncShare', () => navigator.share({ title: t('sync.title'), url: ui.link }).catch(() => {}));
   on('syncNow', () => {
@@ -262,7 +271,7 @@ export function bindSyncCard(on) {
   on('syncMakePhrase', () => showPhrase(true));
   on('syncCloudOn', () => showPhrase(true));
   on('syncShowPhrase', () => showPhrase(false));
-  on('syncHavePhrase', () => set({ ...fresh(), phase: 'enter' }));
+  on('syncHavePhrase', () => set({ ...fresh(), open: true, phase: 'enter' }));
   on('syncCopyPhrase', () => copy(ui.phrase.join(' '), 'phraseCopied'));
   on('syncPhraseDone', () => set(fresh()));
   on('syncJoin', joinPhrase);
@@ -318,4 +327,8 @@ export async function initSyncUi() {
   startMeeting();
   startCloud();
   redraw();
+  if (ui.phase === 'confirm') { // a link was opened: the question is below the cards
+    requestAnimationFrame(
+      () => document.getElementById('syncCard')?.scrollIntoView({ block: 'center' }));
+  }
 }

@@ -22,6 +22,23 @@ opened (guest: a link that joins devices must not join them by itself), or makes
 phrase. `SYNC.available: false` removes the card and the engine; `src/coop` may be deleted (the
 link buttons are then not shown; the cloud way needs only WebCrypto and a configured server).
 
+## The card, and how it was checked
+
+* The card is ONE LINE until the player opens it (a header that is a button: icon, "Your devices",
+  a short summary like "Off · same progress everywhere" or "Linked with 2 other devices · synced
+  5 min ago", a pill, a chevron); a problem shows in red on the closed card. Opened, it shows what
+  the state allows: the ways in as stacked options with a hint each, or, when on, the devices, the
+  cloud line, four buttons and a folded "More options" (enter a phrase, stop cloud, delete the
+  cloud copy, turn off; the two-tap ones say what they do in a line of their own, never in the
+  button). While a flow is under way (a link opened here, a link made, a phrase shown or typed) it
+  opens by itself. It sits below the menu grid: inside the grid a card that is not placed fills
+  an empty area and lands among the others.
+* `test/sync/card.test.js` tests the HTML. `test/e2e/sync-cloud.e2e.py` is an end-to-end check in a
+  real Chromium (Python Playwright, not part of `npm test`): two browser contexts, a mocked
+  Supabase, a streak made on one device that the other must show after typing the phrase.
+* Tests that stand a SQLite database in for Turso need `node:sqlite` (Node 22.5+); on Node 20
+  they are skipped and the rest runs (`test/sync/helpers.js`, `server/turso/sync.test.mjs`).
+
 ## Theme slots, and what is told when sync fails
 
 * Only the **number** of theme slots follows the player across devices; the themes do not. The

@@ -1,4 +1,11 @@
 // Shared by the device-sync tests: a storage port in memory and two connected channels.
+import { test } from 'node:test';
+
+// node:sqlite (a database in memory, built into Node 22.5 and newer) stands in for Turso in some
+// tests; where it is missing (Node 20) those tests are skipped, and the rest runs as before.
+export const sqliteAvailable = await import('node:sqlite').then(() => true, () => false);
+export const sqliteTest = (name, fn) =>
+  test(name, { skip: sqliteAvailable ? false : 'needs node:sqlite (Node 22.5 or newer)' }, fn);
 export function memoryStorage(initial = {}) {
   const map = new Map(Object.entries(initial));
   return {
@@ -125,6 +132,7 @@ export function fakeSupabase({ maxGroups = 100000, now = () => Date.now() } = {}
 // A Turso database as the tests need it: the REAL server/turso/sync.sql (tables and trigger) on
 // SQLite, and a stand-in for its HTTP API (Hrana over HTTP) in front of it.
 export async function tursoDatabase() {
+  if (!sqliteAvailable) return null;
   const { DatabaseSync } = await import('node:sqlite');
   const { readFileSync } = await import('node:fs');
   const db = new DatabaseSync(':memory:');
