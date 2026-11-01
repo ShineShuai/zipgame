@@ -179,6 +179,17 @@ button, select, input { font-family: inherit; }
   width: max-content; max-width: calc(100vw - 32px); padding: 10px 16px; text-align: center; font-size: 0.9rem;
   background: var(--pop-bg); border: var(--bw-sub) var(--bs-card) var(--line-strong); border-radius: var(--r-3); box-shadow: var(--pop-shadow); color: var(--text);
 }
+.notice {
+  position: fixed; z-index: 57; left: 50%; bottom: calc(max(16px, env(safe-area-inset-bottom)) + 52px); transform: translateX(-50%);
+  display: flex; align-items: flex-start; gap: 10px; width: min(420px, calc(100vw - 32px)); padding: 10px 12px 10px 16px;
+  font-size: 0.9rem; line-height: 1.4; background: var(--pop-bg); border: var(--bw-sub) var(--bs-card) var(--line-strong);
+  border-radius: var(--r-3); box-shadow: var(--pop-shadow); color: var(--text);
+}
+.notice-bad { border-color: var(--danger); }
+.notice-ok { border-color: var(--ok); }
+.notice-text { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+.notice-close { flex: none; width: 28px; height: 28px; padding: 0; font-size: 1.2rem; line-height: 1; cursor: pointer; background: transparent; border: 0; border-radius: var(--r-2, 8px); color: var(--muted); }
+.notice-close:hover, .notice-close:focus-visible { background: var(--accent-soft); color: var(--text); outline: none; }
 .theme-offer-head { display: flex; align-items: center; gap: 10px; }
 .theme-offer-head > svg, .theme-offer-list svg { flex: none; width: var(--glyph); height: var(--glyph); }
 .theme-offer-title { display: flex; flex: 1; flex-direction: column; min-width: 0; line-height: 1.25; }
@@ -508,15 +519,47 @@ button.lucky-chances { position: relative; border: 0; font-family: inherit; line
 .coop-card .button-row { margin: 0; }
 .coop-card .btn { min-width: 150px; min-height: 48px; }
 
-/* The device sync (src/platform/sync): a strip across the menu, after the other cards. */
-.sync-card { grid-column: 1 / -1; }
-.sync-card .blurb { margin: 0 0 12px; }
-.sync-card .button-row .btn { min-height: 44px; }
-.sync-peers { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
+/* The device sync (src/platform/sync): one line until opened (a header that is a button), then a body that stacks. */
+.sync-card { margin: 16px 0 0; padding: 0; overflow: hidden; }
+@media (max-width: 520px) {
+  .sync-card { margin-top: 10px; }
+  .sync-pill-off, .sync-pill-on, .sync-pill-busy { display: none; } /* the chevron says "opens"; problems and questions keep their pill */
+}
+.sync-head { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 14px; box-sizing: border-box; font: inherit; text-align: left; color: inherit; background: transparent; border: 0; cursor: pointer; }
+.sync-head-static { cursor: default; }
+button.sync-head:hover { background: var(--accent-soft); }
+button.sync-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.sync-head .card-badge { width: 36px; height: 36px; }
+.sync-head .card-icon { width: 20px; height: 20px; }
+.sync-head-text { flex: 1 1 0; min-width: 0; display: grid; gap: 1px; }
+.sync-card .card-title { margin: 0; font-size: 1.05rem; line-height: 1.25; }
+.sync-card .card-sub { font-size: 0.85rem; line-height: 1.3; overflow-wrap: anywhere; }
+.sync-problem .card-sub { color: var(--danger); font-weight: 600; }
+.sync-pill { flex: none; padding: 4px 12px; font-size: 0.85rem; font-weight: 700; border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); }
+.sync-pill-problem { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+.sync-chevron { flex: none; font-size: 1.5rem; line-height: 1; color: var(--muted); transition: transform 0.15s ease; }
+.sync-card.open .sync-chevron { transform: rotate(90deg); }
+.sync-body { display: grid; gap: 10px; padding: 12px 14px 14px; border-top: 1px solid var(--line); }
+.sync-body > * { margin: 0; min-width: 0; }
+.sync-body .blurb { font-size: 0.92rem; line-height: 1.4; }
+.sync-options { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.sync-option { display: grid; gap: 3px; align-content: start; width: 100%; padding: 10px 12px; font: inherit; text-align: left; color: inherit; cursor: pointer; background: var(--surface-2); border: 1px solid var(--line-strong); border-radius: var(--rb-1); }
+.sync-option:hover, .sync-option:focus-visible { background: var(--accent-soft); border-color: var(--accent); outline: none; }
+.sync-option-title { font-size: 0.95rem; font-weight: 700; color: var(--accent-text); overflow-wrap: anywhere; }
+.sync-option-hint { font-size: 0.82rem; line-height: 1.35; color: var(--muted); overflow-wrap: anywhere; }
+.sync-actions { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.sync-actions .btn { width: 100%; min-height: 44px; padding: 8px 14px; }
+.sync-more { display: grid; gap: 8px; padding-top: 12px; border-top: 1px dashed var(--line-strong); }
+.sync-more-title { margin: 0; font-size: 0.85rem; font-weight: 700; color: var(--muted); }
+.sync-peers { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .sync-peers li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: var(--rb-1); background: var(--surface-2); }
-.sync-peers small { color: var(--muted); }
-.sync-link { width: 100%; box-sizing: border-box; margin: 0 0 12px; padding: 10px 12px; font: inherit; font-size: 0.85rem; color: inherit; border: 1px solid var(--line-strong); border-radius: var(--rb-1); background: var(--surface-2); }
-.sync-note { margin: 10px 0 0; font-size: 0.9rem; color: var(--muted); }
+.sync-peers span { min-width: 0; overflow-wrap: anywhere; }
+.sync-peers small { flex: none; color: var(--muted); }
+.sync-link { width: 100%; box-sizing: border-box; padding: 10px 12px; font: inherit; font-size: 0.85rem; color: inherit; border: 1px solid var(--line-strong); border-radius: var(--rb-1); background: var(--surface-2); }
+.sync-phrase { padding: 12px; font-size: 1.15rem; line-height: 1.6; letter-spacing: 0.02em; word-spacing: 0.35em; text-align: center; overflow-wrap: anywhere; user-select: all; border: 1px solid var(--line-strong); border-radius: var(--rb-1); background: var(--surface-2); }
+.sync-phrase-field { resize: vertical; min-height: 3.2em; }
+.sync-privacy { font-size: 0.75rem; line-height: 1.4; color: var(--muted); }
+.sync-note { font-size: 0.85rem; line-height: 1.35; color: var(--muted); }
 .sync-note.bad { color: var(--danger); }
 .sync-note.ok { color: var(--ok); }
 .sync-off.armed { color: var(--danger); border-color: var(--danger); }

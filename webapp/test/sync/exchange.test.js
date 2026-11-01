@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { GOTD_KEY } from '../../src/features/stats-store.js';
 import { RULES_SEEN_KEY } from '../../src/features/rules-seen.js';
+import { toBase64Url } from '../../src/core/sync/base64.js';
+import { secretId } from '../../src/core/sync/cloud-keys.js';
 import { packSlice, SLICE_MAX } from '../../src/core/sync/slice.js';
 import { createSync } from '../../src/platform/sync/engine.js';
 import {
@@ -205,4 +207,92 @@ test('the name of the other device comes with its hello, cleaned', async () => {
   ]);
   assert.equal(rb.name, 'Chrome · Mac');
   assert.equal(ra.name, '', 'no name given: none told');
+});
+
+async function withSecrets(...secrets) {
+  const devices = [];
+  for (const secret of secrets) {
+    const d = await device({ [RULES_SEEN_KEY]: rules('x') });
+    if (secret) await d.sync.enable({ cloud: true, secret });
+    devices.push(d);
+  }
+  return devices;
+}
+const run = async (a, b) => {
+  const { a: ca, b: cb } = channelPair();
+  return Promise.all([
+    exchange({ channel: ca, sync: a.sync }), exchange({ channel: cb, sync: b.sync }),
+  ]);
+};
+const secretOf = d => d.sync.secret();
+const FILL = n => new Uint8Array(10).fill(n);
+
+test('a device with the cloud secret hands it to a linked device that has none', async () => {
+  const [a, b] = await withSecrets(FILL(1), null);
+  const [ra, rb] = await run(a, b);
+  assert.deepEqual([ra.secret, rb.secret], ['sent', 'adopted']);
+  assert.deepEqual(secretOf(b), FILL(1));
+  assert.equal(b.sync.cloudOn(), true);
+  assert.equal(b.sync.status().devices, 2, 'the slices of the exchange stay');
+});
+
+test('both ways: whichever device has the secret hands it over', async () => {
+  const [a, b] = await withSecrets(null, FILL(2));
+  const [ra, rb] = await run(a, b);
+  assert.deepEqual([ra.secret, rb.secret], ['adopted', 'sent']);
+  assert.deepEqual(secretOf(a), FILL(2));
+});
+
+test('two devices with the same secret, or none, say nothing about it', async () => {
+  for (const [x, y] of [[FILL(3), FILL(3)], [null, null]]) {
+    const [a, b] = await withSecrets(x, y);
+    const [ra, rb] = await run(a, b);
+    assert.deepEqual([ra.secret, rb.secret], [null, null]);
+  }
+});
+
+test('two groups become one: the secret with the smaller short name wins on both', async () => {
+  const [a, b] = await withSecrets(FILL(4), FILL(5));
+  const sids = [await a.sync.secretId(), await b.sync.secretId()];
+  const winner = sids[0] < sids[1] ? a : b;
+  const loser = winner === a ? b : a;
+  const [ra, rb] = await run(a, b);
+  assert.deepEqual(secretOf(loser), secretOf(winner));
+  assert.deepEqual([winner === a ? ra.secret : rb.secret, winner === a ? rb.secret : ra.secret],
+    ['sent', 'adopted']);
+});
+
+test('a secret that does not match what the peer said, or that nobody '
+  + 'needs, is refused', async () => {
+  const [a] = await withSecrets(null);
+  const dev = 'BBBBBBBBBBB';
+  const hello = sid => JSON.stringify({ t: 'hello', v: 1, dev, have: {}, name: '', sid });
+  const secret = s => JSON.stringify({ t: 'secret', s });
+  const fill = toBase64Url(FILL(6));
+  const many = (first, bad) => [first, ...Array(12).fill(bad)]; // one bad message is only ignored
+  // says it has no secret but sends one: the short names differ
+  await assert.rejects(peerSays(many(hello(null), secret(fill)), a.sync), /bad/);
+  assert.equal(a.sync.secret(), null);
+  // a secret that is not base64url or not 10 bytes
+  for (const s of ['!!!', 'AAAA', 5, '']) {
+    await assert.rejects(peerSays(many(hello('AAAAAAAA'), secret(s)), a.sync), /bad/);
+  }
+  assert.equal(a.sync.secret(), null);
+  // a secret sent without a hello first
+  await assert.rejects(peerSays(Array(12).fill(secret(fill)), a.sync), /bad/);
+  assert.equal(a.sync.secret(), null);
+});
+
+test('a device that has a secret does not take one from a peer whose short '
+  + 'name is larger', async () => {
+  const [a] = await withSecrets(FILL(7));
+  const mine = await a.sync.secretId();
+  const theirs = FILL(8);
+  const theirSid = await secretId(theirs);
+  if (theirSid < mine) return; // the other way is covered above
+  const dev = 'BBBBBBBBBBB';
+  const hello = JSON.stringify({ t: 'hello', v: 1, dev, have: {}, name: '', sid: theirSid });
+  const secret = JSON.stringify({ t: 'secret', s: toBase64Url(theirs) });
+  await assert.rejects(peerSays(Array(12).fill(secret).fill(hello, 0, 1), a.sync), /bad/);
+  assert.deepEqual(secretOf(a), FILL(7));
 });

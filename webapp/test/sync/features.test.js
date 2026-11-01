@@ -2,12 +2,16 @@
 // being counted twice, and each device's own storage holds only its own part.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { readdirSync, readFileSync } from 'node:fs';
+import { SYNCED_KEYS } from '../../src/core/sync/merge.js';
 import { createGift } from '../../src/features/gift.js';
 import { createReplay, earned } from '../../src/features/replay.js';
 import { createRulesSeen } from '../../src/features/rules-seen.js';
 import { createStore, GOTD_KEY, STATS_KEY } from '../../src/features/stats-store.js';
 import { createStreak, STREAK_KEY } from '../../src/features/streak.js';
 import { createUnlock, UNLOCK_KEY } from '../../src/features/unlock.js';
+import { MIN_CAP } from '../../src/themes/pool.js';
+import { slotsFor } from '../../src/themes/slots.js';
 import { createSync } from '../../src/platform/sync/engine.js';
 import { memoryStorage } from './helpers.js';
 
@@ -214,4 +218,55 @@ test('GOTD_KEY is kept apart from the group: B\'s blob never holds A\'s record',
   await sb.saveAttempt('20261029', { solved: true, time: 50 });
   const own = await raw(b, GOTD_KEY);
   assert.deepEqual(Object.keys(own.a), ['20261029']);
+});
+
+test('theme slots follow the activity of all devices; the themes themselves '
+  + 'stay on each device', async () => {
+  const [a, b] = [await device(), await device()];
+  const sa = createStore(a.port, SIZES, {}, a.sync);
+  const sb = createStore(b.port, SIZES, {}, b.sync);
+  await sa.hydrate('20261030');
+  await sb.hydrate('20261030');
+  for (let i = 0; i < 7; i++) await sa.saveAttempt(`2026100${i + 1}`, { solved: true, time: 30 });
+  for (let i = 0; i < 5; i++) await sb.saveAttempt(`2026101${i}`, { solved: true, time: 30 });
+  const slots = s => slotsFor({ gotdSolves: s.gotdSolves(), bestStreak: 0 });
+  assert.deepEqual([slots(sa), slots(sb)], [MIN_CAP, MIN_CAP], 'each alone: 7 and 5 of 12');
+  await b.sync.leave();
+  await b.sync.enable({ p2p: true });
+  await link(a, b);
+  await sb.refresh();
+  await sa.refresh();
+  assert.equal(sb.gotdSolves(), 12, 'the dates of both devices');
+  assert.deepEqual([slots(sa), slots(sb)], [MIN_CAP + 1, MIN_CAP + 1]);
+  await b.sync.disable();
+  await sb.refresh();
+  assert.equal(sb.gotdSolves(), 12, 'turning sync off does not take a slot back');
+});
+
+test('the best streak of any device can earn the slot', async () => {
+  const [a, b] = [await device(), await device()];
+  await a.storage.set('zip_streak', JSON.stringify({
+    last: 20000, streak: 30, best: 30, freezes: 0, earned: 3, prog: 2, brk: null }));
+  const sb = createStreak(b.port, noLog, at(20000), b.sync);
+  await sb.init();
+  assert.equal(slotsFor({ gotdSolves: 0, bestStreak: sb.view().best }), MIN_CAP);
+  await link(a, b);
+  assert.equal(slotsFor({ gotdSolves: 0, bestStreak: sb.view().best }), MIN_CAP + 1);
+});
+
+test('nothing the themes keep is synced: not the choice, not the themes, not the trial', () => {
+  const files = [...readdirSync(new URL('../../src/themes/', import.meta.url))
+    .map(f => new URL(`../../src/themes/${f}`, import.meta.url)),
+  ...readdirSync(new URL('../../src/ui/', import.meta.url)).filter(f => f.startsWith('theme'))
+    .map(f => new URL(`../../src/ui/${f}`, import.meta.url))];
+  const keys = new Set();
+  for (const file of files) {
+    if (!file.pathname.endsWith('.js')) continue;
+    const source = readFileSync(file, 'utf8');
+    for (const [key] of source.matchAll(/zip_theme[A-Za-z0-9_]*/g)) keys.add(key);
+  }
+  assert.ok(keys.has('zip_theme_v2') && keys.has('zip_theme') && keys.has('zip_theme_seed'));
+  for (const key of keys) {
+    assert.ok(!SYNCED_KEYS.some(synced => key.startsWith(synced) || synced.startsWith(key)), key);
+  }
 });

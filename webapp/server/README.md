@@ -88,3 +88,77 @@ For each solved game the page may upload one row: the puzzle (local games; a Gam
 - *Changing what a column means* (the units of `ms`, the layout of `pz` or `s`): bump `ROW_VERSION` (`v`, 4 bits) in the same change. Rows keep their `v`, so the tools keep every old decoder and tell the generations apart.
 - A table that was altered has the new column last; the code always names its columns, so the order does not matter.
 
+
+## Device sync (the cloud copies of a player's devices)
+
+Players who turn it on can keep their data the same on all their devices (`src/platform/sync`). Devices that are open together
+meet directly (WebRTC); devices that are not use the servers below. What the servers hold is **ciphertext**: per device one slice
+(statistics, records, streak, chances) sealed in the browser with a key made from the player's sync phrase (8 words), a random-looking
+group id, a counter and a time. Unlike everything above this is player data: nobody can read it without the phrase, but a server sees
+that a group exists, when it changes, how many devices write to it and their IP addresses (the card says so to the player). The feature is
+off for everybody until a player turns it on.
+
+**It is a scheme of its own, apart from the Game-of-Day averages and the behaviour rows above, which are unchanged (Turso first):**
+`SYNC.cloud` in `src/config.js` has its own `backends` (urls and public keys), its own SQL files (`server/supabase/sync.sql`,
+`server/turso/sync.sql`, which need nothing from `schema.sql`) and its own Turso token. It can live in the same Supabase project / Turso
+database as the averages or in new ones; separate ones keep player data away from the aggregates (a Turso database of its own does not
+separate the rows-written quota: on the free plan, as far as I know, it counts all databases of the account). **Supabase is primary here,
+Turso second**: Supabase checks who writes, Turso cannot. A push goes to both, a pull asks both and merges what opens, so either may be
+down, full or without permission. Every origin used in `SYNC.cloud.backends` must also be in `connect-src` of `index.html` (`npm run check`).
+
+### Supabase (primary)
+
+1. Run `server/supabase/sync.sql` in the SQL editor of the project named by `SYNC.cloud.backends['sync-supabase']` (idempotent; it needs
+   no other file). It makes `sync_owner`, `sync_slice`, `sync_cfg`, `sync_secret` (RLS on, no policies: the anon key can only call the
+   functions) and `sync_put`, `sync_get`, `sync_delete`, `sync_prune`. The group is claimed by its first write (the hash of an auth
+   value derived from the phrase is stored); later writes and the delete must show the same value; reading needs only the id. At most 8
+   devices per group, 16 KB per slice, one write per device per 5 seconds, 100,000 groups
+   (`update sync_cfg set n = 0 where name = 'max_groups'` stops new groups).
+2. Pruning (groups that wrote nothing for 180 days): insert the hash of a token of your choice once, then call `sync_prune` nightly:
+   ```sql
+   insert into sync_secret (name, hash) values ('prune', encode(sha256(convert_to('<token>', 'UTF8')), 'hex'));
+   ```
+   either with `tools/sync-prune.mjs` (below) or inside Supabase with pg_cron (Database > Extensions):
+   `select cron.schedule('sync-prune', '17 3 * * *', $$delete from sync_owner where touched < now() - interval '180 days'$$);`
+3. Check it on a scratch Postgres: `PGHOST=/tmp PGPORT=5544 PGUSER=postgres python3 server/supabase/sync_test.py` (not run when it was
+   written: no Postgres was at hand). The page's tests run against a model of these functions (`test/sync/helpers.js`).
+4. On the free plan the project pauses after a week without requests. In a project of its own the sync has no nightly seeder to keep it
+   awake: the pruning call below does (it is a request every night).
+
+### Turso (second)
+
+1. `turso db shell <db> < server/turso/sync.sql` adds the `sync` table, `sync_cfg` and the trigger `sync_ai` (idempotent; own file, so
+   `schema.sql` is not touched). Use the database of the averages or a new one.
+2. The browser token of the sync is its own and may only read and insert into `sync`:
+   `turso db tokens create <db> -e never -p all:data_read -p sync:data_add` — put it and the database url into
+   `SYNC.cloud.backends['sync-turso']` (`npm run check` accepts nothing else). Until both are set the entry is not used and only Supabase
+   keeps copies. The token of the averages (`LEADERBOARD`) is not changed.
+3. The token cannot update or delete, so a device adds a row with `seq` = its highest + 1 and readers take the newest row that opens.
+   Rows pile up: `tools/sync-prune.mjs` keeps the newest 3 per device and drops groups idle for 180 days. It needs a short-lived token that
+   may delete: `turso db tokens create <db> -e 7d -p all:data_read -p sync:data_delete`.
+4. **What this table cannot do:** SQLite has no hash function, and a secret a trigger could read the public token could read too, so
+   nobody checks WHO writes. Anyone with the public token can add junk rows to any group id they can list. The page skips what does not open
+   and the trigger bounds the damage (shape, 24 KB, a `seq` that jumps by at most 1000, 30 rows per device between prunes, the ceiling
+   `sync_cfg.cap`: `UPDATE sync_cfg SET cap = 0` stops every page at once). Junk can fill a device's 30 rows until the next prune (the page
+   then retries) or use up rows-written quota; it cannot make data unreadable or change it. This is why Supabase, which does check the
+   writer, is primary. The player's data survives either way: every device keeps its own copy.
+5. A player cannot delete their rows with this token: "Delete cloud copy" removes the Supabase group at once; the Turso rows become
+   unreadable (the phrase is forgotten) and are removed by the prune. Check it: `node server/turso/sync.test.mjs`.
+
+### Nightly pruning (`tools/sync-prune.mjs`)
+
+Add to the workflow that runs `tools/gotd-seed.mjs` (secrets in the repository settings; the Supabase ones are those of the sync project):
+
+```yaml
+      - name: Prune the device sync
+        run: node webapp/tools/sync-prune.mjs
+        env:
+          TURSO_URL: ${{ secrets.SYNC_TURSO_URL }}
+          TURSO_PRUNE_TOKEN: ${{ secrets.SYNC_TURSO_PRUNE_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SYNC_SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SYNC_SUPABASE_KEY }}       # the anon key
+          SYNC_PRUNE_TOKEN: ${{ secrets.SYNC_PRUNE_TOKEN }}
+```
+
+It cannot tell junk from real rows (it has no key), so it prunes by age and count only; a player whose devices are all gone for six months
+loses the cloud copy, never anything on a device.

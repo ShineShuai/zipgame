@@ -15,6 +15,7 @@
 // so that a page load without a change does not make a new slice.
 import { fromBase64Url, toBase64Url } from '../../core/sync/base64.js';
 import { MERGES, SYNCED_KEYS } from '../../core/sync/merge.js';
+import { secretId } from '../../core/sync/cloud-keys.js';
 import { isDev, isSlice, newDevId } from '../../core/sync/slice.js';
 import { newSecret, SECRET_BYTES } from '../../core/sync/words.js';
 
@@ -150,8 +151,9 @@ export function createSync({ storage, maxDevices = MAX_DEVICES }) {
       devices: id ? foreign.size + 1 : 0,
     }),
 
-    // The player's choice. mode = { p2p?: true, cloud?: true }: turns that way on (the first
-    // call makes the device id; cloud also makes the group's secret, when there is none).
+    // The player's choice. mode = { p2p?: true, cloud?: true, secret?: Uint8Array }: turns that
+    // way on (the first call makes the device id; cloud also makes the group's secret when there
+    // is none, or takes the one given: a phrase typed in. Another group's slices are dropped).
     enable: mode => queued(async () => {
       id ??= {
         v: 1, dev: newDevId(), seq: 0, digest: '', p2p: false, cloud: false, secret: null,
@@ -160,7 +162,13 @@ export function createSync({ storage, maxDevices = MAX_DEVICES }) {
       id.p2p ||= Boolean(mode && mode.p2p);
       if (mode && mode.cloud) {
         id.cloud = true;
-        id.secret ??= toBase64Url(newSecret());
+        const given = mode.secret instanceof Uint8Array && mode.secret.length === SECRET_BYTES
+          ? toBase64Url(mode.secret) : null;
+        if (given && id.secret && id.secret !== given) {
+          foreign.clear();
+          await saveForeign();
+        }
+        id.secret = given ?? id.secret ?? toBase64Url(newSecret());
       }
       await saveId();
       emit();
@@ -229,19 +237,35 @@ export function createSync({ storage, maxDevices = MAX_DEVICES }) {
 
     // The group's secret (10 bytes) for the cloud, or null.
     secret: () => (id && id.secret ? fromBase64Url(id.secret) : null),
-    // Joins the group of a secret typed in (core/sync/words.js). Another group's slices are
-    // dropped: this device's own data stays and is offered to the new group.
-    adoptSecret: bytes => queued(async () => {
+    // Joins the group of this secret (a device that was linked brought it). Without `keep` the
+    // slices of another group are dropped (this device's own data stays and is offered to the new
+    // group); with it they stay: they are devices of the same player.
+    adoptSecret: (bytes, { keep = false } = {}) => queued(async () => {
       if (!id || !(bytes instanceof Uint8Array) || bytes.length !== SECRET_BYTES) {
         return false;
       }
       id.secret = toBase64Url(bytes);
       id.cloud = true;
-      foreign.clear();
+      if (!keep) {
+        foreign.clear();
+      }
       await saveId();
       await saveForeign();
       emit();
       return true;
+    }),
+    // The cloud way is on and there is a secret to use it with.
+    cloudOn: () => Boolean(id && id.cloud && id.secret),
+    // A short name of the secret (core/sync/cloud-keys.js), or null: two devices compare it.
+    secretId: () => (id && id.secret ? secretId(fromBase64Url(id.secret)) : Promise.resolve(null)),
+    // Cloud off and the secret forgotten (after the cloud copy was deleted).
+    forgetSecret: () => queued(async () => {
+      if (id) {
+        id.secret = null;
+        id.cloud = false;
+        await saveId();
+        emit();
+      }
     }),
 
     // What the group says for `key`, given this device's own parsed copy (null = none). Without

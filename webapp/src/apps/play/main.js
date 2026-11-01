@@ -337,7 +337,9 @@ async function initLang() {
   bind({ gift: createGift(storage, giftRef, undefined, sync) });
   try { await gift.init(); } catch (e) { console.warn('gift init failed:', e); }
   bind({ rulesSeen: createRulesSeen(storage, PLAY_VARIANTS.map(v => v.id), sync) });
-  if (sync) sync.onChange(() => store.refresh().catch(e => console.warn('stats refresh failed:', e)));
+  // What the player's other devices did counts here too: the statistics are shown again, and the theme slots they earned (themes
+  // themselves stay on each device: only the number of slots follows the activity, src/themes/slots.js)
+  if (sync) sync.onChange(() => store.refresh().then(() => awardThemeSlots()).catch(e => console.warn('stats refresh failed:', e)));
   await rulesSeen.init();
   bind({ shared: createSharedGames(storage) });
   if (lb.enabled) for (const { date } of await replay.unsent()) shareGotd(date); // today's and replayed days whose submit never got an answer

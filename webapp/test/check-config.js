@@ -24,6 +24,20 @@ assert.equal(typeof BEHAVIOUR.enabled, 'boolean', 'BEHAVIOUR.enabled must be tru
 const [lo, hi] = BEHAVIOUR.localSizes;
 assert.ok(Number.isInteger(lo) && Number.isInteger(hi) && lo >= 2 && hi >= lo && hi <= 16, 'BEHAVIOUR.localSizes must be [min, max] within 2..16');
 assert.equal(typeof SYNC.available, 'boolean', 'SYNC.available must be true or false');
+// The device sync has backends of its own (SYNC.cloud.backends); a Turso token there may only read and insert into `sync` (server/turso/sync.sql).
+const syncPerm = [{ t: null, a: ['data_read'] }, { t: ['sync'], a: ['data_add'] }];
+for (const [id, backend] of Object.entries(SYNC.cloud.backends)) {
+  assert.ok(['supabase', 'turso'].includes(backend.type), `SYNC.cloud.${id}: ${backend.type} cannot keep slices (only supabase and turso)`);
+  assert.ok(!/sb_secret_|service_role/.test(JSON.stringify(backend)), `SYNC.cloud.${id}: secret key in config.js`);
+  if (backend.type === 'turso' && backend.key) {
+    const { perm } = JSON.parse(Buffer.from(backend.key.split('.')[1], 'base64url').toString());
+    assert.deepEqual(perm, syncPerm, `SYNC.cloud.${id}: token permissions differ from read + insert into sync only`);
+  }
+}
+for (const id of [SYNC.cloud.primary, SYNC.cloud.second].filter(Boolean)) {
+  assert.ok(SYNC.cloud.backends[id], `SYNC.cloud: unknown backend id ${id}`);
+}
+assert.ok(Number.isInteger(SYNC.cloud.minPushMs) && SYNC.cloud.minPushMs >= 5000, 'SYNC.cloud.minPushMs must be at least 5000'); 
 assert.ok(Number.isInteger(SYNC.maxDevices) && SYNC.maxDevices >= 2 && SYNC.maxDevices <= 8, 'SYNC.maxDevices must be a whole number from 2 to 8');
 releaseDays(SOLID_RELEASE); // throws on a bad date or day count
 assert.ok(/^(\.\.?\/)+[\w-]+\/$|^https:\/\/[^/]+\/(?:[\w-]+\/)*$/.test(THEMES.base), 'THEMES.base must be a folder relative to the page (ending in /) or an https URL');
@@ -35,7 +49,7 @@ assert.ok(validDigits(THEMES.digits), 'THEMES.digits must be four different digi
 // more: scripts only from the page's own files plus its hashed inline scripts, and calls only to the backends of config.js.
 const urlsOf = value => (typeof value === 'string' ? (/^https?:\/\//.test(value) ? [new URL(value).origin] : [])
   : value && typeof value === 'object' ? Object.values(value).flatMap(urlsOf) : []);
-const origins = [...new Set([...urlsOf(LEADERBOARD), ...urlsOf(BEHAVIOUR), ...urlsOf(THEMES)])];
+const origins = [...new Set([...urlsOf(LEADERBOARD), ...urlsOf(BEHAVIOUR), ...urlsOf(SYNC), ...urlsOf(THEMES)])];
 // The co-op trial can be removed with its folder, so its brokers (src/coop/config.js) are read as
 // text, not imported. They are reached from the play page only.
 const coopConfig = new URL('../src/coop/config.js', import.meta.url);
