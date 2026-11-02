@@ -215,19 +215,22 @@ export function syncCardHtml(model, t, icon) {
       const armedDelete = cloud.on && cloud.armed;
       if (armedOff) line += note(t('sync.offConfirm'), 'bad');
       if (armedDelete) line += note(t('sync.cloudDeleteConfirm'), 'bad');
+      // Turning off ends the sync whatever it uses, so it is a main button; the cloud's own
+      // buttons are folded behind "More options", which exists only where the cloud does.
       buttons = (model.peers.length || cloud.on ? button('syncNow', t('sync.syncNow')) : '')
         + (linkable ? button('syncLink', t('sync.link'), 'secondary') : '')
-        + (cloud.on ? button('syncShowPhrase', t('sync.cloudShow'), 'secondary')
-          : cloud.available ? button('syncCloudOn', t('sync.cloudOn'), 'secondary') : '')
-        + button('syncMore', t(model.more ? 'sync.less' : 'sync.more'), 'secondary');
-      if (model.more) {
-        const more = (cloud.available && !cloud.on
-          ? button('syncHavePhrase', t('sync.havePhrase'), 'secondary') : '')
-          + (cloud.on ? button('syncCloudStop', t('sync.cloudStop'), 'secondary')
+        + button('syncOff', t(armedOff ? 'sync.tapAgain' : 'sync.off'),
+          `secondary sync-off${armedOff ? ' armed' : ''}`)
+        + (cloud.available
+          ? button('syncMore', t(model.more ? 'sync.less' : 'sync.more'), 'secondary') : '');
+      if (cloud.available && model.more) {
+        const more = cloud.on
+          ? button('syncShowPhrase', t('sync.cloudShow'), 'secondary')
+            + button('syncCloudStop', t('sync.cloudStop'), 'secondary')
             + button('syncCloudDelete', t(armedDelete ? 'sync.tapAgain' : 'sync.cloudDelete'),
-              `secondary sync-off${armedDelete ? ' armed' : ''}`) : '')
-          + button('syncOff', t(armedOff ? 'sync.tapAgain' : 'sync.off'),
-            `secondary sync-off${armedOff ? ' armed' : ''}`);
+              `secondary sync-off${armedDelete ? ' armed' : ''}`)
+          : button('syncCloudOn', t('sync.cloudOn'), 'secondary')
+            + button('syncHavePhrase', t('sync.havePhrase'), 'secondary');
         folded = `<div class="sync-more"><p class="sync-more-title">${t('sync.more')}</p>${
           actions(more)}</div>`;
       }
@@ -253,7 +256,7 @@ export function syncCardHtml(model, t, icon) {
         ${actions(buttons)}
         ${folded}
         ${line}
-        <p class="sync-privacy">${t('sync.privacy')}</p>
+        ${cloud.available ? `<p class="sync-privacy">${t('sync.privacy')}</p>` : ''}
       </div>` : '';
 
   return `<section class="card sync-card sync-${summary.tone}${open ? ' open' : ''}" id="syncCard">

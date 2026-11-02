@@ -27,10 +27,12 @@ link buttons are then not shown; the cloud way needs only WebCrypto and a config
 * The card is ONE LINE until the player opens it (a header that is a button: icon, "Your devices",
   a short summary like "Off · same progress everywhere" or "Linked with 2 other devices · synced
   5 min ago", a pill, a chevron); a problem shows in red on the closed card. Opened, it shows what
-  the state allows: the ways in as stacked options with a hint each, or, when on, the devices, the
-  cloud line, four buttons and a folded "More options" (enter a phrase, stop cloud, delete the
-  cloud copy, turn off; the two-tap ones say what they do in a line of their own, never in the
-  button). While a flow is under way (a link opened here, a link made, a phrase shown or typed) it
+  the state allows: the ways in as stacked options with a hint each, or, when on, the devices and
+  the buttons Sync now, Link another device and Turn off (it ends the sync whatever it uses). The
+  cloud (its line, the privacy line, and a folded "More options" with show phrase / enter a
+  phrase, stop cloud, delete the cloud copy) is hidden until the dev reveal (hold V) while its
+  backend is not set up; a phrase flow under way stays. The two-tap buttons say what they do in a
+  line of their own, never in the button. While a flow is under way (a link opened here, a link made, a phrase shown or typed) it
   opens by itself. It sits below the menu grid: inside the grid a card that is not placed fills
   an empty area and lands among the others.
 * `test/sync/card.test.js` tests the HTML. `test/e2e/sync-cloud.e2e.py` is an end-to-end check in a

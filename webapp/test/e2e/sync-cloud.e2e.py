@@ -16,6 +16,8 @@ import json, re, time
 from playwright.sync_api import sync_playwright
 
 URL = 'http://127.0.0.1:8123/index.html'
+# the cloud part of the card shows only on a revealed device (hold V): pin it, as a dev link does
+PIN = "localStorage.setItem('zip_ui', '1');"
 groups = {}   # id -> { verifier, slices: {dev: {seq, data}} }
 calls = []
 
@@ -68,7 +70,7 @@ with sync_playwright() as p:
     ca = b.new_context(viewport={'width': 390, 'height': 900})
     ca.route('**/rest/v1/rpc/sync_*', handler)
     a = ca.new_page()
-    a.add_init_script("if (!localStorage.getItem('zip_streak')) "
+    a.add_init_script(PIN + "if (!localStorage.getItem('zip_streak')) "
                       f"localStorage.setItem('zip_streak', {json.dumps(STREAK)});")
     errors = []
     a.on('pageerror', lambda e: errors.append('A ' + str(e)[:200]))
@@ -87,6 +89,7 @@ with sync_playwright() as p:
     cb = b.new_context(viewport={'width': 390, 'height': 900})
     cb.route('**/rest/v1/rpc/sync_*', handler)
     bp = cb.new_page()
+    bp.add_init_script(PIN)
     bp.on('pageerror', lambda e: errors.append('B ' + str(e)[:200]))
     bp.goto(URL); bp.wait_for_selector('#syncCard')
     print('B streak before:', streak_text(bp))
@@ -101,13 +104,21 @@ with sync_playwright() as p:
     # a wrong phrase is refused in the page
     cc = b.new_context(viewport={'width': 390, 'height': 900})
     cc.route('**/rest/v1/rpc/sync_*', handler)
-    c = cc.new_page(); c.goto(URL); c.wait_for_selector('#syncCard')
+    c = cc.new_page(); c.add_init_script(PIN); c.goto(URL); c.wait_for_selector('#syncCard')
     c.click('#syncToggle'); c.click('#syncHavePhrase')
     words = phrase.split(); words[3] = 'zazo' if words[3] != 'zazo' else 'zaze'
     c.fill('#syncPhraseField', ' '.join(words)); c.click('#syncJoin'); c.wait_for_timeout(300)
     lines = c.inner_text('#syncCard').split('\n')
     print('C wrong phrase:', [l for l in lines if 'together' in l or 'Word' in l])
     print('C still off (no identity):', c.evaluate("localStorage.getItem('zip_sync')"))
+    # ---- device D: not revealed: no cloud options, no privacy line; hold V brings them back
+    cd = b.new_context(viewport={'width': 390, 'height': 900})
+    d = cd.new_page(); d.goto(URL); d.wait_for_selector('#syncCard')
+    d.click('#syncToggle')
+    print('D hidden:', d.locator('#syncMakePhrase').count(), d.locator('.sync-privacy').count())
+    d.keyboard.down('v'); d.wait_for_selector('#syncMakePhrase')
+    print('D held V:', d.locator('#syncMakePhrase').count(), d.locator('.sync-privacy').count())
+    d.keyboard.up('v'); d.wait_for_selector('#syncMakePhrase', state='detached')
     print('rpc calls:', calls[:8], '... total', len(calls))
     print('page errors:', errors)
     b.close()
