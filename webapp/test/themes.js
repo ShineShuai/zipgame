@@ -768,6 +768,28 @@ export function themeSystemTests(t, ok, eq, ta) {
     eq([r.ctl.awardSlots({ gotdSolves: 99, bestStreak: 99 }), r.ctl.awardSlots({}), r.ctl.state().cap], [false, false, 4], 'never lowered, never above four');
   });
 
+  t('themes: a slot another device has counts here (groupCap): 2..4, never lowered', () => {
+    eq([{ groupCap: 3 }, { groupCap: 4 }, { groupCap: 9 }, { groupCap: 1 }, { groupCap: NaN }, { groupCap: 3, gotdSolves: 12, bestStreak: 30 }, { groupCap: 3, gotdSolves: 12 }].map(slotsFor), [3, 4, 4, 2, 2, 4, 3]);
+    const r = rig();
+    r.ctl.start();
+    eq([r.ctl.awardSlots({ groupCap: 3 }), r.ctl.state().cap, r.ctl.awardSlots({ groupCap: 2 }), r.ctl.state().cap], [true, 3, false, 3]);
+  });
+
+  t('themes: adopt fills the free slots with themes of the site pool that other devices keep; nothing else changes', async () => {
+    const r = rig({ pool: poolOf([CANDY, WOOD], ['draft']), files: filesOf([CANDY, WOOD]) });
+    r.ctl.start();
+    eq(await r.ctl.adopt(['candy'], 1), [], 'no free slot: nothing');
+    r.ctl.awardSlots({ groupCap: 4 });
+    let changes = 0;
+    r.ctl.onChange(() => { changes++; });
+    const active = r.ctl.state().active;
+    const added = await r.ctl.adopt(['light', 'gone-id', 'wood', 'candy', 'wood'], 1);
+    eq([added.map(e => e.id), r.ctl.state().pool.map(e => e.id), r.ctl.state().active, changes], [['wood'], ['light', 'dark', 'wood'], active, 1], 'at most one, a built-in or an unknown id is skipped, the shown theme stays');
+    eq((await r.ctl.adopt(['wood', 'candy'])).map(e => e.id), ['candy'], 'one the device has is skipped; the cap is not passed');
+    eq([r.ctl.state().pool.length, (await r.ctl.adopt(['candy'])).length], [4, 0]);
+    ok(JSON.parse(r.storage.data[POOL_KEY]).pool.length === 4, 'kept on the device');
+  });
+
   t('themes: the offer record is rebuilt from the whitelists, whatever the device holds', () => {
     const good = { event: 'e1', phase: 'trial', until: 5000, left: 40000, theme: cleanBundle(CANDY) };
     const text = serializeOffer(good);

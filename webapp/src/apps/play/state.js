@@ -15,7 +15,7 @@ export const S = { screen: 'menu', mode: 'standard', variant: null, genMode: 'st
   sharedGames: [], sharedFocus: null, sharedAll: false, sharedArmed: null, sharedNotice: null, sharedMsg: null,
   menuTab: 'flat', howtoOpen: false, sharedOpen: false, statsOpen: null };
 
-export let storage, store, daily, replay, streak, unlock, gift, rulesSeen, shared, modal, lb;
+export let storage, store, daily, replay, streak, unlock, gift, rulesSeen, slotsSync, shared, modal, lb;
 export const replayPuzzles = new Map(), replayNoFile = new Set(); // date -> puzzle (the file of a past day never changes, so each is fetched once per page load); dates without a file
 export const $ = id => document.getElementById(id), today = () => utcDateString(new Date()), dayNo = () => utcDayNumber(new Date()), sec = x => x.toFixed(1) + 's';
 const statsText = { everyone: (avg, n) => t('stats.everyone', avg, n), top: (k, avg) => t('stats.top', k, avg), beat: pct => t('stats.beat', pct) };
@@ -49,7 +49,7 @@ export let render = null, solid = null;
 // (an imported binding cannot be assigned from outside its module).
 const setters = {
   storage: v => { storage = v; }, store: v => { store = v; }, daily: v => { daily = v; }, replay: v => { replay = v; },
-  streak: v => { streak = v; }, unlock: v => { unlock = v; }, gift: v => { gift = v; }, rulesSeen: v => { rulesSeen = v; },
+  streak: v => { streak = v; }, unlock: v => { unlock = v; }, gift: v => { gift = v; }, rulesSeen: v => { rulesSeen = v; }, slotsSync: v => { slotsSync = v; },
   shared: v => { shared = v; }, modal: v => { modal = v; }, lb: v => { lb = v; }, playlog: v => { playlog = v; },
   behaviour: v => { behaviour = v; }, sync: v => { sync = v; }, storageUsed: v => { storageUsed = v; }, lastPointer: v => { lastPointer = v; },
   render: v => { render = v; }, solid: v => { solid = v; },

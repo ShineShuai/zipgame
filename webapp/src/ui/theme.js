@@ -44,10 +44,17 @@ export async function offerTheme({ id, until = null }) {
 // needs no reload. Deciding that today is an event day, and calling offerTheme, is check's business. -> a function that stops it.
 export const watchDay = check => watchDayOf(check);
 
-// The player's activity ({ gotdSolves, bestStreak }) may have earned theme slots (src/themes/slots.js): they are raised, and a notice shows.
-export function awardSlots(counts) {
-  if (!controller?.awardSlots(counts)) return false;
-  showSlotToast({ text: ui.text, cap: controller.state().cap });
+// The player's activity ({ gotdSolves, bestStreak, groupCap }) may have earned theme slots (src/themes/slots.js): they are raised, and a
+// notice shows. When another device already has the slots (groupCap), the new ones are filled with themes that device keeps (`borrow`: ids,
+// features/slots-sync.js): the player gets no offer for a slot that came by a sync. Promise<boolean>: a slot came.
+export async function awardSlots(counts, borrow = []) {
+  if (!controller) return false;
+  const before = controller.state().cap;
+  if (!controller.awardSlots(counts)) return false;
+  const cap = controller.state().cap;
+  const fromGroup = counts.groupCap >= cap;
+  const added = fromGroup ? await controller.adopt(borrow, cap - before).catch(() => []) : [];
+  showSlotToast({ text: ui.text, cap, names: added.map(entry => themeName(entry, ui.lang())) });
   return true;
 }
 

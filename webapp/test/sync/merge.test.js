@@ -5,6 +5,7 @@ import { MERGES, RECENT_MAX, SHRINKS, SYNCED_KEYS } from '../../src/core/sync/me
 import { GIFT_KEY } from '../../src/features/gift.js';
 import { CREDIT_KEY } from '../../src/features/replay.js';
 import { RULES_SEEN_KEY } from '../../src/features/rules-seen.js';
+import { SLOTS_KEY } from '../../src/features/slots-sync.js';
 import { GOTD_KEY, STATS_KEY } from '../../src/features/stats-store.js';
 import { STREAK_KEY } from '../../src/features/streak.js';
 import { PLAYED_KEPT, UNLOCK_KEY } from '../../src/features/unlock.js';
@@ -20,7 +21,7 @@ const shuffled = list => list.map(x => [Math.random(), x])
 
 test('the synced keys are exactly these, and what is device-local is not among them', () => {
   assert.deepEqual([...SYNCED_KEYS].sort(), [STATS_KEY, GOTD_KEY, STREAK_KEY, UNLOCK_KEY,
-    CREDIT_KEY, GIFT_KEY, RULES_SEEN_KEY].sort());
+    CREDIT_KEY, GIFT_KEY, RULES_SEEN_KEY, SLOTS_KEY].sort());
   for (const local of ['zip_playlog_v2', 'zip_behaviour_on', 'zip_theme', 'zip_theme_seed',
     'zip_shared_games', 'zip_coop_stats', 'zip_sync', 'zip_sync_f']) {
     assert.ok(!SYNCED_KEYS.includes(local), local);
@@ -299,6 +300,27 @@ test('rules shown: any device\'s counts', () => {
     { v: 1, seen: { a: true } });
 });
 
+// ---- theme slots ---------------------------------------------------------------------------
+
+test('theme slots: the group has the most slots of any device, and the ids of themes kept', () => {
+  const view = MERGES[SLOTS_KEY].view([
+    entry(A, { v: 1, cap: 3, themes: ['candy', 'wood'] }),
+    entry(B, { v: 1, cap: 2, themes: ['wood', 'ink'] }),
+  ]);
+  assert.deepEqual(view, { v: 1, cap: 3, themes: ['candy', 'wood', 'ink'] });
+});
+
+test('theme slots: a copy is cleaned (number in range, pool ids, at most four)', () => {
+  const { clean } = MERGES[SLOTS_KEY];
+  const messy = ['a', 'a', 'B', '<x>', 7, 'b-2', 'c', 'd', 'e'];
+  assert.deepEqual(clean({ v: 1, cap: 4, themes: messy }),
+    { v: 1, cap: 4, themes: ['a', 'b-2', 'c', 'd'] });
+  for (const bad of [null, 'x', { v: 2, cap: 3, themes: [] }, { v: 1, cap: 5, themes: [] },
+    { v: 1, cap: -1, themes: [] }, { v: 1, cap: 2.5, themes: [] }, { v: 1, cap: 3 }]) {
+    assert.equal(clean(bad), null, JSON.stringify(bad));
+  }
+});
+
 // ---- every rule: the same set of entries gives the same value, in any order ------------
 
 test('every rule is a function of the set of entries (any order, same value)', () => {
@@ -319,6 +341,8 @@ test('every rule is a function of the set of entries (any order, same value)', (
       { v: 1, day: null, kind: null }],
     [RULES_SEEN_KEY]: [{ v: 1, seen: { a: true } }, { v: 1, seen: { b: true } },
       { v: 1, seen: { a: true, c: true } }],
+    [SLOTS_KEY]: [{ v: 1, cap: 3, themes: ['a'] }, { v: 1, cap: 0, themes: [] },
+      { v: 1, cap: 4, themes: ['b', 'a'] }],
   };
   for (const [key, values] of Object.entries(samples)) {
     const entries = [A, B, C].map((dev, i) => entry(dev, MERGES[key].clean(values[i])));

@@ -17,9 +17,11 @@
 // arrived twice, change nothing. Not synced (kept on each device): the play log, the
 // behaviour upload and its switch, the theme choice and the theme trial, the device seed
 // of the theme offers, the shared games, the hints and the co-op game and its statistics.
+// Of the themes only the NUMBER of slots follows (zip_slots), not the themes.
 import { GIFT_KEY, KINDS } from '../../features/gift.js';
 import { CREDIT_KEY } from '../../features/replay.js';
 import { RULES_SEEN_KEY } from '../../features/rules-seen.js';
+import { SLOTS_KEY, sanitize as cleanSlots } from '../../features/slots-sync.js';
 import { GOTD_KEY, STATS_KEY } from '../../features/stats-store.js';
 import { FREEZE_EVERY, RAMP, STREAK_KEY } from '../../features/streak.js';
 import { PLAYED_KEPT, UNLOCK_KEY } from '../../features/unlock.js';
@@ -303,6 +305,19 @@ const rulesSeen = {
   view: entries => ({ v: 1, seen: Object.assign({}, ...entries.map(e => e.value.seen)) }),
 };
 
+// ---- theme slots: zip_slots { v, cap, themes: [id] } ---------------------------------------
+// The group has the most slots any device has. The ids are the themes the devices keep, only so
+// that a device with a new slot can take one; the choice of a theme stays on each device.
+
+const slots = {
+  clean: cleanSlots,
+  view: entries => ({
+    v: 1,
+    cap: Math.max(...entries.map(e => e.value.cap)),
+    themes: [...new Set(entries.flatMap(e => e.value.themes))],
+  }),
+};
+
 export const MERGES = Object.freeze({
   [STATS_KEY]: stats,
   [GOTD_KEY]: gotd,
@@ -311,6 +326,7 @@ export const MERGES = Object.freeze({
   [CREDIT_KEY]: credit,
   [GIFT_KEY]: gift,
   [RULES_SEEN_KEY]: rulesSeen,
+  [SLOTS_KEY]: slots,
 });
 
 export const SYNCED_KEYS = Object.freeze(Object.keys(MERGES));

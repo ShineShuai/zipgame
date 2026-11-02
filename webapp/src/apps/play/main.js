@@ -7,12 +7,13 @@ import { tapCombo, DEV_TAP_MS, devLinkMode, savePin, loadPin } from '../../featu
 import { createDaily } from '../../features/daily.js';
 import { createReplay } from '../../features/replay.js';
 import { createStreak } from '../../features/streak.js';
+import { createSlotsSync } from '../../features/slots-sync.js';
 import { parseShareLink } from '../../features/share.js';
 import { createSharedGames } from '../../features/shared-games.js';
 import { maxHints, computeHint, solutionOf } from '../../features/hints.js';
 import { bindModal, copyText } from '../../ui/modal.js';
 import { touchUI, openSheet, installPeek } from '../../ui/info.js';
-import { initTheme, themeName } from '../../ui/theme.js';
+import { initTheme, themeName, themes } from '../../ui/theme.js';
 import { createSolidPlay } from './solid.js';
 import { isPentagon } from '../../core/pentagon.js';
 import { hintTwo } from '../../features/twopaths-play.js';
@@ -34,12 +35,12 @@ import { genNoticeHtml, paintGenerating, renderGenerating } from './generating.j
 import { hintShown, renderGame } from './game-view.js';
 import {
   $, S, SIZES, bind, behaviour, dayNo, gift, giftRef, lastPointer, lb, modal, playlog, randomSeed,
-  replay, rulesSeen, solidRelease, statsLineT, storage, store, streak, sync, today, unlock,
+  replay, rulesSeen, slotsSync, solidRelease, statsLineT, storage, store, streak, sync, today, unlock,
 } from './state.js';
 import { openReplay, renderReplay, startGameOfDay, startReplay } from './replay-ui.js';
 import {
-  awardThemeSlots, claimReward, finishLucky, leaveLucky, logPlay, onStreakMilestone, shareGotd, startLocal,
-  startLucky, startTimer, stopTimer, watchThemeEvents,
+  awardThemeSlots, claimReward, finishLucky, leaveLucky, logPlay, onStreakMilestone, publishThemeSlots, shareGotd,
+  startLocal, startLucky, startTimer, stopTimer, watchThemeEvents,
 } from './game-flow.js';
 import {
   closeRules, closeStatTips, hidePeek, openExport, openRulesSheet, setChanceTip, setGiftTip,
@@ -338,8 +339,10 @@ async function initLang() {
   bind({ gift: createGift(storage, giftRef, undefined, sync) });
   try { await gift.init(); } catch (e) { console.warn('gift init failed:', e); }
   bind({ rulesSeen: createRulesSeen(storage, PLAY_VARIANTS.map(v => v.id), sync) });
-  // What the player's other devices did counts here too: the statistics are shown again, and the theme slots they earned (themes
-  // themselves stay on each device: only the number of slots follows the activity, src/themes/slots.js)
+  bind({ slotsSync: createSlotsSync(storage, sync) });
+  try { await slotsSync.init(); } catch (e) { console.warn('theme slots sync failed:', e); }
+  // What the player's other devices did counts here too: the statistics are shown again, and the theme slots they earned or have (themes
+  // themselves stay on each device: only the number of slots follows, src/themes/slots.js, features/slots-sync.js)
   if (sync) sync.onChange(() => store.refresh().then(() => awardThemeSlots()).catch(e => console.warn('stats refresh failed:', e)));
   await rulesSeen.init();
   bind({ shared: createSharedGames(storage) });
@@ -364,7 +367,8 @@ async function initLang() {
   themeCtl = initTheme($('themeToggle'), (cur, next, classic) => (classic
     ? t(cur.mode === 'dark' ? 'theme.toLight' : 'theme.toDark') : t('theme.switchTo', themeName(next, getLang()))),
   () => t('theme.pick'), getLang, { text: t, revealed: () => S.showDev, idle: () => S.screen === 'menu' });
-  awardThemeSlots(); // the slots the player's activity has earned so far
+  awardThemeSlots(); // the slots the player's activity, and the player's other devices, have earned so far
+  themes()?.onChange(publishThemeSlots); // a theme kept or left: the other devices may borrow it for a slot they got by a sync
   watchThemeEvents(); // an offer day (src/themes/calendar.js): the theme waits as a chip
   document.addEventListener('zip-theme', () => { if (S.screen !== 'generating') render(); }); // a theme's icons, board skin and 3D tints are drawn into the markup: draw the screen again
   installPeek({ selector: '.variant-opt', show: showPeek, hide: hidePeek });
