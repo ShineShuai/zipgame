@@ -2,7 +2,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  agoKey, cloudErrorKey, failKey, isFlow, phraseKey, summaryOf, syncCardHtml,
+  agoKey, cloudErrorKey, cloudShown, failKey, gateCloud, isFlow, phraseKey, summaryOf,
+  syncCardHtml,
 } from '../../src/apps/play/sync-card.js';
 import { EN, ZH } from '../../src/ui/i18n.js';
 
@@ -21,6 +22,29 @@ const summary = (over = {}) => summaryOf({ ...base, ...over }, keyed);
 
 test('hidden where the browser can do neither a link nor the cloud', () => {
   assert.equal(html({ shown: false }), '');
+});
+
+test('the cloud part is hidden unless the dev reveal is on (hold V)', () => {
+  const live = cloud({ on: true, lastOk: NOW, error: 'down' });
+  assert.equal(cloudShown('idle', false), false);
+  assert.equal(cloudShown('done', false), false);
+  assert.equal(cloudShown('idle', true), true);
+  assert.equal(gateCloud(live, 'idle', true), live);
+  const hidden = gateCloud(live, 'idle', false);
+  assert.equal(hidden.available, false);
+  assert.equal(hidden.on, false);
+  assert.equal(hidden.error, null);
+  const card = html({ open: true, cloud: hidden });
+  assert.ok(!card.includes('syncMakePhrase'));
+  assert.ok(!card.includes('syncHavePhrase'));
+  assert.ok(card.includes('id="syncLink"'), 'linking devices stays');
+});
+
+test('a cloud flow under way stays when V is released', () => {
+  for (const phase of ['phrase', 'enter', 'joining']) {
+    assert.equal(cloudShown(phase, false), true, phase);
+  }
+  assert.equal(cloudShown('working', false), false);
 });
 
 // ---- closed: one line --------------------------------------------------------------------------
@@ -114,13 +138,14 @@ test('OFF without the cloud, or without links, offers only what works', () => {
     ['syncCard', 'syncToggle', 'syncBody', 'syncMakePhrase', 'syncHavePhrase']);
 });
 
-test('the privacy line closes the body, in every state', () => {
+test('the privacy line (cloud only) closes the body, in every state', () => {
   const models = [{}, { phase: 'confirm' }, { phase: 'inviting', link: 'x' }, { phase: 'enter' },
     { phase: 'phrase', phrase: ['a'] }, { enabled: true }, { phase: 'failed', reason: 'down' },
     { phase: 'joining' }, { phase: 'working' }, { phase: 'done', enabled: true }];
   for (const model of models) {
-    const card = html(model);
+    const card = html({ ...model, cloud: cloud() });
     assert.match(card, /\[sync\.privacy\]<\/p>\s*<\/div>\s*<\/section>/, JSON.stringify(model));
+    assert.ok(!html(model).includes('sync.privacy'), 'it is about the cloud: gone without it');
   }
   assert.ok(!html({ shown: false }).includes('sync.privacy'));
   for (const text of [EN['sync.privacy'], ZH['sync.privacy']]) assert.ok(text.length < 330);
@@ -207,51 +232,59 @@ test('ON: the devices with names (escaped) and when they synced; a few actions, 
   assert.match(card, /\[sync\.device\]/, 'a device without a name');
   assert.match(card, /\[sync\.on 2\]/);
   assert.deepEqual(ids(card),
-    ['syncCard', 'syncToggle', 'syncBody', 'syncNow', 'syncLink', 'syncMore']);
+    ['syncCard', 'syncToggle', 'syncBody', 'syncNow', 'syncLink', 'syncOff']);
 });
 
 test('ON without a linked device yet: nothing to sync now', () => {
   const card = html({ enabled: true });
   assert.match(card, /\[sync\.onNone\]/);
-  assert.deepEqual(ids(card), ['syncCard', 'syncToggle', 'syncBody', 'syncLink', 'syncMore']);
+  assert.deepEqual(ids(card), ['syncCard', 'syncToggle', 'syncBody', 'syncLink', 'syncOff']);
 });
 
-test('ON, more options: the further ones in a block of their own', () => {
+test('ON without the cloud: turn off is a main button, and there are no more options', () => {
+  const card = html({ enabled: true, more: true, peers: [{ name: 'P', at: 1 }] });
+  assert.deepEqual(ids(card),
+    ['syncCard', 'syncToggle', 'syncBody', 'syncNow', 'syncLink', 'syncOff']);
+  assert.ok(!card.includes('sync-more'));
+  assert.ok(!card.includes('sync.more'));
+});
+
+test('ON with the cloud, more options: its buttons in a block of their own', () => {
   const card = html({ enabled: true, peers: [{ name: 'P', at: 1 }], more: true, cloud: cloud() });
   assert.deepEqual(ids(card), ['syncCard', 'syncToggle', 'syncBody', 'syncNow', 'syncLink',
-    'syncCloudOn', 'syncMore', 'syncHavePhrase', 'syncOff']);
+    'syncOff', 'syncMore', 'syncCloudOn', 'syncHavePhrase']);
   assert.match(card, /sync-more/);
   assert.match(card, /\[sync\.less\]/);
   assert.match(html({ enabled: true, cloud: cloud() }), /\[sync\.more\]/);
 });
 
-test('ON with the cloud: its line, show phrase; stop and delete are in more options', () => {
+test('ON with the cloud: its line; show phrase, stop and delete are in more options', () => {
   const card = html({ enabled: true, peers: [{ name: 'Phone', at: NOW }],
     cloud: cloud({ on: true, lastOk: NOW - 3 * 60000 }) });
   assert.match(card, /\[sync\.cloudSynced \[sync\.minutesAgo 3\]\]/);
   assert.deepEqual(ids(card), ['syncCard', 'syncToggle', 'syncBody', 'syncNow', 'syncLink',
-    'syncShowPhrase', 'syncMore']);
+    'syncOff', 'syncMore']);
   const more = html({ enabled: true, more: true, cloud: cloud({ on: true }) });
   assert.deepEqual(ids(more), ['syncCard', 'syncToggle', 'syncBody', 'syncNow', 'syncLink',
-    'syncShowPhrase', 'syncMore', 'syncCloudStop', 'syncCloudDelete', 'syncOff']);
+    'syncOff', 'syncMore', 'syncShowPhrase', 'syncCloudStop', 'syncCloudDelete']);
   assert.ok(!more.includes('id="syncHavePhrase"'), 'a device that has the cloud has a phrase');
 });
 
 test('ON by the cloud alone: sync now works, and there is no link button where it cannot', () => {
   const card = html({ enabled: true, cloud: cloud({ on: true }), linkable: false });
   assert.deepEqual(ids(card),
-    ['syncCard', 'syncToggle', 'syncBody', 'syncNow', 'syncShowPhrase', 'syncMore']);
+    ['syncCard', 'syncToggle', 'syncBody', 'syncNow', 'syncOff', 'syncMore']);
 });
 
 test('turning off, and deleting the cloud copy, need a second tap that says what it does', () => {
-  const off = html({ enabled: true, more: true, armed: true, cloud: cloud() });
+  const off = html({ enabled: true, armed: true });
   assert.match(off, /\[sync\.tapAgain\]/);
   assert.match(off, /\[sync\.offConfirm\]/, 'the consequence, in a line of its own');
   assert.match(off, /sync-off armed/);
   const del = html({ enabled: true, more: true, cloud: cloud({ on: true, armed: true }) });
   assert.match(del, /\[sync\.tapAgain\]/);
   assert.match(del, /\[sync\.cloudDeleteConfirm\]/);
-  assert.ok(!html({ enabled: true, more: true }).includes('armed'));
+  assert.ok(!html({ enabled: true, more: true, cloud: cloud() }).includes('armed'));
 });
 
 test('buttons never carry a long sentence: the explanations are lines of their own', () => {

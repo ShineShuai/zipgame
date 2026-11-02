@@ -12,7 +12,7 @@ import { createP2p, deviceLabel, tokenOfHash } from '../../platform/sync/p2p.js'
 import { t } from '../../ui/i18n.js';
 import { cardIcon } from './icons.js';
 import { S, render, sync } from './state.js';
-import { syncCardHtml } from './sync-card.js';
+import { cloudShown, gateCloud, syncCardHtml } from './sync-card.js';
 import { showSyncNotice } from './sync-notice.js';
 
 // after a change of the player's data: before the linked devices are looked for, and before the
@@ -45,7 +45,10 @@ const set = (patch, quiet = false) => {
   ui = { ...ui, ...patch };
   if (!quiet) redraw();
 };
-const shown = () => linkable || Boolean(cloud && cloud.available());
+const capable = () => linkable || Boolean(cloud && cloud.available());
+// The cloud part is hidden until the dev reveal (hold V); see gateCloud in sync-card.js.
+const cloudVisible = () => Boolean(cloud && cloud.available()) && cloudShown(ui.phase, S.showDev);
+const shown = () => linkable || cloudVisible();
 
 function model() {
   const status = cloud ? cloud.status() : {};
@@ -65,14 +68,14 @@ function model() {
     canShare: typeof navigator.share === 'function',
     copied: ui.copied,
     now: Date.now(),
-    cloud: {
+    cloud: gateCloud({
       available: Boolean(cloud && cloud.available()),
       on: Boolean(cloud && cloud.on()),
       busy: Boolean(status.busy),
       error: status.error || null,
       lastOk: status.lastOk || 0,
       armed: ui.cloudArmed,
-    },
+    }, ui.phase, S.showDev),
     phrase: ui.phrase,
     phraseInput: ui.phraseInput,
     phraseError: ui.phraseError,
@@ -283,6 +286,13 @@ export function bindSyncCard(on) {
   if (field) field.oninput = () => { ui.phraseInput = field.value; }; // kept over a redraw
 }
 
+// The dev reveal (hold V) went on or off: the cloud part of the card comes or goes.
+export function syncReveal() {
+  if (cloud && cloud.available()) {
+    redraw();
+  }
+}
+
 // After the menu is drawn the first time: finds out what this browser can do (linking needs
 // WebRTC and src/coop; the cloud needs WebCrypto and a configured server), reads a link the page
 // was opened with, and starts the quiet meetings and the cloud rounds of a device that has them
@@ -294,7 +304,7 @@ export async function initSyncUi() {
   cloud = createCloud({ sync, backends, minPushMs: SYNC.cloud.minPushMs });
   p2p = createP2p({ sync, name: () => deviceLabel(navigator.userAgent) });
   linkable = await p2p.supported();
-  if (!shown()) return;
+  if (!capable()) return;
   health = createHealth({ notify: showSyncNotice, online: () => navigator.onLine !== false });
   cloud.onEvent(onCloudEvent);
   sync.onChange(redraw);

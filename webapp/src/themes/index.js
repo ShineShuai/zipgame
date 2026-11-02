@@ -310,6 +310,26 @@ export function createThemes({
       notify();
       return true;
     },
+    // Fills free slots with themes of the site's pool that the player's other devices keep (`ids`, from features/slots-sync.js): at most
+    // `max` of them, never over the cap, never a theme the player has, never a draft. The shown theme stays. Promise<[entry]>: those added.
+    adopt: async (ids, max = Infinity) => {
+      const added = [];
+      const free = () => Math.min(max - added.length, state.cap - state.pool.length);
+      if (free() <= 0) return added;
+      const list = (await source?.pool?.()) ?? [];
+      for (const id of ids) {
+        const c = list.find(x => x.entry.id === id && x.live && !x.entry.builtin);
+        if (free() <= 0) break;
+        if (!c || api.owns(id)) continue;
+        const bundle = await bundleOf(c);
+        if (bundle && free() > 0 && !api.owns(id) && keep(bundle)) {
+          persist();
+          added.push(bundle.entry);
+        }
+      }
+      if (added.length) notify();
+      return added;
+    },
     // An event fires: puts one theme of the site's pool on trial, shown until `until` (ms, the end of the event; the theme goes by itself
     // then). Promise<{ entry, commit, revert } | null>: commit(replaceId) keeps it and makes it the active theme, revert() leaves it; either
     // answers the event, which is not offered again. null: no valid id, the event is over or already answered, or there is nothing to

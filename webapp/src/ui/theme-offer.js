@@ -107,12 +107,12 @@ export function initThemeOffer({
   return { render };
 }
 
-// A short notice that a theme slot was earned: cap = the slots the player has now.
-export function showSlotToast({ text, cap }) {
+// A short notice that a theme slot was earned: cap = the slots the player has now; names: the themes that came with it from another device.
+export function showSlotToast({ text, cap, names = [] }) {
   const el = document.createElement('div');
   el.className = 'theme-toast';
   el.setAttribute('role', 'status');
-  el.textContent = text('theme.slot.earned', cap);
+  el.textContent = names.length ? text('theme.slot.copied', cap, names.join(', ')) : text('theme.slot.earned', cap);
   document.body.append(el);
   setTimeout(() => el.remove(), TOAST_MS);
 }

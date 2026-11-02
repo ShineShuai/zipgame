@@ -7,6 +7,7 @@ import { SYNCED_KEYS } from '../../src/core/sync/merge.js';
 import { createGift } from '../../src/features/gift.js';
 import { createReplay, earned } from '../../src/features/replay.js';
 import { createRulesSeen } from '../../src/features/rules-seen.js';
+import { createSlotsSync, SLOTS_KEY } from '../../src/features/slots-sync.js';
 import { createStore, GOTD_KEY, STATS_KEY } from '../../src/features/stats-store.js';
 import { createStreak, STREAK_KEY } from '../../src/features/streak.js';
 import { createUnlock, UNLOCK_KEY } from '../../src/features/unlock.js';
@@ -241,6 +242,29 @@ test('theme slots follow the activity of all devices; the themes themselves '
   await b.sync.disable();
   await sb.refresh();
   assert.equal(sb.gotdSolves(), 12, 'turning sync off does not take a slot back');
+});
+
+test('the number of theme slots follows the best device; its themes stay, only their ids are '
+  + 'a hint', async () => {
+  const [a, b] = [await device(), await device()];
+  const sa = createSlotsSync(a.port, a.sync);
+  const sb = createSlotsSync(b.port, b.sync);
+  await sa.init();
+  await sb.init();
+  await sa.publish(3, ['candy']);
+  await sb.publish(2, ['wood']);
+  assert.equal(slotsFor({ groupCap: sb.view().cap }), MIN_CAP, 'alone: its own number');
+  await link(a, b);
+  for (const s of [sa, sb]) {
+    assert.equal(s.view().cap, 3);
+    assert.deepEqual([...s.view().themes].sort(), ['candy', 'wood']);
+  }
+  assert.equal(slotsFor({ groupCap: sb.view().cap }), MIN_CAP + 1);
+  assert.deepEqual(await raw(b, SLOTS_KEY), { v: 1, cap: 2, themes: ['wood'] }, 'its own copy');
+  await sa.publish(2, []);
+  assert.deepEqual(await raw(a, SLOTS_KEY), { v: 1, cap: 3, themes: [] }, 'never lowered');
+  await b.sync.disable();
+  assert.equal(sb.view().cap, 2, 'without sync: its own');
 });
 
 test('the best streak of any device can earn the slot', async () => {

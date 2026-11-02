@@ -13,10 +13,10 @@ import { rowFromGame, skillBucket } from '../../core/behaviour.js';
 import { buildRecord, newTrace } from '../../features/playlog.js';
 import { sfxSolved } from '../../platform/sound.js';
 import { eventAt } from '../../themes/calendar.js';
-import { awardSlots, offerTheme, watchDay } from '../../ui/theme.js';
+import { awardSlots, offerTheme, themes, watchDay } from '../../ui/theme.js';
 import {
   $, S, SIZES, behaviour, daily, dayNo, lb, playlog, randomInt, randomSeed, render, replay, sec,
-  solid, storage, store, streak, unlock,
+  slotsSync, solid, storage, store, streak, unlock,
 } from './state.js';
 import { refreshNext } from './counters.js';
 import { gradePuzzle } from './puzzle-kit.js';
@@ -80,7 +80,31 @@ async function healStreak(date) {
 // Unlock chances (features/unlock.js) come from the streak: with every streak reward the player picks a replay chance or an unlock
 // chance (none left to unlock: a replay, as before).
 // The theme slots follow the player's activity (src/themes/slots.js): Game-of-Day solves in total and the best streak.
-export function awardThemeSlots() { awardSlots({ gotdSolves: store.gotdSolves(), bestStreak: streak?.view()?.best ?? 0 }); }
+// They follow the player's other devices too (features/slots-sync.js): the most slots any device has. A slot that came that way is filled
+// with a theme another device keeps. Promise<boolean>: a slot came.
+export async function awardThemeSlots() {
+  const group = slotsSync ? slotsSync.view() : { cap: 0, themes: [] };
+  const counts = {
+    gotdSolves: store.gotdSolves(),
+    bestStreak: streak?.view()?.best ?? 0,
+    groupCap: group.cap,
+  };
+  try {
+    return await awardSlots(counts, group.themes);
+  } catch (e) {
+    console.warn('theme slots failed:', e);
+    return false;
+  } finally {
+    publishThemeSlots();
+  }
+}
+// This device tells the others how many slots it has and which themes it keeps (the themes themselves stay on each device).
+export function publishThemeSlots() {
+  const controller = themes();
+  if (!slotsSync || !controller) return;
+  const { cap, pool } = controller.state();
+  slotsSync.publish(cap, pool.filter(entry => !entry.builtin).map(entry => entry.id));
+}
 // An offer day (src/themes/calendar.js, the digits in config.js THEMES): a theme of the site's
 // pool is offered until the local day ends. Promise<boolean>: false when today is no offer day
 // or nothing could be offered; the next check tries again.
