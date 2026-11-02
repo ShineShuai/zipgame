@@ -2,7 +2,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  agoKey, cloudErrorKey, failKey, isFlow, phraseKey, summaryOf, syncCardHtml,
+  agoKey, cloudErrorKey, cloudShown, failKey, gateCloud, isFlow, phraseKey, summaryOf,
+  syncCardHtml,
 } from '../../src/apps/play/sync-card.js';
 import { EN, ZH } from '../../src/ui/i18n.js';
 
@@ -21,6 +22,29 @@ const summary = (over = {}) => summaryOf({ ...base, ...over }, keyed);
 
 test('hidden where the browser can do neither a link nor the cloud', () => {
   assert.equal(html({ shown: false }), '');
+});
+
+test('the cloud part is hidden unless the dev reveal is on (hold V)', () => {
+  const live = cloud({ on: true, lastOk: NOW, error: 'down' });
+  assert.equal(cloudShown('idle', false), false);
+  assert.equal(cloudShown('done', false), false);
+  assert.equal(cloudShown('idle', true), true);
+  assert.equal(gateCloud(live, 'idle', true), live);
+  const hidden = gateCloud(live, 'idle', false);
+  assert.equal(hidden.available, false);
+  assert.equal(hidden.on, false);
+  assert.equal(hidden.error, null);
+  const card = html({ open: true, cloud: hidden });
+  assert.ok(!card.includes('syncMakePhrase'));
+  assert.ok(!card.includes('syncHavePhrase'));
+  assert.ok(card.includes('id="syncLink"'), 'linking devices stays');
+});
+
+test('a cloud flow under way stays when V is released', () => {
+  for (const phase of ['phrase', 'enter', 'joining']) {
+    assert.equal(cloudShown(phase, false), true, phase);
+  }
+  assert.equal(cloudShown('working', false), false);
 });
 
 // ---- closed: one line --------------------------------------------------------------------------

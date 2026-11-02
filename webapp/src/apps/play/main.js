@@ -23,7 +23,7 @@ import { createRulesSeen } from '../../features/rules-seen.js';
 import { VERSION } from '../../version.js';
 import { LEADERBOARD, BEHAVIOUR, SYNC } from '../../config.js';
 import { createSync } from '../../platform/sync/engine.js';
-import { bindSyncCard, initSyncUi } from './sync-ui.js';
+import { bindSyncCard, initSyncUi, syncReveal } from './sync-ui.js';
 import { createLeaderboard, backendsFromConfig } from '../../platform/leaderboard.js';
 import { createBehaviour, sinksFromConfig } from '../../platform/behaviour.js';
 import { t, getLang, setLang } from '../../ui/i18n.js';
@@ -220,6 +220,7 @@ function setDevReveal(on) {
   for (const { id } of PLAY_VARIANTS) { const tile = $('variantOpt-' + id); if (tile) tile.style.display = typeShown(id) ? '' : 'none'; }
   const shown = S.screen === 'game' && S.isGotd ? store.attemptOn(S.gotdDate) : store.attempt(), st = shown && shown.stats;
   if (st) document.querySelectorAll('.gotd-stats').forEach(e => { e.textContent = statsLineT(st, on); });
+  syncReveal(); // the cloud part of the device sync card comes and goes with V (menu only)
 }
 function measureStorage() {
   usage(storage).then(u => { bind({ storageUsed: ` · ~${Math.max(1, Math.round(u.chars * 2 / 1024))} KB in ${u.keys} keys` }); const n = $('storageNote'); if (n) n.textContent = storageNoteText(); }).catch(() => {});

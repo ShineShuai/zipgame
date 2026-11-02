@@ -59,6 +59,17 @@ export function cloudErrorKey(code) {
   return refused ? 'sync.cloudRefused' : 'sync.cloudFail';
 }
 
+// The cloud part of the card (phrase, cloud copy) shows only while the dev reveal is on (hold V),
+// until its backend is set up. A cloud flow that is under way stays, so that releasing V does
+// not tear it down.
+const CLOUD_FLOW = ['phrase', 'enter', 'joining'];
+const NO_CLOUD = {
+  available: false, on: false, busy: false, error: null, lastOk: 0, armed: false,
+};
+export const cloudShown = (phase, reveal) => Boolean(reveal) || CLOUD_FLOW.includes(phase);
+export const gateCloud = (cloud, phase, reveal) => (
+  cloudShown(phase, reveal) ? cloud : NO_CLOUD);
+
 const STATUS_KEYS = {
   waiting: 'sync.waiting', connecting: 'sync.connecting', syncing: 'sync.syncing',
   looking: 'sync.looking',
