@@ -92,6 +92,20 @@ await test('failed batch rolls back (no partial counts)', async () => {
   assert.equal(db.raw.prepare('SELECT COUNT(*) c FROM day').get().c, 0);
 });
 
+await test('http handler: ALLOWED_ORIGIN lists several origins', async () => {
+  const preflight = (env, origin) => worker.fetch(new Request('https://w.example/gotd', {
+    method: 'OPTIONS', headers: origin ? { Origin: origin } : {},
+  }), env);
+  const allow = async (env, origin) =>
+    (await preflight(env, origin)).headers.get('access-control-allow-origin');
+  const env = { DB: fakeD1(), ALLOWED_ORIGIN: 'https://u.github.io, https://play.example' };
+  assert.equal(await allow(env, 'https://play.example'), 'https://play.example');
+  assert.equal(await allow(env, 'https://u.github.io'), 'https://u.github.io');
+  assert.equal(await allow(env, 'https://evil.example'), 'https://u.github.io');
+  assert.equal(await allow(env, null), 'https://u.github.io');
+  assert.equal(await allow({ DB: fakeD1() }, 'https://play.example'), '*');
+});
+
 await test('http handler: routing, validation, CORS, size guard, db error', async () => {
   const env = { DB: fakeD1(), ALLOWED_ORIGIN: 'https://u.github.io' };
   const call = (method, path, body, headers = {}) => worker.fetch(new Request('https://w.example' + path, { method, body, headers }), env);
