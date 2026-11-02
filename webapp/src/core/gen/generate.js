@@ -1,4 +1,5 @@
-import { makePuzzle } from '../model.js';
+import { makePuzzle, cellCount } from '../model.js';
+import { allEdges } from '../edges.js';
 import { makeRng, shuffle } from '../rng.js';
 import { warnsdorff, backbite, ringPath } from './hampath.js';
 import {
@@ -6,6 +7,7 @@ import {
 } from './portals.js';
 import { gapCheckpoints, randomCheckpoints, loopCheckpoints, LOOP_TAIL } from './checkpoints.js';
 import { twoPathsLayout } from './twopaths-layout.js';
+import { pathOnBoard, shapeProblem } from './shapes.js';
 import { makeUnique, minimizeWalls, refineWalls, minimizeFully, REFINE_CAP_X } from './walls.js';
 import { solve } from '../solver/solve.js';
 import { pickK } from './pick-k.js';
@@ -76,6 +78,8 @@ export const SEED_FRACTION = 0.4;
 // o.pairs: a Teleport puzzle with that many portal pairs (gen/portals.js): the path runs through
 // every pair, the
 // numbers keep off the portal cells, and the puzzle gets portals. Not with wrap / loop.
+// o.holes: a Cutout board (Uint8Array, 1 = hole; core/model.js): the path covers the other cells (gen/shapes.js
+// pathOnBoard), the checkpoints sit along it, the puzzle keeps the holes. Not with wrap / loop / pairs / twopaths.
 // o.legCollide: leg-collision pruning (see solve.js); o.flags: optional full build-phase solve()
 // opts (see gen/flags.js), overrides o.prop/o.legCollide when given, passed straight through to
 // makeUnique; o.counts: optional call-count accumulator, passed straight through to makeUnique.
@@ -84,6 +88,7 @@ export function* tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, o = {
   const loop = !!o.loop;
   const pairs = o.pairs || 0;
   const twopaths = !!o.twopaths;
+  const holes = o.holes || null;
   let path;
   let positions;
   let portals = null;
@@ -114,6 +119,14 @@ export function* tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, o = {
     const layout = twoPathsLayout(n, K, rnd, o.cps);
     if (!layout) return null;
     ({ path, positions, split } = layout);
+  } else if (holes) {
+    // A Cutout board: a path over the cells that are left, the numbers along it.
+    path = pathOnBoard(n, holes, rnd);
+    if (!path) return null;
+    positions = o.cps === 'random'
+      ? randomCheckpoints(path.length, K, rnd)
+      : gapCheckpoints(n, path, K);
+    if (!positions) return null;
   } else {
     const findPath = o.path === 'backbite' ? backbite : warnsdorff;
     path = findPath(n, rnd, wrap);
@@ -129,6 +142,7 @@ export function* tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, o = {
   if (loop) p.loop = true;
   if (portals) p.portals = portals;
   if (split) p.split = split;
+  if (holes) p.holes = holes.slice();
   positions.forEach((q, i) => {
     p.cp[path[q]] = i + 1;
   });
@@ -315,10 +329,12 @@ export function* generate(n, seed, o = {}) {
 // loop (n even, on a grid): a Loop puzzle: a random ring cut at a random cell, which is cell 1, and
 // the numbers on its first stretch, short of the way round as in loopCheckpoints; p.path is the ring
 // from cell 1 on (its last cell touches the first), and K is at least 3.
+// holes: a Cutout board (Uint8Array, 1 = hole): the path covers the cells that are left and the puzzle keeps
+// the holes; throws the reason (gen/shapes.js shapeProblem) when the board has no path.
 export function randomPathPuzzle(
-  n, K, rnd, wrap = false, loop = false, pairs = 0, twopaths = false,
+  n, K, rnd, wrap = false, loop = false, pairs = 0, twopaths = false, holes = null,
 ) {
-  K = Math.max(loop ? 3 : twopaths ? 4 : 2, Math.min(K, n * n));
+  K = Math.max(loop ? 3 : twopaths ? 4 : 2, Math.min(K, holes ? cellCount({ n, holes }) : n * n));
   const p = makePuzzle(n);
   let path;
   let positions;
@@ -350,6 +366,11 @@ export function randomPathPuzzle(
     if (!layout) throw new Error('No Two paths board found for N=' + n + ' and ' + K + ' numbers');
     ({ path, positions } = layout);
     p.split = layout.split;
+  } else if (holes) {
+    path = shapeProblem(n, holes) ? null : pathOnBoard(n, holes, rnd);
+    if (!path) throw new Error(shapeProblem(n, holes) || 'No path found on this board: try again.');
+    positions = randomCheckpoints(path.length, K, rnd);
+    p.holes = holes.slice();
   } else {
     path = backbite(n, rnd, wrap);
     positions = randomCheckpoints(path.length, K, rnd);
@@ -369,9 +390,11 @@ export const GENERATE_UNIQUE_REFINE_X = 10;
 
 // Share of the free edges a designer attempt pre-walls at random: SEED_FRACTION without a wall cap,
 // otherwise only as many walls as the cap allows, so the seeds never outgrow what the puzzle may keep.
-function designSeedFraction(n, maxWalls, wrap = false, loop = false) {
+function designSeedFraction(n, maxWalls, wrap = false, loop = false, holes = null) {
   if (maxWalls == null) return SEED_FRACTION;
-  const freeEdges = (wrap ? 2 * n * n : n * (n - 1) * 2) - (loop ? n * n : n * n - 1);
+  const cells = holes ? cellCount({ n, holes }) : n * n;
+  const edges = holes ? allEdges(n, holes).length : wrap ? 2 * n * n : n * (n - 1) * 2;
+  const freeEdges = edges - (loop ? cells : cells - 1);
   return Math.min(SEED_FRACTION, maxWalls / freeEdges);
 }
 
@@ -405,6 +428,8 @@ function* tag(gen, extra) {
 //   the path through every pair, the numbers off the portal cells.
 // o.loop: a Loop puzzle (n even, a grid; core/model.js): the ring path and numbers of tryGenerate (the
 //   o.flags path / cps choices do not apply), K at least 3.
+// o.holes: a Cutout board (Uint8Array, 1 = hole; core/model.js) the path and the numbers are made on; the puzzle keeps
+//   the holes, no wall touches one. Not with wrap / loop / pairs / twopaths; throws the reason when the board has no path.
 // o.prop (default true): solver propagation (same solutions, far fewer nodes).
 // o.legCollide (default false): leg-collision pruning (see legsCollide() in solver/prune.js) —
 //   applied to every internal solve() call this makes (the makeUnique probe/search loop,
@@ -431,7 +456,15 @@ export function* generateUnique(n, K, rnd, o = {}) {
   if (twopaths && (n < 4 || o.wrap || loop || pairs)) {
     throw new Error('A Two paths puzzle needs n >= 4, on a grid');
   }
-  K = Math.max(loop ? 3 : twopaths ? 4 : 2, Math.min(K, n * n));
+  const holes = o.holes || null;
+  if (holes) {
+    if (o.wrap || loop || pairs || twopaths) {
+      throw new Error('A Cutout board has no wrap-around, loop, portals or two paths (yet).');
+    }
+    const problem = shapeProblem(n, holes);
+    if (problem) throw new Error(problem);
+  }
+  K = Math.max(loop ? 3 : twopaths ? 4 : 2, Math.min(K, holes ? cellCount({ n, holes }) : n * n));
   const maxWalls = o.maxWalls == null ? null : Math.max(0, Math.floor(o.maxWalls));
   const unbounded = maxWalls == null;
   const nodeCap = o.nodeCap || 50000;
@@ -448,7 +481,7 @@ export function* generateUnique(n, K, rnd, o = {}) {
   const wrap = !!o.wrap;
   if (wrap && n < 3) throw new Error('A wrap-around puzzle needs n >= 3');
   if (loop && (n % 2 || wrap)) throw new Error('A loop puzzle needs an even n, on a grid');
-  const seedFraction = designSeedFraction(n, maxWalls, wrap, loop);
+  const seedFraction = designSeedFraction(n, maxWalls, wrap, loop, holes);
   const refineBudget = o.refineNodes ?? GENERATE_UNIQUE_REFINE_X * nodeCap * 2;
   const counts = { makeUnique: 0, minimizeWalls: 0, other: 0 };
   const withTotal = () => ({ ...counts, total: counts.makeUnique + counts.minimizeWalls + counts.other });
@@ -458,7 +491,7 @@ export function* generateUnique(n, K, rnd, o = {}) {
   for (let attempt = 0; attempt < tries; attempt++) {
     const extra = { attempt: attempt + 1, of: tries };
     const gen = tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, {
-      path: pathAlgo, cps: cpsAlgo, flags: buildFlags, counts, wrap, loop, pairs, twopaths,
+      path: pathAlgo, cps: cpsAlgo, flags: buildFlags, counts, wrap, loop, pairs, twopaths, holes,
     });
     const p = yield* tag(gen, extra);
     if (p) {
@@ -483,6 +516,6 @@ export function* generateUnique(n, K, rnd, o = {}) {
   }
   if (best) return { ...best, found, counts: withTotal() };
   // the wall-free fallback is a puzzle of the same type (a Two paths one keeps its split)
-  const puzzle = randomPathPuzzle(n, K, rnd, wrap, loop, pairs, twopaths);
+  const puzzle = randomPathPuzzle(n, K, rnd, wrap, loop, pairs, twopaths, holes);
   return { puzzle, unique: false, walls: 0, removed: 0, attempts: tries, found: 0, counts: withTotal() };
 }

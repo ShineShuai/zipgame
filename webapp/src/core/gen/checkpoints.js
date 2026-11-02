@@ -39,10 +39,13 @@ export function randomCheckpoints(len, K, rnd) {
 }
 
 // Scatter K random checkpoints, ordered by nearest-next (wall-aware BFS distance; p.wrap: across the seams too).
+// A board with holes (p.holes, Cutout) numbers cells that are left only, and its routes keep off the holes.
 // Returns a new cp array.
 export function scatter(p, K, rnd) {
-  const n = p.n, T = n * n;
-  K = Math.max(2, Math.min(K, T));
+  const n = p.n, T = n * n, holes = p.holes || null;
+  const open = [];
+  for (let i = 0; i < T; i++) if (!(holes && holes[i])) open.push(i);
+  K = Math.max(2, Math.min(K, open.length));
   const bfs = (src, dst) => {
     if (src === dst) return 0;
     const seen = new Uint8Array(T); let fr = [src], d = 0; seen[src] = 1;
@@ -50,14 +53,14 @@ export function scatter(p, K, rnd) {
       d++; const nx = [];
       for (const u of fr) for (const dir of [3, 2, 1, 0]) {
         const v = neighbourCell(n, !!p.wrap, u, dir); // -1 = off the board (a torus has no such)
-        if (v < 0 || seen[v] || hasWall(p, u, v)) continue;
+        if (v < 0 || seen[v] || hasWall(p, u, v) || (holes && holes[v])) continue;
         if (v === dst) return d; seen[v] = 1; nx.push(v);
       }
       fr = nx;
     }
     return Infinity;
   };
-  const cells = shuffle([...Array(T).keys()], rnd).slice(0, K), rest = cells.slice(1), order = [cells[0]];
+  const cells = shuffle(open, rnd).slice(0, K), rest = cells.slice(1), order = [cells[0]];
   let cur = cells[0];
   while (rest.length) {
     let bi = 0, bd = Infinity;

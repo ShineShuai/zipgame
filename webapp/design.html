@@ -14,7 +14,7 @@
   <aside class="panel">
     <h1><span class="dot"></span>Zip Puzzle Designer</h1>
 
-    <div class="field field-row" data-variants="standard arrows wrap exact loop teleport twopaths">
+    <div class="field field-row" data-variants="standard arrows wrap exact loop teleport twopaths cutout">
       <label for="sizeSel">Grid size</label>
       <select id="sizeSel">
         <option value="4">4 × 4</option>
@@ -30,10 +30,11 @@
     </div>
 
     <div class="field field-row">
-      <label for="variantSel" title="Standard: checkpoints 1, 2, 3... in order, edges stop at the border, walls block. One way arrows: no walls, an arrow can be crossed only in its direction. Wrap-around: the edges join across the borders (a torus), so a step can leave one side and come in on the opposite one. Exact: a number is the step of its cell on the path (the cell numbered 8 is the 8th cell), so the numbers are gaps-and-all, 1 and the cell count among them. Loop: the path is a ring, its last cell touches cell 1 (even sizes only), the numbers 1..K are met in cyclic order and K need not be the last cell. Teleport pairs: pairs of linked cells (the same icon on both); a step from one to the other is a move, no wall stands on it, and each cell is still visited once. Two paths: a red and a blue path together cover every cell, each with its own numbers counted from 1 (red 1..k, blue 1..m), each ending on its last number; type a number after picking its colour, and the blue numbers follow the red ones by themselves. Tetrahedron, Cube: the board is the surface of a solid (4 faces of triangles, 6 faces of squares), shown as the solid you can turn, or as its flat net; the sides marked with the same letter touch when the net is folded. Ball: the surface of a ball made of triangles, squares and pentagons (a polyhedron of your choice: the list is grouped by the shapes it has); shown as the ball you can turn, or as its two halves. Pentagon: a flat board of pentagons (the Cairo tiling) with a border; every cell has 5 sides and touches up to 5 cells, the cells on the border fewer; sizes of 16, 24, 36, 48, 64, 80, 96 and 100 cells (the play app offers 16, 36, 64, 96 and 100: the others have 8 to 16 cells with only 2 neighbours, which fix much of the path); walls and numbers as in Standard, nothing to turn.">Puzzle type</label>
+      <label for="variantSel" title="Standard: checkpoints 1, 2, 3... in order, edges stop at the border, walls block. One way arrows: no walls, an arrow can be crossed only in its direction. Wrap-around: the edges join across the borders (a torus), so a step can leave one side and come in on the opposite one. Exact: a number is the step of its cell on the path (the cell numbered 8 is the 8th cell), so the numbers are gaps-and-all, 1 and the cell count among them. Loop: the path is a ring, its last cell touches cell 1 (even sizes only), the numbers 1..K are met in cyclic order and K need not be the last cell. Teleport pairs: pairs of linked cells (the same icon on both); a step from one to the other is a move, no wall stands on it, and each cell is still visited once. Two paths: a red and a blue path together cover every cell, each with its own numbers counted from 1 (red 1..k, blue 1..m), each ending on its last number; type a number after picking its colour, and the blue numbers follow the red ones by themselves. Cutout: some cells are holes (not part of the board, no checkpoint, no walls); the path covers every other cell, and the same rules as Standard apply; the Holes tool cuts and fills them, the checkerboard rule (the two colours of the cells that are left differ by 1 at most) decides whether a path can exist. Tetrahedron, Cube: the board is the surface of a solid (4 faces of triangles, 6 faces of squares), shown as the solid you can turn, or as its flat net; the sides marked with the same letter touch when the net is folded. Ball: the surface of a ball made of triangles, squares and pentagons (a polyhedron of your choice: the list is grouped by the shapes it has); shown as the ball you can turn, or as its two halves. Pentagon: a flat board of pentagons (the Cairo tiling) with a border; every cell has 5 sides and touches up to 5 cells, the cells on the border fewer; sizes of 16, 24, 36, 48, 64, 80, 96 and 100 cells (the play app offers 16, 36, 64, 96 and 100: the others have 8 to 16 cells with only 2 neighbours, which fix much of the path); walls and numbers as in Standard, nothing to turn.">Puzzle type</label>
       <select id="variantSel">
         <optgroup label="Flat">
           <option value="">Standard</option>
+          <option value="cutout">Cutout</option>
           <option value="arrows">One way arrows</option>
           <option value="wrap">Wrap-around</option>
           <option value="exact">Exact</option>
@@ -75,12 +76,13 @@
     </div>
     </div>
 
-    <div class="field" data-variants="standard arrows wrap loop teleport twopaths">
+    <div class="field" data-variants="standard arrows wrap loop teleport twopaths cutout">
       <label>Tool</label>
       <div class="segmented">
         <button id="modeNumber" class="seg active">Numbers</button>
-        <button id="modeWall" class="seg" data-variants="standard wrap loop teleport twopaths">Walls <span id="wallModeTag" class="seg-count"></span></button>
+        <button id="modeWall" class="seg" data-variants="standard wrap loop teleport twopaths cutout">Walls <span id="wallModeTag" class="seg-count"></span></button>
         <button id="modeArrow" class="seg" data-variants="arrows" title="Click a gap to cycle: an arrow one way, the other way, none ">Arrows <span id="arrowModeTag" class="seg-count"></span></button>
+        <button id="modeHole" class="seg" data-variants="cutout" title="Click a cell to cut a hole, click a hole to fill it again">Holes <span id="holeModeTag" class="seg-count"></span></button>
         <button id="modePortal" class="seg" data-variants="teleport" title="Click a cell, then its partner: a pair of linked portals. Click a portal to remove its pair.">Portals <span id="portalModeTag" class="seg-count"></span></button>
       </div>
     </div>
@@ -121,7 +123,7 @@
     </div>
     </div>
 
-    <div data-variants="standard arrows wrap loop teleport twopaths">
+    <div data-variants="standard arrows wrap loop teleport twopaths cutout">
     <div class="divider"></div>
 
     <div class="field field-row">
@@ -135,7 +137,7 @@
     </div>
     </div>
 
-    <div data-variants="standard wrap loop teleport twopaths">
+    <div data-variants="standard wrap loop teleport twopaths cutout">
     <div class="divider"></div>
 
     <div class="field field-row">
@@ -166,7 +168,7 @@
     </div>
     </div>
 
-    <div data-variants="standard wrap loop teleport twopaths">
+    <div data-variants="standard wrap loop teleport twopaths cutout">
     <div class="divider"></div>
 
     <div class="field field-row" data-variants="teleport" style="display:none">
@@ -191,6 +193,64 @@
       With max nodes on, all retries are used to collect candidates and the one with the most search nodes is kept.
       The search is heuristic, so a failed run does not prove that no puzzle exists.
       Algorithm flags and seed are set above the board.
+    </div>
+    </div>
+
+    <div data-variants="cutout" style="display:none">
+    <div class="divider"></div>
+    <div class="field">
+      <label>Cutout generator</label>
+      <button id="randCutout" class="wide" title="The Play app's Cutout generator: it picks a board (an outline with holes inside), a path, the numbers and the walls, until the puzzle has one solution and the grade asked for. It replaces the board. The seed field applies.">✂️✓ Generate cutout</button>
+    </div>
+    <div class="field field-row">
+      <label for="cutoutShape" title="Outline of the board: a square (with holes inside), an octagon, an L, a cross, a T, a U or an H. Any = the generator chooses.">Outline</label>
+      <select id="cutoutShape">
+        <option value="">any</option>
+        <option value="square">square</option>
+        <option value="octagon">octagon</option>
+        <option value="ell">L</option>
+        <option value="cross">cross</option>
+        <option value="tee">T</option>
+        <option value="ushape">U</option>
+        <option value="hshape">H</option>
+      </select>
+    </div>
+    <div class="field field-row">
+      <label for="cutoutInterior" title="How many holes inside the outline (single cells, dominoes, 2 × 2 blocks or a donut hole). Any = the generator chooses; a square outline needs at least 1.">Holes inside</label>
+      <select id="cutoutInterior">
+        <option value="">any</option>
+        <option value="0">0</option>
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+      </select>
+    </div>
+    <div class="field field-row">
+      <label for="cutoutGrade" title="Trap grade the puzzle should reach or beat (the Play app's badge, without its altFrac term for boards with holes). The Play app asks for 3; a size that cannot show it gets its top grade, and a run that misses it shows the closest puzzle.">Target grade</label>
+      <select id="cutoutGrade">
+        <option value="">Play app (3)</option>
+        <option value="0">0 (easy)</option>
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5 (hardest)</option>
+      </select>
+    </div>
+    <div class="field field-row">
+      <label for="cutoutSecs" title="Stop searching after this many seconds and show the best puzzle so far (the Play app stops after 8). Empty = no cap: the same seed gives the same puzzle on every machine, but from 9 × 9 a run takes seconds to a minute.">Time cap (s)</label>
+      <input id="cutoutSecs" type="number" min="1" placeholder="none">
+    </div>
+    <div class="field row">
+      <button id="clearHoles" title="Fill every hole (the puzzle stays a Cutout one)">Clear holes</button>
+    </div>
+    <div class="hint">
+      Generate cutout builds a whole new puzzle (the seed above applies; the flags do not). To design on a board
+      of your own, cut the holes with the Holes tool, then use Path (a random path with checkpoints) or Generate
+      (a unique puzzle, walls as few as it finds) above: both keep your holes and need a board that obeys the
+      checkerboard rule. Solve, Play, Minimize and Export / Import work as in Standard; an export has a
+      <code>holes</code> line.
     </div>
     </div>
 
@@ -275,7 +335,7 @@
     <div class="divider"></div>
 
     <div class="field">
-      <button id="clearWalls" class="wide" data-variants="standard wrap loop teleport twopaths">Clear all walls</button>
+      <button id="clearWalls" class="wide" data-variants="standard wrap loop teleport twopaths cutout">Clear all walls</button>
       <button id="clearAll" class="wide">Reset board</button>
     </div>
   </aside>
@@ -294,7 +354,7 @@
         <label for="compareToggle" title="Set two algorithm flag configurations (A/B) and run Generate or Solve with both, at the same seed, to compare them">Compare A / B</label>
         <input id="compareToggle" type="checkbox">
       </div>
-      <div data-variants="standard arrows wrap exact loop teleport twopaths">
+      <div data-variants="standard arrows wrap exact loop teleport twopaths cutout">
         <div id="flagsSingle" class="flags-panel"></div>
         <div id="flagsCompare" class="flags-compare" style="display:none">
           <div class="flags-panel flags-panel-ab" data-side="A"></div>
@@ -302,7 +362,7 @@
         </div>
       </div>
     </div>
-    <div id="board" class="board" data-variants="standard arrows wrap exact loop teleport twopaths"></div>
+    <div id="board" class="board" data-variants="standard arrows wrap exact loop teleport twopaths cutout"></div>
     <div id="sfBoard" class="board sf-board" data-variants="tetra cube ball pentagon" style="display:none"></div>
     <div id="legend" class="legend"></div>
     <div id="status" class="status status-below"></div>
@@ -318,7 +378,7 @@
       <label for="nodeLimit">Search limit (nodes)</label>
       <input id="nodeLimit" type="number" min="1000" step="1000" value="300000">
     </div>
-    <div data-variants="standard arrows wrap exact loop teleport twopaths">
+    <div data-variants="standard arrows wrap exact loop teleport twopaths cutout">
       <div class="hint">Uses the Score-phase flags set above the board (side A when comparing).</div>
     </div>
     <div data-variants="tetra cube ball pentagon" style="display:none">
