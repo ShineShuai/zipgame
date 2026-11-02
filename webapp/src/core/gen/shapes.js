@@ -83,8 +83,16 @@ export function adjacency(n, holes) {
 // colour counts differ by at most 1, the cells form one piece, and at most two cells (the path's
 // ends) hang on one neighbour.
 export function shapeIsViable(n, holes) {
-  if (!isBalanced(n, holes)) {
-    return false;
+  return shapeProblem(n, holes) === null;
+}
+
+// Why no path can cover every cell of the board with these holes (a message), or null when none of
+// the cheap checks above says so: the design app shows it when a drawn board has no path.
+export function shapeProblem(n, holes) {
+  const [a, b] = colourCounts(n, holes);
+  if (Math.abs(a - b) > 1) {
+    return `Checkerboard rule: ${a} cells of one colour against ${b} of the other. A path `
+      + 'alternates colours, so the counts may differ by 1 at most.';
   }
   const adj = adjacency(n, holes);
   let cells = 0;
@@ -99,14 +107,17 @@ export function shapeIsViable(n, holes) {
       first = i;
     }
     if (adj[i].length === 0) {
-      return false;
+      return 'A cell has no neighbour left, so a path can never reach it.';
     }
     if (adj[i].length === 1) {
       ends++;
     }
   }
-  if (cells < 4 || ends > 2) {
-    return false;
+  if (cells < 4) {
+    return 'Fewer than 4 cells are left.';
+  }
+  if (ends > 2) {
+    return 'More than two cells hang on a single neighbour, and a path has only two ends.';
   }
   const seen = new Uint8Array(n * n);
   const stack = [first];
@@ -122,10 +133,23 @@ export function shapeIsViable(n, holes) {
       }
     }
   }
-  return reached === cells;
+  return reached === cells ? null : 'The cells are not one piece: a path cannot jump over a hole.';
 }
 
 // ---------- path ----------
+
+// A random path through every cell of the board with these holes (warnsdorffHoles, tried again a few
+// times as proposeBoard does), or null when none was found: shapeProblem says why when the board has none.
+export function pathOnBoard(n, holes, rnd, tries = WARNSDORFF_TRIES) {
+  const adj = adjacency(n, holes);
+  for (let attempt = 0; attempt < tries; attempt++) {
+    const path = warnsdorffHoles(n, holes, rnd, adj);
+    if (path) {
+      return path;
+    }
+  }
+  return null;
+}
 
 // Randomised Warnsdorff walk (as gen/hampath.js) over the cells that are not holes. When the
 // colour counts differ the path

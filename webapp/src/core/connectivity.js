@@ -5,6 +5,16 @@ import {
 import { buildMoves } from './solver/solve-dir.js';
 import { makeDirPropagator } from './solver/propagate-dir.js';
 
+// The cells an overlay counts as taken: the path and, on a Cutout board, the holes (they are not part of the
+// board, so no cell is waiting for them). holes = how many of them there are.
+function takenCells(p, path, T) {
+  const vis = new Uint8Array(T);
+  let holes = 0;
+  if (p.holes) for (let i = 0; i < T; i++) if (p.holes[i]) { vis[i] = 1; holes++; }
+  for (const c of path) vis[c] = 1;
+  return { vis, holes };
+}
+
 // Live per-cell status from the current path head, for the design app's play-mode overlay.
 // Drives the exact same adjacency and flood-fill the solver's connOk prune uses (buildNeighbors /
 // makeReachable from solver/prune.js), so the overlay can never disagree with what the solver
@@ -26,8 +36,7 @@ export function boardConnectivity(p, path) {
   }
   if (p.arrows) return boardConnectivityDir(p, path);
   const { nb, T } = buildNeighbors(p);
-  const vis = new Uint8Array(T);
-  for (const c of path) vis[c] = 1;
+  const { vis, holes } = takenCells(p, path, T);
   const head = path.length ? path[path.length - 1] : -1;
   const end = endCell(p);
 
@@ -43,7 +52,7 @@ export function boardConnectivity(p, path) {
     if (cell !== end && isDeadEnd(nb, vis, head, cell)) deadEnd.add(cell);
   }
 
-  return { reachable, deadEnd, unreachable, connOk: reachedCount === T - path.length };
+  return { reachable, deadEnd, unreachable, connOk: reachedCount === T - holes - path.length };
 }
 
 // Live forced-edge status from the current path head, for the design app's play-mode overlay.
@@ -65,8 +74,7 @@ export function boardPropagation(p, path) {
   }
   if (p.arrows) return boardPropagationDir(p, path);
   const { nb, T } = buildNeighbors(p);
-  const vis = new Uint8Array(T);
-  for (const c of path) vis[c] = 1;
+  const { vis } = takenCells(p, path, T);
   const head = path.length ? path[path.length - 1] : -1;
   const end = endCell(p);
   if (head < 0) return { forced: new Set(), dirs: new Uint8Array(T), infeasible: false };
@@ -97,8 +105,7 @@ export function boardLegCollide(p, path) {
     return path.length < 2 ? { infeasible: false, conflicts: [] } : boardLegCollide(...openRest(p, path));
   }
   const { nb, T } = p.arrows ? { nb: buildMoves(p).out, T: p.n * p.n } : buildNeighbors(p);
-  const vis = new Uint8Array(T);
-  for (const c of path) vis[c] = 1;
+  const { vis } = takenCells(p, path, T);
   const head = path.length ? path[path.length - 1] : -1;
   if (head < 0) return { infeasible: false, conflicts: [] };
 

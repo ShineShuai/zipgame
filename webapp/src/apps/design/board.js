@@ -116,25 +116,31 @@ export function renderBoard(board, stage, V) {
   board.style.width = board.style.height = total + 'px';
   stage.style.setProperty('--board-size', total + 'px');
   board.classList.toggle('wallmode', (V.mode === 'wall' || V.mode === 'arrow') && !V.playMode);
+  board.classList.toggle('holemode', V.mode === 'hole' && !V.playMode);
   board.classList.toggle('playmode', V.playMode);
   board.innerHTML = '';
 
+  // A Cutout board (P.holes): a hole is drawn as nothing (a dashed frame in the Holes tool, which can fill it
+  // again) and has no wall handles; a wall never touches one.
+  const holes = P.holes || null;
   const cellEls = new Array(n * n);
   for (let i = 0; i < n * n; i++) {
-    const d = box('cell editable' + (P.cp[i] ? ' has-number' : '') + (i === V.selected && !V.playMode ? ' selected' : ''), pm + (i % n) * cs, pm + ((i / n) | 0) * cs, cs, cs);
+    const d = box((holes && holes[i] ? 'cell hole' : 'cell editable') + (P.cp[i] ? ' has-number' : '') + (i === V.selected && !V.playMode ? ' selected' : ''), pm + (i % n) * cs, pm + ((i / n) | 0) * cs, cs, cs);
     d.dataset.idx = i; board.appendChild(d); cellEls[i] = d;
   }
   if (wrap) board.appendChild(box('wrapframe', pm, pm, size, size));
   const HT = Math.max(10, Math.round(cs * 0.26)), INSET = Math.round(cs * 0.16);
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
-    const e = (r * n + c) * 2;
+    const e = (r * n + c) * 2, i = e / 2;
+    const rightOk = !holes || !(holes[i] || (c < n - 1 && holes[i + 1]));
+    const downOk = !holes || !(holes[i] || (r < n - 1 && holes[i + n]));
     // A wall across a seam has a handle on both borders of the board.
-    if (c < n - 1 || wrap) {
+    if ((c < n - 1 || wrap) && rightOk) {
       for (const x of c < n - 1 ? [pm + (c + 1) * cs] : [pm + size, pm]) {
         const d = box('wallhit v' + (hasWallId(P.walls, e) ? ' on' : ''), x - HT / 2, pm + r * cs + INSET, HT, cs - 2 * INSET); d.dataset.edge = e; board.appendChild(d);
       }
     }
-    if (r < n - 1 || wrap) {
+    if ((r < n - 1 || wrap) && downOk) {
       for (const y of r < n - 1 ? [pm + (r + 1) * cs] : [pm + size, pm]) {
         const d = box('wallhit h' + (hasWallId(P.walls, e + 1) ? ' on' : ''), pm + c * cs + INSET, y - HT / 2, cs - 2 * INSET, HT); d.dataset.edge = e + 1; board.appendChild(d);
       }

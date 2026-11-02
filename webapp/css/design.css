@@ -266,3 +266,10 @@ button.playbtn.on{background:linear-gradient(135deg,#b3344f,#e0526f);}
 .sf-land{fill:rgba(255,180,84,.16);stroke:#ffb454;stroke-width:3;pointer-events:none;animation:sf-land-pulse 1.1s ease-in-out infinite alternate;}
 @keyframes sf-land-pulse{from{fill-opacity:.35;}to{fill-opacity:1;}}
 @media (prefers-reduced-motion:reduce){.sf-land{animation:none;}}
+
+/* Cutout: a hole is no cell (nothing drawn); the Holes tool shows it as a dashed frame so it can be filled again */
+.cell.hole{background:none;border-color:transparent;pointer-events:none;}
+.board.holemode .cell{cursor:pointer;}
+.board.holemode .cell:not(.hole):hover{background:#2c1c2c;box-shadow:inset 0 0 0 2px rgba(255,107,138,.55);}
+.board.holemode .cell.hole{pointer-events:auto;border:1px dashed #3a4468;}
+.board.holemode .cell.hole:hover{background:#1c2440;border-color:#5b7cfa;}

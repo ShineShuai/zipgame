@@ -15,6 +15,7 @@ import { minimizeFully } from '../../core/gen/walls.js';
 import { generateExact, EXACT_CLIMB_PROPOSALS } from '../../core/gen/exact.js';
 import { generateLoop } from '../../core/gen/loop.js';
 import { generateTeleport } from '../../core/gen/teleport.js';
+import { generateCutout } from '../../core/gen/cutout.js';
 import { generateTwoPaths } from '../../core/gen/twopaths.js';
 import { maxPortalPairs } from '../../core/gen/portals.js';
 import { EXACT_MODEL, TRAP_MODEL, TELEPORT_MODEL, TWOPATHS_MODEL } from '../../core/trap.js';
@@ -37,6 +38,7 @@ import {
   newPaths, pickColour, walkColour, solvedPaths, reached,
 } from '../../features/twopaths-play.js';
 import { mountFlagsPanel } from './flags-panel.js';
+import { toggleHole, holeCount, boardProblem } from './holes.js';
 import { runCompare } from './compare.js';
 import { renderCompareHtml } from './compare-view.js';
 import { DEFAULT_FLAGS_INT, PLAY_FLAGS_INT, decodeFlags, flagsToHex } from '../../core/gen/flags.js';
@@ -160,6 +162,7 @@ function draw() {
   $('wallModeTag').textContent = countWalls(P) ? `(${countWalls(P)})` : '';
   $('arrowModeTag').textContent = P.arrows && arrowCount(P) ? `(${arrowCount(P)})` : '';
   $('portalModeTag').textContent = P.portals && P.portals.length ? `(${P.portals.length})` : '';
+  $('holeModeTag').textContent = holeCount(P) ? `(${holeCount(P)})` : '';
   syncVariantUi();
   if (playMode) paintPlayNow();
   updateValidity();
@@ -173,7 +176,7 @@ function clearPreview() { if (preview) { preview = null; previewVisible = true; 
 // the two paths of a Two paths puzzle (no wall stands on either).
 const linksOf = p => p.portals || (p.split ? [bridgeCells(p)] : null);
 const wallable = () => {
-  const all = allEdges(P.n, null, !!P.wrap);
+  const all = allEdges(P.n, P.holes || null, !!P.wrap); // no wall touches a hole
   if (!preview || preview.length < 2) return all;
   const pe = new Set(pathEdgeIds(P.n, preview, !!P.wrap, !!P.loop, linksOf(P)));
   return all.filter(e => !pe.has(e));
@@ -202,14 +205,14 @@ function setBusy(b) {
 // the type is used (Generate / Path / Reproduce), and what does not belong to a type is hidden:
 // every element with data-variants="standard wrap ..." (design.html) is shown only for those types.
 const variantKey = p => (p.arrows ? 'arrows' : p.wrap ? 'wrap' : p.exact ? 'exact' : p.loop ? 'loop'
-  : p.portals ? 'teleport' : p.split ? 'twopaths' : '');
+  : p.portals ? 'teleport' : p.split ? 'twopaths' : p.holes ? 'cutout' : '');
 // The type shown: a cell-graph type (Tetrahedron, Cube, Ball, Pentagon) while surface.js owns the
 // board.
 const currentKey = () => (surface.active ? surface.kind : variantKey(P));
 const isSurfaceKey = key => ['tetra', 'cube', 'ball', 'pentagon'].includes(key);
 const VARIANT_NAME = {
   arrows: 'One way arrows', wrap: 'Wrap-around', exact: 'Exact', loop: 'Loop',
-  teleport: 'Teleport pairs', twopaths: 'Two paths',
+  teleport: 'Teleport pairs', twopaths: 'Two paths', cutout: 'Cutout',
 };
 const VARIANT_RULE = {
   arrows: ' An arrow can be crossed only in its direction; there are no walls.',
@@ -220,21 +223,26 @@ const VARIANT_RULE = {
     + 'and no wall stands on it. Each cell is still visited once.',
   twopaths: ' A red and a blue path together cover every cell; each has its own numbers from 1 and '
     + 'ends on its last one. A number is red or blue: pick the colour, then type.',
+  cutout: ' Some cells are holes, not part of the board: the path covers every other cell. '
+    + 'Pick the Holes tool and click cells to cut or fill them.',
 };
-// Give a board the puzzle type `key` ('' = standard): its marker, empty where it has content (arrows).
+// Give a board the puzzle type `key` ('' = standard): its marker, empty where it has content (arrows, holes).
 function setTypeMarker(p, key) {
   delete p.arrows; delete p.wrap; delete p.exact; delete p.loop; delete p.portals; delete p.split;
+  delete p.holes;
   if (key === 'arrows') p.arrows = new Uint8Array(p.n * p.n);
+  else if (key === 'cutout') p.holes = new Uint8Array(p.n * p.n);
   else if (key === 'teleport') p.portals = [];
   else if (key === 'twopaths') markTwoPaths(p);
   else if (key) p[key] = true;
 }
 // Whether the tool in `mode` belongs to the puzzle type `key`.
 const TOOL_TYPES = {
-  number: ['', 'arrows', 'wrap', 'exact', 'loop', 'teleport', 'twopaths'],
-  wall: ['', 'wrap', 'loop', 'teleport', 'twopaths'],
+  number: ['', 'arrows', 'wrap', 'exact', 'loop', 'teleport', 'twopaths', 'cutout'],
+  wall: ['', 'wrap', 'loop', 'teleport', 'twopaths', 'cutout'],
   arrow: ['arrows'],
   portal: ['teleport'],
+  hole: ['cutout'],
 };
 function syncVariantUi() {
   const key = currentKey();
@@ -279,6 +287,8 @@ function setVariant(key) {
   }
   const lostArrows = P.arrows ? arrowCount(P) : 0;
   if (lostArrows && key !== 'arrows') notes.push(`${plural(lostArrows, 'arrow')} removed`);
+  const lostHoles = holeCount(P);
+  if (lostHoles && key !== 'cutout') notes.push(`${plural(lostHoles, 'hole')} filled`);
   if (had === 'wrap' && key !== 'arrows' && key !== 'exact') {
     const dropped = clearSeamWalls(P);
     if (dropped) notes.push(`${plural(dropped, 'wall')} on the seams removed`);
@@ -338,6 +348,7 @@ function adopt(q) {
     ...(q.wrap ? { wrap: true } : {}), ...(q.exact ? { exact: true } : {}), ...(q.loop ? { loop: true } : {}),
     ...(q.portals ? { portals: q.portals.map(pair => pair.slice()) } : {}),
     ...(q.split ? { split: q.split } : {}),
+    ...(q.holes ? { holes: q.holes.slice() } : {}),
   };
   preview = q.path || null; previewVisible = true; selected = -1; buffer = ''; pending = -1;
 }
@@ -387,6 +398,7 @@ function updateHint() {
     : mode === 'number' ? (P.exact ? EXACT_NUMBER_HINT : P.split ? TWO_NUMBER_HINT : NUMBER_HINT)
       : mode === 'arrow' ? ARROW_HINT
       : mode === 'portal' ? PORTAL_HINT
+      : mode === 'hole' ? HOLE_HINT
       : P.wrap ? WRAP_WALL_HINT : 'Click the gaps between cells to add or remove blocking walls.');
 }
 const NUMBER_HINT = 'Click a cell then type a number (Enter to confirm · Esc to cancel). Drag a '
@@ -404,12 +416,16 @@ const WRAP_WALL_HINT = 'Click the gaps between cells to add or remove blocking w
 const PORTAL_HINT = 'Click a cell, then its partner: the two become a pair of linked portals '
   + '(the same icon on both). Click a portal to remove its pair. A portal cannot sit on a '
   + 'checkpoint or next to its partner. No wall ever stands on the link.';
+const HOLE_HINT = 'Click a cell to cut a hole in the board, click a hole to fill it again. A hole is '
+  + 'not part of the board: no checkpoint, no walls, the path skips it. Colour the cells like a '
+  + 'checkerboard: the two colours may differ by 1 at most, or no path covers the board (a message says so).';
 const ARROW_HINT = 'Click a gap between cells to cycle it: an arrow one way, the other way, none. '
   + 'A one-way edge may only be walked in its arrow\'s direction; nothing has to cross it.';
 function setMode(m) {
   mode = m;
   const tools = [
     ['modeNumber', 'number'], ['modeWall', 'wall'], ['modeArrow', 'arrow'], ['modePortal', 'portal'],
+    ['modeHole', 'hole'],
   ];
   for (const [id, name] of tools) {
     $(id).classList.toggle('active', m === name);
@@ -434,13 +450,27 @@ boardEl.addEventListener('click', e => {
   if (w && mode === 'wall') { const id = +w.dataset.edge; setWallId(P.walls, id, !hasWallId(P.walls, id)); clearSolutions(); clearPreview(); draw(); updateWallCapTag(); return; }
   if (w && mode === 'arrow') { cycleArrow(+w.dataset.edge); return; }
   const c = e.target.closest('.cell');
-  if (c && mode === 'number') {
+  if (c && mode === 'hole' && P.holes) { editHole(+c.dataset.idx); return; }
+  if (c && mode === 'number' && !isHole(+c.dataset.idx)) {
     selected = +c.dataset.idx; buffer = '';
     if (P.split && P.cp[selected]) numColour = colourOfCell(P, selected); // keeps its colour
     draw();
   }
   if (c && mode === 'portal' && P.portals) placePortal(+c.dataset.idx);
 });
+const isHole = idx => !!(P.holes && P.holes[idx]);
+// The Holes tool (Cutout): cut a hole or fill it again; the status says what went with it and, when the
+// board as drawn has no path, why (the checkerboard rule and the like).
+function editHole(idx) {
+  const done = toggleHole(P, idx);
+  if (!done) { setStatus('That cell has a checkpoint: clear its number first.', 'warn'); return; }
+  if (idx === selected) { selected = -1; buffer = ''; }
+  clearSolutions(); clearPreview(); draw(); updateWallCapTag();
+  const walls = done.walls ? ` ${plural(done.walls, 'wall')} next to it removed.` : '';
+  const problem = boardProblem(P);
+  setStatus(`${done.hole ? 'Hole cut.' : 'Hole filled.'}${walls}${problem ? ` No path covers this board: ${problem}` : ''}`,
+    problem ? 'warn' : 'ok');
+}
 // The portal tool: a click on a portal removes its pair; else the first click of a pair waits for
 // the second.
 function placePortal(idx) {
@@ -555,7 +585,7 @@ addEventListener('pointermove', e => {
   if (numDrag.dragging) {
     moveGhost(e.clientX, e.clientY); clearDrop();
     const idx = cellFromEvent(e);
-    if (idx >= 0 && idx !== numDrag.src && !P.cp[idx]) { const el = boardEl.querySelector(`.cell[data-idx="${idx}"]`); if (el) el.classList.add('drop-target'); }
+    if (idx >= 0 && idx !== numDrag.src && !P.cp[idx] && !isHole(idx)) { const el = boardEl.querySelector(`.cell[data-idx="${idx}"]`); if (el) el.classList.add('drop-target'); }
   }
 });
 addEventListener('pointerup', e => {
@@ -564,7 +594,7 @@ addEventListener('pointerup', e => {
   clearDrop();
   if (numDrag.dragging) {
     endGhost(); const idx = cellFromEvent(e);
-    if (idx >= 0 && idx !== numDrag.src && !P.cp[idx]) { P.cp[idx] = P.cp[numDrag.src]; P.cp[numDrag.src] = 0; selected = idx; buffer = ''; clearSolutions(); clearPreview(); }
+    if (idx >= 0 && idx !== numDrag.src && !P.cp[idx] && !isHole(idx)) { P.cp[idx] = P.cp[numDrag.src]; P.cp[numDrag.src] = 0; selected = idx; buffer = ''; clearSolutions(); clearPreview(); }
     suppressClick = true; setTimeout(() => { suppressClick = false; }, 120); numDrag = null; draw(); return;
   }
   numDrag = null;
@@ -976,6 +1006,13 @@ $('modeNumber').onclick = () => setMode('number');
 $('modeWall').onclick = () => setMode('wall');
 $('modeArrow').onclick = () => setMode('arrow');
 $('modePortal').onclick = () => setMode('portal');
+$('modeHole').onclick = () => setMode('hole');
+$('clearHoles').onclick = () => {
+  if (!holeCount(P)) return;
+  P.holes.fill(0);
+  clearSolutions(); clearPreview(); draw(); updateWallCapTag();
+  setStatus('All holes filled.', 'ok');
+};
 // Two paths: the colour of the numbers typed (the selected cell shows it while a number is typed)
 function setNumColour(colour) {
   numColour = colour;
@@ -1023,7 +1060,7 @@ $('randScatter').onclick = () => {
   P.walls.fill(0); preview = null; previewVisible = true; selected = -1; buffer = '';
   if (P.arrows) P.arrows.fill(0);
   if (P.portals) P.portals = []; // the new numbers could sit on a portal
-  refresh(); setStatus(`Scattered ${Math.min(K_(), P.n * P.n)} random checkpoints. ${P.arrows ? 'Arrows' : P.portals ? 'Walls and portals' : 'Walls'} cleared.`, 'ok');
+  refresh(); setStatus(`Scattered ${labelCount(P)} random checkpoints. ${P.arrows ? 'Arrows' : P.portals ? 'Walls and portals' : 'Walls'} cleared.`, 'ok');
 };
 // A loop needs an even grid (the size list only offers those in the Loop type, but an import may bring an odd one).
 const loopOdd = () => {
@@ -1044,14 +1081,14 @@ $('randPath').onclick = () => {
   let made;
   try {
     const pairs = P.portals ? pairs_() : 0;
-    made = randomPathPuzzle(P.n, K_(), rnd, !!P.wrap, !!P.loop, pairs, !!P.split);
+    made = randomPathPuzzle(P.n, K_(), rnd, !!P.wrap, !!P.loop, pairs, !!P.split, P.holes || null);
   } catch (err) {
     setStatus(err.message, 'warn');
     return;
   }
   adopt(made);
   // the type stays (an arrows puzzle starts without arrows; a Teleport one keeps its new pairs)
-  if (key !== 'teleport' && key !== 'twopaths') setTypeMarker(P, key);
+  if (key !== 'teleport' && key !== 'twopaths' && key !== 'cutout') setTypeMarker(P, key);
   refresh();
   const more = key === 'arrows' ? 'arrows' : 'walls';
   setStatus(`Generated a random Hamiltonian path${P.portals ? ` through ${plural(P.portals.length, 'portal pair')}` : ''} with checkpoints along it, no ${more}. The template is shown dashed — click Solve to check it, then add ${more} manually if it's not unique.`, 'ok');
@@ -1059,6 +1096,8 @@ $('randPath').onclick = () => {
 $('randPathUnique').onclick = async () => {
   if (playMode) exitPlay();
   if (loopOdd() || twoTooSmall()) return;
+  const unfit = boardProblem(P); // a Cutout board as drawn must have a path
+  if (unfit) { setStatus(`No path covers this board: ${unfit}`, 'warn'); return; }
   const K = Math.max(P.split ? 4 : 0, Math.min(K_(), P.n * P.n)), W = W_();
   const tries = int_('genTries', CAPPED_TRIES, 1), hardest = $('genHardest').checked;
   const seed = currentSeed(); // reads the Seed field, or picks+reveals a fresh one
@@ -1070,7 +1109,7 @@ $('randPathUnique').onclick = async () => {
       const clock = { ms: 0 };
       const genOpts = {
         maxWalls: W, tries, hardest, flags, wrap: !!P.wrap, loop: !!P.loop,
-        pairs: P.portals ? pairs_() : 0, twopaths: !!P.split,
+        pairs: P.portals ? pairs_() : 0, twopaths: !!P.split, holes: P.holes || null,
       };
       const onEvent = e => {
         const found = hardest ? ` · ${plural(e.found, 'candidate')}` : '';
@@ -1143,6 +1182,35 @@ $('randExact').onclick = async () => {
     setStatus(`Generated an Exact puzzle: ${plural(labelCount(P), 'number')} (at least ${floor}), unique. `
       + `Seed ${seed}. The template is shown dashed.`, 'ok');
   } finally { setBusy(false); }
+};
+// Cutout: the Play app's generator (gen/cutout.js) picks the board (outline x holes inside), the path, the
+// numbers and the walls itself; the fields only narrow what it tries. A time cap makes the result depend on the
+// machine: left empty, the same seed gives the same puzzle everywhere.
+$('randCutout').onclick = async () => {
+  if (playMode) exitPlay();
+  const seed = currentSeed(), shape = $('cutoutShape').value, inside = $('cutoutInterior').value;
+  const grade = $('cutoutGrade').value, secs = parseFloat($('cutoutSecs').value);
+  const opts = {
+    ...(shape ? { silhouettes: [shape] } : {}), ...(inside !== '' ? { interior: +inside } : {}),
+    ...(grade !== '' ? { grade: +grade } : {}), ...(secs > 0 ? { maxMs: secs * 1000 } : {}),
+  };
+  setBusy(true); setStatus('Generating a Cutout puzzle…', '');
+  $('compareResult').style.display = 'none';
+  try {
+    const clock = { ms: 0 };
+    const p = await runAsync(measured(generateCutout(P.n, seed, opts), clock), {
+      onEvent: e => setStatus(`Generating a Cutout puzzle… ${Math.round((e.frac ?? 0) * 100)}%${e.walls != null ? ` · ${plural(e.walls, 'wall')} so far` : ''}`, ''),
+    });
+    adopt(p);
+    setTiming('gen', clock.ms);
+    refresh();
+    const sc = p.score;
+    const grading = !sc ? ' Every cell is numbered: no board gave a puzzle.'
+      : ` Grade ${sc.grade} (aimed at ${sc.target}${sc.hit ? '' : ', not reached: the closest board is shown'}).`;
+    setStatus(`Generated a Cutout puzzle (${p.shape}): ${plural(holeCount(P), 'hole')}, ${plural(labelCount(P), 'checkpoint')}, `
+      + `${plural(countWalls(P), 'wall')}.${grading} Seed ${seed}, ${fmtMs(clock.ms)}. The template is shown dashed.`,
+    sc && !sc.hit ? 'warn' : 'ok');
+  } catch (err) { setStatus(err.message, 'error'); } finally { setBusy(false); }
 };
 // Target grade of an Exact puzzle: generateExact's hill-climb (gen/exact.js), not the standard one.
 async function genTargetExact(grade, seed, effort, retries) {
