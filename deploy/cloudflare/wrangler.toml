@@ -1,0 +1,12 @@
+# Production site: the play app at https://play.vintoshine.com/zigzag/
+# (workflow .github/workflows/prod.yml). Static files only: no script, no bindings.
+# The domain is attached once in the dashboard (Worker -> Settings -> Domains & Routes),
+# so there is no `routes` here and the deploy token needs no zone permission.
+# `dist/` is built by the workflow: the staged site in dist/zigzag/, plus _headers and _redirects.
+name = "zigzag-site"
+compatibility_date = "2026-10-01"
+workers_dev = false
+preview_urls = false
+
+[assets]
+directory = "../../dist"
