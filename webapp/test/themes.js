@@ -775,8 +775,30 @@ export function themeSystemTests(t, ok, eq, ta) {
     eq([r.ctl.awardSlots({ groupCap: 3 }), r.ctl.state().cap, r.ctl.awardSlots({ groupCap: 2 }), r.ctl.state().cap], [true, 3, false, 3]);
   });
 
+  t('themes: settle fills a free slot with a theme of another device, also when no slot came just now', async () => {
+    const r = rig({ pool: poolOf([CANDY, WOOD]), files: filesOf([CANDY, WOOD]) });
+    r.ctl.start();
+    r.ctl.awardSlots({ groupCap: 3 });
+    eq(r.ctl.state().pool.length, 2, 'the slot came earlier: 3 slots, 2 themes');
+    const res = await r.ctl.settle({ groupCap: 3 }, ['light', 'wood']);
+    eq([res.raised, res.added.map(e => e.id), r.ctl.state().pool.map(e => e.id)], [false, ['wood'], ['light', 'dark', 'wood']]);
+    eq([(await r.ctl.settle({ groupCap: 3 }, ['candy'])).added, r.ctl.state().pool.length], [[], 3], 'themes as many as slots: nothing more');
+  });
+
+  t('themes: settle does not ask the site again for the same free slots and ids', async () => {
+    const r = rig({ pool: poolOf([WOOD]), files: filesOf([WOOD]) });
+    r.ctl.start();
+    r.ctl.awardSlots({ groupCap: 3 });
+    eq((await r.ctl.settle({ groupCap: 3 }, ['gone-id'])).added, []);
+    const asked = r.calls.length;
+    eq((await r.ctl.settle({ groupCap: 3 }, ['gone-id'])).added, []);
+    eq(r.calls.length, asked, 'once per the same ids and free slots');
+    eq((await r.ctl.settle({ groupCap: 3 }, ['gone-id', 'wood'])).added.map(e => e.id), ['wood'], 'other ids: tried');
+    eq((await r.ctl.settle({ groupCap: 2 }, [])).added, [], 'no ids: nothing');
+  });
+
   t('themes: adopt fills the free slots with themes of the site pool that other devices keep; nothing else changes', async () => {
-    const r = rig({ pool: poolOf([CANDY, WOOD], ['draft']), files: filesOf([CANDY, WOOD]) });
+    const r = rig({ pool: poolOf([CANDY, WOOD], ['candy']), files: filesOf([CANDY, WOOD]) });
     r.ctl.start();
     eq(await r.ctl.adopt(['candy'], 1), [], 'no free slot: nothing');
     r.ctl.awardSlots({ groupCap: 4 });
@@ -785,7 +807,7 @@ export function themeSystemTests(t, ok, eq, ta) {
     const active = r.ctl.state().active;
     const added = await r.ctl.adopt(['light', 'gone-id', 'wood', 'candy', 'wood'], 1);
     eq([added.map(e => e.id), r.ctl.state().pool.map(e => e.id), r.ctl.state().active, changes], [['wood'], ['light', 'dark', 'wood'], active, 1], 'at most one, a built-in or an unknown id is skipped, the shown theme stays');
-    eq((await r.ctl.adopt(['wood', 'candy'])).map(e => e.id), ['candy'], 'one the device has is skipped; the cap is not passed');
+    eq((await r.ctl.adopt(['wood', 'candy'])).map(e => e.id), ['candy'], 'one the device has is skipped; a draft of the other device counts; the cap is not passed');
     eq([r.ctl.state().pool.length, (await r.ctl.adopt(['candy'])).length], [4, 0]);
     ok(JSON.parse(r.storage.data[POOL_KEY]).pool.length === 4, 'kept on the device');
   });

@@ -322,6 +322,29 @@ test('notes after a phrase joined, a cloud copy deleted, cloud turned on from a 
   assert.match(done({ kind: 'cloud-on', name: '' }), /\[sync\.cloudOnNote \[sync\.device\]\]/);
 });
 
+test('where the cloud is hidden, the note of a cloud turned on by a link is the link note', () => {
+  const hidden = note => html({ phase: 'done', enabled: true, note });
+  const card = hidden({ kind: 'cloud-on', name: 'Phone' });
+  assert.match(card, /\[sync\.linked Phone\]/);
+  assert.ok(!card.includes('cloudOnNote'));
+  assert.match(hidden({ kind: 'cloud-on', name: '' }), /\[sync\.linkedNoName\]/);
+});
+
+test('a linked device that turned its sync off is told, and is not in the list', () => {
+  const card = html({
+    phase: 'done', enabled: true, note: { kind: 'left', name: 'Phone' }, peers: [],
+  });
+  assert.match(card, /\[sync\.leftNote Phone\]/);
+  assert.match(html({ phase: 'done', enabled: true, note: { kind: 'left', name: '' } }),
+    /\[sync\.leftNote \[sync\.device\]\]/);
+  assert.ok(!card.includes('<li>'));
+});
+
+test('while the others are being told that sync goes off, the card says so', () => {
+  const card = html({ enabled: true, status: 'bye', peers: [{ name: 'P', at: 1 }] });
+  assert.match(card, /\[sync\.statusBye\]/);
+});
+
 test('a failed link says why, and the ways in are there to try again', () => {
   const card = html({ phase: 'failed', reason: 'expired' });
   assert.match(card, /\[sync\.failExpired\]/);
@@ -383,7 +406,7 @@ test('every text the card can show exists in English and Chinese', () => {
       .map(reason => ({ phase: 'failed', reason })),
     ...['network', 'denied', 'toobig'].map(error => (
       { enabled: true, cloud: cloud({ on: true, error }) })),
-    ...['linked', 'joined', 'erased', 'cloud-on'].map(kind => (
+    ...['linked', 'joined', 'erased', 'cloud-on', 'left'].map(kind => (
       { phase: 'done', enabled: true, note: { kind, name: 'a' } })),
   ];
   for (const model of models) {

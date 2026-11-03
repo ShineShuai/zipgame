@@ -45,18 +45,22 @@ export async function offerTheme({ id, until = null }) {
 export const watchDay = check => watchDayOf(check);
 
 // The player's activity ({ gotdSolves, bestStreak, groupCap }) may have earned theme slots (src/themes/slots.js): they are raised, and a
-// notice shows. When another device already has the slots (groupCap), the new ones are filled with themes that device keeps (`borrow`: ids,
-// features/slots-sync.js): the player gets no offer for a slot that came by a sync. Promise<boolean>: a slot came.
+// notice shows. The themes should be as many as the slots: a free slot is filled with a theme another device of the player keeps (`borrow`:
+// ids, features/slots-sync.js), see settle in src/themes/index.js. Promise<boolean>: a slot came or a theme was added.
 export async function awardSlots(counts, borrow = []) {
   if (!controller) return false;
-  const before = controller.state().cap;
-  if (!controller.awardSlots(counts)) return false;
-  const cap = controller.state().cap;
-  const fromGroup = counts.groupCap >= cap;
-  const added = fromGroup ? await controller.adopt(borrow, cap - before).catch(() => []) : [];
-  showSlotToast({ text: ui.text, cap, names: added.map(entry => themeName(entry, ui.lang())) });
-  return true;
+  const { raised, added } = await controller.settle(counts, borrow);
+  if (raised || added.length) {
+    showSlotToast({
+      text: ui.text,
+      cap: controller.state().cap,
+      earned: raised,
+      names: added.map(entry => themeName(entry, ui.lang())),
+    });
+  }
+  return raised || added.length > 0;
 }
+
 
 // A theme's glyph for the button: the symbol of the catalog entry (already whitelisted by pool.cleanEntry).
 function setSymbol(button, entry) {

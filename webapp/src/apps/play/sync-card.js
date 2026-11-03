@@ -13,7 +13,7 @@
 //          'done' (just linked or joined) | 'failed' | 'phrase' (the sync phrase is shown) |
 //          'enter' (the player types a sync phrase) | 'joining' (it is being used)
 //   open / more: the player opened the card / its further options
-//   status: 'waiting' | 'connecting' | 'syncing' | 'looking', or ''
+//   status: 'waiting' | 'connecting' | 'syncing' | 'looking' | 'bye', or ''
 //   note: { kind: 'linked' | 'cloud-on' | 'joined' | 'erased', name } or null
 //   reason: why it failed (p2p.js reasons)
 //   linkable: this browser can link devices (WebRTC); false hides the link buttons
@@ -71,6 +71,7 @@ export const gateCloud = (cloud, phase, reveal) => (
   cloudShown(phase, reveal) ? cloud : NO_CLOUD);
 
 const STATUS_KEYS = {
+  bye: 'sync.statusBye',
   waiting: 'sync.waiting', connecting: 'sync.connecting', syncing: 'sync.syncing',
   looking: 'sync.looking',
 };
@@ -185,7 +186,12 @@ export function syncCardHtml(model, t, icon) {
       if (kind === 'linked') {
         line = note(name ? t('sync.linked', esc(name)) : t('sync.linkedNoName'), 'ok');
       } else if (kind === 'cloud-on') {
-        line = note(t('sync.cloudOnNote', esc(name || t('sync.device'))), 'ok');
+        // Where the cloud is hidden it is just a link: the same words as for any link.
+        line = cloud.available
+          ? note(t('sync.cloudOnNote', esc(name || t('sync.device'))), 'ok')
+          : note(name ? t('sync.linked', esc(name)) : t('sync.linkedNoName'), 'ok');
+      } else if (kind === 'left') {
+        line = note(t('sync.leftNote', esc(name || t('sync.device'))), 'ok');
       } else if (kind === 'joined') {
         line = note(t('sync.joined'), 'ok');
       } else if (kind === 'erased') {
@@ -205,8 +211,8 @@ export function syncCardHtml(model, t, icon) {
         return `<li><span>${name}</span><small>${t(key, n)}</small></li>`;
       });
       extra = rows.length ? `<ul class="sync-peers">${rows.join('')}</ul>` : '';
-      if (model.status === 'looking') {
-        line = note(t('sync.looking')) + line;
+      if (model.status === 'looking' || model.status === 'bye') {
+        line = note(t(STATUS_KEYS[model.status])) + line;
       }
       if (cloud.on) {
         line += cloudLine();
