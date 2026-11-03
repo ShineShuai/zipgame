@@ -139,7 +139,13 @@ export async function deletePlay(db, ids) { // -> { deleted }: how many of the i
 
 export default {
   async fetch(req, env) {
-    const cors = { 'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '86400', Vary: 'Origin' };
+    // ALLOWED_ORIGIN: one origin or a comma-separated list. A browser accepts exactly
+    // one origin (or *) in the header, so a listed request Origin is echoed; any other
+    // request gets the first one (the browser then refuses it).
+    const allowed = (env.ALLOWED_ORIGIN || '*').split(',').map(o => o.trim()).filter(Boolean);
+    const origin = req.headers.get('Origin');
+    const allow = allowed.includes('*') ? '*' : allowed.includes(origin) ? origin : allowed[0];
+    const cors = { 'Access-Control-Allow-Origin': allow, 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '86400', Vary: 'Origin' };
     const reply = (status, body, extra = {}) => new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json', ...extra } });
     if (req.method === 'OPTIONS') return reply(204);
     const { pathname, searchParams } = new URL(req.url);
