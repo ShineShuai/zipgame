@@ -90,7 +90,8 @@ const STAGE_STATUS = { ready: 'waiting', asked: 'waiting', seen: 'waiting', quie
 
 // manual: the player asked for this round, so a failure is told at once.
 function startCloud(options, manual = false) {
-  if (cloud && cloud.on()) {
+  // While the cloud is hidden (backend not set up) it does not run: nothing to fail in silence.
+  if (cloud && cloud.on() && cloudVisible()) {
     manualCloud ||= manual;
     cloud.sync(options).then(redraw).catch(() => {});
   }
@@ -99,7 +100,7 @@ function startCloud(options, manual = false) {
 // What the cloud says about a round: a failure may be told (health.js), a success clears it.
 function onCloudEvent(event) {
   if (event.type === 'cloud' && event.state === 'ok') health.cloudOk();
-  if (event.type === 'cloud' && event.state === 'failed') {
+  if (event.type === 'cloud' && event.state === 'failed' && cloudVisible()) {
     health.cloudFailed({ error: event.error, manual: manualCloud });
   }
   if (event.state !== 'syncing') manualCloud = false;
@@ -123,6 +124,10 @@ function onEvent(event) {
       set({ phase: 'done', open: true, note: { kind: 'cloud-on', name: event.peer.name } });
       startCloud({ force: true });
       break;
+    case 'left':
+      // a linked device turned its sync off: it is gone from the list (the engine did that)
+      set({ phase: 'done', note: { kind: 'left', name: event.peer.name } });
+      break;
     case 'synced':
       health.meetOk();
       set({ status: '' });
@@ -132,7 +137,7 @@ function onEvent(event) {
         active = null;
         health.linkFailed({ reason: event.reason, seen: S.screen === 'menu' && ui.open });
         set({ phase: 'failed', reason: event.reason, status: '' });
-      } else {
+      } else if (event.kind !== 'bye') {
         health.meetFailed({ reason: event.reason });
       }
       break;
@@ -238,16 +243,27 @@ async function deleteCloud() {
     : { phase: 'failed', reason: 'erase' });
 }
 
+let leaving = false; // the others are being told: a second tap does nothing
 async function turnOff() {
   clearTimeout(armedTimer);
+  if (leaving) return;
   if (!ui.armed) {
     set({ armed: true });
     armedTimer = setTimeout(() => set({ armed: false }), ARMED_MS);
     return;
   }
-  if (p2p) p2p.stop();
-  if (cloud && cloud.on()) await cloud.erase().catch(() => {}); // as far as the servers let it
-  await sync.leave();
+  leaving = true;
+  try {
+    if (p2p) {
+      p2p.stop();
+      set({ armed: false, status: 'bye' }); // the card says the others are being told
+      await p2p.goodbye().catch(() => 0); // the linked devices that are open stop listing this one
+    }
+    if (cloud && cloud.on()) await cloud.erase().catch(() => {}); // as far as the servers let it
+    await sync.leave();
+  } finally {
+    leaving = false;
+  }
   set(fresh());
 }
 
@@ -323,7 +339,9 @@ export async function initSyncUi() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       if (p2p) p2p.stop();
-      if (cloud.on()) cloud.pushRound({ force: true, keepalive: true }).catch(() => {});
+      if (cloud.on() && cloudVisible()) {
+        cloud.pushRound({ force: true, keepalive: true }).catch(() => {});
+      }
     } else {
       startMeeting();
       startCloud();
@@ -332,7 +350,7 @@ export async function initSyncUi() {
   sync.onLocalChange(() => {
     clearTimeout(changeTimer);
     changeTimer = setTimeout(() => startMeeting(true), CHANGE_WAIT_MS);
-    if (cloud.on()) pushSoon();
+    if (cloud.on() && cloudVisible()) pushSoon();
   });
   startMeeting();
   startCloud();

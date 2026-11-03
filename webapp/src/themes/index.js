@@ -39,6 +39,7 @@ export function createThemes({
   let fonts = null;
   let trialing = null;     // the bundle on trial, if any
   let timer = null;
+  let lastTry = '';        // the free slots and ids of the last borrowing (settle)
   let offer = parseOffer(read(OFFER_KEY), trialMs);   // the theme that waits for the player, or null (see trial.js)
   if (offer && read(EVENT_KEY) === offer.event) offer = null;   // answered in another tab
   let ticking = null;     // when the foreground clock last started (null: not counting)
@@ -311,14 +312,15 @@ export function createThemes({
       return true;
     },
     // Fills free slots with themes of the site's pool that the player's other devices keep (`ids`, from features/slots-sync.js): at most
-    // `max` of them, never over the cap, never a theme the player has, never a draft. The shown theme stays. Promise<[entry]>: those added.
+    // `max` of them, never over the cap, never a theme the player has. The shown theme stays. Promise<[entry]>: those added.
+    // (A draft counts: the id comes from a device of the player, which could only have it from the dev reveal.)
     adopt: async (ids, max = Infinity) => {
       const added = [];
       const free = () => Math.min(max - added.length, state.cap - state.pool.length);
       if (free() <= 0) return added;
       const list = (await source?.pool?.()) ?? [];
       for (const id of ids) {
-        const c = list.find(x => x.entry.id === id && x.live && !x.entry.builtin);
+        const c = list.find(x => x.entry.id === id && !x.entry.builtin);
         if (free() <= 0) break;
         if (!c || api.owns(id)) continue;
         const bundle = await bundleOf(c);
@@ -329,6 +331,21 @@ export function createThemes({
       }
       if (added.length) notify();
       return added;
+    },
+    // The slots the activity earned (awardSlots), then the free slots filled with themes of the other devices (adopt): the themes should
+    // be as many as the slots, whether a slot came just now or earlier. Tried once for the same free slots and ids (a device that cannot
+    // reach the site is not asked at every sync). Promise<{ raised: boolean, added: [entry] }>
+    settle: async (counts, ids = []) => {
+      const raised = api.awardSlots(counts);
+      const wanted = ids.filter(id => !api.owns(id));
+      const free = state.cap - state.pool.length;
+      const attempt = `${free}:${wanted.join(',')}`;
+      let added = [];
+      if (free > 0 && wanted.length && attempt !== lastTry) {
+        lastTry = attempt;
+        added = await api.adopt(wanted, free).catch(() => []);
+      }
+      return { raised, added };
     },
     // An event fires: puts one theme of the site's pool on trial, shown until `until` (ms, the end of the event; the theme goes by itself
     // then). Promise<{ entry, commit, revert } | null>: commit(replaceId) keeps it and makes it the active theme, revert() leaves it; either

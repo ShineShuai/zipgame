@@ -6,6 +6,8 @@
 //   slice  {t, d}              one slice, packed (core/sync/slice.js) and base64url
 //   secret {t, s}              my cloud secret (base64url): sent when the other device has none,
 //                              or when mine has the smaller short name (two groups become one)
+//   bye    {t}                 I am turning my sync off: stop listing me (only with `bye`: then
+//                              nothing but bye and done is sent)
 //   done   {t}                 that was all I have for you
 //   part   {t, id, i, n, d}    piece i of n of a message too long for one channel message
 //
@@ -108,11 +110,13 @@ export function createReassembler() {
 
 // One exchange over an open channel with `sync` (platform/sync/engine.js).
 // `early`: channel messages that came before the exchange was started, handled first.
-// -> Promise of { peer, name, received, sent }: the other device's id and name, how many slices
-// were new to this device, how many were sent. Rejects with Error('off' | 'timeout' | 'closed' |
+// `bye`: this device is turning its sync off and only says so.
+// -> Promise of { peer, name, received, sent, secret, left }: the other device's id and name, how
+// many slices were new to this device, how many were sent, and whether the other device said it
+// is turning its sync off. Rejects with Error('off' | 'timeout' | 'closed' |
 // 'version' | 'self' | 'bad') and leaves the channel open: the caller closes it.
 export function exchange({
-  channel, sync, timers = realTimers, timeoutMs = 60000, early = [],
+  channel, sync, timers = realTimers, timeoutMs = 60000, early = [], bye = false,
 }) {
   return new Promise((resolve, reject) => {
     if (!sync.status().enabled) {
@@ -126,6 +130,7 @@ export function exchange({
     let peerSid = null;
     let secretSent = false;
     let secretAdopted = false;
+    let peerLeft = false;
     let sentDone = false;
     let gotDone = false;
     let received = 0;
@@ -147,7 +152,7 @@ export function exchange({
     const check = () => {
       if (sentDone && gotDone) {
         const secret = secretAdopted ? 'adopted' : secretSent ? 'sent' : null;
-        end(null, { peer, name: peerName, received, sent, secret });
+        end(null, { peer, name: peerName, received, sent, secret, left: peerLeft });
       }
     };
     const tooBad = () => {
@@ -171,6 +176,12 @@ export function exchange({
       peer = message.dev;
       peerName = cleanLabel(message.name);
       peerSid = /^[A-Za-z0-9_-]{8}$/.test(String(message.sid)) ? message.sid : null;
+      if (bye) { // this device is turning its sync off: nothing is sent but the news
+        send({ t: 'bye' });
+        send({ t: 'done' });
+        sentDone = true;
+        return;
+      }
       for (const slice of sync.slicesFor(have)) {
         const bytes = await packSlice(slice, { shrink: SHRINKS });
         if (bytes) {
@@ -227,6 +238,8 @@ export function exchange({
         await onSlice(message);
       } else if (message.t === 'secret' && peer !== null) {
         await onSecret(message);
+      } else if (message.t === 'bye' && peer !== null) {
+        peerLeft = true;
       } else if (message.t === 'done' && peer !== null) {
         gotDone = true;
       } else {

@@ -206,6 +206,18 @@ export function createSync({ storage, maxDevices = MAX_DEVICES }) {
     }),
     // The devices this one was linked with (p2p.js finds them again by their shared secret).
     peers: () => (id && id.peers ? id.peers.map(peer => ({ ...peer })) : []),
+    // A linked device turned its sync off: it is no longer one of the linked devices (the data it
+    // gave stays). -> whether it was one.
+    removePeer: dev => queued(async () => {
+      const known = id && (id.peers || []).some(peer => peer.dev === dev);
+      if (!known) {
+        return false;
+      }
+      id.peers = id.peers.filter(peer => peer.dev !== dev);
+      await saveId();
+      emit();
+      return true;
+    }),
     // Remembers a linked device (a known one is replaced); at most maxDevices - 1 of them.
     addPeer: peer => queued(async () => {
       if (!id || !validPeer(peer)) {

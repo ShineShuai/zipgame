@@ -90,8 +90,14 @@ link buttons are then not shown; the cloud way needs only WebCrypto and a config
    (20 minutes, then not again for 10, or 30 seconds after a change of the player's data, or
    "Sync now") and trade what is new. Both pages must be open together: devices that are not use
    the cloud.
-4. "Turn off" (tap twice) deletes the cloud copy where it can, then forgets the identity, the
-   linked devices and their slices; the player's own data stays untouched.
+4. "Turn off" (tap twice) first tells the linked devices that are open right now (`p2p.goodbye`:
+   a short meeting with one `bye` frame, at most `GOODBYE_MS`), deletes the cloud copy where it
+   can, then forgets the identity, the linked devices and their slices; the player's own data
+   stays untouched. A device that is told drops it from its list (`engine.removePeer`, the data it
+   gave stays) and says so; a device that was not open is not told (there is no server to tell
+   it), and keeps listing it.
+5. While the cloud is hidden (backend not set up) it does not run, and its failures are not
+   told; a link that carried a cloud secret says "Linked", not "Cloud sync was turned on".
 
 ## How it works
 

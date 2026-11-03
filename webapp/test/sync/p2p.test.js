@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import { RULES_SEEN_KEY } from '../../src/features/rules-seen.js';
 import { createSync } from '../../src/platform/sync/engine.js';
 import {
-  createP2p, deviceLabel, GAP_MS, INVITE_MS, linkOf, tokenOfHash,
+  createP2p, deviceLabel, GAP_MS, GOODBYE_MS, INVITE_MS, linkOf, tokenOfHash,
 } from '../../src/platform/sync/p2p.js';
 import { memoryStorage } from './helpers.js';
 
@@ -145,6 +145,31 @@ coopTest('linked devices find each other again, by themselves, and trade what is
     for (const id of ['cutout', 'arrows', 'exact', 'wrap']) assert.ok(await seenIn(d, id), id);
   }
   assert.ok(a.sync.peers()[0].at > 0);
+});
+
+coopTest('a device that turns its sync off tells the linked device that is open: it stops '
+  + 'listing it', async () => {
+  const { a, b } = await linked();
+  a.events.length = 0;
+  b.events.length = 0;
+  await b.p2p.resume({ force: true });
+  assert.equal(await a.p2p.goodbye(), 1);
+  await until(() => b.seen('left'), 'the other device is told', 8000);
+  assert.deepEqual(b.sync.peers(), [], 'no longer a linked device');
+  assert.ok(b.sync.enabled(), 'its own sync stays on');
+  assert.equal(b.events.find(e => e.type === 'left').peer.name, 'Chrome · Mac');
+  assert.equal(a.sync.peers().length, 1, 'goodbye only says it: leaving is the engine\'s');
+  b.p2p.stop();
+});
+
+coopTest('goodbye to a device that is not open waits a little, then gives up', async () => {
+  const { a, b } = await linked();
+  const told = a.p2p.goodbye();
+  a.advance(GOODBYE_MS);
+  assert.equal(await told, 0);
+  assert.equal(b.sync.peers().length, 1, 'nobody was told');
+  assert.equal(await (await node(createNetwork(URLS), fakeRtc(), 'x')).p2p.goodbye(), 0,
+    'nobody to tell');
 });
 
 coopTest('looking again is not done too soon, unless the player asks (force)', async () => {

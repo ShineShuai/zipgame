@@ -26,5 +26,6 @@ The page's `<head>` script (`index.html`) paints the active theme (or the theme 
 `pool.js` so the two cannot drift apart.
 
 Devices and themes: themes stay on each device (choice, copies, trial). Only the NUMBER of slots follows the player's devices (`zip_slots`, `features/slots-sync.js`: the most any device has).
-A device also publishes the ids of the themes it keeps; a device that gets a slot from another one takes such a theme from the site's pool (`awardSlots` in `ui/theme.js`, `adopt` in `index.js`), so
-a slot that came by a sync is not left empty until an offer day.
+A device also publishes the ids of the themes it keeps. The themes should be as many as the slots: a free slot is filled with a theme another device keeps, taken from the site's pool (`settle` and
+`adopt` in `index.js`, called by `awardSlots` in `ui/theme.js`), whether the slot came just now or earlier, so a slot that came by a sync is not left empty until an offer day. Tried once per session for
+the same free slots and ids.

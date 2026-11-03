@@ -24,6 +24,7 @@ export const WINDOW_MS = 20 * 60 * 1000; // how long a device looks for a linked
 export const GAP_MS = 10 * 60 * 1000; // before it looks again
 export const CONNECT_MS = 30000; // a connection that has not opened by then is given up
 export const CLOSE_DELAY_MS = 2500; // a finished connection is closed after this, not at once
+export const GOODBYE_MS = 8000; // a device that turns its sync off waits this long for the others
 const TOKEN = /^[A-Za-z0-9_-]{44}$/;
 
 const realTimers = { set: (fn, ms) => setTimeout(fn, ms), clear: id => clearTimeout(id) };
@@ -115,7 +116,7 @@ export function createP2p({
 
   // A connection was made (by a link or a meeting): trade slices, remember the device.
   // secret: what the two share, as base64url text.
-  async function adopt({ connection, secret, pid, kind, hint = '' }) {
+  async function adopt({ connection, secret, pid, kind, hint = '', bye = false }) {
     emit({ type: 'connecting', kind });
     const { channel } = connection;
     const early = []; // what the other side sends before the exchange is ready for it
@@ -123,10 +124,18 @@ export function createP2p({
     try {
       await waitOpen(channel);
       emit({ type: 'syncing', kind });
-      const result = await exchange({ channel, sync, timers, early });
+      const result = await exchange({ channel, sync, timers, early, bye });
       const peer = {
         dev: result.peer, secret, pid, name: result.name || cleanLabel(hint), at: now(),
       };
+      if (bye) { // this device is leaving: nothing to remember
+        return true;
+      }
+      if (result.left) { // the other one turned its sync off: it is not a linked device any more
+        await sync.removePeer(peer.dev);
+        emit({ type: 'left', peer: { dev: peer.dev, name: peer.name } });
+        return true;
+      }
       await sync.addPeer(peer);
       emit({
         type: kind === 'link' ? 'linked' : 'synced',
@@ -362,6 +371,54 @@ export function createP2p({
         }
       }
       return started;
+    },
+
+    // This device is about to turn its sync off: the linked devices that are open right now are
+    // told, so that they stop listing it. Waits for them at most GOODBYE_MS. -> how many were
+    // told.
+    async goodbye() {
+      const peers = sync.enabled() ? sync.peers() : [];
+      if (!peers.length) {
+        return 0;
+      }
+      api.stop();
+      const told = await Promise.all(peers.map(peer => new Promise(resolve => {
+        let room = null;
+        let timer = null;
+        let over = false;
+        const finish = ok => {
+          if (over) {
+            return;
+          }
+          over = true;
+          timers.clear(timer);
+          room?.close();
+          resolve(ok);
+        };
+        timer = timers.set(() => finish(false), GOODBYE_MS);
+        library().then(async () => {
+          const hub = lib.createHub({ brokers: lib.brokers });
+          room = await lib.resumeRoom({
+            hub,
+            secret: fromBase64Url(peer.secret),
+            pid: peer.pid,
+            now,
+            roomMs: GOODBYE_MS,
+            ...options(),
+            onConnection: async connection => {
+              finish(await adopt({
+                connection, secret: peer.secret, pid: peer.pid, kind: 'bye', bye: true,
+              }));
+            },
+            onExpired: () => finish(false),
+            onError: () => {},
+          });
+          if (over) { // the wait was over before the room was made
+            room.close();
+          }
+        }).catch(() => finish(false));
+      })));
+      return told.filter(Boolean).length;
     },
 
     // The windows stop (the page is hidden or sync is turned off).
