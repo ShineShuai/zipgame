@@ -11,6 +11,9 @@
 //   lspc   ln(seconds per cell): size-adjusted time; heavy-tailed, so ranks (Spearman), no means
 //   regret cells taken back per cell (u / T);  deepc = deepest take-back per cell (deep / T)
 //   stuck  deep >= F * T (--stuck, default 0.3): the player went far down a wrong turn
+// An abandoned game (its time is cut off) and a game with a hint (its time is not comparable) are left
+// out of all statistics above; the badge table shows their share (abn% = left unfinished, hint% = used
+// a hint), and the wrong turns recorded in `ev` (rows of version 1) are summarised.
 // Confidence intervals resample whole puzzles (rows of one puzzle are not independent).
 import fs from 'node:fs';
 import { makeRng } from '../src/core/rng.js';
@@ -126,13 +129,23 @@ const capped = new Set(rows.filter(r => r.f._capped).map(r => r.key)).size;
 if (capped) console.log(`NOTE: ${capped} puzzle(s) hit the solver cap: legacy metrics are low`);
 
 // ---------- one group ----------
-function report(name, g) {
+const isPlain = r => !r.abandoned && !r.hint;
+const flagCols = (all, b) => { // the share of a badge's games left unfinished / played with a hint
+  const a = all.filter(r => r.f['grade:trap'] === b);
+  return `  ${pct(a.filter(r => r.abandoned).length / a.length).padStart(5)} ` +
+    `${pct(a.filter(r => r.hint && !r.abandoned).length / a.length).padStart(5)}`;
+};
+function report(name, all) {
+  const g = all.filter(isPlain), flagged = all.length - g.length;
   const keys = [...new Set(g.map(r => r.key))], groups = keys.map(() => []);
   g.forEach((r, i) => groups[keys.indexOf(r.key)].push(i));
   const sizes = {};
   for (const r of g) sizes[r.f.n] = (sizes[r.f.n] || 0) + 1;
   console.log(`\n=== ${name}: ${g.length} rows, ${keys.length} puzzles, sizes ` +
-    Object.entries(sizes).map(([n, c]) => `${n}x${n}:${c}`).join(' '));
+    Object.entries(sizes).map(([n, c]) => `${n}x${n}:${c}`).join(' ') +
+    (flagged ? ` | left out: abandoned ${all.filter(r => r.abandoned).length}, ` +
+      `hint ${all.filter(r => r.hint && !r.abandoned).length}` : ''));
+  if (!g.length) return;
   const seen = [0, 1, 2, 3, 4, 5].map(b => g.filter(r => r.f['grade:trap'] === b).length);
   const never = seen.flatMap((c, b) => (c ? [] : [b])).join(' ');
   console.log('Play badge rows 0..5: ' + seen.join(' ') +
@@ -150,7 +163,16 @@ function report(name, g) {
   console.log(`skill bucket vs ln(s/cell): rho ${fmt(sk).trim()} (${known.length} known rows)` +
     (Math.abs(sk) < 0.15 ? ' -> no signal: dividing time by it only adds noise' : ''));
 
-  console.log('\nbadge  rows puzzles  median s  ln(s/cell)   u/T  deep/T  stuck');
+  const withEv = g.filter(r => r.events);
+  if (withEv.length) {
+    const n = withEv.map(r => r.events.length);
+    const depth = withEv.flatMap(r => r.events.map(e => e[1]));
+    console.log(`wrong turns recorded for ${withEv.length} of ${g.length} rows: none in ` +
+      `${pct(n.filter(c => !c).length / n.length)}, ${mean(n).toFixed(1)} per game` +
+      (depth.length ? `, median depth ${quant(depth, .5).toFixed(0)} cells` : ''));
+  }
+  console.log('\nbadge  rows puzzles  median s  ln(s/cell)   u/T  deep/T  stuck' +
+    (flagged ? '   abn%  hint%' : ''));
   let prev = null;
   for (let b = 0; b <= 5; b++) {
     const s = g.filter(r => r.f['grade:trap'] === b);
@@ -159,7 +181,7 @@ function report(name, g) {
     console.log(`  ${b}  ${String(s.length).padStart(6)} ${String(np).padStart(7)}` +
       `  ${quant(s.map(r => r.sec), .5).toFixed(1).padStart(8)} ${fmt(med).padStart(11)} ` +
       `${fmt(quant(s.map(r => r.regret), .5))} ${fmt(quant(s.map(r => r.deepc), .5))}` +
-      `  ${pct(mean(s.map(r => r.stuck))).padStart(5)}` +
+      `  ${pct(mean(s.map(r => r.stuck))).padStart(5)}` + (flagged ? flagCols(all, b) : '') +
       (prev && med < prev.med ? `   <- below badge ${prev.b}` : ''));
     prev = { b, med };
   }
@@ -204,8 +226,8 @@ for (const name of ['calib', 'local', 'daily']) {
 
 // ---------- time per grade, all rows together ----------
 const factor = r => (r.group === 'calib' ? 'calib' : r.kind); // blind games differ from local ones
-const kinds = [...new Set(rows.map(factor))].sort();
-const pooled = rows.filter(r => Number.isFinite(r.f.trapPredicted));
+const kinds = [...new Set(rows.filter(isPlain).map(factor))].sort();
+const pooled = rows.filter(r => isPlain(r) && Number.isFinite(r.f.trapPredicted));
 const clusters = new Set(pooled.map(r => r.key)).size;
 if (pooled.length >= 20 && clusters >= 8 && new Set(pooled.map(r => r.f.trapPredicted)).size > 2) {
   const X = pooled.map(r => [

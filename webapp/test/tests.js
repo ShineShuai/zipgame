@@ -25,12 +25,12 @@ import { REPLAY_DAYS } from '../src/core/hist.js';
 import { EN, ZH, t as tr } from '../src/ui/i18n.js';
 import { HINT_PENALTY_S, penalizedTime } from '../src/features/hints.js';
 import { createStore } from '../src/features/stats-store.js';
-import { newTrace, traceStep, traceClear, buildRecord, createPlayLog, PLAYLOG_KEY, PLAYLOG_LEGACY_KEY } from '../src/features/playlog.js';
+import { newTrace, traceStep, traceClear, traceTrack, traceEvents, buildRecord, createPlayLog, PLAYLOG_KEY, PLAYLOG_LEGACY_KEY } from '../src/features/playlog.js';
 import { loadRatings, saveRatings, loadPairs, savePairs, packRatings, unpackRatings, packPairs, unpackPairs, RATING_KEY, RATING_KEY_V1, PAIR_KEY, PAIR_KEY_V1 } from '../src/core/log-store.js';
 import { withEviction, migrateKey, usage } from '../src/platform/storage.js';
 import { STATS_KEY, GOTD_KEY, ATTEMPT_KEEP_DAYS } from '../src/features/stats-store.js';
 import { encodeShare, decodeShare, SHARE_VERSION, MAX_LEGS } from '../src/core/share-code.js';
-import { packPuzzle, unpackPuzzle, rowFromGame, validateRow, skillBucket, packS, unpackS, toWire, fromWire, toB64u, fromB64u, rowArgs, COLUMNS, COLUMN_NAMES, ROW_VERSION, UNKNOWN_SKILL, utcDay } from '../src/core/behaviour.js';
+import { packPuzzle, unpackPuzzle, rowFromGame, validateRow, skillBucket, packS, unpackS, toWire, fromWire, toB64u, fromB64u, rowArgs, COLUMNS, COLUMN_NAMES, ROW_VERSION, UNKNOWN_SKILL, utcDay, packEv, unpackEv, describeRow, EV_MAX_EVENTS } from '../src/core/behaviour.js';
 import { createBehaviour, sinksFromConfig, SINKS, QUEUE_KEY, ON_KEY, QUEUE_MAX, MAX_ROUNDS as BEHAVIOUR_ROUNDS } from '../src/platform/behaviour.js';
 import { BEHAVIOUR, LEADERBOARD } from '../src/config.js';
 import { levelOf, legsUndo, legLevels, stripText, dayOfDate, makeShareRecord, shareUrl, parseShareLink, shareText, shareStatus, isPlayable, LEVEL_EMOJI } from '../src/features/share.js';
@@ -1545,7 +1545,11 @@ ta('behaviour-eval: runs end to end on exported rows, fills Game-of-Day puzzles,
       fs.writeFileSync(path.join(gotd, date + '.txt'), r.key);
       return [0, 1, 2].map(k => row(40 + 3 * i + k, k ? 'replay' : 'gotd', null, date));
     });
-    const rows = [...local, ...daily, { ...local[0], bad: true }];
+    const flagged = [{ ...local[0], id: 90, abandoned: true },
+      { ...local[1], id: 91, abandoned: true },
+      { ...local[2], id: 92, hint: true }];
+    const withEv = local.map((r, i) => (i < 4 ? { ...r, events: [[3, 2]] } : r));
+    const rows = [...withEv, ...daily, ...flagged, { ...local[0], bad: true }];
     fs.writeFileSync(f, JSON.stringify({ rows }));
     const tool = new URL('../tools/behaviour-eval.mjs', import.meta.url).pathname;
     const run = extra => spawnSync(process.execPath,
@@ -1556,6 +1560,10 @@ ta('behaviour-eval: runs end to end on exported rows, fills Game-of-Day puzzles,
     eq(r.status, 0, r.stderr); eq(bare.status, 0, bare.stderr);
     ok(r.stdout.includes('=== local: 16 rows') && r.stdout.includes('=== daily: 18 rows')
       && r.stdout.includes('undecodable 1'), r.stdout.slice(0, 300));
+    ok(r.stdout.includes('left out: abandoned 2, hint 1') && r.stdout.includes('abn%'),
+      'flagged rows');
+    ok(r.stdout.includes('wrong turns recorded for 4 of 16 rows'),
+      'the wrong turns are summarised');
     ok(r.stdout.includes('Play badge rows 0..5') && r.stdout.includes('Spearman vs ln(s/cell)')
       && r.stdout.includes('size exponent'), 'badge table, metric table, time model printed');
     ok(bare.stdout.includes('without puzzle 18') && bare.stdout.includes('--gotd-dir')
@@ -3651,8 +3659,54 @@ t('behaviour: validateRow checks every column, fills defaults, refuses unknown k
   eq(fromWire({ ...toWire(full), pz: '!!' }), null); eq(rowArgs(full).length, COLUMNS.length); eq(rowArgs({ day: 1, ms: 2 }).slice(2), [null, null, null, null, null, null]);
   eq(COLUMN_NAMES, ['day', 'ms', 'u', 'deep', 's', 'pz', 'ev', 'v']);
 });
+t('playlog: wrong turns = the path against the solution, closed when taken back', () => {
+  const sol = [0, 1, 2, 3, 4, 5, 6, 7, 8], tr = newTrace(), go = path => traceTrack(tr, path, sol);
+  go([0]); go([0, 1, 2]); eq([tr.open, tr.events], [null, []], 'on the solution: nothing');
+  go([0, 1, 2, 9]);
+  eq(tr.open, { i: 3, d: 1 });
+  go([0, 1, 2, 9, 10]);
+  go([0, 1, 2, 9, 10, 11]);
+  go([0, 1, 2, 9, 10]);
+  eq(tr.open, { i: 3, d: 3 }, 'the deepest point is kept when it is partly taken back');
+  go([0, 1, 2, 9]);
+  go([0, 1, 2]);
+  eq([tr.open, tr.events], [null, [[3, 3]]], 'taken back to step i: the wrong turn is over');
+  go([0, 1, 5, 6, 7]);
+  go([0, 1, 5]);
+  go([0]);
+  eq(tr.events, [[3, 3], [2, 3]], 'two wrong turns, in time order');
+  go([0, 1, 5, 6]);
+  go([0, 1, 2, 8]);
+  eq([tr.events.at(-1), tr.open], [[2, 2], { i: 3, d: 1 }],
+    'taking one back and leaving elsewhere in one move');
+  go([]); eq([tr.events.length, tr.open], [4, null], 'the reset closes it');
+  go([0, 1, 2, 3, 4, 5, 6, 7, 8]); eq(tr.events.length, 4, 'the solved path adds none');
+  const tr2 = newTrace();
+  traceTrack(tr2, [0, 4], sol);
+  eq(traceEvents(tr2), [[1, 1]], 'a wrong turn still open when the game ends counts');
+  eq(traceEvents(tr2), [[1, 1]], 'and only once');
+  const tr3 = newTrace();
+  traceTrack(tr3, [0, 4], null);
+  eq([tr3.open, tr3.events], [null, []], 'without a solution nothing is tracked');
+  const tr4 = newTrace();
+  for (let k = 0; k < 40; k++) { traceTrack(tr4, [0, 4], sol); traceTrack(tr4, [0], sol); }
+  eq(tr4.events.length, 31, 'at most 31 are kept');
+  const tr5 = newTrace();
+  traceTrack(tr5, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], sol);
+  eq(tr5.open, { i: 9, d: 1 }, 'a path longer than the solution has left it');
+});
 t('behaviour: the s byte and the skill bucket (median ms per cell in half-octaves, unknown below 8 games, hints and unsolved ignored)', () => {
-  for (const kind of ['local', 'gotd', 'replay']) for (const sk of [0, 7, 15]) eq(unpackS(packS(kind, sk)), { kind, skill: sk });
+  for (const kind of ['local', 'gotd', 'replay']) {
+    for (const sk of [0, 7, 15]) {
+      eq(unpackS(packS(kind, sk)), { kind, skill: sk, hint: false, abandoned: false });
+    }
+  }
+  eq(unpackS(packS('gotd', 3, { hint: true })),
+    { kind: 'gotd', skill: 3, hint: true, abandoned: false });
+  eq(unpackS(packS('replay', 9, { abandoned: true, hint: true })),
+    { kind: 'replay', skill: 9, hint: true, abandoned: true });
+  eq(packS('local', 5) & 0x3f, packS('local', 5, { hint: true, abandoned: true }) & 0x3f,
+    'the flags are bits 6-7 only');
   eq(unpackS(3), null); eq(unpackS(300), null); eq(unpackS(packS('gotd', 99)).skill, UNKNOWN_SKILL, 'out of range = unknown');
   const rec = (ms, extra = {}) => ({ n: 7, ms, solved: true, hints: 0, ...extra });
   eq(skillBucket([]), UNKNOWN_SKILL); eq(skillBucket(Array(7).fill(rec(49 * 60))), UNKNOWN_SKILL, 'seven games are too few');
@@ -3662,14 +3716,80 @@ t('behaviour: the s byte and the skill bucket (median ms per cell in half-octave
 });
 t('behaviour: rowFromGame — which solved games become a row', () => {
   const row = rowFromGame(behGame(), BEH_CFG);
-  eq([row.day, row.ms, row.u, row.deep, row.v, row.ev, unpackS(row.s)], [utcDay(), 21000, 12, 5, ROW_VERSION, null, { kind: 'local', skill: 6 }]);
+  eq([row.day, row.ms, row.u, row.deep, row.v, row.ev, unpackS(row.s)],
+    [utcDay(), 21000, 12, 5, ROW_VERSION, null,
+      { kind: 'local', skill: 6, hint: false, abandoned: false }]);
   eq(serialize(unpackPuzzle(row.pz)), serialize(parse(BEH_TEXT)), 'a local row carries its puzzle');
   const gotd = rowFromGame(behGame({ mode: 'gotd' }), BEH_CFG); eq([gotd.pz, unpackS(gotd.s).kind], [null, 'gotd']); eq(unpackS(rowFromGame(behGame({ mode: 'replay' }), BEH_CFG).s).kind, 'replay');
   eq(rowFromGame(behGame({ mode: 'gotd', puzzle: makeSized(5) }), BEH_CFG) !== null, true, 'a Game of Day is logged at every size');
-  for (const [why, g] of [['a hint', { hints: 1 }], ['a long time in a hidden tab', { hiddenMs: 5001 }], ['a variant', { variant: 'cutout' }], ['a shared local game', { shared: true }], ['a repeat of a known Game of Day', { known: true, mode: 'gotd' }],
+  for (const [why, g] of [['a long time in a hidden tab', { hiddenMs: 5001 }],
+    ['a variant', { variant: 'cutout' }], ['a shared local game', { shared: true }],
+    ['a repeat of a known Game of Day', { known: true, mode: 'gotd' }],
     ['size 6', { puzzle: makeSized(6) }], ['size 12', { puzzle: makeSized(12) }], ['a puzzle with holes', { puzzle: { ...parse(BEH_TEXT), holes: new Uint8Array(49) } }], ['under 500 ms', { ms: 400 }], ['over an hour', { ms: 3600001 }], ['an unknown mode', { mode: 'x' }], ['a day outside the window', { day: utcDay() - 500 }]]) eq(rowFromGame(behGame(g), BEH_CFG), null, why);
   eq(rowFromGame(behGame({ hiddenMs: 5000 }), BEH_CFG) !== null, true, 'exactly the limit is still fine'); eq(rowFromGame(behGame({ undone: 1e9, maxUndone: 70000 }), BEH_CFG).u, 65535, 'counts are capped');
   eq(rowFromGame(behGame({ puzzle: makeSized(7, 7) }), { ...BEH_CFG, localSizes: [8, 9] }), null, 'localSizes comes from the config'); eq(rowFromGame(null, BEH_CFG), null);
+});
+t('behaviour: hint and abandoned games are rows with a flag; the wrong turns travel in ev', () => {
+  eq(ROW_VERSION, 1, 'version 1: per-kind skill, s bits 6-7, ev');
+  const hint = rowFromGame(behGame({ hints: 2 }),
+    BEH_CFG), gone = rowFromGame(behGame({ abandoned: true, ms: 9000 }), BEH_CFG);
+  eq([unpackS(hint.s).hint, unpackS(hint.s).abandoned, hint.ms], [true, false, 21000],
+    'a hint game: flagged, raw time');
+  eq([unpackS(gone.s).hint, unpackS(gone.s).abandoned, gone.ms], [false, true, 9000],
+    'an abandoned game: flagged, time until it was left');
+  eq(rowFromGame(behGame({ abandoned: true, hiddenMs: 5001 }), BEH_CFG), null,
+    'an abandoned game with a long hidden time is not sent either');
+  eq(rowFromGame(behGame({ abandoned: true, mode: 'gotd', known: true }), BEH_CFG), null,
+    'nor a repeat of a known Game of Day');
+  eq(rowFromGame(behGame(), BEH_CFG).ev, null, 'no wrong-turn tracking: ev is null');
+  eq([...rowFromGame(behGame({ events: [] }), BEH_CFG).ev], [1],
+    'no wrong turn: the version byte alone');
+  const row = rowFromGame(behGame({ events: [[3, 2], [10, 40]] }), BEH_CFG);
+  eq([...row.ev], [1, 3, 2, 10, 40]); eq(validateRow(row) !== null, true);
+  eq(describeRow(row),
+    { kind: 'local', skill: 6, hint: false, abandoned: false, events: [[3, 2], [10, 40]],
+      puzzle: unpackPuzzle(row.pz) });
+});
+t('behaviour: packEv / unpackEv: a version byte, 2 bytes per wrong turn, at most 31', () => {
+  eq([...packEv([])], [1]); eq(packEv(null), null); eq(packEv(undefined), null);
+  eq([...packEv([[300, 0], [-4, 999]])], [1, 255, 1, 0, 255],
+    'clamped to a byte; a wrong turn is at least 1 cell deep');
+  const many = packEv(Array.from({ length: 50 }, (_, i) => [i, i + 1]));
+  eq([many.length, EV_MAX_EVENTS], [63, 31],
+    'at most 31 wrong turns: 63 bytes, inside the 64 of the column');
+  eq(unpackEv(many).length, 31);
+  eq(unpackEv(packEv([[7, 3]])), [[7, 3]]);
+  eq(unpackEv(packEv([])), []);
+  const bads = [null, [1, 2], Uint8Array.of(2), Uint8Array.of(1, 5), Uint8Array.of(1, 1, 1, 1, 1, 1)];
+  bads.push(new Uint8Array(66).fill(1));
+  for (const bad of bads) {
+    const bytes = bad instanceof Array ? Uint8Array.from(bad) : bad;
+    eq(unpackEv(bytes), null, 'not this layout: ' + bad);
+  }
+});
+t('behaviour: a wrong turn on a real puzzle: path -> trace -> row -> describeRow', () => {
+  const p = parse(BEH_TEXT), sol = solutionPath(p), n = p.n;
+  ok(sol && sol.length === n * n, 'the test puzzle has a solution');
+  const wrong = [sol[3] + 1, sol[3] - 1, sol[3] + n, sol[3] - n]
+    .find(c => c >= 0 && c < n * n && !sol.slice(0, 5).includes(c));
+  const tr = newTrace(), go = path => traceTrack(tr, path, sol);
+  go(sol.slice(0, 4)); go([...sol.slice(0, 4), wrong]); go(sol.slice(0, 4)); go(sol);
+  const row = rowFromGame(behGame({ puzzle: p, events: traceEvents(tr) }), BEH_CFG);
+  eq(describeRow(row).events, [[4, 1]], 'left the solution at step 4, one cell deep');
+  eq(describeRow({ ...row, ev: fromB64u(toB64u(row.ev)) }).events, [[4, 1]],
+    'through the wire form');
+});
+t('behaviour: the skill bucket counts one kind of game (local vs Game of Day + replay)', () => {
+  const rec = (ms, mode) => ({ n: 7, ms, solved: true, hints: 0, mode });
+  const mixed = [...Array(8).fill(rec(49 * 120, 'local')),
+    ...Array(8).fill(rec(49 * 960, 'gotd'))];
+  eq(skillBucket(mixed, 'local'), 2);
+  eq(skillBucket(mixed, 'gotd'), 8);
+  eq(skillBucket(mixed, 'replay'), 8, 'a replay counts with the Game of Day');
+  eq(skillBucket(mixed.slice(0, 12), 'gotd'), UNKNOWN_SKILL, 'fewer than 8 games of that kind');
+  eq(skillBucket(mixed), 6, 'no kind: all games (the median of both kinds), as in version 0');
+  eq(skillBucket(Array(8).fill({ n: 7, ms: 49 * 120, solved: true, hints: 0 }), 'local'), 2,
+    'a record without a mode is a local game');
 });
 // a size-n puzzle with two checkpoints, enough for the gating tests
 function makeSized(n) { const p = makePuzzle(n); p.cp[0] = 1; p.cp[n * n - 1] = 2; return p; }
@@ -3705,7 +3825,10 @@ ta('behaviour upload: a row goes to the primary only, with the puzzle as a blob 
 ta('behaviour upload: the backup is tried only when the primary does not answer; a rejection is final; Cloudflare gets JSON', async () => {
   let { f, up } = behUp({}, ['down']); await up.enqueue(behRow());
   eq(f.calls.map(c => c.url), ['https://t.example/v2/pipeline', 'https://c.example/play']); eq(await up.pending(), 0);
-  const w = JSON.parse(f.calls[1].body); eq([w.day, w.ms, w.u, w.v, typeof w.pz, w.ev], [utcDay(), 21000, 12, 0, 'string', null]); eq(validateRow(fromWire(w)).ms, 21000);
+  const w = JSON.parse(f.calls[1].body);
+  eq([w.day, w.ms, w.u, w.v, typeof w.pz, w.ev],
+    [utcDay(), 21000, 12, ROW_VERSION, 'string', null]);
+  eq(validateRow(fromWire(w)).ms, 21000);
   ({ f, up } = behUp({}, ['invalid'])); await up.enqueue(behRow()); eq(f.calls.length, 1, 'rejected by the primary: no backup, no retry'); eq(await up.pending(), 0);
   ({ f, up } = behUp({}, ['hang', 'invalid'])); await up.enqueue(behRow()); eq(f.calls.map(c => c.a), ['hang', 'invalid'], 'a timeout counts as not answering'); eq(await up.pending(), 0);
 });

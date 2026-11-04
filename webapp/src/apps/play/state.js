@@ -8,7 +8,7 @@ import { t } from '../../ui/i18n.js';
 
 export const SIZES = PLAY_SIZES;
 export const S = { screen: 'menu', mode: 'standard', variant: null, genMode: 'standard', size: 7, puzzle: null, path: [], elapsed: 0, startTime: 0, timerId: null, finished: false,
-  gen: { frac: 0, walls: null, K: null }, gameIndex: 0, calib: false, seed: 0, nextIdx: {}, isGotd: false, isReplay: false, replayPick: null, gotdDate: null, gotdHint: null, hintsUsed: 0,
+  gen: { frac: 0, walls: null, K: null }, gameIndex: 0, calib: false, sol: null, seed: 0, nextIdx: {}, isGotd: false, isReplay: false, replayPick: null, gotdDate: null, gotdHint: null, hintsUsed: 0,
   penaltyApplied: false, hintCell: null, hintWrongCell: null, showDev: false, behaviourOn: false, difficulty: null,
   lucky: false, luckyHolder: false, luckyResult: null, luckyNote: null, genJob: null, genNotice: null, healed: false, giftTest: null,
   legs: [], paths: [[], []], colour: 0, gameDay: null, isShared: false, cam: null, pan: false,

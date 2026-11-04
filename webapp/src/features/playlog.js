@@ -6,12 +6,19 @@
 // earlier cell, or the reset), backtracks (separate take-back actions; a run of one-step undos is one), maxUndone (the
 // most cells taken back in one action: how deep the worst wrong turn went before the player noticed) and resets.
 // pushes - undone = the cells on the board at the end, so on a solved puzzle undone / T is the wasted fraction.
+// `events` are the wrong turns (traceTrack): [step, cells] = the player left the solution at that
+// step and went on that many cells
+// (deepest point) before everything from there was taken back; `open` is the wrong turn that has
+// not been taken back yet.
 import { migrateKey } from '../platform/storage.js';
 
 export const PLAYLOG_KEY = 'zip_playlog_v2', PLAYLOG_LEGACY_KEY = 'zip_playlog_v1', PLAYLOG_MAX = 500; // 500 records of ~25 B
 
 // hiddenMs: time the tab was hidden during the game (the timer keeps running then); the behaviour upload skips a game with much of it.
-export const newTrace = () => ({ pushes: 0, undone: 0, maxUndone: 0, backtracks: 0, resets: 0, run: 0, hiddenMs: 0 });
+export const newTrace = () => ({
+  pushes: 0, undone: 0, maxUndone: 0, backtracks: 0, resets: 0, run: 0, hiddenMs: 0,
+  events: [], open: null,
+});
 
 // kind = what rules.step() returned ('push' | 'pop' | 'trunc' | 'reset' | null); before / after = path length around the move.
 export function traceStep(tr, kind, before, after) {
@@ -26,6 +33,37 @@ export function traceStep(tr, kind, before, after) {
   if (kind === 'reset') { tr.resets++; tr.backtracks++; tr.undone += before; tr.pushes++; tr.maxUndone = Math.max(tr.maxUndone, before); return; } // the whole path goes, the start cell is drawn again
   const removed = Math.max(0, before - after); // 'trunc'
   tr.backtracks++; tr.undone += removed; tr.maxUndone = Math.max(tr.maxUndone, removed);
+}
+// Wrong turns: call after every move with the player's path (cell numbers, the start cell first)
+// and the solution path.
+// The path has left the solution at step i when path[i] is the first cell that differs from
+// sol[i]; the wrong turn lasts until the path is
+// on the solution again (everything from step i taken back) and its depth is the most cells past
+// step i it reached. A move that
+// takes it back and leaves the solution somewhere else in one go closes one wrong turn and opens
+// the next. Without a solution: nothing.
+// At most EV_MAX_EVENTS (core/behaviour.js) are kept: later ones are dropped, the totals (undone)
+// still count them.
+const MAX_EVENTS = 31;
+const endWrongTurn = tr => {
+  if (tr.events.length < MAX_EVENTS) tr.events.push([tr.open.i, tr.open.d]);
+  tr.open = null;
+};
+export function traceTrack(tr, path, sol) {
+  if (!sol) return;
+  let i = 0;
+  while (i < path.length && i < sol.length && path[i] === sol[i]) i++;
+  const off = i < path.length;
+  if (tr.open && (!off || tr.open.i !== i)) endWrongTurn(tr);
+  if (!off) return;
+  tr.open ||= { i, d: 0 };
+  tr.open.d = Math.max(tr.open.d, path.length - i);
+}
+// The wrong turns of the game so far, a wrong turn still open included (the game is over: solved,
+// or left).
+export function traceEvents(tr) {
+  if (tr.open) endWrongTurn(tr);
+  return tr.events;
 }
 // The "reset path" button: everything drawn is taken back.
 export function traceClear(tr, before) {
