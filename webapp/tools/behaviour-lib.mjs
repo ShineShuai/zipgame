@@ -90,12 +90,13 @@ export function createAdmin({ turso, cloudflare, fetchFn = (...a) => fetch(...a)
 }
 
 // ---------- reading the rows ----------
-// The export, decoded: kind, skill, the date, and the puzzle as the plain text the other tools read (`key`): for a local row from its packed
+// The export, decoded: kind, skill, hint, abandoned, events ([[step, cells], ...] or null), the date, and the puzzle as the plain text the other tools read (`key`): for a local row from its packed
 // bytes, for a Game of Day from its file in gotdFiles ({ 'YYYYMMDD': text }) when given. `bad` = a local row whose puzzle does not decode.
 export function describe(rows, gotdFiles = {}) {
   return rows.map(r => {
-    const bytes = r.pz ? fromB64u(r.pz) : null, d = describeRow({ s: r.s, pz: bytes }), date = dateOfDay(r.day);
-    return { ...r, kind: d.kind, skill: d.skill, date, key: d.puzzle ? serialize(d.puzzle) : bytes ? null : gotdFiles[date] || null, bad: Boolean(bytes && !d.puzzle) || d.kind === null };
+    const bytes = r.pz ? fromB64u(r.pz) : null, ev = r.ev ? fromB64u(r.ev) : null;
+    const d = describeRow({ s: r.s, pz: bytes, ev }), date = dateOfDay(r.day);
+    return { ...r, kind: d.kind, skill: d.skill, hint: d.hint, abandoned: d.abandoned, events: d.events, date, key: d.puzzle ? serialize(d.puzzle) : bytes ? null : gotdFiles[date] || null, bad: Boolean(bytes && !d.puzzle) || d.kind === null };
   });
 }
 // Rows that are the same game stored twice (a retry after a timeout, or both backends): the first of each, and how many were dropped.
