@@ -1523,6 +1523,44 @@ ta('playlog-eval: runs end to end on a small play log and prints the metrics and
   ok(r.stdout.includes(`${recs.length} records`) && r.stdout.includes('1 abandoned') && r.stdout.includes('grade:trap') && r.stdout.includes('by Play badge'), r.stdout.slice(0, 400));
   ok(!/NaN|undefined/.test(r.stdout.replace(/—/g, '')), 'no NaN/undefined in the output');
 });
+ta('behaviour-eval: runs end to end on exported rows, fills Game-of-Day puzzles, skips bad rows',
+  async () => {
+    const fs = await import('node:fs'), os = await import('node:os');
+    const path = await import('node:path'), { spawnSync } = await import('node:child_process');
+    const ratings = JSON.parse(fs.readFileSync(new URL('../tools/ratings.json', import.meta.url)));
+    const rated = ratings.filter(r => parse(r.key).n <= 6).slice(0, 8);
+    ok(rated.length >= 6, 'the ratings hold enough small puzzles for the smoke test');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'behaviour-eval-'));
+    const gotd = path.join(dir, 'gotd'), f = path.join(dir, 'rows.json');
+    fs.mkdirSync(gotd);
+    const row = (i, kind, key, date) => ({
+      where: 'turso', id: i, day: 20700 + i, ms: 4000 + 650 * i, u: (3 * i) % 7, deep: (3 * i) % 5,
+      s: 0, pz: 'x', ev: null, v: 0, kind, skill: 7, date, key, bad: false,
+    });
+    const local = rated.flatMap((r, i) =>
+      [0, 1].map(k => row(2 * i + k, 'local', r.key, '20261001')));
+    const daily = rated.slice(0, 6).flatMap((r, i) => {
+      const date = `2026100${i + 1}`;
+      fs.writeFileSync(path.join(gotd, date + '.txt'), r.key);
+      return [0, 1, 2].map(k => row(40 + 3 * i + k, k ? 'replay' : 'gotd', null, date));
+    });
+    const rows = [...local, ...daily, { ...local[0], bad: true }];
+    fs.writeFileSync(f, JSON.stringify({ rows }));
+    const tool = new URL('../tools/behaviour-eval.mjs', import.meta.url).pathname;
+    const run = extra => spawnSync(process.execPath,
+      [tool, f, '--cap', '20000', '--min-rows', '10', '--boot', '50', ...extra],
+      { encoding: 'utf8' });
+    const r = run(['--gotd-dir', gotd]), bare = run([]);
+    fs.rmSync(dir, { recursive: true, force: true });
+    eq(r.status, 0, r.stderr); eq(bare.status, 0, bare.stderr);
+    ok(r.stdout.includes('=== local: 16 rows') && r.stdout.includes('=== daily: 18 rows')
+      && r.stdout.includes('undecodable 1'), r.stdout.slice(0, 300));
+    ok(r.stdout.includes('Play badge rows 0..5') && r.stdout.includes('Spearman vs ln(s/cell)')
+      && r.stdout.includes('size exponent'), 'badge table, metric table, time model printed');
+    ok(bare.stdout.includes('without puzzle 18') && bare.stdout.includes('--gotd-dir')
+      && !bare.stdout.includes('=== daily'), bare.stdout.slice(0, 300));
+    ok(!/NaN|undefined/.test(r.stdout + bare.stdout), 'no NaN/undefined in the output');
+  });
 t('trap: grade = number of cuts reached; no cuts = the old round(); size caps apply on top', () => {
   const cuts = { cuts: [1, 2, 3, 4, 5] };
   eq([-3, 0.99, 1, 2.5, 4.99, 5, 9].map(v => trapGradeOf(v, cuts)), [0, 0, 1, 2, 4, 5, 5], 'count of cuts <= score, clamped 0..5');
