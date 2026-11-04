@@ -5,6 +5,7 @@ import { usage, pickStorage } from '../../platform/storage.js';
 import { createStore } from '../../features/stats-store.js';
 import { tapCombo, DEV_TAP_MS, devLinkMode, savePin, loadPin } from '../../features/dev-reveal.js';
 import { createDaily } from '../../features/daily.js';
+import { createCalib, calibRequested } from '../../features/calib.js';
 import { createReplay } from '../../features/replay.js';
 import { createStreak } from '../../features/streak.js';
 import { createSlotsSync } from '../../features/slots-sync.js';
@@ -325,6 +326,7 @@ async function initLang() {
   bind({
     store: createStore(storage, SIZES, Object.fromEntries(PLAY_VARIANTS.map(v => [v.id, v.sizes(SIZES)])), sync),
     daily: createDaily(storage),
+    calib: calibRequested(location.search) ? createCalib(storage) : null,
     playlog: createPlayLog(storage),
   });
   try { await store.hydrate(today()); } catch (e) { console.warn('stats hydration failed:', e); }

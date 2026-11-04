@@ -20,7 +20,7 @@ import { zoomMapHtml } from './zoom-map.js';
 // rendered when the puzzle couldn't be graded, rather than a misleading placeholder number.
 function difficultyBadgeHtml() {
   const d = S.difficulty;
-  if (!d || !d.ok) return '';
+  if (!d || !d.ok || S.calib) return ''; // a calibration game is played blind (features/calib.js)
   const g = d.trap.grade;
   return `<span class="difficulty-badge">${t('grade.' + g)} · ${g}/5</span>`;
 }

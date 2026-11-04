@@ -34,6 +34,7 @@ import { packPuzzle, unpackPuzzle, rowFromGame, validateRow, skillBucket, packS,
 import { createBehaviour, sinksFromConfig, SINKS, QUEUE_KEY, ON_KEY, QUEUE_MAX, MAX_ROUNDS as BEHAVIOUR_ROUNDS } from '../src/platform/behaviour.js';
 import { BEHAVIOUR, LEADERBOARD } from '../src/config.js';
 import { levelOf, legsUndo, legLevels, stripText, dayOfDate, makeShareRecord, shareUrl, parseShareLink, shareText, shareStatus, isPlayable, LEVEL_EMOJI } from '../src/features/share.js';
+import { createCalib, calibRequested, CALIB_DIR } from '../src/features/calib.js';
 import { NB, TOP_K, binOf, summarize, statsLine } from '../src/core/hist.js';
 import { parseDays, mergeDays, combineDays, isReplicated } from '../src/core/stats-merge.js';
 import { wls, fitCandidate, predictH, dedupe, isMonotone, selectEntries, pickEntries, fitTime, predictMs, withoutSeeds, TIME_PRIOR, invert, floorMs, needsThinking, aboveFloor, EXTRA_MIN_SKILL, timePoints, playPoints, fitTimeSize, sizeShift, sizeLevel, localDifficulty, globalDifficulty, localFromGlobal } from '../src/core/gotd-model.js';
@@ -1561,6 +1562,84 @@ ta('behaviour-eval: runs end to end on exported rows, fills Game-of-Day puzzles,
       && !bare.stdout.includes('=== daily'), bare.stdout.slice(0, 300));
     ok(!/NaN|undefined/.test(r.stdout + bare.stdout), 'no NaN/undefined in the output');
   });
+ta('calib: serves the fixed set in order from a random block; skip, wrap, reload', async () => {
+    const fs = await import('node:fs');
+    eq(['?calib', '?x=1&calib=1', '?lb=a', ''].map(calibRequested), [true, true, false, false]);
+    const rated = JSON.parse(fs.readFileSync(new URL('../tools/ratings.json', import.meta.url)));
+    const keyOfSize = n => rated.find(r => parse(r.key).n === n).key;
+    const files = Array.from({ length: 6 }, (_, i) => `cal-5-00${i}.txt`), text = keyOfSize(5);
+    const server = (index, body = text) => async url => {
+      const miss = { ok: false, status: 404 };
+      if (url === CALIB_DIR + 'index.json') {
+        return index ? { ok: true, json: async () => index } : miss;
+      }
+      const hit = files.includes(url.slice(CALIB_DIR.length));
+      return hit ? { ok: true, text: async () => body } : miss;
+    };
+    const index = { v: 1, sizes: { 5: files }, block: { 5: 3 } }, st = fakeStorage();
+    const mk = (o = {}) => createCalib(st, { fetchFn: server(index), rnd: () => 0.99, ...o });
+    let c = mk();
+    eq(await c.sizes(), [5]);
+    let g = await c.open(5);
+    eq([g.pos, g.puzzle.calib, g.puzzle.n], [3, files[3], 5], 'random start, block-aligned');
+    eq((await c.open(5)).pos, 3, 'an unsolved puzzle stays the current one');
+    await c.markSolved(5, 2); eq((await c.open(5)).pos, 3, 'a stale solve changes nothing');
+    await c.markSolved(5, 3); eq((await c.open(5)).pos, 4, 'solved: the next one');
+    eq((await c.skip(5)).pos, 5); g = await c.skip(5);
+    eq([g.pos, g.puzzle.calib], [6, files[0]], 'the order wraps around');
+    c = mk({ rnd: () => 0 });
+    eq((await c.open(5)).pos, 6, 'a reload keeps the place (the start is only random once)');
+    const fresh = createCalib(fakeStorage(), { fetchFn: server(index), rnd: () => 0 });
+    eq((await fresh.open(5)).pos, 0);
+    const rejects = async (c2, why) => {
+      let e = null;
+      try { await c2.open(5); } catch (x) { e = x; }
+      ok(e, why);
+    };
+    const mkBad = (idx, body) => createCalib(fakeStorage(), { fetchFn: server(idx, body) });
+    await rejects(mkBad(null), 'no index');
+    await rejects(mkBad({ v: 1, sizes: { 5: [] } }), 'an empty list');
+    await rejects(mkBad({ v: 2, sizes: { 5: files } }), 'an unknown version');
+    await rejects(mkBad(index, keyOfSize(6)), 'a puzzle of another size');
+  });
+ta('calib-set: builds a block-balanced set; behaviour-eval groups it as "calib"', async () => {
+  const fs = await import('node:fs'), os = await import('node:os');
+  const path = await import('node:path'), { spawnSync } = await import('node:child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'calib-')), out = path.join(dir, 'set');
+  const tool = new URL('../tools/calib-set.mjs', import.meta.url).pathname;
+  const r = spawnSync(process.execPath,
+    [tool, '--out', out, '--plan', '5:2', '--cache', path.join(dir, 'pool')],
+    { encoding: 'utf8' });
+  eq(r.status, 0, r.stderr);
+  const index = JSON.parse(fs.readFileSync(path.join(out, 'index.json'), 'utf8'));
+  const manifest = JSON.parse(fs.readFileSync(path.join(out, 'manifest.json'), 'utf8'));
+  eq([index.v, index.sizes[5].length, index.block[5]], [1, 6, 3], '5x5: badges 0..2, 3 per block');
+  const grade = Object.fromEntries(manifest.map(m => [m.file, m.grade]));
+  eq(index.sizes[5].map(f => grade[f]).slice(0, 3).sort(), [0, 1, 2], 'block 1 holds every badge');
+  eq(index.sizes[5].map(f => grade[f]).slice(3).sort(), [0, 1, 2], 'block 2 holds every badge');
+  const texts = index.sizes[5].map(f => fs.readFileSync(path.join(out, f), 'utf8'));
+  ok(texts.every(x => validate(parse(x)).ok), 'every file is a valid puzzle');
+  eq(new Set(texts).size, 6, 'all different');
+  ok(index.sizes[5].every(f => /^cal-5-\d{3}\.txt$/.test(f)), 'names carry no grade');
+  // behaviour rows on two of its puzzles and on one other puzzle: groups calib / local
+  const rated = JSON.parse(fs.readFileSync(new URL('../tools/ratings.json', import.meta.url)));
+  const other = rated.find(r => parse(r.key).n === 6).key, row = (i, key) => ({
+    where: 'turso', id: i, day: 20700 + i, ms: 3000 + 500 * i, u: i % 4, deep: i % 3, s: 0,
+    pz: 'x',
+    ev: null, v: 0, kind: 'local', skill: 7, date: '20261001', key, bad: false,
+  });
+  const rows = [...texts.slice(0, 4), other].flatMap((k, i) => [row(2 * i, k), row(2 * i + 1, k)]);
+  const f = path.join(dir, 'rows.json'); fs.writeFileSync(f, JSON.stringify({ rows }));
+  const evalTool = new URL('../tools/behaviour-eval.mjs', import.meta.url).pathname;
+  const ev = spawnSync(process.execPath,
+    [evalTool, f, '--calib-dir', out, '--min-rows', '5', '--boot', '20', '--cap', '20000'],
+    { encoding: 'utf8' });
+  fs.rmSync(dir, { recursive: true, force: true });
+  eq(ev.status, 0, ev.stderr);
+  ok(ev.stdout.includes('=== calib: 8 rows, 4 puzzles') && ev.stdout.includes('=== local: 2 rows'),
+    ev.stdout.slice(0, 300));
+  ok(!/NaN|undefined/.test(ev.stdout), 'no NaN/undefined in the output');
+});
 t('trap: grade = number of cuts reached; no cuts = the old round(); size caps apply on top', () => {
   const cuts = { cuts: [1, 2, 3, 4, 5] };
   eq([-3, 0.99, 1, 2.5, 4.99, 5, 9].map(v => trapGradeOf(v, cuts)), [0, 0, 1, 2, 4, 5, 5], 'count of cuts <= score, clamped 0..5');

@@ -1,10 +1,12 @@
 // Do the difficulty grades predict what players did? Reads the export of tools/behaviour.mjs.
 //   node tools/behaviour-eval.mjs rows.json [--gotd-dir DIR] [--cap N] [--boot B] [--seed S]
-//                                           [--stuck F] [--min-rows R]
+//                                           [--stuck F] [--min-rows R] [--calib-dir DIR]
 // rows.json = `node tools/behaviour.mjs export --out rows.json [--gotd-dir DIR]`. A Game-of-Day
 // row has no puzzle in the export unless it was made with --gotd-dir; pass --gotd-dir here to
 // fill it in (DIR/<date>.txt). Two groups are evaluated apart (time scales differ ~3x):
-// "local" and "daily" (Game of Day + replay). Labels (no player id, so none depends on the
+// "local" and "daily" (Game of Day + replay); with --calib-dir DIR (the calibration set of
+// tools/calib-set.mjs) the local games of its puzzles form a third group, "calib": played blind,
+// badges balanced. Labels (no player id, so none depends on the
 // player):
 //   lspc   ln(seconds per cell): size-adjusted time; heavy-tailed, so ranks (Spearman), no means
 //   regret cells taken back per cell (u / T);  deepc = deepest take-back per cell (deep / T)
@@ -14,6 +16,8 @@ import fs from 'node:fs';
 import { makeRng } from '../src/core/rng.js';
 import { invert, TIME_PRIOR } from '../src/core/gotd-model.js';
 import { evalCap } from './lib.mjs';
+import { parse } from '../src/core/format.js';
+import { packPuzzle, toB64u } from '../src/core/behaviour.js';
 import { NAMES, GROUP, featuresOf } from './features.mjs';
 
 const args = process.argv.slice(2);
@@ -28,6 +32,7 @@ if (!file) {
 }
 const GOTD_DIR = opt('gotd-dir'), CAP = evalCap(args), BOOT = +opt('boot', 400);
 const SEED = +opt('seed', 1), STUCK = +opt('stuck', 0.3), MIN_ROWS = +opt('min-rows', 30);
+const CALIB_DIR = opt('calib-dir');
 const SHOWN = ['grade:trap', 'trapPredicted', 'grade:ladder', 'grade:decisionNodes'];
 
 // ---------- statistics ----------
@@ -94,6 +99,11 @@ const featOf = key => {
   }
   return feats.get(key);
 };
+const idOf = text => { // canonical id of a puzzle: its packed form, whatever its comments say
+  try { return toB64u(packPuzzle(parse(text))); } catch { return null; }
+};
+const calibIds = new Set(CALIB_DIR ? fs.readdirSync(CALIB_DIR).filter(f => f.endsWith('.txt'))
+  .map(f => idOf(read(`${CALIB_DIR}/${f}`))) : []);
 const { rows: raw } = JSON.parse(fs.readFileSync(file, 'utf8'));
 const rows = [];
 let noPuzzle = 0, bad = 0;
@@ -105,7 +115,8 @@ for (const r of raw) {
   const T = f.n * f.n, sec = r.ms / 1000;
   rows.push({
     ...r, key, f, T, sec, lspc: Math.log(sec / T), regret: r.u / T, deepc: r.deep / T,
-    stuck: r.deep / T >= STUCK ? 1 : 0, group: r.kind === 'local' ? 'local' : 'daily',
+    stuck: r.deep / T >= STUCK ? 1 : 0,
+    group: r.kind !== 'local' ? 'daily' : calibIds.has(idOf(key)) ? 'calib' : 'local',
   });
 }
 console.log(`${raw.length} rows read, ${rows.length} usable; without puzzle ${noPuzzle}` +
@@ -186,18 +197,19 @@ function report(name, g) {
   console.log(`|rho| under ~${floor.toFixed(2)} cannot be told from 0 ` +
     `with ${keys.length} puzzles`);
 }
-for (const name of ['local', 'daily']) {
+for (const name of ['calib', 'local', 'daily']) {
   const g = rows.filter(r => r.group === name);
   if (g.length) report(name, g);
 }
 
 // ---------- time per grade, all rows together ----------
-const kinds = [...new Set(rows.map(r => r.kind))].sort();
+const factor = r => (r.group === 'calib' ? 'calib' : r.kind); // blind games differ from local ones
+const kinds = [...new Set(rows.map(factor))].sort();
 const pooled = rows.filter(r => Number.isFinite(r.f.trapPredicted));
 const clusters = new Set(pooled.map(r => r.key)).size;
 if (pooled.length >= 20 && clusters >= 8 && new Set(pooled.map(r => r.f.trapPredicted)).size > 2) {
   const X = pooled.map(r => [
-    1, ...kinds.slice(1).map(k => +(r.kind === k)), Math.log(r.T / 49), r.f.trapPredicted,
+    1, ...kinds.slice(1).map(k => +(factor(r) === k)), Math.log(r.T / 49), r.f.trapPredicted,
   ]);
   const m = clusterOls(X, pooled.map(r => Math.log(r.sec)), pooled.map(r => r.key));
   const k = X[0].length, c = m.b[k - 1], h = 1.96 * m.se[k - 1];
