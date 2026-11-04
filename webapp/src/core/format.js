@@ -45,6 +45,7 @@ export const portalPairs = p => (p.portals || [])
 
 // opts.path: optional current play-mode path (array of cell indices) to include as a `path` line.
 // opts.times: optional { generateMs, solveMs, playS }, written as comment lines (see timeComments).
+// opts.comments: optional array of texts, each written as a `# text` line after the header (parse() and ratingKey() skip them).
 export function serialize(p, opts = {}) {
   const cps = [];
   for (let i = 0; i < p.n * p.n; i++) if (p.cp[i]) cps.push(`${(i / p.n) | 0},${i % p.n}=${p.cp[i]}`);
@@ -81,7 +82,7 @@ export function serialize(p, opts = {}) {
     lines.push('# portals r,c~r,c ...     (pairs of linked cells; a step between them is a move)');
   }
   if (opts.path && opts.path.length) lines.push('# path r,c ...           (current play-mode line, in order, optional)');
-  lines.push(...timeComments(opts.times));
+  lines.push(...timeComments(opts.times), ...(opts.comments || []).map(c => `# ${c}`));
   lines.push(`size ${p.n}`);
   if (p.wrap) lines.push('wrap');
   if (p.loop) lines.push('loop');
