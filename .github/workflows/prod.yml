@@ -1,13 +1,21 @@
 name: Production deploy
 
 # Deploys the play app to https://play.vintoshine.com/zigzag/ (Cloudflare Workers static assets).
-# Manual: Actions -> Production deploy -> Run workflow. See deploy/README.md.
-# The code comes from `ref` (main or a hotfix/* branch); the deploy config and the smoke test
-# come from the commit this workflow runs on, so an old `ref` (rollback) deploys the same way.
+#  - Scheduled, every day: promotes the newest commit of main that has been there for
+#    SOAK_DAYS, on RELEASE_DAYS only, and only with DRY_RUN=false (otherwise it checks and
+#    stages, nothing more). The rules are in .github/scripts/select-release.sh.
+#  - Manual: Actions -> Production deploy -> Run workflow (any commit of main or of a
+#    hotfix/* branch, no waiting, e.g. a hotfix or a rollback).
+# The code comes from the chosen commit; the deploy config and the scripts come from the commit
+# this workflow runs on, so an old commit (rollback) deploys the same way. See deploy/README.md.
 
-run-name: prod ${{ inputs.ref }} - ${{ inputs.reason }}
+run-name: >-
+  ${{ github.event_name == 'schedule' && 'prod scheduled promote'
+  || format('prod {0} - {1}', inputs.ref, inputs.reason) }}
 
 on:
+  schedule:
+    - cron: '17 4 * * *'
   workflow_dispatch:
     inputs:
       ref:
@@ -33,40 +41,69 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  WRANGLER: wrangler@4   # pin the exact version printed in a deploy log, e.g. wrangler@4.x.y
+
 jobs:
-  deploy:
+  select:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: write   # moves the tags; no step stores the token, only the tag step gets it
-    environment:
-      name: production
-      url: https://play.vintoshine.com/zigzag/
-    env:
-      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.sel.outputs.run }}
+      sha: ${{ steps.sel.outputs.sha }}
+      live: ${{ steps.sel.outputs.live }}
+      dry: ${{ steps.sel.outputs.dry }}
+      smoke: ${{ steps.sel.outputs.smoke }}
+      strict: ${{ steps.sel.outputs.strict }}
+      reason: ${{ steps.sel.outputs.reason }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Resolve the ref
-        id: ref
+      - name: Select what to deploy
+        id: sel
         env:
+          EVENT: ${{ github.event_name }}
           REF: ${{ inputs.ref }}
+          REASON: ${{ inputs.reason }}
+          DRY_RUN_INPUT: ${{ inputs.dry_run }}
+          SMOKE_INPUT: ${{ inputs.smoke }}
+          PROD_FREEZE: ${{ vars.PROD_FREEZE }}
+          SOAK_DAYS: ${{ vars.SOAK_DAYS }}
+          RELEASE_DAYS: ${{ vars.RELEASE_DAYS }}
+          DRY_RUN_VAR: ${{ vars.DRY_RUN }}
+        run: bash .github/scripts/select-release.sh
+
+  deploy:
+    needs: select
+    if: ${{ needs.select.outputs.run == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write   # moves the tags; no step stores the token, only the tag steps get it
+    environment:
+      name: production
+      url: https://play.vintoshine.com/zigzag/
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      SHA: ${{ needs.select.outputs.sha }}
+      LIVE: ${{ needs.select.outputs.live }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the commit to deploy
         run: |
           set -euo pipefail
-          sha=$(git rev-parse --verify --quiet "origin/$REF^{commit}" ||
-                git rev-parse --verify --quiet "$REF^{commit}") ||
-            { echo "::error::cannot resolve '$REF'"; exit 1; }
-          on=$(git branch -r --contains "$sha" | grep -cE '^\s*origin/(main|hotfix/.+)$' || true)
-          [ "$on" -gt 0 ] ||
-            { echo "::error::$sha is on neither main nor a hotfix/* branch"; exit 1; }
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          # deploy config and smoke test: from the commit of this run, not from `ref`
+          # deploy config and scripts: from the commit of this run, not from the one deployed
           mkdir -p "$RUNNER_TEMP/ctl"
-          cp -a deploy/cloudflare .github/scripts/smoke-site.sh "$RUNNER_TEMP/ctl/"
-          git checkout --quiet --detach "$sha"
+          cp -a deploy/cloudflare .github/scripts/smoke-site.sh .github/scripts/stage-prod.sh \
+            "$RUNNER_TEMP/ctl/"
+          git checkout --quiet --detach "$SHA"
           rm -rf deploy/cloudflare
           mkdir -p deploy
           cp -a "$RUNNER_TEMP/ctl/cloudflare" deploy/cloudflare
@@ -83,27 +120,12 @@ jobs:
           npm run test:themes
 
       - name: Stage the play app
-        env:
-          SHA: ${{ steps.ref.outputs.sha }}
-        run: |
-          set -euo pipefail
-          bash .github/scripts/stage-site.sh _site
-          # Play app only: no design or stats page, no old demo pages (nothing links to them).
-          rm -f _site/webapp/design.html _site/webapp/stats.html \
-            _site/demo/index.html _site/demo/design.html
-          rm -rf dist
-          mkdir -p dist/zigzag
-          cp -a _site/. dist/zigzag/
-          cp deploy/cloudflare/_headers deploy/cloudflare/_redirects dist/
-          printf '_headers\n_redirects\n' > dist/.assetsignore
-          version=$(sed -n "s/.*VERSION = '\([^']*\)'.*/\1/p" webapp/src/version.js)
-          printf '{"sha":"%s","version":"%s","built":"%s"}\n' \
-            "$SHA" "$version" "$(date -u +%FT%TZ)" > dist/zigzag/build.json
-          echo "Staged $(find dist -type f | wc -l) files, version $version"
+        run: bash "$RUNNER_TEMP/ctl/stage-prod.sh" dist "$SHA"
 
       - name: Puzzle buffer
         env:
           MIN: ${{ vars.MIN_PUZZLE_DAYS }}
+          STRICT: ${{ needs.select.outputs.strict }}
         run: |
           min=${MIN:-10}
           n=0
@@ -111,48 +133,72 @@ jobs:
             n=$((n + 1))
           done
           echo "Game of Day puzzles ahead, counted from today (UTC): $n"
-          [ "$n" -ge "$min" ] ||
+          if [ "$n" -lt "$min" ]; then
+            if [ "$STRICT" = true ]; then
+              echo "::error::only $n puzzles ahead, fewer than MIN_PUZZLE_DAYS=$min: add puzzles"
+              exit 1
+            fi
             echo "::warning::only $n puzzles ahead, fewer than MIN_PUZZLE_DAYS=$min"
+          fi
 
       - name: Deploy to Cloudflare
-        if: ${{ !inputs.dry_run }}
+        if: ${{ needs.select.outputs.dry != 'true' }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           WRANGLER_SEND_METRICS: "false"
-        run: npx --yes wrangler@4 deploy --config deploy/cloudflare/wrangler.toml
+        run: npx --yes "$WRANGLER" deploy --config deploy/cloudflare/wrangler.toml
 
       - name: Record the deploy (tags)
-        if: ${{ !inputs.dry_run }}
+        if: ${{ needs.select.outputs.dry != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          SHA: ${{ steps.ref.outputs.sha }}
         run: |
           set -euo pipefail
           url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          tag="deploy/$(date -u +%Y%m%dT%H%MZ)"
+          tag="deploy/$(date -u +%Y%m%dT%H%M%SZ)"
           git push --quiet "$url" "$SHA:refs/tags/$tag" "+$SHA:refs/tags/prod"
           echo "Tagged $tag and prod"
 
       - name: Smoke test
-        if: ${{ !inputs.dry_run && inputs.smoke }}
+        id: smoke
+        if: ${{ needs.select.outputs.dry != 'true' && needs.select.outputs.smoke == 'true' }}
         env:
-          SHA: ${{ steps.ref.outputs.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
           bash "$RUNNER_TEMP/ctl/smoke-site.sh" \
             https://play.vintoshine.com/zigzag dist/zigzag "$SHA"
 
+      # The run stays red, but the site is back on the version that was live before.
+      - name: Roll back to the previous version
+        if: >-
+          ${{ failure() && steps.smoke.conclusion == 'failure'
+          && needs.select.outputs.live != '' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          WRANGLER_SEND_METRICS: "false"
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git checkout --quiet --detach "$LIVE"
+          rm -rf deploy/cloudflare
+          mkdir -p deploy
+          cp -a "$RUNNER_TEMP/ctl/cloudflare" deploy/cloudflare
+          bash "$RUNNER_TEMP/ctl/stage-prod.sh" dist "$LIVE"
+          npx --yes "$WRANGLER" deploy --config deploy/cloudflare/wrangler.toml
+          url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          tag="deploy/$(date -u +%Y%m%dT%H%M%SZ)"
+          git push --quiet "$url" "$LIVE:refs/tags/$tag" "+$LIVE:refs/tags/prod"
+          echo "::error::The smoke test failed: rolled back to ${LIVE:0:7}"
+
       - name: Summary
         if: always()
         env:
-          REF: ${{ inputs.ref }}
-          REASON: ${{ inputs.reason }}
-          SHA: ${{ steps.ref.outputs.sha }}
-          DRY: ${{ inputs.dry_run }}
+          REASON: ${{ needs.select.outputs.reason }}
+          DRY: ${{ needs.select.outputs.dry }}
         run: |
           {
             echo "### Production deploy"
-            echo "- ref: \`$REF\` (\`${SHA:0:7}\`), dry run: $DRY"
+            echo "- commit: \`${SHA:0:7}\`, live before: \`${LIVE:0:7}\`, dry run: $DRY"
             echo "- reason: $REASON"
             echo "- earlier deploys, for a rollback (run again with one as ref):"
             git tag --list 'deploy/*' --sort=-refname | head -5 | sed 's/^/  - `/; s/$/`/'
