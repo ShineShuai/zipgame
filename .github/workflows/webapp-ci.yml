@@ -72,6 +72,11 @@ jobs:
         if: matrix.node == 22
         run: npm run test:themes
 
+      # The rules that pick what production deploys (.github/scripts/select-release.sh).
+      - name: Release selection self-test
+        if: matrix.node == 22
+        run: bash ../.github/scripts/test-select-release.sh
+
       # What the deploy job publishes: an allowlist, then a scan for files and secrets that must never ship.
       - name: Dry-run site staging
         if: matrix.node == 22
