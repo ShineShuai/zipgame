@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the production folder from the checked-out commit: the site of stage-site.sh without the
 # pages that are not part of production, below DIST/zigzag/, plus the Cloudflare _headers and
-# _redirects and build.json. Run from the repo root; deploy/cloudflare/ must be there.
+# build.json. The host root belongs to the portal Worker (repo play), not to this site. Run from the repo root; deploy/cloudflare/ must be there.
 #   stage-prod.sh DIST SHA
 set -euo pipefail
 dist=${1:?usage: stage-prod.sh DIST SHA}
@@ -16,8 +16,8 @@ rm -f "$tmp/site/webapp/design.html" "$tmp/site/webapp/stats.html" \
 rm -rf "$dist"
 mkdir -p "$dist/zigzag"
 cp -a "$tmp/site/." "$dist/zigzag/"
-cp deploy/cloudflare/_headers deploy/cloudflare/_redirects "$dist/"
-printf '_headers\n_redirects\n' > "$dist/.assetsignore"
+cp deploy/cloudflare/_headers "$dist/"
+printf '_headers\n' > "$dist/.assetsignore"
 version=$(sed -n "s/.*VERSION = '\([^']*\)'.*/\1/p" webapp/src/version.js)
 printf '{"sha":"%s","version":"%s","built":"%s"}\n' \
   "$sha" "$version" "$(date -u +%FT%TZ)" > "$dist/zigzag/build.json"
