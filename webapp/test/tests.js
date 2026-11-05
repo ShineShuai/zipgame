@@ -35,6 +35,11 @@ import { createBehaviour, sinksFromConfig, SINKS, QUEUE_KEY, ON_KEY, QUEUE_MAX, 
 import { BEHAVIOUR, LEADERBOARD } from '../src/config.js';
 import { levelOf, legsUndo, legLevels, stripText, dayOfDate, makeShareRecord, shareUrl, parseShareLink, shareText, shareStatus, isPlayable, LEVEL_EMOJI } from '../src/features/share.js';
 import { createCalib, calibRequested, CALIB_DIR } from '../src/features/calib.js';
+import fs from 'node:fs';
+import {
+  stepsOfPuzzle, gamesOf, fitModel, MODELS, verdict, crossValidate, bucketOf, parameters,
+} from '../tools/step-lib.mjs';
+import { simulateRows, ratedPuzzles } from '../tools/step-sim.mjs';
 import { NB, TOP_K, binOf, summarize, statsLine } from '../src/core/hist.js';
 import { parseDays, mergeDays, combineDays, isReplicated } from '../src/core/stats-merge.js';
 import { wls, fitCandidate, predictH, dedupe, isMonotone, selectEntries, pickEntries, fitTime, predictMs, withoutSeeds, TIME_PRIOR, invert, floorMs, needsThinking, aboveFloor, EXTRA_MIN_SKILL, timePoints, playPoints, fitTimeSize, sizeShift, sizeLevel, localDifficulty, globalDifficulty, localFromGlobal } from '../src/core/gotd-model.js';
@@ -1649,6 +1654,93 @@ ta('calib-set: builds a block-balanced set; behaviour-eval groups it as "calib"'
   ok(ev.stdout.includes('=== calib: 8 rows, 4 puzzles') && ev.stdout.includes('=== local: 2 rows'),
     ev.stdout.slice(0, 300));
   ok(!/NaN|undefined/.test(ev.stdout), 'no NaN/undefined in the output');
+});
+const stepRatings = new URL('../tools/ratings.json', import.meta.url).pathname;
+t('step-lib: a wrong move of the trap profile, played, is the event at its step + 1', () => {
+  const key = JSON.parse(fs.readFileSync(stepRatings, 'utf8')).find(r => parse(r.key).n === 7).key;
+  const p = parse(key), sol = solutionPath(p), prof = trapProfile(p,
+    sol), w = prof[prof.length >> 1];
+  const tr = newTrace(), path = [...sol.slice(0, w.i + 1), w.cell];
+  traceTrack(tr, path, sol); traceTrack(tr, path.slice(0, -1), sol);
+  eq(traceEvents(tr), [[w.i + 1, 1]],
+    'the player path left the solution after w.i + 1 right cells');
+  const P = stepsOfPuzzle(key), at = P.steps.find(s => s.i === w.i);
+  eq(at.c[bucketOf(w)] > 0, true, 'the step lists that wrong move in its bucket');
+  const row = { key, events: [[w.i + 1, 1]], abandoned: false, hint: false, skill: 7, u: 1,
+    deep: 1 };
+  eq([...gamesOf([row], () => P).games[0].m], [[w.i, 1]],
+    'and the game counts it at the profile step');
+  eq(gamesOf([{ ...row, events: [[1000, 2]] }], () => P).unexplained, 1,
+    'a step the profile lacks is unexplained');
+});
+t('step-lib: games the fit cannot use are counted by reason', () => {
+  const key = JSON.parse(fs.readFileSync(stepRatings, 'utf8')).find(r => parse(r.key).n === 6).key;
+  const P = stepsOfPuzzle(key), ok = { key, events: [], abandoned: false, hint: false, skill: 7,
+    u: 0, deep: 0 };
+  const rows = [ok, { ...ok, abandoned: true }, { ...ok, hint: true }, { ...ok, events: null },
+    { ...ok, events: Array.from({ length: 31 }, () => [1, 1]) }, { ...ok, key: null }];
+  const d = gamesOf(rows, k => (k ? P : null));
+  eq([d.games.length, d.why.abandoned, d.why.hint, d.why.noEvents, d.why.capped, d.why.noPuzzle],
+    [1, 1, 1, 1, 1, 1]);
+});
+t('step-fit: the fit finds the rates of simulated players, no difference when there is none',
+  () => {
+  const puzzles = ratedPuzzles(stepRatings, 40,
+    1), steps = new Map(puzzles.map(x => [x.key, x.P]));
+  eq(puzzles.length, 40);
+  const games = truth => gamesOf(simulateRows(puzzles, truth, { games: 1500, seed: 3 }).rows,
+    k => steps.get(k)).games;
+  const steep = parameters(games('steep'), { boot: 0 }).est.points;
+  ok(steep[3] > 8 && steep[3] < 17 && steep[0] > 0.3 && steep[0] < 0.7,
+    'steep truth 0.5 : 1 : 3 : 12: ' + steep);
+  const flat = parameters(games('flat'), { boot: 0 }).est.points;
+  ok([flat[0], flat[2]].every(v => v > 0.7 && v < 1.4), 'flat truth 1 : 1 : 1 : 1: ' + flat);
+  ok(flat[3] > 0.3 && flat[3] < 2.5, 'the capped bucket is thin on 40 puzzles: ' + flat[3]);
+  const dll = truth => {
+    const held = crossValidate(games(truth), { folds: 5, seed: 1 });
+    return verdict(held, () => 0, { boot: 60 });
+  };
+  const same = dll('hand'), diff = dll('steep');
+  ok(Math.abs(same.est.dLL) < 0.02 && !same.gate.A,
+    'the hand-set shape is the truth: no gain, gate A fails');
+  ok(diff.est.dLL > 0.03 && diff.gate.A,
+    'other weights are the truth: the free rates win, gate A passes');
+  eq(diff.gate.enough, true, '1500 games on 40 puzzles are enough data for the rule');
+});
+t('step-fit: an under-sized data set is INCONCLUSIVE, the written rule is in the header', () => {
+  const puzzles = ratedPuzzles(stepRatings, 20,
+    1), steps = new Map(puzzles.map(x => [x.key, x.P]));
+  const games = gamesOf(simulateRows(puzzles, 'hand', { games: 150, seed: 2 }).rows,
+    k => steps.get(k)).games;
+  eq(verdict(crossValidate(games), () => 0, { boot: 20 }).verdict, 'INCONCLUSIVE');
+  const head = fs.readFileSync(new URL('../tools/step-fit.mjs', import.meta.url), 'utf8').slice(0,
+    4000);
+  ok(head.includes('ACCEPTANCE RULE'));
+  ok(head.includes('at least 200 games on at least 40 puzzles'));
+});
+ta('step-sim + step-fit: simulate rows, fit them from the command line', async () => {
+  const os = await import('node:os'), path = await import('node:path');
+  const { spawnSync } = await import('node:child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'step-')), f = path.join(dir, 'rows.json');
+  const tool = n => new URL('../tools/' + n, import.meta.url).pathname;
+  const sim = spawnSync(process.execPath,
+    [tool('step-sim.mjs'), '--out', f, '--truth', 'steep', '--games', '450', '--puzzles', '45'],
+    { encoding: 'utf8' });
+  eq(sim.status, 0, sim.stderr);
+  const fit = spawnSync(process.execPath,
+    [tool('step-fit.mjs'), f, '--boot', '30', '--pboot', '10', '--cap',
+      '20000'], { encoding: 'utf8' });
+  const old = JSON.parse(fs.readFileSync(f, 'utf8')); old.rows.forEach(r => { r.events = null; });
+  fs.writeFileSync(f, JSON.stringify(old));
+  const none = spawnSync(process.execPath, [tool('step-fit.mjs'), f], { encoding: 'utf8' });
+  fs.rmSync(dir, { recursive: true, force: true });
+  eq(fit.status, 0, fit.stderr);
+  ok(/usable games \d+ on 4\d puzzles/.test(fit.stdout), fit.stdout.slice(0, 400));
+  ok(['VERDICT', 'gate A', 'capped'].every(w => fit.stdout.includes(w)), 'report parts');
+  const shown = fit.stdout.replace(/\[NaN[^\]]*\]/g, '');
+  ok(!/NaN|undefined/.test(shown), 'no NaN/undefined outside empty intervals');
+  ok(none.stdout.includes('Nothing to fit'),
+    'rows without wrong-turn records: a plain message, no crash');
 });
 t('trap: grade = number of cuts reached; no cuts = the old round(); size caps apply on top', () => {
   const cuts = { cuts: [1, 2, 3, 4, 5] };

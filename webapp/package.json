@@ -27,6 +27,8 @@
     "behaviour": "node tools/behaviour.mjs",
     "behaviour:eval": "node tools/behaviour-eval.mjs",
     "calib:set": "node tools/calib-set.mjs",
+    "step:fit": "node tools/step-fit.mjs",
+    "step:sim": "node tools/step-sim.mjs",
     "test:themes": "node ../themes/tools/test.mjs",
     "themes:pack": "node ../themes/tools/pack.mjs",
     "themes:preview": "node ../themes/tools/serve.mjs",
