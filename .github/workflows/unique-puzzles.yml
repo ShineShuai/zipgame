@@ -4,9 +4,11 @@ on:
   push:
     paths:
       - 'demo/GameOfDay/**'
+      - 'demo/GameOfDay-queue/**'
   pull_request:
     paths:
       - 'demo/GameOfDay/**'
+      - 'demo/GameOfDay-queue/**'
   workflow_dispatch:        # lets you run it manually from the Actions tab
 
 jobs:
@@ -16,5 +18,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Setup Node
+        uses: actions/setup-node@v7.1.0
+        with: { node-version: 22 }
+
+      # Published days and the candidate queue: no puzzle twice, also not rotated, mirrored or with reversed numbering.
       - name: Verify all puzzles are distinct
-        run: python3 demo/GameOfDay/check_unique_puzzles.py demo/GameOfDay/
+        run: node webapp/tools/gotd-gen.mjs check --annotations

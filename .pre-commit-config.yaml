@@ -46,8 +46,8 @@ repos:
         pass_filenames: false
 
       - id: unique-puzzles
-        name: Check puzzle uniqueness in demo/GameOfDay/
-        entry: python3 demo/GameOfDay/check_unique_puzzles.py
+        name: Check puzzles are distinct in demo/GameOfDay/ and its queue (up to rotation, reflection, reversed numbering)
+        entry: node webapp/tools/gotd-gen.mjs check
         language: system
-        files: ^demo/GameOfDay/
+        files: ^demo/GameOfDay(-queue)?/
         pass_filenames: false

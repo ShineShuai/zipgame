@@ -2,7 +2,7 @@
 // Thin CLI around generateTargeted() (src/core/gen/target.js): the same code the design app uses, so a refit of the
 // grade (tools/fit-trap.mjs --write) needs no change here. No clock is involved: the same arguments give the same puzzle file on every machine.
 //   node tools/gen-target.mjs --size 7 --grade 3 [--max-walls 10] [--min-checkpoints 6] [--max-checkpoints 8] [--retries 20] [--effort 1]
-//                             [--seed 1] [--count 1] [--out DIR] [--no-minimize] [--allow-miss] [--json] [--time]
+//                             [--seed 1] [--count 1] [--out DIR] [--no-minimize] [--allow-miss] [--json] [--time] [--at-least] [--margin 0.15]
 // --size N            grid size 5..16 (required)          --grade G   0..5 (required; clamped to what the size can show)
 // --max-walls W       most walls the puzzle may have      --max-checkpoints K   most numbered cells it may have
 // --min-checkpoints K fewest numbered cells it may have (default: the board size; with the same K for both: exactly K)
@@ -11,6 +11,8 @@
 // --seed S --count C  puzzle i uses seed S+i (default 1, 1)
 // --out DIR           write DIR/zip-<n>x<n>-g<grade>-s<seed>.txt per puzzle, else print the puzzle to stdout
 // --no-minimize       do not strip unneeded walls (see generateTargeted)
+// --at-least          the target is "this grade or harder": the band is open above, a hit is any grade >= --grade (the Game-of-Day generator's mode)
+// --margin X          stay X cut spacings above the lower cut (and below the upper one) of the band (default TARGET_CFG.margin = 0.15; the Game-of-Day generator uses 0.5)
 // --allow-miss        with --retries: also output the closest puzzle when the tries ran out (else exit 2, nothing written)
 // --json              one JSON line per puzzle on stdout (puzzle text in "puzzle") instead of text; status lines go to stderr either way
 // --time              add the search time to the puzzle's comments (off by default: it differs from run to run, the file would not)
@@ -32,6 +34,7 @@ const maxCheckpoints = opt('max-checkpoints') === undefined ? undefined : +opt('
 const minCheckpoints = opt('min-checkpoints') === undefined ? undefined : +opt('min-checkpoints');
 const retries = opt('retries') === undefined ? Infinity : +opt('retries'), effort = +opt('effort', 1);
 const outDir = opt('out'), minimize = !flag('no-minimize'), allowMiss = flag('allow-miss'), json = flag('json'), withTime = flag('time');
+const atLeast = flag('at-least'), margin = opt('margin') === undefined ? undefined : +opt('margin');
 if (!Number.isInteger(n) || n < 5 || n > 16) die('--size needs an integer 5..16');
 if (!Number.isInteger(grade) || grade < 0 || grade > 5) die('--grade needs an integer 0..5');
 if (!Number.isInteger(seed0) || !Number.isInteger(count) || count < 1) die('--seed / --count need integers (count >= 1)');
@@ -41,6 +44,7 @@ if (minCheckpoints !== undefined && !(minCheckpoints >= 2)) die('--min-checkpoin
 if (minCheckpoints > maxCheckpoints) die('--min-checkpoints is larger than --max-checkpoints');
 if (!(retries >= 1) || (retries !== Infinity && !Number.isInteger(retries))) die('--retries needs an integer >= 1');
 if (!(effort > 0)) die('--effort needs a number > 0');
+if (margin !== undefined && !(margin >= 0)) die('--margin needs a number >= 0');
 
 const top = maxTargetGrade(n);
 if (grade > top) console.error(`gen-target: ${n}x${n} cannot show grade ${grade}; aiming at ${top}`);
@@ -49,15 +53,15 @@ if (outDir) mkdirSync(outDir, { recursive: true });
 let missed = 0;
 for (let i = 0; i < count; i++) {
   const seed = seed0 + i;
-  const r = runSync(generateTargeted(n, grade, seed, { retries, effort, maxWalls, minCheckpoints, maxCheckpoints, minimize }));
+  const r = runSync(generateTargeted(n, grade, seed, { retries, effort, maxWalls, minCheckpoints, maxCheckpoints, minimize, atLeast, margin }));
   const ok = r.puzzle && r.hit;
-  console.error(`seed ${seed}: ${r.puzzle ? `grade ${r.grade} (target ${r.target}), ${r.walls} walls, ${r.K} checkpoints` : 'no puzzle'}, ` +
+  console.error(`seed ${seed}: ${r.puzzle ? `grade ${r.grade} (target ${r.target}${atLeast ? '+' : ''}${r.inside ? ', inside the margin' : ''}), ${r.walls} walls, ${r.K} checkpoints` : 'no puzzle'}, ` +
     `${(r.elapsedMs / 1000).toFixed(1)} s, ${r.proposals} changes, ${r.tries} tries${ok ? '' : ' -> MISSED'}`);
   if (!ok) missed++;
   if (!r.puzzle || (!ok && !allowMiss)) continue;
   const text = serialize(r.puzzle, withTime ? { times: { generateMs: r.elapsedMs } } : {});
   if (outDir) writeFileSync(join(outDir, `zip-${n}x${n}-g${r.grade}-s${seed}.txt`), text + '\n');
-  if (json) console.log(JSON.stringify({ seed, size: n, target: r.target, grade: r.grade, pred: r.pred, hit: r.hit, walls: r.walls, checkpoints: r.K, tries: r.tries, changes: r.proposals, ms: Math.round(r.elapsedMs), puzzle: text }));
+  if (json) console.log(JSON.stringify({ seed, size: n, target: r.target, grade: r.grade, pred: r.pred, hit: r.hit, inside: r.inside, walls: r.walls, checkpoints: r.K, tries: r.tries, changes: r.proposals, ms: Math.round(r.elapsedMs), puzzle: text }));
   else if (!outDir) console.log(text + (count > 1 ? '\n' : ''));
 }
 process.exit(missed && !allowMiss ? 2 : 0);

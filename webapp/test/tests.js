@@ -106,6 +106,7 @@ import { twoPathsGenTests } from './twopaths-gen.js';
 import { twoPathsPlayTests } from './play-twopaths.js';
 import { designTwoPathsTests } from './design-twopaths.js';
 import { designCutoutTests } from './design-cutout.js';
+import { gotdGenTests } from './gotd-gen.js';
 
 // The ball boards are in a catalog of their own that the apps load when needed; the tests have it.
 registerBalls(BALL_CATALOG);
@@ -3600,6 +3601,7 @@ ballTests(t, ok, eq);
 ballViewTests(t, ok, eq);
 solidTests(t, ok, eq, ta);
 generationTests(t, ok, eq, ta);
+gotdGenTests(t, ok, eq);
 themeTests(t, ok, eq);
 themeSystemTests(t, ok, eq, ta);
 themeCalendarTests(t, ok, eq);
