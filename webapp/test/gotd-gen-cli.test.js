@@ -23,6 +23,8 @@ const run = (...args) => spawnSync(process.execPath, [tool, ...args], { encoding
 const snapshot = (dir, prefix = '') => Object.fromEntries(fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1)).flatMap(e => (e.isDirectory()
   ? Object.entries(snapshot(path.join(dir, e.name), `${prefix}${e.name}/`)) : [[prefix + e.name, fs.readFileSync(path.join(dir, e.name), 'utf8')]])));
 // 20261122 and 20261123 are a 7x7 and an 8x8 in the schedule: two quick candidates
+// the seconds in a candidate's origin comment are the one thing that depends on the machine
+const notTimed = snap => Object.fromEntries(Object.entries(snap).map(([f, text]) => [f, text.replace(/, \d+\.\d s,/, ', X s,')]));
 const FILL = ['fill', '--today', '20261122', '--horizon', '2', '--per-slot', '1', ...where];
 
 test('gotd-gen: an empty repository is fine, and a dry run writes nothing', () => {
@@ -55,6 +57,20 @@ test('gotd-gen: fill makes one candidate per open day of the scheduled size; the
   assert.match(fs.readFileSync(path.join(queue, 'index.json'), 'utf8'), /^\{\n {2}"v": 1,\n {2}"slots": \{\n/);
 });
 
+test('gotd-gen: the origin comment of a candidate says how to make it again: its gen-target command gives the same puzzle, and the summary line matches', () => {
+  const index = JSON.parse(fs.readFileSync(path.join(queue, 'index.json'), 'utf8'));
+  for (const c of index.candidates) {
+    const text = fs.readFileSync(path.join(queue, c.file), 'utf8');
+    const summary = text.match(/^# (seed \d+: .*)$/m)[1], command = text.match(/^# gen \S+: node tools\/gen-target\.mjs (.*)$/m)[1];
+    const gen = spawnSync(process.execPath, [fileURLToPath(new URL('../tools/gen-target.mjs', import.meta.url)), ...command.split(' ')], { encoding: 'utf8' });
+    assert.equal(gen.status, 0, gen.stderr);
+    assert.equal(serialize(parse(gen.stdout)), serialize(parse(text)), `${c.file}: the command makes the same puzzle`);
+    const stripTime = line => line.replace(/, \d+\.\d s,/, ', X s,');
+    assert.equal(stripTime(gen.stderr.trim()), stripTime(summary), 'the summary line is the one gen-target prints (the seconds apart)');
+    assert.match(summary, /^seed \d+: grade [3-5] \(target [3-5]\+, inside the margin\), \d+ walls, \d+ checkpoints, \d+\.\d s, \d+ changes, \d+ tries$/);
+  }
+});
+
 test('gotd-gen: a second fill adds nothing and changes no byte; a fresh queue gets the same candidates (no clock, no randomness)', () => {
   const before = snapshot(queue), r = run(...FILL);
   assert.equal(r.status, 0, r.stderr);
@@ -62,7 +78,7 @@ test('gotd-gen: a second fill adds nothing and changes no byte; a fresh queue ge
   assert.deepEqual(snapshot(queue), before);
   const other = path.join(tmp, 'queue2'), again = run('fill', '--today', '20261122', '--horizon', '2', '--per-slot', '1', '--puzzles', pub, '--queue', other, '--ratings', ratings);
   assert.equal(again.status, 0, again.stderr);
-  assert.deepEqual(snapshot(other), before, 'an independent run gives the same files');
+  assert.deepEqual(notTimed(snapshot(other)), notTimed(before), 'an independent run gives the same files (the seconds in the origin comment apart)');
 });
 
 test('gotd-gen: check passes for the queue, and fails for a copy of a candidate that is rotated, mirrored or numbered backwards', () => {
@@ -161,6 +177,9 @@ test('gotd-gen promote: an approved candidate becomes the day, a rejected one mo
   assert.match(text, /^# play_time_s 95\.5$/m);
   assert.match(text, new RegExp(`^# gotd ${c7a.id} gen ${c7a.stamp} made-for 20261122 model-grade 3 score [\\d.]+$`, 'm'));
   assert.match(text, /^# review human 3 solved yes takebacks 4$/m);
+  const lines = text.split('\n');
+  assert.match(lines.find(l => l.startsWith('# seed ')), /^# seed \d+: grade [3-5] \(target [3-5]\+, inside the margin\), \d+ walls, \d+ checkpoints, \d+\.\d s, \d+ changes, \d+ tries$/, 'how it was made is carried into the published day');
+  assert.match(lines.find(l => l.startsWith('# gen ')), /^# gen a\d+-[0-9a-f]{8}: node tools\/gen-target\.mjs --size 7 --grade 3 --at-least --margin 0\.5 --retries 12 --seed \d+$/);
   assert.equal(symmetryKey(parse(text)), approvedKey, 'the day is the approved candidate\'s puzzle');
   assert.equal(fs.existsSync(path.join(w.queue, c7a.file)), false, 'the published candidate left the queue');
   assert.equal(fs.existsSync(path.join(w.queue, c8a.file)), false);

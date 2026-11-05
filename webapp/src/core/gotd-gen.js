@@ -117,17 +117,29 @@ export function makeCandidate({ stamp, day, date, size, attempt, distinct }) {
   const v = vetCandidate(r.puzzle, size, distinct);
   if (!v.ok) return { ...v, seed, puzzle: r.puzzle };
   const entry = { id: v.entry.id, file: candidateFile(v.entry), size, slot: date, attempt, seed, stamp, status: 'pending', ...v.entry };
-  return { ...v, entry, seed, puzzle: r.puzzle };
+  return { ...v, entry, seed, puzzle: r.puzzle, origin: originLines(r, size, stamp, seed) };
 }
 
+// The two comment lines that say how a puzzle was made, so it can be reproduced (on the code of the stamp). The first is the summary line of tools/gen-target.mjs
+// (grade reached, target, walls, checkpoints, seconds, changes tried, tries); the second is the command that makes the same puzzle again. Only the seconds depend on the machine.
+export function originLines(r, size, stamp, seed) {
+  return [
+    `seed ${seed}: grade ${r.grade} (target ${r.target}+${r.inside ? ', inside the margin' : ''}), ${r.walls} walls, ${r.K} checkpoints, ${(r.elapsedMs / 1000).toFixed(1)} s, ${r.proposals} changes, ${r.tries} tries`,
+    `gen ${stamp}: node tools/gen-target.mjs --size ${size} --grade ${GOTD_CFG.grade} --at-least --margin ${GOTD_CFG.margin} --retries ${GOTD_CFG.retries} --seed ${seed}`,
+  ];
+}
+// The origin lines of a candidate's file (also the one `gen <stamp> slot ...` line of the first queue files), to carry them into the published day.
+export const carriedOrigin = text => text.split(/\r?\n/).map(l => l.match(/^#\s+((?:seed|gen) .*)$/)).filter(Boolean).map(m => m[1]);
+
 export const candidateFile = e => `c-${e.size}-${e.id}.txt`;
-// The candidate's file: the puzzle (no solution path, so a reviewer plays it blind) and two comment lines that name its origin.
-export const candidateText = (puzzle, e) => serialize(puzzle, { comments: [`gotd candidate ${e.id}`, `gen ${e.stamp} slot ${e.slot} seed ${e.seed} attempt ${e.attempt}`] }) + '\n';
+// The candidate's file: the puzzle (no solution path, so a reviewer plays it blind), a line naming the candidate and the origin lines (originLines) that say how to make it again.
+export const candidateText = (puzzle, e, origin = []) => serialize(puzzle, { comments: [`gotd candidate ${e.id} for ${e.slot}, attempt ${e.attempt}`, ...origin] }) + '\n';
 
 // The published day's file: the puzzle, a comment on where it came from, and the reviewer's rating and solve time when there is a verdict.
 // `# play_time_s` is the line the Game-of-Day files of the author already carry (commentTimes() reads it back), written only for a solved blind play.
-export function publishedText(puzzle, entry, verdict = null) {
-  const comments = [`gotd ${entry.id} gen ${entry.stamp} made-for ${entry.slot} model-grade ${entry.trap.grade} score ${entry.trap.pred}`];
+// `origin`: the candidate file's origin lines (carriedOrigin), copied as they are.
+export function publishedText(puzzle, entry, verdict = null, origin = []) {
+  const comments = [`gotd ${entry.id} gen ${entry.stamp} made-for ${entry.slot} model-grade ${entry.trap.grade} score ${entry.trap.pred}`, ...origin];
   if (verdict) comments.push(`review human ${verdict.human}${verdict.unsure ? ' unsure' : ''} solved ${verdict.solved ? 'yes' : 'no'} takebacks ${verdict.takebacks}`);
   const times = verdict && verdict.solved && verdict.playS != null ? { playS: verdict.playS } : undefined;
   return serialize(puzzle, { comments, times }) + '\n';

@@ -84,7 +84,7 @@ export function planFill({ today, horizon = GOTD_CFG.horizon, perSlot = GOTD_CFG
 //   maxNew          most candidates this run may add             maxAttempts    most generator runs this run may spend
 //   slotAttempts    most runs one day may use in all (counted over all runs: index.slots[date].attempts); a day that used them up is `starved`
 //   make            ({ stamp, day, date, size, attempt, distinct }) -> makeCandidate's answer
-// -> { added: [{ entry, puzzle, symKey, path }], slots: { date: { size, attempts } } (days whose counter moved), fails: { reason: count }, starved: [date], tries }
+// -> { added: [{ entry, puzzle, symKey, path, origin }], slots: { date: { size, attempts } } (days whose counter moved), fails: { reason: count }, starved: [date], tries }
 export function fillQueue({ plan, distinct, stamp, maxNew = 24, maxAttempts = 120, slotAttempts = GOTD_CFG.maxAttemptsPerSlot, make = makeCandidate, log = () => {} }) {
   const added = [], slots = {}, fails = {}, starved = [];
   let tries = 0;
@@ -100,7 +100,7 @@ export function fillQueue({ plan, distinct, stamp, maxNew = 24, maxAttempts = 12
         continue;
       }
       distinct.add({ symKey: r.symKey, pathKey: r.entry.pathKey, where: `queue candidate ${r.entry.id}` });
-      added.push({ entry: r.entry, puzzle: r.puzzle, symKey: r.symKey, path: r.path });
+      added.push({ entry: r.entry, puzzle: r.puzzle, symKey: r.symKey, path: r.path, origin: r.origin });
       log(`${s.date} ${s.size}x${s.size} attempt ${attempt}: ${r.entry.id} grade ${r.entry.trap.grade} score ${r.entry.trap.pred}`);
       need--;
     }

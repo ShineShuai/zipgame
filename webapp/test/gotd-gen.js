@@ -9,7 +9,7 @@ import { generateTargeted } from '../src/core/gen/target.js';
 import { TRAP_MODEL } from '../src/core/trap.js';
 import { utcDayNumber, dateOfDay as dailyDateOfDay } from '../src/features/daily.js';
 import { CYCLE_DAYS, SIZE_BAG, BIG_SIZE, BIG_GAP, sizeForDay, cycleOrder, orderOk, slotSeed, dayOfDate, dateOfDay } from '../src/core/gotd-schedule.js';
-import { GOTD_CFG, stampParts, genStamp, createDistinct, pathKey, puzzleId, hash64, vetCandidate, makeCandidate, candidateText, candidateFile } from '../src/core/gotd-gen.js';
+import { GOTD_CFG, stampParts, genStamp, createDistinct, pathKey, puzzleId, hash64, vetCandidate, makeCandidate, candidateText, candidateFile, carriedOrigin } from '../src/core/gotd-gen.js';
 import { emptyIndex, parseIndex, formatIndex, planFill, fillQueue, applyFill, usable } from '../src/core/gotd-queue.js';
 
 // 20261121 .. 20261220: the schedule is part of the product (a published day never changes, a future day is decided by this function), so it is pinned.
@@ -167,18 +167,41 @@ export function gotdGenTests(t, ok, eq) {
     ok(e.K >= 7 && e.walls >= 0 && /^[0-9a-f]{16}$/.test(e.pathKey));
   });
 
-  t('gotd candidate: the file is the puzzle with two comment lines and no solution path; it parses back to the same puzzle', () => {
-    const text = candidateText(made.puzzle, made.entry);
+  const NOT_TIMED = text => text.replace(/, \d+\.\d s,/, ', X s,'); // the seconds are the one thing in a candidate's file that depends on the machine
+
+  t('gotd candidate: the file is the puzzle, a line naming the candidate and the origin lines, no solution path; it parses back to the same puzzle', () => {
+    const text = candidateText(made.puzzle, made.entry, made.origin), e = made.entry;
     ok(text.endsWith('\n') && !/^path /m.test(text), 'no path line: a reviewer plays it blind');
-    ok(text.includes(`# gotd candidate ${made.entry.id}\n# gen ${stamp} slot 20261122 seed ${made.entry.seed} attempt ${made.entry.attempt}\n`));
+    const lines = text.split('\n').filter(l => l.startsWith('# ')).slice(-3);
+    eq(lines[0], `# gotd candidate ${e.id} for 20261122, attempt ${e.attempt}`);
+    ok(/^# seed \d+: grade \d \(target 3\+, inside the margin\), \d+ walls, \d+ checkpoints, \d+\.\d s, \d+ changes, \d+ tries$/.test(lines[1]), lines[1]);
+    eq(lines[2], `# gen ${stamp}: node tools/gen-target.mjs --size 7 --grade 3 --at-least --margin 0.5 --retries 12 --seed ${e.seed}`);
+    ok(lines[1].startsWith(`# seed ${e.seed}: `), 'the seed of the summary line is the candidate\'s');
     eq(symmetryKey(parse(text)), made.symKey);
     eq(ratingKey(text), ratingKey(serialize(made.puzzle)));
+    eq(candidateText(made.puzzle, made.entry).includes('# seed'), false, 'without origin only the first line');
   });
 
-  t('gotd candidate: the same arguments give the same candidate, text and entry', () => {
+  t('gotd candidate: the comment is enough to make the puzzle again: gen-target options from the command line give the same puzzle, grade, walls, checkpoints, changes and tries', () => {
+    const cmd = made.origin[1], opt = name => cmd.match(new RegExp(`--${name} (\\S+)`))[1], summary = made.origin[0];
+    const r = runSync(generateTargeted(+opt('size'), +opt('grade'), +opt('seed'), { atLeast: cmd.includes('--at-least'), margin: +opt('margin'), retries: +opt('retries') }));
+    eq(symmetryKey(r.puzzle), made.symKey);
+    eq(serialize(r.puzzle), serialize(made.puzzle));
+    ok(summary.includes(`grade ${r.grade} (target ${r.target}+${r.inside ? ', inside the margin' : ''}), ${r.walls} walls, ${r.K} checkpoints, `) && summary.endsWith(`, ${r.proposals} changes, ${r.tries} tries`), summary);
+  });
+
+  t('gotd candidate: carriedOrigin takes the seed and gen lines of a candidate file (also the one gen line of the first queue files), nothing else', () => {
+    const text = candidateText(made.puzzle, made.entry, made.origin);
+    eq(carriedOrigin(text), made.origin);
+    eq(carriedOrigin(serialize(made.puzzle)), []);
+    eq(carriedOrigin('# Zip Puzzle\n# gotd candidate x\n# gen a6-t slot 20261122 seed 5 attempt 0\nsize 7\n'), ['gen a6-t slot 20261122 seed 5 attempt 0']);
+    eq(carriedOrigin('# seed 1: grade 3\r\n# genetics are not\r\n# gen a6-x: node\r\n'), ['seed 1: grade 3', 'gen a6-x: node']);
+  });
+
+  t('gotd candidate: the same arguments give the same candidate, text and entry (the seconds apart)', () => {
     const again = makeCandidate({ stamp, day, date: '20261122', size: 7, attempt: made.entry.attempt, distinct: createDistinct() });
     ok(again.ok);
-    eq(candidateText(again.puzzle, again.entry), candidateText(made.puzzle, made.entry));
+    eq(NOT_TIMED(candidateText(again.puzzle, again.entry, again.origin)), NOT_TIMED(candidateText(made.puzzle, made.entry, made.origin)));
     eq(again.entry, made.entry);
   });
 

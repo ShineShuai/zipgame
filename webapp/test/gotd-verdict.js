@@ -11,7 +11,7 @@ import {
   applyVerdicts, reviewStats,
 } from '../src/core/gotd-verdict.js';
 import { dayOfDate, sizeForDay } from '../src/core/gotd-schedule.js';
-import { createDistinct, vetCandidate, publishedText } from '../src/core/gotd-gen.js';
+import { createDistinct, vetCandidate, publishedText, carriedOrigin } from '../src/core/gotd-gen.js';
 import { emptyIndex, planPromote } from '../src/core/gotd-queue.js';
 
 const id12 = n => String(n).padStart(12, '0');
@@ -182,6 +182,13 @@ export function gotdVerdictTests(t, ok, eq) {
     ok(unsure.includes('review human 3 unsure solved yes'));
     const bare = publishedText(p, c);
     ok(!bare.includes('# review') && !bare.includes('play_time_s'), 'without a verdict only the origin line');
+    // how the puzzle was made is carried from the candidate's file, line for line, between the origin line and the review line
+    const origin = ['seed 5: grade 3 (target 3+, inside the margin), 4 walls, 8 checkpoints, 2.8 s, 1678 changes, 4 tries', 'gen a6-x: node tools/gen-target.mjs --size 7 --grade 3 --at-least --margin 0.5 --retries 12 --seed 5'];
+    const carried = publishedText(p, c, verdict(c, 3), origin);
+    ok(carried.includes(`score 2.265\n# ${origin[0]}\n# ${origin[1]}\n# review human 3`), carried);
+    eq(carriedOrigin(carried).slice(-2), origin, 'and they can be carried again');
+    eq(ratingKey(carried), ratingKey(serialize(p)));
+    eq(publishedText(p, c, null, origin).split('\n').filter(l => l.startsWith('# seed')).length, 1);
   });
 
   t('gotd gates: holdGrade lets a puzzle through that misses the grade (a human judged it) and reports the drift; the other gates still hold', () => {

@@ -12,7 +12,8 @@
 //   the gates of src/core/gotd-gen.js (grade with margin, unique, distinct up to rotation / reflection / reversed numbering, from published puzzles,
 //   the queue, rejected ones and the rated ones of ratings.json). No clock decides anything: the same files and arguments give the same candidates
 //   (seed = stamp, day, size, attempt), so a rerun adds nothing. A stamp covers the generator, the trap model and the settings: a pending candidate of
-//   an older stamp does not count, an approved one always does. Files: <queue>/c-<size>-<id>.txt (no solution path, a reviewer plays it blind) and
+//   an older stamp does not count, an approved one always does. Files: <queue>/c-<size>-<id>.txt (no solution path, a reviewer plays it blind; two comment lines say how it was made: the summary line of
+//   gen-target.mjs and the gen-target command that makes it again, copied into the published day) and
 //   <queue>/index.json (what the gates measured, the attempts spent per day, the status).
 // promote: the human's side. The design app's "GOTD review" panel plays a pending candidate blind and the reviewer rates it; its export is <queue>/verdicts.json
 //   (src/core/gotd-verdict.js: rating >= Hard approves). promote sets the status of every candidate that has a verdict (a rejected one moves to <queue>/rejected/, where it stays
@@ -28,7 +29,7 @@ import { validate } from '../src/core/model.js';
 import { parseRatingsJson, symmetryKey, asciiPuzzle } from '../src/core/ratings-io.js';
 import { solutionPath } from '../src/core/trap.js';
 import { OFFLINE_PATH_CAP } from './lib.mjs';
-import { GOTD_CFG, genStamp, createDistinct, pathKey, puzzleId, candidateText, publishedText, vetCandidate } from '../src/core/gotd-gen.js';
+import { GOTD_CFG, genStamp, createDistinct, pathKey, puzzleId, candidateText, publishedText, carriedOrigin, vetCandidate } from '../src/core/gotd-gen.js';
 import { dayOfDate, dateOfDay, sizeForDay, SIZE_BAG } from '../src/core/gotd-schedule.js';
 import { emptyIndex, parseIndex, formatIndex, planFill, planPromote, fillQueue, applyFill, usable } from '../src/core/gotd-queue.js';
 import { parseVerdicts, applyVerdicts, reviewQueue, reviewStats } from '../src/core/gotd-verdict.js';
@@ -159,7 +160,7 @@ function fill() {
   }
   const next = applyFill(index, plan, result);
   fs.mkdirSync(dir.queue, { recursive: true });
-  for (const a of result.added) fs.writeFileSync(path.join(dir.queue, a.entry.file), candidateText(a.puzzle, a.entry));
+  for (const a of result.added) fs.writeFileSync(path.join(dir.queue, a.entry.file), candidateText(a.puzzle, a.entry, a.origin));
   const text = formatIndex(next);
   if (plan.adopt.length || result.added.length || Object.keys(result.slots).length || !fs.existsSync(indexFile) || fs.readFileSync(indexFile, 'utf8') !== text) fs.writeFileSync(indexFile, text);
   const fails = Object.entries(result.fails).map(([k, v]) => `${k} ${v}`).join(', ');
@@ -216,7 +217,7 @@ function promote() {
       console.log(`publish: ${t.date} ${c.size}x${c.size} <- ${c.id} (made for ${c.slot})`);
       out.published.push({ date: t.date, id: c.id });
       if (!dry) {
-        fs.writeFileSync(target, publishedText(q.p, c, verdicts.find(x => x.id === c.id) || null));
+        fs.writeFileSync(target, publishedText(q.p, c, verdicts.find(x => x.id === c.id) || null, carriedOrigin(q.text)));
         fs.rmSync(file);
       }
       candidates = candidates.filter(x => x.id !== c.id);
