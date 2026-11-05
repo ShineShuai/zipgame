@@ -1,7 +1,9 @@
 # Production (Cloudflare)
 
 The play app is served at https://play.vintoshine.com/zigzag/ by the Worker `zigzag-site`
-(static assets only, `deploy/cloudflare/wrangler.toml`). github.io stays the test site.
+(static assets only, `deploy/cloudflare/wrangler.toml`). The host itself belongs to the portal
+Worker `play-portal` (repo `play`): it serves the page at `/` and reaches this Worker through a
+service binding, so this Worker has no domain of its own. github.io stays the test site.
 Both publish the same files from `.github/scripts/stage-site.sh`; production drops the
 design and stats pages and the old demo pages (`.github/scripts/stage-prod.sh`).
 
@@ -31,5 +33,6 @@ with a merge commit (the automatic run refuses to go on while live is not in mai
 ## One-time setup (not in git)
 The GitHub environment `production` (deployment branch `main`, no required reviewers) with the
 secret `CLOUDFLARE_API_TOKEN` (Workers Scripts: Edit, Account Settings: Read, this account only),
-and the custom domain `play.vintoshine.com` on the Worker. Renew the token before it expires
+and the service binding `GAME_ZIGZAG` -> `zigzag-site` in the portal repo (the custom domain
+`play.vintoshine.com` is on `play-portal`, not on this Worker). Renew the token before it expires
 (the run fails with an authentication error).

@@ -5,11 +5,11 @@
 #   SITE_DIR  the staged folder that was deployed (dist/zigzag)
 #   SHA       the commit the deploy was built from (build.json must show it)
 # A query string bypasses caches. Pretty-URL redirects of the host are followed (-L).
+# The host root is the portal's (repo play); this site lives below BASE_URL only.
 set -euo pipefail
 base=${1:?usage: smoke-site.sh BASE_URL SITE_DIR SHA}
 dir=${2:?usage: smoke-site.sh BASE_URL SITE_DIR SHA}
 sha=${3:?usage: smoke-site.sh BASE_URL SITE_DIR SHA}
-origin=${base%/*}
 cb=${RUN_ID:-$(date +%s)}
 
 fail() { echo "::error::$*"; exit 1; }
@@ -53,6 +53,4 @@ grep -qi '^x-content-type-options: *nosniff' <<< "$headers" || fail "nosniff hea
 grep -qi '^content-security-policy: *frame-ancestors' <<< "$headers" ||
   fail "frame-ancestors header missing"
 
-to=$(curl -sS -o /dev/null -w '%{redirect_url}' "$origin/")
-[ "$to" = "$base/" ] || fail "$origin/ redirects to '${to:-nowhere}', expected $base/"
 echo "Smoke test passed: $base is $sha"
