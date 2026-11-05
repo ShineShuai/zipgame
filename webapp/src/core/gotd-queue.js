@@ -84,7 +84,7 @@ export function planFill({ today, horizon = GOTD_CFG.horizon, perSlot = GOTD_CFG
 //   maxNew          most candidates this run may add             maxAttempts    most generator runs this run may spend
 //   slotAttempts    most runs one day may use in all (counted over all runs: index.slots[date].attempts); a day that used them up is `starved`
 //   make            ({ stamp, day, date, size, attempt, distinct }) -> makeCandidate's answer
-// -> { added: [{ entry, puzzle, symKey, path }], slots: { date: { size, attempts } } (days whose counter moved), fails: { reason: count }, starved: [date], tries }
+// -> { added: [{ entry, puzzle, symKey, path, origin }], slots: { date: { size, attempts } } (days whose counter moved), fails: { reason: count }, starved: [date], tries }
 export function fillQueue({ plan, distinct, stamp, maxNew = 24, maxAttempts = 120, slotAttempts = GOTD_CFG.maxAttemptsPerSlot, make = makeCandidate, log = () => {} }) {
   const added = [], slots = {}, fails = {}, starved = [];
   let tries = 0;
@@ -100,7 +100,7 @@ export function fillQueue({ plan, distinct, stamp, maxNew = 24, maxAttempts = 12
         continue;
       }
       distinct.add({ symKey: r.symKey, pathKey: r.entry.pathKey, where: `queue candidate ${r.entry.id}` });
-      added.push({ entry: r.entry, puzzle: r.puzzle, symKey: r.symKey, path: r.path });
+      added.push({ entry: r.entry, puzzle: r.puzzle, symKey: r.symKey, path: r.path, origin: r.origin });
       log(`${s.date} ${s.size}x${s.size} attempt ${attempt}: ${r.entry.id} grade ${r.entry.trap.grade} score ${r.entry.trap.pred}`);
       need--;
     }
@@ -118,4 +118,18 @@ export function applyFill(index, plan, result) {
     slots: { ...index.slots, ...result.slots },
     candidates: [...index.candidates.map(c => (adopt.has(c.id) ? { ...c, slot: adopt.get(c.id) } : c)), ...result.added.map(a => a.entry)].sort(byOrder),
   };
+}
+
+// Which approved candidate takes which open day: from today up to `horizon` days, a day without a file gets an approved candidate of its size, the one made for
+// that day first, else the earliest. -> [{ day, date, size, id }], id = null when no approved candidate of that size is left.
+export function planPromote({ today, horizon = GOTD_CFG.horizon, published, index }) {
+  const approved = index.candidates.filter(c => c.status === 'approved').sort(byOrder), taken = new Set(), plan = [];
+  for (let day = today; day < today + horizon; day++) {
+    const date = dateOfDay(day);
+    if (published.has(date)) continue;
+    const size = sizeForDay(day), pool = approved.filter(c => c.size === size && !taken.has(c.id)), pick = pool.find(c => c.slot === date) || pool[0] || null;
+    if (pick) taken.add(pick.id);
+    plan.push({ day, date, size, id: pick ? pick.id : null });
+  }
+  return plan;
 }

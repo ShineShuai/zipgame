@@ -72,7 +72,8 @@ const r3 = x => Math.round(x * 1000) / 1000;
 const uniqueCap = n => Math.max(TARGET_CFG.uniqueCapFloor, TARGET_CFG.uniqueCapPerCell * n * n);
 
 // -> { ok: true, entry, symKey, path } or { ok: false, reason, detail }. `entry` = what the queue index records about the puzzle.
-export function vetCandidate(puzzle, size, distinct) {
+// holdGrade: gate 3 does not reject (a human already judged the puzzle; the model may have been refitted since): a grade or margin miss comes back as `drift` on an ok answer.
+export function vetCandidate(puzzle, size, distinct, { holdGrade = false } = {}) {
   const fail = (reason, detail = '') => ({ ok: false, reason, detail });
   const v = validate(puzzle);
   if (!v.ok) return fail('invalid', v.msg);
@@ -86,8 +87,10 @@ export function vetCandidate(puzzle, size, distinct) {
   const m = trapMetrics(q, TRAP_CFG, null, modelFor(q));
   if (!m.ok) return fail('unsolved', m.reason);
   const band = targetBand(GOTD_CFG.grade, size, TRAP_MODEL, GOTD_CFG.margin, true);
-  if (m.grade < band.grade) return fail('grade', `grade ${m.grade}, wanted ${band.grade}+`);
-  if (m.predicted < band.a) return fail('margin', `score ${r3(m.predicted)} < ${r3(band.a)}`);
+  let drift = '';
+  if (m.grade < band.grade) drift = `grade ${m.grade}, wanted ${band.grade}+`;
+  else if (m.predicted < band.a) drift = `score ${r3(m.predicted)} < ${r3(band.a)}`;
+  if (drift && !holdGrade) return fail(m.grade < band.grade ? 'grade' : 'margin', drift);
   const s = solve(q, { limit: 2, nodeCap: uniqueCap(size), ...REF_FLAGS });
   if (s.count !== 1 || s.exceeded) return fail('not-unique', s.exceeded ? 'node cap reached' : `${s.count} solutions`);
   if (!isSolved(q, m.path)) return fail('path', 'the solution path does not solve the puzzle');
@@ -97,7 +100,7 @@ export function vetCandidate(puzzle, size, distinct) {
   const L = ladder(q), wf = L.solved && L.path ? wideFrac(q, L.path).frac : 0;
   const K = Math.max(...q.cp), walls = q.walls.reduce((a, w) => a + (w & 1) + ((w >> 1) & 1), 0);
   return {
-    ok: true, symKey, path: m.path,
+    ok: true, symKey, path: m.path, ...(drift ? { drift } : {}),
     entry: {
       id, size, K, walls, pathKey: pk,
       trap: { pred: r3(m.predicted), grade: m.grade, max: r3(m.trapMax), top3: r3(m.trapTop3), deep: m.trapDeep, altFrac: r3(m.altFrac), lTr: r3(m.lTr) },
@@ -114,9 +117,30 @@ export function makeCandidate({ stamp, day, date, size, attempt, distinct }) {
   const v = vetCandidate(r.puzzle, size, distinct);
   if (!v.ok) return { ...v, seed, puzzle: r.puzzle };
   const entry = { id: v.entry.id, file: candidateFile(v.entry), size, slot: date, attempt, seed, stamp, status: 'pending', ...v.entry };
-  return { ...v, entry, seed, puzzle: r.puzzle };
+  return { ...v, entry, seed, puzzle: r.puzzle, origin: originLines(r, size, stamp, seed) };
 }
 
+// The two comment lines that say how a puzzle was made, so it can be reproduced (on the code of the stamp). The first is the summary line of tools/gen-target.mjs
+// (grade reached, target, walls, checkpoints, seconds, changes tried, tries); the second is the command that makes the same puzzle again. Only the seconds depend on the machine.
+export function originLines(r, size, stamp, seed) {
+  return [
+    `seed ${seed}: grade ${r.grade} (target ${r.target}+${r.inside ? ', inside the margin' : ''}), ${r.walls} walls, ${r.K} checkpoints, ${(r.elapsedMs / 1000).toFixed(1)} s, ${r.proposals} changes, ${r.tries} tries`,
+    `gen ${stamp}: node tools/gen-target.mjs --size ${size} --grade ${GOTD_CFG.grade} --at-least --margin ${GOTD_CFG.margin} --retries ${GOTD_CFG.retries} --seed ${seed}`,
+  ];
+}
+// The origin lines of a candidate's file (also the one `gen <stamp> slot ...` line of the first queue files), to carry them into the published day.
+export const carriedOrigin = text => text.split(/\r?\n/).map(l => l.match(/^#\s+((?:seed|gen) .*)$/)).filter(Boolean).map(m => m[1]);
+
 export const candidateFile = e => `c-${e.size}-${e.id}.txt`;
-// The candidate's file: the puzzle (no solution path, so a reviewer plays it blind) and two comment lines that name its origin.
-export const candidateText = (puzzle, e) => serialize(puzzle, { comments: [`gotd candidate ${e.id}`, `gen ${e.stamp} slot ${e.slot} seed ${e.seed} attempt ${e.attempt}`] }) + '\n';
+// The candidate's file: the puzzle (no solution path, so a reviewer plays it blind), a line naming the candidate and the origin lines (originLines) that say how to make it again.
+export const candidateText = (puzzle, e, origin = []) => serialize(puzzle, { comments: [`gotd candidate ${e.id} for ${e.slot}, attempt ${e.attempt}`, ...origin] }) + '\n';
+
+// The published day's file: the puzzle, a comment on where it came from, and the reviewer's rating and solve time when there is a verdict.
+// `# play_time_s` is the line the Game-of-Day files of the author already carry (commentTimes() reads it back), written only for a solved blind play.
+// `origin`: the candidate file's origin lines (carriedOrigin), copied as they are.
+export function publishedText(puzzle, entry, verdict = null, origin = []) {
+  const comments = [`gotd ${entry.id} gen ${entry.stamp} made-for ${entry.slot} model-grade ${entry.trap.grade} score ${entry.trap.pred}`, ...origin];
+  if (verdict) comments.push(`review human ${verdict.human}${verdict.unsure ? ' unsure' : ''} solved ${verdict.solved ? 'yes' : 'no'} takebacks ${verdict.takebacks}`);
+  const times = verdict && verdict.solved && verdict.playS != null ? { playS: verdict.playS } : undefined;
+  return serialize(puzzle, { comments, times }) + '\n';
+}

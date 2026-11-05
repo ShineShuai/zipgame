@@ -43,6 +43,7 @@ import { runCompare } from './compare.js';
 import { renderCompareHtml } from './compare-view.js';
 import { DEFAULT_FLAGS_INT, PLAY_FLAGS_INT, decodeFlags, flagsToHex } from '../../core/gen/flags.js';
 import { mountDifficultyPanel } from './difficulty-panel.js';
+import { mountGotdReview } from './gotd-review.js';
 import { initHints, setHintText } from '../../ui/hint-popover.js';
 import { looksLikeSurface, parseSurface } from '../../core/surface/puzzle.js';
 import { createSurfaceController } from './surface.js';
@@ -742,6 +743,7 @@ function paintPlayNow() {
     }
   }
   if (legConflicts.length) info.textContent += '\nLeg collision: ' + legConflicts.map(k => `${legName(P, k.a)} ✕ ${legName(P, k.b)} (${k.cells.length} cell${k.cells.length > 1 ? 's' : ''})`).join(', ');
+  gotdReview.onPlay({ length: playPath.length, finished: playFinished });
 }
 function enterPlay(seedPath) {
   const v = check(P);
@@ -758,6 +760,7 @@ function enterPlay(seedPath) {
   timing.play = null;
   startPlayTimer(); const pt = $('playTimer'); if (pt) pt.style.display = '';
   syncPauseButton();
+  gotdReview.onEnter();
   setStatus(''); updateHint(); draw(); renderLegend();
 }
 function exitPlay() {
@@ -966,6 +969,16 @@ function openModal(m) {
   if (m === 'import') updateImportPathRow();
   modal.open(); setTimeout(() => $('modalText').focus(), 30);
 }
+// Puts a parsed (flat) puzzle on the board: leaves a solid board and Play mode, adopts it, shows the template path of its `path` line unless it is walked in Play instead.
+function showPuzzle(q, loadPath = null) {
+  if (surface.active) leaveSurface();
+  if (playMode) exitPlay();
+  adopt(q); preview = loadPath ? null : (q.path || null); previewVisible = true; playPath = []; drawing = false;
+  const sel = $('sizeSel');
+  if (![...sel.options].some(o => +o.value === P.n)) { const o = document.createElement('option'); o.value = P.n; o.textContent = `${P.n} × ${P.n}`; sel.appendChild(o); }
+  sel.value = String(P.n); setDefaults(P.n);
+  refresh(); updateHint();
+}
 $('includePath').addEventListener('change', () => { $('modalText').value = exportText(); });
 $('modalText').addEventListener('input', updateImportPathRow);
 $('modalCancel').onclick = modal.close;
@@ -982,14 +995,9 @@ $('modalOk').onclick = async () => {
       return;
     }
     const q = parse($('modalText').value);
-    if (surface.active) leaveSurface();
     const loadPath = $('importPath').checked && q.path ? q.path.slice() : null;
-    if (playMode) exitPlay();
-    adopt(q); preview = loadPath ? null : (q.path || null); previewVisible = true; playPath = []; drawing = false;
-    const sel = $('sizeSel');
-    if (![...sel.options].some(o => +o.value === P.n)) { const o = document.createElement('option'); o.value = P.n; o.textContent = `${P.n} × ${P.n}`; sel.appendChild(o); }
-    sel.value = String(P.n); setDefaults(P.n);
-    refresh(); updateHint(); msg.textContent = 'Puzzle imported ✓'; msg.className = 'modal-msg ok'; setTimeout(modal.close, 400);
+    showPuzzle(q, loadPath);
+    msg.textContent = 'Puzzle imported ✓'; msg.className = 'modal-msg ok'; setTimeout(modal.close, 400);
     if (loadPath) enterPlay(loadPath);
   } catch (err) { msg.textContent = err.message; msg.className = 'modal-msg'; }
 };
@@ -1032,6 +1040,14 @@ const difficultyPanel = mountDifficultyPanel($('difficultyResult'), () => P, nod
   if (!cells) return;
   if (playMode) exitPlay();
   preview = cells; previewVisible = true; renderLegend(); draw();
+});
+
+// ---------- GOTD review: plays the queue's candidates blind and records the reviewer's ratings (gotd-review.js) ----------
+const gotdReview = mountGotdReview($('gotdReview'), {
+  show: text => showPuzzle(parse(text)),
+  play: () => enterPlay(),
+  stopPlay: () => { if (playMode) exitPlay(); },
+  state: () => ({ elapsed: playPaused || playFinished ? playElapsed : (performance.now() - playStartTime) / 1000, length: playPath.length, total: cellCount(P) }),
 });
 $('difficultyBtn').onclick = () => { if (playMode) exitPlay(); difficultyPanel.run(); };
 $('playBtn').onclick = () => {
