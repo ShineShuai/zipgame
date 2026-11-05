@@ -11,14 +11,16 @@
 //   lspc   ln(seconds per cell): size-adjusted time; heavy-tailed, so ranks (Spearman), no means
 //   regret cells taken back per cell (u / T);  deepc = deepest take-back per cell (deep / T)
 //   stuck  deep >= F * T (--stuck, default 0.3): the player went far down a wrong turn
-// An abandoned game (its time is cut off) and a game with a hint (its time is not comparable) are left
-// out of all statistics above; the badge table shows their share (abn% = left unfinished, hint% = used
-// a hint), and the wrong turns recorded in `ev` (rows of version 1) are summarised.
+// An abandoned game (its time is cut off) and a game with a hint (its time is not comparable)
+// are left out of all statistics above; the badge table shows their share (abn% = left
+// unfinished, hint% = used a hint), and the wrong turns recorded in `ev` (rows of version 1)
+// are summarised.
 // Confidence intervals resample whole puzzles (rows of one puzzle are not independent).
 import fs from 'node:fs';
 import { makeRng } from '../src/core/rng.js';
 import { invert, TIME_PRIOR } from '../src/core/gotd-model.js';
 import { evalCap } from './lib.mjs';
+import { sum, mean, quant, spearman, fmt, pct } from './stats-lib.mjs';
 import { parse } from '../src/core/format.js';
 import { packPuzzle, toB64u } from '../src/core/behaviour.js';
 import { NAMES, GROUP, featuresOf } from './features.mjs';
@@ -39,34 +41,6 @@ const CALIB_DIR = opt('calib-dir');
 const SHOWN = ['grade:trap', 'trapPredicted', 'grade:ladder', 'grade:decisionNodes'];
 
 // ---------- statistics ----------
-const sum = a => a.reduce((s, v) => s + v, 0);
-const mean = a => sum(a) / a.length;
-const quant = (a, q) => {
-  const s = [...a].sort((x, y) => x - y), i = (s.length - 1) * q, lo = Math.floor(i);
-  return s[lo] + (s[Math.ceil(i)] - s[lo]) * (i - lo);
-};
-function rank(a) { // average ranks for ties
-  const idx = a.map((v, i) => [v, i]).sort((x, y) => x[0] - y[0]), r = [];
-  for (let i = 0, j; i < idx.length; i = j + 1) {
-    for (j = i; j + 1 < idx.length && idx[j + 1][0] === idx[i][0];) j++;
-    for (let k = i; k <= j; k++) r[idx[k][1]] = (i + j) / 2;
-  }
-  return r;
-}
-function pearson(x, y) {
-  const mx = mean(x), my = mean(y);
-  let a = 0, b = 0, c = 0;
-  for (let i = 0; i < x.length; i++) {
-    a += (x[i] - mx) * (y[i] - my);
-    b += (x[i] - mx) ** 2;
-    c += (y[i] - my) ** 2;
-  }
-  return a / Math.sqrt(b * c);
-}
-const spearman = (x, y) => (x.length < 4 ? NaN : pearson(rank(x), rank(y)));
-const fmt = v => (Number.isFinite(v) ? v.toFixed(2).padStart(6) : '     —');
-const pct = v => (100 * v).toFixed(0) + '%';
-
 // OLS with standard errors clustered by puzzle. X rows include the intercept. -> { b, se }
 function clusterOls(X, y, cl) {
   const k = X[0].length, n = X.length;
