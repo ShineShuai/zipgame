@@ -119,3 +119,17 @@ export function applyFill(index, plan, result) {
     candidates: [...index.candidates.map(c => (adopt.has(c.id) ? { ...c, slot: adopt.get(c.id) } : c)), ...result.added.map(a => a.entry)].sort(byOrder),
   };
 }
+
+// Which approved candidate takes which open day: from today up to `horizon` days, a day without a file gets an approved candidate of its size, the one made for
+// that day first, else the earliest. -> [{ day, date, size, id }], id = null when no approved candidate of that size is left.
+export function planPromote({ today, horizon = GOTD_CFG.horizon, published, index }) {
+  const approved = index.candidates.filter(c => c.status === 'approved').sort(byOrder), taken = new Set(), plan = [];
+  for (let day = today; day < today + horizon; day++) {
+    const date = dateOfDay(day);
+    if (published.has(date)) continue;
+    const size = sizeForDay(day), pool = approved.filter(c => c.size === size && !taken.has(c.id)), pick = pool.find(c => c.slot === date) || pool[0] || null;
+    if (pick) taken.add(pick.id);
+    plan.push({ day, date, size, id: pick ? pick.id : null });
+  }
+  return plan;
+}
