@@ -1,14 +1,27 @@
-// Behaviour rows: one anonymous record per solved game, uploaded for the difficulty analysis (server/README.md, "Behaviour rows").
+// Behaviour rows: one anonymous record per finished game (solved, or left unfinished), uploaded
+// for the difficulty analysis
+// (server/README.md, "Behaviour rows").
 // Pure: no DOM, no storage, no network. The page, the Worker, the tools and the tests all use this one file, so a column is defined once.
 //
 // A row is { day, ms, u, deep, s, pz, ev, v }:
 //   day   UTC day number (days since 1970-01-01) of the puzzle: the day of a Game of Day, the day a local game's seed was made.
-//   ms    raw solve time in milliseconds (no hint penalty: a game that used a hint is never uploaded).
+//   ms    raw time in milliseconds, no hint penalty; of an abandoned game: the time until it was
+//         left.
 //   u     cells drawn and taken back (the play log's `undone`), deep = the most cells taken back in one go (`maxUndone`).
-//   s     one byte: kind (0 local, 1 Game of Day, 2 replay of a missed day) in bits 0-1, skill bucket (0-14, 15 = unknown) in bits 2-5.
+//   s     one byte: kind (0 local, 1 Game of Day, 2 replay of a missed day) in bits 0-1, skill
+//         bucket (0-14, 15 = unknown) in bits 2-5,
+//         bit 6 = a hint was used, bit 7 = abandoned (left unfinished; its ms, u, deep and ev are
+//         as of the moment it was left).
 //   pz    the puzzle itself, packed (packPuzzle), for a local game; null for a Game of Day (its file demo/GameOfDay/<day>.txt is the puzzle).
-//   ev    reserved for later detail (per-mistake events, per-leg times). null in version 0. Its first byte is that detail's own format version.
+//   ev    the wrong turns of the game (packEv). First byte: that format's version (EV_VERSION);
+//         then two bytes per wrong turn: the step of the
+//         solution where the player left it, and how many cells they went on before taking it back
+//         (at most EV_MAX_EVENTS, in time order).
+//         One byte only = a game without a wrong turn; null = not recorded (version 0, or no
+//         solution path to compare with).
 //   v     the row format version (ROW_VERSION). A change of any column, of `s` or of the pz layout bumps it; tools keep every old decoder.
+//         Version 1: the skill is of the same kind of game (local, or Game of Day + replay); s has
+//         bits 6-7; ev is filled. Version 0 has none of it.
 // Why the puzzle and not its seed: the generator changes with the code (ALGO_VERSION and edits that keep it), so (algo, day, size, index)
 // only rebuilds a puzzle with the exact commit that made it. The packed puzzle is canonical (cells in checkpoint order, walls in edge-id
 // order), so equal puzzles are equal bytes and `GROUP BY pz` works in SQL.
@@ -19,10 +32,11 @@ import { MIN_MS, MAX_MS, REPLAY_DAYS } from './hist.js';
 import { makePuzzle, checkpointCells, maxNumber, validate } from './model.js';
 import { wallIds, setWallId } from './edges.js';
 
-export const ROW_VERSION = 0;
+export const ROW_VERSION = 1;
 export const KINDS = ['local', 'gotd', 'replay'];
 export const UNKNOWN_SKILL = 15;
 export const PZ_MAX_N = 16, PZ_MAX_BYTES = 128, EV_MAX_BYTES = 64;
+export const EV_VERSION = 1, EV_MAX_EVENTS = (EV_MAX_BYTES - 1) >> 1;
 export const SKILL_MIN_GAMES = 8, SKILL_BASE_MS = 60, SKILL_WINDOW = 30;
 
 const isInt = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
@@ -129,27 +143,62 @@ export function unpackPuzzle(bytes) {
 }
 
 // ---------- the `s` byte and the skill bucket ----------
-export const packS = (kind, skill) => KINDS.indexOf(kind) | ((isInt(skill, 0, 15) ? skill : UNKNOWN_SKILL) << 2);
-export const unpackS = s => (isInt(s, 0, 255) && (s & 3) < KINDS.length ? { kind: KINDS[s & 3], skill: (s >> 2) & 15 } : null);
+const HINT_BIT = 64, ABANDONED_BIT = 128;
+export const packS = (kind, skill, { hint = false, abandoned = false } = {}) => KINDS.indexOf(kind)
+  | ((isInt(skill, 0, 15) ? skill : UNKNOWN_SKILL) << 2)
+  | (hint ? HINT_BIT : 0) | (abandoned ? ABANDONED_BIT : 0);
+export const unpackS = s => (isInt(s, 0, 255) && (s & 3) < KINDS.length
+  ? { kind: KINDS[s & 3], skill: (s >> 2) & 15, hint: Boolean(s & HINT_BIT),
+    abandoned: Boolean(s & ABANDONED_BIT) } : null);
 
 // How fast this player is: the median ms per cell of their last SKILL_WINDOW solved games without a hint (the local play log's records),
 // in half-octave steps (x sqrt 2 per step) above SKILL_BASE_MS, clamped to 0..14; UNKNOWN_SKILL (15) below SKILL_MIN_GAMES games.
 // It is not an identifier. It lets the analysis tell a slow player from a hard puzzle.
-export function skillBucket(records) {
-  const xs = (records || []).filter(r => r && r.solved && !r.hints && r.ms > 0 && r.n > 0).slice(-SKILL_WINDOW).map(r => r.ms / (r.n * r.n)).sort((a, b) => a - b);
+// With `mode`, only games of the same kind count: local, or Game of Day + replay (their puzzles
+// are not alike, so their times are not).
+const kindClass = mode => (!mode || mode === 'local' ? 'local' : 'daily');
+export function skillBucket(records, mode) {
+  const same = r => mode === undefined || kindClass(r.mode) === kindClass(mode);
+  const xs = (records || [])
+    .filter(r => r && r.solved && !r.hints && r.ms > 0 && r.n > 0 && same(r))
+    .slice(-SKILL_WINDOW).map(r => r.ms / (r.n * r.n)).sort((a, b) => a - b);
   if (xs.length < SKILL_MIN_GAMES) return UNKNOWN_SKILL;
   const mid = xs.length >> 1, median = xs.length % 2 ? xs[mid] : (xs[mid - 1] + xs[mid]) / 2;
   return Math.max(0, Math.min(14, Math.round(2 * Math.log2(median / SKILL_BASE_MS))));
 }
 
+// ---------- the wrong turns (`ev`) ----------
+// events: [[step, cells], ...] (time order) -> bytes; no events -> the version byte alone; not an
+// array -> null.
+// A number is clamped to a byte (a step is below 256: the boards have at most 16 x 16 cells), the
+// cells to 1..255.
+export function packEv(events) {
+  if (!Array.isArray(events)) return null;
+  const out = [EV_VERSION], byte = (v, lo) => Math.min(255, Math.max(lo, Math.round(+v) || 0));
+  for (const e of events.slice(0, EV_MAX_EVENTS)) out.push(byte(e[0], 0), byte(e[1], 1));
+  return Uint8Array.from(out);
+}
+// bytes -> [[step, cells], ...]; null when the bytes are not this version's layout.
+export function unpackEv(bytes) {
+  const ok = bytes instanceof Uint8Array && bytes.length % 2 === 1 && bytes.length <= EV_MAX_BYTES;
+  if (!ok || bytes[0] !== EV_VERSION) return null;
+  const events = [];
+  for (let k = 1; k < bytes.length; k += 2) events.push([bytes[k], bytes[k + 1]]);
+  return events;
+}
+
 // ---------- which games become a row ----------
-// game: { puzzle, mode: 'local' | 'gotd' | 'replay', day, ms, hints, hiddenMs, undone, maxUndone, skill, variant, shared, known }
+// game: { puzzle, mode: 'local' | 'gotd' | 'replay', day, ms, hints, abandoned, events, hiddenMs,
+// undone, maxUndone, skill, variant, shared, known }
+//   abandoned  left unfinished (the numbers are as of then); events  the wrong turns [[step,
+//              cells], ...] or null when not recorded
 //   variant  a Cutout game; shared  a local game opened from a link; known  a Game of Day this device already solved (a repeat knows the answer)
 // cfg: { localSizes: [min, max], hiddenMaxMs }. -> the row, or null when the game is not uploaded:
-// a solved game only (the caller sends nothing else), no variant, no hint, no more than hiddenMaxMs with the tab hidden (the timer keeps running
+// a solved or abandoned game (a hint only sets a flag), no variant, no more than hiddenMaxMs with
+// the tab hidden (the timer keeps running
 // in the background), no repeat of a known puzzle, and a local game only within localSizes and when its puzzle packs.
 export function rowFromGame(g, cfg, now = Date.now()) {
-  if (!g || !g.puzzle || g.variant || g.puzzle.holes || g.hints > 0 || !KINDS.includes(g.mode)) return null;
+  if (!g || !g.puzzle || g.variant || g.puzzle.holes || !KINDS.includes(g.mode)) return null;
   if (g.hiddenMs > cfg.hiddenMaxMs || g.known || !(g.ms >= MIN_MS && g.ms <= MAX_MS)) return null;
   let pz = null;
   if (g.mode === 'local') {
@@ -157,11 +206,22 @@ export function rowFromGame(g, cfg, now = Date.now()) {
     if (g.shared || g.puzzle.n < lo || g.puzzle.n > hi || !(pz = packPuzzle(g.puzzle))) return null;
   }
   const cap = v => Math.min(65535, Math.max(0, Math.round(v || 0)));
-  return validateRow({ day: g.day, ms: Math.round(g.ms), u: cap(g.undone), deep: cap(g.maxUndone), s: packS(g.mode, g.skill), pz, ev: null, v: ROW_VERSION }, now);
+  const flags = { hint: g.hints > 0, abandoned: Boolean(g.abandoned) };
+  return validateRow({
+    day: g.day, ms: Math.round(g.ms), u: cap(g.undone), deep: cap(g.maxUndone), s: packS(g.mode,
+      g.skill, flags), pz,
+    ev: packEv(g.events), v: ROW_VERSION,
+  }, now);
 }
 
-// A stored row -> what it means (for the tools): { kind, skill, puzzle | null }. pz is decoded for a local row only.
+// A stored row -> what it means (for the tools): { kind, skill, hint, abandoned, events | null,
+// puzzle | null }.
+// pz is decoded for a local row only; events only when row.ev holds this version's layout.
 export function describeRow(row) {
   const s = unpackS(row.s);
-  return { kind: s ? s.kind : null, skill: s ? s.skill : null, puzzle: row.pz ? unpackPuzzle(row.pz) : null };
+  return {
+    kind: s ? s.kind : null, skill: s ? s.skill : null,
+    hint: s ? s.hint : false, abandoned: s ? s.abandoned : false,
+    events: row.ev ? unpackEv(row.ev) : null, puzzle: row.pz ? unpackPuzzle(row.pz) : null,
+  };
 }

@@ -10,12 +10,13 @@ import { variantOf, nearestSize, sizesFor } from './variants.js';
 import { BEHAVIOUR, THEMES } from '../../config.js';
 import { submitAttempt } from '../../platform/leaderboard.js';
 import { rowFromGame, skillBucket } from '../../core/behaviour.js';
-import { buildRecord, newTrace } from '../../features/playlog.js';
+import { solutionPath } from '../../core/trap.js';
+import { buildRecord, newTrace, traceEvents } from '../../features/playlog.js';
 import { sfxSolved } from '../../platform/sound.js';
 import { eventAt } from '../../themes/calendar.js';
 import { awardSlots, offerTheme, themes, watchDay } from '../../ui/theme.js';
 import {
-  $, S, SIZES, behaviour, daily, dayNo, lb, playlog, randomInt, randomSeed, render, replay, sec,
+  $, S, SIZES, behaviour, calib, daily, dayNo, lb, playlog, randomInt, randomSeed, render, replay, sec,
   slotsSync, solid, storage, store, streak, unlock,
 } from './state.js';
 import { refreshNext } from './counters.js';
@@ -30,16 +31,23 @@ export function logPlay(solved) {
   const mode = S.isGotd ? (S.isReplay ? 'replay' : 'gotd') : 'local';
   const history = playlog.all(); // asked before add(): the skill bucket of the upload must not count this game
   playlog.add(buildRecord(S.puzzle, { ms, solved, hints: S.hintsUsed, mode }));
-  if (solved) uploadBehaviour(history, ms, mode);
+  uploadBehaviour(history, ms, mode, !solved); // a game left unfinished is a row too, flagged
 }
-// The anonymous behaviour row of a solved game (core/behaviour.js decides whether it is sent at all; platform/behaviour.js sends it).
+// The anonymous behaviour row of a finished game, solved or abandoned (core/behaviour.js decides
+// whether it is sent at all;
+// platform/behaviour.js sends it).
 // Everything of S is read now, before the await: the game state moves on. A Game of Day this device already solved is a repeat: not sent.
-function uploadBehaviour(history, ms, mode) {
+function uploadBehaviour(history, ms, mode, abandoned = false) {
   if (!behaviour) return;
   const attempt = S.isGotd ? store.attemptOn(S.gotdDate) : null;
-  const game = { puzzle: S.puzzle, mode, ms, hints: S.hintsUsed, hiddenMs: S.trace.hiddenMs, undone: S.trace.undone, maxUndone: S.trace.maxUndone,
+  const game = { puzzle: S.puzzle, mode, ms, hints: S.hintsUsed, abandoned,
+    events: S.sol ? traceEvents(S.trace) : null, hiddenMs: S.trace.hiddenMs,
+    undone: S.trace.undone, maxUndone: S.trace.maxUndone,
     day: S.isGotd ? dayOfDate(S.gotdDate) : S.gameDay ?? dayNo(), variant: S.variant, shared: S.isShared, known: Boolean(attempt && attempt.solved) };
-  history.then(h => { const row = rowFromGame({ ...game, skill: skillBucket(h) }, BEHAVIOUR); return row && behaviour.enqueue(row); })
+  history.then(h => {
+    const row = rowFromGame({ ...game, skill: skillBucket(h, mode) }, BEHAVIOUR);
+    return row && behaviour.enqueue(row);
+  })
     .catch(e => console.warn('behaviour upload skipped:', e));
 }
 
@@ -52,7 +60,8 @@ export function onSolved() {
   if (S.isGotd) { const a = store.attemptOn(S.gotdDate); if (!(a && a.solved)) finishGotd(S.puzzle.n, S.gotdDate, S.elapsed, S.isReplay); } // a Game of Day (live or replay) counts once
   else { // stats and daily counter of the puzzle type (a variant has its own)
     const n = S.puzzle.n, scope = S.variant || ''; store.recordSolve(n, dayNo(), S.elapsed, scope);
-    if (!S.isShared) daily.markSolved(n, S.gameIndex, scope).then(refreshNext); }
+    if (S.calib) calib.markSolved(n, S.gameIndex);
+    else if (!S.isShared) daily.markSolved(n, S.gameIndex, scope).then(refreshNext); }
 }
 
 // Game of Day (live or replay): record locally, count it towards the next replay chance, then submit to the averages backend
@@ -130,6 +139,18 @@ export async function shareGotd(date) {
   if (saved && (S.screen === 'menu' || (S.screen === 'game' && S.isGotd && S.finished))) render();
 }
 
+// The solution path of a plain game (a variant has its own rules: none); null when there is none
+// or the solve failed.
+function solutionOf(puzzle, variant) {
+  if (variant || puzzle.holes || puzzle.split) return null;
+  try {
+    return solutionPath(puzzle);
+  } catch (e) {
+    console.warn('solution path failed:', e);
+    return null;
+  }
+}
+
 export function beginGame(puzzle, gotdDate, isReplay = false, isShared = false, lucky = false) {
   logPlay(false); // a puzzle left unfinished is logged as abandoned
   // the menu's shared card starts afresh
@@ -138,6 +159,9 @@ export function beginGame(puzzle, gotdDate, isReplay = false, isShared = false, 
   const variant = variantOf(puzzle);
   const difficulty = gradePuzzle(puzzle);
   Object.assign(S, { variant, lucky, luckyResult: null, luckyNote: null, genNotice: null, healed: false, trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty, cam: null, pan: false });
+  S.calib = Boolean(puzzle.calib); // a calibration game: played blind, counted by its own counter
+  S.sol = solutionOf(puzzle, variant);
+  // the wrong turns of the game are the player's path against this
   // Two paths: the red and the blue path, and the colour drawn now (S.path is that colour's path)
   S.paths = newPaths();
   S.colour = 0;
@@ -154,6 +178,7 @@ const generateShown = (n, seed, mode, signal) => runGeneration({ task: 'flat', m
 // how: 'open' (Play local: current or next-if-solved) | 'skip' (New puzzle); a variant is always a new random one.
 // lucky: the lucky game (startLucky): its chance is given back when the puzzle cannot be made.
 export async function startLocal(how, mode = 'standard', lucky = false) {
+  if (calib && mode === 'standard' && !lucky) return startCalibration(how);
   if (mode !== 'standard') S.size = nearestSize(S.size, sizesFor(mode, SIZES)); // e.g. after a shared 12x12 one
   S.screen = 'generating'; S.genMode = mode; S.gen = { frac: 0, walls: null, K: null }; S.genNotice = null; render();
   const job = S.genJob = cancellable();
@@ -171,6 +196,21 @@ export async function startLocal(how, mode = 'standard', lucky = false) {
   } finally {
     job.end();
     if (S.genJob === job) S.genJob = null;
+  }
+}
+// A calibration game (?calib, features/calib.js): the next puzzle of the fixed set, not a new one.
+async function startCalibration(how) {
+  Object.assign(S, { screen: 'generating', genMode: 'standard', genNotice: null });
+  S.gen = { frac: 0, walls: null, K: null };
+  render();
+  try {
+    S.size = nearestSize(S.size, await calib.sizes());
+    const { puzzle, pos } = await (how === 'skip' ? calib.skip(S.size) : calib.open(S.size));
+    Object.assign(S, { gameIndex: pos, seed: null, gameDay: null });
+    beginGame(puzzle);
+  } catch (e) {
+    console.error('startCalibration failed:', e);
+    S.genNotice = 'err.generate'; S.screen = 'menu'; render();
   }
 }
 // Lucky game: open to everyone, once per offer. Draws a variant (a locked one has a size of 7-10, features/unlock.js) and plays

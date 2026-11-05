@@ -46,15 +46,15 @@ fi
 
 [ "${PROD_FREEZE:-false}" != true ] || skip "PROD_FREEZE is set"
 soak=${SOAK_DAYS:-7}
-days=${RELEASE_DAYS:-Tue}
+days=$(tr -d '[:space:]' <<< "${RELEASE_DAYS:-Tue}")
 [ -n "$live" ] || die "cannot read $site/build.json (site down, or never deployed)"
 
 # A release day, or a missed one: the live version is more than a week old.
 today=$(date -u +%a)
 age=0
 [ -z "$built" ] || age=$(( ($(date -u +%s) - $(date -u -d "$built" +%s)) / 86400 ))
-case ",$days," in
-  *",$today,"*) ;;
+case ",${days,,}," in
+  *",${today,,},"*) ;;
   *) [ "$age" -ge 8 ] || skip "$today is not a release day ($days)" ;;
 esac
 

@@ -55,8 +55,10 @@ export const SYNC = {
   },
 };
 
-// Anonymous play behaviour (src/core/behaviour.js, server/README.md "Behaviour rows"): for each solved game the page uploads the puzzle, the time and how
-// many cells the player took back. No identifier. Only Turso and Cloudflare receive it (never Supabase): each row goes to `primary`, to `backup` only when
+// Anonymous play behaviour (src/core/behaviour.js, server/README.md "Behaviour rows"): for each
+// finished game (solved or abandoned) the page uploads the puzzle, the time, how
+// many cells the player took back and where the path left the solution. No identifier. Only Turso
+// and Cloudflare receive it (never Supabase): each row goes to `primary`, to `backup` only when
 // the primary does not answer. Both are ids of LEADERBOARD.backends. The Turso token must also allow `play:data_add` (server/README.md).
 //   enabled        THE GLOBAL SWITCH. false = nothing is queued or sent, the hold-V toggle is hidden, a queue left on a device is discarded.
 //   defaultOn      a device's setting until its player changes it (hold V in the menu: "Anonymous play stats"). false = off until switched on.

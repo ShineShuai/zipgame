@@ -10,7 +10,7 @@ import { binEdges, binEdgeBlock, blockOf, withBlock } from '../../tools/print-bi
 import { tursoBackend, createLeaderboard, TURSO_SQL } from '../../src/platform/leaderboard.js';
 import { parseDays } from '../../src/core/stats-merge.js';
 import { SINKS } from '../../src/platform/behaviour.js';
-import { COLUMNS, COLUMN_NAMES, INSERT_SQL, validateRow, packPuzzle, packS, utcDay } from '../../src/core/behaviour.js';
+import { COLUMNS, COLUMN_NAMES, INSERT_SQL, validateRow, packPuzzle, packS, packEv, utcDay } from '../../src/core/behaviour.js';
 import { parse, serialize } from '../../src/core/format.js';
 import { createAdmin, describe, dedupe, select, idsOf } from '../../tools/behaviour-lib.mjs';
 import { dateOfDay } from '../../src/features/daily.js';
@@ -254,7 +254,8 @@ const playRows = db => db.prepare('SELECT rowid AS id, day, ms, u, deep, s, hex(
 await test('play: the trigger accepts and rejects exactly what validateRow of src/core/behaviour.js does (one rule set, two implementations)', async () => {
   const db = open(), d = utcDay();
   const cases = {
-    ok: row(), 'ok: a Game of Day row (no puzzle, no counts)': row({ pz: null, u: null, deep: null, s: packS('gotd', 15) }), 'ok: ms at the lower limit': row({ ms: 500 }), 'ok: ms at the upper limit': row({ ms: 3600000 }),
+    ok: row(), 'ok: version 1, abandoned, with a hint, with wrong turns': row({ s: packS('local', 5, { hint: true, abandoned: true }), ev: packEv([[3, 2], [10, 40]]), v: 1 }),
+    'ok: a Game of Day row (no puzzle, no counts)': row({ pz: null, u: null, deep: null, s: packS('gotd', 15) }), 'ok: ms at the lower limit': row({ ms: 500 }), 'ok: ms at the upper limit': row({ ms: 3600000 }),
     'ok: the oldest replay day': row({ day: d - REPLAY_DAYS - 1 }), 'ok: tomorrow': row({ day: d + 1 }), 'ok: ev of 64 bytes': row({ ev: new Uint8Array(64) }), 'ok: pz of 128 bytes': row({ pz: new Uint8Array(128) }), 'ok: v 15': row({ v: 15 }),
     'ms 499': row({ ms: 499 }), 'ms 3600001': row({ ms: 3600001 }), 'day too old': row({ day: d - REPLAY_DAYS - 2 }), 'day too new': row({ day: d + 2 }), 'u -1': row({ u: -1 }), 'u 65536': row({ u: 65536 }),
     'deep 65536': row({ deep: 65536 }), 's 256': row({ s: 256 }), 'pz 3 bytes': row({ pz: PZ.slice(0, 3) }), 'pz 129 bytes': row({ pz: new Uint8Array(129) }), 'ev 65 bytes': row({ ev: new Uint8Array(65) }), 'v 16': row({ v: 16 }), 'v -1': row({ v: -1 }),

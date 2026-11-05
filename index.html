@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Zip – connect the numbers, fill every square</title>
-<meta name="description" content="Zip is a path puzzle you play in your web browser. Connect the numbers in order and fill every square.">
+<title>zigzag – connect the numbers, fill every square</title>
+<meta name="description" content="zigzag is a path puzzle you play in your web browser. Connect the numbers in order and fill every square.">
 
 <!--
   HOW TO EDIT THIS PAGE
@@ -20,8 +20,8 @@
   (function () {
     var root = document.documentElement;
     var titles = {
-      en: 'Zip \u2013 connect the numbers, fill every square',
-      zh: 'Zip \u2013 \u6309\u987a\u5e8f\u8fde\u63a5\u6570\u5b57\uff0c\u8d70\u904d\u6bcf\u4e2a\u683c\u5b50'
+      en: 'zigzag \u2013 connect the numbers, fill every square',
+      zh: 'zigzag \u2013 \u6309\u987a\u5e8f\u8fde\u63a5\u6570\u5b57\uff0c\u8d70\u904d\u6bcf\u4e2a\u683c\u5b50'
     };
 
     function setLanguage(language) {
@@ -276,11 +276,9 @@
 <body>
 <header class="topbar">
   <div class="container topbar-inner">
-    <a class="brand" href="#top" aria-label="Zip">
-      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
-        <use href="./assets/images/logo/zip.svg"></use>
-      </svg>
-      <span class="brand-name">Zip</span>
+    <a class="brand" href="#top" aria-label="zigzag">
+      <img class="logo" src="./assets/images/logo/zip.svg" alt="" width="34" height="34">
+      <span class="brand-name">zigzag</span>
     </a>
     <nav class="nav" aria-label="Sections">
       <a href="#about"><span lang="en">Overview</span><span lang="zh">概览</span></a>
@@ -311,8 +309,8 @@
           <span lang="zh">按顺序连接数字，<br><span class="accent">走遍每一个格子。</span></span>
         </h1>
         <p class="lead">
-          <span lang="en">Zip is a calm puzzle game. Draw one continuous line: start at 1, follow the numbers in order, fill every square, and finish at the highest number. Never cross a wall. There is nothing to install: just open it and play.</span>
-          <span lang="zh">Zip 是一款轻松的益智小游戏：画一条连续的线，从 1 出发，按顺序经过各个数字，填满每一个格子，并在最大的数字上结束，途中不能穿过墙。无需安装，打开就能玩。</span>
+          <span lang="en">zigzag is a calm puzzle game. Draw one continuous line: start at 1, follow the numbers in order, fill every square, and finish at the highest number. Never cross a wall. There is nothing to install: just open it and play.</span>
+          <span lang="zh">zigzag 是一款轻松的益智小游戏：画一条连续的线，从 1 出发，按顺序经过各个数字，填满每一个格子，并在最大的数字上结束，途中不能穿过墙。无需安装，打开就能玩。</span>
         </p>
         <div class="hero-buttons">
           <a class="button primary" href="webapp/index.html">▶ <span lang="en">Play now</span><span lang="zh">立即开始</span></a>
@@ -320,7 +318,7 @@
         </div>
       </div>
 
-      <!-- The two boards are a real puzzle from the generator (5x5, seed 54) and its unique solution, drawn as inline SVG. -->
+      <!-- The two boards are a 5x5 puzzle with a unique solution (checked with the solver), drawn as inline SVG. -->
       <div class="showcase">
         <div class="showcase-boards">
           <figure>
@@ -359,14 +357,14 @@
     </div>
   </section>
 
-  <!-- ===== What is Zip ===== -->
+  <!-- ===== What is zigzag ===== -->
   <section id="about" class="band">
     <div class="container">
       <div class="section-head">
-        <h2><span lang="en">What is Zip?</span><span lang="zh">Zip 是什么？</span></h2>
+        <h2><span lang="en">What is zigzag?</span><span lang="zh">zigzag 是什么？</span></h2>
         <p class="lead">
-          <span lang="en">Zip is a path puzzle inspired by <a href="https://www.linkedin.com/games/zip/" target="_blank" rel="noopener noreferrer">the Zip game on LinkedIn</a>. Each board has a few numbered squares and possibly some walls. Your job is to draw a single line across the board, following four simple rules.</span>
-          <span lang="zh">Zip 是一款路线谜题，灵感来自 <a href="https://www.linkedin.com/games/zip/" target="_blank" rel="noopener noreferrer">LinkedIn 上的 Zip 游戏</a>。每块棋盘上有几个带数字的格子，有时还有一些墙。你要按四条简单的规则，画出一条贯穿棋盘的线。</span>
+          <span lang="en">zigzag is a path puzzle inspired by <a href="https://www.linkedin.com/games/zip/" target="_blank" rel="noopener noreferrer">the Zip game on LinkedIn</a>. Each board has a few numbered squares and possibly some walls. Your job is to draw a single line across the board, following four simple rules.</span>
+          <span lang="zh">zigzag 是一款路线谜题，灵感来自 <a href="https://www.linkedin.com/games/zip/" target="_blank" rel="noopener noreferrer">LinkedIn 上的 Zip 游戏</a>。每块棋盘上有几个带数字的格子，有时还有一些墙。你要按四条简单的规则，画出一条贯穿棋盘的线。</span>
         </p>
       </div>
 
@@ -403,7 +401,7 @@
         <div class="card">
           <div class="icon" aria-hidden="true">🎮</div>
           <h3><span lang="en">The game</span><span lang="zh">游戏</span></h3>
-          <p><span lang="en">A puzzle game you play in your web browser, with eight board sizes and new puzzles every day.</span><span lang="zh">在网页浏览器里玩的益智游戏，提供八种棋盘尺寸，每天都有新题目。</span></p>
+          <p><span lang="en">A puzzle game you play in your web browser, with nine board sizes, several puzzle types and new puzzles every day.</span><span lang="zh">在网页浏览器里玩的益智游戏，提供九种棋盘尺寸、多种题型，每天都有新题目。</span></p>
         </div>
         <div class="card">
           <div class="icon" aria-hidden="true">🧩</div>
@@ -438,7 +436,7 @@
     <div class="container">
       <div class="section-head">
         <h2><span lang="en">Where you can play</span><span lang="zh">在哪里玩</span></h2>
-        <p class="lead"><span lang="en">Zip runs in your web browser, so it works wherever you have one.</span><span lang="zh">Zip 在网页浏览器里运行，只要有浏览器就能玩。</span></p>
+        <p class="lead"><span lang="en">zigzag runs in your web browser, so it works wherever you have one.</span><span lang="zh">zigzag 在网页浏览器里运行，只要有浏览器就能玩。</span></p>
       </div>
       <div class="cards four">
         <div class="card">
@@ -454,12 +452,12 @@
         <div class="card">
           <div class="icon" aria-hidden="true">🌐</div>
           <h3><span lang="en">Nothing to install</span><span lang="zh">无需安装</span></h3>
-          <p><span lang="en">Just open the page in Chrome, Edge, Firefox or Safari.</span><span lang="zh">在 Chrome、Edge、Safari 等浏览器中打开。</span></p>
+          <p><span lang="en">Just open the page in Chrome, Edge, Firefox or Safari.</span><span lang="zh">在 Chrome、Edge、Firefox、Safari 等浏览器中打开。</span></p>
         </div>
         <div class="card">
           <div class="icon" aria-hidden="true">💾</div>
           <h3><span lang="en">Kept on your device</span><span lang="zh">保存在你的设备上</span></h3>
-          <p><span lang="en">Statistics stay in your browser. No account needed.</span><span lang="zh">统计数据保存在自己的浏览器里，无需注册账号。</span></p>
+          <p><span lang="en">Statistics stay in your browser. No account needed, and you can link your own devices if you like.</span><span lang="zh">统计数据保存在自己的浏览器里，无需注册账号；也可以按需关联自己的多台设备。</span></p>
         </div>
       </div>
     </div>
@@ -481,12 +479,27 @@
         <div class="card">
           <div class="icon" aria-hidden="true">⭐</div>
           <h3><span lang="en">Game of the Day</span><span lang="zh">每日挑战</span></h3>
-          <p><span lang="en">One featured puzzle a day, and you get a single attempt at it. Make it count.</span><span lang="zh">每天一道特别推荐的题目，只有一次挑战机会。</span></p>
+          <p><span lang="en">One featured puzzle a day, and you get a single attempt at it. Make it count, then see how your time compares.</span><span lang="zh">每天一道特别推荐的题目，只有一次挑战机会；完成后还能看看自己的用时排在哪里。</span></p>
         </div>
         <div class="card">
           <div class="icon" aria-hidden="true">📊</div>
           <h3><span lang="en">Your statistics</span><span lang="zh">个人统计</span></h3>
           <p><span lang="en">See how many puzzles you have solved and how fast, for each board size, today and all time.</span><span lang="zh">按棋盘尺寸查看你解出的题数和用时，包括今日和历史累计。</span></p>
+        </div>
+        <div class="card">
+          <div class="icon" aria-hidden="true">🧩</div>
+          <h3><span lang="en">More puzzle types</span><span lang="zh">更多题型</span></h3>
+          <p><span lang="en">Beyond the classic board, new twists unlock as you play: portals, one-way arrows, wrap-around edges, rings and more.</span><span lang="zh">除了经典棋盘，玩着玩着还会解锁新花样：传送门、单向箭头、穿越边界、环形路线等。</span></p>
+        </div>
+        <div class="card">
+          <div class="icon" aria-hidden="true">🔥</div>
+          <h3><span lang="en">Streaks and replays</span><span lang="zh">连续打卡与补玩</span></h3>
+          <p><span lang="en">Play every day to build a streak, and replay Game of the Day puzzles you missed.</span><span lang="zh">每天玩一题就能累积连续天数，还可以补玩错过的每日挑战。</span></p>
+        </div>
+        <div class="card">
+          <div class="icon" aria-hidden="true">💡</div>
+          <h3><span lang="en">Hints and looks</span><span lang="zh">提示与外观</span></h3>
+          <p><span lang="en">Stuck? Take a hint in free play. Light and dark mode and two languages, English and 中文, are one tap away.</span><span lang="zh">卡住了？自由练习里可以获取提示。浅色、深色模式和中英双语，一键切换。</span></p>
         </div>
       </div>
     </div>
@@ -497,7 +510,7 @@
     <div class="container">
       <div class="section-head">
         <h2><span lang="en">How it works</span><span lang="zh">程序原理</span></h2>
-        <p class="lead"><span lang="en">A quick look at the ideas behind Zip, with no code.</span><span lang="zh">不涉及代码，简单看看 Zip 背后的思路。</span></p>
+        <p class="lead"><span lang="en">A quick look at the ideas behind zigzag, with no code.</span><span lang="zh">不涉及代码，简单看看 zigzag 背后的思路。</span></p>
       </div>
 
       <div class="two-columns">
@@ -596,8 +609,8 @@
       <div class="section-head">
         <h2><span lang="en">Sounds simple, it is not 😅</span><span lang="zh">听起来很简单，其实不然 😅</span></h2>
         <p class="lead">
-          <span lang="en">Zip is easy to learn but surprisingly hard for a computer. Computer scientists sort problems into families by how hard they are. Here is the maths behind it, told through Zip. The families describe what happens as boards grow without limit; for the board sizes in the game, a computer copes fine.</span>
-          <span lang="zh">Zip 很容易上手，对电脑来说却出乎意料地难。计算机科学家按难度把问题分成不同的“家族”。下面用 Zip 来认识背后的数学。这些家族描述的是棋盘无限变大时的情形；对游戏里的棋盘尺寸，电脑完全应付得来。</span>
+          <span lang="en">zigzag is easy to learn but surprisingly hard for a computer. Computer scientists sort problems into families by how hard they are. Here is the maths behind it, told through zigzag. The families describe what happens as boards grow without limit; for the board sizes in the game, a computer copes fine.</span>
+          <span lang="zh">zigzag 很容易上手，对电脑来说却出乎意料地难。计算机科学家按难度把问题分成不同的“家族”。下面用 zigzag 来认识背后的数学。这些家族描述的是棋盘无限变大时的情形；对游戏里的棋盘尺寸，电脑完全应付得来。</span>
         </p>
       </div>
 
@@ -609,8 +622,8 @@
             <span lang="zh">如果电脑能很快解决某个问题，且问题变大后依然很快，它就属于 <strong>P</strong> 类。给名字排序：多一倍的名字，大约多一倍的活。</span>
           </p>
           <p>
-            <span lang="en"><strong>In Zip:</strong> is my line correct? Walk along it and check the rules. Making a solvable puzzle is quick too.</span>
-            <span lang="zh"><strong>在 Zip 里：</strong>我画的线对吗？沿线走一遍对照规则即可。出一道有解的题也很快。</span>
+            <span lang="en"><strong>In zigzag:</strong> is my line correct? Walk along it and check the rules. Making a solvable puzzle is quick too.</span>
+            <span lang="zh"><strong>在 zigzag 里：</strong>我画的线对吗？沿线走一遍对照规则即可。出一道有解的题也很快。</span>
           </p>
         </div>
         <div class="panel">
@@ -620,8 +633,8 @@
             <span lang="zh">如果一个给定的答案能很快核对，这个问题就属于 <strong>NP</strong> 类，尽管找出答案未必很快。拼图：一眼就能验收，拼起来要几小时。</span>
           </p>
           <p>
-            <span lang="en"><strong>In Zip:</strong> does this puzzle have a solution? The drawn line proves it, and anyone can check it in seconds.</span>
-            <span lang="zh"><strong>在 Zip 里：</strong>这道题有解吗？如果有，画出的那条线就是证明，谁都能在几秒内核对。</span>
+            <span lang="en"><strong>In zigzag:</strong> does this puzzle have a solution? The drawn line proves it, and anyone can check it in seconds.</span>
+            <span lang="zh"><strong>在 zigzag 里：</strong>这道题有解吗？如果有，画出的那条线就是证明，谁都能在几秒内核对。</span>
           </p>
         </div>
         <div class="panel">
@@ -631,8 +644,8 @@
             <span lang="zh">如果“否”容易证明而“是”不容易，这个问题就属于 <strong>co-NP</strong> 类。“这里没有错字”：找出一个错字就能推翻，要证明它成立得逐字通读。</span>
           </p>
           <p>
-            <span lang="en"><strong>In Zip:</strong> is this the only solution? A second line proves “no” in seconds; “yes” means ruling out every other line.</span>
-            <span lang="zh"><strong>在 Zip 里：</strong>这是唯一的解吗？再画一条线几秒就能证明“不是”；要证明“是”，得排除所有其他的线。</span>
+            <span lang="en"><strong>In zigzag:</strong> is this the only solution? A second line proves “no” in seconds; “yes” means ruling out every other line.</span>
+            <span lang="zh"><strong>在 zigzag 里：</strong>这是唯一的解吗？再画一条线几秒就能证明“不是”；要证明“是”，得排除所有其他的线。</span>
           </p>
         </div>
         <div class="panel">
@@ -642,8 +655,8 @@
             <span lang="zh">如果一个问题属于 NP 中最难的那一档，就称为 <strong>NP 完全</strong>问题：有了它的快速解法，NP 里所有问题都能快速解决。像一把万能钥匙。</span>
           </p>
           <p>
-            <span lang="en"><strong>In Zip:</strong> solving a puzzle. Close to the Hamiltonian path problem (visit every point once), NP-complete on grids, so Zip is expected to be too.</span>
-            <span lang="zh"><strong>在 Zip 里：</strong>解题。它与哈密顿路径问题（每个点恰好经过一次）相近，后者在网格上是 NP 完全的，所以 Zip 预计也是。</span>
+            <span lang="en"><strong>In zigzag:</strong> solving a puzzle. Close to the Hamiltonian path problem (visit every point once), NP-complete on grids, so zigzag is expected to be too.</span>
+            <span lang="zh"><strong>在 zigzag 里：</strong>解题。它与哈密顿路径问题（每个点恰好经过一次）相近，后者在网格上是 NP 完全的，所以 zigzag 预计也是。</span>
           </p>
         </div>
         <div class="panel">
@@ -653,8 +666,8 @@
             <span lang="zh">如果一个问题至少和 NP 中所有问题一样难，就称为 <strong>NP 难</strong>问题，它的答案甚至也可能难以核对，比如证明某条路线最短。</span>
           </p>
           <p>
-            <span lang="en"><strong>In Zip:</strong> what is the fewest walls that leave exactly one solution? Proving a count is the minimum is hard.</span>
-            <span lang="zh"><strong>在 Zip 里：</strong>最少要几堵墙才能恰好只有一个解？要证明某个数量已是最少并不容易。</span>
+            <span lang="en"><strong>In zigzag:</strong> what is the fewest walls that leave exactly one solution? Proving a count is the minimum is hard.</span>
+            <span lang="zh"><strong>在 zigzag 里：</strong>最少要几堵墙才能恰好只有一个解？要证明某个数量已是最少并不容易。</span>
           </p>
         </div>
         <div class="panel">
@@ -664,8 +677,8 @@
             <span lang="zh"><strong>DP</strong>（差多项式时间）把两者合在一起：一部分是 NP，一部分是 co-NP。侦探断案：只有一个嫌疑人吻合，其他人都不吻合。</span>
           </p>
           <p>
-            <span lang="en"><strong>In Zip:</strong> does this puzzle have exactly one solution? That is what makes it fair: a solution (NP), and no other (co-NP).</span>
-            <span lang="zh"><strong>在 Zip 里：</strong>这道题恰好只有一个解吗？这是公平的前提：有解（NP），且没有别的解（co-NP）。</span>
+            <span lang="en"><strong>In zigzag:</strong> does this puzzle have exactly one solution? That is what makes it fair: a solution (NP), and no other (co-NP).</span>
+            <span lang="zh"><strong>在 zigzag 里：</strong>这道题恰好只有一个解吗？这是公平的前提：有解（NP），且没有别的解（co-NP）。</span>
           </p>
         </div>
       </div>
@@ -691,8 +704,8 @@
 
 <footer>
   <div class="container">
-    <span lang="en">Zip · © 2026 Shine · <a href="https://opensource.org/license/mit" target="_blank" rel="noopener noreferrer">MIT License</a></span>
-    <span lang="zh">Zip · © 2026 Shine · <a href="https://opensource.org/license/mit" target="_blank" rel="noopener noreferrer">MIT 许可证</a></span>
+    <span lang="en">zigzag · © 2026 Shine · <a href="https://opensource.org/license/mit" target="_blank" rel="noopener noreferrer">MIT License</a></span>
+    <span lang="zh">zigzag · © 2026 Shine · <a href="https://opensource.org/license/mit" target="_blank" rel="noopener noreferrer">MIT 许可证</a></span>
   </div>
 </footer>
 </body>
