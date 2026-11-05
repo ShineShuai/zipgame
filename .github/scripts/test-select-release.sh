@@ -72,6 +72,8 @@ live "$E" 2; pick "${sched[@]}"
 check "live is ahead of the soaked commit: nothing to do" false "$(got run)"
 live "$A" 2; pick EVENT=schedule SOAK_DAYS=7 RELEASE_DAYS=Xyz
 check "not a release day" false "$(got run)"
+live "$A" 2; pick EVENT=schedule SOAK_DAYS=7 "RELEASE_DAYS=Xyz, ${today^^}"
+check "release days: spaces and case are ignored" true "$(got run)"
 live "$A" 9; pick EVENT=schedule SOAK_DAYS=7 RELEASE_DAYS=Xyz
 check "a missed release day is made up after 8 days" "true" "$(got run)"
 live "$A" 2; pick "${sched[@]}" PROD_FREEZE=true

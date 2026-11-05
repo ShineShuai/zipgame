@@ -13,7 +13,7 @@ import { pentagonAcross, pentagonCellAt, pentagonPoint } from './pentagon-board.
 import { isPentagon } from '../../core/pentagon.js';
 import { legsUndoTwo, newPaths, walkColour, solvedPaths, pickColour } from '../../features/twopaths-play.js';
 import { t } from '../../ui/i18n.js';
-import { traceClear, traceStep } from '../../features/playlog.js';
+import { traceClear, traceStep, traceTrack } from '../../features/playlog.js';
 import { sfxBlocked, sfxCheckpoint, sfxMoveAfterCheckpoint, sfxMove, sfxBack } from '../../platform/sound.js';
 import {
   $, S, render, storage,
@@ -61,7 +61,10 @@ export function resetPaths() {
   const two = Boolean(S.puzzle.split);
   if (!S.finished) {
     const drawn = two ? S.paths[0].length + S.paths[1].length : S.path.length;
-    if (S.trace) traceClear(S.trace, drawn);
+    if (S.trace) {
+      traceClear(S.trace, drawn);
+      traceTrack(S.trace, [], S.sol); // nothing drawn: every wrong turn is over
+    }
     if (two) S.paths.forEach((path, colour) => legsUndoTwo(S.legs, S.puzzle, colour, path, 1));
     else legsUndo(S.legs, S.puzzle, S.path, 1);
   }
@@ -170,7 +173,10 @@ export function setupGridInput(svg) {
     if (cell < 0 || S.finished || (p.holes && p.holes[cell])) return; // a hole is not part of the board
     const prev = S.path[S.path.length - 1], before = S.path.length, prevPath = S.path.slice();
     const kind = two ? walkColour(p, S.paths, S.colour, cell) : stepOf(p, S.path, cell);
-    if (kind && S.trace) traceStep(S.trace, kind, before, S.path.length);
+    if (kind && S.trace) {
+      traceStep(S.trace, kind, before, S.path.length);
+      traceTrack(S.trace, S.path, S.sol);
+    }
     if (kind && kind !== 'push') {
       if (two) legsUndoTwo(S.legs, p, S.colour, prevPath, S.path.length);
       else legsUndo(S.legs, p, prevPath, S.path.length);
