@@ -1805,6 +1805,99 @@ ta('tools: --help lists every option of the four tools; a typo is refused', asyn
     ok(typo.stderr.includes('unknown option --bogus'), typo.stderr);
   }
 });
+ta('fit-trap: --points / --json / --target refit on other points and write a copy only',
+  async () => {
+  const os = await import('node:os'), path = await import('node:path');
+  const { spawnSync } = await import('node:child_process');
+  const { createHash } = await import('node:crypto');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fit-trap-')), at = f => path.join(dir, f);
+  const rated = JSON.parse(fs.readFileSync(stepRatings, 'utf8'));
+  const sub = rated.filter(r => parse(r.key).n <= 8).slice(0, 24);
+  fs.writeFileSync(at('r.json'), JSON.stringify(sub));
+  const trapJs = new URL('../src/core/trap.js', import.meta.url).pathname;
+  const before = createHash('sha1').update(fs.readFileSync(trapJs)).digest('hex');
+  fs.copyFileSync(trapJs, at('trap-copy.mjs'));
+  const run = extra => spawnSync(process.execPath,
+    [new URL('../tools/fit-trap.mjs', import.meta.url).pathname,
+    at('r.json'), '--cap', '100000', ...extra], { encoding: 'utf8' });
+  const a = run(['--json', at('a.json')]);
+  const b = run(['--points', '0,2,6,10', '--json', at('b.json')]);
+  eq([a.status, b.status], [0, 0], a.stderr + b.stderr);
+  const load = f => JSON.parse(fs.readFileSync(at(f), 'utf8'));
+  const A = load('a.json'), B = load('b.json');
+  eq([A.points, B.points], [[0, 1, 3, 5], [0, 2, 6, 10]]);
+  eq(A.model.features, ['trapMax', 'trapTop3', 'altFrac', 'lTr']);
+  ok(Math.abs(B.model.mean.trapMax / A.model.mean.trapMax - 2) < 1e-3,
+    'twice the points, twice the trap scores');
+  eq([B.model.cuts, B.loo.rho], [A.model.cuts, A.loo.rho],
+    'the standardised model does not care for the scale');
+  const bad = run(['--points', '1,2,3']);
+  eq(bad.status, 1, 'three numbers are not four points');
+  const w = run(['--points', '0,2.5,6,10', '--write', '--target', at('trap-copy.mjs')]);
+  eq(w.status, 0, w.stderr);
+  const text = fs.readFileSync(at('trap-copy.mjs'), 'utf8');
+  ok(/points: \[0, 2\.5, 6, 10\]/.test(text) && text.includes('// <TRAP_MODEL>'),
+    'points and model written to the copy');
+  const check = spawnSync(process.execPath, ['--check', at('trap-copy.mjs')],
+    { encoding: 'utf8' });
+  eq(check.status, 0, 'the rewritten copy still parses: ' + check.stderr);
+  eq(createHash('sha1').update(fs.readFileSync(trapJs)).digest('hex'), before,
+    'src/core/trap.js untouched');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+ta('apply-points: refuses without gate A, shows the change, writes only a copy on --write',
+  async () => {
+  const os = await import('node:os'), path = await import('node:path');
+  const { spawnSync } = await import('node:child_process');
+  const { createHash } = await import('node:crypto');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apply-')), at = f => path.join(dir, f);
+  const tool = n => new URL('../tools/' + n, import.meta.url).pathname;
+  const node = (...args) => spawnSync(process.execPath, args,
+    { encoding: 'utf8', maxBuffer: 1 << 26 });
+  const rated = JSON.parse(fs.readFileSync(stepRatings, 'utf8'));
+  const sub = rated.filter(r => parse(r.key).n <= 8).slice(0, 24);
+  fs.writeFileSync(at('r.json'), JSON.stringify(sub));
+  const trapJs = new URL('../src/core/trap.js', import.meta.url).pathname;
+  const sha = f => createHash('sha1').update(fs.readFileSync(f)).digest('hex');
+  const before = sha(trapJs);
+  fs.copyFileSync(trapJs, at('trap-copy.mjs'));
+  const sim = (truth, games) => node(tool('step-sim.mjs'), '--out', at(truth + '.json'),
+    '--truth', truth,
+    '--games', String(games), '--puzzles', '40').status;
+  eq([sim('hand', 600), sim('steep', 1500)], [0, 0]);
+  const common = ['--boot', '20', '--pboot', '5', '--cap', '100000', '--ratings', at('r.json')];
+  const refused = node(tool('apply-points.mjs'), at('hand.json'), ...common, '--target',
+    at('trap-copy.mjs'));
+  eq(refused.status, 1, refused.stderr);
+  ok(refused.stdout.includes('Refused'), refused.stdout);
+  ok(refused.stdout.includes('Use --force for a dry run anyway'), 'the way out is named');
+  const both = node(tool('apply-points.mjs'), at('hand.json'), ...common, '--force', '--write',
+    '--target', at('trap-copy.mjs'));
+  eq(both.status, 1, 'the rule cannot be forced into --write');
+  ok(both.stdout.includes('never overrides the rule'), both.stdout);
+  const copyBefore = sha(at('trap-copy.mjs'));
+  const dry = node(tool('apply-points.mjs'), at('steep.json'), ...common, '--target',
+    at('trap-copy.mjs'));
+  eq(dry.status, 0, dry.stderr + dry.stdout);
+  ok(dry.stdout.includes('gate A pass') && dry.stdout.includes('from the wrong turns'),
+    dry.stdout.slice(0, 500));
+  ok(dry.stdout.includes('human ratings (leave-one-out'), 'before/after on the ratings');
+  ok(dry.stdout.includes('behaviour rows, local'), 'before/after on the behaviour rows');
+  ok(dry.stdout.includes('Dry run: nothing written'), 'a dry run says so');
+  eq(sha(at('trap-copy.mjs')), copyBefore, 'the dry run wrote nothing');
+  const done = node(tool('apply-points.mjs'), at('steep.json'), ...common, '--write', '--target',
+    at('trap-copy.mjs'));
+  eq(done.status, 0, done.stderr + done.stdout);
+  ok(done.stdout.includes('wrote TRAP_MODEL and TRAP_CFG.points'), done.stdout);
+  ok(done.stdout.includes('Now, by hand'), 'the checklist follows');
+  const text = fs.readFileSync(at('trap-copy.mjs'), 'utf8');
+  ok(!text.includes('points: [0, 1, 3, 5]'), 'the old points are gone');
+  ok(/points: \[0\.\d+, 1, /.test(text), 'the copy has the new points');
+  eq(node('--check', at('trap-copy.mjs')).status, 0, 'and still parses');
+  eq(sha(trapJs), before, 'src/core/trap.js untouched');
+  ok(!/NaN|undefined/.test(dry.stdout.replace(/\[NaN[^\]]*\]/g, '')), 'no NaN/undefined');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
 t('trap: grade = number of cuts reached; no cuts = the old round(); size caps apply on top', () => {
   const cuts = { cuts: [1, 2, 3, 4, 5] };
   eq([-3, 0.99, 1, 2.5, 4.99, 5, 9].map(v => trapGradeOf(v, cuts)), [0, 0, 1, 2, 4, 5, 5], 'count of cuts <= score, clamped 0..5');

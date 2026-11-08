@@ -29,6 +29,7 @@
     "calib:set": "node tools/calib-set.mjs",
     "step:fit": "node tools/step-fit.mjs",
     "step:sim": "node tools/step-sim.mjs",
+    "points:apply": "node tools/apply-points.mjs",
     "test:themes": "node ../themes/tools/test.mjs",
     "themes:pack": "node ../themes/tools/pack.mjs",
     "themes:preview": "node ../themes/tools/serve.mjs",

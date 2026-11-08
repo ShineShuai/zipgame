@@ -37,11 +37,11 @@
 //   probability from there, see step-sim.mjs --power), before that NO EVIDENCE YET, not a
 //   rejection.
 // The cut points are moved separately, from the badge table of behaviour-eval.mjs.
-import fs from 'node:fs';
-import { cli, capOption } from './args-lib.mjs';
+import { cli } from './args-lib.mjs';
+import { readRows } from './rows-lib.mjs';
 import { featuresOf } from './features.mjs';
 import { TRAP_CFG } from '../src/core/trap.js';
-import { BUCKETS, RULE, stepsOfPuzzle, analyse, parameters } from './step-lib.mjs';
+import { BUCKETS, RULE, FIT_OPTIONS, stepsOfPuzzle, analyse, parameters } from './step-lib.mjs';
 import { sum, fmt, pct } from './stats-lib.mjs';
 
 const { values: o, rest } = cli({
@@ -52,39 +52,14 @@ const { values: o, rest } = cli({
   positional: [{ name: 'rows.json', required: true,
     help: 'the export of `node tools/behaviour.mjs export --out rows.json` (row version 1 has ' +
       'the wrong turns; older rows are skipped)' }],
-  options: {
-    'gotd-dir': { type: 'string', arg: 'DIR',
-      help: 'folder with the Game-of-Day puzzles, DIR/<YYYYMMDD>.txt, for the rows without a ' +
-        'puzzle' },
-    cap: capOption,
-    folds: { type: 'int', arg: 'F', min: 2, default: 5,
-      help: 'cross-validation folds: the puzzles are split into F groups and each group is ' +
-        'judged by models fitted on the other F-1, so no puzzle is judged by a model that has ' +
-        'seen it' },
-    boot: { type: 'int', arg: 'N', min: 1, default: 400,
-      help: 'bootstrap resamples for the intervals of gates A and B: whole puzzles are redrawn ' +
-        'with replacement N times and the statistic is computed again; more = smoother, slower' },
-    pboot: { type: 'int', arg: 'N', min: 1, default: 100,
-      help: 'bootstrap refits for the intervals of the fitted-parameter table (each one refits ' +
-        'the model, so this is the slow part)' },
-    seed: { type: 'int', arg: 'N', default: 1,
-      help: 'seed of the fold assignment and of the redraws: the same seed gives the same ' +
-        'output' },
-    'no-skill': { type: 'flag',
-      help: 'switch the skill effect off, all players count alike (default: the skill bucket ' +
-        'of a game, when known, scales its wrong-turn rate)' },
-  },
+  options: FIT_OPTIONS,
 });
 const file = rest[0];
 const GOTD_DIR = o['gotd-dir'], CAP = o.cap, SEED = o.seed;
 const BOOT = o.boot, PBOOT = o.pboot, FOLDS = o.folds, NO_SKILL = o['no-skill'];
 const out = (...parts) => console.log(parts.join(''));
 
-const read = f => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } };
-const { rows: raw } = JSON.parse(fs.readFileSync(file, 'utf8'));
-const rows = raw.map(r => ({
-  ...r, key: r.key || (GOTD_DIR && r.kind !== 'local' ? read(`${GOTD_DIR}/${r.date}.txt`) : null),
-}));
+const rows = readRows(file, { gotdDir: GOTD_DIR });
 const stepCache = new Map(), trapCache = new Map();
 const stepsFor = key => {
   if (!stepCache.has(key)) stepCache.set(key, stepsOfPuzzle(key, CAP));
