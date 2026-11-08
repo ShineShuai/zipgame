@@ -1,11 +1,8 @@
 // Fit the step-level model of wrong turns to the behaviour rows, compare it with the grade the
-// game
-// uses today, and say whether the data justify changing that grade.
-//   node tools/step-fit.mjs rows.json [--gotd-dir DIR] [--cap N] [--folds 5] [--boot 400]
-//                                     [--pboot 100] [--seed 1] [--no-skill]
+// game uses today, and say whether the data justify changing that grade.
+//   node tools/step-fit.mjs rows.json [options]        (--help explains every option)
 // rows.json = `node tools/behaviour.mjs export --out rows.json` (row version 1 carries the wrong
-// turns
-// in `ev`; older rows are skipped). --gotd-dir DIR fills in the Game-of-Day puzzles
+// turns in `ev`; older rows are skipped). --gotd-dir DIR fills in the Game-of-Day puzzles
 // (DIR/<date>.txt).
 //
 // What it does (the model is described in step-lib.mjs): at every step of a puzzle's solution the
@@ -41,25 +38,46 @@
 //   rejection.
 // The cut points are moved separately, from the badge table of behaviour-eval.mjs.
 import fs from 'node:fs';
-import { evalCap } from './lib.mjs';
+import { cli, capOption } from './args-lib.mjs';
 import { featuresOf } from './features.mjs';
 import { TRAP_CFG } from '../src/core/trap.js';
 import { BUCKETS, RULE, stepsOfPuzzle, analyse, parameters } from './step-lib.mjs';
 import { sum, fmt, pct } from './stats-lib.mjs';
 
-const args = process.argv.slice(2);
-const opt = (name, dflt) => {
-  const i = args.indexOf('--' + name);
-  return i >= 0 ? args[i + 1] : dflt;
-};
-const file = args.find((a, i) => !a.startsWith('--') && !args[i - 1]?.startsWith('--'));
-if (!file) {
-  console.error('usage: node tools/step-fit.mjs rows.json [--gotd-dir DIR] [--boot 400]');
-  process.exit(1);
-}
-const GOTD_DIR = opt('gotd-dir'), CAP = evalCap(args), SEED = +opt('seed', 1);
-const BOOT = +opt('boot', 400), PBOOT = +opt('pboot', 100), FOLDS = +opt('folds', 5);
-const NO_SKILL = args.includes('--no-skill');
+const { values: o, rest } = cli({
+  usage: 'node tools/step-fit.mjs rows.json [options]',
+  summary: 'Fit the step-level model of wrong turns (rate of a wrong move per trap bucket) to ' +
+    'the rows that carry wrong-turn events, compare it with the grade the game uses today, and ' +
+    'print the verdict of the acceptance rule (see the header of this file).',
+  positional: [{ name: 'rows.json', required: true,
+    help: 'the export of `node tools/behaviour.mjs export --out rows.json` (row version 1 has ' +
+      'the wrong turns; older rows are skipped)' }],
+  options: {
+    'gotd-dir': { type: 'string', arg: 'DIR',
+      help: 'folder with the Game-of-Day puzzles, DIR/<YYYYMMDD>.txt, for the rows without a ' +
+        'puzzle' },
+    cap: capOption,
+    folds: { type: 'int', arg: 'F', min: 2, default: 5,
+      help: 'cross-validation folds: the puzzles are split into F groups and each group is ' +
+        'judged by models fitted on the other F-1, so no puzzle is judged by a model that has ' +
+        'seen it' },
+    boot: { type: 'int', arg: 'N', min: 1, default: 400,
+      help: 'bootstrap resamples for the intervals of gates A and B: whole puzzles are redrawn ' +
+        'with replacement N times and the statistic is computed again; more = smoother, slower' },
+    pboot: { type: 'int', arg: 'N', min: 1, default: 100,
+      help: 'bootstrap refits for the intervals of the fitted-parameter table (each one refits ' +
+        'the model, so this is the slow part)' },
+    seed: { type: 'int', arg: 'N', default: 1,
+      help: 'seed of the fold assignment and of the redraws: the same seed gives the same ' +
+        'output' },
+    'no-skill': { type: 'flag',
+      help: 'switch the skill effect off, all players count alike (default: the skill bucket ' +
+        'of a game, when known, scales its wrong-turn rate)' },
+  },
+});
+const file = rest[0];
+const GOTD_DIR = o['gotd-dir'], CAP = o.cap, SEED = o.seed;
+const BOOT = o.boot, PBOOT = o.pboot, FOLDS = o.folds, NO_SKILL = o['no-skill'];
 const out = (...parts) => console.log(parts.join(''));
 
 const read = f => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } };

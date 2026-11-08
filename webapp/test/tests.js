@@ -36,6 +36,7 @@ import { BEHAVIOUR, LEADERBOARD } from '../src/config.js';
 import { levelOf, legsUndo, legLevels, stripText, dayOfDate, makeShareRecord, shareUrl, parseShareLink, shareText, shareStatus, isPlayable, LEVEL_EMOJI } from '../src/features/share.js';
 import { createCalib, calibRequested, CALIB_DIR } from '../src/features/calib.js';
 import fs from 'node:fs';
+import { parseArgs, helpText, ArgsError } from '../tools/args-lib.mjs';
 import {
   stepsOfPuzzle, gamesOf, fitModel, MODELS, verdict, crossValidate, bucketOf, parameters,
 } from '../tools/step-lib.mjs';
@@ -1741,6 +1742,68 @@ ta('step-sim + step-fit: simulate rows, fit them from the command line', async (
   ok(!/NaN|undefined/.test(shown), 'no NaN/undefined outside empty intervals');
   ok(none.stdout.includes('Nothing to fit'),
     'rows without wrong-turn records: a plain message, no crash');
+});
+t('args-lib: options are declared once; parsed, checked, listed by --help', () => {
+  const spec = {
+    usage: 'node x.mjs rows.json [options]', summary: 'What it does.',
+    positional: [{ name: 'rows.json', required: true, help: 'the rows' }],
+    options: {
+      boot: { type: 'int', arg: 'N', min: 1, max: 1000, default: 400, help: 'resamples' },
+      seed: { type: 'number', arg: 'X', default: 1, help: 'the seed' },
+      mode: { type: 'string', arg: 'NAME', choices: ['a', 'b'], default: 'a', help: 'the mode' },
+      dir: { type: 'list', arg: 'DIR', help: 'folders' },
+      quiet: { type: 'flag', help: 'less output' },
+      out: { type: 'string', arg: 'FILE', required: true, help: 'the output' },
+    },
+  };
+  const argv = ['--quiet', 'r.json', '--boot=50', '--dir', 'a', '--dir', 'b', '--out', 'o',
+    '--seed', '-3'];
+  const got = parseArgs(argv, spec);
+  eq(got.values, { quiet: true, boot: 50, dir: ['a', 'b'], out: 'o', seed: -3, mode: 'a' });
+  eq(got.rest, ['r.json'], 'a flag before the positional argument does not swallow it');
+  eq(parseArgs(['r.json', '--out', 'o'], spec).values.boot, 400, 'defaults are filled in');
+  eq(parseArgs(['--help'], spec).help, true);
+  const bad = (argv, text) => {
+    let msg = '';
+    try { parseArgs(argv, spec); } catch (e) { ok(e instanceof ArgsError); msg = e.message; }
+    ok(msg.includes(text), `${argv.join(' ')} -> ${msg}`);
+  };
+  bad(['r.json', '--out', 'o', '--bot', '5'], 'unknown option --bot');
+  bad(['r.json', '--out', 'o', '--boot'], '--boot needs a value');
+  bad(['r.json', '--out', 'o', '--boot', '--seed', '1'], '--boot needs a value');
+  bad(['r.json', '--out', 'o', '--boot', 'x'], 'needs a number');
+  bad(['r.json', '--out', 'o', '--boot', '2.5'], 'whole number');
+  bad(['r.json', '--out', 'o', '--boot', '0'], 'at least 1');
+  bad(['r.json', '--out', 'o', '--boot', '5000'], 'at most 1000');
+  bad(['r.json', '--out', 'o', '--mode', 'c'], 'one of a, b');
+  bad(['r.json', '--out', 'o', '--quiet=1'], 'takes no value');
+  bad(['r.json'], '--out is required');
+  bad(['--out', 'o'], 'rows.json is required');
+  bad(['r.json', 'extra', '--out', 'o'], 'unexpected argument extra');
+  const help = helpText(spec);
+  ok(Object.keys(spec.options).every(k => help.includes('--' + k)), 'every option is listed');
+  ok(help.includes('default 400') && help.includes('one of a | b'));
+  ok(help.includes('may be repeated'));
+});
+ta('tools: --help lists every option of the four tools; a typo is refused', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const tools = {
+    'behaviour-eval.mjs': ['gotd-dir', 'calib-dir', 'cap', 'boot', 'seed', 'stuck', 'min-rows'],
+    'calib-set.mjs': ['out', 'plan', 'seed', 'exclude', 'cache'],
+    'step-fit.mjs': ['gotd-dir', 'cap', 'folds', 'boot', 'pboot', 'seed', 'no-skill'],
+    'step-sim.mjs': ['out', 'power', 'params', 'truth', 'games', 'puzzles', 'events', 'sigma',
+      'reps', 'boot', 'seed', 'ratings', 'cap'],
+  };
+  for (const [name, options] of Object.entries(tools)) {
+    const run = args => spawnSync(process.execPath,
+      [new URL('../tools/' + name, import.meta.url).pathname, ...args], { encoding: 'utf8' });
+    const help = run(['--help']), typo = run(['--bogus']);
+    eq(help.status, 0, name + ': ' + help.stderr);
+    const missing = options.filter(o => !new RegExp('--' + o + '( |\\n)').test(help.stdout));
+    eq(missing, [], name + ' does not list these options');
+    eq(typo.status, 1, name + ' refuses an unknown option');
+    ok(typo.stderr.includes('unknown option --bogus'), typo.stderr);
+  }
 });
 t('trap: grade = number of cuts reached; no cuts = the old round(); size caps apply on top', () => {
   const cuts = { cuts: [1, 2, 3, 4, 5] };
