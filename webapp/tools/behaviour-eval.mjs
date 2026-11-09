@@ -1,6 +1,5 @@
 // Do the difficulty grades predict what players did? Reads the export of tools/behaviour.mjs.
-//   node tools/behaviour-eval.mjs rows.json [--gotd-dir DIR] [--cap N] [--boot B] [--seed S]
-//                                           [--stuck F] [--min-rows R] [--calib-dir DIR]
+//   node tools/behaviour-eval.mjs rows.json [options]        (--help explains every option)
 // rows.json = `node tools/behaviour.mjs export --out rows.json [--gotd-dir DIR]`. A Game-of-Day
 // row has no puzzle in the export unless it was made with --gotd-dir; pass --gotd-dir here to
 // fill it in (DIR/<date>.txt). Two groups are evaluated apart (time scales differ ~3x):
@@ -19,25 +18,44 @@
 import fs from 'node:fs';
 import { makeRng } from '../src/core/rng.js';
 import { invert, TIME_PRIOR } from '../src/core/gotd-model.js';
-import { evalCap } from './lib.mjs';
+import { cli, capOption } from './args-lib.mjs';
 import { sum, mean, quant, spearman, fmt, pct } from './stats-lib.mjs';
 import { parse } from '../src/core/format.js';
 import { packPuzzle, toB64u } from '../src/core/behaviour.js';
 import { NAMES, GROUP, featuresOf } from './features.mjs';
 
-const args = process.argv.slice(2);
-const opt = (name, dflt) => {
-  const i = args.indexOf('--' + name);
-  return i >= 0 ? args[i + 1] : dflt;
-};
-const file = args.find((a, i) => !a.startsWith('--') && !args[i - 1]?.startsWith('--'));
-if (!file) {
-  console.error('usage: node tools/behaviour-eval.mjs rows.json [--gotd-dir DIR] [--cap N]');
-  process.exit(1);
-}
-const GOTD_DIR = opt('gotd-dir'), CAP = evalCap(args), BOOT = +opt('boot', 400);
-const SEED = +opt('seed', 1), STUCK = +opt('stuck', 0.3), MIN_ROWS = +opt('min-rows', 30);
-const CALIB_DIR = opt('calib-dir');
+const { values: o, rest } = cli({
+  usage: 'node tools/behaviour-eval.mjs rows.json [options]',
+  summary: 'Do the difficulty grades predict what players did? Prints, per group of games ' +
+    '(local, daily = Game of Day + replay, calib = the calibration set), the badge table and ' +
+    'how every metric correlates with the time, the cells taken back and the "stuck" games.',
+  positional: [{ name: 'rows.json', required: true,
+    help: 'the export of `node tools/behaviour.mjs export --out rows.json`' }],
+  options: {
+    'gotd-dir': { type: 'string', arg: 'DIR',
+      help: 'folder with the Game-of-Day puzzles, DIR/<YYYYMMDD>.txt: fills in the rows whose ' +
+        'export has no puzzle (a Game-of-Day row has none unless the export was made with ' +
+        '--gotd-dir)' },
+    'calib-dir': { type: 'string', arg: 'DIR',
+      help: 'the calibration set made by calib-set.mjs: the local games of its puzzles form a ' +
+        'third group, "calib" (played blind, badges balanced)' },
+    cap: capOption,
+    boot: { type: 'int', arg: 'N', min: 1, default: 400,
+      help: 'bootstrap resamples for the 95% intervals: whole puzzles are redrawn with ' +
+        'replacement N times and the statistic is computed again each time; more = smoother ' +
+        'interval ends but slower, below about 100 they are rough' },
+    seed: { type: 'int', arg: 'N', default: 1,
+      help: 'seed of those random redraws: the same seed gives the same intervals' },
+    stuck: { type: 'number', arg: 'F', min: 0.01, max: 1, default: 0.3,
+      help: 'a game counts as "stuck" when its deepest single take-back is at least F x the ' +
+        'cells of the board' },
+    'min-rows': { type: 'int', arg: 'N', min: 1, default: 30,
+      help: 'a group with fewer plain games gets the badge table only, no metric ranking' },
+  },
+});
+const file = rest[0];
+const GOTD_DIR = o['gotd-dir'], CALIB_DIR = o['calib-dir'], CAP = o.cap, BOOT = o.boot;
+const SEED = o.seed, STUCK = o.stuck, MIN_ROWS = o['min-rows'];
 const SHOWN = ['grade:trap', 'trapPredicted', 'grade:ladder', 'grade:decisionNodes'];
 
 // ---------- statistics ----------

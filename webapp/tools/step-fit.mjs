@@ -1,11 +1,8 @@
 // Fit the step-level model of wrong turns to the behaviour rows, compare it with the grade the
-// game
-// uses today, and say whether the data justify changing that grade.
-//   node tools/step-fit.mjs rows.json [--gotd-dir DIR] [--cap N] [--folds 5] [--boot 400]
-//                                     [--pboot 100] [--seed 1] [--no-skill]
+// game uses today, and say whether the data justify changing that grade.
+//   node tools/step-fit.mjs rows.json [options]        (--help explains every option)
 // rows.json = `node tools/behaviour.mjs export --out rows.json` (row version 1 carries the wrong
-// turns
-// in `ev`; older rows are skipped). --gotd-dir DIR fills in the Game-of-Day puzzles
+// turns in `ev`; older rows are skipped). --gotd-dir DIR fills in the Game-of-Day puzzles
 // (DIR/<date>.txt).
 //
 // What it does (the model is described in step-lib.mjs): at every step of a puzzle's solution the
@@ -40,33 +37,29 @@
 //   probability from there, see step-sim.mjs --power), before that NO EVIDENCE YET, not a
 //   rejection.
 // The cut points are moved separately, from the badge table of behaviour-eval.mjs.
-import fs from 'node:fs';
-import { evalCap } from './lib.mjs';
+import { cli } from './args-lib.mjs';
+import { readRows } from './rows-lib.mjs';
 import { featuresOf } from './features.mjs';
 import { TRAP_CFG } from '../src/core/trap.js';
-import { BUCKETS, RULE, stepsOfPuzzle, analyse, parameters } from './step-lib.mjs';
+import { BUCKETS, RULE, FIT_OPTIONS, stepsOfPuzzle, analyse, parameters } from './step-lib.mjs';
 import { sum, fmt, pct } from './stats-lib.mjs';
 
-const args = process.argv.slice(2);
-const opt = (name, dflt) => {
-  const i = args.indexOf('--' + name);
-  return i >= 0 ? args[i + 1] : dflt;
-};
-const file = args.find((a, i) => !a.startsWith('--') && !args[i - 1]?.startsWith('--'));
-if (!file) {
-  console.error('usage: node tools/step-fit.mjs rows.json [--gotd-dir DIR] [--boot 400]');
-  process.exit(1);
-}
-const GOTD_DIR = opt('gotd-dir'), CAP = evalCap(args), SEED = +opt('seed', 1);
-const BOOT = +opt('boot', 400), PBOOT = +opt('pboot', 100), FOLDS = +opt('folds', 5);
-const NO_SKILL = args.includes('--no-skill');
+const { values: o, rest } = cli({
+  usage: 'node tools/step-fit.mjs rows.json [options]',
+  summary: 'Fit the step-level model of wrong turns (rate of a wrong move per trap bucket) to ' +
+    'the rows that carry wrong-turn events, compare it with the grade the game uses today, and ' +
+    'print the verdict of the acceptance rule (see the header of this file).',
+  positional: [{ name: 'rows.json', required: true,
+    help: 'the export of `node tools/behaviour.mjs export --out rows.json` (row version 1 has ' +
+      'the wrong turns; older rows are skipped)' }],
+  options: FIT_OPTIONS,
+});
+const file = rest[0];
+const GOTD_DIR = o['gotd-dir'], CAP = o.cap, SEED = o.seed;
+const BOOT = o.boot, PBOOT = o.pboot, FOLDS = o.folds, NO_SKILL = o['no-skill'];
 const out = (...parts) => console.log(parts.join(''));
 
-const read = f => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } };
-const { rows: raw } = JSON.parse(fs.readFileSync(file, 'utf8'));
-const rows = raw.map(r => ({
-  ...r, key: r.key || (GOTD_DIR && r.kind !== 'local' ? read(`${GOTD_DIR}/${r.date}.txt`) : null),
-}));
+const rows = readRows(file, { gotdDir: GOTD_DIR });
 const stepCache = new Map(), trapCache = new Map();
 const stepsFor = key => {
   if (!stepCache.has(key)) stepCache.set(key, stepsOfPuzzle(key, CAP));

@@ -1,7 +1,6 @@
 // Build the calibration set: puzzles of every Play badge (trap grade) at the sizes people play, to
 // serve to testers (see src/features/calib.js) so that the badges 3-5 get enough solves.
-//   node tools/calib-set.mjs --out DIR [--plan 9:20,7:8] [--seed 1] [--exclude DIR]...
-//                            [--cache DIR]
+//   node tools/calib-set.mjs --out DIR [options]        (--help explains every option)
 // --plan N:K,...   per size N: K puzzles for each badge 0..maxTargetGrade(N)  (default 9:20,7:8)
 // --exclude DIR    *.txt puzzles that must not be repeated (e.g. demo/GameOfDay); repeatable
 // --cache DIR      generated puzzles are kept here (zip-<n>x<n>-g<grade>-s<seed>.txt), so an
@@ -21,17 +20,31 @@ import { runSync } from '../src/core/run.js';
 import { serialize, parse } from '../src/core/format.js';
 import { packPuzzle, toB64u } from '../src/core/behaviour.js';
 import { makeRng, shuffle } from '../src/core/rng.js';
+import { cli } from './args-lib.mjs';
 
-const args = process.argv.slice(2);
-const opts = name => args.flatMap((a, i) => (a === '--' + name ? [args[i + 1]] : []));
-const opt = (name, dflt) => opts(name)[0] ?? dflt;
+const { values: o } = cli({
+  usage: 'node tools/calib-set.mjs --out DIR [options]',
+  summary: 'Build the calibration set: targeted puzzles of every Play badge, in a ' +
+    'block-balanced play order, for the testers\' ?calib games (src/features/calib.js).',
+  options: {
+    out: { type: 'string', arg: 'DIR', required: true,
+      help: 'where to write cal-<n>-<NNN>.txt, index.json (read by the app) and manifest.json ' +
+        '(badge per file, for you)' },
+    plan: { type: 'string', arg: 'N:K,...', default: '9:20,7:8',
+      help: 'per board size N, K puzzles for each Play badge 0..max (a 5x5 shows badges 0-2, a ' +
+        '6x6 0-3, larger 0-5); the play order is blocks of one puzzle per badge' },
+    seed: { type: 'int', arg: 'N', default: 1,
+      help: 'base seed of the puzzle generation and of the play-order shuffle: the same seed ' +
+        '(and cache) gives the same files' },
+    exclude: { type: 'list', arg: 'DIR',
+      help: 'folder of *.txt puzzles that must not be repeated, e.g. demo/GameOfDay' },
+    cache: { type: 'string', arg: 'DIR', defaultText: '<tmp>/calib-pool',
+      help: 'generated puzzles are kept here, so an interrupted run resumes where it stopped' },
+  },
+});
+const out = o.out, seed0 = o.seed, cache = o.cache ?? path.join(os.tmpdir(), 'calib-pool');
 const die = msg => { console.error('calib-set: ' + msg); process.exit(1); };
-
-const out = opt('out');
-if (!out) die('usage: node tools/calib-set.mjs --out DIR [--plan 9:20,7:8] [--exclude DIR]');
-const seed0 = +opt('seed', 1), cache = opt('cache', path.join(os.tmpdir(), 'calib-pool'));
-const plan = opt('plan', '9:20,7:8').split(',').map(x => x.split(':').map(Number));
-if (!Number.isInteger(seed0)) die('--seed needs an integer');
+const plan = o.plan.split(',').map(x => x.split(':').map(Number));
 const validPair = ([n, k]) =>
   Number.isInteger(n) && n >= 5 && n <= 16 && Number.isInteger(k) && k >= 1;
 if (!plan.every(validPair)) {
@@ -44,7 +57,7 @@ const idOf = text => {
   return bytes ? toB64u(bytes) : null;
 };
 const seen = new Set();
-for (const dir of opts('exclude')) {
+for (const dir of o.exclude || []) {
   for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.txt'))) {
     const id = idOf(fs.readFileSync(path.join(dir, f), 'utf8'));
     if (id) seen.add(id);

@@ -25,10 +25,33 @@ import { invert } from '../src/core/gotd-model.js';
 import { EV_MAX_EVENTS } from '../src/core/behaviour.js';
 import { sum, mean, spearman, resampleClusters, interval } from './stats-lib.mjs';
 import { makeRng, shuffle } from '../src/core/rng.js';
+import { capOption } from './args-lib.mjs';
 
 export const BUCKETS = ['obvious', 'shallow', 'deep', 'capped'];
 export const bucketOf = (w, cfg = TRAP_CFG) =>
   (w.capped ? 3 : w.sub <= cfg.obvious ? 0 : w.sub <= cfg.shallow ? 1 : 2);
+
+// The command-line options of everything that runs the fit (step-fit.mjs, apply-points.mjs).
+export const FIT_OPTIONS = {
+  'gotd-dir': { type: 'string', arg: 'DIR',
+    help: 'folder with the Game-of-Day puzzles, DIR/<YYYYMMDD>.txt, for the rows without ' +
+      'a puzzle' },
+  cap: capOption,
+  folds: { type: 'int', arg: 'F', min: 2, default: 5,
+    help: 'cross-validation folds: the puzzles are split into F groups and each group is judged ' +
+      'by models fitted on the other F-1, so no puzzle is judged by a model that has seen it' },
+  boot: { type: 'int', arg: 'N', min: 1, default: 400,
+    help: 'bootstrap resamples for the intervals of gates A and B: whole puzzles are redrawn ' +
+      'with replacement N times and the statistic is computed again; more = smoother, slower' },
+  pboot: { type: 'int', arg: 'N', min: 1, default: 100,
+    help: 'bootstrap refits for the intervals of the fitted-parameter table (each one refits ' +
+      'the model, so this is the slow part)' },
+  seed: { type: 'int', arg: 'N', default: 1,
+    help: 'seed of the fold assignment and of the redraws: the same seed gives the same output' },
+  'no-skill': { type: 'flag',
+    help: 'switch the skill effect off, all players count alike (default: the skill bucket of a ' +
+      'game, when known, scales its wrong-turn rate)' },
+};
 
 // The acceptance rule (written in full in step-fit.mjs).
 export const RULE = { minGames: 200, minPuzzles: 40, minDeltaRho: 0.05, confirmGames: 800 };

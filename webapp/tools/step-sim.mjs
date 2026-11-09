@@ -1,9 +1,8 @@
 // Simulated players for tools/step-fit.mjs: to check that the fit finds what is there (and nothing
 // when nothing is), and to learn how many games it needs.
-//   node tools/step-sim.mjs --out rows.json [--truth hand|flat|steep|obvious] [--games 400]
-//        [--puzzles 60] [--events 3] [--sigma 0.5] [--seed 1] [--ratings FILE]
-//   node tools/step-sim.mjs --power [--truth ...] [--games 100,200,400,800] [--reps 20]
-//        [--puzzles 60] [--boot 100] [--params] [--seed 1]
+//   node tools/step-sim.mjs --out rows.json [options]    simulate games, write the rows
+//   node tools/step-sim.mjs --power [options]            simulate + fit again and again
+// (--help explains every option.)
 // The puzzles are those of tools/ratings.json (sizes 6-11). A simulated game faces every step of
 // its puzzle's solution; at a step with wrong moves it takes m of them (geometric, mean h = the
 // sum of the rates of the moves by bucket, see step-lib.mjs), each one walking on some cells
@@ -25,7 +24,7 @@ import { pathToFileURL } from 'node:url';
 import { makeRng, shuffle } from '../src/core/rng.js';
 import { EV_MAX_EVENTS } from '../src/core/behaviour.js';
 import { featuresOf } from './features.mjs';
-import { evalCap } from './lib.mjs';
+import { cli, capOption } from './args-lib.mjs';
 import { stepsOfPuzzle, analyse, parameters } from './step-lib.mjs';
 import { median, sum } from './stats-lib.mjs';
 
@@ -97,26 +96,66 @@ export function ratedPuzzles(file, count, seed, cap) {
 
 // ---------- command line ----------
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const args = process.argv.slice(2);
-  const opt = (name, dflt) => {
-    const i = args.indexOf('--' + name);
-    return i >= 0 ? args[i + 1] : dflt;
-  };
+  const { values: o } = cli({
+    usage: 'node tools/step-sim.mjs (--out FILE | --power) [options]',
+    summary: 'Simulated players for step-fit.mjs. --out writes simulated rows (the shape of the ' +
+      'behaviour export); --power repeats simulate + fit and prints how often each gate of the ' +
+      'acceptance rule passes for several numbers of games.',
+    options: {
+      out: { type: 'string', arg: 'FILE', help: 'write the simulated rows to this file' },
+      power: { type: 'flag',
+        help: 'run the power study: simulate and fit again and again; with --truth hand the ' +
+          'passes are false alarms, with another truth they are detections' },
+      params: { type: 'flag',
+        help: '(with --power) also print the fitted points of one run with the largest number ' +
+          'of games next to the true ones' },
+      truth: { type: 'string', arg: 'NAME', choices: Object.keys(TRUTHS), default: 'hand',
+        help: 'the cells a wrong move of each bucket wastes, obvious : shallow : deep : ' +
+          'capped. hand = 0.25:1.25:3.25:5.25 (the hand-set points 0/1/3/5 plus a floor), flat ' +
+          '= 1:1:1:1, steep = 0.5:1:3:12, obvious = 2:1.5:2:3' },
+      games: { type: 'string', arg: 'N|LIST',
+        defaultText: '400 with --out, 100,200,400,800 with --power',
+        help: 'games to simulate: one number with --out, a comma list of sizes with --power' },
+      puzzles: { type: 'int', arg: 'N', min: 1, default: 60,
+        help: 'how many puzzles of ratings.json (sizes 6-11) the games are played on' },
+      events: { type: 'number', arg: 'X', min: 0.1, default: 3,
+        help: 'mean wrong turns per simulated game (the rates are scaled to it)' },
+      sigma: { type: 'number', arg: 'X', min: 0, default: 0.5,
+        help: 'spread of the players (log-normal); 0 = all players alike' },
+      reps: { type: 'int', arg: 'N', min: 1, default: 20,
+        help: '(with --power) simulations for each number of games' },
+      boot: { type: 'int', arg: 'N', min: 1, default: 100,
+        help: '(with --power) bootstrap resamples per simulation, as step-fit --boot' },
+      seed: { type: 'int', arg: 'N', default: 1,
+        help: 'seed of the simulation and of the choice of puzzles: the same seed gives the ' +
+          'same rows' },
+      ratings: { type: 'string', arg: 'FILE', defaultText: 'tools/ratings.json',
+        help: 'the file whose puzzles are used (a list of { key } with the puzzle text)' },
+      cap: capOption,
+    },
+  });
+  if (Boolean(o.out) === Boolean(o.power)) {
+    console.error('step-sim: give exactly one of --out FILE and --power (see --help)');
+    process.exit(1);
+  }
   const out = (...parts) => console.log(parts.join(''));
-  const truth = opt('truth', 'hand'), seed = +opt('seed', 1), cap = evalCap(args);
-  const ratings = opt('ratings', new URL('./ratings.json', import.meta.url).pathname);
-  const puzzles = ratedPuzzles(ratings, +opt('puzzles', 60), seed, cap);
-  const sim = { events: +opt('events', 3), sigma: +opt('sigma', 0.5) };
+  const truth = o.truth, seed = o.seed, cap = o.cap;
+  const ratings = o.ratings ?? new URL('./ratings.json', import.meta.url).pathname;
+  const puzzles = ratedPuzzles(ratings, o.puzzles, seed, cap);
+  const sim = { events: o.events, sigma: o.sigma };
+  const sizes = (o.games ?? (o.out ? '400' : '100,200,400,800')).split(',').map(Number);
+  if (!sizes.every(n => Number.isInteger(n) && n >= 1) || (o.out && sizes.length !== 1)) {
+    console.error('step-sim: --games needs one whole number with --out, a list with --power');
+    process.exit(1);
+  }
   console.error(`${puzzles.length} puzzles, truth ${truth}`);
-  if (args.includes('--out')) {
-    const games = +opt('games', 400);
-    const { rows, lambda } = simulateRows(puzzles, truth, { ...sim, games, seed });
+  if (o.out) {
+    const { rows, lambda } = simulateRows(puzzles, truth, { ...sim, games: sizes[0], seed });
     const meta = { truth, lambda, walk: WALK, gamma: GAMMA };
-    fs.writeFileSync(opt('out'), JSON.stringify({ sim: meta, rows }));
-    console.error(`wrote ${rows.length} rows to ${opt('out')}`);
-  } else if (args.includes('--power')) {
-    const sizes = opt('games', '100,200,400,800').split(',').map(Number), reps = +opt('reps', 20);
-    const boot = +opt('boot', 100), trap = new Map();
+    fs.writeFileSync(o.out, JSON.stringify({ sim: meta, rows }));
+    console.error(`wrote ${rows.length} rows to ${o.out}`);
+  } else {
+    const reps = o.reps, boot = o.boot, trap = new Map();
     const steps = new Map(puzzles.map(p => [p.key, p.P]));
     const stepsFor = key => steps.get(key);
     const current = key => {
@@ -147,7 +186,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         ' [', median(r.lo).toFixed(3), ']  ', median(r.rn).toFixed(2), ' / ',
         median(r.rc).toFixed(2));
     }
-    if (args.includes('--params')) {
+    if (o.params) {
       const { rows } = simulateRows(puzzles, truth, { ...sim, games: sizes.at(-1), seed });
       const games = analyse(rows, stepsFor, current, { boot: 10 }).data.games;
       const q = parameters(games, { boot: 100 });
@@ -157,8 +196,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         out(`  bucket ${b}: ${v.toFixed(2)} [${c}]  truth ${ratio[b].toFixed(2)}`);
       });
     }
-  } else {
-    console.error('usage: step-sim.mjs --out rows.json | --power  (see the header)');
-    process.exit(1);
   }
 }

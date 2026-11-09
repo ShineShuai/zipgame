@@ -1,6 +1,7 @@
 // Fit / evaluate the trap grade against hand ratings.
 //   node tools/fit-trap.mjs [tools/ratings.json] [--features trapMax,trapTop3,altFrac,lTr] [--lambda 10] [--cuts anchors|fit|round]
 //                           [--anchor-weight 3] [--ladder-work-cap N] [--path-cap 50000000] [--cap 1000000] [--write]
+//                           [--points a,b,c,d] [--json FILE] [--target FILE]
 // Grade = the ridge score cut at TRAP_MODEL.cuts. --cuts anchors (default) fits only the 0|1 and 3|4 boundaries and spaces
 // the others evenly (2 parameters, least overfit); fit = all five free (more anchor hits, but the 4|5 cut is overfit);
 // round = the old round(score). The cuts are fitted on the training part of every leave-one-out fold too, so the printed
@@ -13,6 +14,11 @@
 // literal. With --write it replaces the <TRAP_MODEL>..</TRAP_MODEL> block in src/core/trap.js in place (weights + fit
 // metadata that the design panel displays); without it, it only prints the block. LOO is optimistic if the feature set
 // was chosen on the same data.
+// --points a,b,c,d: the trap points of the four buckets (obvious, shallow, deep, capped) to use
+//   instead of TRAP_CFG.points, e.g. those tools/step-fit.mjs found (tools/apply-points.mjs runs
+//   it all). With --write the `points` of TRAP_CFG in trap.js is rewritten too.
+// --json FILE: also write { points, model, loo } as JSON (what apply-points.mjs reads).
+// --target FILE: the trap.js that --write rewrites (default src/core/trap.js), to try it on a copy.
 import fs from 'node:fs';
 import { parse } from '../src/core/format.js';
 import { trapMetrics, TRAP_CFG, capGradeBySize } from '../src/core/trap.js';
@@ -23,7 +29,7 @@ import { evalCap, OFFLINE_PATH_CAP } from './lib.mjs';
 const args = process.argv.slice(2);
 const WRITE = args.includes('--write');
 const opt = (name, dflt) => { const i = args.indexOf('--' + name); return i >= 0 ? args[i + 1] : dflt; };
-const VALUE_OPTS = ['features', 'lambda', 'cap', 'cuts', 'anchor-weight', 'ladder-work-cap', 'path-cap'].map(k => opt(k));
+const VALUE_OPTS = ['features', 'lambda', 'cap', 'cuts', 'anchor-weight', 'ladder-work-cap', 'path-cap', 'points', 'json', 'target'].map(k => opt(k));
 const file = args.find(a => !a.startsWith('--') && !VALUE_OPTS.includes(a)) || new URL('./ratings.json', import.meta.url).pathname;
 const features = opt('features', 'trapMax,trapTop3,altFrac,lTr').split(',');
 const lambda = +opt('lambda', 10);
@@ -31,7 +37,12 @@ const CUTS_MODE = opt('cuts', 'anchors'), ANCHOR_W = +opt('anchor-weight', 3);
 if (!['anchors', 'fit', 'round'].includes(CUTS_MODE)) { console.error('--cuts must be anchors, fit or round'); process.exit(1); }
 const WORKCAP = +opt('ladder-work-cap', TRAP_CFG.ladderWorkCap);
 if (WRITE && WORKCAP !== TRAP_CFG.ladderWorkCap) { console.error(`--write needs the production --ladder-work-cap (${TRAP_CFG.ladderWorkCap}): lTr depends on it`); process.exit(1); }
-const CFG = { ...TRAP_CFG, ladderWorkCap: WORKCAP, pathCap: +opt('path-cap', OFFLINE_PATH_CAP) }; // pathCap: nodes to find a solution path (the path is unique, so it cannot change the fit)
+const POINTS = opt('points') ? opt('points').split(',').map(Number) : TRAP_CFG.points;
+if (POINTS.length !== 4 || POINTS.some(v => !Number.isFinite(v) || v < 0)) {
+  console.error('--points needs four numbers >= 0: obvious,shallow,deep,capped (e.g. 0,1,3,5)');
+  process.exit(1);
+}
+const CFG = { ...TRAP_CFG, points: POINTS, ladderWorkCap: WORKCAP, pathCap: +opt('path-cap', OFFLINE_PATH_CAP) }; // pathCap: nodes to find a solution path (the path is unique, so it cannot change the fit)
 const CAP = evalCap(args);
 
 const rated = JSON.parse(fs.readFileSync(file, 'utf8')), skipped = [];
@@ -143,13 +154,40 @@ export const TRAP_MODEL = {
   fit: { n: ${n}, of: ${rated.length}, lambda: ${lambda}, looRho: ${+looStats.rho.toFixed(2)}, looMae: ${+looStats.mae.toFixed(2)}, cuts: '${CUTS_MODE}', looAnchors: { easy: [${looAnchors.easy}], hard3: [${looAnchors.hard3}], hard4: [${looAnchors.hard4}] } },
 };
 // </TRAP_MODEL>`;
+const per = f => Object.fromEntries(features.map((k, i) => [k, f(k, i)]));
+const modelOut = {
+  features, mean: per(k => +stats[k].mean.toFixed(4)), sd: per(k => +stats[k].sd.toFixed(4)),
+  w: per((k, i) => +w[i + 1].toFixed(4)), b: +w[0].toFixed(4), cuts,
+  fit: {
+    n, of: rated.length, lambda, looRho: +looStats.rho.toFixed(2), looMae: +looStats.mae.toFixed(2),
+    cuts: CUTS_MODE, looAnchors,
+  },
+};
+if (opt('json')) {
+  const badges = [0, 1, 2, 3, 4, 5].map(g => looGrade.filter(v => v === g).length);
+  const loo = {
+    rho: looStats.rho, mae: looStats.mae, anchors: looAnchors, badges, n, of: rated.length,
+  };
+  fs.writeFileSync(opt('json'), JSON.stringify({ points: POINTS, model: modelOut, loo }));
+}
 if (WRITE) {
-  const target = new URL('../src/core/trap.js', import.meta.url);
+  const target = opt('target') || new URL('../src/core/trap.js', import.meta.url);
   const src = fs.readFileSync(target, 'utf8');
   const re = /\/\/ <TRAP_MODEL>[\s\S]*?\/\/ <\/TRAP_MODEL>/;
   if (!re.test(src)) { console.error('markers // <TRAP_MODEL> ... // </TRAP_MODEL> not found in src/core/trap.js'); process.exit(1); }
-  fs.writeFileSync(target, src.replace(re, () => block));
-  console.log('\nwrote TRAP_MODEL to src/core/trap.js (n=' + n + ', LOO rho ' + looStats.rho.toFixed(2) + ', MAE ' + looStats.mae.toFixed(2) + ')');
+  let out = src.replace(re, () => block);
+  if (opt('points')) { // the points belong to the model: the features were computed with them
+    const pre = /(export const TRAP_CFG = \{[^}]*?\bpoints: )\[[^\]]*\]/;
+    if (!pre.test(out)) {
+      console.error('TRAP_CFG points not found in ' + target);
+      process.exit(1);
+    }
+    out = out.replace(pre, (_, head) => `${head}[${POINTS.join(', ')}]`);
+  }
+  fs.writeFileSync(target, out);
+  const what = opt('points') ? 'TRAP_MODEL and TRAP_CFG.points' : 'TRAP_MODEL';
+  console.log(`\nwrote ${what} to ${opt('target') || 'src/core/trap.js'} (n=${n}, LOO rho ` +
+    `${looStats.rho.toFixed(2)}, MAE ${looStats.mae.toFixed(2)})`);
 } else {
   console.log('\nPaste into src/core/trap.js (or rerun with --write):\n' + block);
 }
