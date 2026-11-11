@@ -27,15 +27,16 @@ function difficultyBadgeHtml() {
 // Hold-V block: the trap grade's raw inputs, then the previous grades as before — decisionNodes (the old
 // badge), B and crossPerSeg, each bucketed with its own calibration — and the raw numbers behind them.
 // Hidden by default; same hold-to-reveal pattern as seedTag.
-function difficultyDevHtml() {
+export function difficultyDevHtml() {
   const d = S.difficulty, tm = d && d.trap, g = d && d.legacy;
   const reduced = ['arrows', 'exact', 'wrap', 'loop', 'teleport', 'twopaths', 'pentagon'].includes(S.variant);
-  const trapPart = tm ? `trap ${tm.predicted.toFixed(2)} <span class="dev-raw">max ${tm.trapMax} · top3 ${tm.trapTop3}${reduced ? ' · max+top3 only, uncalibrated' : ` · alt ${tm.altFrac.toFixed(2)} · ladder trials ${tm.ladTrials}`}</span>` : '';
+  const sumPart = tm && Number.isFinite(tm.trapSum) ? ` · sum ${tm.trapSum.toFixed(2)}` : '';
+  const trapPart = tm ? `trap ${tm.predicted.toFixed(2)} <span class="dev-raw">max ${tm.trapMax} · top3 ${tm.trapTop3}${sumPart}${reduced ? ' · max+top3 only, uncalibrated' : ` · alt ${tm.altFrac.toFixed(2)} · ladder trials ${tm.ladTrials}`}</span>` : '';
   const legacyPart = g
     ? `decisionNodes ${g.grades.decisionNodes}/5 · B ${g.grades.B}/5 · cross ${g.grades.crossPerSeg}/5 · <span class="dev-raw">decisionNodes ${g.raw.decisionNodes} · B ${g.raw.B.toFixed(2)} · cross/seg ${g.raw.crossPerSeg.toFixed(2)}</span>`
     : S.variant ? '' : 'old grades: ungraded (search capped)';
   const body = [trapPart, legacyPart].filter(Boolean).join(' · ') || 'ungraded';
-  return `<span id="difficultyDev" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="trap: the badge score before it is cut into a grade, with its inputs (worst step's trap score, top-3 steps' sum, fraction of steps that have any wrong move, what-if guesses the technique ladder needed). Cutout: the same score without the alt term; One way arrows: only the max and top-3 terms, wrong moves being the ones the arrows allow (a ranking, not fitted to hand ratings). decisionNodes: the previous badge grade (solver branch points per cell). B: backtrack overhead (nodes/cells - 1) from the same solve. cross: how many non-adjacent checkpoint-to-checkpoint segments geometrically cross, per segment. Each old grade is graded 0-5 with its own calibration; the trap grade is fit to hand ratings. The design app shows all of them.">${body}</span>`;
+  return `<span id="difficultyDev" class="seed-tag" style="display:${S.showDev ? 'inline' : 'none'}" title="trap: the badge score before it is cut into a grade, with its inputs (worst step's trap score, top-3 steps' sum, the sum of all steps per cell (shown only, not in the grade), fraction of steps that have any wrong move, what-if guesses the technique ladder needed). Cutout: the same score without the alt term; One way arrows: only the max and top-3 terms, wrong moves being the ones the arrows allow (a ranking, not fitted to hand ratings). decisionNodes: the previous badge grade (solver branch points per cell). B: backtrack overhead (nodes/cells - 1) from the same solve. cross: how many non-adjacent checkpoint-to-checkpoint segments geometrically cross, per segment. Each old grade is graded 0-5 with its own calibration; the trap grade is fit to hand ratings. The design app shows all of them.">${body}</span>`;
 }
 
 // Loop: the line under the board. It reminds of the rule, says so when every cell is visited but the ring is

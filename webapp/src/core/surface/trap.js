@@ -86,6 +86,7 @@ export function surfaceTrapMetricsFromProfile(p, profile, cfg = TRAP_CFG, model 
     altFrac: byStep.size / T,
     trapMax: steps.length ? steps[0].score : 0,
     trapTop3: steps.slice(0, 3).reduce((sum, x) => sum + x.score, 0),
+    trapSum: steps.reduce((sum, x) => sum + x.score, 0) / T, // as core/trap.js: not in the grade
     trapDeep: steps.filter(s => s.score >= cfg.points[3]).length,
     alternatives: profile.length,
     nonUnique: profile.nonUnique,

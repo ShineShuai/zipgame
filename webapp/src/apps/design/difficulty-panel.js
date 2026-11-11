@@ -103,6 +103,7 @@ function trapHtml(d) {
         ${row('predicted', t.predicted.toFixed(2), 'Model output before it is cut at the fitted thresholds.')}
         ${row('trapMax', t.trapMax, METRIC_DEFS.find(m => m[0] === 'trapMax')[2])}
         ${row('trapTop3', t.trapTop3, METRIC_DEFS.find(m => m[0] === 'trapTop3')[2])}
+        ${row('trapSum', t.trapSum.toFixed(3), METRIC_DEFS.find(m => m[0] === 'trapSum')[2])}
         ${row('trapDeep', t.trapDeep, METRIC_DEFS.find(m => m[0] === 'trapDeep')[2])}
         ${row('altFrac', t.altFrac.toFixed(3), METRIC_DEFS.find(m => m[0] === 'altFrac')[2])}
         ${row('ladder trials', `${t.ladTrials} (lTr ${t.lTr.toFixed(2)})`, METRIC_DEFS.find(m => m[0] === 'lTr')[2])}
