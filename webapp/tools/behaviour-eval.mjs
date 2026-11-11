@@ -56,7 +56,8 @@ const { values: o, rest } = cli({
 const file = rest[0];
 const GOTD_DIR = o['gotd-dir'], CALIB_DIR = o['calib-dir'], CAP = o.cap, BOOT = o.boot;
 const SEED = o.seed, STUCK = o.stuck, MIN_ROWS = o['min-rows'];
-const SHOWN = ['grade:trap', 'trapPredicted', 'grade:ladder', 'grade:decisionNodes'];
+const SHOWN = ['grade:trap', 'trapPredicted', 'trapMax', 'trapTop3', 'trapSum', 'grade:ladder',
+  'grade:decisionNodes'];
 
 // ---------- statistics ----------
 // OLS with standard errors clustered by puzzle. X rows include the intercept. -> { b, se }

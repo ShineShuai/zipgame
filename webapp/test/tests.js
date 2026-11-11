@@ -35,6 +35,8 @@ import { createBehaviour, sinksFromConfig, SINKS, QUEUE_KEY, ON_KEY, QUEUE_MAX, 
 import { BEHAVIOUR, LEADERBOARD } from '../src/config.js';
 import { levelOf, legsUndo, legLevels, stripText, dayOfDate, makeShareRecord, shareUrl, parseShareLink, shareText, shareStatus, isPlayable, LEVEL_EMOJI } from '../src/features/share.js';
 import { createCalib, calibRequested, CALIB_DIR } from '../src/features/calib.js';
+import { difficultyDevHtml } from '../src/apps/play/game-view.js';
+import { S as playState } from '../src/apps/play/state.js';
 import fs from 'node:fs';
 import { parseArgs, helpText, ArgsError } from '../tools/args-lib.mjs';
 import {
@@ -1409,6 +1411,35 @@ t('trap: metrics are deterministic, in range, and consistent with the profile', 
     eq(a.steps[0].score, a.trapMax); ok(a.steps.every((s, i) => i === 0 || a.steps[i - 1].score >= s.score), 'steps sorted worst first');
     eq(trapMetrics(p, TRAP_CFG, a.path).trapMax, a.trapMax, 'passing the path in skips the solve but gives the same answer');
   }
+});
+t('trap: trapSum = the scores of all steps per cell; scales with the points; not in the grade', () => {
+  const file = new URL('../tools/ratings.json', import.meta.url);
+  const rated = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const p = parse(rated.find(r => parse(r.key).n === 7).key), a = trapMetrics(p);
+  ok(a.ok, 'the test puzzle has a solution');
+  const total = a.steps.reduce((sum, x) => sum + x.score, 0);
+  eq(a.trapSum, total / cellCount(p));
+  ok(a.trapSum * cellCount(p) >= a.trapTop3 - 1e-9, 'the sum is at least the top-3 sum');
+  ok(a.trapTop3 >= a.trapMax, 'and that at least the max');
+  eq(trapMetrics(p, { ...TRAP_CFG, points: [0, 0, 0, 0] }).trapSum, 0, 'no points, no sum');
+  const twice = trapMetrics(p, { ...TRAP_CFG, points: TRAP_CFG.points.map(v => 2 * v) });
+  ok(Math.abs(twice.trapSum - 2 * a.trapSum) < 1e-9, 'twice the points, twice the sum');
+  ok(!TRAP_MODEL.features.includes('trapSum'), 'the grade model does not use it yet');
+});
+t('play app: the hold-V reveal shows the sum of all steps per cell next to max and top3', () => {
+  const { difficulty, variant, showDev } = playState, saved = { difficulty, variant, showDev };
+  const trap = {
+    predicted: 1.23, trapMax: 4, trapTop3: 10, trapSum: 0.4691, altFrac: 0.5, ladTrials: 3,
+  };
+  Object.assign(playState, { difficulty: { trap, legacy: null }, variant: null, showDev: true });
+  const shown = difficultyDevHtml();
+  ok(shown.includes('max 4 · top3 10 · sum 0.47'), shown.slice(0, 300));
+  ok(shown.includes('display:inline'), 'visible while revealed');
+  playState.showDev = false;
+  ok(difficultyDevHtml().includes('display:none'), 'hidden otherwise');
+  playState.difficulty = { trap: { ...trap, trapSum: undefined }, legacy: null };
+  ok(!difficultyDevHtml().includes('· sum '), 'metrics without it show nothing and do not throw');
+  Object.assign(playState, saved);
 });
 t('trap: One way arrows — wrong turns are the moves the arrows allow, no ladder, only trapMax and trapTop3 in the score; Cutout — no altFrac term; both graded by playGradesFor', () => {
   for (const [n, seed] of [[6, 3], [7, 4], [8, 3]]) {

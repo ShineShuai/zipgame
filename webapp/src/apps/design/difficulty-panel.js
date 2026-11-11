@@ -48,6 +48,10 @@ const METRIC_DEFS = [
   // Trap grade (core/trap.js): needs no reference-solve result, so it also exists for puzzles the reference solve capped on.
   ['trapMax', d => d.trap?.ok ? d.trap.trapMax : undefined, `Score of the single worst step of the solution: sum over its wrong moves of 0 (refuted within ${TRAP_CFG.obvious} nodes) / 1 (within ${TRAP_CFG.shallow}) / 3 (deeper) / 5 (survives ${TRAP_CFG.cap} nodes).`],
   ['trapTop3', d => d.trap?.ok ? d.trap.trapTop3 : undefined, 'Sum of the three worst steps\' scores.'],
+  ['trapSum', d => d.trap?.ok ? d.trap.trapSum : undefined,
+    'Sum of the scores of all steps, per cell of the board: every wrong move along the ' +
+    'solution, weighted by how deep it is refuted. trapMax and trapTop3 see only the worst ' +
+    'steps; this one adds up all of them (not part of the grade yet).'],
   ['trapDeep', d => d.trap?.ok ? d.trap.trapDeep : undefined, `Number of solution steps whose score is at least ${TRAP_CFG.points[3]}: a wrong move there was not refuted within ${TRAP_CFG.cap} nodes, or several smaller wrong moves add up to ${TRAP_CFG.points[3]}. Not an input of the trap grade (that uses trapMax, trapTop3, altFrac, lTr).`],
   ['altFrac', d => d.trap?.ok ? d.trap.altFrac : undefined, 'Fraction of solution steps that have any legal wrong move. Low = long forced corridors, which humans find easy (rho -0.45 vs hand ratings, 76 puzzles).'],
   ['lTr', d => d.trap?.ok ? d.trap.lTr : undefined, `log(1 + ladder trials): how many what-if guesses the technique ladder needed (stopped at ${TRAP_CFG.ladderWorkCap} edge assignments, so a capped run is a lower bound). Median over the hand ratings: 24 / 44 / 62 / 442 for ratings 0 / 1 / 2 / >= 3.5, so it is the input that tells the easy puzzles apart.`],
@@ -67,7 +71,7 @@ const METRIC_DEFS = [
 const ALL_GRADES = [...GRADE_ORDER, 'trap', 'ladder'];
 const GRADE_LABEL = { ...Object.fromEntries(GRADE_ORDER.map(id => [id, GRADED_METRICS[id].label])), trap: 'trap (Play badge)', ladder: 'technique ladder' };
 // Metrics that exist even when the reference solve was capped (no solver-derived numbers, no grades).
-const SOLVER_FREE = new Set(['crossPerSeg', 'overlapPerSeg', 'trapMax', 'trapTop3', 'trapDeep', 'altFrac', 'lTr', 'trapPredicted', 'grade: trap', 'ladderHardest', 'ladderWideFrac', 'grade: ladder']);
+const SOLVER_FREE = new Set(['crossPerSeg', 'overlapPerSeg', 'trapMax', 'trapTop3', 'trapSum', 'trapDeep', 'altFrac', 'lTr', 'trapPredicted', 'grade: trap', 'ladderHardest', 'ladderWideFrac', 'grade: ladder']);
 
 // Fit statistics are optional metadata (tools/fit-trap.mjs --write stores them next to the weights). An older trap.js
 // without them must not take the whole diagnostics panel down, so every use goes through these two strings.
@@ -99,6 +103,7 @@ function trapHtml(d) {
         ${row('predicted', t.predicted.toFixed(2), 'Model output before it is cut at the fitted thresholds.')}
         ${row('trapMax', t.trapMax, METRIC_DEFS.find(m => m[0] === 'trapMax')[2])}
         ${row('trapTop3', t.trapTop3, METRIC_DEFS.find(m => m[0] === 'trapTop3')[2])}
+        ${row('trapSum', t.trapSum.toFixed(3), METRIC_DEFS.find(m => m[0] === 'trapSum')[2])}
         ${row('trapDeep', t.trapDeep, METRIC_DEFS.find(m => m[0] === 'trapDeep')[2])}
         ${row('altFrac', t.altFrac.toFixed(3), METRIC_DEFS.find(m => m[0] === 'altFrac')[2])}
         ${row('ladder trials', `${t.ladTrials} (lTr ${t.lTr.toFixed(2)})`, METRIC_DEFS.find(m => m[0] === 'lTr')[2])}

@@ -178,6 +178,8 @@ export function trapMetricsFromProfile(p, path, profile, cfg = TRAP_CFG, ladTria
     T, altFrac: byStep.size / T,
     trapMax: steps.length ? steps[0].score : 0,
     trapTop3: steps.slice(0, 3).reduce((s, x) => s + x.score, 0),
+    // every step, per cell (the grade does not use it yet)
+    trapSum: steps.reduce((s, x) => s + x.score, 0) / T,
     trapDeep: steps.filter(s => s.score >= cfg.points[3]).length,
     alternatives: profile.length, nonUnique: profile.nonUnique, steps,
   };

@@ -496,6 +496,8 @@ export function pentagonTests(t, ok, eq) {
         const cut = Math.min(trapGradeOf(m.predicted, GRAPH_TRAP_MODEL), cap);
         eq(m.grade, cut, 'the model and the cap');
         ok(m.T === PENTAGON_CELLS[n] && m.altFrac > 0, 'the fields of the display');
+        const total = m.steps.reduce((sum, x) => sum + x.score, 0);
+        ok(Math.abs(m.trapSum * m.T - total) < 1e-9, 'trapSum: all steps per cell, like core');
         eq(m.ladTrials, 0, 'no ladder');
         const graded = playGradesFor(p);
         eq([graded.trap.grade, graded.legacy], [m.grade, null], 'playGradesFor');
