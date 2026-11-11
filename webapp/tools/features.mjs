@@ -18,7 +18,7 @@ export const DEFS = [
   ['decisionNodes/cell', 'legacy', 1], ['B/N', 'legacy'], ['maxDecisionDepth', 'legacy'], ['nodes/cell', 'legacy', 1],
   ['crossPerSeg', 'spatial'], ['overlapPerSeg', 'spatial'],
   ['grade:decisionNodes', 'grade'], ['grade:B', 'grade'], ['grade:cross', 'grade'], ['grade:combined', 'grade'],
-  ['trapMax', 'trap'], ['trapTop3', 'trap'], ['trapDeep', 'trap'], ['altFrac', 'trap'], ['alts/T', 'trap'], ['lTr', 'trap'], ['trapPredicted', 'trap'], ['grade:trap', 'trap'],
+  ['trapMax', 'trap'], ['trapTop3', 'trap'], ['trapSum', 'trap'], ['trapDeep', 'trap'], ['altFrac', 'trap'], ['alts/T', 'trap'], ['lTr', 'trap'], ['trapPredicted', 'trap'], ['grade:trap', 'trap'],
   ['ladHardest', 'ladder'], ['ladChain', 'ladder', 1], ['ladTerr', 'ladder', 1], ['ladProbe1', 'ladder', 1], ['ladProbe2', 'ladder', 1], ['ladSearch', 'ladder', 1], ['ladTrials', 'ladder', 1], ['wideFrac', 'ladder'], ['grade:ladder', 'ladder'],
 ];
 export const NAMES = DEFS.map(d => d[0]), GROUP = Object.fromEntries(DEFS.map(d => [d[0], d[1]])), LOG = new Set(DEFS.filter(d => d[2]).map(d => d[0]));
@@ -38,6 +38,7 @@ export const INFO = {
   'grade:cross': ['old calibrated 0-5 grade from crossPerSeg', 'grade: crossPerSeg'], 'grade:combined': ['old calibrated 0-5 grade from z(B/N) + z(crossPerSeg)', 'grade: combined'],
   trapMax: ['trap score of the single worst step of the solution (wrong moves there: 0 / 1 / 3 / 5 points by how long the solver needs to refute them)', 'trapMax'],
   trapTop3: ['sum of the trap scores of the 3 worst steps', 'trapTop3'],
+  trapSum: ['sum of the trap scores of all steps, per cell of the board (every wrong move along the solution, by depth)', 'trapSum'],
   trapDeep: ['number of solution steps with a trap score >= 5 (a wrong move the solver could not refute within 1000 nodes, or several smaller ones adding up)', 'trapDeep'],
   altFrac: ['fraction of solution steps that have any legal wrong move (low = long forced corridors = easy)', 'altFrac'],
   'alts/T': ['legal wrong moves along the solution, per cell', ''],
@@ -67,7 +68,7 @@ export const featuresOf = (r, cap = DEFAULT_EVAL_CAP) => {
     'decisionNodes/cell': d.decisionNodes / T, 'B/N': d.B / p.n, maxDecisionDepth: d.maxDecisionDepth, 'nodes/cell': d.nodes / T,
     crossPerSeg: sp.crossPerSeg, overlapPerSeg: sp.overlapPerSeg,
     'grade:decisionNodes': g ? g.grades.decisionNodes : 5, 'grade:B': g ? g.grades.B : 5, 'grade:cross': g ? g.grades.crossPerSeg : 5, 'grade:combined': g ? g.grades.combined : 5,
-    trapMax: tr.trapMax, trapTop3: tr.trapTop3, trapDeep: tr.trapDeep, altFrac: tr.altFrac, 'alts/T': tr.alternatives / T, lTr: tr.lTr, trapPredicted: tr.predicted, 'grade:trap': tr.grade,
+    trapMax: tr.trapMax, trapTop3: tr.trapTop3, trapSum: tr.trapSum, trapDeep: tr.trapDeep, altFrac: tr.altFrac, 'alts/T': tr.alternatives / T, lTr: tr.lTr, trapPredicted: tr.predicted, 'grade:trap': tr.grade,
     ladHardest: L.hardest ?? 0, ladChain: L.passes?.[2] ?? 0, ladTerr: L.passes?.[3] ?? 0, ladProbe1: L.passes?.[4] ?? 0, ladProbe2: L.passes?.[5] ?? 0, ladSearch: L.search?.nodes ?? 0, ladTrials: L.probeTrials ?? 0, wideFrac: wf, 'grade:ladder': lg,
     _capped: d.exceeded ? 1 : 0, _ladBad: L.exceeded || L.contradiction ? 1 : 0, _ladSolved: L.solved && L.path ? 1 : 0,
   };

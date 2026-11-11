@@ -1410,6 +1410,20 @@ t('trap: metrics are deterministic, in range, and consistent with the profile', 
     eq(trapMetrics(p, TRAP_CFG, a.path).trapMax, a.trapMax, 'passing the path in skips the solve but gives the same answer');
   }
 });
+t('trap: trapSum = the scores of all steps per cell; scales with the points; not in the grade', () => {
+  const file = new URL('../tools/ratings.json', import.meta.url);
+  const rated = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const p = parse(rated.find(r => parse(r.key).n === 7).key), a = trapMetrics(p);
+  ok(a.ok, 'the test puzzle has a solution');
+  const total = a.steps.reduce((sum, x) => sum + x.score, 0);
+  eq(a.trapSum, total / cellCount(p));
+  ok(a.trapSum * cellCount(p) >= a.trapTop3 - 1e-9, 'the sum is at least the top-3 sum');
+  ok(a.trapTop3 >= a.trapMax, 'and that at least the max');
+  eq(trapMetrics(p, { ...TRAP_CFG, points: [0, 0, 0, 0] }).trapSum, 0, 'no points, no sum');
+  const twice = trapMetrics(p, { ...TRAP_CFG, points: TRAP_CFG.points.map(v => 2 * v) });
+  ok(Math.abs(twice.trapSum - 2 * a.trapSum) < 1e-9, 'twice the points, twice the sum');
+  ok(!TRAP_MODEL.features.includes('trapSum'), 'the grade model does not use it yet');
+});
 t('trap: One way arrows — wrong turns are the moves the arrows allow, no ladder, only trapMax and trapTop3 in the score; Cutout — no altFrac term; both graded by playGradesFor', () => {
   for (const [n, seed] of [[6, 3], [7, 4], [8, 3]]) {
     const pa = runSync(generateArrows(n, seed)), g = playGradesFor(pa), { out } = buildMoves(pa);
