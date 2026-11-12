@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse, serialize } from '../src/core/format.js';
 import { transformPuzzle, symmetryKey, ratingKey, parseRatingsJson } from '../src/core/ratings-io.js';
-import { makeVerdict, formatVerdicts } from '../src/core/gotd-verdict.js';
+import { makeVerdict, formatVerdicts, parseVerdicts } from '../src/core/gotd-verdict.js';
 
 const tool = fileURLToPath(new URL('../tools/gotd-gen.mjs', import.meta.url));
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gotd-gen-'));
@@ -332,4 +332,36 @@ test('gotd-gen merge: verdict files of other devices merge into the queue verdic
   assert.match(r.stdout, new RegExp(`WARNING: ${c7b.id}: rated, but its puzzle is not in a verdict key or in any puzzle file: not added`));
   assert.match(r.stdout, /added 2 rating\(s\).* 1 without a puzzle/);
   assert.deepEqual(parseRatingsJson(fs.readFileSync(R, 'utf8')).ratings.map(x => x.human).sort(), [1, 2], 'c7a with the newer rating of device B');
+});
+
+test('gotd-gen keys: older verdicts (no key) get their puzzle from the published, rejected and queued files; afterwards they harvest without any file; a verdict with no file is listed', () => {
+  const w = world('k1'), [c7a, c7b, c8a] = w.index().candidates, R = path.join(tmp, 'k1-ratings.json');
+  fs.writeFileSync(R, '[]\n');
+  const keyOf = c => ratingKey(parse(fs.readFileSync(path.join(w.queue, c.file), 'utf8'))), keys = { c7a: keyOf(c7a), c7b: keyOf(c7b), c8a: keyOf(c8a) };
+  const ghost = w.say({ ...c7b, id: 'abcdefabcdef' }, 2); // a verdict of a puzzle no file has
+  w.verdicts([w.say(c7a, 3), w.say(c8a, 1), w.say(c7b, 4), ghost]);
+  assert.equal(w.cli(...PROMOTE).status, 0);
+  const file = path.join(w.queue, 'verdicts.json'), before = fs.readFileSync(file, 'utf8');
+  let r = w.cli('keys', '--dry-run');
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /would add 3 key\(s\).* 0 verdict\(s\) had one, 1 without a puzzle file/);
+  assert.equal(fs.readFileSync(file, 'utf8'), before, 'a dry run writes nothing');
+  r = w.cli('keys');
+  assert.match(r.stdout, /WARNING: abcdefabcdef: no puzzle file with this id/);
+  assert.match(r.stdout, /added 3 key\(s\)/);
+  const after = parseVerdicts(fs.readFileSync(file, 'utf8')); // the file still validates: each key hashes to its id
+  assert.deepEqual(after.filter(v => v.key).map(v => v.key).sort(), [keys.c7a, keys.c7b, keys.c8a].sort());
+  assert.equal(after.find(v => v.id === ghost.id).key, undefined);
+  const bytes = fs.readFileSync(file, 'utf8');
+  r = w.cli('keys');
+  assert.match(r.stdout, /added 0 key\(s\).* 3 verdict\(s\) had one/);
+  assert.equal(fs.readFileSync(file, 'utf8'), bytes, 'a rerun changes no byte');
+  // the puzzle files go away (published day, rejected file): the keys are enough
+  fs.rmSync(w.pub, { recursive: true, force: true }); fs.mkdirSync(w.pub);
+  fs.rmSync(path.join(w.queue, 'rejected'), { recursive: true, force: true });
+  fs.rmSync(path.join(w.queue, c7b.file));
+  r = w.cli('harvest', '--ratings', R);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /added 3 rating\(s\).* 1 without a puzzle/);
+  assert.deepEqual(parseRatingsJson(fs.readFileSync(R, 'utf8')).ratings.map(x => x.human).sort(), [1, 3, 4]);
 });

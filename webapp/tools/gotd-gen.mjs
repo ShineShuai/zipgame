@@ -7,6 +7,7 @@
 //   node tools/gotd-gen.mjs schedule [--from YYYYMMDD] [--days 28]    the size of each day and how often each size occurs
 //   node tools/gotd-gen.mjs merge    --from FILE[,FILE...] [--dry-run]    verdicts.json files of other devices -> <queue>/verdicts.json (newer wins, a tie goes to reject)
 //   node tools/gotd-gen.mjs harvest  [--from FILE[,FILE...]] [--solved-only] [--dry-run]    rated verdicts -> new rows of the ratings file (the labels of every grading fit)
+//   node tools/gotd-gen.mjs keys     [--dry-run]    older verdicts get their puzzle (`key`) from the files, so <queue>/verdicts.json is self-contained
 //   all: [--puzzles DIR] [--queue DIR] [--ratings FILE] [--verdicts FILE]    defaults: demo/GameOfDay, demo/GameOfDay-queue, webapp/tools/ratings.json (next to webapp/),
 //   <queue>/verdicts.json
 // fill: every open day (no file in demo/GameOfDay yet) from today to today + horizon gets per-slot candidates of the size the schedule gives that
@@ -29,7 +30,8 @@
 // harvest: the fits (fit-trap.mjs --write, gotd-fit.mjs) read only tools/ratings.json, never verdicts. harvest appends every rated verdict (from <queue>/verdicts.json and --from files)
 //   whose puzzle is not in the ratings file yet as { key, human, lo, hi, unsure? } rows; the next commit of ratings.json refits (tools/pre-commit-refresh.sh labels). A puzzle that is
 //   already rated (another rating: listed, kept) or equivalent to a rated one (listed, not added) is never added twice, so a rerun adds nothing. A verdict without `key` (older panel)
-//   takes its puzzle from the files by id (published days, queue, rejected). --solved-only leaves out a rating given after giving up. It refuses a ratings file that is not in canonical
+//   takes its puzzle from the files by id (published days, queue, rejected); `keys` writes those keys into <queue>/verdicts.json once, while the files exist (a verdict whose puzzle
+//   has no file anywhere stays as it is, listed). --solved-only leaves out a rating given after giving up. It refuses a ratings file that is not in canonical
 //   form (node tools/check-ratings.mjs --fix first), because appending rewrites the file. `fill` keeps blocking puzzles of the ratings file, so a harvested puzzle is never offered again.
 // check replaces demo/GameOfDay/check_unique_puzzles.py (exact copies only). Exit codes: 0 ok, 1 an error (or bad arguments; for promote: an approved candidate could not be published).
 import fs from 'node:fs';
@@ -340,6 +342,22 @@ function harvest() {
   return 0;
 }
 
-const commands = { fill, promote, check, status, schedule, merge, harvest };
+// older verdicts: embed the puzzle text from the files (the id is the hash of the puzzle, so the file of that id is the right one)
+function keys() {
+  const verdicts = readVerdicts(), found = keysById(), missing = [];
+  let added = 0;
+  const next = verdicts.map(v => {
+    if (v.key) return v;
+    if (!found.has(v.id)) { missing.push(v.id); return v; }
+    added++;
+    return { ...v, key: found.get(v.id) };
+  });
+  for (const id of missing) note('warning', `${id}: no puzzle file with this id (published days, queue, rejected): its verdict stays without a key`);
+  console.log(`${flag('dry-run') ? 'would add' : 'added'} ${added} key(s) to ${rel(verdictsFile)}; ${verdicts.length - added - missing.length} verdict(s) had one, ${missing.length} without a puzzle file`);
+  if (added && !flag('dry-run')) fs.writeFileSync(verdictsFile, formatVerdicts(next));
+  return 0;
+}
+
+const commands = { fill, promote, check, status, schedule, merge, harvest, keys };
 if (!commands[cmd]) die(`usage: gotd-gen.mjs ${Object.keys(commands).join(' | ')} [options] (see the top of this file)`);
 process.exitCode = commands[cmd]();
