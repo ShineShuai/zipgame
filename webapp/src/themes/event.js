@@ -30,20 +30,34 @@ export function offerOrder(candidates, seed, eventId) {
 // The end of the local day of `ms` (the next local midnight): when a day's offer ends.
 export const endOfDay = ms => { const d = new Date(ms); return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime(); };
 
-// Calls check() now and whenever a new day, or a new look at the page, may have come: the page becomes visible again, the network is back,
-// the next local midnight passes. The page needs no reload to learn that it is an event day; deciding that (and calling offerTheme) is
-// check's business. -> a function that stops the watching.
+export const TICK_MS = 60 * 1000;   // how often watchDay looks at the date
+
+// The local calendar day of `ms`, as a number that differs from day to day.
+const dayKey = ms => { const d = new Date(ms); return (d.getFullYear() * 100 + d.getMonth()) * 100 + d.getDate(); };
+
+// Calls check() now and whenever a new day, or a new look at the page, may have come: the page becomes visible again (or is restored from the
+// back-forward cache), the network is back, the local date has changed. The date is looked at every TICK_MS, not by one timer set for the next
+// midnight: such a timer is hours late after the machine slept (the timer clock stands still in sleep). The page needs no reload to learn that it
+// is an event day; deciding that (and calling offerTheme) is check's business. -> a function that stops the watching.
 export function watchDay(check, { doc = globalThis.document, win = globalThis, now = Date.now, timers = globalThis } = {}) {
   let timer = null;
-  const run = () => { try { check(); } catch { /* the next trigger tries again */ } };
+  let day = dayKey(now());
+  const run = () => { day = dayKey(now()); try { check(); } catch { /* the next trigger tries again */ } };
   const arm = () => {
     if (timer) timers.clearTimeout(timer);
-    timer = timers.setTimeout(() => { run(); arm(); }, Math.min(endOfDay(now()) - now() + 1000, 2 ** 31 - 1));
+    timer = timers.setTimeout(() => { if (dayKey(now()) !== day) run(); arm(); }, Math.min(endOfDay(now()) - now() + 1000, TICK_MS));
   };
   const look = () => { if (doc.visibilityState !== 'hidden') { run(); arm(); } };
   doc.addEventListener('visibilitychange', look);
   win.addEventListener('online', look);
+  win.addEventListener('pageshow', look);
   run();
   arm();
-  return () => { doc.removeEventListener('visibilitychange', look); win.removeEventListener('online', look); if (timer) timers.clearTimeout(timer); timer = null; };
+  return () => {
+    doc.removeEventListener('visibilitychange', look);
+    win.removeEventListener('online', look);
+    win.removeEventListener('pageshow', look);
+    if (timer) timers.clearTimeout(timer);
+    timer = null;
+  };
 }

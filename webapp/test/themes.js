@@ -16,7 +16,7 @@ import { cleanBundle } from '../src/themes/bundle.js';
 import { BUILTIN, BUILTIN_IDS } from '../src/themes/builtin.js';
 import { createThemes } from '../src/themes/index.js';
 import {
-  EVENT_KEY, SEED_KEY, endOfDay, hash, newSeed, offerOrder, watchDay,
+  EVENT_KEY, SEED_KEY, TICK_MS, endOfDay, hash, newSeed, offerOrder, watchDay,
 } from '../src/themes/event.js';
 import { SLOT_GOTD_SOLVES, SLOT_STREAK_DAYS, slotsFor } from '../src/themes/slots.js';
 import {
@@ -847,26 +847,111 @@ export function themeSystemTests(t, ok, eq, ta) {
     ok(sheetTrial.includes('theme.offer.title') && !sheetTrial.includes('data-offer="minimize"'), 'no minimize unless asked');
   });
 
-  t('themes: watchDay checks now, when the page is seen again, when the network is back and at local midnight, and stops on request', () => {
+  t('themes: watchDay checks now, when the page is seen again or the network is back, and stops on request', () => {
     const calls = [];
     const doc = { visibilityState: 'visible', listeners: {}, addEventListener(n, f) { this.listeners[n] = f; }, removeEventListener(n) { delete this.listeners[n]; } };
     const win = { listeners: {}, addEventListener(n, f) { this.listeners[n] = f; }, removeEventListener(n) { delete this.listeners[n]; } };
-    const timers = []; const cleared = [];
+    const cleared = [];
     const clock = { t: new Date(2026, 10, 3, 21, 0, 0).getTime() };
-    const stop = watchDay(() => calls.push('check'), { doc, win, now: () => clock.t, timers: { setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimeout: id => cleared.push(id) } });
-    eq([calls.length, timers[0].ms], [1, 3 * HOUR + 1000], 'at once; the timer is at the next local midnight');
+    const timers = { setTimeout: () => 7, clearTimeout: id => cleared.push(id) };
+    const stop = watchDay(() => calls.push('check'), { doc, win, now: () => clock.t, timers });
+    eq(calls.length, 1, 'at once');
     doc.visibilityState = 'hidden'; doc.listeners.visibilitychange();
     eq(calls.length, 1, 'hidden: nothing');
     doc.visibilityState = 'visible'; doc.listeners.visibilitychange();
     win.listeners.online();
     eq(calls.length, 3);
-    clock.t = endOfDay(clock.t) + 1000;
-    timers[timers.length - 1].fn();
-    eq([calls.length, timers[timers.length - 1].ms], [4, 24 * HOUR + 1000 - 1000], 'midnight: checked, the next midnight armed');
     stop();
-    eq([Object.keys(doc.listeners), Object.keys(win.listeners)], [[], []]);
+    eq([Object.keys(doc.listeners), Object.keys(win.listeners), cleared.length > 0], [[], [], true]);
     const throwing = watchDay(() => { throw new Error('x'); }, { doc, win, now: () => clock.t, timers: { setTimeout: () => 1, clearTimeout() {} } });
     throwing();
+  });
+
+  t('themes: watchDay wakes every minute, so a sleeping machine or a long-open tab notices the new day: the check runs on a changed day, on pageshow, not on every tick', () => {
+    const calls = [];
+    const doc = { visibilityState: 'visible', listeners: {}, addEventListener(n, f) { this.listeners[n] = f; }, removeEventListener(n) { delete this.listeners[n]; } };
+    const win = { listeners: {}, addEventListener(n, f) { this.listeners[n] = f; }, removeEventListener(n) { delete this.listeners[n]; } };
+    const timers = [];
+    const clock = { t: new Date(2026, 10, 3, 23, 0, 0).getTime() };
+    const stop = watchDay(() => calls.push('check'), { doc, win, now: () => clock.t, timers: { setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimeout() {} } });
+    const tick = () => timers[timers.length - 1].fn();
+    eq([calls.length, timers[0].ms], [1, TICK_MS], 'at once; the next wake-up is a minute away, not hours');
+    clock.t += 30000; tick();
+    eq(calls.length, 1, 'same day: the tick checks nothing');
+    clock.t = new Date(2026, 10, 4, 8, 0, 0).getTime();   // the machine slept through midnight: the long timer would be hours late
+    tick();
+    eq(calls.length, 2, 'a new day: checked at the first tick');
+    tick();
+    eq(calls.length, 2, 'and once for that day');
+    eq(typeof win.listeners.pageshow, 'function', 'a page restored from the back-forward cache looks again');
+    win.listeners.pageshow();
+    eq(calls.length, 3);
+    clock.t = new Date(2026, 10, 4, 23, 59, 40).getTime();
+    win.listeners.online();
+    eq([calls.length, timers[timers.length - 1].ms], [4, 21000], 'near midnight the wake-up is the second after it');
+    clock.t = new Date(2026, 10, 5, 0, 0, 1).getTime();
+    tick();
+    eq(calls.length, 5, 'midnight: checked');
+    stop();
+    eq([Object.keys(doc.listeners), Object.keys(win.listeners)], [[], []]);
+  });
+
+  ta('themes: an event day that comes while another offer still waits is not lost: it is offered when that offer ends', async () => {
+    const clock = { t: new Date(2026, 10, 3, 23, 40, 0).getTime() };
+    const r = rig({ clock, ...site([CANDY, WOOD]), trialMs: 60000 });
+    r.ctl.start();
+    await r.ctl.offer({ id: 'd20261103' });
+    r.ctl.startOffer();
+    clock.t += 10000;
+    r.ctl.select('dark');   // interrupted: waits, with a last half hour past midnight
+    eq(r.ctl.offerView().until, clock.t + FINAL_MS, 'the wait runs past midnight');
+    clock.t = new Date(2026, 10, 4, 0, 0, 5).getTime();
+    eq(await r.ctl.offer({ id: 'd20261104' }), false, 'one offer at a time: the new day waits');
+    clock.t += FINAL_MS;
+    r.timeouts[r.timeouts.length - 1].fn();   // the old offer's end
+    await new Promise(resolve => setTimeout(resolve, 0));
+    eq([r.ctl.offerView()?.event, r.storage.data[EVENT_KEY]], ['d20261104', 'd20261103'], 'the old one is answered; the new day offers by itself, no reload and no new trigger');
+
+    const left = rig({ clock, ...site([CANDY, WOOD]) });
+    left.ctl.start();
+    await left.ctl.offer({ id: 'x1', until: clock.t + 2 * HOUR });
+    eq(await left.ctl.offer({ id: 'x2', until: clock.t + 3 * HOUR }), false);
+    left.ctl.leaveOffer();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    eq(left.ctl.offerView()?.event, 'x2', 'leaving frees the place too');
+
+    const late = rig({ clock, ...site([CANDY, WOOD]) });
+    late.ctl.start();
+    await late.ctl.offer({ id: 'y1', until: clock.t + HOUR });
+    eq(await late.ctl.offer({ id: 'y2', until: clock.t + 2 * HOUR }), false);
+    clock.t += 3 * HOUR;
+    late.timeouts[late.timeouts.length - 1].fn();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    eq(late.ctl.offerView(), null, 'an event that ended while it waited is not offered');
+
+    const dev = rig({ clock, ...site([CANDY, WOOD]) });
+    dev.ctl.start();
+    await dev.ctl.offer({ id: 'z1', until: clock.t + HOUR });
+    await dev.ctl.offer({ id: 'z2', until: clock.t + 2 * HOUR });
+    dev.ctl.dropOffer();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    eq(dev.ctl.offerView(), null, 'the dev reveal starts afresh: nothing comes back by itself');
+  });
+
+  ta('themes: the end of an offer is the end of the day it was asked on, even when the files are slow past midnight', async () => {
+    const clock = { t: new Date(2026, 10, 3, 23, 59, 59, 500).getTime() };
+    const eve = endOfDay(clock.t);
+    const slow = bundle('slow');
+    const files = { get [stem('slow')]() { clock.t += 2000; return slow; } };
+    const r = rig({ clock, files, pool: poolOf([slow]) });
+    r.ctl.start();
+    eq(await r.ctl.offer({ id: 'd20261103' }), false, 'the day was over when the file came');
+    eq([r.ctl.offerView(), OFFER_KEY in r.storage.data], [null, false], 'no offer of yesterday that lives through today');
+    clock.t = new Date(2026, 10, 3, 12, 0, 0).getTime();
+    const fast = rig({ clock, files: filesOf([slow]), pool: poolOf([slow]) });
+    fast.ctl.start();
+    await fast.ctl.offer({ id: 'd20261103' });
+    eq(fast.ctl.offerView().until, eve, 'by day: its own midnight');
   });
 
   ta('themes: the dev reveal lists the whole pool, drafts too, and tries or keeps any theme whatever the cap', async () => {
