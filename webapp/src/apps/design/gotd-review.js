@@ -4,7 +4,9 @@
 //
 // Data: <queue>/index.json and <queue>/verdicts.json are read from the site the page is served from (the repository root: `python3 -m http.server` there, then open
 // webapp/design.html), and so is which days already have a file (HEAD requests on ../demo/GameOfDay/YYYYMMDD.txt, today up to the horizon: a published day is never
-// offered again); the reviewer's verdicts are kept in this browser (zip_gotd_verdicts). "Export verdicts.json" downloads the repository's verdicts merged with the
+// offered again); the reviewer's verdicts are kept in this browser (zip_gotd_verdicts). A verdict carries the puzzle's text (`key`) and its rating, so
+// `node tools/gotd-gen.mjs harvest` can turn the rated ones into rows of tools/ratings.json, the labels every grading fit reads; verdicts from several devices merge
+// by Import… here or `node tools/gotd-gen.mjs merge --from FILE,FILE`. "Export verdicts.json" downloads the repository's verdicts merged with the
 // local ones: put it at demo/GameOfDay-queue/verdicts.json, commit it, run `node tools/gotd-gen.mjs promote`. (A later step will write them back by itself.)
 //
 // main.js gives the panel what it cannot do alone (host): show(text) puts a puzzle on the board, play() starts Play mode, state() = { elapsed, length, total }, stopPlay().
@@ -15,7 +17,7 @@ import { dateOfDay } from '../../core/gotd-schedule.js';
 import {
   APPROVE_MIN, GRADE_NAMES, parseVerdicts, formatVerdicts, mergeVerdicts, makeVerdict, nextSelection, nextLean, toggleUnsure, createTakebacks, decide,
 } from '../../core/gotd-verdict.js';
-import { ratingFromSelection, describeRating } from '../../core/ratings-io.js';
+import { ratingFromSelection, describeRating, ratingKey } from '../../core/ratings-io.js';
 import { pickStorage } from '../../platform/storage.js';
 
 export const VERDICTS_KEY = 'zip_gotd_verdicts';
@@ -33,7 +35,7 @@ function downloadText(text, name) {
 const isoNow = d => d.toISOString().slice(0, 19) + 'Z';
 
 export function mountGotdReview(root, host, { fetchFn = (...a) => fetch(...a), now = () => new Date(), storage = pickStorage, base = QUEUE_URL, puzzles = PUZZLES_URL, download = downloadText } = {}) {
-  let index = null, repo = [], local = [], published = new Set(), phase = 'idle', current = null, solved = false, playS = 0, sel = null, loaded = false;
+  let index = null, repo = [], local = [], published = new Set(), currentKey = null, phase = 'idle', current = null, solved = false, playS = 0, sel = null, loaded = false;
   const skipped = new Set(), takebacks = createTakebacks();
   root.innerHTML = `
     <div class="gr-line" data-el="counts">Not loaded.</div>
@@ -75,7 +77,8 @@ export function mountGotdReview(root, host, { fetchFn = (...a) => fetch(...a), n
 
   function paint() {
     const q = queue(), approved = merged().filter(v => v.verdict === 'approve').length;
-    el('counts').textContent = !loaded ? 'Not loaded.' : `${q.length} to review · ${plan().open.length} open day(s) without an approved one · ${merged().length} verdicts (${approved} approved) · ${unsent()} not in the repository's verdicts.json yet`;
+    const rated = merged().filter(v => v.human !== undefined).length;
+    el('counts').textContent = !loaded ? 'Not loaded.' : `${q.length} to review · ${plan().open.length} open day(s) without an approved one · ${merged().length} verdicts (${approved} approved, ${rated} rated) · ${unsent()} not in the repository's verdicts.json yet`;
     act('next').disabled = !loaded || phase === 'playing' || phase === 'rating';
     el('playBtns').style.display = phase === 'playing' ? '' : 'none';
     el('rate').style.display = phase === 'rating' ? '' : 'none';
@@ -85,7 +88,7 @@ export function mountGotdReview(root, host, { fetchFn = (...a) => fetch(...a), n
     if (pair) root.querySelectorAll('.diff-lean-btn').forEach(b => { const d = +b.dataset.lean; b.textContent = d < 0 ? sel.lo : sel.hi; b.classList.toggle('sel', sel.lean === d); });
     act('unsure').classList.toggle('sel', !!sel && !!sel.unsure);
     const took = `${solved ? 'You solved it' : 'You gave up'} in ${playS.toFixed(1)} s.`;
-    if (sel) { const r = ratingFromSelection(sel); el('rateText').textContent = `Rated ${describeRating(r)}${sel.unsure ? ' · unsure' : ''}: suggests ${decide(r)} (Hard = ${APPROVE_MIN} or more). You decide.`; } else el('rateText').textContent = `${took} Rate how hard it was (optional), then Approve, Reject or Skip.`;
+    if (sel) { const r = ratingFromSelection(sel); el('rateText').textContent = `Rated ${describeRating(r)}${sel.unsure ? ' · unsure' : ''}: suggests ${decide(r)} (Hard = ${APPROVE_MIN} or more). You decide.`; } else el('rateText').textContent = `${took} Rate how hard it was (optional; a rating, also of a puzzle you reject, becomes a label for the grading fit), then Approve, Reject or Skip.`;
   }
 
   async function saveLocal() { try { const s = await storage(); await s.set(VERDICTS_KEY, formatVerdicts(local)); } catch { /* best effort, like every store here */ } }
@@ -136,7 +139,7 @@ export function mountGotdReview(root, host, { fetchFn = (...a) => fetch(...a), n
     try {
       const text = await getText(c.file);
       host.show(text);
-      current = c; solved = false; playS = 0; sel = null; phase = 'playing';
+      current = c; currentKey = ratingKey(text); solved = false; playS = 0; sel = null; phase = 'playing';
       takebacks.reset();
       host.play();
       el('now').textContent = `Reviewing for day ${c.date || '(no open day needs it)'} · ${c.size}×${c.size} (${queue().length} to review). Solve it, then decide.`;
@@ -151,7 +154,7 @@ export function mountGotdReview(root, host, { fetchFn = (...a) => fetch(...a), n
   // The reviewer's decision: the rating (if any) is recorded with it, but only the button decides.
   async function decideNow(verdict) {
     if (!current || phase !== 'rating') return;
-    const v = makeVerdict({ candidate: current, sel, verdict, solved, playS, takebacks: takebacks.total, now: isoNow(now()) });
+    const v = makeVerdict({ candidate: current, sel, verdict, solved, playS, takebacks: takebacks.total, now: isoNow(now()), key: currentKey });
     local = mergeVerdicts(local, [v]);
     await saveLocal();
     const day = v.verdict === 'approve' ? plan().plan.find(p => p.id === v.id)?.date : null;

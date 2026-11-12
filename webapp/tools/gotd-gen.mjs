@@ -5,6 +5,8 @@
 //   node tools/gotd-gen.mjs check    [--annotations]       every puzzle of the published days, the queue and its rejected ones is distinct; index and verdicts.json are valid (exit 1 if not)
 //   node tools/gotd-gen.mjs status   [--today YYYYMMDD] [--horizon 21]    stamp, days ahead, queue by size, the next 14 days
 //   node tools/gotd-gen.mjs schedule [--from YYYYMMDD] [--days 28]    the size of each day and how often each size occurs
+//   node tools/gotd-gen.mjs merge    --from FILE[,FILE...] [--dry-run]    verdicts.json files of other devices -> <queue>/verdicts.json (newer wins, a tie goes to reject)
+//   node tools/gotd-gen.mjs harvest  [--from FILE[,FILE...]] [--solved-only] [--dry-run]    rated verdicts -> new rows of the ratings file (the labels of every grading fit)
 //   all: [--puzzles DIR] [--queue DIR] [--ratings FILE] [--verdicts FILE]    defaults: demo/GameOfDay, demo/GameOfDay-queue, webapp/tools/ratings.json (next to webapp/),
 //   <queue>/verdicts.json
 // fill: every open day (no file in demo/GameOfDay yet) from today to today + horizon gets per-slot candidates of the size the schedule gives that
@@ -22,19 +24,26 @@
 //   that is no longer unique, valid or distinct is not published; one that only misses the grade or margin of the current model IS published, with a warning: the human judged it),
 //   written as demo/GameOfDay/YYYYMMDD.txt with the reviewer's rating and play time in comments, and removed from the queue. An approved candidate that fails the re-vet
 //   (exit 1) does not leave its day empty: the next approved candidate of that size takes the day. `fill` and `status` read the verdicts too.
+// merge: the review runs on several devices, each with its own verdicts.json. A file is read alone (`key` in a verdict is its puzzle) and merged into the queue's verdicts.json
+//   the way the panel's Import… does; verdicts both sides have with a different decision or rating are listed with the one that was kept.
+// harvest: the fits (fit-trap.mjs --write, gotd-fit.mjs) read only tools/ratings.json, never verdicts. harvest appends every rated verdict (from <queue>/verdicts.json and --from files)
+//   whose puzzle is not in the ratings file yet as { key, human, lo, hi, unsure? } rows; the next commit of ratings.json refits (tools/pre-commit-refresh.sh labels). A puzzle that is
+//   already rated (another rating: listed, kept) or equivalent to a rated one (listed, not added) is never added twice, so a rerun adds nothing. A verdict without `key` (older panel)
+//   takes its puzzle from the files by id (published days, queue, rejected). --solved-only leaves out a rating given after giving up. It refuses a ratings file that is not in canonical
+//   form (node tools/check-ratings.mjs --fix first), because appending rewrites the file. `fill` keeps blocking puzzles of the ratings file, so a harvested puzzle is never offered again.
 // check replaces demo/GameOfDay/check_unique_puzzles.py (exact copies only). Exit codes: 0 ok, 1 an error (or bad arguments; for promote: an approved candidate could not be published).
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from '../src/core/format.js';
 import { validate } from '../src/core/model.js';
-import { parseRatingsJson, symmetryKey, asciiPuzzle } from '../src/core/ratings-io.js';
+import { parseRatingsJson, toRatingsJson, ratingKey, symmetryKey, asciiPuzzle } from '../src/core/ratings-io.js';
 import { solutionPath } from '../src/core/trap.js';
 import { OFFLINE_PATH_CAP } from './lib.mjs';
 import { GOTD_CFG, genStamp, createDistinct, pathKey, puzzleId, candidateText, publishedText, carriedOrigin, vetCandidate } from '../src/core/gotd-gen.js';
 import { dayOfDate, dateOfDay, sizeForDay, SIZE_BAG } from '../src/core/gotd-schedule.js';
 import { emptyIndex, parseIndex, formatIndex, planFill, planPromote, planReview, fillQueue, applyFill, usable } from '../src/core/gotd-queue.js';
-import { parseVerdicts, applyVerdicts, reviewStats } from '../src/core/gotd-verdict.js';
+import { parseVerdicts, formatVerdicts, mergeVerdicts, verdictConflicts, harvestRatings, applyVerdicts, reviewStats } from '../src/core/gotd-verdict.js';
 
 const args = process.argv.slice(2), cmd = args[0];
 const opt = (name, dflt) => { const i = args.indexOf('--' + name); return i >= 0 ? args[i + 1] : dflt; };
@@ -275,6 +284,62 @@ function schedule() {
   return 0;
 }
 
-const commands = { fill, promote, check, status, schedule };
+// ---- merge / harvest ----
+// the verdict files named by --from (comma separated), read alone: a broken one stops everything
+function readFrom() {
+  const names = (opt('from') || '').split(',').filter(Boolean);
+  return names.map(f => {
+    try { return { file: f, verdicts: parseVerdicts(fs.readFileSync(path.resolve(f), 'utf8')) }; } catch (e) { return die(`${f}: ${e.message}`); }
+  });
+}
+function merge() {
+  const from = readFrom();
+  if (!from.length) die('merge needs --from FILE[,FILE...]');
+  let have = readVerdicts();
+  const before = have.length;
+  for (const { file, verdicts } of from) {
+    for (const c of verdictConflicts(have, verdicts)) {
+      const f = v => `${v.verdict}${v.human !== undefined ? ` (rated ${v.human})` : ''} at ${v.at}`;
+      note('warning', `${c.id} differs in ${path.basename(file)}: kept ${f(c.kept)}, dropped ${f(c.dropped)}`);
+    }
+    have = mergeVerdicts(have, verdicts);
+  }
+  console.log(`${flag('dry-run') ? 'would write' : 'wrote'} ${have.length} verdict(s) (${have.length - before} new) to ${rel(verdictsFile)}`);
+  if (!flag('dry-run')) { fs.mkdirSync(path.dirname(verdictsFile), { recursive: true }); fs.writeFileSync(verdictsFile, formatVerdicts(have)); }
+  return 0;
+}
+// id -> canonical puzzle text of every puzzle file we have (published days, queue, rejected): where an older verdict finds its `key`
+function keysById() {
+  const found = new Map();
+  for (const f of [...txtFiles(dir.puzzles), ...txtFiles(dir.queue)]) {
+    const r = loadPuzzle(f);
+    if (!r.error) found.set(puzzleId(r.symKey), ratingKey(r.p));
+  }
+  return found;
+}
+function harvest() {
+  let verdicts = readVerdicts();
+  for (const { verdicts: more } of readFrom()) verdicts = mergeVerdicts(verdicts, more);
+  const keys = keysById();
+  verdicts = verdicts.map(v => (v.key || !keys.has(v.id) ? v : { ...v, key: keys.get(v.id) }));
+  const text = fs.existsSync(dir.ratings) ? fs.readFileSync(dir.ratings, 'utf8') : '[]\n';
+  const { ratings, problems } = parseRatingsJson(text);
+  if (problems.length) die(`${rel(dir.ratings)}: ${problems[0]} (node tools/check-ratings.mjs)`);
+  if (ratings.length && toRatingsJson(ratings) !== text) die(`${rel(dir.ratings)} is not in canonical form: node tools/check-ratings.mjs --fix first (appending rewrites the file)`);
+  const h = harvestRatings(verdicts, ratings, { solvedOnly: flag('solved-only') });
+  for (const r of h.add) console.log(`add: ${r.id} ${r.key.split('\n')[0]} human ${r.human}${r.lo === r.hi ? '' : ` (${r.lo}-${r.hi})`}${r.unsure ? ' unsure' : ''}`);
+  for (const d of h.differs) note('warning', `${d.id} is rated ${d.have.human} (${d.have.lo}-${d.have.hi}) in ${rel(dir.ratings)} but ${d.got.human} (${d.got.lo}-${d.got.hi}) in its verdict: kept the file's rating`);
+  for (const e of h.equivalent) note('warning', `${e.id} is the same puzzle up to rotation / reflection as a rated one (${e.key.split('\n')[0]}): not added`);
+  for (const id of h.unresolved) note('warning', `${id}: rated, but its puzzle is not in a verdict key or in any puzzle file: not added`);
+  console.log(`${flag('dry-run') ? 'would add' : 'added'} ${h.add.length} rating(s) to ${rel(dir.ratings)}; ${h.same.length} already there, ${h.differs.length} differ, ${h.equivalent.length} equivalent to a rated puzzle, ${h.skipped.length} given up (skipped), ${h.unresolved.length} without a puzzle, ${h.unrated} unrated verdict(s) have nothing to add`);
+  if (h.add.length && !flag('dry-run')) {
+    fs.mkdirSync(path.dirname(dir.ratings), { recursive: true });
+    fs.writeFileSync(dir.ratings, toRatingsJson([...ratings, ...h.add]));
+    console.log('next: commit ratings.json (the pre-commit hook refits) or run node tools/fit-trap.mjs --write and node tools/gotd-fit.mjs');
+  }
+  return 0;
+}
+
+const commands = { fill, promote, check, status, schedule, merge, harvest };
 if (!commands[cmd]) die(`usage: gotd-gen.mjs ${Object.keys(commands).join(' | ')} [options] (see the top of this file)`);
 process.exitCode = commands[cmd]();

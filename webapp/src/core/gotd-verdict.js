@@ -1,14 +1,19 @@
 // What a human says about a Game-of-Day candidate, and what follows from it. Pure: shared by the design app's review panel and tools/gotd-gen.mjs.
 //
 // demo/GameOfDay-queue/verdicts.json  { "v": 1, "verdicts": [ one per line ] }, one verdict per candidate id:
-//   { id, size, stamp, model: { grade, pred }, human?, lo?, hi?, unsure?, solved, playS?, takebacks, verdict: 'approve' | 'reject', at }
+//   { id, size, stamp, model: { grade, pred }, human?, lo?, hi?, unsure?, solved, playS?, takebacks, verdict: 'approve' | 'reject', at, key? }
 //   human / lo / hi / unsure   the rating on the 0-5 scale of ratings.json (a single grade, or two neighbouring grades with a lean); optional: a reviewer may judge without one
 //   solved / playS / takebacks the reviewer solved it blind (or gave up), how long it took in seconds, how many path cells were taken back
 //   model                      what the trap model said (hidden while reviewing): the pair (model, human) is what a later calibration needs
+//   key                        the puzzle in canonical text (ratings-io ratingKey: size / checkpoints / walls), so a verdict stays usable when its candidate file has moved or is
+//                              gone and a verdicts.json from another device can be read alone; its symmetry key must hash to `id`. Older verdicts have none (tools/gotd-gen.mjs
+//                              finds their puzzle in the files).
 //   verdict                    the reviewer's own decision (the Approve / Reject buttons). A rating only suggests one: APPROVE_MIN (Hard) or more suggests approve, `decide`
 // Two copies of the file (two browsers) merge by id: the newer `at` wins, a tie goes to reject. The file only grows; a verdict stays after its candidate has
 // been published or rejected (the graduation gate counts the history).
-import { ratingFromSelection } from './ratings-io.js';
+// Rated verdicts are also labels for the grading: `harvestRatings` turns them into rows of tools/ratings.json, the one file every fit reads (fit-trap, gotd-fit, ...).
+import { ratingFromSelection, ratingKey, symmetryKey } from './ratings-io.js';
+import { puzzleId } from './gotd-gen.js';
 
 export const VERDICTS_VERSION = 1;
 export const APPROVE_MIN = 3;
@@ -42,18 +47,19 @@ const round1 = x => Math.round(x * 10) / 10;
 
 // candidate = an index entry; sel = the widget's selection or null (no rating); verdict = 'approve' | 'reject', the reviewer's decision (default: what the rating suggests);
 // now = an ISO time 'YYYY-MM-DDTHH:MM:SSZ' (the caller's clock: this module has none)
-export function makeVerdict({ candidate, sel, verdict, solved, playS, takebacks, now }) {
+export function makeVerdict({ candidate, sel, verdict, solved, playS, takebacks, now, key }) {
   const r = sel ? ratingFromSelection(sel) : null, decision = verdict ?? (r ? decide(r) : null);
   if (!VERDICTS.includes(decision)) throw new Error('no verdict');
   return {
     id: candidate.id, size: candidate.size, stamp: candidate.stamp, model: { grade: candidate.trap.grade, pred: candidate.trap.pred },
     ...(r ? { human: r.human, lo: r.lo, hi: r.hi } : {}), ...(r && sel.unsure ? { unsure: true } : {}),
     solved: !!solved, ...(playS != null ? { playS: round1(playS) } : {}), takebacks: takebacks | 0,
-    verdict: decision, at: now,
+    verdict: decision, at: now, ...(key ? { key } : {}),
   };
 }
 
 // '' when the verdict is well formed, else what is wrong with it.
+const keyFits = v => { try { return typeof v.key === 'string' && ratingKey(v.key) === v.key && puzzleId(symmetryKey(v.key)) === v.id; } catch { return false; } };
 export function verdictProblem(v) {
   if (!v || typeof v !== 'object') return 'not an object';
   if (typeof v.id !== 'string' || !/^[0-9a-f]{12}$/.test(v.id)) return '"id" must be 12 hex digits';
@@ -64,6 +70,7 @@ export function verdictProblem(v) {
   if (typeof v.solved !== 'boolean') return '"solved" must be true or false';
   if (v.playS !== undefined && !(typeof v.playS === 'number' && v.playS >= 0)) return '"playS" must be a number of seconds';
   if (!Number.isInteger(v.takebacks) || v.takebacks < 0) return '"takebacks" must be a whole number';
+  if (v.key !== undefined && !keyFits(v)) return '"key" must be the canonical text (size / checkpoints / walls) of the puzzle with this id';
   if (typeof v.at !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(v.at)) return '"at" must be an ISO time like 2026-11-05T10:11:12Z';
   return '';
 }
@@ -123,4 +130,42 @@ export function reviewStats(verdicts) {
     if (v.model && typeof v.human === 'number') { const e = v.human - v.model.grade; s.sumErr += e; if (Math.abs(e) > Math.abs(s.worst)) s.worst = e; }
   }
   return by;
+}
+
+// Where two copies of a verdicts file disagree: the ids both have with a different decision or rating, as { id, kept, dropped } (mergeVerdicts keeps the newer one).
+export function verdictConflicts(a, b) {
+  const old = new Map(a.map(v => [v.id, v])), same = (x, y) => x.verdict === y.verdict && x.human === y.human && x.lo === y.lo && x.hi === y.hi && !x.unsure === !y.unsure;
+  const out = [];
+  for (const v of b) {
+    const o = old.get(v.id);
+    if (!o || same(o, v)) continue;
+    const [kept] = mergeVerdicts([o], [v]).filter(x => x.id === v.id);
+    out.push({ id: v.id, kept, dropped: kept === v ? o : v });
+  }
+  return out;
+}
+
+// The rated verdicts as new rows of tools/ratings.json (the file every fit reads; a verdict feeds none by itself).
+//   verdicts   one per id, each with its `key` (the caller finds it in the puzzle files for an older verdict, see tools/gotd-gen.mjs harvest); one without is `unresolved`
+//   ratings    the rows of ratings.json: { key, human, lo, hi, unsure? }
+//   solvedOnly leave out a rating given after giving up (`skipped`): the reviewer judged a puzzle they did not finish
+// -> { add: [{ key, human, lo, hi, unsure?, id }] new puzzles, same: [id] already there with this rating, differs: [{ id, have, got }] already there with another one (kept),
+//      equivalent: [{ id, key }] the same puzzle up to rotation / reflection / renumbering as a row under another key (not added: a duplicate would count twice),
+//      unrated: n, unresolved: [id], skipped: [id] }
+// Running it again after the rows were added gives `same` for all of them: nothing is added twice.
+export function harvestRatings(verdicts, ratings, { solvedOnly = false } = {}) {
+  const out = { add: [], same: [], differs: [], equivalent: [], unrated: 0, unresolved: [], skipped: [] };
+  const byKey = new Map(ratings.map(r => [ratingKey(r.key), r])), bySym = new Map(ratings.map(r => [symmetryKey(r.key), r.key]));
+  const row = v => ({ key: v.key, human: v.human, lo: v.lo, hi: v.hi, ...(v.unsure ? { unsure: true } : {}) });
+  const same = (r, v) => r.human === v.human && (r.lo ?? r.human) === v.lo && (r.hi ?? r.human) === v.hi && !r.unsure === !v.unsure;
+  for (const v of verdicts) {
+    if (v.human === undefined) { out.unrated++; continue; }
+    if (!v.key) { out.unresolved.push(v.id); continue; }
+    if (solvedOnly && !v.solved) { out.skipped.push(v.id); continue; }
+    const have = byKey.get(v.key);
+    if (have) { if (same(have, v)) out.same.push(v.id); else out.differs.push({ id: v.id, have, got: row(v) }); continue; }
+    if (bySym.has(symmetryKey(v.key))) { out.equivalent.push({ id: v.id, key: bySym.get(symmetryKey(v.key)) }); continue; }
+    out.add.push({ ...row(v), id: v.id });
+  }
+  return out;
 }
