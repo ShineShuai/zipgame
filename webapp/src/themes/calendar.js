@@ -80,6 +80,25 @@ export function ruleExample(year = 2031, month = 6, day = 27) {
   };
 }
 
+// The next offer day on or after a local date (a Date), or null: { id, year, month, day, date, days } (`days`: local days from the date, 0 =
+// the date itself). `skip(id)` -> true leaves an event out (one that is answered or already on offer). For the dev reveal (ui/theme.js).
+export function nextEvent(from, digits, skip = () => false) {
+  if (!validDigits(digits)) return null;
+  const [y0, m0, d0] = [from.getFullYear(), from.getMonth() + 1, from.getDate()];
+  for (let step = 0; step < 14; step++) {
+    const year = y0 + Math.floor((m0 - 1 + step) / 12);
+    const month = ((m0 - 1 + step) % 12) + 1;
+    for (const day of monthPlan(year, month, digits)) {
+      const id = `d${year}${pad(month)}${pad(day)}`;
+      if ((step === 0 && day < d0) || skip(id)) continue;
+      return {
+        id, year, month, day, date: `${year}-${pad(month)}-${pad(day)}`, days: Math.round((Date.UTC(year, month - 1, day) - Date.UTC(y0, m0 - 1, d0)) / 86400000),
+      };
+    }
+  }
+  return null;
+}
+
 // The offer day of a local date (a Date: its local year, month and day count), or null:
 // { id, year, month, day }. The id names the event for the offer ('d20271129'), see EVENT_RE.
 export function eventAt(date, digits) {

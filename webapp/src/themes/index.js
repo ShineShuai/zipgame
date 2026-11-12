@@ -22,6 +22,7 @@ import { slotsFor } from './slots.js';
 import { FINAL_MS, OFFER_KEY, TRIAL_MS, parseOffer, serializeOffer } from './trial.js';
 
 const MAX_TIMEOUT = 2 ** 31 - 1;
+const OFFER_RETRY_MS = 5 * 60 * 1000;   // first wait before an offer that could not be fetched is asked again (it doubles, up to 8 times this)
 const OFFER_TRIES = 3;     // files tried for one offer (the picked theme, then the next ones) before there is no offer
 
 export function createThemes({
@@ -47,6 +48,9 @@ export function createThemes({
   let expiry = null;      // the timer at the end of the day, for a waiting offer
   let held = false;       // a choice is being made: the clock waits
   let wanted = null;      // { id, until }: the event that found another offer open; asked again when that offer ends
+  let retryTimer = null;  // the timer that asks again for an event whose files could not be fetched
+  let retries = 0;        // how many times in a row for that event (for the wait)
+  let retryFor = null;    // the event those retries are for
   let visible = focused;
   const listeners = new Set();
   const notify = () => listeners.forEach(fn => fn(api));
@@ -107,6 +111,15 @@ export function createThemes({
     wanted = null;
     if (next && next.until > now()) api.offer(next).catch(() => { /* the next trigger tries again */ });
   }
+  // The manifest or the files could not be had (offline, a bad link, a captive portal: the browser's `online` event does not tell): ask again
+  // while the event lasts and the page is seen, after 5, 10, 20, 40 minutes. The page's own triggers (seen again, network back) ask too.
+  function retryLater(id, end) {
+    if (retryTimer || !visible || end <= now()) return;
+    if (retryFor !== id) { retryFor = id; retries = 0; }
+    const wait = OFFER_RETRY_MS * 2 ** Math.min(retries++, 3);
+    retryTimer = timers.setTimeout(() => { retryTimer = null; api.offer({ id, until: end }).catch(() => { /* the next trigger tries again */ }); }, Math.min(wait, MAX_TIMEOUT));
+  }
+  const stopRetry = () => { if (retryTimer) timers.clearTimeout(retryTimer); retryTimer = null; retries = 0; };
   function sweep(retry = true) {   // the day is over and the offer was not answered: it is gone, and answered
     if (!offer || offer.phase === 'trial' || offer.until > now()) return;
     write(EVENT_KEY, offer.event);
@@ -208,6 +221,7 @@ export function createThemes({
     current: () => shown ?? activeEntry(state, systemMode()),
     art: () => content?.art ?? null,
     owns: id => state.pool.some(e => e.id === id),
+    answered: id => read(EVENT_KEY) === id,   // the player kept or left that event's theme, or its day ended
     isClassic: () => isClassicPool(state),
     upcoming: () => nextEntry(state, api.current().id),   // what the header button would switch to
     onChange: fn => { listeners.add(fn); return () => listeners.delete(fn); },
@@ -243,8 +257,10 @@ export function createThemes({
       }
       wanted = null;
       if (read(EVENT_KEY) === id) return false;
-      const list = ((await source?.pool?.()) ?? []).filter(c => c.live && !api.owns(c.entry.id));
-      for (const c of offerOrder(list, seed(), id).slice(0, OFFER_TRIES)) {
+      const site = await source?.pool?.();   // null: not reachable
+      const list = (site ?? []).filter(c => c.live && !api.owns(c.entry.id));
+      const order = offerOrder(list, seed(), id).slice(0, OFFER_TRIES);
+      for (const c of order) {
         const theme = await bundleOf(c);
         if (!theme) continue;
         if (offer) {   // an offer came in while the file was fetched
@@ -253,12 +269,14 @@ export function createThemes({
           return false;
         }
         if (end <= now()) return false;   // the event ended while the files came
+        stopRetry();
         offer = { event: id, phase: 'pending', until: end, left: trialMs, theme };
         saveOffer();
         planExpiry();
         notify();
         return true;
       }
+      if (site === null || order.length) retryLater(id, end);   // nothing could be fetched (an empty or fully owned pool is no failure)
       return false;
     },
     // What the chip and the sheet draw: null, or { event, phase: 'pending' | 'trial' | 'final', entry, left (ms of trial time; in
@@ -310,6 +328,7 @@ export function createThemes({
     // The dev reveal starts afresh: the open offer goes without being answered.
     dropOffer: () => {
       wanted = null;
+      stopRetry();
       const wasOn = offer?.phase === 'trial';
       clearOffer();
       clearTrial();
