@@ -15,7 +15,7 @@ repo root; CI packs it into the site (see `themes/README.md` for the design, the
 | `picker.js` | the items and markup of the pool picker (with the public rule of the offer days under the list) and of the dev reveal's rows (the DOM part is `ui/theme-picker.js`) |
 | `index.js` | the controller: `start`, `next`, `select`, `setCap`, `awardSlots`, `adopt`; the offer: `offer({id, until})`, `offerView`, `startOffer`, `keepOffer(replaceId)`, `leaveOffer`, `holdOffer`, `focus`; the older immediate trial `event({id, until})` / `trial(bundle, {until})` -> `{commit(replaceId), revert}`; dev reveal: `pool`, `tryPool`, `keepPool`, `dropOffer`; `install` |
 | `source.js` | the site's theme files: the manifest (`config.js` THEMES.pool) and `<hash>.json` bundles; the app lists none until an event or the dev reveal asks |
-| `event.js` | which theme an event offers: a hash of the device seed and the event id, in a ring; the keys of the seed and of the last answered event; `endOfDay`, `watchDay` |
+| `event.js` | which theme an event offers: a hash of the device seed and the event id, in a ring; the keys of the seed and of the last answered event; `endOfDay`, `watchDay` (checks now, on page seen / restored, network back, and when the date changed: a one-minute tick) |
 | `trial.js` | the offer record on the device (pending, trial, final), rebuilt from the whitelists when read; the trial and last-question times |
 | `slots.js` | the theme slots earned by Game-of-Day solves (12) and the best streak (30 days), or already held by another device (`groupCap`) |
 | `calendar.js` | the offer days: which local days offer a theme (the public rule, the secret digits in `config.js` `THEMES.digits`, the seeded draw of 1-2 days a month) |

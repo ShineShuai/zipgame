@@ -64,11 +64,12 @@ webapp/src/ui/theme*.js              the button, the picker (+ dev rows) and the
   `build-site.mjs`, which packs every theme (a problem fails the build), writes `t/<hash>.json` for each and the manifest, and `--check` reads
   the folder back. Only those files are published: no `theme.json`, `art.json` or font file (the stage scan fails if one is staged).
 - **Event.** The app's own trigger (not this system) calls `offerTheme({ id, until })` (`src/ui/theme.js`; `until` defaults to the end of the
-  local day); `watchDay(check)` runs that check now, when the page is seen again, when the network is back and at local midnight, so the page needs
-  no reload. The controller reads the manifest, drops drafts and themes the player owns, and picks one from a hash of the device's random seed and
+  local day); `watchDay(check)` runs that check now, when the page is seen again (or restored from the back-forward cache), when the network is back and when the
+  local date has changed (looked at every minute, so a machine that slept through midnight is no later than a minute), so the page needs no reload. The controller reads the manifest, drops drafts and themes the player owns, and picks one from a hash of the device's random seed and
   the event id: a reload within the event finds the same offer, devices differ. The bundle is fetched, validated and kept **waiting** (record
   `zip_theme_o`, `src/themes/trial.js`): a chip says "rare theme today, try it for 30 min". An event id is answered once. No theme to offer
-  (nothing reachable, all owned, only drafts) or another offer still open: nothing happens, the next trigger tries again.
+  (nothing reachable, all owned, only drafts): nothing happens, the next trigger tries again. Another offer still open: the event waits and is
+  offered when that one ends (answered or gone), if its day is not over.
 - **Trial.** A tap on the chip starts it: the page wears the theme for `THEMES.trialMs` (`config.js`, 30 min) of *foreground* time. The clock stops
   while the page is hidden or the player is choosing which theme to replace, and never ends in the middle of a puzzle (the next menu screen). The chip
   shows the countdown; a tap opens the sheet (keep / leave / minimize). The chip and the sheet show on menu screens only. The record survives a reload

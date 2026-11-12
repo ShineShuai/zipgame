@@ -46,6 +46,7 @@ export function createThemes({
   let clock = null;       // the timer at the end of the trial time
   let expiry = null;      // the timer at the end of the day, for a waiting offer
   let held = false;       // a choice is being made: the clock waits
+  let wanted = null;      // { id, until }: the event that found another offer open; asked again when that offer ends
   let visible = focused;
   const listeners = new Set();
   const notify = () => listeners.forEach(fn => fn(api));
@@ -100,11 +101,18 @@ export function createThemes({
     if (!offer || offer.phase === 'trial') return;
     expiry = timers.setTimeout(() => { expiry = null; sweep(); planExpiry(); }, Math.min(Math.max(offer.until - now(), 0), MAX_TIMEOUT) + 1);
   }
-  function sweep() {   // the day is over and the offer was not answered: it is gone, and answered
+  // The place is free again: the event that found it taken (and is not over) is asked now, so it needs no reload and no new trigger.
+  function retryWanted() {
+    const next = wanted;
+    wanted = null;
+    if (next && next.until > now()) api.offer(next).catch(() => { /* the next trigger tries again */ });
+  }
+  function sweep(retry = true) {   // the day is over and the offer was not answered: it is gone, and answered
     if (!offer || offer.phase === 'trial' || offer.until > now()) return;
     write(EVENT_KEY, offer.event);
     clearOffer();
     notify();
+    if (retry) retryWanted();
   }
   function toFinal() {   // the trial time is up
     stopClock();
@@ -226,15 +234,26 @@ export function createThemes({
     // reachable, empty, all owned, all drafts, or the files are not valid): the next trigger tries again.
     offer: async ({ id, until } = {}) => {
       if (!EVENT_RE.test(id ?? '') || (until && until <= now())) return false;
-      sweep();
-      if (offer) return offer.event === id;
+      const end = until ?? endOfDay(now());   // the day it is asked on: a slow network must not carry the offer into the next day
+      sweep(false);
+      if (offer) {
+        if (offer.event === id) return true;
+        wanted = { id, until: end };
+        return false;
+      }
+      wanted = null;
       if (read(EVENT_KEY) === id) return false;
       const list = ((await source?.pool?.()) ?? []).filter(c => c.live && !api.owns(c.entry.id));
       for (const c of offerOrder(list, seed(), id).slice(0, OFFER_TRIES)) {
         const theme = await bundleOf(c);
         if (!theme) continue;
-        if (offer) return offer.event === id;   // an offer came in while the file was fetched
-        offer = { event: id, phase: 'pending', until: until ?? endOfDay(now()), left: trialMs, theme };
+        if (offer) {   // an offer came in while the file was fetched
+          if (offer.event === id) return true;
+          wanted = { id, until: end };
+          return false;
+        }
+        if (end <= now()) return false;   // the event ended while the files came
+        offer = { event: id, phase: 'pending', until: end, left: trialMs, theme };
         saveOffer();
         planExpiry();
         notify();
@@ -274,6 +293,7 @@ export function createThemes({
       persist();
       showActive();
       notify();
+      retryWanted();
       return true;
     },
     // Leaves the theme (any phase): gone, answered, nothing kept.
@@ -285,9 +305,11 @@ export function createThemes({
       clearTrial();
       if (wasOn) showActive();
       notify();
+      retryWanted();
     },
     // The dev reveal starts afresh: the open offer goes without being answered.
     dropOffer: () => {
+      wanted = null;
       const wasOn = offer?.phase === 'trial';
       clearOffer();
       clearTrial();
