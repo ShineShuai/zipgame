@@ -1,0 +1,11 @@
+# Zip Puzzle — plain text format
+# size N
+# checkpoints r,c=n ...   (0-based row/col)
+# walls T,r,c ...        (T = H or V; H spans (r,c)-(r+1,c); V spans (r,c)-(r,c+1))
+# play_time_s 116.1
+# gotd e21846c033f4 gen a6-c869d84b made-for 20261127 model-grade 3 score 2.261
+# gen a6-c869d84b slot 20261127 seed 2674130892 attempt 1
+# review human 2 solved yes takebacks 123
+size 7
+checkpoints 0,0=5 0,3=3 1,5=2 2,2=4 3,2=6 4,0=9 4,4=1 5,3=7 6,1=8
+walls H,0,1 H,0,4 V,1,0 V,2,5 V,4,0 H,4,1 V,5,3
