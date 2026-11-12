@@ -2,16 +2,16 @@
 // day's text (core/gotd-verdict.js, planReview and planPromote of core/gotd-queue.js, publishedText and the holdGrade gate of core/gotd-gen.js). Registered by tests.js.
 // The design app panel (apps/design/gotd-review.js) and the command line (test/gotd-gen-cli.test.js) are tested end to end elsewhere.
 import { parse, serialize, commentTimes } from '../src/core/format.js';
-import { ratingKey, symmetryKey } from '../src/core/ratings-io.js';
+import { ratingKey, symmetryKey, transformPuzzle } from '../src/core/ratings-io.js';
 import { runSync } from '../src/core/run.js';
 import { generateTargeted } from '../src/core/gen/target.js';
 import { makePuzzle } from '../src/core/model.js';
 import {
   APPROVE_MIN, nextSelection, nextLean, toggleUnsure, decide, createTakebacks, makeVerdict, verdictProblem, formatVerdicts, parseVerdicts, mergeVerdicts,
-  applyVerdicts, reviewStats,
+  verdictConflicts, harvestRatings, applyVerdicts, reviewStats,
 } from '../src/core/gotd-verdict.js';
 import { dayOfDate, sizeForDay } from '../src/core/gotd-schedule.js';
-import { createDistinct, vetCandidate, publishedText, carriedOrigin } from '../src/core/gotd-gen.js';
+import { createDistinct, vetCandidate, publishedText, carriedOrigin, puzzleId } from '../src/core/gotd-gen.js';
 import { emptyIndex, planPromote, planReview } from '../src/core/gotd-queue.js';
 
 const id12 = n => String(n).padStart(12, '0');
@@ -19,6 +19,10 @@ const cand = (n, size, slot, over = {}) => ({
   id: id12(n), file: `c-${size}-${id12(n)}.txt`, size, slot, attempt: n, seed: n, stamp: 'S', status: 'pending', K: 8, walls: 5, pathKey: id12(n), trap: { pred: 2.3, grade: 3 }, ...over,
 });
 const NOW = '2026-11-05T10:00:00Z';
+// two puzzles of tools/ratings.json, and a candidate whose id is the real one of the puzzle
+const K1 = 'size 7\ncheckpoints 0,1=2 0,6=1 1,3=3 2,2=5 2,5=4 3,1=7 3,5=9 4,3=8 5,3=6\nwalls V,4,3 H,5,4';
+const K2 = 'size 7\ncheckpoints 0,5=3 0,6=1 1,3=4 2,1=5 3,1=8 3,5=6 3,6=2 4,4=9 5,3=7\nwalls H,2,3 V,3,2';
+const real = key => ({ ...cand(1, 7, '20261122'), id: puzzleId(symmetryKey(key)) });
 const verdict = (c, human, over = {}) => makeVerdict({ candidate: c, sel: { lo: human, hi: human, lean: 0 }, solved: true, playS: 60, takebacks: 2, now: NOW, ...over });
 
 export function gotdVerdictTests(t, ok, eq) {
@@ -125,6 +129,54 @@ export function gotdVerdictTests(t, ok, eq) {
     eq(mergeVerdicts([approve], [{ ...approve, takebacks: 99 }])[0].takebacks, 2, 'same time and verdict: the first stays');
     eq(mergeVerdicts([old], [verdict(cand(2, 7, '20261121'), 3)]).length, 2);
     eq(mergeVerdicts([], []), []);
+  });
+
+  t('gotd verdict key: the puzzle text rides with the verdict; it must be canonical and hash to the id (a turned copy does), older verdicts have none', () => {
+    const c = real(K1), v = verdict(c, 3, { key: K1 });
+    eq([v.key, Object.keys(v).at(-1), verdictProblem(v)], [K1, 'key', '']);
+    eq(parseVerdicts(formatVerdicts([v]))[0], v, 'round trip');
+    ok(verdictProblem({ ...v, key: K2 }) !== '', 'the key of another puzzle');
+    ok(verdictProblem({ ...v, key: `${K1}\n` }) !== '', 'not canonical');
+    ok(verdictProblem({ ...v, key: 5 }) !== '' && verdictProblem({ ...v, key: 'size 7' }) !== '', 'not a puzzle');
+    eq(verdictProblem({ ...v, key: ratingKey(transformPuzzle(parse(K1), 2, true)) }), '', 'the same puzzle turned and renumbered has the same id');
+    eq('key' in verdict(c, 3), false);
+    eq(verdictProblem(verdict(c, 3)), '');
+  });
+
+  t('gotd verdicts conflicts: only ids both copies have with another decision or rating, with the one that is kept', () => {
+    const a = verdict(cand(1, 7, 'x'), 3), mine = [a, verdict(cand(2, 7, 'x'), 1)];
+    const newer = { ...verdict(cand(1, 7, 'x'), 1), at: '2026-11-06T10:00:00Z' };
+    eq(verdictConflicts(mine, [newer, verdict(cand(3, 7, 'x'), 4), mine[1]]).map(c => [c.id, c.kept, c.dropped]), [[a.id, newer, a]], 'a new id and an equal verdict are no conflict');
+    eq(verdictConflicts([newer], [a])[0].kept, newer, 'the newer one is kept whichever copy it is in');
+    eq(verdictConflicts(mine, mine), []);
+  });
+
+  t('gotd harvest: rated verdicts become new ratings.json rows once; rated, equivalent, unrated, unresolved and given-up ones are told apart', () => {
+    const tag = (K, human, { unsure, ...over } = {}) => verdict(real(K), human, { key: K, ...(unsure ? { sel: { lo: human, hi: human, lean: 0, unsure: true } } : {}), ...over });
+    const row = (key, human, lo = human, hi = human) => ({ key, human, lo, hi });
+    const turned = ratingKey(transformPuzzle(parse(K1), 1, false));
+    eq(turned !== K1 && symmetryKey(turned) === symmetryKey(K1), true, 'the test puzzle really is a different text of the same puzzle');
+    let h = harvestRatings([tag(K1, 3, { unsure: true })], []);
+    eq(h.add.map(r => [r.key, r.human, r.lo, r.hi, r.unsure, r.id]), [[K1, 3, 3, 3, true, real(K1).id]]);
+    eq(h.add[0].key, K1);
+    h = harvestRatings([tag(K1, 3)], [row(K1, 3)]);
+    eq([h.add, h.same, h.differs], [[], [real(K1).id], []], 'harvesting again adds nothing');
+    h = harvestRatings([tag(K1, 3)], [row(K1, 2)]);
+    eq([h.add.length, h.differs.map(d => [d.id, d.have.human, d.got.human])], [0, [[real(K1).id, 2, 3]]], 'another rating in the file is kept and listed');
+    h = harvestRatings([tag(K1, 3)], [row(K1, 3, 2, 3)]);
+    eq(h.differs.length, 1, 'same human, other range');
+    h = harvestRatings([tag(K1, 3, { unsure: true })], [row(K1, 3)]);
+    eq(h.differs.length, 1, 'same rating, but unsure now');
+    h = harvestRatings([{ ...tag(K1, 3), key: turned }], [row(K1, 4)]);
+    eq([h.add.length, h.equivalent], [0, [{ id: real(K1).id, key: K1 }]], 'a turned copy of a rated puzzle is not added');
+    const bare = verdict(real(K2), undefined, { sel: null, verdict: 'approve' }), old = verdict(cand(9, 7, 'x'), 2), gaveUp = tag(K2, 4, { solved: false });
+    h = harvestRatings([bare, old, tag(K1, 1)], []);
+    eq([h.unrated, h.unresolved, h.add.length], [1, [old.id], 1], 'no rating: nothing to add; no key: unresolved');
+    eq(harvestRatings([gaveUp], []).add.length, 1);
+    h = harvestRatings([gaveUp], [], { solvedOnly: true });
+    eq([h.add.length, h.skipped], [0, [gaveUp.id]]);
+    h = harvestRatings([tag(K1, 2.5), tag(K2, 4)], []);
+    eq(harvestRatings([tag(K1, 2.5), tag(K2, 4)], h.add.map(({ id, ...r }) => r)).same.length, 2, 'the added rows are what a rerun finds');
   });
 
   // 20261122..27 are 7, 8, 8, 6, 9, 7 in the schedule. 20261122 is published already (the candidate 1 made for it was promoted and left the index).
