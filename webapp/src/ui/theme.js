@@ -9,6 +9,7 @@
 // the trial, then the player keeps the theme or leaves it. `watchDay(check)` calls the app's event check when a day may have begun, with
 // no reload. `awardSlots` raises the theme slots from the player's activity. The dev reveal (hold V) adds the whole pool to the list (src/ui/theme-picker.js).
 import { THEMES } from '../config.js';
+import { nextEvent } from '../themes/calendar.js';
 import { watchDay as watchDayOf } from '../themes/event.js';
 import { createThemes } from '../themes/index.js';
 import { MODE_KEY, parseMode, resolveMode } from '../themes/pool.js';
@@ -89,8 +90,10 @@ export function initTheme(button, label = (cur, next, classic) => (classic ? (cu
   });
   const picking = () => controller.state().pool.length >= 3 || revealed();   // a pool of three or more (or the dev reveal) is chosen from a list, not stepped through
   // The dev reveal's rows are English only and not in the translations: no text a player can read mentions the reveal (see the test in tests.js).
-  const labels = { all: 'All themes', draft: 'draft', keep: 'Keep this theme', offer: 'Offer a theme now', none: 'No themes found', nothing: 'Nothing to offer', loading: '…' };
-  const dev = () => (revealed() ? { labels, offerNow: () => { controller.dropOffer(); return offerTheme({ id: `dev-${Date.now()}` }); } } : null);
+  const labels = { all: 'All themes', draft: 'draft', keep: 'Keep this theme', offer: 'Offer a theme now', none: 'No themes found', nothing: 'Nothing to offer', loading: '…', next: 'Next offer day', today: 'today', tomorrow: 'tomorrow', inDays: 'in {n} days' };
+  // the next offer day: today's own is left out once it is answered or on offer (the chip is its reward)
+  const nextDay = () => nextEvent(new Date(), THEMES.digits, id => controller.answered(id) || controller.offerView()?.event === id);
+  const dev = () => (revealed() ? { labels, next: nextDay, offerNow: () => { controller.dropOffer(); return offerTheme({ id: `dev-${Date.now()}` }); } } : null);
   const rule = () => ({
     line: text('theme.offer.rule'), open: text('theme.rule.open'), show: () => showThemeRule(text),
   });

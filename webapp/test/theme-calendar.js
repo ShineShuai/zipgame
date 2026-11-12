@@ -2,7 +2,7 @@
 // spread over the month, the offer day of a local date, and what a player can learn from the
 // days. Registered by tests.js.
 import {
-  MIN_GAP, candidates, dateValue, daysInMonth, eventAt, monthPlan, ruleExample, validDigits,
+  MIN_GAP, candidates, dateValue, daysInMonth, eventAt, monthPlan, nextEvent, ruleExample, validDigits,
 } from '../src/themes/calendar.js';
 import { EVENT_RE } from '../src/themes/event.js';
 import { offerHtml, ruleHtml } from '../src/themes/offer.js';
@@ -49,6 +49,30 @@ export function themeCalendarTests(t, ok, eq) {
     eq(dateValue(2027, 11, 28), 0, '28 ^ 11 ^ 7 = 16, mod 16 = 0');
     eq(dateValue(2027, 11, 5), 9);
     eq(dateValue(2027, 11, 29), dateValue(2037, 11, 29), 'the year counts by its last digit');
+  });
+
+  t('offer days: the next offer day is the first one on or after a date, as day-by-day eventAt finds it; answered ones are left out', () => {
+    const first = (from, skip = () => false) => {
+      for (let i = 0; i < 400; i++) {
+        const date = new Date(from.getFullYear(), from.getMonth(), from.getDate() + i);
+        const event = eventAt(date, DIGITS);
+        if (event && !skip(event.id)) return { ...event, days: i };
+      }
+      return null;
+    };
+    for (let i = 0; i < 800; i += 3) {
+      const from = new Date(2026, 10, 12 + i, 15, 30);
+      const got = nextEvent(from, DIGITS);
+      const want = first(from);
+      eq([got.id, got.date, got.days], [want.id, `${want.year}-${String(want.month).padStart(2, '0')}-${String(want.day).padStart(2, '0')}`, want.days], from.toDateString());
+    }
+    eq(nextEvent(new Date(2026, 10, 12), DIGITS).date, '2026-11-15', 'the date of the review: the 15th is next');
+    eq([nextEvent(new Date(2026, 10, 15), DIGITS).days, nextEvent(new Date(2026, 10, 15, 23, 59), DIGITS).days], [0, 0], 'on the day itself: today');
+    eq(nextEvent(new Date(2026, 10, 15), DIGITS, id => id === 'd20261115').date, '2026-11-28', 'an answered day is skipped');
+    const skipAll = nextEvent(new Date(2026, 10, 12), DIGITS, () => true);
+    eq(skipAll, null, 'nothing left within the search: null');
+    eq(nextEvent(new Date(2026, 11, 28), DIGITS).date.slice(0, 4), '2027', 'over the year');
+    eq(nextEvent(new Date(2026, 10, 12), [1, 1, 2, 3]), null, 'no valid digits, no day');
   });
 
   t('offer days: the candidates of a month are the days whose value is a secret digit', () => {

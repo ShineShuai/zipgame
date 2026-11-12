@@ -30,7 +30,9 @@ import { browserSource, cleanPool, createSource, FILE_RE, MAX_FILE, MAX_POOL, MA
 import { BUNDLE_KEY, createStore } from '../src/themes/store.js';
 import { cleanTokens, buildCss } from '../src/themes/tokens.js';
 import { DEFAULT_LAYOUT, LAYOUT as PRESETS } from '../src/themes/layout.js';
-import { devHtml, devItems, pickerHtml, pickerItems } from '../src/themes/picker.js';
+import {
+  devHtml, devItems, nextDayText, pickerHtml, pickerItems,
+} from '../src/themes/picker.js';
 import { chipHtml, formatLeft, offerHtml } from '../src/themes/offer.js';
 import {
   cleanInner, cleanSvg, freshScope, scopeIds,
@@ -94,7 +96,7 @@ function rig({
   const fontLoads = [];
   const ctl = createThemes({
     storage, media, store: createStore(storage), now: () => clock.t, random: steady(), trialMs, idle,
-    source: { pool: async () => { calls.push('pool'); return pool; }, bundle: async f => { calls.push(f); return files[f] ?? null; } },
+    source: { pool: async () => { calls.push('pool'); return typeof pool === 'function' ? pool() : pool; }, bundle: async f => { calls.push(f); return files[f] ?? null; } },
     apply: (e, loaded) => applied.push(loaded ? `${e.id}+css` : e.id),
     loadFonts: fonts => { fontLoads.push(fonts.length); return { release() { fontLoads.push('released'); } }; },
     timers: { setTimeout: (fn, ms) => { timeouts.push({ fn, ms }); return timeouts.length; }, clearTimeout: id => cleared.push(id) },
@@ -938,6 +940,58 @@ export function themeSystemTests(t, ok, eq, ta) {
     eq(dev.ctl.offerView(), null, 'the dev reveal starts afresh: nothing comes back by itself');
   });
 
+  ta('themes: an offer that cannot be fetched (offline, a bad link) is asked again while the event lasts and the page is seen; once on offer it needs no network', async () => {
+    const clock = { t: new Date(2026, 10, 3, 10, 0, 0).getTime() };
+    let reachable = false;
+    const bundles = [CANDY, WOOD];
+    const r = rig({ clock, files: filesOf(bundles), pool: () => (reachable ? poolOf(bundles) : null) });
+    r.ctl.start();
+    const timer = () => r.timeouts[r.timeouts.length - 1];
+    eq(await r.ctl.offer({ id: 'd20261103' }), false, 'offline: nothing to offer');
+    eq(timer().ms, 5 * 60 * 1000, 'asked again in 5 minutes, with no event of the browser to wait for');
+    await r.ctl.offer({ id: 'd20261103' });
+    eq(r.timeouts.length, 1, 'one timer, however many triggers fail');
+    clock.t += 5 * 60 * 1000;
+    timer().fn();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    eq([r.ctl.offerView(), timer().ms], [null, 10 * 60 * 1000], 'still offline: the wait doubles');
+    reachable = true;
+    clock.t += 10 * 60 * 1000;
+    timer().fn();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    eq([r.ctl.offerView()?.event, r.ctl.offerView()?.phase], ['d20261103', 'pending'], 'the link is back: the theme waits as a chip, with no reload');
+    eq(r.timeouts.length, 3, 'two retries, then the end of the day armed for the waiting offer: no retry timer is left');
+    reachable = false;
+    r.calls.length = 0;
+    eq([r.ctl.startOffer(), r.ctl.offerView().phase, r.calls], [true, 'trial', []], 'on offer: the trial needs no network');
+    eq(await r.ctl.keepOffer('dark'), true, 'nor does keeping it');
+    eq(r.calls, []);
+
+    const hidden = rig({ clock, files: filesOf(bundles), pool: null });
+    hidden.ctl.start();
+    hidden.ctl.focus(false);
+    await hidden.ctl.offer({ id: 'd20261103' });
+    eq(hidden.timeouts.length, 0, 'a page nobody sees does not poll');
+
+    const late = rig({ clock, files: filesOf(bundles), pool: null });
+    late.ctl.start();
+    clock.t = endOfDay(clock.t) - 1000;
+    await late.ctl.offer({ id: 'd20261103', until: endOfDay(clock.t) });
+    eq(late.timeouts.length, 1, 'the wait is allowed to run past the end: the call finds the event over');
+    clock.t += 5 * 60 * 1000;
+    late.timeouts[0].fn();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    eq(late.calls.length, 1, 'and asks nothing then');
+
+    const empty = rig({ clock, files: {}, pool: [] });
+    empty.ctl.start();
+    await empty.ctl.offer({ id: 'd20261103' });
+    const owned = rig({ clock, files: filesOf(bundles), pool: poolOf(bundles), stored: withPool([entryOf(CANDY), entryOf(WOOD)], null, 2), owned: bundles });
+    owned.ctl.start();
+    await owned.ctl.offer({ id: 'd20261103' });
+    eq([empty.timeouts.length, owned.timeouts.length], [0, 0], 'an empty pool, or a player who owns everything, is no failure to retry');
+  });
+
   ta('themes: the end of an offer is the end of the day it was asked on, even when the files are slow past midnight', async () => {
     const clock = { t: new Date(2026, 10, 3, 23, 59, 59, 500).getTime() };
     const eve = endOfDay(clock.t);
@@ -992,6 +1046,12 @@ export function themeSystemTests(t, ok, eq, ta) {
     ok(html.includes('data-try-id="candy"') && html.includes('data-try-id="wood"') && html.includes('class="current"') && html.includes('theme-draft') && html.includes('data-offer-now') && html.includes('data-note'));
     eq((html.match(/data-keep-id/g) || []).length, 1, 'a theme that is owned has no keep button');
     ok(devHtml([], labels).includes('None'), 'an empty pool says so');
+    ok(!html.includes('data-next'), 'no next day: no row');
+    const days = { ...labels, next: 'Next', today: 'today', tomorrow: 'tomorrow', inDays: 'in {n} days' };
+    const day = n => ({ year: 2026, month: 11, day: 15, date: '2026-11-15', days: n });
+    eq([0, 1, 3].map(n => nextDayText(day(n), days)), ['Next: Sun 2026-11-15 (today)', 'Next: Sun 2026-11-15 (tomorrow)', 'Next: Sun 2026-11-15 (in 3 days)']);
+    ok(devHtml(items, days, day(3)).includes('<div class="theme-picker-empty" data-next>Next: Sun 2026-11-15 (in 3 days)</div>'), 'the row sits above the offer button');
+    ok(devHtml(items, { ...days, next: '<b>' }, day(3)).includes('&lt;b&gt;: Sun'), 'escaped');
     const hostile = devHtml([{ id: 'x"><script>', name: '<img src=x>', symbol: SYMBOL, swatches: ['#fff"><i'], live: false, owned: false, current: false }], { ...labels, all: '<b>', draft: '<u>' });
     ok(!/<(script|img|b|u)[ >]/.test(hostile), 'no tag of theirs');
     ok(['x&quot;&gt;&lt;script&gt;', '&lt;img src=x&gt;', '&lt;b&gt;', '&lt;u&gt;'].every(piece => hostile.includes(piece)), 'shown as text');

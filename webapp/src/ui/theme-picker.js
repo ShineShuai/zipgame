@@ -16,7 +16,8 @@ export function closeThemePicker() {
 }
 
 // anchor: the header button; controller: src/themes/index.js; lang and title: for the names and the heading;
-// dev: null, or { labels: { all, draft, keep, offer, none, nothing, loading }, offerNow() -> Promise<boolean> }.
+// dev: null, or { labels: { all, draft, keep, offer, none, nothing, loading, next, today, tomorrow, inDays }, offerNow() -> Promise<boolean>,
+// next() -> the next offer day (calendar.js nextEvent) or null }.
 // rule: null, or { line, open, show }: the public rule of the offer days under the list and a
 // button (open: its label) that calls show() to open the info panel (src/ui/theme-rule.js).
 export function toggleThemePicker(anchor, controller, lang, title, dev = null, rule = null) {
@@ -30,7 +31,7 @@ export function toggleThemePicker(anchor, controller, lang, title, dev = null, r
   const draw = (focus = null) => {
     menu.innerHTML = pickerHtml(pickerItems(controller.state(), controller.current().id, lang), title, rule) + (dev ? '<div class="theme-dev" data-dev></div>' : '');
     const host = menu.querySelector('[data-dev]');
-    if (host) host.innerHTML = list ? devHtml(devItems(list, controller.current().id, lang), dev.labels) : `<div class="theme-picker-title">${esc(dev.labels.all)}</div><div class="theme-picker-empty">${esc(dev.labels.loading)}</div>`;
+    if (host) host.innerHTML = list ? devHtml(devItems(list, controller.current().id, lang), dev.labels, dev.next?.() ?? null) : `<div class="theme-picker-title">${esc(dev.labels.all)}</div><div class="theme-picker-empty">${esc(dev.labels.loading)}</div>`;
     if (focus) menu.querySelector(focus)?.focus();
   };
   const reload = async focus => { list = await controller.pool(); if (here()) draw(focus); };

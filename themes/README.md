@@ -17,7 +17,7 @@ engine (`webapp/src/themes/`, `webapp/css/theme.css`); CI packs the themes into 
 7. No backend: the site is static (GitHub Pages now, perhaps Cloudflare Pages later), there are no accounts.
 8. **Dev reveal** (hold V, 5 taps on the bare app bar, or a pinned device): the theme list shows every theme of the pool, drafts too. A tap tries
    one (nothing is kept, the cap does not matter), "+" keeps it (it takes the place of one of the player's themes when the pool is full), and
-   "Offer a theme now" runs the real offer. This is how a deployed build is looked at.
+   "Offer a theme now" runs the real offer; above it a line gives the next offer day (calendar.js, today's left out once answered or on offer). This is how a deployed build is looked at.
 
 ## Options and the decision
 
@@ -68,7 +68,9 @@ webapp/src/ui/theme*.js              the button, the picker (+ dev rows) and the
   local date has changed (looked at every minute, so a machine that slept through midnight is no later than a minute), so the page needs no reload. The controller reads the manifest, drops drafts and themes the player owns, and picks one from a hash of the device's random seed and
   the event id: a reload within the event finds the same offer, devices differ. The bundle is fetched, validated and kept **waiting** (record
   `zip_theme_o`, `src/themes/trial.js`): a chip says "rare theme today, try it for 30 min". An event id is answered once. No theme to offer
-  (nothing reachable, all owned, only drafts): nothing happens, the next trigger tries again. Another offer still open: the event waits and is
+  (all owned, only drafts): nothing happens, the next trigger tries again. Nothing reachable (offline, a bad link): the controller also asks again
+  after 5, 10, 20, 40 minutes while the event lasts and the page is seen, because the browser's `online` event does not fire for a link that is
+  up but broken. Once the offer waits, the trial and keeping need no network (the bundle is in the record). Another offer still open: the event waits and is
   offered when that one ends (answered or gone), if its day is not over.
 - **Trial.** A tap on the chip starts it: the page wears the theme for `THEMES.trialMs` (`config.js`, 30 min) of *foreground* time. The clock stops
   while the page is hidden or the player is choosing which theme to replace, and never ends in the middle of a puzzle (the next menu screen). The chip
