@@ -237,8 +237,31 @@ test('gotd-gen promote: an approved candidate that repeats a published puzzle is
 test('gotd-gen status: shows what is to review and the reviewed numbers per stamp', () => {
   const w = world('p4'), [c7a, c7b, c8a] = w.index().candidates;
   w.verdicts([w.say(c7a, 3), w.say(c8a, 1)]);
-  const r = w.cli('status', '--today', '20261122');
+  let r = w.cli('status', '--today', '20261122');
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /review: 1 candidate\(s\) to review now/, `the sibling ${c7b.id} of the approved one is held back, the rejected one is done: only the other 8x8 is left`);
+  assert.match(r.stdout, /review: 2 candidate\(s\) to review now/, `${c7a.id} is approved for 20261122, ${c8a.id} is rejected: the other 8x8 is for 20261123 and the sibling ${c7b.id} of the approved one is for the next open 7x7 day`);
+  r = w.cli('status', '--today', '20261122', '--horizon', '2');
+  assert.match(r.stdout, /review: 1 candidate\(s\) to review now .*; 1 such open day\(s\) of 2/, 'within two days only the 8x8 day is open and without an approved candidate');
   assert.match(r.stdout, /stamp a\d+-[0-9a-f]{8}: 2 reviewed, 1 approved \(50%\), 1 rejected, human - model grade: mean -?\d+\.\d\d, worst -?\d+\.\d/);
+});
+
+test('gotd-gen promote: a verdict without a rating works; a candidate that fails the re-vet does not leave its day empty, the next approved one of that size takes it', () => {
+  const w = world('p5'), [c7a, c7b, c8a] = w.index().candidates;
+  const bare = (c, verdict) => makeVerdict({ candidate: c, sel: null, verdict, solved: false, playS: 12, takebacks: 0, now: NOW });
+  w.verdicts([bare(c7a, 'approve'), bare(c7b, 'approve'), bare(c8a, 'reject')]);
+  // c7a (made for 20261122, the day's own candidate) is a copy of a published puzzle, turned: it fails the duplicate gate
+  const copy = path.join(w.pub, '20261101.txt');
+  fs.writeFileSync(copy, serialize(transformPuzzle(parse(fs.readFileSync(path.join(w.queue, c7a.file), 'utf8')), 2, true)) + '\n');
+  let r = w.cli(...PROMOTE);
+  assert.equal(r.status, 1, 'the failed candidate is still an error');
+  assert.match(r.stdout, new RegExp(`approved candidate ${c7a.id} cannot be published on 20261122: duplicate`));
+  assert.match(r.stdout, new RegExp(`publish: 20261122 7x7 <- ${c7b.id}`), 'the other approved 7x7 takes the day');
+  assert.deepEqual(fs.readdirSync(w.pub).sort(), ['20261101.txt', '20261122.txt']);
+  const text = fs.readFileSync(path.join(w.pub, '20261122.txt'), 'utf8');
+  assert.match(text, /^# review unrated solved no takebacks 0$/m, 'no rating, no play time');
+  assert.doesNotMatch(text, /play_time_s/);
+  const index = w.index();
+  assert.equal(index.candidates.some(c => c.id === c7a.id && c.status === 'approved'), true, 'the failed one stays approved in the queue');
+  assert.equal(index.candidates.some(c => c.id === c7b.id), false, 'the published one left');
+  assert.match(r.stdout, /1 open day\(s\) without an approved candidate/, 'the 8x8 day: its only candidate was rejected');
 });

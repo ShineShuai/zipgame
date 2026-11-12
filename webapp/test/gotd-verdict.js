@@ -1,5 +1,5 @@
-// The human side of the automatic Game of Day: rating widget rules, the verdict file, the review queue, applying verdicts, promotion planning and the published
-// day's text (core/gotd-verdict.js, planPromote of core/gotd-queue.js, publishedText and the holdGrade gate of core/gotd-gen.js). Registered by tests.js.
+// The human side of the automatic Game of Day: rating widget rules, the verdict file, the review plan, applying verdicts, promotion planning and the published
+// day's text (core/gotd-verdict.js, planReview and planPromote of core/gotd-queue.js, publishedText and the holdGrade gate of core/gotd-gen.js). Registered by tests.js.
 // The design app panel (apps/design/gotd-review.js) and the command line (test/gotd-gen-cli.test.js) are tested end to end elsewhere.
 import { parse, serialize, commentTimes } from '../src/core/format.js';
 import { ratingKey, symmetryKey } from '../src/core/ratings-io.js';
@@ -7,12 +7,12 @@ import { runSync } from '../src/core/run.js';
 import { generateTargeted } from '../src/core/gen/target.js';
 import { makePuzzle } from '../src/core/model.js';
 import {
-  APPROVE_MIN, nextSelection, nextLean, toggleUnsure, decide, createTakebacks, makeVerdict, verdictProblem, formatVerdicts, parseVerdicts, mergeVerdicts, reviewQueue,
+  APPROVE_MIN, nextSelection, nextLean, toggleUnsure, decide, createTakebacks, makeVerdict, verdictProblem, formatVerdicts, parseVerdicts, mergeVerdicts,
   applyVerdicts, reviewStats,
 } from '../src/core/gotd-verdict.js';
 import { dayOfDate, sizeForDay } from '../src/core/gotd-schedule.js';
 import { createDistinct, vetCandidate, publishedText, carriedOrigin } from '../src/core/gotd-gen.js';
-import { emptyIndex, planPromote } from '../src/core/gotd-queue.js';
+import { emptyIndex, planPromote, planReview } from '../src/core/gotd-queue.js';
 
 const id12 = n => String(n).padStart(12, '0');
 const cand = (n, size, slot, over = {}) => ({
@@ -47,7 +47,22 @@ export function gotdVerdictTests(t, ok, eq) {
     eq(decide({ human: 3 }), 'approve');
   });
 
-  t('gotd verdict: makeVerdict records the rating, the blind play and what the model said; no rating is an error', () => {
+  t('gotd verdict: the reviewer\'s button decides, the rating only suggests; a verdict may have no rating', () => {
+    const c = cand(1, 7, '20261121'), sel = g => ({ lo: g, hi: g, lean: 0 });
+    const v = (g, verdictName) => makeVerdict({ candidate: c, sel: g === null ? null : sel(g), verdict: verdictName, solved: true, takebacks: 0, now: NOW });
+    eq([v(1, 'approve').verdict, v(1, 'approve').human], ['approve', 1], 'Easy approved by hand');
+    eq(v(4, 'reject').verdict, 'reject', 'Expert rejected by hand');
+    eq(v(2).verdict, 'reject', 'no button: the rating suggests');
+    const bare = v(null, 'approve');
+    eq([bare.verdict, 'human' in bare, 'lo' in bare, 'hi' in bare, 'unsure' in bare], ['approve', false, false, false, false], 'no rating, no rating fields');
+    eq(verdictProblem(bare), '', 'and the file accepts it');
+    eq(parseVerdicts(formatVerdicts([bare]))[0], bare);
+    eq(verdictProblem({ ...bare, human: 3 }) !== '', true, 'a rating is all or nothing');
+    eq(makeVerdict({ candidate: c, sel: { lo: 1, hi: 1, lean: 0, unsure: true }, verdict: 'reject', solved: false, takebacks: 0, now: NOW }).unsure, true);
+    eq(makeVerdict({ candidate: c, sel: null, verdict: 'reject', solved: false, takebacks: 0, now: NOW }).solved, false);
+  });
+
+  t('gotd verdict: makeVerdict records the rating, the blind play and what the model said; no rating and no decision is an error', () => {
     const c = cand(7, 8, '20261122', { trap: { pred: 2.31, grade: 3 } });
     const v = makeVerdict({ candidate: c, sel: { lo: 2, hi: 3, lean: 1, unsure: true }, solved: false, playS: 41.26, takebacks: 5.9, now: NOW });
     eq(v, { id: id12(7), size: 8, stamp: 'S', model: { grade: 3, pred: 2.31 }, human: 2.75, lo: 2, hi: 3, unsure: true, solved: false, playS: 41.3, takebacks: 5, verdict: 'reject', at: NOW });
@@ -55,7 +70,7 @@ export function gotdVerdictTests(t, ok, eq) {
     eq(makeVerdict({ candidate: c, sel: { lo: 3, hi: 3, lean: 0 }, solved: true, takebacks: 0, now: NOW }).playS, undefined, 'no time, no playS');
     let message = '';
     try { makeVerdict({ candidate: c, sel: null, solved: true, now: NOW }); } catch (e) { message = e.message; }
-    eq(message, 'no rating');
+    eq(message, 'no verdict', 'neither a rating nor a decision');
   });
 
   t('gotd takebacks: counts the path cells taken back, not the cells added', () => {
@@ -112,19 +127,66 @@ export function gotdVerdictTests(t, ok, eq) {
     eq(mergeVerdicts([], []), []);
   });
 
-  t('gotd review queue: pending of this stamp without a verdict, soonest day first; a day with an approved candidate keeps the rest in reserve', () => {
+  // 20261122..27 are 7, 8, 8, 6, 9, 7 in the schedule. 20261122 is published already (the candidate 1 made for it was promoted and left the index).
+  const reviewWorld = () => {
     const index = emptyIndex();
     index.candidates = [
-      cand(1, 7, '20261122'), cand(2, 7, '20261122'), cand(3, 8, '20261123'), cand(4, 8, '20261123'), cand(5, 6, '20261121'),
-      cand(6, 7, '20261125', { stamp: 'OLD' }), cand(7, 9, '20261126', { status: 'approved' }), cand(8, 9, '20261126'), cand(9, 11, '20261127', { status: 'rejected' }),
+      cand(2, 7, '20261122'), cand(3, 8, '20261123'), cand(4, 8, '20261123'), cand(5, 8, '20261124'), cand(6, 8, '20261124'), cand(7, 6, '20261125'), cand(8, 9, '20261126'),
+      cand(9, 6, '20261125', { stamp: 'OLD' }), cand(10, 8, '20261123', { status: 'rejected' }),
     ];
-    const ids = list => list.map(c => +c.id);
-    eq(ids(reviewQueue(index, [], 'S')), [5, 1, 2, 3, 4], 'older stamp, approved, rejected and the sibling of an approved one are not offered');
-    eq(ids(reviewQueue(index, [], 'S', { reserve: true })), [5, 1, 2, 3, 4, 8], 'reserve: after the others');
-    const said = [verdict(index.candidates[0], 3), verdict(index.candidates[2], 1)];
-    eq(ids(reviewQueue(index, said, 'S')), [5, 4], 'an approve closes its day for the others; a reject does not; reviewed ones are gone');
-    eq(ids(reviewQueue(index, said, 'S', { reserve: true })), [5, 4, 2, 8], 'the reserves of the approved days come last');
-    eq(reviewQueue(emptyIndex(), [], 'S'), []);
+    const args = { today: dayOfDate('20261122'), horizon: 6, published: new Set(['20261122']), index, stamp: 'S' };
+    return { index, args, review: (verdicts = [], more = {}) => planReview({ ...args, verdicts, ...more }) };
+  };
+  const approve = c => makeVerdict({ candidate: c, sel: null, verdict: 'approve', solved: true, takebacks: 0, now: NOW });
+  const reject = c => makeVerdict({ candidate: c, sel: null, verdict: 'reject', solved: true, takebacks: 0, now: NOW });
+  const ids = list => list.map(c => +c.id);
+
+  t('gotd review plan: candidates in the order of the open days they fill; a published day is not offered again, its leftovers wait for a later day of their size', () => {
+    const w = reviewWorld(), r = w.review();
+    eq(ids(r.queue), [3, 4, 5, 6, 7, 8, 2], 'older stamp, rejected ones out; the leftover 2 of the published day comes last, for the next 7x7 day, not first');
+    eq(r.queue.map(c => c.date), ['20261123', '20261123', '20261123', '20261123', '20261125', '20261126', '20261127']);
+    eq(r.open.map(d => [d.date, d.size]), [['20261123', 8], ['20261124', 8], ['20261125', 6], ['20261126', 9], ['20261127', 7]], 'the published day is not open');
+    eq(ids(w.review([], { horizon: 3 }).queue), [3, 4, 5, 6], 'no open day of size 6, 9 or 7 in the horizon: those candidates wait');
+    eq(ids(w.review([], { horizon: 3, reserve: true }).queue), [3, 4, 5, 6, 2, 7, 8], 'reserve: after the others, in queue order');
+    eq(w.review([], { horizon: 3, reserve: true }).queue.slice(4).map(c => c.date), [null, null, null]);
+    eq(ids(w.review([], { published: new Set(['20261122', '20261123', '20261124']) }).queue), [7, 8, 2], 'days published by other means are closed too');
+    eq(planReview({ ...w.args, index: emptyIndex(), verdicts: [] }).queue, []);
+  });
+
+  t('gotd review plan: an approved candidate covers its day at once and the next review is for the next open day; a reject leaves the day open', () => {
+    const w = reviewWorld(), c = id => w.index.candidates.find(x => +x.id === id);
+    let r = w.review([approve(c(3))]);
+    eq(ids(r.queue), [5, 6, 4, 7, 8, 2], 'day 23 is covered: the candidates made for day 24 come first, the sibling 4 of 23 after them');
+    eq(r.queue.slice(0, 3).map(x => x.date), ['20261124', '20261124', '20261124']);
+    eq(r.plan.find(p => p.id === id12(3)).date, '20261123');
+    r = w.review([approve(c(3)), approve(c(5))]);
+    eq(ids(r.queue), [7, 8, 2]);
+    eq(ids(w.review([approve(c(3)), approve(c(5))], { reserve: true }).queue), [7, 8, 2, 4, 6], 'the siblings of the approved ones are the reserve');
+    r = w.review([approve(c(3)), approve(c(5)), reject(c(7))]);
+    eq(ids(r.queue), [8, 2]);
+    eq(r.open.map(d => d.date), ['20261125', '20261126', '20261127'], 'a rejected candidate leaves its day open');
+    eq(w.review([reject(c(3)), reject(c(4))]).queue.map(x => +x.id).slice(0, 2), [5, 6], 'rejects of day 23 hand the day to the candidates made for day 24');
+  });
+
+  t('gotd review plan: approving what is shown always fills the next open day, so approved days never leave a gap (the day shown is the day promote plans)', () => {
+    const w = reviewWorld(), verdicts = [], days = [];
+    for (let r = w.review(); r.queue.length; r = w.review(verdicts)) {
+      const first = r.queue[0], v = approve(first);
+      verdicts.push(v);
+      const got = w.review(verdicts).plan.find(p => p.id === first.id);
+      eq(got && got.date, first.date, `candidate ${+first.id} is shown for ${first.date}`);
+      days.push(first.date);
+    }
+    eq(days, ['20261123', '20261124', '20261125', '20261126', '20261127'], 'five approvals, five consecutive days');
+    eq(w.review(verdicts).open, []);
+  });
+
+  t('gotd review plan: a verdict counts before it reaches the index; an approved candidate of a promoted day cannot hold a day closed', () => {
+    const w = reviewWorld(), c = id => w.index.candidates.find(x => +x.id === id);
+    eq(ids(w.review([approve(c(8))]).queue), [3, 4, 5, 6, 7, 2], 'approved by verdict only');
+    const gone = reviewWorld(); // candidate 1 was approved, promoted and removed from the index: its verdict stays in verdicts.json and changes nothing
+    const old = approve({ ...cand(1, 7, '20261122'), stamp: 'S' });
+    eq(ids(gone.review([old]).queue), [3, 4, 5, 6, 7, 8, 2]);
   });
 
   t('gotd verdicts apply: approve and reject set the status, other candidates stay; applying twice changes nothing', () => {
@@ -148,6 +210,8 @@ export function gotdVerdictTests(t, ok, eq) {
     eq(stats.S, { reviewed: 2, approved: 1, rejected: 1, sumErr: -2, worst: -2 });
     eq(stats.T, { reviewed: 1, approved: 1, rejected: 0, sumErr: 1, worst: 1 });
     eq(reviewStats([]), {});
+    const bare = makeVerdict({ candidate: c1, sel: null, verdict: 'approve', solved: true, takebacks: 0, now: NOW });
+    eq(reviewStats([verdict(c1, 3), bare]).S, { reviewed: 2, approved: 2, rejected: 0, sumErr: 0, worst: 0 }, 'an unrated verdict counts as reviewed, not in the model gap');
   });
 
   t('gotd promote plan: an open day takes an approved candidate of its size, the one made for it first, else the earliest; each is used once', () => {
@@ -180,6 +244,8 @@ export function gotdVerdictTests(t, ok, eq) {
     ok(gaveUp.includes('solved no'));
     const unsure = publishedText(p, c, makeVerdict({ candidate: c, sel: { lo: 3, hi: 3, lean: 0, unsure: true }, solved: true, playS: 5, takebacks: 0, now: NOW }));
     ok(unsure.includes('review human 3 unsure solved yes'));
+    const unrated = publishedText(p, c, makeVerdict({ candidate: c, sel: null, verdict: 'approve', solved: true, playS: 5, takebacks: 1, now: NOW }));
+    ok(unrated.includes('# review unrated solved yes takebacks 1'), unrated);
     const bare = publishedText(p, c);
     ok(!bare.includes('# review') && !bare.includes('play_time_s'), 'without a verdict only the origin line');
     // how the puzzle was made is carried from the candidate's file, line for line, between the origin line and the review line
