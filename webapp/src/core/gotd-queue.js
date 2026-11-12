@@ -10,6 +10,7 @@
 // candidates on (planFill `adopt`).
 import { dateOfDay, dayOfDate, sizeForDay } from './gotd-schedule.js';
 import { GOTD_CFG, makeCandidate } from './gotd-gen.js';
+import { applyVerdicts } from './gotd-verdict.js';
 
 export const INDEX_VERSION = 1;
 export const STATUSES = ['pending', 'approved', 'rejected'];
@@ -132,4 +133,24 @@ export function planPromote({ today, horizon = GOTD_CFG.horizon, published, inde
     plan.push({ day, date, size, id: pick ? pick.id : null });
   }
   return plan;
+}
+
+// What the reviewer still has to look at, in the order of the days the candidates would fill, and the days that still lack an approved candidate.
+//   today, horizon, published   as in planPromote       verdicts   the human's verdicts: they count at once, before `promote` has written them into the index
+//   stamp   the generator stamp: a pending candidate of another one is not offered       reserve   list the pending candidates no open day can take after the others
+// An open day is a day without a file that no approved candidate (index status or verdict) is planned for: planPromote decides, so review and promotion agree on the day.
+// Its size picks the candidates: pending ones of that size without a verdict, those made for the day first, then the others in queue order; each is listed once, under
+// the earliest open day that can take it. A published, past or already covered day is never offered, whatever `slot` a candidate carries (`slot` is only a preference).
+// -> { queue: [{ ...candidate, day, date }] (day / date: the open day it fills if approved, null in the reserve), open: [{ day, date, size }], plan } with `plan` = planPromote's answer
+//    for the index with the verdicts applied: `plan.find(p => p.id === id).date` is the day an approved candidate gets.
+export function planReview({ today, horizon = GOTD_CFG.horizon, published, index, verdicts, stamp, reserve = false }) {
+  const judged = applyVerdicts(index, verdicts).index, plan = planPromote({ today, horizon, published, index: judged });
+  const open = plan.filter(p => !p.id).map(({ day, date, size }) => ({ day, date, size }));
+  const pending = judged.candidates.filter(c => c.status === 'pending' && c.stamp === stamp).sort(byOrder), listed = new Set(), queue = [];
+  for (const d of open) {
+    const fit = pending.filter(c => c.size === d.size && !listed.has(c.id));
+    for (const c of [...fit.filter(x => x.slot === d.date), ...fit.filter(x => x.slot !== d.date)]) { listed.add(c.id); queue.push({ ...c, day: d.day, date: d.date }); }
+  }
+  if (reserve) for (const c of pending) if (!listed.has(c.id)) queue.push({ ...c, day: null, date: null });
+  return { queue, open, plan };
 }

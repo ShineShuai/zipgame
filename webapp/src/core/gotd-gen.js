@@ -135,12 +135,12 @@ export const candidateFile = e => `c-${e.size}-${e.id}.txt`;
 // The candidate's file: the puzzle (no solution path, so a reviewer plays it blind), a line naming the candidate and the origin lines (originLines) that say how to make it again.
 export const candidateText = (puzzle, e, origin = []) => serialize(puzzle, { comments: [`gotd candidate ${e.id} for ${e.slot}, attempt ${e.attempt}`, ...origin] }) + '\n';
 
-// The published day's file: the puzzle, a comment on where it came from, and the reviewer's rating and solve time when there is a verdict.
+// The published day's file: the puzzle, a comment on where it came from, and the reviewer's rating ("unrated" when there is none) and solve time when there is a verdict.
 // `# play_time_s` is the line the Game-of-Day files of the author already carry (commentTimes() reads it back), written only for a solved blind play.
 // `origin`: the candidate file's origin lines (carriedOrigin), copied as they are.
 export function publishedText(puzzle, entry, verdict = null, origin = []) {
   const comments = [`gotd ${entry.id} gen ${entry.stamp} made-for ${entry.slot} model-grade ${entry.trap.grade} score ${entry.trap.pred}`, ...origin];
-  if (verdict) comments.push(`review human ${verdict.human}${verdict.unsure ? ' unsure' : ''} solved ${verdict.solved ? 'yes' : 'no'} takebacks ${verdict.takebacks}`);
+  if (verdict) comments.push(`review ${verdict.human !== undefined ? `human ${verdict.human}` : 'unrated'}${verdict.unsure ? ' unsure' : ''} solved ${verdict.solved ? 'yes' : 'no'} takebacks ${verdict.takebacks}`);
   const times = verdict && verdict.solved && verdict.playS != null ? { playS: verdict.playS } : undefined;
   return serialize(puzzle, { comments, times }) + '\n';
 }

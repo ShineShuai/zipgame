@@ -3,7 +3,7 @@
 //   node tools/gotd-gen.mjs fill     [--today YYYYMMDD] [--horizon 21] [--per-slot 3] [--max-new 24] [--max-attempts 120] [--dry-run] [--summary FILE] [--annotations]
 //   node tools/gotd-gen.mjs promote  [--today YYYYMMDD] [--horizon 21] [--dry-run] [--summary FILE] [--annotations]   verdicts -> statuses, approved candidates -> published days
 //   node tools/gotd-gen.mjs check    [--annotations]       every puzzle of the published days, the queue and its rejected ones is distinct; index and verdicts.json are valid (exit 1 if not)
-//   node tools/gotd-gen.mjs status   [--today YYYYMMDD]    stamp, days ahead, queue by size, the next 14 days
+//   node tools/gotd-gen.mjs status   [--today YYYYMMDD] [--horizon 21]    stamp, days ahead, queue by size, the next 14 days
 //   node tools/gotd-gen.mjs schedule [--from YYYYMMDD] [--days 28]    the size of each day and how often each size occurs
 //   all: [--puzzles DIR] [--queue DIR] [--ratings FILE] [--verdicts FILE]    defaults: demo/GameOfDay, demo/GameOfDay-queue, webapp/tools/ratings.json (next to webapp/),
 //   <queue>/verdicts.json
@@ -16,10 +16,12 @@
 //   gen-target.mjs and the gen-target command that makes it again, copied into the published day) and
 //   <queue>/index.json (what the gates measured, the attempts spent per day, the status).
 // promote: the human's side. The design app's "GOTD review" panel plays a pending candidate blind and the reviewer rates it; its export is <queue>/verdicts.json
-//   (src/core/gotd-verdict.js: rating >= Hard approves). promote sets the status of every candidate that has a verdict (a rejected one moves to <queue>/rejected/, where it stays
+//   (src/core/gotd-verdict.js: the reviewer's Approve / Reject decides, a rating is optional and only suggests). The panel offers the candidates in the order of the open days
+//   they fill (planReview of src/core/gotd-queue.js: a published, past or already covered day is never offered). promote sets the status of every candidate that has a verdict (a rejected one moves to <queue>/rejected/, where it stays
 //   blocked as a duplicate), then gives every open day (no file yet, today .. today + horizon) an approved candidate of its size: it is re-vetted with the code of today (a puzzle
 //   that is no longer unique, valid or distinct is not published; one that only misses the grade or margin of the current model IS published, with a warning: the human judged it),
-//   written as demo/GameOfDay/YYYYMMDD.txt with the reviewer's rating and play time in comments, and removed from the queue. `fill` and `status` read the verdicts too.
+//   written as demo/GameOfDay/YYYYMMDD.txt with the reviewer's rating and play time in comments, and removed from the queue. An approved candidate that fails the re-vet
+//   (exit 1) does not leave its day empty: the next approved candidate of that size takes the day. `fill` and `status` read the verdicts too.
 // check replaces demo/GameOfDay/check_unique_puzzles.py (exact copies only). Exit codes: 0 ok, 1 an error (or bad arguments; for promote: an approved candidate could not be published).
 import fs from 'node:fs';
 import path from 'node:path';
@@ -31,8 +33,8 @@ import { solutionPath } from '../src/core/trap.js';
 import { OFFLINE_PATH_CAP } from './lib.mjs';
 import { GOTD_CFG, genStamp, createDistinct, pathKey, puzzleId, candidateText, publishedText, carriedOrigin, vetCandidate } from '../src/core/gotd-gen.js';
 import { dayOfDate, dateOfDay, sizeForDay, SIZE_BAG } from '../src/core/gotd-schedule.js';
-import { emptyIndex, parseIndex, formatIndex, planFill, planPromote, fillQueue, applyFill, usable } from '../src/core/gotd-queue.js';
-import { parseVerdicts, applyVerdicts, reviewQueue, reviewStats } from '../src/core/gotd-verdict.js';
+import { emptyIndex, parseIndex, formatIndex, planFill, planPromote, planReview, fillQueue, applyFill, usable } from '../src/core/gotd-queue.js';
+import { parseVerdicts, applyVerdicts, reviewStats } from '../src/core/gotd-verdict.js';
 
 const args = process.argv.slice(2), cmd = args[0];
 const opt = (name, dflt) => { const i = args.indexOf('--' + name); return i >= 0 ? args[i + 1] : dflt; };
@@ -184,8 +186,7 @@ function promote() {
   const published = txtFiles(dir.puzzles).map(loadPuzzle);
   for (const r of published) if (r.error) note('warning', `skipped: ${r.error}`, r.file);
   const dates = publishedDates(published), byId = new Map(applied.candidates.map(c => [c.id, c]));
-  const plan = planPromote({ today, horizon, published: dates, index: applied }), todo = plan.filter(p => p.id);
-  const out = { published: [], rejected: [], failed: [], missing: plan.filter(p => !p.id) };
+  const out = { published: [], rejected: [], failed: [], missing: [] };
   let candidates = applied.candidates;
   // rejected candidates leave the queue for rejected/ (their files keep blocking the same puzzle, see fill)
   for (const c of applied.candidates.filter(x => x.status === 'rejected')) {
@@ -197,32 +198,37 @@ function promote() {
     }
   }
   candidates = candidates.filter(c => c.status !== 'rejected');
-  if (todo.length) {
-    const distinct = createDistinct(); // what an approved candidate must still differ from: the published days
-    for (const r of published) {
-      if (r.error) continue;
-      const sol = solutionPath(r.p, OFFLINE_PATH_CAP);
-      distinct.add({ symKey: r.symKey, pathKey: sol && pathKey(r.p.n, sol), where: rel(r.file) });
-    }
-    for (const t of todo) {
-      const c = byId.get(t.id), file = path.join(dir.queue, c.file), target = path.join(dir.puzzles, `${t.date}.txt`);
-      const fail = msg => { out.failed.push(c.id); note('error', `approved candidate ${c.id} cannot be published on ${t.date}: ${msg}`, file); };
-      if (!fs.existsSync(file)) { fail('its file is missing'); continue; }
-      const q = loadPuzzle(file);
-      if (q.error) { fail(q.error); continue; }
-      const v = vetCandidate(q.p, c.size, distinct, { holdGrade: true });
-      if (!v.ok) { fail(`${v.reason}${v.detail ? ` (${v.detail})` : ''}`); continue; }
-      if (v.drift) note('warning', `${c.id} on ${t.date}: ${v.drift} under the current model (stamp ${c.stamp} at creation); published because a human approved it`, file);
-      distinct.add({ symKey: v.symKey, pathKey: v.entry.pathKey, where: rel(target) });
-      console.log(`publish: ${t.date} ${c.size}x${c.size} <- ${c.id} (made for ${c.slot})`);
-      out.published.push({ date: t.date, id: c.id });
-      if (!dry) {
-        fs.writeFileSync(target, publishedText(q.p, c, verdicts.find(x => x.id === c.id) || null, carriedOrigin(q.text)));
-        fs.rmSync(file);
+  // The days are planned again after every candidate: one that fails the re-vet is set aside and its day goes to the next approved candidate of its size.
+  const plan = () => planPromote({ today, horizon, published: dates, index: { ...applied, candidates: candidates.filter(c => !out.failed.includes(c.id)) } });
+  let distinct = null; // what an approved candidate must still differ from: the published days (worked out when the first one is needed)
+  for (let t = plan().find(p => p.id); t; t = plan().find(p => p.id)) {
+    if (!distinct) {
+      distinct = createDistinct();
+      for (const r of published) {
+        if (r.error) continue;
+        const sol = solutionPath(r.p, OFFLINE_PATH_CAP);
+        distinct.add({ symKey: r.symKey, pathKey: sol && pathKey(r.p.n, sol), where: rel(r.file) });
       }
-      candidates = candidates.filter(x => x.id !== c.id);
     }
+    const c = byId.get(t.id), file = path.join(dir.queue, c.file), target = path.join(dir.puzzles, `${t.date}.txt`);
+    const fail = msg => { out.failed.push(c.id); note('error', `approved candidate ${c.id} cannot be published on ${t.date}: ${msg}`, file); };
+    if (!fs.existsSync(file)) { fail('its file is missing'); continue; }
+    const q = loadPuzzle(file);
+    if (q.error) { fail(q.error); continue; }
+    const v = vetCandidate(q.p, c.size, distinct, { holdGrade: true });
+    if (!v.ok) { fail(`${v.reason}${v.detail ? ` (${v.detail})` : ''}`); continue; }
+    if (v.drift) note('warning', `${c.id} on ${t.date}: ${v.drift} under the current model (stamp ${c.stamp} at creation); published because a human approved it`, file);
+    distinct.add({ symKey: v.symKey, pathKey: v.entry.pathKey, where: rel(target) });
+    console.log(`publish: ${t.date} ${c.size}x${c.size} <- ${c.id} (made for ${c.slot})`);
+    out.published.push({ date: t.date, id: c.id });
+    if (!dry) {
+      fs.writeFileSync(target, publishedText(q.p, c, verdicts.find(x => x.id === c.id) || null, carriedOrigin(q.text)));
+      fs.rmSync(file);
+    }
+    dates.add(t.date); // the day is closed now (a dry run only pretends)
+    candidates = candidates.filter(x => x.id !== c.id);
   }
+  out.missing = plan().filter(p => !p.id);
   for (const m of out.missing) console.log(`open: ${m.date} ${m.size}x${m.size}: no approved candidate`);
   // a published or past day needs no counter any more
   const nowPublished = new Set([...dates, ...out.published.map(p => p.date)]);
@@ -238,7 +244,7 @@ function promote() {
 
 // ---- status / schedule ----
 function status() {
-  const today = dayArg('today', todayUtc()), stamp = genStamp(), { index, verdicts } = readState();
+  const today = dayArg('today', todayUtc()), horizon = int('horizon', GOTD_CFG.horizon, 1), stamp = genStamp(), { index, verdicts } = readState();
   const published = txtFiles(dir.puzzles).map(loadPuzzle).filter(r => !r.error), dates = publishedDates(published);
   let ahead = 0;
   while (dates.has(dateOfDay(today + ahead))) ahead++;
@@ -248,8 +254,8 @@ function status() {
     const c = index.candidates.filter(x => x.size === +n), cnt = f => c.filter(f).length;
     console.log(`  ${n}x${n}: ${cnt(x => x.status === 'pending' && x.stamp === stamp)} / ${cnt(x => x.status === 'pending' && x.stamp !== stamp)} / ${cnt(x => x.status === 'approved')} / ${cnt(x => x.status === 'rejected')}`);
   }
-  const stats = reviewStats(verdicts), toReview = reviewQueue(index, verdicts, stamp).length;
-  console.log(`review: ${toReview} candidate(s) to review now (pending, this stamp, not on a day that already has an approved one)`);
+  const stats = reviewStats(verdicts), { queue: toReview, open } = planReview({ today, horizon, published: dates, index, verdicts, stamp });
+  console.log(`review: ${toReview.length} candidate(s) to review now (pending, this stamp, of the size of an open day that has no approved candidate yet); ${open.length} such open day(s) of ${horizon}`);
   for (const [st, v] of Object.entries(stats)) console.log(`  stamp ${st}: ${v.reviewed} reviewed, ${v.approved} approved (${Math.round(100 * v.approved / v.reviewed)}%), ${v.rejected} rejected${v.reviewed ? `, human - model grade: mean ${(v.sumErr / v.reviewed).toFixed(2)}, worst ${v.worst.toFixed(1)}` : ''}`);
   console.log('next 14 days:');
   for (let day = today; day < today + 14; day++) {
