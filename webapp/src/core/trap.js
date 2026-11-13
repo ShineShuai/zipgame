@@ -52,12 +52,12 @@ export const SIZE_GRADE_CAP = { 5: 2, 6: 3 };
 // <TRAP_MODEL>
 export const TRAP_MODEL = {
   features: ['trapMax', 'trapTop3', 'altFrac', 'lTr'],
-  mean: { trapMax: 6.6735, trapTop3: 14.1633, altFrac: 0.5519, lTr: 4.7538 },
-  sd: { trapMax: 3.6733, trapTop3: 7.3439, altFrac: 0.0852, lTr: 2.6886 },
-  w: { trapMax: 0.0938, trapTop3: 0.3383, altFrac: -0.3373, lTr: 0.1928 },
-  b: 1.8561,
-  cuts: [0.9656, 1.482, 1.9985, 2.5149, 3.0314],
-  fit: { n: 125, of: 125, lambda: 10, looRho: 0.61, looMae: 0.93, cuts: 'anchors', looAnchors: { easy: [7,17], hard3: [11,18], hard4: [1,18] } },
+  mean: { trapMax: 6.8577, trapTop3: 14.4343, altFrac: 0.5446, lTr: 4.8457 },
+  sd: { trapMax: 3.6103, trapTop3: 7.0719, altFrac: 0.085, lTr: 2.6611 },
+  w: { trapMax: 0.0978, trapTop3: 0.3366, altFrac: -0.2934, lTr: 0.2069 },
+  b: 1.9015,
+  cuts: [1.0935, 1.6748, 2.2561, 2.8374, 3.4187],
+  fit: { n: 141, of: 141, lambda: 10, looRho: 0.59, looMae: 0.93, cuts: 'anchors', looAnchors: { easy: [4,17], hard3: [11,20], hard4: [3,20] } },
 };
 // </TRAP_MODEL>
 
