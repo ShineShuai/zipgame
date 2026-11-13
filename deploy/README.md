@@ -8,15 +8,14 @@ Both publish the same files from `.github/scripts/stage-site.sh`; production dro
 design and stats pages and the old demo pages (`.github/scripts/stage-prod.sh`).
 
 ## Automatic (`prod.yml`, every day 04:17 UTC)
-Promotes the newest commit of `main` that has been there for `SOAK_DAYS`, on `RELEASE_DAYS`
-(or after 8 days without a release). It skips when: `PROD_FREEZE` is true; that commit is
+Promotes the newest commit of `main` that has been there for `SOAK_DAYS`, every day. It skips when: `PROD_FREEZE` is true; that commit is
 already live, or live is ahead of it; a change in it was reverted on `main` since. It fails
 (red run, e-mail) when live is not in `main`'s history (a hotfix not merged yet), when too few
 puzzles are ahead (`MIN_PUZZLE_DAYS`), or when build.json cannot be read. After the deploy it
 runs the smoke test; if that fails, the previous version is deployed again and the run stays red.
 
 Repository variables (Settings -> Secrets and variables -> Actions -> Variables):
-`SOAK_DAYS` (7), `RELEASE_DAYS` (comma list, `Tue` or `Tue,Fri`; spaces and case are ignored), `PROD_FREEZE` (`true` stops
+`SOAK_DAYS` (7), `PROD_FREEZE` (`true` stops
 everything), `DRY_RUN` (anything but `false` = check and stage only), `MIN_PUZZLE_DAYS` (10),
 `CLOUDFLARE_ACCOUNT_ID`. GitHub stops scheduled runs after 60 days without repository activity.
 
