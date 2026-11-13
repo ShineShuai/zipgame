@@ -2,8 +2,8 @@ name: Production deploy
 
 # Deploys the play app to https://play.vintoshine.com/zigzag/ (Cloudflare Workers static assets).
 #  - Scheduled, every day: promotes the newest commit of main that has been there for
-#    SOAK_DAYS, on RELEASE_DAYS only, and only with DRY_RUN=false (otherwise it checks and
-#    stages, nothing more). The rules are in .github/scripts/select-release.sh.
+#    SOAK_DAYS, and only with DRY_RUN=false (otherwise it checks and stages, nothing
+#    more). The rules are in .github/scripts/select-release.sh.
 #  - Manual: Actions -> Production deploy -> Run workflow (any commit of main or of a
 #    hotfix/* branch, no waiting, e.g. a hotfix or a rollback).
 # The code comes from the chosen commit; the deploy config and the scripts come from the commit
@@ -72,7 +72,6 @@ jobs:
           SMOKE_INPUT: ${{ inputs.smoke }}
           PROD_FREEZE: ${{ vars.PROD_FREEZE }}
           SOAK_DAYS: ${{ vars.SOAK_DAYS }}
-          RELEASE_DAYS: ${{ vars.RELEASE_DAYS }}
           DRY_RUN_VAR: ${{ vars.DRY_RUN }}
         run: bash .github/scripts/select-release.sh
 

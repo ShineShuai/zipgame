@@ -4,7 +4,7 @@
 # $GITHUB_STEP_SUMMARY.
 #   EVENT                   workflow_dispatch | schedule
 #   manual: REF REASON DRY_RUN_INPUT SMOKE_INPUT
-#   scheduled: PROD_FREEZE SOAK_DAYS RELEASE_DAYS DRY_RUN_VAR
+#   scheduled: PROD_FREEZE SOAK_DAYS DRY_RUN_VAR
 #   SITE                    live site, default https://play.vintoshine.com/zigzag
 set -euo pipefail
 
@@ -19,14 +19,13 @@ on_main_or_hotfix() {
   [ "$n" -gt 0 ]
 }
 
-# What is live: the sha and build time in build.json (empty before the first deploy).
+# What is live: the sha in build.json (empty before the first deploy).
 live=
-built=
 json=$(curl -fsSL --retry 3 --retry-all-errors --retry-delay 3 \
   "$site/build.json?cb=$(date +%s)" 2>/dev/null || true)
-read -r live built < <(node -e '
+read -r live < <(node -e '
   try { const j = JSON.parse(require("fs").readFileSync(0, "utf8"));
-        console.log((j.sha || "") + " " + (j.built || "")); }
+        console.log(j.sha || ""); }
   catch { console.log(""); }' <<< "$json") || true
 
 if [ "${EVENT:?}" = workflow_dispatch ]; then
@@ -46,17 +45,7 @@ fi
 
 [ "${PROD_FREEZE:-false}" != true ] || skip "PROD_FREEZE is set"
 soak=${SOAK_DAYS:-7}
-days=$(tr -d '[:space:]' <<< "${RELEASE_DAYS:-Tue}")
 [ -n "$live" ] || die "cannot read $site/build.json (site down, or never deployed)"
-
-# A release day, or a missed one: the live version is more than a week old.
-today=$(date -u +%a)
-age=0
-[ -z "$built" ] || age=$(( ($(date -u +%s) - $(date -u -d "$built" +%s)) / 86400 ))
-case ",${days,,}," in
-  *",${today,,},"*) ;;
-  *) [ "$age" -ge 8 ] || skip "$today is not a release day ($days)" ;;
-esac
 
 # The newest commit of main that has been there for the soak period.
 cand=$(git rev-list -1 --first-parent --before="$soak days ago" origin/main)

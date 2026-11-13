@@ -436,12 +436,11 @@ seeds tomorrow's Game of the Day in the backends every evening (`webapp/tools/go
 Two sites are built from the same allowlist of files (`.github/scripts/stage-site.sh`):
 
 - **Production: <https://play.vintoshine.com/zigzag/>**, a Cloudflare Worker that serves the files as static
-  assets (`deploy/cloudflare/`) behind the portal Worker of the host (repo `play`). `.github/workflows/prod.yml` runs every day at 04:17 UTC and, on the release
-  day (default Tuesday), ships the newest commit of `main` that has been there for 7 days, or any release day
-  that was missed. Before it deploys it runs the checks and tests, requires (automatic runs) at least 10 days of Game of the Day
+  assets (`deploy/cloudflare/`) behind the portal Worker of the host (repo `play`). `.github/workflows/prod.yml` runs every day at 04:17 UTC and ships
+  the newest commit of `main` that has been there for 7 days, if it is not live yet. Before it deploys it runs the checks and tests, requires (automatic runs) at least 10 days of Game of the Day
   puzzles ahead, and afterwards smoke-tests the live site and rolls back if that fails. It can also be run by
-  hand for a given ref, for a rollback or a hotfix. The settings (repository variables such as `RELEASE_DAYS`,
-  `SOAK_DAYS`, `PROD_FREEZE` and `DRY_RUN`) and the one-time setup are in [`deploy/README.md`](deploy/README.md).
+  hand for a given ref, for a rollback or a hotfix. The settings (repository variables `SOAK_DAYS`,
+  `PROD_FREEZE` and `DRY_RUN`) and the one-time setup are in [`deploy/README.md`](deploy/README.md).
 - **Test site: GitHub Pages**, published by the deploy job of the CI workflow for every push to `main`.
 
 ## Versioning
