@@ -121,11 +121,14 @@ export function applyFill(index, plan, result) {
   };
 }
 
-// Which approved candidate takes which open day: from today up to `horizon` days, a day without a file gets an approved candidate of its size, the one made for
-// that day first, else the earliest. -> [{ day, date, size, id }], id = null when no approved candidate of that size is left.
-export function planPromote({ today, horizon = GOTD_CFG.horizon, published, index }) {
+// Which approved candidate takes which open day: a day without a file gets an approved candidate of its size, the one made for that day first, else the earliest.
+// -> [{ day, date, size, id }], id = null when no approved candidate of that size is left.
+//   horizon   the days from today that are planned. Without it nothing limits how far ahead a candidate may go: the plan runs until every approved candidate has a day (at most
+//             GOTD_CFG.maxDays) and covers at least GOTD_CFG.bufferDays, so a near day without an approved candidate is still listed. The approval is the human's gate.
+export function planPromote({ today, horizon, published, index }) {
   const approved = index.candidates.filter(c => c.status === 'approved').sort(byOrder), taken = new Set(), plan = [];
-  for (let day = today; day < today + horizon; day++) {
+  for (let day = today; day < today + (horizon ?? GOTD_CFG.maxDays); day++) {
+    if (horizon === undefined && taken.size === approved.length && day - today >= GOTD_CFG.bufferDays) break;
     const date = dateOfDay(day);
     if (published.has(date)) continue;
     const size = sizeForDay(day), pool = approved.filter(c => c.size === size && !taken.has(c.id)), pick = pool.find(c => c.slot === date) || pool[0] || null;
@@ -135,16 +138,40 @@ export function planPromote({ today, horizon = GOTD_CFG.horizon, published, inde
   return plan;
 }
 
+// How many days from today a review looks at when nothing limits it: far enough to hold as many days without a file as there are candidates in stock (a candidate fills
+// one day at most), at most maxDays. `published`: the Set of the dates that have a file.
+export function reviewSpan({ today, published, stock, maxDays = GOTD_CFG.maxDays }) {
+  let open = 0, span = 0;
+  while (open < stock && span < maxDays) { if (!published.has(dateOfDay(today + span))) open++; span++; }
+  return span;
+}
+
+// The days from today that have a file, asked with `has(date) -> Promise<boolean>` (the panel's HEAD request) in batches of `batch` days and only as far as reviewSpan needs.
+// -> { published: Set of dates, span } where span is reviewSpan of what was found.
+export async function scanPublished({ today, stock, has, batch = 32, maxDays = GOTD_CFG.maxDays }) {
+  const published = new Set();
+  let done = 0, span;
+  // days not asked yet count as open, so the span is a lower bound until every day in it has been asked
+  while ((span = reviewSpan({ today, published, stock, maxDays })) > done) {
+    const upTo = Math.min(span, done + batch), dates = Array.from({ length: upTo - done }, (_, i) => dateOfDay(today + done + i));
+    (await Promise.all(dates.map(has))).forEach((yes, i) => { if (yes) published.add(dates[i]); });
+    done = upTo;
+  }
+  return { published, span };
+}
+
 // What the reviewer still has to look at, in the order of the days the candidates would fill, and the days that still lack an approved candidate.
-//   today, horizon, published   as in planPromote       verdicts   the human's verdicts: they count at once, before `promote` has written them into the index
+//   today, horizon, published   as in planPromote, but without a horizon the days looked at are reviewSpan's (`published` must cover them: scanPublished)
+//   verdicts   the human's verdicts: they count at once, before `promote` has written them into the index
 //   stamp   the generator stamp: a pending candidate of another one is not offered       reserve   list the pending candidates no open day can take after the others
 // An open day is a day without a file that no approved candidate (index status or verdict) is planned for: planPromote decides, so review and promotion agree on the day.
 // Its size picks the candidates: pending ones of that size without a verdict, those made for the day first, then the others in queue order; each is listed once, under
 // the earliest open day that can take it. A published, past or already covered day is never offered, whatever `slot` a candidate carries (`slot` is only a preference).
 // -> { queue: [{ ...candidate, day, date }] (day / date: the open day it fills if approved, null in the reserve), open: [{ day, date, size }], plan } with `plan` = planPromote's answer
-//    for the index with the verdicts applied: `plan.find(p => p.id === id).date` is the day an approved candidate gets.
-export function planReview({ today, horizon = GOTD_CFG.horizon, published, index, verdicts, stamp, reserve = false }) {
-  const judged = applyVerdicts(index, verdicts).index, plan = planPromote({ today, horizon, published, index: judged });
+//    for the index with the verdicts applied: `plan.find(p => p.id === id).date` is the day an approved candidate gets; span = the days from today that were looked at.
+export function planReview({ today, horizon, published, index, verdicts, stamp, reserve = false }) {
+  const judged = applyVerdicts(index, verdicts).index;
+  const span = horizon ?? reviewSpan({ today, published, stock: judged.candidates.filter(c => usable(c, stamp)).length }), plan = planPromote({ today, horizon: span, published, index: judged });
   const open = plan.filter(p => !p.id).map(({ day, date, size }) => ({ day, date, size }));
   const pending = judged.candidates.filter(c => c.status === 'pending' && c.stamp === stamp).sort(byOrder), listed = new Set(), queue = [];
   for (const d of open) {
@@ -152,5 +179,5 @@ export function planReview({ today, horizon = GOTD_CFG.horizon, published, index
     for (const c of [...fit.filter(x => x.slot === d.date), ...fit.filter(x => x.slot !== d.date)]) { listed.add(c.id); queue.push({ ...c, day: d.day, date: d.date }); }
   }
   if (reserve) for (const c of pending) if (!listed.has(c.id)) queue.push({ ...c, day: null, date: null });
-  return { queue, open, plan };
+  return { queue, open, plan, span };
 }

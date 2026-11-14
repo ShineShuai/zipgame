@@ -10,9 +10,9 @@ import {
   APPROVE_MIN, nextSelection, nextLean, toggleUnsure, decide, createTakebacks, makeVerdict, verdictProblem, formatVerdicts, parseVerdicts, mergeVerdicts,
   verdictConflicts, harvestRatings, applyVerdicts, reviewStats,
 } from '../src/core/gotd-verdict.js';
-import { dayOfDate, sizeForDay } from '../src/core/gotd-schedule.js';
+import { dateOfDay, dayOfDate, sizeForDay } from '../src/core/gotd-schedule.js';
 import { createDistinct, vetCandidate, publishedText, carriedOrigin, puzzleId } from '../src/core/gotd-gen.js';
-import { emptyIndex, planPromote, planReview } from '../src/core/gotd-queue.js';
+import { emptyIndex, planPromote, planReview, reviewSpan, scanPublished } from '../src/core/gotd-queue.js';
 
 const id12 = n => String(n).padStart(12, '0');
 const cand = (n, size, slot, over = {}) => ({
@@ -25,7 +25,7 @@ const K2 = 'size 7\ncheckpoints 0,5=3 0,6=1 1,3=4 2,1=5 3,1=8 3,5=6 3,6=2 4,4=9 
 const real = key => ({ ...cand(1, 7, '20261122'), id: puzzleId(symmetryKey(key)) });
 const verdict = (c, human, over = {}) => makeVerdict({ candidate: c, sel: { lo: human, hi: human, lean: 0 }, solved: true, playS: 60, takebacks: 2, now: NOW, ...over });
 
-export function gotdVerdictTests(t, ok, eq) {
+export function gotdVerdictTests(t, ok, eq, ta) {
   t('gotd rating widget: a grade, a neighbour makes "N or M", the same single grade clears; lean and unsure only where they make sense', () => {
     let sel = nextSelection(null, 3);
     eq(sel, { lo: 3, hi: 3, lean: 0, unsure: false });
@@ -281,6 +281,60 @@ export function gotdVerdictTests(t, ok, eq) {
     one.candidates = [cand(9, 8, '20261130', { status: 'approved' })];
     eq(planPromote({ today, horizon: 4, published: new Set(), index: one }).map(p => p.id && +p.id), [null, 9, null, null], 'the earliest open day of its size takes it, the next gets none');
     eq(planPromote({ today, horizon: 4, published: new Set(), index: emptyIndex() }).every(p => p.id === null), true);
+  });
+
+  t('gotd promote plan: without a horizon every approved candidate gets a day however far ahead, and the near days are listed anyway; with one, later days wait', () => {
+    const today = dayOfDate('20261122'), index = emptyIndex();
+    index.candidates = [cand(1, 7, '20261122', { status: 'approved' }), cand(2, 7, '20261122', { status: 'approved' })];
+    const plan = planPromote({ today, published: new Set(), index });
+    eq(plan.length, 10, 'both candidates have a day within the buffer days: the plan covers just those, every day listed');
+    eq(plan.filter(p => p.id).map(p => [p.date, +p.id]), [['20261122', 1], ['20261127', 2]], 'the second 7x7 waits for the next 7x7 day');
+    const far = emptyIndex(), files = new Set(Array.from({ length: 40 }, (_, i) => dateOfDay(today + i)));
+    far.candidates = [cand(9, 7, '20261122', { status: 'approved' })];
+    let day = today + 40; while (sizeForDay(day) !== 7) day++;
+    eq(planPromote({ today, published: files, index: far }).filter(p => p.id).map(p => [p.date, +p.id]), [[dateOfDay(day), 9]], 'past 40 published days, no limit');
+    eq(planPromote({ today, horizon: 30, published: files, index: far }).filter(p => p.id), [], 'a horizon of 30 leaves it waiting: nothing says so');
+    const stuck = emptyIndex();
+    stuck.candidates = [cand(8, 7, '20261122', { status: 'approved' })];
+    eq(planPromote({ today, published: new Set(Array.from({ length: 400 }, (_, i) => dateOfDay(today + i))), index: stuck }).length, 0, 'every day to the cap published: nothing to plan, no endless loop');
+  });
+
+  t('gotd review span: as many days without a file as there are candidates in stock, at most maxDays', () => {
+    const today = dayOfDate('20261122'), files = new Set(Array.from({ length: 5 }, (_, i) => dateOfDay(today + i)));
+    eq(reviewSpan({ today, published: files, stock: 3 }), 8, 'five published days, then three open ones');
+    eq(reviewSpan({ today, published: files, stock: 0 }), 0);
+    eq(reviewSpan({ today, published: files, stock: 1000, maxDays: 50 }), 50, 'the cap');
+    eq(reviewSpan({ today, published: new Set(), stock: 3 }), 3);
+  });
+
+  t('gotd review plan: without a horizon the days looked at follow the stock, and the extra candidates come last', () => {
+    const today = dayOfDate('20261122'), files = new Set(Array.from({ length: 5 }, (_, i) => dateOfDay(today + i)));
+    eq([5, 6, 7, 8, 9].map(i => sizeForDay(today + i)), [7, 8, 7, 10, 8], 'the golden schedule this test is written for (20261127 .. 20261201)');
+    const index = emptyIndex();
+    index.candidates = [cand(1, 7, 'x'), cand(2, 7, 'x'), cand(3, 7, 'x'), cand(4, 8, 'x'), cand(5, 9, 'x'), cand(6, 7, 'x', { stamp: 'OLD' })];
+    const r = planReview({ today, published: files, index, verdicts: [], stamp: 'S', reserve: true });
+    eq(r.span, 10, 'five candidates in stock (the older stamp does not count): five open days after the five published ones');
+    eq(r.queue.map(c => [+c.id, c.date]), [[1, '20261127'], [2, '20261127'], [3, '20261127'], [4, '20261128'], [5, null]], 'the 9x9 has no open day within the span: extra, last');
+    eq(planReview({ today, published: files, index, verdicts: [], stamp: 'S' }).queue.map(c => +c.id), [1, 2, 3, 4], 'without the reserve it stays out');
+    const v = [approve(index.candidates[0])];
+    const r2 = planReview({ today, published: files, index, verdicts: v, stamp: 'S', reserve: true });
+    eq(r2.span, 10, 'an approval does not change the stock');
+    eq(r2.queue.map(c => [+c.id, c.date]), [[4, '20261128'], [2, '20261129'], [3, '20261129'], [5, null]], 'the first 7x7 day is covered: the other 7x7 move to the next 7x7 day');
+    eq(planReview({ today, horizon: 6, published: files, index, verdicts: [], stamp: 'S', reserve: true }).span, 6, 'an explicit horizon is kept');
+  });
+
+  ta('gotd scan: asks for the days from today only as far as the stock needs, in batches', async () => {
+    const today = dayOfDate('20261122'), files = new Set(Array.from({ length: 22 }, (_, i) => dateOfDay(today + i)));
+    for (const batch of [32, 10, 1000]) {
+      const asked = [], has = async date => { asked.push(date); return files.has(date); };
+      const r = await scanPublished({ today, stock: 24, has, batch });
+      eq([r.span, r.published.size, asked.length], [46, 22, 46], `batch ${batch}: 22 published days, then 24 open ones, every day asked once`);
+      eq(asked.slice().sort(), Array.from({ length: 46 }, (_, i) => dateOfDay(today + i)));
+    }
+    const none = []; const r0 = await scanPublished({ today, stock: 0, has: async d => { none.push(d); return true; } });
+    eq([r0.span, none.length, r0.published.size], [0, 0, 0], 'nothing in stock: nothing asked');
+    const capped = await scanPublished({ today, stock: 5, has: async () => true, maxDays: 40 });
+    eq([capped.span, capped.published.size], [40, 40], 'every day published: stops at maxDays');
   });
 
   t('gotd published text: the puzzle with where it came from, the reviewer\'s rating and (if solved) the play time; the file means the same puzzle', () => {

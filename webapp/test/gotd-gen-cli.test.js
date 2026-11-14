@@ -135,7 +135,7 @@ test('gotd-gen: status and schedule print the pinned schedule and the queue', ()
 });
 
 test('gotd-gen: bad arguments and unknown commands exit 1 with a message', () => {
-  for (const args of [['nope'], [], ['fill', '--horizon', '0'], ['fill', '--today', '2026-11-22'], ['fill', '--per-slot', 'x'], ['schedule', '--days', '0']]) {
+  for (const args of [['nope'], [], ['fill', '--horizon', '0'], ['promote', '--horizon', '0'], ['promote', '--until', '2026-11-22'], ['promote', '--today', '20261122', '--until', '20261121'], ['fill', '--today', '2026-11-22'], ['fill', '--per-slot', 'x'], ['schedule', '--days', '0']]) {
     const r = run(...args, ...where);
     assert.equal(r.status, 1, args.join(' '));
     assert.match(r.stderr, /^gotd-gen: /, args.join(' '));
@@ -239,10 +239,32 @@ test('gotd-gen status: shows what is to review and the reviewed numbers per stam
   w.verdicts([w.say(c7a, 3), w.say(c8a, 1)]);
   let r = w.cli('status', '--today', '20261122');
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /review: 2 candidate\(s\) to review now/, `${c7a.id} is approved for 20261122, ${c8a.id} is rejected: the other 8x8 is for 20261123 and the sibling ${c7b.id} of the approved one is for the next open 7x7 day`);
+  assert.match(r.stdout, /review: 2 candidate\(s\) to review \(pending, this stamp: 1 can fill an open day, 1 extra\); 2 open day\(s\) of the next 3 without an approved candidate/,
+    `${c7a.id} is approved for 20261122, ${c8a.id} is rejected: three candidates in stock, so three days are looked at; the other 8x8 fills 20261123, the sibling ${c7b.id} of the approved one has no open 7x7 day there: extra`);
   r = w.cli('status', '--today', '20261122', '--horizon', '2');
-  assert.match(r.stdout, /review: 1 candidate\(s\) to review now .*; 1 such open day\(s\) of 2/, 'within two days only the 8x8 day is open and without an approved candidate');
+  assert.match(r.stdout, /review: 2 candidate\(s\) to review \(pending, this stamp: 1 can fill an open day, 1 extra\); 1 open day\(s\) of the next 2 without an approved candidate/, 'a given horizon limits the days looked at: only the 8x8 day is open and without an approved candidate');
   assert.match(r.stdout, /stamp a\d+-[0-9a-f]{8}: 2 reviewed, 1 approved \(50%\), 1 rejected, human - model grade: mean -?\d+\.\d\d, worst -?\d+\.\d/);
+});
+
+test('gotd-gen promote: no limit unless asked: every approved candidate gets the earliest open day of its size, past the days fill looked at; --until limits it', () => {
+  const w = world('p6'), [c7a, c7b, c8a, c8b] = w.index().candidates;
+  w.verdicts([c7a, c7b, c8a, c8b].map(c => w.say(c, 3)));
+  let r = w.cli('promote', '--today', '20261122', '--until', '20261123', '--dry-run');
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /would publish 2 day\(s\), 0 candidate\(s\) rejected, 0 open day\(s\) without an approved candidate/);
+  assert.deepEqual(fs.readdirSync(w.pub), [], 'a dry run writes nothing');
+  r = w.cli('promote', '--today', '20261122', '--until', '20261123');
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /publish: 20261122 7x7 <- /);
+  assert.match(r.stdout, /publish: 20261123 8x8 <- /);
+  assert.deepEqual(fs.readdirSync(w.pub).sort(), ['20261122.txt', '20261123.txt']);
+  assert.deepEqual(w.index().candidates.map(c => [c.id, c.status]).sort(), [[c7b.id, 'approved'], [c8b.id, 'approved']].sort(), 'the others stay approved in the queue');
+  r = w.cli('promote', '--today', '20261122');
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, new RegExp(`publish: 20261124 8x8 <- ${c8b.id}`), 'the next 8x8 day, past the two days fill looked at');
+  assert.match(r.stdout, new RegExp(`publish: 20261127 7x7 <- ${c7b.id}`), 'the next 7x7 day');
+  assert.match(r.stdout, /published 2 day\(s\)/);
+  assert.deepEqual(fs.readdirSync(w.pub).sort(), ['20261122.txt', '20261123.txt', '20261124.txt', '20261127.txt']);
 });
 
 test('gotd-gen promote: a verdict without a rating works; a candidate that fails the re-vet does not leave its day empty, the next approved one of that size takes it', () => {

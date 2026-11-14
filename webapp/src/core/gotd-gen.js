@@ -28,7 +28,8 @@ export const GOTD_CFG = {
   margin: 0.5,    // the score must clear the grade-3 cut by this share of a cut spacing (TARGET_CFG.margin is 0.15), so a small refit keeps it Hard
   retries: 12,    // tries (fresh start + hill-climb) of one generator run; 6x6 needs about two runs per accepted candidate, the larger sizes one
   perSlot: 3,     // candidates the queue keeps for every open day
-  horizon: 21,    // days ahead (counted from today) that get candidates
+  horizon: 30,    // days ahead (counted from today) that `fill` makes candidates for; review and promote have no such limit
+  maxDays: 366,   // the most days ahead review and promote look at: a safety cap, the candidates in stock decide how far they go
   maxAttemptsPerSlot: 40, // generator runs one slot may use in all before it is reported as starved
   bufferDays: 10, // published days ahead below which status warns: the same default as MIN_PUZZLE_DAYS of the prod deploy (which fails a strict deploy below it)
 };
