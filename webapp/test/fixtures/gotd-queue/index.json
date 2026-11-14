@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "slots": {
+    "20261122": {"size":7,"attempts":2},
+    "20261123": {"size":8,"attempts":2}
+  },
+  "candidates": [
+    {"id":"065c8ace4029","file":"c-7-065c8ace4029.txt","size":7,"slot":"20261122","attempt":0,"seed":542854701,"stamp":"a6-236876ea","status":"pending","K":7,"walls":5,"pathKey":"df9a4e65577fd529","trap":{"pred":2.552,"grade":3,"max":9,"top3":19,"deep":2,"altFrac":0.49,"lTr":7.235},"corr":{"wideFrac":0.235,"ladderGrade":4}},
+    {"id":"cab4d47b82aa","file":"c-7-cab4d47b82aa.txt","size":7,"slot":"20261122","attempt":1,"seed":526077082,"stamp":"a6-236876ea","status":"pending","K":8,"walls":5,"pathKey":"b43fd65f8bcd6443","trap":{"pred":2.574,"grade":3,"max":9,"top3":18,"deep":2,"altFrac":0.449,"lTr":6.323},"corr":{"wideFrac":0.421,"ladderGrade":4}},
+    {"id":"13043f26a1ea","file":"c-8-13043f26a1ea.txt","size":8,"slot":"20261123","attempt":0,"seed":2520773972,"stamp":"a6-236876ea","status":"pending","K":10,"walls":6,"pathKey":"dbf551f8c98699cc","trap":{"pred":2.563,"grade":3,"max":8,"top3":20,"deep":3,"altFrac":0.469,"lTr":6.184},"corr":{"wideFrac":0.429,"ladderGrade":2}},
+    {"id":"6e5ddcd529b2","file":"c-8-6e5ddcd529b2.txt","size":8,"slot":"20261123","attempt":1,"seed":2537551591,"stamp":"a6-236876ea","status":"pending","K":8,"walls":5,"pathKey":"ef62aa78a03d749c","trap":{"pred":2.924,"grade":4,"max":15,"top3":25,"deep":2,"altFrac":0.516,"lTr":7.409},"corr":{"wideFrac":0.174,"ladderGrade":4}}
+  ]
+}

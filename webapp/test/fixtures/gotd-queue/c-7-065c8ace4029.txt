@@ -1,0 +1,10 @@
+# Zip Puzzle — plain text format
+# size N
+# checkpoints r,c=n ...   (0-based row/col)
+# walls T,r,c ...        (T = H or V; H spans (r,c)-(r+1,c); V spans (r,c)-(r,c+1))
+# gotd candidate 065c8ace4029 for 20261122, attempt 0
+# seed 542854701: grade 3 (target 3+, inside the margin), 5 walls, 7 checkpoints, 2.4 s, 2721 changes, 7 tries
+# gen a6-236876ea: node tools/gen-target.mjs --size 7 --grade 3 --at-least --margin 0.5 --retries 12 --seed 542854701
+size 7
+checkpoints 1,2=3 2,0=5 2,3=6 3,1=4 4,4=2 5,1=7 5,5=1
+walls V,2,4 H,3,2 V,3,4 V,4,2 H,5,1

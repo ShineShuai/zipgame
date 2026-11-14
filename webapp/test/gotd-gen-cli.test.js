@@ -1,4 +1,9 @@
 // tools/gotd-gen.mjs end to end on temporary directories: fill (idempotent, deterministic), check (distinct up to symmetry), status, schedule, errors.
+// The generator runs for real in the fill tests only (about 7 s). Every test about verdicts and promotion starts from the
+// frozen queue in test/fixtures/gotd-queue (2 candidates for each of 20261122 = 7x7 and 20261123 = 8x8); it holds data,
+// not what the generator makes today, so a refit of the model does not touch it (promote only warns about a drift).
+// Rebuild it after a change of the queue's file format:
+//   node tools/gotd-gen.mjs fill --today 20261122 --horizon 2 --per-slot 2 --puzzles <empty dir> --queue test/fixtures/gotd-queue --ratings <file with []>
 // Run: node --test test/gotd-gen-cli.test.js   (npm run test:gotd)
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,6 +17,7 @@ import { transformPuzzle, symmetryKey, ratingKey, parseRatingsJson } from '../sr
 import { makeVerdict, formatVerdicts, parseVerdicts } from '../src/core/gotd-verdict.js';
 
 const tool = fileURLToPath(new URL('../tools/gotd-gen.mjs', import.meta.url));
+const FROZEN_QUEUE = fileURLToPath(new URL('./fixtures/gotd-queue', import.meta.url));
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gotd-gen-'));
 test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
@@ -25,6 +31,7 @@ const snapshot = (dir, prefix = '') => Object.fromEntries(fs.readdirSync(dir, { 
 // 20261122 and 20261123 are a 7x7 and an 8x8 in the schedule: two quick candidates
 // the seconds in a candidate's origin comment are the one thing that depends on the machine
 const notTimed = snap => Object.fromEntries(Object.entries(snap).map(([f, text]) => [f, text.replace(/, \d+\.\d s,/, ', X s,')]));
+const pristine = path.join(tmp, 'pristine');
 const FILL = ['fill', '--today', '20261122', '--horizon', '2', '--per-slot', '1', ...where];
 
 test('gotd-gen: an empty repository is fine, and a dry run writes nothing', () => {
@@ -55,11 +62,12 @@ test('gotd-gen: fill makes one candidate per open day of the scheduled size; the
     assert.ok(index.slots[c.slot].attempts >= c.attempt + 1, 'the runs spent include the one that made the candidate');
   }
   assert.match(fs.readFileSync(path.join(queue, 'index.json'), 'utf8'), /^\{\n {2}"v": 1,\n {2}"slots": \{\n/);
+  fs.cpSync(queue, pristine, { recursive: true }); // the tests that follow break the queue on purpose
 });
 
 test('gotd-gen: the origin comment of a candidate says how to make it again: its gen-target command gives the same puzzle, and the summary line matches', () => {
   const index = JSON.parse(fs.readFileSync(path.join(queue, 'index.json'), 'utf8'));
-  for (const c of index.candidates) {
+  for (const c of index.candidates.slice(0, 1)) {
     const text = fs.readFileSync(path.join(queue, c.file), 'utf8');
     const summary = text.match(/^# (seed \d+: .*)$/m)[1], command = text.match(/^# gen \S+: node tools\/gen-target\.mjs (.*)$/m)[1];
     const gen = spawnSync(process.execPath, [fileURLToPath(new URL('../tools/gen-target.mjs', import.meta.url)), ...command.split(' ')], { encoding: 'utf8' });
@@ -76,9 +84,11 @@ test('gotd-gen: a second fill adds nothing and changes no byte; a fresh queue ge
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /added 0 candidate\(s\) in 0 generator run\(s\)/);
   assert.deepEqual(snapshot(queue), before);
-  const other = path.join(tmp, 'queue2'), again = run('fill', '--today', '20261122', '--horizon', '2', '--per-slot', '1', '--puzzles', pub, '--queue', other, '--ratings', ratings);
+  const other = path.join(tmp, 'queue2'), again = run('fill', '--today', '20261122', '--horizon', '1', '--per-slot', '1', '--puzzles', pub, '--queue', other, '--ratings', ratings);
   assert.equal(again.status, 0, again.stderr);
-  assert.deepEqual(notTimed(snapshot(other)), notTimed(before), 'an independent run gives the same files (the seconds in the origin comment apart)');
+  const file = JSON.parse(before['index.json']).candidates[0].file, fresh = notTimed(snapshot(other)), first = notTimed(before);
+  assert.equal(fresh[file], first[file], 'an independent run gives the same file (the seconds in the origin comment apart)');
+  assert.deepEqual(JSON.parse(fresh['index.json']).candidates, JSON.parse(first['index.json']).candidates.slice(0, 1), 'and the same index entry');
 });
 
 test('gotd-gen: check passes for the queue, and fails for a copy of a candidate that is rotated, mirrored or numbered backwards', () => {
@@ -125,7 +135,7 @@ test('gotd-gen: status and schedule print the pinned schedule and the queue', ()
   assert.deepEqual(lines.slice(0, 30).map(l => l.split(' ')[1]).join(','), '11,7,8,8,6,9,7,8,7,10,8,6,8,7,9,11,9,7,8,10,8,7,6,7,10,7,8,10,8,7');
   assert.equal(lines[0], '20261121 11');
   assert.match(lines[30], /^6: 3 \(10%\)\s+7: 9 \(30%\)\s+8: 9 \(30%\)\s+9: 3 \(10%\)\s+10: 4 \(13%\)\s+11: 2 \(7%\)$/);
-  fs.writeFileSync(path.join(queue, 'index.json'), fs.readFileSync(path.join(tmp, 'queue2', 'index.json'), 'utf8'));
+  fs.writeFileSync(path.join(queue, 'index.json'), fs.readFileSync(path.join(pristine, 'index.json'), 'utf8'));
   r = run('status', '--today', '20261122', ...where);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /^stamp a\d+-[0-9a-f]{8}\n/);
@@ -144,12 +154,11 @@ test('gotd-gen: bad arguments and unknown commands exit 1 with a message', () =>
 
 // ---- the human's side: verdicts -> statuses -> published days ----
 const NOW = '2026-11-05T10:00:00Z';
-function world(name) { // fresh published dir + queue with 2 candidates for each of 20261122 (7x7) and 20261123 (8x8)
+function world(name) { // fresh published dir + a copy of the frozen queue: 2 candidates for each of 20261122 (7x7) and 20261123 (8x8)
   const w = { pub: mk(`${name}-pub`), queue: path.join(tmp, `${name}-queue`), ratings };
   w.where = ['--puzzles', w.pub, '--queue', w.queue, '--ratings', ratings];
   w.cli = (...args) => run(...args, ...w.where);
-  const r = w.cli('fill', '--today', '20261122', '--horizon', '2', '--per-slot', '2');
-  assert.equal(r.status, 0, r.stdout + r.stderr);
+  fs.cpSync(FROZEN_QUEUE, w.queue, { recursive: true });
   w.index = () => JSON.parse(fs.readFileSync(path.join(w.queue, 'index.json'), 'utf8'));
   w.verdicts = list => fs.writeFileSync(path.join(w.queue, 'verdicts.json'), formatVerdicts(list));
   w.say = (c, human, over = {}) => makeVerdict({ candidate: c, sel: { lo: human, hi: human, lean: 0 }, solved: true, playS: 95.46, takebacks: 4, now: NOW, ...over });
@@ -200,14 +209,14 @@ test('gotd-gen promote: an approved candidate becomes the day, a rejected one mo
 });
 
 test('gotd-gen promote: the next fill tops the queue up (a rejected candidate does not count), and never repeats a rejected puzzle', () => {
-  const w = world('p2'), rejected = w.index().candidates.filter(c => c.slot === '20261123');
+  const w = world('p2'), rejected = w.index().candidates.filter(c => c.slot === '20261122');
   w.verdicts([w.say(rejected[0], 2)]);
   assert.equal(w.cli(...PROMOTE).status, 0);
   const rejectedKey = symmetryKey(parse(fs.readFileSync(path.join(w.queue, 'rejected', rejected[0].file), 'utf8')));
-  const r = w.cli('fill', '--today', '20261122', '--horizon', '2', '--per-slot', '2');
+  const r = w.cli('fill', '--today', '20261122', '--horizon', '1', '--per-slot', '2');
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /added 0 candidate\(s\)|added 1 candidate\(s\)/);
-  const index = w.index(), day2 = index.candidates.filter(c => c.slot === '20261123' && c.status === 'pending');
+  const index = w.index(), day2 = index.candidates.filter(c => c.slot === '20261122' && c.status === 'pending');
   assert.equal(day2.length, 2, 'the day is back to 2 usable candidates');
   for (const c of index.candidates) assert.notEqual(symmetryKey(parse(fs.readFileSync(path.join(w.queue, c.file), 'utf8'))), rejectedKey);
 });

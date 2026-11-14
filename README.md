@@ -63,9 +63,10 @@ npm run bench     # solver and generator benchmark (about 2 minutes)
 npm run golden    # print fresh golden hashes, see "Determinism"
 ```
 
-`npm run test:themes` tests the theme tooling and `npm run test:server` the backend code in
-`webapp/server/`. More tools (rating fits, Game of the Day seeding, benchmarks) are in
-[`webapp/tools/`](webapp/tools/README.md).
+`npm run test:themes` tests the theme tooling, `npm run test:server` the backend code in
+`webapp/server/` and `npm run test:tools` the research tools (fits, simulations, evaluations; about
+40 s, not part of `npm test`, run it after changing them). More tools (rating fits, Game of the Day
+seeding, benchmarks) are in [`webapp/tools/`](webapp/tools/README.md).
 
 ## Play app
 
