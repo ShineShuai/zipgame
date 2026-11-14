@@ -3882,7 +3882,7 @@ ballViewTests(t, ok, eq);
 solidTests(t, ok, eq, ta);
 generationTests(t, ok, eq, ta);
 gotdGenTests(t, ok, eq);
-gotdVerdictTests(t, ok, eq);
+gotdVerdictTests(t, ok, eq, ta);
 themeTests(t, ok, eq);
 themeSystemTests(t, ok, eq, ta);
 themeCalendarTests(t, ok, eq);

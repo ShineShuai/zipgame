@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // The automatic Game of Day: a queue of candidate puzzles that are Hard or harder, distinct from every puzzle we have, with the sizes of a fixed schedule.
-//   node tools/gotd-gen.mjs fill     [--today YYYYMMDD] [--horizon 21] [--per-slot 3] [--max-new 24] [--max-attempts 120] [--dry-run] [--summary FILE] [--annotations]
-//   node tools/gotd-gen.mjs promote  [--today YYYYMMDD] [--horizon 21] [--dry-run] [--summary FILE] [--annotations]   verdicts -> statuses, approved candidates -> published days
+//   node tools/gotd-gen.mjs fill     [--today YYYYMMDD] [--horizon 30] [--per-slot 3] [--max-new 24] [--max-attempts 120] [--dry-run] [--summary FILE] [--annotations]
+//   node tools/gotd-gen.mjs promote  [--today YYYYMMDD] [--until YYYYMMDD | --horizon N] [--dry-run] [--summary FILE] [--annotations]   verdicts -> statuses, approved candidates -> published days
 //   node tools/gotd-gen.mjs check    [--annotations]       every puzzle of the published days, the queue and its rejected ones is distinct; index and verdicts.json are valid (exit 1 if not)
-//   node tools/gotd-gen.mjs status   [--today YYYYMMDD] [--horizon 21]    stamp, days ahead, queue by size, the next 14 days
+//   node tools/gotd-gen.mjs status   [--today YYYYMMDD] [--horizon N]    stamp, days ahead, queue by size, the next 14 days
 //   node tools/gotd-gen.mjs schedule [--from YYYYMMDD] [--days 28]    the size of each day and how often each size occurs
 //   node tools/gotd-gen.mjs merge    --from FILE[,FILE...] [--dry-run]    verdicts.json files of other devices -> <queue>/verdicts.json (newer wins, a tie goes to reject)
 //   node tools/gotd-gen.mjs harvest  [--from FILE[,FILE...]] [--solved-only] [--dry-run]    rated verdicts -> new rows of the ratings file (the labels of every grading fit)
@@ -20,8 +20,8 @@
 //   <queue>/index.json (what the gates measured, the attempts spent per day, the status).
 // promote: the human's side. The design app's "GOTD review" panel plays a pending candidate blind and the reviewer rates it; its export is <queue>/verdicts.json
 //   (src/core/gotd-verdict.js: the reviewer's Approve / Reject decides, a rating is optional and only suggests). The panel offers the candidates in the order of the open days
-//   they fill (planReview of src/core/gotd-queue.js: a published, past or already covered day is never offered). promote sets the status of every candidate that has a verdict (a rejected one moves to <queue>/rejected/, where it stays
-//   blocked as a duplicate), then gives every open day (no file yet, today .. today + horizon) an approved candidate of its size: it is re-vetted with the code of today (a puzzle
+//   they fill, then the extra ones that no open day needs (planReview of src/core/gotd-queue.js: a published, past or already covered day is never offered). promote sets the status of every candidate that has a verdict (a rejected one moves to <queue>/rejected/, where it stays
+//   blocked as a duplicate), then gives every approved candidate the earliest open day (no file yet) of its size, as far ahead as it takes (the approval is the gate; --until or --horizon limit it): it is re-vetted with the code of today (a puzzle
 //   that is no longer unique, valid or distinct is not published; one that only misses the grade or margin of the current model IS published, with a warning: the human judged it),
 //   written as demo/GameOfDay/YYYYMMDD.txt with the reviewer's rating and play time in comments, and removed from the queue. An approved candidate that fails the re-vet
 //   (exit 1) does not leave its day empty: the next approved candidate of that size takes the day. `fill` and `status` read the verdicts too.
@@ -191,7 +191,9 @@ function fill() {
 
 // ---- promote ----
 function promote() {
-  const today = dayArg('today', todayUtc()), horizon = int('horizon', GOTD_CFG.horizon, 1), dry = flag('dry-run');
+  const today = dayArg('today', todayUtc()), dry = flag('dry-run');
+  const until = dayArg('until'), horizon = until !== undefined ? until - today + 1 : opt('horizon') === undefined ? undefined : int('horizon', 0, 1); // no limit unless asked
+  if (horizon !== undefined && horizon < 1) die('--until is before today');
   const { verdicts, index: applied, changed } = readState();
   for (const c of changed) console.log(`verdict: ${c.id} ${c.from} -> ${c.to}`);
   const published = txtFiles(dir.puzzles).map(loadPuzzle);
@@ -255,7 +257,7 @@ function promote() {
 
 // ---- status / schedule ----
 function status() {
-  const today = dayArg('today', todayUtc()), horizon = int('horizon', GOTD_CFG.horizon, 1), stamp = genStamp(), { index, verdicts } = readState();
+  const today = dayArg('today', todayUtc()), horizon = opt('horizon') === undefined ? undefined : int('horizon', 0, 1), stamp = genStamp(), { index, verdicts } = readState();
   const published = txtFiles(dir.puzzles).map(loadPuzzle).filter(r => !r.error), dates = publishedDates(published);
   let ahead = 0;
   while (dates.has(dateOfDay(today + ahead))) ahead++;
@@ -265,8 +267,9 @@ function status() {
     const c = index.candidates.filter(x => x.size === +n), cnt = f => c.filter(f).length;
     console.log(`  ${n}x${n}: ${cnt(x => x.status === 'pending' && x.stamp === stamp)} / ${cnt(x => x.status === 'pending' && x.stamp !== stamp)} / ${cnt(x => x.status === 'approved')} / ${cnt(x => x.status === 'rejected')}`);
   }
-  const stats = reviewStats(verdicts), { queue: toReview, open } = planReview({ today, horizon, published: dates, index, verdicts, stamp });
-  console.log(`review: ${toReview.length} candidate(s) to review now (pending, this stamp, of the size of an open day that has no approved candidate yet); ${open.length} such open day(s) of ${horizon}`);
+  const stats = reviewStats(verdicts), { queue: toReview, open, span } = planReview({ today, horizon, published: dates, index, verdicts, stamp, reserve: true });
+  const fit = toReview.filter(c => c.date).length;
+  console.log(`review: ${toReview.length} candidate(s) to review (pending, this stamp: ${fit} can fill an open day, ${toReview.length - fit} extra); ${open.length} open day(s) of the next ${span} without an approved candidate`);
   for (const [st, v] of Object.entries(stats)) console.log(`  stamp ${st}: ${v.reviewed} reviewed, ${v.approved} approved (${Math.round(100 * v.approved / v.reviewed)}%), ${v.rejected} rejected${v.reviewed ? `, human - model grade: mean ${(v.sumErr / v.reviewed).toFixed(2)}, worst ${v.worst.toFixed(1)}` : ''}`);
   console.log('next 14 days:');
   for (let day = today; day < today + 14; day++) {

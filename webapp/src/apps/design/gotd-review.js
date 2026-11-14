@@ -1,21 +1,20 @@
 // The design app's "GOTD review" panel: plays the pending candidates of the automatic Game of Day (tools/gotd-gen.mjs, demo/GameOfDay-queue/) blind, one after the
-// other, in the order of the open days they would fill (planReview of core/gotd-queue.js), and records what the reviewer decides: Approve or Reject by the button, with a
+// other, the ones an open day needs first (planReview of core/gotd-queue.js), then the extra ones, and records what the reviewer decides: Approve or Reject by the button, with a
 // rating (optional; Hard or more only suggests approve, see core/gotd-verdict.js) or Skip. What the trap model said is never shown.
 //
 // Data: <queue>/index.json and <queue>/verdicts.json are read from the site the page is served from (the repository root: `python3 -m http.server` there, then open
-// webapp/design.html), and so is which days already have a file (HEAD requests on ../demo/GameOfDay/YYYYMMDD.txt, today up to the horizon: a published day is never
-// offered again); the reviewer's verdicts are kept in this browser (zip_gotd_verdicts). A verdict carries the puzzle's text (`key`) and its rating, so
+// webapp/design.html), and so is which days already have a file (HEAD requests on ../demo/GameOfDay/YYYYMMDD.txt from today, as far as the candidates in stock reach, see
+// scanPublished: a published day is never offered again; no horizon limits the review); the reviewer's verdicts are kept in this browser (zip_gotd_verdicts). A verdict carries the puzzle's text (`key`) and its rating, so
 // `node tools/gotd-gen.mjs harvest` can turn the rated ones into rows of tools/ratings.json, the labels every grading fit reads; verdicts from several devices merge
 // by Import… here or `node tools/gotd-gen.mjs merge --from FILE,FILE`. "Export verdicts.json" downloads the repository's verdicts merged with the
 // local ones: put it at demo/GameOfDay-queue/verdicts.json, commit it, run `node tools/gotd-gen.mjs promote`. (A later step will write them back by itself.)
 //
 // main.js gives the panel what it cannot do alone (host): show(text) puts a puzzle on the board, play() starts Play mode, state() = { elapsed, length, total }, stopPlay().
 // main.js tells the panel what happens on the board: onEnter() when Play starts, onPlay({ length, finished }) after every change of the path.
-import { genStamp, GOTD_CFG } from '../../core/gotd-gen.js';
-import { parseIndex, planReview } from '../../core/gotd-queue.js';
-import { dateOfDay } from '../../core/gotd-schedule.js';
+import { genStamp } from '../../core/gotd-gen.js';
+import { parseIndex, planReview, scanPublished, usable } from '../../core/gotd-queue.js';
 import {
-  APPROVE_MIN, GRADE_NAMES, parseVerdicts, formatVerdicts, mergeVerdicts, makeVerdict, nextSelection, nextLean, toggleUnsure, createTakebacks, decide,
+  APPROVE_MIN, GRADE_NAMES, applyVerdicts, parseVerdicts, formatVerdicts, mergeVerdicts, makeVerdict, nextSelection, nextLean, toggleUnsure, createTakebacks, decide,
 } from '../../core/gotd-verdict.js';
 import { ratingFromSelection, describeRating, ratingKey } from '../../core/ratings-io.js';
 import { pickStorage } from '../../platform/storage.js';
@@ -43,7 +42,6 @@ export function mountGotdReview(root, host, { fetchFn = (...a) => fetch(...a), n
       <button type="button" class="diff-log-btn" data-act="load" title="Read demo/GameOfDay-queue/index.json and verdicts.json from the site this page is served from">Load queue</button>
       <button type="button" class="diff-log-btn" data-act="next" title="Put the next candidate (for the earliest open day) on the board and start Play mode; its grade is not shown">Review next ▶</button>
     </div>
-    <label class="gr-check"><input type="checkbox" data-el="reserve"> also candidates that no open day needs (last)</label>
     <div class="gr-now" data-el="now"></div>
     <div class="gr-row" data-el="playBtns" style="display:none">
       <button type="button" class="diff-log-btn" data-act="giveup" title="Stop here: rate how hard it was, it counts as not solved">I give up</button>
@@ -71,14 +69,17 @@ export function mountGotdReview(root, host, { fetchFn = (...a) => fetch(...a), n
   const merged = () => mergeVerdicts(repo, local);
   const unsent = () => { const r = new Map(repo.map(v => [v.id, v])); return local.filter(v => { const o = r.get(v.id); return !o || o.at < v.at; }).length; };
   const today = () => utcDay(now());
-  // the plan of the review: the candidates in the order of the open days they fill, the days still without an approved one, and which day an approved one gets
-  const plan = () => (index ? planReview({ today: today(), published, index, verdicts: merged(), stamp: genStamp(), reserve: el('reserve').checked }) : { queue: [], open: [], plan: [] });
+  // the plan of the review: the candidates in the order of the open days they fill, then the extra ones (no open day needs them), the days still without an approved one,
+  // and which day an approved one gets; no horizon: the days looked at are as many as the candidates in stock can fill
+  const plan = () => (index ? planReview({ today: today(), published, index, verdicts: merged(), stamp: genStamp(), reserve: true }) : { queue: [], open: [], plan: [], span: 0 });
   const queue = () => plan().queue.filter(c => !skipped.has(c.id));
+  // pending candidates of another generator stamp (a refit or a code change makes a new one) are not offered: fill makes new ones
+  const stale = () => (index ? applyVerdicts(index, merged()).index.candidates.filter(c => c.status === 'pending' && c.stamp !== genStamp()).length : 0);
 
   function paint() {
-    const q = queue(), approved = merged().filter(v => v.verdict === 'approve').length;
+    const p = plan(), q = p.queue.filter(c => !skipped.has(c.id)), fit = q.filter(c => c.date).length, old = stale(), approved = merged().filter(v => v.verdict === 'approve').length;
     const rated = merged().filter(v => v.human !== undefined).length;
-    el('counts').textContent = !loaded ? 'Not loaded.' : `${q.length} to review · ${plan().open.length} open day(s) without an approved one · ${merged().length} verdicts (${approved} approved, ${rated} rated) · ${unsent()} not in the repository's verdicts.json yet`;
+    el('counts').textContent = !loaded ? 'Not loaded.' : `${q.length} to review (${fit} can fill an open day, ${q.length - fit} extra) · ${p.open.length} open day(s) of the next ${p.span} without an approved one · ${merged().length} verdicts (${approved} approved, ${rated} rated) · ${unsent()} not in the repository's verdicts.json yet${old ? ` · ${old} pending candidate(s) of an older generator stamp are not offered (run fill)` : ''}`;
     act('next').disabled = !loaded || phase === 'playing' || phase === 'rating';
     el('playBtns').style.display = phase === 'playing' ? '' : 'none';
     el('rate').style.display = phase === 'rating' ? '' : 'none';
@@ -104,14 +105,12 @@ export function mountGotdReview(root, host, { fetchFn = (...a) => fetch(...a), n
     return r.text();
   }
 
-  // The days from today up to the horizon that already have a file (a HEAD request each): a day that has one is never offered again.
-  async function publishedDays() {
-    const first = today(), found = new Set();
-    await Promise.all(Array.from({ length: GOTD_CFG.horizon }, async (_, i) => {
-      const date = dateOfDay(first + i), r = await fetchFn(`${puzzles}${date}.txt`, { method: 'HEAD', cache: 'no-store' });
-      if (r.ok) found.add(date); else if (r.status !== 404) throw new Error(`${puzzles}${date}.txt: HTTP ${r.status}`);
-    }));
-    return found;
+  // Does the day have a file? One HEAD request: a day that has one is never offered again.
+  async function has(date) {
+    const r = await fetchFn(`${puzzles}${date}.txt`, { method: 'HEAD', cache: 'no-store' });
+    if (r.ok) return true;
+    if (r.status !== 404) throw new Error(`${puzzles}${date}.txt: HTTP ${r.status}`);
+    return false;
   }
 
   async function load() {
@@ -119,8 +118,8 @@ export function mountGotdReview(root, host, { fetchFn = (...a) => fetch(...a), n
     try {
       const it = await getText('index.json'), vt = await getText('verdicts.json', true);
       index = parseIndex(it); repo = vt ? parseVerdicts(vt) : [];
-      published = await publishedDays();
       await loadLocal();
+      published = (await scanPublished({ today: today(), stock: applyVerdicts(index, merged()).index.candidates.filter(c => usable(c, genStamp())).length, has })).published;
       skipped.clear();
       loaded = true; phase = 'idle'; current = null;
       say(`Queue loaded (generator stamp ${genStamp()}).`);
@@ -134,7 +133,7 @@ export function mountGotdReview(root, host, { fetchFn = (...a) => fetch(...a), n
 
   async function next(saved = '') { // `saved`: what to say first (the verdict that was just saved)
     const c = queue()[0], tell = text => say(`${saved} ${text}`.trim());
-    if (!c) { phase = 'idle'; current = null; el('now').textContent = ''; tell(!loaded ? 'Load the queue first.' : `Nothing left to review.${plan().open.length ? ' Days without an approved candidate are left: run node tools/gotd-gen.mjs fill.' : ''}`); paint(); return; }
+    if (!c) { phase = 'idle'; current = null; el('now').textContent = ''; tell(!loaded ? 'Load the queue first.' : `Nothing left to review.${stale() ? ` ${stale()} pending candidate(s) of an older generator stamp are not offered.` : ''} Run node tools/gotd-gen.mjs fill for more.`); paint(); return; }
     tell('');
     try {
       const text = await getText(c.file);
@@ -142,7 +141,7 @@ export function mountGotdReview(root, host, { fetchFn = (...a) => fetch(...a), n
       current = c; currentKey = ratingKey(text); solved = false; playS = 0; sel = null; phase = 'playing';
       takebacks.reset();
       host.play();
-      el('now').textContent = `Reviewing for day ${c.date || '(no open day needs it)'} · ${c.size}×${c.size} (${queue().length} to review). Solve it, then decide.`;
+      el('now').textContent = `Reviewing for day ${c.date || '(extra: no open day needs it)'} · ${c.size}×${c.size} (${queue().length} to review). Solve it, then decide.`;
     } catch (e) { tell(`Cannot load ${c.file}: ${e.message}`); phase = 'idle'; current = null; }
     paint();
   }
@@ -191,7 +190,6 @@ export function mountGotdReview(root, host, { fetchFn = (...a) => fetch(...a), n
       default: break;
     }
   });
-  el('reserve').addEventListener('change', paint);
   el('file').addEventListener('change', async e => {
     const f = e.target.files && e.target.files[0]; if (!f) return;
     try {
