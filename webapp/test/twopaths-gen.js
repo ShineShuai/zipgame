@@ -87,7 +87,7 @@ export function twoPathsGenTests(t, ok, eq) {
     ok(seen.size > 15, `${seen.size} different layouts of 20`);
   });
 
-  t('twopaths-gen: generate — valid, one solution, the stored path solves it, walls off its edges', () => {
+  t.slow('twopaths-gen: generate — valid, one solution, the stored path solves it, walls off its edges', () => {
     for (const n of [4, 5, 6, 7]) {
       for (let seed = 1; seed <= 5; seed++) {
         const p = game(n, seed);
@@ -112,7 +112,7 @@ export function twoPathsGenTests(t, ok, eq) {
     }
   });
 
-  t('twopaths-gen: every wall left is needed (taking any one out makes a second solution)', () => {
+  t.slow('twopaths-gen: every wall left is needed (taking any one out makes a second solution)', () => {
     for (const n of [5, 6]) {
       for (let seed = 1; seed <= 6; seed++) {
         const p = game(n, seed);
@@ -127,7 +127,7 @@ export function twoPathsGenTests(t, ok, eq) {
     }
   });
 
-  t('twopaths-gen: same seed, same puzzle; other seeds, other puzzles', () => {
+  t.slow('twopaths-gen: same seed, same puzzle; other seeds, other puzzles', () => {
     eq(serialize(game(6, 9)), serialize(game(6, 9)));
     const seen = new Set();
     for (let seed = 1; seed <= 8; seed++) seen.add(serialize(game(6, seed)));

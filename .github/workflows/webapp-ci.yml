@@ -62,10 +62,16 @@ jobs:
       - name: Syntax and import check
         run: npm run check
 
-      # Includes the golden puzzles: a changed hash means the generator output changed
-      # and ALGO_VERSION has to be bumped (see README).
-      - name: Unit tests
+      # Node 20 runs the fast tier: the tests that are not marked slow (test/harness.js), about 30 s.
+      - name: Unit tests (fast tier)
+        if: matrix.node == 20
         run: npm test
+
+      # Node 22 runs every test. The slow tier includes the golden puzzles: a changed hash means the generator
+      # output changed and ALGO_VERSION has to be bumped (see README).
+      - name: Unit tests (all tiers)
+        if: matrix.node == 22
+        run: npm run test:all
 
       # The themes themselves: every one packs into a bundle the app accepts, contrast, budgets, the site build.
       - name: Theme tests

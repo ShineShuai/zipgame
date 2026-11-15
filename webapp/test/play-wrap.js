@@ -73,7 +73,7 @@ export function wrapPlayTests(t, ta, ok, eq) {
     eq(step(p, path, cellAt(5.2, 2.5)), null, 'a wall on the seam blocks it');
   });
 
-  t('wrap-play: pathD: grid path unchanged; a seam step is two stubs inside the margin', () => {
+  t.slow('wrap-play: pathD: grid path unchanged; a seam step is two stubs inside the margin', () => {
     for (const n of [4, 5]) {
       const plain = [0, 1, 2, n + 2, n + 1];
       const expect = plain.map((i, k) => (k ? 'L' : 'M') +
@@ -95,7 +95,7 @@ export function wrapPlayTests(t, ta, ok, eq) {
     }
   });
 
-  t('wrap-play: no drawn segment of a wrap path is longer than one cell', () => {
+  t.slow('wrap-play: no drawn segment of a wrap path is longer than one cell', () => {
     const n = 6, s = 60;
     for (let seed = 1; seed <= 10; seed++) {
       const p = wrapGame(n, seed), d = pathD(n, p.path, s, true);

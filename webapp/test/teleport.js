@@ -274,7 +274,7 @@ export function teleportTests(t, ok, eq) {
     ok(symmetryKey(other) !== symmetryKey(a));
   });
 
-  t('teleport: the solver matches a plain brute-force search under every '
+  t.slow('teleport: the solver matches a plain brute-force search under every '
     + 'pruning option (random boards)', () => {
     const OPTIONS = [
       {}, { prop: true }, { prop: true, incr: false }, { prop: true, incr: false, fast: false },

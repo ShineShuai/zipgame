@@ -78,7 +78,7 @@ export function wrapGenTests(t, ok, eq) {
     ok(differs > 0, `the wrap distances change some placements (${differs} of 30)`);
   });
 
-  t('wrap-gen: generate(wrap): unique torus puzzles (brute force n 3, 4; plain search 5)', () => {
+  t.slow('wrap-gen: generate(wrap): unique torus puzzles (brute force n 3, 4; plain search 5)', () => {
     for (const [n, count] of [[3, 12], [4, 12], [5, 6]]) {
       for (let s = 1; s <= count; s++) {
         const p = run(generate(n, s, { wrap: true }));
@@ -98,7 +98,7 @@ export function wrapGenTests(t, ok, eq) {
     }
   });
 
-  t('wrap-gen: every wall of a generated torus puzzle is needed (removing it adds one)', () => {
+  t.slow('wrap-gen: every wall of a generated torus puzzle is needed (removing it adds one)', () => {
     for (const n of [4, 5]) {
       for (let s = 1; s <= 8; s++) {
         const p = run(generate(n, 40 + s, { wrap: true }));
@@ -127,7 +127,7 @@ export function wrapGenTests(t, ok, eq) {
     }
   });
 
-  t('wrap-gen: seam walls and steps occur; torus puzzles need more walls than grid ones', () => {
+  t.slow('wrap-gen: seam walls and steps occur; torus puzzles need more walls than grid ones', () => {
     let seamWalls = 0, seamSteps = 0, torusWalls = 0, gridWalls = 0;
     const N = 20, n = 5;
     for (let s = 1; s <= N; s++) {

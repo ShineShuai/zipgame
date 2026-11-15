@@ -1,4 +1,5 @@
-// Runs in the browser (open test/index.html via a local server) and in Node (node test/tests.js). No dependencies.
+// Unit tests of the core, the features and the play app, in Node: node test/tests.js, or npm test (see test/harness.js for the
+// tiers and for picking one test). The suites of the variants and the apps are registered at the end of this file.
 import { makePuzzle, clonePuzzle, validate, maxNumber, ALGO_VERSION, endCell, checkpointCells, cellCount } from '../src/core/model.js';
 import { edgeId, edgeCells, allEdges, edgeToKey, keyToEdge, setWallId, hasWallId, wallCount, wallIds } from '../src/core/edges.js';
 import { serialize, parse, commentTimes } from '../src/core/format.js';
@@ -116,11 +117,7 @@ import { gotdVerdictTests } from './gotd-verdict.js';
 // The ball boards are in a catalog of their own that the apps load when needed; the tests have it.
 registerBalls(BALL_CATALOG);
 
-// ---- mini harness ----
-const out = []; let pass = 0, fail = 0;
-const t = (name, fn) => { const t0 = Date.now(); try { fn(); pass++; out.push(`ok    ${name} (${Date.now() - t0}ms)`); } catch (e) { fail++; out.push(`FAIL  ${name}: ${e.message}`); } };
-const eq = (a, b, m = '') => { const A = JSON.stringify(a), B = JSON.stringify(b); if (A !== B) throw new Error(`${m} expected ${B} got ${A}`); };
-const ok = (c, m = 'assertion failed') => { if (!c) throw new Error(m); };
+import { t, ta, eq, ok, registerAsyncTests } from './harness.js';
 
 const randPuzzle = (seed, n, K, wallFrac) => {
   const rnd = makeRng(seed), p = makePuzzle(n), T = n * n, cells = shuffle([...Array(T).keys()], rnd).slice(0, K);
@@ -258,7 +255,7 @@ t('solver: plain and with every pruning option (alone, all together) match brute
     }
   }
 });
-t('solver: every pruning option alone, all together, and random combinations keep count, paths and DFS order, and never cost a node', () => {
+t.slow('solver: every pruning option alone, all together, and random combinations keep count, paths and DFS order, and never cost a node', () => {
   const rnd = makeRng(2024), names = Object.keys(PRUNE_OPTIONS), pick = list => list[Math.floor(rnd() * list.length)];
   const singles = names.flatMap(name => PRUNE_OPTIONS[name].map(level => ({ [name]: level })));
   let toggles = 0;
@@ -634,7 +631,7 @@ t('solver prune: overlay dead-end flag and solver noDeadEnd agree (random puzzle
     eq(noDeadEnd(head), !headAdjacentDead, `trial ${trial}: noDeadEnd(head) must disagree with the overlay only never`);
   }
 });
-t('generate: ALGO_VERSION 6 golden puzzles cover every play size below 16 and are valid and unique', () => {
+t.slow('generate: ALGO_VERSION 6 golden puzzles cover every play size below 16 and are valid and unique', () => {
   eq(ALGO_VERSION, 6);
   for (const n of PLAY_SIZES.filter(size => size < 16)) {
     ok(GOLDEN.some(([size]) => size === n), `no golden puzzle for play size ${n}`);
@@ -862,7 +859,7 @@ t('minimizeFully: no budget = minimizeWalls exactly; with a budget it reaches a 
   eq(REFINE_CAP_X, [8, 32, 128]);
 });
 
-t('generate(): the deeper look at undecided walls never adds walls to the winner and keeps it valid and unique with every kept wall needed', () => {
+t.slow('generate(): the deeper look at undecided walls never adds walls to the winner and keeps it valid and unique with every kept wall needed', () => {
   for (const [n, seed] of [[9, 3], [10, 1]]) {
     const off = runSync(generate(n, seed, { refineNodes: 0 })), on = runSync(generate(n, seed));
     const walls = p => wallCount(p.walls ? p : p);
@@ -894,7 +891,7 @@ let sampleCache = null; const cachedSamples = () => sampleCache ??= sampleUnique
 
 // ---- solver speedups: fast path, local connectivity, mustUse, freedEdge, bound ----
 
-t('solver: incremental prop, fast path and local connectivity change nothing but speed (nodes, count, paths, DFS order, decision counters)', () => {
+t.slow('solver: incremental prop, fast path and local connectivity change nothing but speed (nodes, count, paths, DFS order, decision counters)', () => {
   let cmp = 0;
   const REF = { incr: false, fast: false, lconn: false }; // the from-scratch propagation and plain flood fill
   const same = (p, extra, limit, label) => {
@@ -1135,7 +1132,7 @@ t('calibration: calibrateAll shares ONE generation pass across metrics — same 
   // the same seed — same generation stream, same quantile cuts.
   eq(calibrate([5, 6], 42, 3).thresholds, res.decisionNodes.thresholds);
 });
-t('calibration: calibrateMetric reproduces calibrateAll for the same metric/seed (single-metric path is not a different algorithm)', () => {
+t.slow('calibration: calibrateMetric reproduces calibrateAll for the same metric/seed (single-metric path is not a different algorithm)', () => {
   const all = calibrateAll([5, 6], 7, 3);
   for (const id of Object.keys(GRADED_METRICS)) eq(calibrateMetric(id, [5, 6], 7, 3).thresholds, all[id].thresholds, id);
 });
@@ -1256,8 +1253,6 @@ t('spatial: spatialMetrics on a real generated puzzle returns finite, non-negati
 // ---- per-size daily counters & today/total stats (fake storage + fake clock) ----
 const fakeStorage = (quota = Infinity) => { const m = new Map(), size = () => [...m].reduce((a, [k, v]) => a + k.length + v.length, 0); return { data: m, async get(k) { return m.has(k) ? { value: m.get(k) } : null; }, async set(k, v) { const old = m.has(k) ? k.length + m.get(k).length : 0; if (size() - old + k.length + v.length > quota) return false; m.set(k, v); return true; }, async remove(k) { m.delete(k); }, async keys(p = '') { return [...m.keys()].filter(k => k.startsWith(p)); } }; };
 const atDay = d => () => new Date(Date.UTC(2026, 8, d, 12));
-const pending = [];
-const ta = (name, fn) => pending.push([name, fn]); // async tests, run after the sync ones
 
 ta('run: a signal stops runAsync at once: the generator is closed, no event follows, the promise rejects with AbortError', async () => {
   let steps = 0, closed = false;
@@ -1418,7 +1413,7 @@ t('play app: the hold-V reveal shows the sum of all steps per cell next to max a
   ok(!difficultyDevHtml().includes('· sum '), 'metrics without it show nothing and do not throw');
   Object.assign(playState, saved);
 });
-t('trap: One way arrows — wrong turns are the moves the arrows allow, no ladder, only trapMax and trapTop3 in the score; Cutout — no altFrac term; both graded by playGradesFor', () => {
+t.slow('trap: One way arrows — wrong turns are the moves the arrows allow, no ladder, only trapMax and trapTop3 in the score; Cutout — no altFrac term; both graded by playGradesFor', () => {
   for (const [n, seed] of [[6, 3], [7, 4], [8, 3]]) {
     const pa = runSync(generateArrows(n, seed)), g = playGradesFor(pa), { out } = buildMoves(pa);
     ok(g.trap.ok, 'graded'); eq(g.legacy, null, 'no old grades for a variant'); eq(g.trap.ladTrials, 0, 'the undirected ladder is not run');
@@ -1607,7 +1602,7 @@ t('target: the band of a grade is read from the model cuts; open at both ends; t
   eq([narrow.a, narrow.b].map(x => +x.toFixed(2)), [1.03, 1.07]);
   eq([missOf(0.5, b2), missOf(2.5, b2), missOf(3.4, b2)].map(x => +x.toFixed(2)), [1.65, 0, 0.55]);
 });
-t('target: generateTargeted is deterministic and returns a unique puzzle whose reported grade is its trap grade', () => {
+t.slow('target: generateTargeted is deterministic and returns a unique puzzle whose reported grade is its trap grade', () => {
   for (const [n, g, seed] of [[6, 1, 1], [7, 3, 2]]) {
     const a = runSync(generateTargeted(n, g, seed)), b = runSync(generateTargeted(n, g, seed));
     ok(a.puzzle && a.unique, 'a puzzle');
@@ -1621,7 +1616,7 @@ t('target: generateTargeted is deterministic and returns a unique puzzle whose r
     ok(a.K >= Kmin && a.K <= Kmax && a.K === maxNumber(a.puzzle), `K ${a.K} stays in generate()'s range ${Kmin}..${Kmax}`);
   }
 });
-t('target: every grade the generator can show is reachable (this is what to look at after a refit: node tools/target-eval.mjs)', () => {
+t.slow('target: every grade the generator can show is reachable (this is what to look at after a refit: node tools/target-eval.mjs)', () => {
   let hit = 0, total = 0;
   for (const g of [0, 1, 2, 3]) for (const seed of [1, 2]) { const r = runSync(generateTargeted(7, g, seed * 31 + g)); total++; if (r.hit) hit++; }
   ok(hit >= 0.75 * total, `${hit}/${total} targets hit at 7x7, grades 0-3`);
@@ -1639,7 +1634,7 @@ t('target: wall-minimal mode keeps only needed walls and the reported grade is t
   const c = runSync(generateTargeted(8, 5, 3, { retries: 1, effort: 0.2 }));
   ok(c.puzzle && validate(c.puzzle).ok && c.tries === 1 && c.proposals <= proposalBudget(8, 0.2) + 2, 'one try of little depth ends the run and returns the closest puzzle');
 });
-t('target: the retry cap is a count (same arguments = same puzzle), more retries only add tries, and the limits hold', () => {
+t.slow('target: the retry cap is a count (same arguments = same puzzle), more retries only add tries, and the limits hold', () => {
   const a = runSync(generateTargeted(7, 4, 3, { retries: 1 })), a2 = runSync(generateTargeted(7, 4, 3, { retries: 1 })), b = runSync(generateTargeted(7, 4, 3, { retries: 3 }));
   eq([serialize(a.puzzle), a.proposals], [serialize(a2.puzzle), a2.proposals], 'deterministic');
   ok(b.tries <= 3 && b.tries >= a.tries && b.proposals >= a.proposals, 'retries only add tries');
@@ -1647,7 +1642,7 @@ t('target: the retry cap is a count (same arguments = same puzzle), more retries
   const l = runSync(generateTargeted(7, 3, 5, { retries: Infinity, maxWalls: 12, maxCheckpoints: 8 }));
   ok(l.hit && l.walls <= 12 && l.K <= 8, `limits: ${l.walls} walls, ${l.K} checkpoints`);
 });
-t('ladder: the incremental territory (distances kept per state, cut fields re-run, exact edge test skipped when nothing changed) = the from-scratch one', () => {
+t.slow('ladder: the incremental territory (distances kept per state, cut fields re-run, exact edge test skipped when nothing changed) = the from-scratch one', () => {
   const strip = r => JSON.stringify({ ...r, ms: 0 });
   let skipped = 0;
   for (let n = 5; n <= 8; n++) for (let seed = 1; seed <= 3; seed++) {
@@ -1659,7 +1654,7 @@ t('ladder: the incremental territory (distances kept per state, cut fields re-ru
   }
   ok(skipped > 0, 'the territory pass was skipped when nothing had changed');
 });
-t('target: witnesses make wall stripping cheaper without changing it, guided moves and the checkpoint range work', () => {
+t.slow('target: witnesses make wall stripping cheaper without changing it, guided moves and the checkpoint range work', () => {
   for (const [n, g, seed] of [[6, 2, 5], [7, 3, 4], [7, 4, 3]]) {
     const plain = runSync(generateTargeted(n, g, seed, { retries: 2, freedEdge: false })), wit = runSync(generateTargeted(n, g, seed, { retries: 2 }));
     eq([serialize(wit.puzzle), wit.proposals, wit.pred], [serialize(plain.puzzle), plain.proposals, plain.pred], `${n}x${n} g${g}: plain uniqueness checks vs freed-edge searches + witnesses`);
@@ -1670,7 +1665,7 @@ t('target: witnesses make wall stripping cheaper without changing it, guided mov
   const k = runSync(generateTargeted(7, 3, 2, { retries: 3, minCheckpoints: 8, maxCheckpoints: 8 }));
   eq(k.K, 8, 'min = max checkpoints: exactly that many');
 });
-t('target: the prefilter and the score cache change the time, never the result; the ladder trial cap is a lower bound', () => {
+t.slow('target: the prefilter and the score cache change the time, never the result; the ladder trial cap is a lower bound', () => {
   for (const [n, g, seed] of [[6, 2, 5], [7, 3, 4], [7, 4, 3]]) {
     const slow = runSync(generateTargeted(n, g, seed, { retries: 2, prefilter: false, cache: false })), fast = runSync(generateTargeted(n, g, seed, { retries: 2 }));
     eq([serialize(fast.puzzle), fast.proposals, fast.pred, fast.grade], [serialize(slow.puzzle), slow.proposals, slow.pred, slow.grade], `${n}x${n} g${g}`);
@@ -2061,7 +2056,7 @@ ta('stats-store: two tabs writing different variants keep each other\'s stats; a
   await C.recordSolve(5, 101, 30);
   eq(Object.entries(JSON.parse((await st.get(STATS_KEY)).value).d).map(([k, v]) => [k, v[0]]), [['5', 101]], 'the day-100 entry of the other scope is gone');
 });
-ta('stats-store: the blob of a full device stays small (15 sizes x 6 variants)', async () => {
+ta.slow('stats-store: the blob of a full device stays small (15 sizes x 6 variants)', async () => {
   const st = fakeStorage(), sizes = Array.from({ length: 15 }, (_, i) => i + 2), scopes = Object.fromEntries(['a', 'b', 'c', 'd', 'e', 'f'].map(id => [id, sizes]));
   const S = createStore(st, sizes, scopes); await S.hydrate('20260919');
   for (const n of sizes) for (const sc of ['', ...Object.keys(scopes)]) for (let i = 0; i < 25; i++) await S.recordSolve(n, 100, 12345.678912345 + i * 1111.1111, sc);
@@ -3222,7 +3217,7 @@ t('holes: allEdges leaves out the edges that touch a hole; without holes it is u
   ok(allEdges(n, holes).every(e => !holes[e >> 1] && !holes[edgeCells(n, e)[1]]));
   eq(allEdges(n, null), allEdges(n));
 });
-t('holes: the solver finds exactly the solutions a brute-force search finds, with every prune on or off', () => {
+t.slow('holes: the solver finds exactly the solutions a brute-force search finds, with every prune on or off', () => {
   const flags = [{}, { prop: true }, { prop: true, incr: false }, { prop: true, lconn: false }, { prop: true, pocket: true, parity: true, prune2: true, seg: 'all', legCollide: true }, { pocket: true, parity: true, prune2: true, seg: true }];
   let checked = 0, unique = 0;
   for (let seed = 1; checked < 80 && seed < 400; seed++) {
@@ -3311,7 +3306,7 @@ t('cutout: boards with several interior holes exist and keep the checkerboard ru
   const odd = proposeBoard(9, makeRng(5), { silhouettes: ['square'], interior: 3 });
   ok(isBalanced(9, odd.holes), 'odd size: single holes sit on the colour that keeps the rule');
 });
-t('cutout: generateCutout: unique, balanced, no wall at a hole, deterministic, the cheapest board that reaches the target wins', () => {
+t.slow('cutout: generateCutout: unique, balanced, no wall at a hole, deterministic, the cheapest board that reaches the target wins', () => {
   const cases = [[5, 11, null], [6, 12, ['ell']], [7, 13, ['cross']], [8, 14, null]];
   cases.push([9, 15, null], [10, 16, ['square']]);
   for (const [n, seed, silhouettes] of cases) {
@@ -3409,7 +3404,7 @@ t('layout: the polish of the placement is deterministic, keeps the legs inside t
     eq([s.overlap, s.cross], [segmentOverlapCount(pts) / (K - 1), segmentCrossCount(pts) / (K - 1)]);
   }
 });
-t('cutout: the layout (interleaved path, checkpoints that change quadrant) is on by default and can be switched off; o.valid in the targeted search', () => {
+t.slow('cutout: the layout (interleaved path, checkpoints that change quadrant) is on by default and can be switched off; o.valid in the targeted search', () => {
   const base = { boards: 2, effort: 0.15 };
   for (const [n, seed] of [[8, 21], [9, 22]]) {
     const on = runSync(generateCutout(n, seed, base)), off = runSync(generateCutout(n, seed, { ...base, layout: false })), path = runSync(generateCutout(n, seed, { ...base, place: false }));
@@ -3421,14 +3416,14 @@ t('cutout: the layout (interleaved path, checkpoints that change quadrant) is on
   ok(none.puzzle && none.unique, 'every change refused: the start puzzle comes back');
   eq(serialize(all.puzzle), serialize(plain.puzzle), 'valid = always true changes nothing');
 });
-t('target: o.stop ends the search once a start puzzle is scored; the same seed gives the same puzzle; counts-only runs are unchanged', () => {
+t.slow('target: o.stop ends the search once a start puzzle is scored; the same seed gives the same puzzle; counts-only runs are unchanged', () => {
   const a = runSync(generateTargeted(7, 3, 4, { stop: () => true })), b = runSync(generateTargeted(7, 3, 4, { stop: () => true }));
   ok(a.puzzle && a.unique && a.proposals <= 2, `stopped after the start (${a.proposals} proposals)`);
   eq(serialize(a.puzzle), serialize(b.puzzle));
   const free = runSync(generateTargeted(7, 3, 4, { stop: () => false })), plain = runSync(generateTargeted(7, 3, 4));
   eq(serialize(free.puzzle), serialize(plain.puzzle));
 });
-t('holes: the difficulty grader (ladder, trap) is sound on boards with holes', () => {
+t.slow('holes: the difficulty grader (ladder, trap) is sound on boards with holes', () => {
   for (const [n, seed] of [[6, 1], [7, 2], [8, 3], [9, 4], [10, 5]]) {
     const p = runSync(generateCutout(n, seed, { boards: 2, effort: 0.1 }));
     const lad = ladder(p);
@@ -3449,7 +3444,7 @@ t('cutout: boardSvg draws one tile per cell that is left, an outline, and nothin
   const std = boardSvg({ puzzle: randPuzzle(2, 5, 4, 0.1), path: [], hintCell: null, hintWrongCell: null });
   ok(!std.includes('cutout') && !std.includes('<rect '));
 });
-t('share-code: a Cutout game round-trips with its puzzle; 7x7 stays short; damaged codes are rejected', () => {
+t.slow('share-code: a Cutout game round-trips with its puzzle; 7x7 stays short; damaged codes are rejected', () => {
   for (const n of [5, 8, 16]) {
     const p = runSync(generateCutout(n, 40 + n, { boards: 1, effort: 0.1 }));
     const rec = makeShareRecord({ n, timeS: 83.4, legs: [0, 2, 3], K: maxNumber(p), variant: 'cutout', puzzle: p }), code = encodeShare(rec);
@@ -3777,6 +3772,4 @@ ta('behaviour upload: the switches — config.enabled, the device setting (defau
   eq(ON_KEY, 'zip_behaviour_on'); eq(SINKS.turso !== undefined && SINKS.cloudflare !== undefined && SINKS.supabase === undefined, true);
 });
 
-for (const [name, fn] of pending) { const t0 = Date.now(); try { await fn(); pass++; out.push(`ok    ${name} (${Date.now() - t0}ms)`); } catch (e) { fail++; out.push(`FAIL  ${name}: ${e.message}`); } }
-const text = out.join('\n') + `\n\n${pass} passed, ${fail} failed`;
-if (typeof document !== 'undefined') { document.getElementById('out').textContent = text; document.title = fail ? 'FAIL' : 'PASS'; } else { console.log(text); if (fail) process.exit(1); }
+registerAsyncTests();

@@ -3,7 +3,7 @@
 #   pre-commit-refresh.sh labels        ratings.json / pairs.json -> check, fit-trap, gotd-fit, version bump, tests
 #   pre-commit-refresh.sh bin-edge      src/core/hist.js          -> server/turso/schema.sql
 #   pre-commit-refresh.sh bench-report  bench/report.template.html -> bench/report.html
-# Env: FORCE=1 treat ratings.json as changed (catch-up run), SKIP_TESTS=1 skip `npm test`.
+# Env: FORCE=1 treat ratings.json as changed (catch-up run), SKIP_TESTS=1 skip `npm run test:all`.
 set -euo pipefail
 
 root=$(git rev-parse --show-toplevel)
@@ -48,8 +48,8 @@ labels() {
   fi
 
   if [ -z "${SKIP_TESTS:-}" ]; then
-    step "npm test"
-    run npm test --silent
+    step "npm run test:all"
+    run npm run test:all --silent
   fi
 }
 

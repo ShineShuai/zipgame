@@ -182,7 +182,7 @@ export function gotdGenTests(t, ok, eq) {
     eq(candidateText(made.puzzle, made.entry).includes('# seed'), false, 'without origin only the first line');
   });
 
-  t('gotd candidate: the comment is enough to make the puzzle again: gen-target options from the command line give the same puzzle, grade, walls, checkpoints, changes and tries', () => {
+  t.slow('gotd candidate: the comment is enough to make the puzzle again: gen-target options from the command line give the same puzzle, grade, walls, checkpoints, changes and tries', () => {
     const cmd = made.origin[1], opt = name => cmd.match(new RegExp(`--${name} (\\S+)`))[1], summary = made.origin[0];
     const r = runSync(generateTargeted(+opt('size'), +opt('grade'), +opt('seed'), { atLeast: cmd.includes('--at-least'), margin: +opt('margin'), retries: +opt('retries') }));
     eq(symmetryKey(r.puzzle), made.symKey);
@@ -198,7 +198,7 @@ export function gotdGenTests(t, ok, eq) {
     eq(carriedOrigin('# seed 1: grade 3\r\n# genetics are not\r\n# gen a6-x: node\r\n'), ['seed 1: grade 3', 'gen a6-x: node']);
   });
 
-  t('gotd candidate: the same arguments give the same candidate, text and entry (the seconds apart)', () => {
+  t.slow('gotd candidate: the same arguments give the same candidate, text and entry (the seconds apart)', () => {
     const again = makeCandidate({ stamp, day, date: '20261122', size: 7, attempt: made.entry.attempt, distinct: createDistinct() });
     ok(again.ok);
     eq(NOT_TIMED(candidateText(again.puzzle, again.entry, again.origin)), NOT_TIMED(candidateText(made.puzzle, made.entry, made.origin)));

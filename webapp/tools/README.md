@@ -98,7 +98,7 @@ The same puzzle rated twice counts twice in every fit, and a rotated / mirrored 
    **Import ratings.json** loads the repo file into a fresh browser and regrades every puzzle with the current code.
 2. `node tools/check-ratings.mjs` — fix what it lists.
 3. `node tools/metrics-eval.mjs` — which metric/grade is best now, and is the ladder still holding on the newest puzzles?
-4. Trap grade: `node tools/fit-trap.mjs` to look, `--write` to apply, then `npm test`.
+4. Trap grade: `node tools/fit-trap.mjs` to look, `--write` to apply, then `npm run test:all`.
 5. Ladder grade: Part 4 of `metrics-eval` shows whether `tWf` / `tTrials` in `ladder.js` `grade()` should move; change them by hand there.
 6. `node tools/target-eval.mjs` (add `--independent` once in a while) — can the targeted generator still reach every grade with the refitted cuts?
 7. Commit `tools/ratings.json` (and `tools/pairs.json`) together with the change.
@@ -109,7 +109,7 @@ Committing `tools/ratings.json` / `tools/pairs.json` runs steps 2, 4 and the `go
 2. `fit-trap.mjs --write` -> `src/core/trap.js`,
 3. `gotd-fit.mjs` -> `tools/gotd-models.json` (skipped when `--check` says it is current),
 4. a `VERSION` bump when `trap.js` changed (unless `bump-webapp-version` already ran in the same commit),
-5. `npm test` (about 3 min; `SKIP_TESTS=1 git commit ...` skips it).
+5. `npm run test:all` (about 2 min; `SKIP_TESTS=1 git commit ...` skips it). The slow tier is in it because a refit can change what the targeted generator reaches.
 
 Still manual: `metrics-eval.mjs` (report), the ladder constants (step 5), `target-eval.mjs` (step 6, minutes).
 `FORCE=1 pre-commit run refresh-labels --all-files` refits without a ratings change (catch-up when derived files are stale).

@@ -134,7 +134,7 @@ function relaxed(p, rnd, keepShare) {
 }
 
 export function surfaceFastTests(t, ok, eq) {
-  t('surface-fast: the solver gives the solutions of the plain solver, with no more nodes, on '
+  t.slow('surface-fast: the solver gives the solutions of the plain solver, with no more nodes, on '
     + 'puzzles as made and with numbers and walls taken away', () => {
     const rnd = makeRng(77);
     let saved = 0;

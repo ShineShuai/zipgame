@@ -442,7 +442,7 @@ export function directedTests(t, ok, eq) {
     eq(strangers, 0, 'no position that was never added');
   });
 
-  t('solve-dir: the table of dead positions saves nodes; no search sees an earlier one', () => {
+  t.slow('solve-dir: the table of dead positions saves nodes; no search sees an earlier one', () => {
     let withMemo = 0;
     let without = 0;
     for (let seed = 1; seed <= 12; seed++) {

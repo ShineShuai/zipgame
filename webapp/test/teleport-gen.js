@@ -108,7 +108,7 @@ export function teleportGenTests(t, ok, eq) {
     }
   });
 
-  t('teleport-gen: generateTeleport 5 to 9 — valid, unique, the one '
+  t.slow('teleport-gen: generateTeleport 5 to 9 — valid, unique, the one '
     + 'solution is the planted path and uses every portal', () => {
     eq(TELEPORT_SIZES, [5, 6, 7, 8, 9]);
     for (const n of TELEPORT_SIZES) {
@@ -130,7 +130,7 @@ export function teleportGenTests(t, ok, eq) {
     }
   });
 
-  t('teleport-gen: same seed, same puzzle; another seed, another one; '
+  t.slow('teleport-gen: same seed, same puzzle; another seed, another one; '
     + 'o.pairs sets the count', () => {
     eq(serialize(game(6, 7)), serialize(game(6, 7)));
     ok(serialize(game(6, 7)) !== serialize(game(6, 8)));

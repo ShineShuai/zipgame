@@ -40,7 +40,7 @@ export function generationTests(t, ok, eq, ta) {
     { task: 'solid', kind: 'ball', n: 'snub-cube', seed: 11 },
   ];
 
-  ta('generation job: runJob makes the puzzle of the generator, and the result crosses a worker boundary unchanged', async () => {
+  ta.slow('generation job: runJob makes the puzzle of the generator, and the result crosses a worker boundary unchanged', async () => {
     registerBalls(BALL_CATALOG);
     for (const job of jobs) {
       const name = `${job.task} ${job.mode ?? job.kind} ${job.n}`;
@@ -65,7 +65,7 @@ export function generationTests(t, ok, eq, ta) {
       { frac: 0.5, phase: 'walls', done: true, none: null });
   });
 
-  ta('generation worker: the entry answers a job with events and a result, a failing job with an error message', async () => {
+  ta.slow('generation worker: the entry answers a job with events and a result, a failing job with an error message', async () => {
     registerBalls(BALL_CATALOG);
     const posts = [], previous = globalThis.self;
     globalThis.self = { postMessage: m => posts.push(m) };
