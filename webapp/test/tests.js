@@ -77,6 +77,7 @@ import { playExactTests } from './play-exact.js';
 import { sharedGamesTests } from './shared-games.js';
 import { devLinkMode, devLinkCode, devLinkUrl, tapCombo, loadPin, savePin, DEV_KEY } from '../src/features/dev-reveal.js';
 import { wrapAllTests } from './wrap-all.js';
+import { variantContractTests } from './variant-contract.js';
 import { arrowsGenTests } from './arrows-gen.js';
 import { playArrowsTests } from './play-arrows.js';
 import { unlockTests } from './unlock.js';
@@ -3506,6 +3507,7 @@ playExactTests(t, ok, eq);
 
 // ---------- Wrap-around (torus) puzzles ----------
 wrapAllTests(t, ta, ok, eq);
+variantContractTests(t, ok, eq);
 
 // ---------- Loop (ring) puzzles ----------
 loopTests(t, ok, eq);

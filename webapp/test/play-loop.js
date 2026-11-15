@@ -6,22 +6,18 @@ import { maxNumber } from '../src/core/model.js';
 import { wallIds } from '../src/core/edges.js';
 import { step, isSolved } from '../src/core/rules.js';
 import { solve } from '../src/core/solver/solve.js';
-import { runSync } from '../src/core/run.js';
-import { generate, PLAY_SIZES } from '../src/core/gen/generate.js';
-import { generateLoop, LOOP_SIZES } from '../src/core/gen/loop.js';
+import { PLAY_SIZES } from '../src/core/gen/generate.js';
 import { playGradesFor } from '../src/core/grades.js';
 import { modelFor, LOOP_MODEL, TRAP_MODEL } from '../src/core/trap.js';
 import { boardSvg, routeCells } from '../src/apps/play/board.js';
 import { createUnlock } from '../src/features/unlock.js';
-import { variantIcon } from '../src/apps/play/icons.js';
-import {
-  PLAY_VARIANTS, variantOf, variantById, sizesFor, luckyDefs,
-} from '../src/apps/play/variants.js';
-import { EN, ZH } from '../src/ui/i18n.js';
-import { encodeShare, decodeShare, VARIANTS } from '../src/core/share-code.js';
+import { sizesFor, luckyDefs } from '../src/apps/play/variants.js';
+import { EN } from '../src/ui/i18n.js';
+import { encodeShare, decodeShare } from '../src/core/share-code.js';
 import { makeShareRecord, shareStatus, shareText } from '../src/features/share.js';
+import { made } from './fixtures/made.js';
 
-const loopGame = (n, seed) => runSync(generateLoop(n, seed));
+const loopGame = (n, seed) => made('loop', n, seed);
 const record = (p, extra = {}) => makeShareRecord({
   n: p.n, timeS: 83.4, legs: [0, 2, 3], K: maxNumber(p), variant: 'loop', puzzle: p, ...extra,
 });
@@ -35,7 +31,7 @@ export function loopPlayTests(t, ta, ok, eq) {
     const path = p.path.slice();
     eq(routeCells(p, path, false), path, 'not solved yet: the line as it is');
     eq(routeCells(p, path, true), [...path, path[0]], 'solved: back to cell 1');
-    const standard = runSync(generate(5, 1));
+    const standard = made('std', 5, 1);
     eq(routeCells(standard, standard.path, true), standard.path, 'a standard puzzle is not closed');
     eq(routeCells(p, [path[0]], true), [path[0]], 'a line of one cell');
   });
@@ -48,43 +44,9 @@ export function loopPlayTests(t, ta, ok, eq) {
     eq(segments(closed), segments(open) + 1, 'the closing segment');
     ok(closed.startsWith(open), 'the same line first');
     ok(!/wrap/.test(boardSvg({ ...S, finished: true })), 'not a wrap board');
-    const grid = runSync(generate(5, 2));
+    const grid = made('std', 5, 2);
     const gridS = { puzzle: grid, path: grid.path.slice(), hintCell: null, hintWrongCell: null };
     eq(pathOf(boardSvg({ ...gridS, finished: true })), pathOf(boardSvg({ ...gridS, finished: false })), 'standard');
-  });
-
-  t('loop-play: the icon: a closed ring, three numbers; the others are unchanged', () => {
-    const icon = variantIcon('loop');
-    ok(/class="variant-icon vi-loop"/.test(icon), 'class');
-    eq((icon.match(/rx="1\.6"/g) || []).length, 16, 'sixteen tiles');
-    const points = icon.match(/<polyline class="vi-path" points="([^"]*)"/)[1].split(' ');
-    eq(points[0], points[points.length - 1], 'the line comes back to its start');
-    eq((icon.match(/class="vi-num"/g) || []).length, 3, 'three numbers');
-    for (const name of ['cutout', 'arrows', 'exact', 'wrap', 'standard']) {
-      ok(!variantIcon(name).includes('vi-loop'), `${name} has no loop mark`);
-    }
-    eq((variantIcon('exact').match(/class="vi-num"/g) || []).length, 4, 'exact keeps its four numbers');
-  });
-
-  t('loop-play: registry entry: even sizes, detect, generator, lucky game, both languages', () => {
-    const v = variantById('loop');
-    ok(v && PLAY_VARIANTS.includes(v), 'loop is registered');
-    eq(sizesFor('loop', PLAY_SIZES), [6, 8, 10, 12], 'free play: the even app sizes up to 12');
-    eq(sizesFor('loop', PLAY_SIZES), LOOP_SIZES, 'the generator sizes');
-    const p = runSync(v.generate(6, 11));
-    eq([p.loop, variantOf(p), v.detect(p)], [true, 'loop', true], 'a loop puzzle is detected');
-    eq(variantOf(runSync(generate(6, 11))), null, 'a standard puzzle is not');
-    const lucky = luckyDefs(PLAY_SIZES).find(d => d.id === 'loop');
-    eq(lucky.locked, [8, 10], 'lucky game of a locked variant');
-    eq(lucky.pool, [6, 8, 10, 12], 'once unlocked: the sizes of free play');
-    for (const key of Object.values(v.keys)) {
-      ok(typeof EN[key] === 'string', `EN ${key}`);
-      ok(typeof ZH[key] === 'string', `ZH ${key}`);
-    }
-    ok(VARIANTS[5] === 'loop', 'share id 5');
-    for (const other of PLAY_VARIANTS.filter(x => x.id !== 'loop')) {
-      ok(!other.detect(p), `${other.id} does not claim a loop puzzle`);
-    }
   });
 
   t('loop-play: share code round-trips a loop game with its walls; damaged codes fail', () => {
@@ -159,7 +121,7 @@ export function loopPlayTests(t, ta, ok, eq) {
     const g = playGradesFor(p);
     ok(g.legacy === null && g.trap.ok && g.trap.ladTrials === 0, 'trap only');
     ok(Number.isInteger(g.trap.grade) && g.trap.grade >= 0 && g.trap.grade <= 5, 'a grade 0..5');
-    const grid = runSync(generate(5, 1));
+    const grid = made('std', 5, 1);
     eq(modelFor(grid), TRAP_MODEL, 'the grid keeps its model');
     ok(playGradesFor(grid).legacy !== null, 'the grid keeps the old grades');
   });
@@ -183,15 +145,6 @@ export function loopPlayTests(t, ta, ok, eq) {
     for (const cell of snake) step(p, path, cell, { strictOrder: true });
     eq(path.length, 16, 'all cells are covered');
     ok(!isSolved(p, path), 'but the last cell does not touch cell 1');
-  });
-
-  t('loop-play: loop puzzles of every offered size are unique (6 to 12)', () => {
-    for (const n of LOOP_SIZES) {
-      const p = loopGame(n, 21);
-      eq(p.n, n, `n=${n}`);
-      const r = solve(p, { limit: 2, nodeCap: 2e7, prop: true });
-      ok(r.count === 1 && !r.exceeded, `n=${n}: one solution`);
-    }
   });
 
   ta('loop-play: lucky game: 8 and 10 while loop is locked, 6 to 12 once it is unlocked', async () => {

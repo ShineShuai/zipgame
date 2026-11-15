@@ -4,9 +4,7 @@
 import { makePuzzle, labelCount, labelRanks, validate } from '../src/core/model.js';
 import { isSolved } from '../src/core/rules.js';
 import { solve } from '../src/core/solver/solve.js';
-import { runSync } from '../src/core/run.js';
-import { generateExact, EXACT_SIZES } from '../src/core/gen/exact.js';
-import { generate } from '../src/core/gen/generate.js';
+import { EXACT_SIZES } from '../src/core/gen/exact.js';
 import {
   variantOf, variantById, sizesFor, nearestSize, PLAY_VARIANTS,
 } from '../src/apps/play/variants.js';
@@ -20,8 +18,7 @@ import {
 import { solutionOf, maxHints } from '../src/features/hints.js';
 import { playGradesFor } from '../src/core/grades.js';
 import { modelFor, EXACT_MODEL, ARROWS_MODEL, TRAP_MODEL } from '../src/core/trap.js';
-import { generateArrows } from '../src/core/gen/arrows.js';
-import { generateCutout } from '../src/core/gen/cutout.js';
+import { made } from './fixtures/made.js';
 
 // An Exact puzzle with `numbers` = { cell: step }.
 function exactPuzzle(n, numbers) {
@@ -33,7 +30,7 @@ function exactPuzzle(n, numbers) {
   return p;
 }
 
-const fast = (n, seed) => runSync(generateExact(n, seed, { candidates: 1, refineNodes: 0 }));
+const fast = (n, seed) => made('exact', n, seed, { candidates: 1, refineNodes: 0 });
 const record = (p, extra = {}) => makeShareRecord({
   n: p.n, timeS: 83.4, legs: [0, 2, 3], K: labelCount(p), variant: 'exact', puzzle: p, ...extra,
 });
@@ -44,7 +41,7 @@ export function playExactTests(t, ok, eq) {
     eq(PLAY_VARIANTS.map(v => v.id).includes('exact'), true);
     const keys = [variant.countKey, variant.keys.name, variant.keys.shareHead];
     eq(keys, ['gen.labels', 'mode.exact', 'share.headExact']);
-    const puzzle = runSync(variant.generate(5, 11));
+    const puzzle = made('exact', 5, 11);
     const kinds = [variant.detect(puzzle), variantOf(puzzle), variantOf(makePuzzle(5))];
     eq(kinds, [true, 'exact', null]);
     ok(!variantOf({ ...makePuzzle(5), holes: new Uint8Array(25) }) !== 'exact');
@@ -129,8 +126,8 @@ export function playExactTests(t, ok, eq) {
 
   t('play exact: a variant record never carries a grade, so a graded game still shares', () => {
     const exact = fast(6, 3);
-    const arrows = runSync(generateArrows(5, 3, { candidates: 1, refineNodes: 0 }));
-    const cutout = runSync(generateCutout(6, 8, { boards: 1, effort: 0.1 }));
+    const arrows = made('arrows', 5, 3, { candidates: 1, refineNodes: 0 });
+    const cutout = made('cutout', 6, 8, { boards: 1, effort: 0.1 });
     for (const [variant, puzzle] of [['exact', exact], ['arrows', arrows], ['cutout', cutout]]) {
       const rec = makeShareRecord({
         n: puzzle.n, grade: 3, timeS: 12.3, legs: [], K: labelCount(puzzle), variant, puzzle,
@@ -138,7 +135,7 @@ export function playExactTests(t, ok, eq) {
       eq(rec.grade, null, variant);
       ok(encodeShare(rec) !== null, `${variant}: encodes with a grade given`);
     }
-    const standard = runSync(generate(5, 3));
+    const standard = made('std', 5, 3);
     const local = makeShareRecord({ n: 5, grade: 3, timeS: 1, legs: [], K: labelCount(standard), puzzle: standard });
     eq(local.grade, 3, 'a standard game keeps its grade');
     ok(encodeShare(local) !== null, 'and encodes with its puzzle');

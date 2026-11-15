@@ -6,10 +6,7 @@ import { makePuzzle, maxNumber } from '../src/core/model.js';
 import { setWallId, edgeId, wallIds } from '../src/core/edges.js';
 import { step, isSolved } from '../src/core/rules.js';
 import { solve } from '../src/core/solver/solve.js';
-import { runSync } from '../src/core/run.js';
-import {
-  generate, PLAY_SIZES, WRAP_SIZES, WRAP_CANDIDATES,
-} from '../src/core/gen/generate.js';
+import { PLAY_SIZES } from '../src/core/gen/generate.js';
 import { playGradesFor } from '../src/core/grades.js';
 import { modelFor, WRAP_MODEL, TRAP_MODEL } from '../src/core/trap.js';
 import { makeRng } from '../src/core/rng.js';
@@ -18,16 +15,14 @@ import {
 } from '../src/view/geometry.js';
 import { boardSvg, seamMarksSvg, CELL } from '../src/apps/play/board.js';
 import { createUnlock } from '../src/features/unlock.js';
-import { variantIcon } from '../src/apps/play/icons.js';
-import {
-  PLAY_VARIANTS, variantOf, variantById, sizesFor, luckyDefs,
-} from '../src/apps/play/variants.js';
-import { EN, ZH } from '../src/ui/i18n.js';
-import { encodeShare, decodeShare, VARIANTS } from '../src/core/share-code.js';
+import { sizesFor, luckyDefs } from '../src/apps/play/variants.js';
+import { EN } from '../src/ui/i18n.js';
+import { encodeShare, decodeShare } from '../src/core/share-code.js';
 import { makeShareRecord, shareStatus, shareText } from '../src/features/share.js';
 import { torusPuzzle } from './wrap.js';
+import { made } from './fixtures/made.js';
 
-const wrapGame = (n, seed) => runSync(generate(n, seed, { wrap: true }));
+const wrapGame = (n, seed) => made('wrap', n, seed);
 const numbers = d => d.match(/-?\d+(\.\d+)?/g).map(Number);
 const record = (p, extra = {}) => makeShareRecord({
   n: p.n, timeS: 83.4, legs: [0, 2, 3], K: maxNumber(p), variant: 'wrap', puzzle: p, ...extra,
@@ -143,42 +138,10 @@ export function wrapPlayTests(t, ta, ok, eq) {
     ok(/class="zip-svg wrap"/.test(svg), 'the wrap class');
     ok(/data-role="outline"[^>]*stroke-dasharray/.test(svg), 'dashed outline');
     ok(/data-role="path" d="M/.test(svg), 'the path is drawn');
-    const grid = runSync(generate(5, 2));
+    const grid = made('std', 5, 2);
     const gridSvg = boardSvg({ puzzle: grid, path: [], hintCell: null, hintWrongCell: null });
     ok(gridSvg.includes(`viewBox="0 0 ${5 * CELL} ${5 * CELL}"`), 'grid: viewBox without margin');
     ok(!/wrap/.test(gridSvg) && !/dasharray/.test(gridSvg), 'grid: nothing of the wrap board');
-  });
-
-  t('wrap-play: the icon: two path pieces and two stubs; the others are unchanged', () => {
-    const icon = variantIcon('wrap');
-    ok(/class="variant-icon vi-wrap"/.test(icon), 'class');
-    eq((icon.match(/rx="1\.6"/g) || []).length, 16, 'sixteen tiles');
-    eq((icon.match(/<polyline class="vi-path"/g) || []).length, 2, 'two path pieces');
-    eq((icon.match(/<circle class="vi-dot"/g) || []).length, 2, 'start and end');
-    for (const name of ['cutout', 'arrows', 'exact', 'standard']) {
-      ok(!variantIcon(name).includes('vi-wrap'), `${name} has no wrap mark`);
-    }
-  });
-
-  t('wrap-play: registry entry: sizes, detect, generator, lucky game, both languages', () => {
-    const v = variantById('wrap');
-    ok(v && PLAY_VARIANTS.includes(v), 'wrap is registered');
-    eq(WRAP_SIZES, [4, 5, 6, 7, 8], 'the generator sizes on offer');
-    eq(sizesFor('wrap', PLAY_SIZES), [4, 5, 6, 7, 8], 'free play: 4 to 8 (4 is not an app size)');
-    ok(!PLAY_SIZES.includes(4), 'the standard game does not get 4');
-    ok(WRAP_SIZES.every(n => WRAP_CANDIDATES[n] >= 2), 'every offered size has a candidate count');
-    const p = runSync(v.generate(5, 11));
-    eq([p.wrap, variantOf(p), v.detect(p)], [true, 'wrap', true], 'a wrap puzzle is detected');
-    eq(variantOf(runSync(generate(5, 11))), null, 'a standard puzzle is not');
-    const lucky = luckyDefs(PLAY_SIZES).find(d => d.id === 'wrap');
-    eq(lucky.locked, [4, 5, 6], 'lucky game of a locked variant: 4 to 6');
-    eq(lucky.pool, [4, 5, 6, 7, 8], 'once unlocked: the sizes of free play');
-    eq(lucky.pool, sizesFor('wrap', PLAY_SIZES), 'the same list');
-    for (const key of Object.values(v.keys)) {
-      ok(typeof EN[key] === 'string' || typeof EN[key] === 'function', `EN ${key}`);
-      ok(typeof ZH[key] === 'string' || typeof ZH[key] === 'function', `ZH ${key}`);
-    }
-    ok(VARIANTS[4] === 'wrap', 'share id 4');
   });
 
   t('wrap-play: share code round-trips a wrap game with seam walls; damaged codes fail', () => {
@@ -244,7 +207,7 @@ export function wrapPlayTests(t, ta, ok, eq) {
     const g = playGradesFor(p);
     ok(g.legacy === null && g.trap.ok && g.trap.ladTrials === 0, 'trap only');
     ok(Number.isInteger(g.trap.grade) && g.trap.grade >= 0 && g.trap.grade <= 5, 'a grade 0..5');
-    const grid = runSync(generate(5, 1));
+    const grid = made('std', 5, 1);
     eq(modelFor(grid), TRAP_MODEL, 'the grid keeps its model');
     ok(playGradesFor(grid).legacy !== null, 'the grid keeps the old grades');
   });
@@ -302,7 +265,7 @@ export function wrapPlayTests(t, ta, ok, eq) {
     eq((full.match(/data-mark="in"/g) || []).length, jumps, 'in marks');
     ok(/<g data-role="seam">/.test(full), 'the group the input updates');
     eq(seamMarksSvg(5, [0, 1, 2]), '', 'nothing without a seam step');
-    const plain = runSync(generate(5, 2));
+    const plain = made('std', 5, 2);
     const grid = boardSvg({ puzzle: plain, path: [], hintCell: null, hintWrongCell: null });
     ok(!/data-role="seam"/.test(grid) && !/data-mark/.test(grid), 'the grid board has none');
   });
@@ -319,14 +282,6 @@ export function wrapPlayTests(t, ta, ok, eq) {
     eq(shareStatus(three, ctx).status, 'invalid', 'size 3 is offered by nobody');
     const standard = shareStatus({ ...rec, variant: undefined, algo: 0, n: 4 }, ctx);
     eq(standard.status, 'invalid', 'a standard record of size 4 stays invalid');
-  });
-
-  t('wrap-play: wrap puzzles of every offered size are unique (4 to 8)', () => {
-    for (const n of WRAP_SIZES) {
-      const p = wrapGame(n, 21);
-      eq(p.n, n, `n=${n}`);
-      eq(solve(p, { limit: 2, nodeCap: 5e6, prop: true }).count, 1, `n=${n}: one solution`);
-    }
   });
 
   ta('wrap-play: lucky game: 4 to 6 while wrap is locked, 4 to 8 once it is unlocked', async () => {

@@ -9,18 +9,13 @@ import { maxNumber } from '../src/core/model.js';
 import { parse, serialize } from '../src/core/format.js';
 import { step, isSolved } from '../src/core/rules.js';
 import { solve } from '../src/core/solver/solve.js';
-import { runSync } from '../src/core/run.js';
-import { generate, PLAY_SIZES } from '../src/core/gen/generate.js';
-import { generateTeleport, TELEPORT_SIZES } from '../src/core/gen/teleport.js';
+import { PLAY_SIZES } from '../src/core/gen/generate.js';
 import { isPortalPair } from '../src/core/geom.js';
 import { playGradesFor } from '../src/core/grades.js';
 import { modelFor, TELEPORT_MODEL, TRAP_MODEL, trapProfile } from '../src/core/trap.js';
 import { boardSvg, routeD, jumpMarksSvg, portalIconsSvg } from '../src/apps/play/board.js';
 import { createUnlock } from '../src/features/unlock.js';
-import { variantIcon } from '../src/apps/play/icons.js';
-import {
-  PLAY_VARIANTS, variantOf, variantById, sizesFor, luckyDefs,
-} from '../src/apps/play/variants.js';
+import { sizesFor, luckyDefs } from '../src/apps/play/variants.js';
 import { EN, ZH } from '../src/ui/i18n.js';
 import {
   encodeShare, decodeShare, VARIANTS, SHARE_VERSION_PORTAL, TELEPORT,
@@ -31,8 +26,9 @@ import {
   portalColor, portalShape, PORTAL_COLORS, PORTAL_SHAPES,
 } from '../src/view/portal-icons.js';
 import { ladder } from '../src/core/ladder.js';
+import { made } from './fixtures/made.js';
 
-const tele = (n, seed, o = {}) => runSync(generateTeleport(n, seed, o));
+const tele = (n, seed, o = {}) => made('teleport', n, seed, o);
 const record = (p, extra = {}) => makeShareRecord({
   n: p.n, timeS: 83.4, legs: [0, 2, 3], K: maxNumber(p), variant: TELEPORT, puzzle: p, ...extra,
 });
@@ -54,7 +50,7 @@ export function teleportPlayTests(t, ta, ok, eq) {
     const first = p.path.findIndex((c, i) => i && isPortalPair(p.portals, p.path[i - 1], c));
     const upTo = routeD(p, p.path.slice(0, first));
     eq((upTo.match(/M/g) || []).length, 1, 'no jump yet: one piece');
-    const standard = runSync(generate(5, 2));
+    const standard = made('std', 5, 2);
     ok(!/M.*M/.test(routeD(standard, standard.path)), 'a standard line is one piece');
   });
 
@@ -76,7 +72,7 @@ export function teleportPlayTests(t, ta, ok, eq) {
     // the portal icons are under the path, the numbers above it
     ok(svg.indexOf('data-portal-cell') < svg.indexOf('data-role="path"'), 'icons under the line');
     ok(svg.indexOf('data-role="path"') < svg.indexOf('data-num-cell'), 'numbers above the line');
-    const plain = boardSvg(stateOf(runSync(generate(5, 2)), []));
+    const plain = boardSvg(stateOf(made('std', 5, 2), []));
     ok(!/portal|teleport|data-role="jump"/.test(plain), 'a standard board has none of it');
   });
 
@@ -107,46 +103,14 @@ export function teleportPlayTests(t, ta, ok, eq) {
       'one arc per jump');
     eq(jumpMarksSvg(p, p.path.slice(0, first), true), '', 'finished: nothing to tap');
     eq(jumpMarksSvg(p, []), '');
-    eq(jumpMarksSvg(runSync(generate(5, 2)), [0, 1]), '', 'standard');
+    eq(jumpMarksSvg(made('std', 5, 2), [0, 1]), '', 'standard');
     const svg = boardSvg(stateOf(p, p.path.slice(0, first + 2)));
     ok(svg.includes('data-mark="jump"'), 'the board carries the arcs');
     ok(/data-role="path" d="[^"]*M[^"]*M/.test(svg), 'and the line is in two pieces');
   });
 
-  t('teleport-play: the icon: two portal rings and a dotted jump; the '
-    + 'others are unchanged', () => {
-    const icon = variantIcon('teleport');
-    ok(/class="variant-icon vi-teleport"/.test(icon), 'class');
-    eq((icon.match(/rx="1\.6"/g) || []).length, 16, 'sixteen tiles');
-    eq((icon.match(/class="vi-portal"/g) || []).length, 2, 'two portal rings');
-    eq((icon.match(/class="vi-jump"/g) || []).length, 1, 'one jump');
-    for (const name of ['cutout', 'arrows', 'exact', 'wrap', 'loop', 'standard']) {
-      ok(!variantIcon(name).includes('vi-teleport'), `${name} has no teleport mark`);
-      ok(!variantIcon(name).includes('vi-jump'), `${name} has no jump`);
-    }
-  });
-
-  t('teleport-play: registry entry: sizes, detect, generator, lucky game, both languages', () => {
-    const v = variantById('teleport');
-    ok(v && PLAY_VARIANTS.includes(v), 'teleport is registered');
-    eq(sizesFor('teleport', PLAY_SIZES), TELEPORT_SIZES);
-    eq(sizesFor('teleport', PLAY_SIZES), [5, 6, 7, 8, 9]);
-    const p = runSync(v.generate(6, 11));
-    eq([Boolean(p.portals), variantOf(p), v.detect(p)], [true, 'teleport', true],
-      'a Teleport puzzle is detected');
-    eq(variantOf(runSync(generate(6, 11))), null, 'a standard puzzle is not');
-    const lucky = luckyDefs(PLAY_SIZES).find(d => d.id === 'teleport');
-    eq(lucky.locked, [5, 6, 7], 'lucky game of a locked variant');
-    eq(lucky.pool, [5, 6, 7, 8, 9], 'once unlocked: the sizes of free play');
-    for (const key of Object.values(v.keys)) {
-      ok(typeof EN[key] === 'string', `EN ${key}`);
-      ok(typeof ZH[key] === 'string', `ZH ${key}`);
-    }
-    ok(typeof EN['game.teleportHint'] === 'string' && typeof ZH['game.teleportHint'] === 'string',
-      'the note under the board');
-    for (const other of PLAY_VARIANTS.filter(x => x.id !== 'teleport')) {
-      ok(!other.detect(p), `${other.id} does not claim a Teleport puzzle`);
-    }
+  t('teleport-play: the note under the board exists in both languages', () => {
+    ok(typeof EN['game.teleportHint'] === 'string' && typeof ZH['game.teleportHint'] === 'string');
   });
 
   t('teleport-play: share code — round trip, own version, old codes '
@@ -244,7 +208,7 @@ export function teleportPlayTests(t, ta, ok, eq) {
     ok(g.legacy === null && g.trap.ok && g.trap.ladTrials === 0, 'trap only');
     ok(Number.isInteger(g.trap.grade) && g.trap.grade >= 0 && g.trap.grade <= 5, 'a grade 0..5');
     ok(ladder(p).error, 'the technique ladder says it does not know portals');
-    const grid = runSync(generate(5, 1));
+    const grid = made('std', 5, 1);
     eq(modelFor(grid), TRAP_MODEL, 'the grid keeps its model');
     ok(playGradesFor(grid).legacy !== null, 'the grid keeps the old grades');
   });
@@ -302,7 +266,7 @@ export function teleportPlayTests(t, ta, ok, eq) {
     ok(svg.includes('<path d="M') && (svg.match(/<polygon|<circle/g) || []).length > 4,
       'the path and the portal shapes');
     eq((svg.match(/stroke-dasharray/g) || []).length, 0, 'plain markup');
-    const plain = miniPreviewSvg(runSync(generate(5, 2)), null, '#fff');
+    const plain = miniPreviewSvg(made('std', 5, 2), null, '#fff');
     ok(!plain.includes('fill-opacity="0.14"'), 'a standard preview has no portals');
   });
 

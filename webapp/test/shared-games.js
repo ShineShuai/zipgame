@@ -6,12 +6,6 @@ import { RadixWriter, RadixReader, bitLength } from '../src/core/radix-code.js';
 import { encodeShare, decodeShare, VARIANTS, MAX_TENTHS } from '../src/core/share-code.js';
 import { validate, labelCount } from '../src/core/model.js';
 import { makeRng } from '../src/core/rng.js';
-import { runSync } from '../src/core/run.js';
-import { generate } from '../src/core/gen/generate.js';
-import { generateCutout } from '../src/core/gen/cutout.js';
-import { generateArrows } from '../src/core/gen/arrows.js';
-import { generateExact } from '../src/core/gen/exact.js';
-import { generateLoop } from '../src/core/gen/loop.js';
 import {
   makeShareRecord,
   shareKey,
@@ -27,6 +21,7 @@ import {
   serialize,
   SHARED_GAMES_KEY,
 } from '../src/features/shared-games.js';
+import { made } from './fixtures/made.js';
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
@@ -48,12 +43,12 @@ const flatRec = r =>
 
 // One generated puzzle per type, small and quick.
 const PUZZLES = () => [
-  [null, runSync(generate(6, 11))],
-  ['cutout', runSync(generateCutout(6, 21, { boards: 1, effort: 0.1 }))],
-  ['arrows', runSync(generateArrows(5, 3, { candidates: 1, refineNodes: 0 }))],
-  ['exact', runSync(generateExact(6, 3, { candidates: 1, refineNodes: 0 }))],
-  ['wrap', runSync(generate(5, 7, { wrap: true }))],
-  ['loop', runSync(generateLoop(6, 5))],
+  [null, made('std', 6, 11)],
+  ['cutout', made('cutout', 6, 21, { boards: 1, effort: 0.1 })],
+  ['arrows', made('arrows', 5, 3, { candidates: 1, refineNodes: 0 })],
+  ['exact', made('exact', 6, 3, { candidates: 1, refineNodes: 0 })],
+  ['wrap', made('wrap', 5, 7)],
+  ['loop', made('loop', 6, 5)],
 ];
 const recordOf = (variant, puzzle, extra = {}) =>
   makeShareRecord({
@@ -239,7 +234,7 @@ export function sharedGamesTests(t, ta, ok, eq) {
   });
 
   t('share-code: codes are short; big boards stay encodable', () => {
-    const len = (n, seed) => encodeShare(recordOf(null, runSync(generate(n, seed)))).length;
+    const len = (n, seed) => encodeShare(recordOf(null, made('std', n, seed))).length;
     ok(len(7, 3) <= 24 && len(9, 3) <= 34, `${len(7, 3)} / ${len(9, 3)}`);
     const big = snake(16, [0, 40, 100, 160, 255]),
       rec = recordOf(null, big, { legs: [1, 0, 3, 2] });
@@ -363,7 +358,7 @@ export function sharedGamesTests(t, ta, ok, eq) {
     ok(
       shareKey(rec) && shareKey({ ...rec, puzzle: PUZZLES()[0][1], grade: null }) === shareKey(rec),
     );
-    ok(shareKey(recordOf(null, runSync(generate(6, 12)))) !== shareKey(rec), 'another puzzle');
+    ok(shareKey(recordOf(null, made('std', 6, 12))) !== shareKey(rec), 'another puzzle');
     ok(shareKey(recordOf('cutout', PUZZLES()[1][1])) !== shareKey(rec));
     const gotd = {
       kind: 'gotd',
