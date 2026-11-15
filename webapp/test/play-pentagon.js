@@ -2,10 +2,7 @@
 // (apps/play/pentagon-board.js), walking and hints on it, the share text, and the links made
 // earlier (they must read as they did). Registered by tests.js:
 // playPentagonTests(t, ok, eq). The page itself (apps/play/main.js) is not run here.
-import { runSync } from '../src/core/run.js';
 import { COLORS } from '../src/apps/play/board.js';
-import { generatePentagon } from '../src/core/gen/pentagon.js';
-import { generate } from '../src/core/gen/generate.js';
 import {
   PENTAGON_KIND, PENTAGON_SIZES, PENTAGON_CELLS,
 } from '../src/core/pentagon.js';
@@ -29,8 +26,9 @@ import {
   pentagonView, pentagonAcross,
 } from '../src/apps/play/pentagon-board.js';
 import { EN, ZH, t as translate, setLang } from '../src/ui/i18n.js';
+import { made } from './fixtures/made.js';
 
-const game = (n, seed) => runSync(generatePentagon(n, seed));
+const game = (n, seed) => made('pentagon', n, seed);
 const count = (text, part) => text.split(part).length - 1;
 const state = (p, path = [], extra = {}) => ({
   puzzle: p, path, hintCell: null, hintWrongCell: null, ...extra,
@@ -52,7 +50,7 @@ export function playPentagonTests(t, ok, eq) {
     const v = variantById(PENTAGON);
     ok(v && PLAY_VARIANTS.includes(v), 'registered');
     ok(v.detect(game(4, 1)), 'detects its puzzles');
-    ok(!v.detect(runSync(generate(5, 1))), 'and not a square one');
+    ok(!v.detect(made('std', 5, 1)), 'and not a square one');
     eq(variantOf(game(4, 1)), PENTAGON);
     for (const other of PLAY_VARIANTS.filter(x => x.id !== PENTAGON)) {
       ok(!other.detect(game(4, 1)), `${other.id} does not claim it`);

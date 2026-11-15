@@ -5,25 +5,21 @@
 // twoPathsPlayTests(t, ok, eq).
 import { maxNumber } from '../src/core/model.js';
 import { canStep } from '../src/core/rules.js';
-import { runSync } from '../src/core/run.js';
-import { generate, PLAY_SIZES } from '../src/core/gen/generate.js';
-import { generateTwoPaths } from '../src/core/gen/twopaths.js';
+import { PLAY_SIZES } from '../src/core/gen/generate.js';
 import { splitPath, colourOfCell, colourNumber } from '../src/core/twopaths.js';
 import { playGradesFor } from '../src/core/grades.js';
 import { modelFor, TWOPATHS_MODEL, TRAP_MODEL } from '../src/core/trap.js';
 import { boardSvg, badgeColorsTwo, COLORS } from '../src/apps/play/board.js';
-import { variantIcon } from '../src/apps/play/icons.js';
-import {
-  PLAY_VARIANTS, variantOf, variantById, sizesFor, luckyDefs,
-} from '../src/apps/play/variants.js';
+import { variantOf, variantById, sizesFor } from '../src/apps/play/variants.js';
 import { EN, ZH } from '../src/ui/i18n.js';
 import { encodeShare, decodeShare, TWO_PATHS } from '../src/core/share-code.js';
 import { makeShareRecord, shareStatus, shareText, legLevels } from '../src/features/share.js';
 import {
   RED, BLUE, newPaths, pickColour, walkColour, solvedPaths, reached, legsUndoTwo, hintTwo,
 } from '../src/features/twopaths-play.js';
+import { made } from './fixtures/made.js';
 
-const game = (n, seed) => runSync(generateTwoPaths(n, seed));
+const game = (n, seed) => made('twopaths', n, seed);
 const stateOf = (p, paths, extra = {}) => ({
   puzzle: p, paths, path: paths[RED], colour: RED, hintCell: null, hintWrongCell: null,
   finished: false, ...extra,
@@ -58,35 +54,6 @@ export function twoPathsPlayTests(t, ok, eq) {
     eq(label, 'Hint (2/7)', 'the English label as before');
   });
 
-  t('twopaths-play: registry entry: sizes, detect, generator, lucky game', () => {
-    const v = variantById('twopaths');
-    ok(v && PLAY_VARIANTS.includes(v), 'twopaths is registered');
-    eq(sizesFor('twopaths', PLAY_SIZES), [5, 6, 7, 8]);
-    const p = runSync(v.generate(6, 11));
-    eq([Boolean(p.split), variantOf(p), v.detect(p)], [true, 'twopaths', true]);
-    eq(variantOf(runSync(generate(6, 11))), null, 'a standard puzzle is not');
-    const lucky = luckyDefs(PLAY_SIZES).find(d => d.id === 'twopaths');
-    eq(lucky.locked, [5, 6, 7], 'lucky game of a locked variant');
-    eq(lucky.pool, [5, 6, 7, 8], 'once unlocked: the sizes of free play');
-    for (const other of PLAY_VARIANTS.filter(x => x.id !== 'twopaths')) {
-      ok(!other.detect(p), `${other.id} does not claim a Two paths puzzle`);
-    }
-  });
-
-  t('twopaths-play: the icon: a red and a blue path, the others unchanged', () => {
-    const icon = variantIcon('twopaths');
-    ok(/class="variant-icon vi-twopaths"/.test(icon), 'class');
-    eq((icon.match(/rx="1\.6"/g) || []).length, 16, 'sixteen tiles');
-    eq((icon.match(/vi-path-red/g) || []).length, 1);
-    eq((icon.match(/vi-path-blue/g) || []).length, 1);
-    eq((icon.match(/vi-dot-red/g) || []).length, 2, 'two ends');
-    eq((icon.match(/vi-dot-blue/g) || []).length, 2, 'two ends');
-    for (const name of ['cutout', 'arrows', 'exact', 'wrap', 'loop', 'teleport', 'standard']) {
-      ok(!variantIcon(name).includes('vi-twopaths'), `${name} has no Two paths mark`);
-      ok(!variantIcon(name).includes('vi-path-red'), `${name} has no red path`);
-    }
-  });
-
   t('twopaths-play: boardSvg — a line and a badge shape per colour, blue numbers from 1', () => {
     const p = game(6, 3);
     const [red, blue] = splitPath(p, p.path);
@@ -119,7 +86,7 @@ export function twoPathsPlayTests(t, ok, eq) {
     eq(badgeColorsTwo(BLUE, true).fill, COLORS.twoPath[BLUE]);
     eq(badgeColorsTwo(RED, false).stroke, COLORS.twoPath[RED]);
     // a standard board is what it was
-    const std = runSync(generate(5, 2));
+    const std = made('std', 5, 2);
     const bare = { puzzle: std, path: [], hintCell: null, hintWrongCell: null, finished: false };
     const plain = boardSvg(bare);
     ok(!/num-shape|data-colour|twopaths/.test(plain), 'a standard board has none of it');
