@@ -245,7 +245,7 @@ export function surfaceTests(t, ok, eq) {
     }
   });
 
-  t('surface solver: Hamiltonian path counts match an independent program (C++)', () => {
+  t.slow('surface solver: Hamiltonian path counts match an independent program (C++)', () => {
     const counts = [
       ['tetra', 1, 24],
       ['tetra', 2, 768],
@@ -457,7 +457,7 @@ export function surfaceTests(t, ok, eq) {
     eq(maxNumber(generateSurface('tetra', 3, 1, { K: 36 }).puzzle), 36);
   });
 
-  t('surface generator: the play app draws K like the square boards (pickK), after the path', () => {
+  t.slow('surface generator: the play app draws K like the square boards (pickK), after the path', () => {
     // the range: from the square root of the cells to a quarter of them, mean at 30% of the way
     const cases = [['tetra', 3, 36], ['tetra', 5, 100], ['cube', 2, 24], ['cube', 4, 96]];
     for (const [kind, n, cells] of cases) {

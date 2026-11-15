@@ -1,5 +1,5 @@
 // tools/gotd-gen.mjs end to end on temporary directories: fill (idempotent, deterministic), check (distinct up to symmetry), status, schedule, errors.
-// The generator runs for real in the fill tests only (about 7 s). Every test about verdicts and promotion starts from the
+// The generator runs for real in the fill tests (about 7 s) and in the top-up test (the slow tier, see harness.js). Every test about verdicts and promotion starts from the
 // frozen queue in test/fixtures/gotd-queue (2 candidates for each of 20261122 = 7x7 and 20261123 = 8x8); it holds data,
 // not what the generator makes today: world() gives its candidates the current stamp, so a refit of the model does not touch it
 // (promote only warns about a drift).
@@ -7,6 +7,7 @@
 //   node tools/gotd-gen.mjs fill --today 20261122 --horizon 2 --per-slot 2 --puzzles <empty dir> --queue test/fixtures/gotd-queue --ratings <file with []>
 // Run: node --test test/gotd-gen-cli.test.js   (npm run test:gotd)
 import test from 'node:test';
+import { FAST, SLOW } from './harness.js';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -36,7 +37,7 @@ const notTimed = snap => Object.fromEntries(Object.entries(snap).map(([f, text])
 const pristine = path.join(tmp, 'pristine');
 const FILL = ['fill', '--today', '20261122', '--horizon', '2', '--per-slot', '1', ...where];
 
-test('gotd-gen: an empty repository is fine, and a dry run writes nothing', () => {
+test('gotd-gen: an empty repository is fine, and a dry run writes nothing', FAST, () => {
   let r = run('check', ...where);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /^OK: 0 distinct puzzles \(0 published, 0 in the queue\)/);
@@ -48,7 +49,7 @@ test('gotd-gen: an empty repository is fine, and a dry run writes nothing', () =
   assert.equal(fs.existsSync(queue), false, 'nothing is written');
 });
 
-test('gotd-gen: fill makes one candidate per open day of the scheduled size; the files and the index agree', () => {
+test('gotd-gen: fill makes one candidate per open day of the scheduled size; the files and the index agree', FAST, () => {
   const r = run(...FILL);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /added 2 candidate\(s\) in \d+ generator run\(s\)/);
@@ -67,7 +68,7 @@ test('gotd-gen: fill makes one candidate per open day of the scheduled size; the
   fs.cpSync(queue, pristine, { recursive: true }); // the tests that follow break the queue on purpose
 });
 
-test('gotd-gen: the origin comment of a candidate says how to make it again: its gen-target command gives the same puzzle, and the summary line matches', () => {
+test('gotd-gen: the origin comment of a candidate says how to make it again: its gen-target command gives the same puzzle, and the summary line matches', FAST, () => {
   const index = JSON.parse(fs.readFileSync(path.join(queue, 'index.json'), 'utf8'));
   for (const c of index.candidates.slice(0, 1)) {
     const text = fs.readFileSync(path.join(queue, c.file), 'utf8');
@@ -81,7 +82,7 @@ test('gotd-gen: the origin comment of a candidate says how to make it again: its
   }
 });
 
-test('gotd-gen: a second fill adds nothing and changes no byte; a fresh queue gets the same candidates (no clock, no randomness)', () => {
+test('gotd-gen: a second fill adds nothing and changes no byte; a fresh queue gets the same candidates (no clock, no randomness)', FAST, () => {
   const before = snapshot(queue), r = run(...FILL);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /added 0 candidate\(s\) in 0 generator run\(s\)/);
@@ -93,7 +94,7 @@ test('gotd-gen: a second fill adds nothing and changes no byte; a fresh queue ge
   assert.deepEqual(JSON.parse(fresh['index.json']).candidates, JSON.parse(first['index.json']).candidates.slice(0, 1), 'and the same index entry');
 });
 
-test('gotd-gen: check passes for the queue, and fails for a copy of a candidate that is rotated, mirrored or numbered backwards', () => {
+test('gotd-gen: check passes for the queue, and fails for a copy of a candidate that is rotated, mirrored or numbered backwards', FAST, () => {
   let r = run('check', ...where);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /^OK: 2 distinct puzzles \(0 published, 2 in the queue\)/);
@@ -112,7 +113,7 @@ test('gotd-gen: check passes for the queue, and fails for a copy of a candidate 
   assert.equal(r.status, 0, 'the copy is gone');
 });
 
-test('gotd-gen: check reports a broken index and a file that is not the candidate the index names', () => {
+test('gotd-gen: check reports a broken index and a file that is not the candidate the index names', FAST, () => {
   const index = fs.readFileSync(path.join(queue, 'index.json'), 'utf8'), c = JSON.parse(index).candidates[0];
   fs.rmSync(path.join(queue, c.file));
   let r = run('check', ...where);
@@ -130,7 +131,7 @@ test('gotd-gen: check reports a broken index and a file that is not the candidat
   assert.match(r.stderr, /index\.json: "v" must be 1/);
 });
 
-test('gotd-gen: status and schedule print the pinned schedule and the queue', () => {
+test('gotd-gen: status and schedule print the pinned schedule and the queue', FAST, () => {
   let r = run('schedule', '--from', '20261121', '--days', '30');
   assert.equal(r.status, 0, r.stderr);
   const lines = r.stdout.trim().split('\n');
@@ -146,7 +147,7 @@ test('gotd-gen: status and schedule print the pinned schedule and the queue', ()
   assert.match(r.stdout, /20261122 7x7 {2}open, 1 candidate\(s\)/);
 });
 
-test('gotd-gen: bad arguments and unknown commands exit 1 with a message', () => {
+test('gotd-gen: bad arguments and unknown commands exit 1 with a message', FAST, () => {
   for (const args of [['nope'], [], ['fill', '--horizon', '0'], ['promote', '--horizon', '0'], ['promote', '--until', '2026-11-22'], ['promote', '--today', '20261122', '--until', '20261121'], ['fill', '--today', '2026-11-22'], ['fill', '--per-slot', 'x'], ['schedule', '--days', '0']]) {
     const r = run(...args, ...where);
     assert.equal(r.status, 1, args.join(' '));
@@ -175,7 +176,7 @@ function world(name) { // fresh published dir + a copy of the frozen queue: 2 ca
 }
 const PROMOTE = ['promote', '--today', '20261122', '--horizon', '2'];
 
-test('gotd-gen promote: an approved candidate becomes the day, a rejected one moves to rejected/, a dry run writes nothing, a rerun changes nothing', () => {
+test('gotd-gen promote: an approved candidate becomes the day, a rejected one moves to rejected/, a dry run writes nothing, a rerun changes nothing', FAST, () => {
   const w = world('p1'), [c7a, c7b, c8a, c8b] = w.index().candidates;
   assert.deepEqual([c7a.size, c7b.size, c8a.size, c8b.size], [7, 7, 8, 8]);
   const approvedKey = symmetryKey(parse(fs.readFileSync(path.join(w.queue, c7a.file), 'utf8')));
@@ -217,7 +218,7 @@ test('gotd-gen promote: an approved candidate becomes the day, a rejected one mo
   assert.deepEqual({ pub: snapshot(w.pub), queue: snapshot(w.queue), rejected: snapshot(path.join(w.queue, 'rejected')) }, settled, 'a rerun changes nothing');
 });
 
-test('gotd-gen promote: the next fill tops the queue up (a rejected candidate does not count), and never repeats a rejected puzzle', () => {
+test('gotd-gen promote: the next fill tops the queue up (a rejected candidate does not count), and never repeats a rejected puzzle', SLOW, () => {
   const w = world('p2'), rejected = w.index().candidates.filter(c => c.slot === '20261122');
   w.verdicts([w.say(rejected[0], 2)]);
   assert.equal(w.cli(...PROMOTE).status, 0);
@@ -230,7 +231,7 @@ test('gotd-gen promote: the next fill tops the queue up (a rejected candidate do
   for (const c of index.candidates) assert.notEqual(symmetryKey(parse(fs.readFileSync(path.join(w.queue, c.file), 'utf8'))), rejectedKey);
 });
 
-test('gotd-gen promote: an approved candidate that repeats a published puzzle is not published (exit 1); a broken verdicts.json stops everything', () => {
+test('gotd-gen promote: an approved candidate that repeats a published puzzle is not published (exit 1); a broken verdicts.json stops everything', FAST, () => {
   const w = world('p3'), c = w.index().candidates.find(x => x.slot === '20261123');
   w.verdicts([w.say(c, 4)]);
   const copy = path.join(w.pub, '20261101.txt'); // an older published day that is the same puzzle, turned
@@ -252,7 +253,7 @@ test('gotd-gen promote: an approved candidate that repeats a published puzzle is
   assert.deepEqual(fs.readdirSync(w.pub), [], 'nothing was published');
 });
 
-test('gotd-gen status: shows what is to review and the reviewed numbers per stamp', () => {
+test('gotd-gen status: shows what is to review and the reviewed numbers per stamp', FAST, () => {
   const w = world('p4'), [c7a, c7b, c8a] = w.index().candidates;
   w.verdicts([w.say(c7a, 3), w.say(c8a, 1)]);
   let r = w.cli('status', '--today', '20261122');
@@ -264,7 +265,7 @@ test('gotd-gen status: shows what is to review and the reviewed numbers per stam
   assert.match(r.stdout, /stamp a\d+-[0-9a-f]{8}: 2 reviewed, 1 approved \(50%\), 1 rejected, human - model grade: mean -?\d+\.\d\d, worst -?\d+\.\d/);
 });
 
-test('gotd-gen promote: no limit unless asked: every approved candidate gets the earliest open day of its size, past the days fill looked at; --until limits it', () => {
+test('gotd-gen promote: no limit unless asked: every approved candidate gets the earliest open day of its size, past the days fill looked at; --until limits it', FAST, () => {
   const w = world('p6'), [c7a, c7b, c8a, c8b] = w.index().candidates;
   w.verdicts([c7a, c7b, c8a, c8b].map(c => w.say(c, 3)));
   let r = w.cli('promote', '--today', '20261122', '--until', '20261123', '--dry-run');
@@ -285,7 +286,7 @@ test('gotd-gen promote: no limit unless asked: every approved candidate gets the
   assert.deepEqual(fs.readdirSync(w.pub).sort(), ['20261122.txt', '20261123.txt', '20261124.txt', '20261127.txt']);
 });
 
-test('gotd-gen promote: a verdict without a rating works; a candidate that fails the re-vet does not leave its day empty, the next approved one of that size takes it', () => {
+test('gotd-gen promote: a verdict without a rating works; a candidate that fails the re-vet does not leave its day empty, the next approved one of that size takes it', FAST, () => {
   const w = world('p5'), [c7a, c7b, c8a] = w.index().candidates;
   const bare = (c, verdict) => makeVerdict({ candidate: c, sel: null, verdict, solved: false, playS: 12, takebacks: 0, now: NOW });
   w.verdicts([bare(c7a, 'approve'), bare(c7b, 'approve'), bare(c8a, 'reject')]);
@@ -306,7 +307,7 @@ test('gotd-gen promote: a verdict without a rating works; a candidate that fails
   assert.match(r.stdout, /1 open day\(s\) without an approved candidate/, 'the 8x8 day: its only candidate was rejected');
 });
 
-test('gotd-gen harvest: rated verdicts of every fate (published, rejected, queued) become ratings rows once; a verdict without a key finds its puzzle in the files', () => {
+test('gotd-gen harvest: rated verdicts of every fate (published, rejected, queued) become ratings rows once; a verdict without a key finds its puzzle in the files', FAST, () => {
   const w = world('h1'), [c7a, c7b, c8a] = w.index().candidates, R = path.join(tmp, 'h1-ratings.json');
   fs.writeFileSync(R, '[]\n');
   const keyOf = c => ratingKey(parse(fs.readFileSync(path.join(w.queue, c.file), 'utf8')));
@@ -339,7 +340,7 @@ test('gotd-gen harvest: rated verdicts of every fate (published, rejected, queue
   assert.match(r.stderr, /not in canonical form/);
 });
 
-test('gotd-gen merge: verdict files of other devices merge into the queue verdicts (newer wins, conflicts listed), a verdict with its key is harvested without any puzzle file', () => {
+test('gotd-gen merge: verdict files of other devices merge into the queue verdicts (newer wins, conflicts listed), a verdict with its key is harvested without any puzzle file', FAST, () => {
   const w = world('m1'), [c7a, c7b, c8a] = w.index().candidates, text = c => fs.readFileSync(path.join(w.queue, c.file), 'utf8');
   const A = path.join(tmp, 'm1-a.json'), B = path.join(tmp, 'm1-b.json'), bad = path.join(tmp, 'm1-bad.json');
   const later = '2026-11-06T10:00:00Z';
@@ -374,7 +375,7 @@ test('gotd-gen merge: verdict files of other devices merge into the queue verdic
   assert.deepEqual(parseRatingsJson(fs.readFileSync(R, 'utf8')).ratings.map(x => x.human).sort(), [1, 2], 'c7a with the newer rating of device B');
 });
 
-test('gotd-gen keys: older verdicts (no key) get their puzzle from the published, rejected and queued files; afterwards they harvest without any file; a verdict with no file is listed', () => {
+test('gotd-gen keys: older verdicts (no key) get their puzzle from the published, rejected and queued files; afterwards they harvest without any file; a verdict with no file is listed', FAST, () => {
   const w = world('k1'), [c7a, c7b, c8a] = w.index().candidates, R = path.join(tmp, 'k1-ratings.json');
   fs.writeFileSync(R, '[]\n');
   const keyOf = c => ratingKey(parse(fs.readFileSync(path.join(w.queue, c.file), 'utf8'))), keys = { c7a: keyOf(c7a), c7b: keyOf(c7b), c8a: keyOf(c8a) };

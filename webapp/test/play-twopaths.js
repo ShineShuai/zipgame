@@ -123,7 +123,7 @@ export function twoPathsPlayTests(t, ok, eq) {
     ok(solvedPaths(p, paths), 'interleaved: solved');
   });
 
-  t('twopaths-play: walkColour refuses what the rules refuse', () => {
+  t.slow('twopaths-play: walkColour refuses what the rules refuse', () => {
     let touching = 0;
     let numbers = 0;
     for (let seed = 1; seed <= 8; seed++) {
@@ -196,7 +196,7 @@ export function twoPathsPlayTests(t, ok, eq) {
     ok(!solvedPaths(p, newPaths()));
   });
 
-  t('twopaths-play: legsUndoTwo — the legs of the blue path come after the red ones', () => {
+  t.slow('twopaths-play: legsUndoTwo — the legs of the blue path come after the red ones', () => {
     const found = { [RED]: 0, [BLUE]: 0 };
     for (let seed = 1; seed <= 12; seed++) {
       const p = game(7, seed);

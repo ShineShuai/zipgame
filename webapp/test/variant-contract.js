@@ -43,7 +43,7 @@ export function variantContractTests(t, ok, eq) {
     }
   });
 
-  t('variants: a puzzle is claimed by its own variant and by no other; a standard puzzle by none', () => {
+  t.slow('variants: a puzzle is claimed by its own variant and by no other; a standard puzzle by none', () => {
     eq(variantOf(made('std', 6, 11)), null, 'a standard puzzle');
     for (const v of PLAY_VARIANTS) {
       const p = puzzleOf(v, sizesFor(v.id, PLAY_SIZES)[0]);
@@ -61,7 +61,7 @@ export function variantContractTests(t, ok, eq) {
     }
   });
 
-  t('variants: the smallest and the largest offered size (the smallest only for Arrows and Pentagon) each give a puzzle of that size with one solution', () => {
+  t.slow('variants: the smallest and the largest offered size (the smallest only for Arrows and Pentagon) each give a puzzle of that size with one solution', () => {
     for (const v of PLAY_VARIANTS) {
       const sizes = sizesFor(v.id, PLAY_SIZES);
       for (const n of new Set([sizes[0], SMALLEST_ONLY.includes(v.id) ? sizes[0] : sizes[sizes.length - 1]])) {

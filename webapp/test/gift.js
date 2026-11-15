@@ -137,7 +137,7 @@ export function giftTests(t, ta, ok, eq) {
     eq(listDays(null, wins[7]), []);
   });
 
-  t('gift: the listed days are enough to find the reference day (the puzzle): one day fits, for several references and times', () => {
+  t.slow('gift: the listed days are enough to find the reference day (the puzzle): one day fits, for several references and times', () => {
     const fits = (list, from) => { // the reference days that give exactly these happiest days
       const out = [];
       for (let m = from; m < firstOfMonth(list[0], 0); m++) if (list.every(g => giftDay(m, g) === g)) out.push(m);

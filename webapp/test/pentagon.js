@@ -276,7 +276,7 @@ export function pentagonTests(t, ok, eq) {
     }
   });
 
-  t('pentagon-gen: puzzles of 16, 36 and 64 cells have exactly one solution (checked against a '
+  t.slow('pentagon-gen: puzzles of 16, 36 and 64 cells have exactly one solution (checked against a '
     + 'plain search on 16), the path solves them, the same seed gives the same puzzle', () => {
     for (const [n, seeds] of [[4, [1, 2, 3, 4]], [6, [1, 2, 3]], [8, [1]]]) {
       for (const seed of seeds) {
@@ -414,7 +414,7 @@ export function pentagonTests(t, ok, eq) {
     eq(keptK({ typed: true, value: '3', cells, fallback: 14 }), '3', 'a small number stays');
   });
 
-  t('pentagon-grade: a forced start — the solution keeps its path, a wrong turn has no solution, '
+  t.slow('pentagon-grade: a forced start — the solution keeps its path, a wrong turn has no solution, '
     + 'only the steps below the last forced cell are counted', () => {
     for (const [n, seed] of [[4, 2], [6, 3], [8, 1]]) {
       const p = game(n, seed);
@@ -435,7 +435,7 @@ export function pentagonTests(t, ok, eq) {
     }
   });
 
-  t('pentagon-grade: the wrong turns along the solution — each a neighbour over a side without a '
+  t.slow('pentagon-grade: the wrong turns along the solution — each a neighbour over a side without a '
     + 'wall, none the solution\'s own next cell, none visited; every one dead (checked by plain '
     + 'search on 16 cells)', () => {
     for (const [n, seed] of [[4, 2], [4, 5], [6, 3], [8, 1]]) {
@@ -478,7 +478,7 @@ export function pentagonTests(t, ok, eq) {
     }
   });
 
-  t('pentagon-grade: the grade — 0 to 5 by the reduced trap model, capped by the size of a '
+  t.slow('pentagon-grade: the grade — 0 to 5 by the reduced trap model, capped by the size of a '
     + 'square board with as many cells, the same for a received puzzle (no stored solution), '
     + 'rising with the board', () => {
     const meanPredicted = n => {
@@ -538,7 +538,7 @@ export function pentagonTests(t, ok, eq) {
     }
   });
 
-  t('pentagon-share: a code of its own version (6) — round trip for every size, short, '
+  t.slow('pentagon-share: a code of its own version (6) — round trip for every size, short, '
     + 'damaged codes fail', () => {
     eq(SHARE_VERSION_PENTAGON, 6);
     const puzzles = [

@@ -23,7 +23,7 @@ const HIT_SEEDS = 6; // seeds tried from a base seed before a target test calls 
 const interior = p => [...p.cp.keys()].filter(c => p.cp[c] > 1 && p.cp[c] < cellCount(p));
 
 export function exactGenTests(t, ok, eq) {
-  t('exact gen: puzzles are valid, unique, wall-free, solved by their path, 1 and the end', () => {
+  t.slow('exact gen: puzzles are valid, unique, wall-free, solved by their path, 1 and the end', () => {
     for (const [n, seed] of [[5, 1], [5, 2], [6, 3], [6, 4], [7, 5], [7, 6], [8, 7], [8, 8]]) {
       const p = runSync(generateExact(n, seed));
       const tag = `n=${n} seed=${seed}`;
@@ -135,7 +135,7 @@ export function exactGenTests(t, ok, eq) {
     eq([none.removed, none.nodes], [0, 0]);
   });
 
-  t('exact gen: more candidates never leave more numbers, and often fewer (same seed)', () => {
+  t.slow('exact gen: more candidates never leave more numbers, and often fewer (same seed)', () => {
     let fewer = 0;
     for (let seed = 61; seed <= 70; seed++) {
       const one = labelCount(runSync(generateExact(7, seed, { candidates: 1, refineNodes: 0 })));
@@ -153,7 +153,7 @@ export function exactGenTests(t, ok, eq) {
     eq([validate(p).ok, solve(p, CHECK).count], [true, 1]);
   });
 
-  t('exact gen target: a puzzle of the grade (or harder): hit, unique, valid, solved', () => {
+  t.slow('exact gen target: a puzzle of the grade (or harder): hit, unique, valid, solved', () => {
     // The tries are bounded, and a refit moves the cuts, so no fixed seed is sure to hit: from each base seed take the first one that does.
     for (const [n, grade, base] of [[7, 2, 1], [7, 2, 2], [8, 3, 3], [8, 3, 4], [10, 2, 5]]) {
       let p, seed = base;
@@ -181,7 +181,7 @@ export function exactGenTests(t, ok, eq) {
     eq([q.score.hit, q.score.grade], [true, 2]);
   });
 
-  t('exact gen target: clamped to the size, deterministic, bounded by tries, events rise', () => {
+  t.slow('exact gen target: clamped to the size, deterministic, bounded by tries, events rise', () => {
     const small = runSync(generateExact(5, 3, { grade: 5 }));
     eq(small.score.target, maxTargetGrade(5, EXACT_MODEL), 'a 5x5 puzzle cannot show grade 5');
     const a = runSync(generateExact(7, 21, { grade: 3 }));
@@ -208,7 +208,7 @@ export function exactGenTests(t, ok, eq) {
     }
   });
 
-  t('exact gen target: shiftNumber moves a number on the path; climb and ease stay unique', () => {
+  t.slow('exact gen target: shiftNumber moves a number on the path; climb and ease stay unique', () => {
     const p = runSync(generateExact(7, 41, { candidates: 1, refineNodes: 0 }));
     const rnd = makeRng(3);
     let moved = null;

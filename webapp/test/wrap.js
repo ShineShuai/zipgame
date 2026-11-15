@@ -146,7 +146,7 @@ export function wrapTests(t, ok, eq) {
     ok(isSolved(q, path), 'a route that uses four seam moves solves the puzzle');
   });
 
-  t('wrap: solver = brute force on random torus puzzles (all prunes; lconn: same nodes)', () => {
+  t.slow('wrap: solver = brute force on random torus puzzles (all prunes; lconn: same nodes)', () => {
     const rnd = makeRng(20261012);
     const sizes = [[3, 2, 4, 60], [4, 3, 5, 40], [5, 6, 8, 20], [6, 8, 10, 4]];
     for (const [n, kLo, kHi, count] of sizes) {

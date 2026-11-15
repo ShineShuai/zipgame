@@ -241,7 +241,7 @@ export function unlockTests(t, ta, ok, eq) {
     ok(derived.every(s => s.join() === '5,6'), 'a variant without such sizes: all its sizes');
   });
 
-  t('variants: each generator makes a puzzle that detect() and variantOf() assign to it', () => {
+  t.slow('variants: each generator makes a puzzle that detect() and variantOf() assign to it', () => {
     for (const v of PLAY_VARIANTS) {
       // a ring needs an even board; a Pentagon board has its own sizes
       const n = v.id === 'loop' ? 6 : v.id === PENTAGON ? 4 : 5;

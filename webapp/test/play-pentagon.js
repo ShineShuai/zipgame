@@ -98,7 +98,7 @@ export function playPentagonTests(t, ok, eq) {
     ok(isPlayable(status), 'a shared Pentagon game plays');
   });
 
-  t('play-pentagon: the board markup — a polygon per cell, walls, border, badges, path, '
+  t.slow('play-pentagon: the board markup — a polygon per cell, walls, border, badges, path, '
     + 'hints', () => {
     for (const n of [4, 6, 10]) {
       const p = game(n, 2);

@@ -50,18 +50,23 @@ python3 -m http.server 8000        # or: npx serve .
 | --- | --- |
 | `/` | Home page for players, with a Play link |
 | `/webapp/` | Play app |
-| `/webapp/test/` | Unit tests in the browser |
+| `/webapp/test/` | Unit tests (Node) |
 | `/webapp/bench/` | Benchmark in the browser |
 
 The command line tools need Node 20 or newer and run inside `webapp/`:
 
 ```sh
 cd webapp
-npm test          # unit, co-op and sync tests (a few minutes)
+npm test          # the fast tier of the unit, co-op and sync tests (under a minute)
+npm run test:all  # every test: adds the slow tier (generators, golden puzzles, solver comparisons)
 npm run check     # every file parses, every import and html reference resolves
 npm run bench     # solver and generator benchmark (about 2 minutes)
 npm run golden    # print fresh golden hashes, see "Determinism"
 ```
+
+A test that takes 0.5 s or more is marked slow (`t.slow(...)`, see `webapp/test/harness.js`): `npm test` skips it,
+`npm run test:slow` runs only those. A fast test over 3 s fails with a note to mark it. One test:
+`node --test-name-pattern=wrap test/tests.js`.
 
 `npm run test:themes` tests the theme tooling, `npm run test:server` the backend code in
 `webapp/server/` and `npm run test:tools` the research tools (fits, simulations, evaluations; about
@@ -365,7 +370,7 @@ Puzzles must not change for a given seed, or players would see different "same" 
   ```sh
   # bump ALGO_VERSION in webapp/src/core/model.js, then, inside webapp/:
   npm run golden        # paste the output over the list in test/golden.js
-  npm test
+  npm run test:all      # the golden puzzles are in the slow tier
   ```
 
 ## Repository layout
@@ -406,7 +411,7 @@ Puzzles must not change for a given seed, or players would see different "same" 
     │   ├── ui/, view/              texts (i18n), dialogs, SVG and 3D geometry
     │   ├── coop/                   two-player drawing mode (not released yet; removable)
     │   └── apps/play/              browser entry point (main.js) and board
-    ├── test/                       unit tests (Node and browser), golden puzzles, check.js
+    ├── test/                       unit tests (Node), golden puzzles, check.js
     ├── bench/                      solver and generator benchmark (Node and browser)
     └── tools/                      analysis and data tools (ratings, Game of the Day, benchmarks)
 ```
@@ -421,9 +426,10 @@ workflow itself:
 
 1. **Tests** on Node 20 and 22: `npm run check` (syntax, import and html-reference check, plus the home
    page's links and its two languages; the app entry points need a browser, so the unit tests never load
-   them and this catches a typo'd import that would otherwise break the page), then `npm test` (unit,
-   co-op and sync tests, including the golden puzzles). On Node 22 it also runs the theme tests, the
-   self-test of the release selection and a dry run of the site staging.
+   them and this catches a typo'd import that would otherwise break the page), then the unit, co-op
+   and sync tests: the fast tier (`npm test`) on Node 20, every test (`npm run test:all`, the golden puzzles
+   included) on Node 22. On Node 22 it also runs the theme tests, the self-test of the release selection and
+   a dry run of the site staging.
 2. **Benchmark** on `main` and on demand (Actions → Webapp CI → Run workflow). It publishes the results
    in the job summary and as an artifact, and fails if the solver's pruning options ever change the
    solutions found. Timings depend on the runner, so treat them as informational.

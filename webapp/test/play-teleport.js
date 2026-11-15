@@ -113,7 +113,7 @@ export function teleportPlayTests(t, ta, ok, eq) {
     ok(typeof EN['game.teleportHint'] === 'string' && typeof ZH['game.teleportHint'] === 'string');
   });
 
-  t('teleport-play: share code — round trip, own version, old codes '
+  t.slow('teleport-play: share code — round trip, own version, old codes '
     + 'unchanged, damaged codes fail', () => {
     for (const n of [5, 6, 7, 8]) {
       for (let seed = 1; seed <= 3; seed++) {
