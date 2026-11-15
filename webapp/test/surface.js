@@ -1,7 +1,7 @@
 // Tests of the closed-surface boards (tetrahedron and cube): the graph (core/surface/topology.js),
 // the puzzle model, rules and text format (puzzle.js), the solver (solve.js, checked against a
 // plain brute-force search and against path counts computed with an independent C++ program) and
-// the generator (gen.js). Registered by tests.js: surfaceTests(t, ok, eq).
+// the generator (gen.js). Registered by unit/surface.test.js: surfaceTests(t, ok, eq).
 // Set SURFACE_SLOW=1 for the oracle counts that take several seconds.
 import {
   surfaceTopology,

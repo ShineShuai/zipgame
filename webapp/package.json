@@ -14,6 +14,7 @@
     "test:gotd": "node --test test/gotd-gen-cli.test.js",
     "test:tools": "node --test test/tools.test.js",
     "fixtures:puzzles": "node test/fixtures/build-puzzles.mjs",
+    "fixtures:step-ratings": "node test/fixtures/build-step-ratings.mjs",
     "test:server": "node server/cloudflare/worker.test.mjs && node server/turso/schema.test.mjs && node server/turso/sync.test.mjs",
     "bench": "node bench/bench.js",
     "bench:save": "node bench/bench.js --save",

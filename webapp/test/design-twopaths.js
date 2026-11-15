@@ -2,7 +2,7 @@
 // and the colour-wise validity (core/twopaths.js), the generator hooks (gen/generate.js
 // randomPathPuzzle and generateUnique), the broken line of a route (apps/design/board.js), the
 // technique ladder's refusal, walkColour with step options (features/twopaths-play.js), and what
-// design.html offers. Registered by tests.js: designTwoPathsTests(t, ok, eq).
+// design.html offers. Registered by unit/twopaths.test.js: designTwoPathsTests(t, ok, eq).
 import { makePuzzle, validate, maxNumber } from '../src/core/model.js';
 import { serialize, parse } from '../src/core/format.js';
 import { isSolved } from '../src/core/rules.js';

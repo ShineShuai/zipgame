@@ -1,6 +1,6 @@
 // Tests of the Pentagon variant in the play app: the registry entry and texts, the icon, the board
 // (apps/play/pentagon-board.js), walking and hints on it, the share text, and the links made
-// earlier (they must read as they did). Registered by tests.js:
+// earlier (they must read as they did). Registered by unit/pentagon.test.js:
 // playPentagonTests(t, ok, eq). The page itself (apps/play/main.js) is not run here.
 import { COLORS } from '../src/apps/play/board.js';
 import {

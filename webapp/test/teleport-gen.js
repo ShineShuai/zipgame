@@ -2,7 +2,7 @@
 // of gen/generate.js,
 // gen/checkpoints.js, gen/walls.js) and of its use by the design app (generateUnique /
 // randomPathPuzzle with pairs).
-// Registered by tests.js: teleportGenTests(t, ok, eq).
+// Registered by unit/teleport.test.js: teleportGenTests(t, ok, eq).
 import { validate, maxNumber } from '../src/core/model.js';
 import { serialize } from '../src/core/format.js';
 import { solve } from '../src/core/solver/solve.js';

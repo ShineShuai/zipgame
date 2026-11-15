@@ -1,5 +1,5 @@
 // Tests of the ball boards: the generated catalog (core/solid/ball-catalog.js), the graph built
-// from it (topology.js), which boards can be played, and puzzles on them. Registered by tests.js:
+// from it (topology.js), which boards can be played, and puzzles on them. Registered by unit/surface.test.js:
 // ballTests(t, ok, eq). Regenerating the catalog: node tools/ball-catalog.mjs --check
 import { BALL_CATALOG } from '../src/core/solid/ball-catalog.js';
 import { registerBalls } from '../src/core/solid/ball-registry.js';

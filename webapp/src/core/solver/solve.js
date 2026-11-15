@@ -72,7 +72,7 @@ import { distFn, bipartite, graphDistances, portalsBipartite } from '../geom.js'
 //   fast      (default true) only with incr:false: skip prop's recompute when the head is down to a single move
 //   lconn     (default true) answer the flood-fill connectivity test from the 8 cells around the previous head
 //             when that is enough; see localConn() below
-// incr, fast and lconn never change which nodes are visited, the solutions or their order (tests.js and
+// incr, fast and lconn never change which nodes are visited, the solutions or their order (test/unit/solver.test.js and
 // bench/bench.js assert node-for-node equality against fast:false, lconn:false); they only make each node cheaper.
 // prune2, prop, seg, pocket, parity and legCollide only prune: they never change the solutions
 // found or their DFS order. They do change how many nodes are visited, which is why they are

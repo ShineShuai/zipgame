@@ -1,5 +1,5 @@
 // Tests of the happiest-day gift: the rule (core/gift.js) and its state (features/gift.js). Registered by
-// tests.js: giftTests(t, ta, ok, eq).
+// unit/unlock.test.js: giftTests(t, ta, ok, eq).
 import { chain, monthRows, giftDay, isGiftDay, lastGift, nextGift, firstGift, recentGifts, giftInfo } from '../src/core/gift.js';
 import { createGift, sanitize, present, listDays, drawKind, GIFT_KEY, OPEN_DAYS, LIST_DAYS } from '../src/features/gift.js';
 import { releaseDays } from '../src/features/solid-release.js';

@@ -1,7 +1,8 @@
 // Tests of the research tools (tools/*.mjs): fitting, simulation and evaluation scripts run by hand, some end to end in child
 // processes (about 40 s together). They are not part of `npm test` or the pre-commit hook; run them with
 //   npm run test:tools
-// after a change to tools/ or to what they read (core/trap.js, features/playlog.js, tools/ratings.json).
+// after a change to tools/ or to what they read (core/trap.js, features/playlog.js). They read the frozen
+// rated puzzles of test/fixtures/step-ratings.json, never tools/ratings.json, which grows (node test/fixtures/build-step-ratings.mjs).
 import test from 'node:test';
 import fs from 'node:fs';
 import { parse } from '../src/core/format.js';
@@ -21,7 +22,7 @@ const ta = t;
 
 ta('playlog-eval: runs end to end on a small play log and prints the metrics and the badge table', async () => {
   const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path'), { spawnSync } = await import('node:child_process');
-  const rated = JSON.parse(fs.readFileSync(new URL('../tools/ratings.json', import.meta.url))).filter(r => parse(r.key).n <= 6).slice(0, 6);
+  const rated = JSON.parse(fs.readFileSync(new URL('./fixtures/step-ratings.json', import.meta.url))).filter(r => parse(r.key).n <= 6).slice(0, 6);
   ok(rated.length >= 4, 'the ratings hold enough small puzzles for the smoke test');
   const recs = rated.flatMap((r, i) => [0, 1].map(k => { const p = parse(r.key), T = p.n * p.n; return { v: 1, key: r.key, n: p.n, ms: 4000 + 900 * i + 300 * k, solved: true, hints: 0, mode: 'local', pushes: T + i, undone: i, maxUndone: i, backtracks: i ? 1 : 0, resets: 0, at: i * 2 + k + 1 }; }));
   recs.push({ ...recs[0], solved: false, at: 99 });
@@ -36,7 +37,7 @@ ta('behaviour-eval: runs end to end on exported rows, fills Game-of-Day puzzles,
   async () => {
     const fs = await import('node:fs'), os = await import('node:os');
     const path = await import('node:path'), { spawnSync } = await import('node:child_process');
-    const ratings = JSON.parse(fs.readFileSync(new URL('../tools/ratings.json', import.meta.url)));
+    const ratings = JSON.parse(fs.readFileSync(new URL('./fixtures/step-ratings.json', import.meta.url)));
     const rated = ratings.filter(r => parse(r.key).n <= 6).slice(0, 8);
     ok(rated.length >= 6, 'the ratings hold enough small puzzles for the smoke test');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'behaviour-eval-'));
@@ -98,7 +99,7 @@ ta('calib-set: builds a block-balanced set; behaviour-eval groups it as "calib"'
   eq(new Set(texts).size, 6, 'all different');
   ok(index.sizes[5].every(f => /^cal-5-\d{3}\.txt$/.test(f)), 'names carry no grade');
   // behaviour rows on two of its puzzles and on one other puzzle: groups calib / local
-  const rated = JSON.parse(fs.readFileSync(new URL('../tools/ratings.json', import.meta.url)));
+  const rated = JSON.parse(fs.readFileSync(new URL('./fixtures/step-ratings.json', import.meta.url)));
   const other = rated.find(r => parse(r.key).n === 6).key, row = (i, key) => ({
     where: 'turso', id: i, day: 20700 + i, ms: 3000 + 500 * i, u: i % 4, deep: i % 3, s: 0,
     pz: 'x',
@@ -116,7 +117,7 @@ ta('calib-set: builds a block-balanced set; behaviour-eval groups it as "calib"'
     ev.stdout.slice(0, 300));
   ok(!/NaN|undefined/.test(ev.stdout), 'no NaN/undefined in the output');
 });
-const stepRatings = new URL('../tools/ratings.json', import.meta.url).pathname;
+const stepRatings = new URL('./fixtures/step-ratings.json', import.meta.url).pathname;
 t('step-lib: a wrong move of the trap profile, played, is the event at its step + 1', () => {
   const key = JSON.parse(fs.readFileSync(stepRatings, 'utf8')).find(r => parse(r.key).n === 7).key;
   const p = parse(key), sol = solutionPath(p), prof = trapProfile(p,
@@ -185,7 +186,8 @@ ta('step-sim + step-fit: simulate rows, fit them from the command line', async (
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'step-')), f = path.join(dir, 'rows.json');
   const tool = n => new URL('../tools/' + n, import.meta.url).pathname;
   const sim = spawnSync(process.execPath,
-    [tool('step-sim.mjs'), '--out', f, '--truth', 'steep', '--games', '450', '--puzzles', '45'],
+    [tool('step-sim.mjs'), '--out', f, '--truth', 'steep', '--games', '450', '--puzzles', '45',
+      '--ratings', stepRatings],
     { encoding: 'utf8' });
   eq(sim.status, 0, sim.stderr);
   const fit = spawnSync(process.execPath,
@@ -301,7 +303,7 @@ ta('apply-points: refuses without gate A, shows the change, writes only a copy o
   const before = sha(trapJs);
   fs.copyFileSync(trapJs, at('trap-copy.mjs'));
   const sim = (truth, games) => node(tool('step-sim.mjs'), '--out', at(truth + '.json'),
-    '--truth', truth,
+    '--truth', truth, '--ratings', stepRatings, '--cap', '100000',
     '--games', String(games), '--puzzles', '40').status;
   eq([sim('hand', 600), sim('steep', 1500)], [0, 0]);
   const common = ['--boot', '20', '--pboot', '5', '--cap', '100000', '--ratings', at('r.json')];

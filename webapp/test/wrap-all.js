@@ -1,4 +1,4 @@
-// All wrap-around (torus) tests in one place, so test/tests.js has a single line for them:
+// All wrap-around (torus) tests in one place, so test/unit/wrap.test.js has a single line for them:
 // wrapAllTests(t, ta, ok, eq) (ta = the async test registrar). Add the next wrap test module here.
 import { wrapTests } from './wrap.js';
 import { wrapGenTests } from './wrap-gen.js';

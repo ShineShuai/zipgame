@@ -1,6 +1,6 @@
 // Tests of the fast solver and path search of core/surface (solve.js, gen.js): they must give what
 // the plain versions give. The plain solver and path search of v0.14.0 (full scans after every
-// step, no narrowing of the graph) are kept here as the oracle. Registered by tests.js:
+// step, no narrowing of the graph) are kept here as the oracle. Registered by unit/surface.test.js:
 // surfaceFastTests(t, ok, eq).
 import { makeRng, shuffle } from '../src/core/rng.js';
 import { SLOTS, surfaceTopology } from '../src/core/surface/topology.js';

@@ -89,7 +89,7 @@ export function initTheme(button, label = (cur, next, classic) => (classic ? (cu
     trialMs: THEMES.trialMs, idle, focused: document.visibilityState !== 'hidden',
   });
   const picking = () => controller.state().pool.length >= 3 || revealed();   // a pool of three or more (or the dev reveal) is chosen from a list, not stepped through
-  // The dev reveal's rows are English only and not in the translations: no text a player can read mentions the reveal (see the test in tests.js).
+  // The dev reveal's rows are English only and not in the translations: no text a player can read mentions the reveal (see the test in test/unit/ui.test.js).
   const labels = { all: 'All themes', draft: 'draft', keep: 'Keep this theme', offer: 'Offer a theme now', none: 'No themes found', nothing: 'Nothing to offer', loading: '…', next: 'Next offer day', today: 'today', tomorrow: 'tomorrow', inDays: 'in {n} days' };
   // the next offer day: today's own is left out once it is answered or on offer (the chip is its reward)
   const nextDay = () => nextEvent(new Date(), THEMES.digits, id => controller.answered(id) || controller.offerView()?.event === id);

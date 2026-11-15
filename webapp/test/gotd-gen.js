@@ -1,5 +1,5 @@
 // The automatic Game of Day: the size schedule (core/gotd-schedule.js), the gates a candidate passes (core/gotd-gen.js) and the queue
-// (core/gotd-queue.js). Registered by tests.js: gotdGenTests(). The command line is tested in test/gotd-gen-cli.test.js.
+// (core/gotd-queue.js). Registered by unit/gotd-gen.test.js: gotdGenTests(). The command line is tested in test/gotd-gen-cli.test.js.
 import { makePuzzle } from '../src/core/model.js';
 import { setWallId } from '../src/core/edges.js';
 import { serialize, parse } from '../src/core/format.js';

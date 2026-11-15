@@ -1,7 +1,7 @@
 // Tests of the wrap-around (torus) core: the edges that join across the borders (core/edges.js),
 // the distance and neighbour rules (core/geom.js), moves (core/rules.js), the solver on such
 // boards (core/solver/solve.js, checked against a plain brute-force search) and the plain-text
-// format (core/format.js). Registered by tests.js: wrapTests(t, ok, eq).
+// format (core/format.js). Registered by unit/wrap.test.js: wrapTests(t, ok, eq).
 import { makePuzzle, validate, cellCount, startCell, endCell } from '../src/core/model.js';
 import { edgeId, edgeCells, allEdges, setWallId, wallIds, pathEdgeIds } from '../src/core/edges.js';
 import { canStep, step, isSolved } from '../src/core/rules.js';

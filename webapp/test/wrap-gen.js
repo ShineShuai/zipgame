@@ -2,7 +2,7 @@
 // (gen/checkpoints.js), wall placement and minimizing (gen/walls.js) and generate() /
 // generateUnique() (gen/generate.js). The puzzles are checked against the plain brute-force
 // search of test/wrap.js, not against the solver that helped to build them.
-// Registered by tests.js: wrapGenTests(t, ok, eq).
+// Registered by unit/wrap.test.js: wrapGenTests(t, ok, eq).
 import { makePuzzle, validate } from '../src/core/model.js';
 import { allEdges, hasWallId, setWallId, wallIds, pathEdgeIds } from '../src/core/edges.js';
 import { isSolved } from '../src/core/rules.js';

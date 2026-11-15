@@ -3,7 +3,7 @@
 // icon, the registry entry, the share code and record, the grade, a whole game, the lucky game,
 // and what the design app
 // draws. The core and the generator are in teleport.js and teleport-gen.js. Registered by
-// tests.js:
+// unit/teleport.test.js:
 // teleportPlayTests(t, ta, ok, eq).
 import { maxNumber } from '../src/core/model.js';
 import { parse, serialize } from '../src/core/format.js';

@@ -1,6 +1,6 @@
 // Tests of what the design app needs for One way arrows: the text format (core/format.js), the
 // minimize helper (gen/arrows.js), the arrow geometry (view/geometry.js) and the board previews.
-// Registered by tests.js: designArrowsTests(t, ok, eq).
+// Registered by unit/arrows.test.js: designArrowsTests(t, ok, eq).
 import { makePuzzle, validate } from '../src/core/model.js';
 import {
   edgeId, setArrowId, setWallId, arrowIds, arrowDirId, arrowCount,

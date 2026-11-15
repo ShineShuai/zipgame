@@ -1,7 +1,7 @@
 // Tests of the zoom of the play board: the camera math (view/camera.js), the router that decides
 // who gets the fingers (apps/play/gesture.js), and what the board markup does with the camera.
 // The page itself (apps/play/zoom.js, grid-input.js) needs a browser and is not run here.
-// Registered by tests.js: zoomTests(t, ok, eq).
+// Registered by unit/zoom.test.js: zoomTests(t, ok, eq).
 import { makePuzzle } from '../src/core/model.js';
 import { runSync } from '../src/core/run.js';
 import { generatePentagon } from '../src/core/gen/pentagon.js';

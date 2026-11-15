@@ -1,5 +1,5 @@
 // Tests of the unlockable variants: the lucky day and its offers (core/lucky.js), the unlock state
-// (features/unlock.js) and the variant registry (apps/play/variants.js). Registered by tests.js:
+// (features/unlock.js) and the variant registry (apps/play/variants.js). Registered by unit/unlock.test.js:
 // unlockTests(t, ta, ok, eq).
 import {
   collatzPeak, weekOf, weekDays, weekTable, luckyDayOf, isLucky, lastLucky, nextLucky, OFFER_DAYS, offerEnd,

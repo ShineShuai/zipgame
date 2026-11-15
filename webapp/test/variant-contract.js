@@ -1,7 +1,7 @@
 // What every puzzle variant of the play app has to satisfy, once for the whole registry (PLAY_VARIANTS in
 // apps/play/variants.js): registration, sizes, the lucky game, detection, texts, an icon of its own, a puzzle at its smallest
 // and largest size. A new variant is covered by its entry there; what belongs to one variant alone stays in its own test file.
-// Registered by tests.js: variantContractTests(t, ok, eq).
+// Registered by unit/variant-contract.test.js: variantContractTests(t, ok, eq).
 import { runSync } from '../src/core/run.js';
 import { solve } from '../src/core/solver/solve.js';
 import { PLAY_SIZES } from '../src/core/gen/generate.js';

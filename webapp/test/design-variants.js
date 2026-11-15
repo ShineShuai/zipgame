@@ -2,7 +2,7 @@
 // seam geometry (view/geometry.js chordSegments), the board previews, the designer helpers
 // (wrap-aware scatter, seam walls), the play-mode overlays (connectivity, forced edges, leg
 // collisions) on Exact boards and on one-way arrows, and the A/B compare on a torus. Registered by
-// tests.js: designVariantsTests(t, ta, ok, eq).
+// unit/arrows.test.js: designVariantsTests(t, ta, ok, eq).
 import { makePuzzle, validate, labelCount } from '../src/core/model.js';
 import { setWallId, hasWallId, wallIds, clearSeamWalls, edgeId, setArrowId } from '../src/core/edges.js';
 import { solve } from '../src/core/solver/solve.js';
@@ -74,7 +74,7 @@ export function designVariantsTests(t, ta, ok, eq) {
   });
 
   t('boardLegCollide: an Exact board reports the same collision as the standard one with the same order', () => {
-    // The position of the standard test in tests.js (7x7, path cut at 13 cells), but with the numbers
+    // The position of the standard test in unit/solver.test.js (7x7, path cut at 13 cells), but with the numbers
     // 5, 10, 15... instead of 1, 2, 3...: Exact numbers are steps, the legs run by their order.
     const n = 7, rc = (r, c) => r * n + c;
     const make = scale => {

@@ -1,5 +1,5 @@
 // Generation in a worker: the job code (apps/play/gen-job.js), the worker's entry (gen-worker.js) and the runner that moves a job
-// between the page, a worker and the fallback on this thread (platform/worker-run.js). Registered by tests.js: generationTests().
+// between the page, a worker and the fallback on this thread (platform/worker-run.js). Registered by unit/worker-run.test.js: generationTests().
 import assert from 'node:assert/strict';
 import { runSync } from '../src/core/run.js';
 import { PLAY_VARIANTS } from '../src/apps/play/variants.js';

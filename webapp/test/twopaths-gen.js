@@ -1,5 +1,5 @@
 // Tests of the Two paths generator (core/gen/twopaths.js, gen/twopaths-layout.js, and the
-// `twopaths` option of gen/generate.js and gen/walls.js). Registered by tests.js:
+// `twopaths` option of gen/generate.js and gen/walls.js). Registered by unit/twopaths.test.js:
 // twoPathsGenTests(t, ok, eq).
 import { validate, maxNumber, clonePuzzle } from '../src/core/model.js';
 import { serialize } from '../src/core/format.js';

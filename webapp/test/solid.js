@@ -1,7 +1,7 @@
 // Tests of the 3D puzzles of the play app and what the design app shares with it: the navigation
 // helpers (view/solid-nav.js), the palettes of the picture (view/surface-board.js), the icons and
 // texts, and the card of the menu (apps/play/solid.js; its DOM parts run in a browser).
-// Registered by tests.js: solidTests(t, ok, eq).
+// Registered by unit/surface.test.js: solidTests(t, ok, eq).
 import { BALL_KIND, SLOTS, surfaceTopology } from '../src/core/surface/topology.js';
 import { BALL_CATALOG } from '../src/core/solid/ball-catalog.js';
 import { SOLID_KINDS as CORE_SOLID_KINDS, SIZED_SOLIDS } from '../src/core/solid/kinds.js';

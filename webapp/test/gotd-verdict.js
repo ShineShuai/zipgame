@@ -1,5 +1,5 @@
 // The human side of the automatic Game of Day: rating widget rules, the verdict file, the review plan, applying verdicts, promotion planning and the published
-// day's text (core/gotd-verdict.js, planReview and planPromote of core/gotd-queue.js, publishedText and the holdGrade gate of core/gotd-gen.js). Registered by tests.js.
+// day's text (core/gotd-verdict.js, planReview and planPromote of core/gotd-queue.js, publishedText and the holdGrade gate of core/gotd-gen.js). Registered by unit/gotd-gen.test.js.
 // The design app panel (apps/design/gotd-review.js) and the command line (test/gotd-gen-cli.test.js) are tested end to end elsewhere.
 import { parse, serialize, commentTimes } from '../src/core/format.js';
 import { ratingKey, symmetryKey, transformPuzzle } from '../src/core/ratings-io.js';

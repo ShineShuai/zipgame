@@ -1,6 +1,6 @@
 // Tests of the Loop puzzle's "the ring is not closed" indicator in the play app (apps/play/board.js
 // loopOpen / loopOpenMarks): a path that has visited every cell but does not close. Registered by
-// tests.js: loopOpenTests(t, ok, eq).
+// unit/loop.test.js: loopOpenTests(t, ok, eq).
 import { makePuzzle } from '../src/core/model.js';
 import { setWallId, edgeId } from '../src/core/edges.js';
 import { isSolved } from '../src/core/rules.js';
