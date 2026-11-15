@@ -44,7 +44,7 @@ import { solutionPath } from '../src/core/trap.js';
 import { OFFLINE_PATH_CAP } from './lib.mjs';
 import { GOTD_CFG, genStamp, createDistinct, pathKey, puzzleId, candidateText, publishedText, carriedOrigin, vetCandidate } from '../src/core/gotd-gen.js';
 import { dayOfDate, dateOfDay, sizeForDay, SIZE_BAG } from '../src/core/gotd-schedule.js';
-import { emptyIndex, parseIndex, formatIndex, planFill, planPromote, planReview, fillQueue, applyFill, usable } from '../src/core/gotd-queue.js';
+import { emptyIndex, parseIndex, formatIndex, planFill, planPromote, queueStatus, fillQueue, applyFill } from '../src/core/gotd-queue.js';
 import { parseVerdicts, formatVerdicts, mergeVerdicts, verdictConflicts, harvestRatings, applyVerdicts, reviewStats } from '../src/core/gotd-verdict.js';
 
 const args = process.argv.slice(2), cmd = args[0];
@@ -263,17 +263,14 @@ function status() {
   while (dates.has(dateOfDay(today + ahead))) ahead++;
   console.log(`stamp ${stamp}\npublished: ${dates.size} day(s); ${ahead} in a row from ${dateOfDay(today)}${ahead < GOTD_CFG.bufferDays ? `  <- fewer than ${GOTD_CFG.bufferDays} (MIN_PUZZLE_DAYS of the prod deploy: it warns, a strict deploy fails)` : ''}`);
   console.log('queue (size: pending / pending of an older stamp / approved / rejected):');
-  for (const n of Object.keys(SIZE_BAG)) {
-    const c = index.candidates.filter(x => x.size === +n), cnt = f => c.filter(f).length;
-    console.log(`  ${n}x${n}: ${cnt(x => x.status === 'pending' && x.stamp === stamp)} / ${cnt(x => x.status === 'pending' && x.stamp !== stamp)} / ${cnt(x => x.status === 'approved')} / ${cnt(x => x.status === 'rejected')}`);
-  }
-  const stats = reviewStats(verdicts), { queue: toReview, open, span } = planReview({ today, horizon, published: dates, index, verdicts, stamp, reserve: true });
-  const fit = toReview.filter(c => c.date).length;
-  console.log(`review: ${toReview.length} candidate(s) to review (pending, this stamp: ${fit} can fill an open day, ${toReview.length - fit} extra); ${open.length} open day(s) of the next ${span} without an approved candidate`);
+  const { bySize, review, stock } = queueStatus({ today, horizon, published: dates, index, verdicts, stamp, sizes: Object.keys(SIZE_BAG).map(Number) });
+  for (const c of bySize) console.log(`  ${c.size}x${c.size}: ${c.pending} / ${c.older} / ${c.approved} / ${c.rejected}`);
+  const stats = reviewStats(verdicts);
+  console.log(`review: ${review.count} candidate(s) to review (pending, this stamp: ${review.fit} can fill an open day, ${review.extra} extra); ${review.open} open day(s) of the next ${review.span} without an approved candidate`);
   for (const [st, v] of Object.entries(stats)) console.log(`  stamp ${st}: ${v.reviewed} reviewed, ${v.approved} approved (${Math.round(100 * v.approved / v.reviewed)}%), ${v.rejected} rejected${v.reviewed ? `, human - model grade: mean ${(v.sumErr / v.reviewed).toFixed(2)}, worst ${v.worst.toFixed(1)}` : ''}`);
   console.log('next 14 days:');
   for (let day = today; day < today + 14; day++) {
-    const date = dateOfDay(day), have = index.candidates.filter(c => c.slot === date && usable(c, stamp)).length;
+    const date = dateOfDay(day), have = stock[date] || 0;
     console.log(`  ${date} ${sizeForDay(day)}x${sizeForDay(day)}  ${dates.has(date) ? 'published' : `open, ${have} candidate(s)`}`);
   }
   return 0;
