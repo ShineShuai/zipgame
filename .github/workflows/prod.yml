@@ -101,8 +101,8 @@ jobs:
           set -euo pipefail
           # deploy config and scripts: from the commit of this run, not from the one deployed
           mkdir -p "$RUNNER_TEMP/ctl"
-          cp -a deploy/cloudflare .github/scripts/smoke-site.sh .github/scripts/stage-prod.sh \
-            "$RUNNER_TEMP/ctl/"
+          cp -a deploy/cloudflare .github/scripts/smoke-site.sh .github/scripts/assert-private.sh \
+            .github/scripts/stage-prod.sh "$RUNNER_TEMP/ctl/"
           git checkout --quiet --detach "$SHA"
           rm -rf deploy/cloudflare
           mkdir -p deploy

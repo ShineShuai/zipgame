@@ -15,13 +15,14 @@ function setup(options = {}) {
   return { health, told, clock, state };
 }
 
-test('one failed cloud round is a bad moment, the second in a row is told', () => {
+test('failed cloud rounds are a bad moment until the count in a row is reached, then told', () => {
   const { health, told } = setup();
-  health.cloudFailed({ error: 'network' });
-  assert.deepEqual(told, []);
+  for (let i = 1; i < FAILS_BEFORE_NOTICE; i++) {
+    health.cloudFailed({ error: 'network' });
+    assert.deepEqual(told, [], `failure ${i}`);
+  }
   health.cloudFailed({ error: 'network' });
   assert.deepEqual(told, [{ kind: 'cloud-failed', code: 'network' }]);
-  assert.equal(FAILS_BEFORE_NOTICE, 2);
 });
 
 test('a success in between starts the count again', () => {

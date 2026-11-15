@@ -164,6 +164,7 @@ jobs:
 
       # The query string bypasses the CDN cache, which may still hold files of the old branch deployment.
       # The theme files are every file of the staged theme folder: the manifest and each bundle must be served.
+      # What must stay private is checked with retries: a 503 of the host right after the deploy is no verdict.
       - name: Smoke test
         env:
           URL: ${{ steps.deployment.outputs.page_url }}
@@ -174,7 +175,5 @@ jobs:
           for p in index.html webapp/index.html webapp/src/config.js $(cd _site && find "$themes" -type f); do
             curl -fsS --retry 5 --retry-all-errors --retry-delay 3 -o /dev/null "$base/$p?cb=$RUN_ID"
           done
-          for p in webapp/package.json webapp/server/README.md webapp/tools/ratings.json themes/candy/theme.json; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' "$base/$p?cb=$RUN_ID")
-            [ "$code" = 404 ] || { echo "::error::$p is public (HTTP $code)"; exit 1; }
-          done
+          bash .github/scripts/assert-private.sh "$base" webapp/package.json webapp/server/README.md \
+            webapp/tools/ratings.json themes/candy/theme.json

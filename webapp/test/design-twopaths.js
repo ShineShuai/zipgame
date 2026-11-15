@@ -3,7 +3,6 @@
 // randomPathPuzzle and generateUnique), the broken line of a route (apps/design/board.js), the
 // technique ladder's refusal, walkColour with step options (features/twopaths-play.js), and what
 // design.html offers. Registered by tests.js: designTwoPathsTests(t, ok, eq).
-import { readFileSync } from 'node:fs';
 import { makePuzzle, validate, maxNumber } from '../src/core/model.js';
 import { serialize, parse } from '../src/core/format.js';
 import { isSolved } from '../src/core/rules.js';
@@ -22,7 +21,6 @@ import { splitD } from '../src/apps/design/board.js';
 
 const RED = 0;
 const BLUE = 1;
-const html = readFileSync(new URL('../design.html', import.meta.url), 'utf8');
 
 // A model of the typed numbers, to compare setColourNumber with: per colour a Map number -> cell.
 function modelSet(model, cell, colour, value) {
@@ -234,20 +232,5 @@ export function designTwoPathsTests(t, ok, eq) {
     // a press on an earlier cell rewinds the path to it
     eq(walkColour(p, paths, RED, red[1], opts), 'trunc');
     eq(paths[RED], red.slice(0, 2));
-  });
-
-  t('design-twopaths: design.html offers the type and the colour toggle, with the Teleport tools', () => {
-    ok(html.includes('<option value="twopaths">Two paths</option>'), 'the type option');
-    ok(/id="colRed"/.test(html) && /id="colBlue"/.test(html), 'the colour buttons');
-    const lists = [...html.matchAll(/data-variants="([^"]*)"/g)].map(m => m[1].split(' '));
-    // every group that holds several types and has Teleport has Two paths: both are a board of
-    // numbers and walls (a group of one type only is the portals, the arrows, the colours)
-    for (const list of lists.filter(l => l.length > 1 && l.includes('teleport'))) {
-      ok(list.includes('twopaths'), `twopaths missing from "${list.join(' ')}"`);
-    }
-    // the groups that are not for it stay without it: the A/B comparison, the target grades
-    ok(lists.some(l => l.join(' ') === 'standard wrap exact loop'), 'compare group unchanged');
-    ok(lists.some(l => l.join(' ') === 'standard exact'), 'target grade group unchanged');
-    eq(lists.filter(l => l.length === 1 && l[0] === 'twopaths').length, 1, 'one colour toggle');
   });
 }

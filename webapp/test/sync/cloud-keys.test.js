@@ -34,18 +34,12 @@ test('id and auth are independent of each other (one does not give the other)', 
   assert.notEqual(id, fromBase64Url(auth).slice(0, 16).toString());
 });
 
-test('the number of rounds changes everything; the real count is slow enough '
-  + 'to matter', async () => {
+test('the number of rounds changes everything; the real count is not below the OWASP floor', async () => {
   const secret = newSecret();
   const fast = await deriveCloudKeys(secret, FAST);
   const slower = await deriveCloudKeys(secret, FAST + 1);
   assert.notEqual(fast.id, slower.id);
-  assert.equal(KDF_ITERATIONS, 600000);
-  const start = performance.now();
-  await deriveCloudKeys(secret);
-  const ms = performance.now() - start;
-  assert.ok(ms > 20, `${ms} ms: 600,000 rounds should not be instant`);
-  assert.ok(ms < 20000, `${ms} ms`);
+  assert.ok(KDF_ITERATIONS >= 600000, 'OWASP minimum for PBKDF2-HMAC-SHA256');
 });
 
 test('sealing: what goes in comes out; nonces differ; the tag covers id, '

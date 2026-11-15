@@ -34,12 +34,10 @@ for p in index.html webapp/index.html webapp/src/config.js webapp/css/play.css \
 done
 
 # What must not be public: sources, tooling, and the pages that are not part of production.
-for p in webapp/package.json webapp/server/README.md webapp/tools/ratings.json \
+RUN_ID=$cb "$(dirname "$0")/assert-private.sh" "$base" \
+  webapp/package.json webapp/server/README.md webapp/tools/ratings.json \
   themes/candy/theme.json webapp/design.html webapp/stats.html demo/index.html \
-  demo/design.html _headers _redirects; do
-  code=$(curl -s -o /dev/null -w '%{http_code}' "$base/$p?cb=$cb")
-  [ "$code" = 404 ] || fail "$p is public (HTTP $code)"
-done
+  demo/design.html _headers _redirects || exit 1
 
 # The page's CSP hashes its inline script: any rewrite of the HTML on the way breaks the app.
 for p in index.html webapp/index.html; do
@@ -48,7 +46,7 @@ for p in index.html webapp/index.html; do
   [ "$served" = "$staged" ] || fail "$p differs from the staged file (edge rewrite?)"
 done
 
-headers=$(curl -sSIL "$base/webapp/index.html?cb=$cb")
+headers=$(curl -sSIL --retry 5 --retry-delay 3 "$base/webapp/index.html?cb=$cb")
 grep -qi '^x-content-type-options: *nosniff' <<< "$headers" || fail "nosniff header missing"
 grep -qi '^content-security-policy: *frame-ancestors' <<< "$headers" ||
   fail "frame-ancestors header missing"

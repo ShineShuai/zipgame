@@ -9,12 +9,14 @@ import {
 const URLS = ['wss://mq', 'wss://hv', 'wss://em'];
 const brokers = URLS.map((url, i) => ({ id: ['mq', 'hv', 'em'][i], url }));
 
-// A device: its own hub on the shared network, its own clock.
+// A device: its own hub on the shared network, its own clock. `now` is fixed: the hub reports the
+// time a connect took, and a real clock would make every report depend on the speed of the machine.
 function device(net, extra = {}) {
   const timers = manualTimers();
   const hub = createHub({
     brokers,
     timers,
+    now: () => 0,
     random: () => 1,
     connect: (url, handlers) => createMqtt({
       url, clientId: 'c', WebSocketImpl: net.WebSocket, timers, ...handlers,
@@ -27,6 +29,12 @@ function device(net, extra = {}) {
     hub, timers, got, listen,
   };
 }
+
+// Which brokers a hub is connected to, from its report: { mq: true, hv: false, em: true }.
+const upMap = hub => Object.fromEntries(hub.report().replace('signal ', '').split(' · ')
+  .map(part => part.split(' ')).map(([id, ms]) => [id, ms !== 'x']));
+const isUp = (hub, id) => upMap(hub)[id];
+const allUp = hub => Object.values(upMap(hub)).every(Boolean);
 
 test('topic filters: exact, + for one level, # for the rest', () => {
   assert.ok(matches('a/b', 'a/b'));
@@ -44,8 +52,7 @@ test('a message goes to every broker and is delivered once, whatever the brokers
   const a = device(net);
   const b = device(net);
   b.listen('r/+');
-  await until(() => a.hub.report() === 'signal mq 0.00s · hv 0.00s · em 0.00s'
-    && b.hub.report().includes('em 0.00s'), 'both connected');
+  await until(() => allUp(a.hub) && allUp(b.hub), 'both connected');
   a.hub.publish('r/one', 'hello');
   await until(() => b.got.length > 0, 'delivery');
   await settle();
@@ -63,7 +70,7 @@ test('one broker down, then all down: the others carry it; the report says which
   b.listen('r/+');
   await until(() => a.hub.anyUp() && b.hub.anyUp(), 'connected');
   await settle();
-  assert.match(a.hub.report(), /^signal mq [\d.]+s · hv x · em [\d.]+s$/);
+  assert.deepEqual(upMap(a.hub), { mq: true, hv: false, em: true });
   a.hub.publish('r/one', 'hello');
   await until(() => b.got.length === 1, 'delivery via the two');
   net.brokers.forEach(broker => broker.drop());
@@ -71,7 +78,7 @@ test('one broker down, then all down: the others carry it; the report says which
     broker.down = true;
   });
   await until(() => !a.hub.anyUp(), 'all lost');
-  assert.equal(a.hub.report(), 'signal mq x · hv x · em x');
+  assert.deepEqual(upMap(a.hub), { mq: false, hv: false, em: false });
 });
 
 test('a late subscriber gets the retained message; clear removes it everywhere', async () => {
@@ -96,20 +103,20 @@ test('a lost broker is reconnected after a growing wait, and gets the messages a
   const net = createNetwork(URLS);
   const broker = net.brokers.get('wss://mq');
   const a = device(net);
-  await until(() => a.hub.report().includes('mq 0.00s'), 'connected');
+  await until(() => isUp(a.hub, 'mq'), 'connected');
   a.hub.publish('r/one', 'sealed');
   await settle();
   broker.retained.clear();
   broker.down = true;
   broker.drop();
-  await until(() => a.hub.report().includes('mq x'), 'mq lost');
+  await until(() => !isUp(a.hub, 'mq'), 'mq lost');
   const connects = broker.connects;
   a.timers.advance(700); // 1000 ms * (0.5 + 1 / 2)
   await settle();
-  assert.equal(a.hub.report().includes('mq x'), true, 'still down: tried again');
+  assert.equal(isUp(a.hub, 'mq'), false, 'still down: tried again');
   broker.down = false;
   a.timers.advance(2100); // the second wait is 2 s
-  await until(() => a.hub.report().includes('mq 0.00s'), 'mq back');
+  await until(() => isUp(a.hub, 'mq'), 'mq back');
   assert.ok(broker.connects > connects);
   await until(() => broker.retained.get('r/one') === 'sealed', 'republished after the reconnect');
 });
@@ -117,7 +124,7 @@ test('a lost broker is reconnected after a growing wait, and gets the messages a
 test('what waits for an answer is sent again a few times, no more', async () => {
   const net = createNetwork(URLS);
   const a = device(net);
-  await until(() => !a.hub.report().includes(' x'), 'all up');
+  await until(() => allUp(a.hub), 'all up');
   const broker = net.brokers.get('wss://mq');
   a.hub.publish('r/ask', 'sealed', { repeat: 2 });
   await settle();
@@ -139,12 +146,32 @@ test('wake: down brokers are tried at once and everything is sent again', async 
   const broker = net.brokers.get('wss://hv');
   broker.down = true;
   const a = device(net);
-  await until(() => a.hub.anyUp() && a.hub.report().includes('hv x'), 'hv failed');
+  await until(() => a.hub.anyUp() && !isUp(a.hub, 'hv'), 'hv failed');
   a.hub.publish('r/one', 'sealed');
   broker.down = false;
   a.hub.wake();
-  await until(() => a.hub.report().includes('hv 0.00s'), 'hv connected by wake');
+  await until(() => isUp(a.hub, 'hv'), 'hv connected by wake');
   await until(() => broker.retained.get('r/one') === 'sealed', 'sent to it');
+});
+
+test('the report shows how long a connect took', async () => {
+  const net = createNetwork(URLS);
+  const timers = manualTimers();
+  let clock = 0;
+  const hub = createHub({
+    brokers: [brokers[0]],
+    timers,
+    now: () => clock,
+    connect: (url, handlers) => {
+      const mqtt = createMqtt({
+        url, clientId: 'c', WebSocketImpl: net.WebSocket, timers, ...handlers,
+      });
+      clock = 350; // the connect started at 0 and the broker answers at 350 ms
+      return mqtt;
+    },
+  });
+  await until(() => hub.anyUp(), 'connected');
+  assert.equal(hub.report(), 'signal mq 0.35s');
 });
 
 test('a message that is too long, or empty, is not delivered; close ends everything', async () => {

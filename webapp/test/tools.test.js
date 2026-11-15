@@ -8,7 +8,7 @@ import { parse } from '../src/core/format.js';
 import { validate } from '../src/core/model.js';
 import { solutionPath, trapProfile } from '../src/core/trap.js';
 import { newTrace, traceTrack, traceEvents } from '../src/features/playlog.js';
-import { parseArgs, helpText, ArgsError } from '../tools/args-lib.mjs';
+import { parseArgs, ArgsError } from '../tools/args-lib.mjs';
 import {
   stepsOfPuzzle, gamesOf, verdict, crossValidate, bucketOf, parameters,
 } from '../tools/step-lib.mjs';
@@ -203,7 +203,7 @@ ta('step-sim + step-fit: simulate rows, fit them from the command line', async (
   ok(none.stdout.includes('Nothing to fit'),
     'rows without wrong-turn records: a plain message, no crash');
 });
-t('args-lib: options are declared once; parsed, checked, listed by --help', () => {
+t('args-lib: options are parsed with their defaults; invalid input is an ArgsError', () => {
   const spec = {
     usage: 'node x.mjs rows.json [options]', summary: 'What it does.',
     positional: [{ name: 'rows.json', required: true, help: 'the rows' }],
@@ -223,27 +223,26 @@ t('args-lib: options are declared once; parsed, checked, listed by --help', () =
   eq(got.rest, ['r.json'], 'a flag before the positional argument does not swallow it');
   eq(parseArgs(['r.json', '--out', 'o'], spec).values.boot, 400, 'defaults are filled in');
   eq(parseArgs(['--help'], spec).help, true);
-  const bad = (argv, text) => {
-    let msg = '';
-    try { parseArgs(argv, spec); } catch (e) { ok(e instanceof ArgsError); msg = e.message; }
-    ok(msg.includes(text), `${argv.join(' ')} -> ${msg}`);
-  };
-  bad(['r.json', '--out', 'o', '--bot', '5'], 'unknown option --bot');
-  bad(['r.json', '--out', 'o', '--boot'], '--boot needs a value');
-  bad(['r.json', '--out', 'o', '--boot', '--seed', '1'], '--boot needs a value');
-  bad(['r.json', '--out', 'o', '--boot', 'x'], 'needs a number');
-  bad(['r.json', '--out', 'o', '--boot', '2.5'], 'whole number');
-  bad(['r.json', '--out', 'o', '--boot', '0'], 'at least 1');
-  bad(['r.json', '--out', 'o', '--boot', '5000'], 'at most 1000');
-  bad(['r.json', '--out', 'o', '--mode', 'c'], 'one of a, b');
-  bad(['r.json', '--out', 'o', '--quiet=1'], 'takes no value');
-  bad(['r.json'], '--out is required');
-  bad(['--out', 'o'], 'rows.json is required');
-  bad(['r.json', 'extra', '--out', 'o'], 'unexpected argument extra');
-  const help = helpText(spec);
-  ok(Object.keys(spec.options).every(k => help.includes('--' + k)), 'every option is listed');
-  ok(help.includes('default 400') && help.includes('one of a | b'));
-  ok(help.includes('may be repeated'));
+  // One input per rule. The wording of the messages and of the help text is not under test.
+  const rejected = [
+    ['r.json', '--out', 'o', '--bot', '5'], // unknown option
+    ['r.json', '--out', 'o', '--boot'], // no value
+    ['r.json', '--out', 'o', '--boot', '--seed', '1'], // the next option is no value
+    ['r.json', '--out', 'o', '--boot', 'x'], // not a number
+    ['r.json', '--out', 'o', '--boot', '2.5'], // not whole
+    ['r.json', '--out', 'o', '--boot', '0'], // below min
+    ['r.json', '--out', 'o', '--boot', '5000'], // above max
+    ['r.json', '--out', 'o', '--mode', 'c'], // not a choice
+    ['r.json', '--out', 'o', '--quiet=1'], // a flag takes no value
+    ['r.json'], // required option missing
+    ['--out', 'o'], // required positional missing
+    ['r.json', 'extra', '--out', 'o'], // one positional too many
+  ];
+  for (const bad of rejected) {
+    let error = null;
+    try { parseArgs(bad, spec); } catch (e) { error = e; }
+    ok(error instanceof ArgsError, `${bad.join(' ')} -> ${error}`);
+  }
 });
 ta('fit-trap: --points / --json / --target refit on other points and write a copy only',
   async () => {

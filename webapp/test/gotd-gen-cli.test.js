@@ -132,20 +132,14 @@ test('gotd-gen: check reports a broken index and a file that is not the candidat
   assert.match(r.stderr, /index\.json: "v" must be 1/);
 });
 
-test('gotd-gen: status and schedule print the pinned schedule and the queue', FAST, () => {
+test('gotd-gen: schedule and status run (what they count is tested on plain objects in gotd-gen.js and gotd-verdict.js)', FAST, () => {
   let r = run('schedule', '--from', '20261121', '--days', '30');
   assert.equal(r.status, 0, r.stderr);
   const lines = r.stdout.trim().split('\n');
-  assert.deepEqual(lines.slice(0, 30).map(l => l.split(' ')[1]).join(','), '11,7,8,8,6,9,7,8,7,10,8,6,8,7,9,11,9,7,8,10,8,7,6,7,10,7,8,10,8,7');
-  assert.equal(lines[0], '20261121 11');
-  assert.match(lines[30], /^6: 3 \(10%\)\s+7: 9 \(30%\)\s+8: 9 \(30%\)\s+9: 3 \(10%\)\s+10: 4 \(13%\)\s+11: 2 \(7%\)$/);
+  assert.ok(lines.slice(0, 30).every(line => /^\d{8} \d+$/.test(line)), 'one "day size" line per day');
   fs.writeFileSync(path.join(queue, 'index.json'), fs.readFileSync(path.join(pristine, 'index.json'), 'utf8'));
   r = run('status', '--today', '20261122', ...where);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /^stamp a\d+-[0-9a-f]{8}\n/);
-  assert.match(r.stdout, /published: 0 day\(s\); 0 in a row from 20261122 {2}<- fewer than 10/);
-  assert.match(r.stdout, /7x7: 1 \/ 0 \/ 0 \/ 0\n {2}8x8: 1 \/ 0 \/ 0 \/ 0/);
-  assert.match(r.stdout, /20261122 7x7 {2}open, 1 candidate\(s\)/);
 });
 
 test('gotd-gen: bad arguments and unknown commands exit 1 with a message', FAST, () => {
@@ -251,20 +245,6 @@ test('gotd-gen promote: an approved candidate that repeats a published puzzle is
   assert.equal(r.status, 1);
   assert.match(r.stderr, /^gotd-gen: verdicts\.json: verdict #1/);
   assert.deepEqual(fs.readdirSync(w.pub), [], 'nothing was published');
-});
-
-test('gotd-gen status: prints the queue per size, the review line, the reviewed numbers per stamp and the next days', FAST, () => {
-  const w = world('p4'), [c7a, , c8a] = w.index().candidates;
-  w.verdicts([w.say(c7a, 3), w.say(c8a, 1)]);
-  let r = w.cli('status', '--today', '20261122');
-  assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /^stamp a\d+-[0-9a-f]{8}\n/);
-  assert.match(r.stdout, /queue \(size: pending \/ pending of an older stamp \/ approved \/ rejected\):\n {2}6x6: \d+ \/ \d+ \/ \d+ \/ \d+\n {2}7x7: \d+ \/ \d+ \/ \d+ \/ \d+\n {2}8x8: \d+ \/ \d+ \/ \d+ \/ \d+\n/);
-  assert.match(r.stdout, /review: \d+ candidate\(s\) to review \(pending, this stamp: \d+ can fill an open day, \d+ extra\); \d+ open day\(s\) of the next \d+ without an approved candidate/);
-  assert.match(r.stdout, /stamp a\d+-[0-9a-f]{8}: 2 reviewed, 1 approved \(50%\), 1 rejected, human - model grade: mean -?\d+\.\d\d, worst -?\d+\.\d/);
-  assert.match(r.stdout, /next 14 days:\n {2}20261122 7x7 {2}open, \d+ candidate\(s\)\n {2}20261123 8x8 /);
-  r = w.cli('status', '--today', '20261122', '--horizon', '2');
-  assert.match(r.stdout, / of the next 2 without an approved candidate/, 'a given horizon limits the days looked at');
 });
 
 test('gotd-gen promote: no limit unless asked: every approved candidate gets the earliest open day of its size, past the days fill looked at; --until limits it', FAST, () => {

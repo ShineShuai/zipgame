@@ -7,14 +7,15 @@
 //   slow                only the tests marked slow: t.slow(name, fn), ta.slow(name, fn)
 //   all                 both: what the Node 22 job runs
 // A test that takes 0.5 s or more is marked slow. A fast test that takes longer than the budget (3 s, ZIGZAG_FAST_BUDGET_MS)
-// fails with a message to mark it, so the fast tier does not grow back unnoticed.
+// fails with a message to mark it, so the fast tier does not grow back unnoticed (not on CI, see FAST_BUDGET_MS).
 import test from 'node:test';
 
 export const TIER = process.env.ZIGZAG_TESTS || 'fast';
 if (!['fast', 'slow', 'all'].includes(TIER)) {
   throw new Error(`ZIGZAG_TESTS is "${TIER}": fast, slow or all`);
 }
-const FAST_BUDGET_MS = Number(process.env.ZIGZAG_FAST_BUDGET_MS || 3000);
+// 0 = not enforced; CI (the CI variable is set by GitHub Actions) does not enforce it: a slow runner is no regression.
+const FAST_BUDGET_MS = Number(process.env.ZIGZAG_FAST_BUDGET_MS ?? (process.env.CI ? 0 : 3000));
 
 export const eq = (a, b, m = '') => {
   const A = JSON.stringify(a), B = JSON.stringify(b);
@@ -38,7 +39,7 @@ function register(name, fn, slow) {
     const start = Date.now();
     await fn();
     const took = Date.now() - start;
-    if (!slow && took > FAST_BUDGET_MS) {
+    if (!slow && FAST_BUDGET_MS > 0 && took > FAST_BUDGET_MS) {
       throw new Error(`took ${took} ms, over the fast-tier budget of ${FAST_BUDGET_MS} ms: mark it slow (t.slow / ta.slow)`);
     }
   });
