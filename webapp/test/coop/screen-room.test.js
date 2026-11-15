@@ -9,8 +9,7 @@ import { createHub } from '../../src/coop/signal.js';
 import { GAME_KEY, loadGame, makeRecord, saveGame } from '../../src/coop/keep.js';
 import { deriveResume, newSecret } from '../../src/coop/secret.js';
 import { fromBase64Url } from '../../src/coop/invite.js';
-import { generate } from '../../src/core/gen/generate.js';
-import { runSync } from '../../src/core/run.js';
+import { fixture } from '../fixtures/puzzles.js';
 import { solutionOf } from '../../src/features/hints.js';
 import { EN } from '../../src/coop/texts.js';
 import { installFakeDom } from './fake-dom.js';
@@ -152,7 +151,7 @@ const withRtc = t => {
 
 // A game of 6x6 for `role`, with two lines drawn, as it would have been kept.
 async function kept(role, extra = {}) {
-  const puzzle = runSync(generate(6, 5));
+  const puzzle = fixture('std', 6, 5);
   const host = createSession({ role: 'host', onEvent() {} });
   const mine = host.newGame(puzzle, 5);
   const solution = solutionOf(puzzle);

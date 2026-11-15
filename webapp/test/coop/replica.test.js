@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generate } from '../../src/core/gen/generate.js';
-import { runSync } from '../../src/core/run.js';
+import { fixture } from '../fixtures/puzzles.js';
 import { makeRng, shuffle } from '../../src/core/rng.js';
 import { makePuzzle } from '../../src/core/model.js';
 import { solutionOf } from '../../src/features/hints.js';
@@ -118,7 +117,7 @@ test('the result does not depend on the order or the number of deliveries', () =
 test('two players draw the whole solution, in pieces and at the same time: solved on both', () => {
   const rnd = makeRng(8);
   for (const n of [5, 6, 7]) {
-    const puzzle = runSync(generate(n, 40 + n));
+    const puzzle = fixture('std', n, 40 + n);
     const solution = solutionOf(puzzle);
     const { a, b, sync } = pair(puzzle);
     const edges = shuffle(solution.slice(1).map((cell, i) => [solution[i], cell]), rnd);

@@ -1,15 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generate } from '../../src/core/gen/generate.js';
-import { generateLoop } from '../../src/core/gen/loop.js';
-import { generateTwoPaths } from '../../src/core/gen/twopaths.js';
-import { runSync } from '../../src/core/run.js';
+import { fixture } from '../fixtures/puzzles.js';
 import { solutionOf } from '../../src/features/hints.js';
 import { createDrawing } from '../../src/coop/drawing.js';
 import { coopHint } from '../../src/coop/hint.js';
 import { solutionEdges } from '../../src/coop/model.js';
 
-const puzzle = runSync(generate(6, 11));
+const puzzle = fixture('std', 6, 11);
 const solution = solutionOf(puzzle);
 
 test('an empty drawing: the hint is the first edge of the solution', () => {
@@ -52,7 +49,7 @@ test('nothing to hint once the solution is drawn', () => {
 });
 
 test('Loop: the line that closes the ring is part of the solution, and the last hint', () => {
-  const ring = runSync(generateLoop(6, 3));
+  const ring = fixture('loop', 6, 3);
   const edges = solutionEdges(ring);
   assert.equal(edges.length, 36); // as many lines as cells
   const drawing = createDrawing(ring);
@@ -63,7 +60,7 @@ test('Loop: the line that closes the ring is part of the solution, and the last 
 });
 
 test('Two paths: the bridge between the paths is no line, so no hint asks for it', () => {
-  const two = runSync(generateTwoPaths(5, 2));
+  const two = fixture('twopaths', 5, 2);
   const edges = solutionEdges(two);
   assert.equal(edges.length, 23); // 25 cells, two paths
   const path = solutionOf(two);

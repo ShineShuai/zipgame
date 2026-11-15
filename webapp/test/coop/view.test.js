@@ -1,10 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generate } from '../../src/core/gen/generate.js';
-import { generatePentagon } from '../../src/core/gen/pentagon.js';
-import { generateTwoPaths } from '../../src/core/gen/twopaths.js';
-import { generateTeleport } from '../../src/core/gen/teleport.js';
-import { runSync } from '../../src/core/run.js';
+import { fixture } from '../fixtures/puzzles.js';
 import { maxNumber } from '../../src/core/model.js';
 import { solutionOf } from '../../src/features/hints.js';
 import { createDrawing } from '../../src/coop/drawing.js';
@@ -12,7 +8,7 @@ import {
   PLAYER_COLORS, boardMarkup, boardView, edgeMiddle,
 } from '../../src/coop/view.js';
 
-const puzzle = runSync(generate(6, 3));
+const puzzle = fixture('std', 6, 3);
 const solution = solutionOf(puzzle);
 const count = (text, pattern) => (text.match(pattern) || []).length;
 
@@ -69,7 +65,7 @@ test('lines are drawn in the colour of the player who drew them', () => {
 });
 
 test('a Wrap-around board has a margin and a dashed outline; a seam is two stubs', () => {
-  const wrap = runSync(generate(5, 2, { wrap: true }));
+  const wrap = fixture('wrap', 5, 2);
   const drawing = createDrawing(wrap);
   const empty = boardMarkup(wrap, drawing);
   assert.match(empty, /viewBox="-\d+(\.\d+)? -\d+/);
@@ -84,7 +80,7 @@ test('a Wrap-around board has a margin and a dashed outline; a seam is two stubs
 });
 
 test('a Teleport board shows its portals; a jump is one dotted curve; the partner pulses', () => {
-  const tele = runSync(generateTeleport(6, 2));
+  const tele = fixture('teleport', 6, 2);
   const drawing = createDrawing(tele);
   const inLines = text => count(
     text.slice(text.indexOf('data-role="lines"')).split('</g>')[0],
@@ -105,7 +101,7 @@ test('a Teleport board shows its portals; a jump is one dotted curve; the partne
 });
 
 test('a Pentagon board has a tile per cell, a badge per number and a line per drawn edge', () => {
-  const pentagon = runSync(generatePentagon(6, 2));
+  const pentagon = fixture('pentagon', 6, 2);
   const drawing = createDrawing(pentagon);
   const text = boardMarkup(pentagon, drawing);
   assert.ok(text.includes('class="zip-svg coop-svg pentagon"'));
@@ -125,7 +121,7 @@ test('a Pentagon board has a tile per cell, a badge per number and a line per dr
 });
 
 test('a Two paths board: red numbers are circles, blue ones rounded squares counted from 1', () => {
-  const two = runSync(generateTwoPaths(6, 2));
+  const two = fixture('twopaths', 6, 2);
   const text = boardMarkup(two, createDrawing(two));
   const reds = count(text, /data-colour="0"/g);
   const blues = count(text, /data-colour="1"/g);
@@ -135,15 +131,15 @@ test('a Two paths board: red numbers are circles, blue ones rounded squares coun
   assert.equal(count(badges, /<rect /g), blues);
   assert.ok(badges.includes('>1</text>'));
   // a standard board has neither
-  const standard = boardMarkup(runSync(generate(6, 2)), createDrawing(runSync(generate(6, 2))));
+  const standard = boardMarkup(fixture('std', 6, 2), createDrawing(fixture('std', 6, 2)));
   assert.equal(count(standard, /data-colour=/g), 0);
 });
 
 test('boardView is the whole picture of the board: the viewBox boardMarkup draws', () => {
   const viewBoxOf = html => /viewBox="([^"]+)"/.exec(html)[1].split(' ').map(Number);
-  const wrapped = runSync(generate(6, 3));
+  const wrapped = fixture('std', 6, 3);
   wrapped.wrap = true;
-  const pentagon = runSync(generatePentagon(6, 3));
+  const pentagon = fixture('pentagon', 6, 3);
   for (const p of [puzzle, wrapped, pentagon]) {
     const view = boardView(p);
     const drawn = viewBoxOf(boardMarkup(p, createDrawing(p)));
