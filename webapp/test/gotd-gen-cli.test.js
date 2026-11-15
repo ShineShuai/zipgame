@@ -1,7 +1,8 @@
 // tools/gotd-gen.mjs end to end on temporary directories: fill (idempotent, deterministic), check (distinct up to symmetry), status, schedule, errors.
 // The generator runs for real in the fill tests only (about 7 s). Every test about verdicts and promotion starts from the
 // frozen queue in test/fixtures/gotd-queue (2 candidates for each of 20261122 = 7x7 and 20261123 = 8x8); it holds data,
-// not what the generator makes today, so a refit of the model does not touch it (promote only warns about a drift).
+// not what the generator makes today: world() gives its candidates the current stamp, so a refit of the model does not touch it
+// (promote only warns about a drift).
 // Rebuild it after a change of the queue's file format:
 //   node tools/gotd-gen.mjs fill --today 20261122 --horizon 2 --per-slot 2 --puzzles <empty dir> --queue test/fixtures/gotd-queue --ratings <file with []>
 // Run: node --test test/gotd-gen-cli.test.js   (npm run test:gotd)
@@ -15,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { parse, serialize } from '../src/core/format.js';
 import { transformPuzzle, symmetryKey, ratingKey, parseRatingsJson } from '../src/core/ratings-io.js';
 import { makeVerdict, formatVerdicts, parseVerdicts } from '../src/core/gotd-verdict.js';
+import { genStamp } from '../src/core/gotd-gen.js';
 
 const tool = fileURLToPath(new URL('../tools/gotd-gen.mjs', import.meta.url));
 const FROZEN_QUEUE = fileURLToPath(new URL('./fixtures/gotd-queue', import.meta.url));
@@ -159,6 +161,13 @@ function world(name) { // fresh published dir + a copy of the frozen queue: 2 ca
   w.where = ['--puzzles', w.pub, '--queue', w.queue, '--ratings', ratings];
   w.cli = (...args) => run(...args, ...w.where);
   fs.cpSync(FROZEN_QUEUE, w.queue, { recursive: true });
+  // The frozen candidates carry the stamp of the day they were made. A refit of the model changes the stamp the tool counts as current
+  // (the others are "of an older stamp" and not counted as stock), so they get the current one: this tests the queue, not the model.
+  const old = JSON.parse(fs.readFileSync(path.join(w.queue, 'index.json'), 'utf8')).candidates[0].stamp, current = genStamp();
+  for (const file of fs.readdirSync(w.queue)) {
+    const at = path.join(w.queue, file);
+    fs.writeFileSync(at, fs.readFileSync(at, 'utf8').replaceAll(old, current));
+  }
   w.index = () => JSON.parse(fs.readFileSync(path.join(w.queue, 'index.json'), 'utf8'));
   w.verdicts = list => fs.writeFileSync(path.join(w.queue, 'verdicts.json'), formatVerdicts(list));
   w.say = (c, human, over = {}) => makeVerdict({ candidate: c, sel: { lo: human, hi: human, lean: 0 }, solved: true, playS: 95.46, takebacks: 4, now: NOW, ...over });
