@@ -242,61 +242,51 @@ t('stats: Welford == naive', () => {
   const m = xs.reduce((a, b) => a + b) / xs.length, sd = Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / (xs.length - 1)), s = statSummary(st);
   ok(Math.abs(s.mean - m) < 1e-9 && Math.abs(s.sd - sd) < 1e-9);
 });
-t('solver: matches brute force (n=3,4; random walls/checkpoints)', () => {
-  let cmp = 0;
+// The pruning options (prune2, prop, seg, parity, pocket, legCollide) only prune: with any of them on, in any combination, the
+// solver finds the same solutions in the same order, and visits no more nodes than without.
+const PRUNE_OPTIONS = { prune2: [true], prop: [true], seg: [true, 'all'], parity: [true], pocket: [true], legCollide: [true] };
+const ALL_PRUNES = { prune2: true, prop: true, seg: 'all', parity: true, pocket: true, legCollide: true };
+t('solver: plain and with every pruning option (alone, all together) match brute force (n=3,4; random walls/checkpoints)', () => {
+  const sets = [{}, ALL_PRUNES, ...Object.entries(PRUNE_OPTIONS).flatMap(([name, levels]) => levels.map(level => ({ [name]: level })))];
   for (let s = 1; s <= 120; s++) {
-    const n = 3 + (s % 2), p = randPuzzle(s, n, 2 + (s % 4), 0.15 * (s % 4)), r = solve(p, { limit: 1e9, nodeCap: 1e7 });
-    ok(!r.exceeded); eq(r.count, brute(p), `case ${s}`); cmp++;
-  } ok(cmp === 120);
+    const n = 3 + (s % 2), p = randPuzzle(s, n, 2 + (s % 4), 0.15 * (s % 4)), expected = brute(p);
+    for (const extra of sets) {
+      const r = solve(p, { limit: 1e9, nodeCap: 1e7, ...extra });
+      ok(!r.exceeded);
+      eq(r.count, expected, `case ${s} ${JSON.stringify(extra)}`);
+    }
+  }
 });
-t('solver: prune2 keeps counts, nodes <= baseline', () => {
-  for (let s = 1; s <= 40; s++) { const p = randPuzzle(s, 5, 3 + (s % 4), 0.2), a = solve(p, { limit: 1e9, nodeCap: 5e6 }), b = solve(p, { limit: 1e9, nodeCap: 5e6, prune2: true }); eq(b.count, a.count, `case ${s}`); ok(b.nodes <= a.nodes); }
-});
-t('solver: prop == baseline (count, paths, DFS order), nodes <= baseline, matches brute force', () => {
-  let cmp = 0;
-  for (let s = 1; s <= 120; s++) { const n = 3 + (s % 2), p = randPuzzle(s, n, 2 + (s % 4), 0.15 * (s % 4)); eq(solve(p, { limit: 1e9, nodeCap: 1e7, prop: true }).count, brute(p), `brute ${s}`); }
+t('solver: every pruning option alone, all together, and random combinations keep count, paths and DFS order, and never cost a node', () => {
+  const rnd = makeRng(2024), names = Object.keys(PRUNE_OPTIONS), pick = list => list[Math.floor(rnd() * list.length)];
+  const singles = names.flatMap(name => PRUNE_OPTIONS[name].map(level => ({ [name]: level })));
+  let toggles = 0;
   for (let s = 1; s <= 150; s++) {
     const n = 3 + (s % 4), p = randPuzzle(s, n, 2 + (s % 5), 0.05 * (s % 9));
-    for (const extra of [{}, { prune2: true }]) for (const limit of [2, 1e9]) {
-      const a = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true }), b = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true, prop: true });
-      ok(!a.exceeded && !b.exceeded); eq(b.count, a.count, `count ${s}`); eq(b.paths, a.paths, `paths ${s}`); ok(b.nodes <= a.nodes, `nodes ${s}`); cmp++;
-    }
-  } ok(cmp === 600);
-});
-t('solver: seg == baseline (count, paths, DFS order), nodes <= baseline, matches brute force', () => {
-  let cmp = 0;
-  for (const segMode of [true, 'all']) {
-    for (let s = 1; s <= 120; s++) { const n = 3 + (s % 2), p = randPuzzle(s, n, 2 + (s % 4), 0.15 * (s % 4)); eq(solve(p, { limit: 1e9, nodeCap: 1e7, seg: segMode }).count, brute(p), `brute ${segMode} ${s}`); }
-    for (let s = 1; s <= 150; s++) {
-      const n = 3 + (s % 4), p = randPuzzle(s, n, 2 + (s % 5), 0.05 * (s % 9));
-      for (const extra of [{}, { prune2: true }, { prop: true }]) for (const limit of [2, 1e9]) {
-        const a = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true }), b = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true, seg: segMode });
-        ok(!a.exceeded && !b.exceeded); eq(b.count, a.count, `count ${segMode} ${s}`); eq(b.paths, a.paths, `paths ${segMode} ${s}`); ok(b.nodes <= a.nodes, `nodes ${segMode} ${s}`); cmp++;
+    for (const limit of [2, 1e9]) {
+      const run = extra => { const r = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true }); ok(!r.exceeded, `case ${s}`); return r; };
+      const plain = run({});
+      // `extra` finds what plain finds and costs no more than `than` (plain, or the same set without one option)
+      const check = (extra, than = plain) => {
+        const r = run(extra), what = `case ${s} limit ${limit} ${JSON.stringify(extra)}`;
+        eq(r.count, plain.count, `count ${what}`);
+        eq(r.paths, plain.paths, `paths ${what}`);
+        ok(r.nodes <= than.nodes, `nodes ${what}`);
+        return r;
+      };
+      check(singles[(s + (limit === 2 ? 0 : 3)) % singles.length]); // the option under test rotates: each meets every kind of puzzle
+      check(ALL_PRUNES);
+      const on = {};
+      for (const name of names) if (rnd() < 0.4) on[name] = pick(PRUNE_OPTIONS[name]);
+      const base = check(on), off = names.filter(name => !(name in on));
+      if (off.length) { // one more option on top of a random set
+        const name = pick(off);
+        check({ ...on, [name]: pick(PRUNE_OPTIONS[name]) }, base);
+        toggles++;
       }
     }
-  } ok(cmp === 1800);
-});
-t('solver: parity == baseline (count, paths, DFS order), nodes <= baseline, matches brute force', () => {
-  let cmp = 0;
-  for (let s = 1; s <= 120; s++) { const n = 3 + (s % 2), p = randPuzzle(s, n, 2 + (s % 4), 0.15 * (s % 4)); eq(solve(p, { limit: 1e9, nodeCap: 1e7, parity: true }).count, brute(p), `brute ${s}`); }
-  for (let s = 1; s <= 150; s++) {
-    const n = 3 + (s % 4), p = randPuzzle(s, n, 2 + (s % 5), 0.05 * (s % 9));
-    for (const extra of [{}, { prune2: true }, { prop: true }, { seg: true }, { seg: 'all' }, { prune2: true, prop: true }]) for (const limit of [2, 1e9]) {
-      const a = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true }), b = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true, parity: true });
-      ok(!a.exceeded && !b.exceeded); eq(b.count, a.count, `count ${s}`); eq(b.paths, a.paths, `paths ${s}`); ok(b.nodes <= a.nodes, `nodes ${s}`); cmp++;
-    }
-  } ok(cmp === 1800);
-});
-t('solver: legCollide == baseline (count, paths, DFS order), nodes <= baseline, matches brute force', () => {
-  let cmp = 0;
-  for (let s = 1; s <= 120; s++) { const n = 3 + (s % 2), p = randPuzzle(s, n, 2 + (s % 4), 0.15 * (s % 4)); eq(solve(p, { limit: 1e9, nodeCap: 1e7, legCollide: true }).count, brute(p), `brute ${s}`); }
-  for (let s = 1; s <= 150; s++) {
-    const n = 3 + (s % 4), p = randPuzzle(s, n, 2 + (s % 5), 0.05 * (s % 9));
-    for (const extra of [{}, { prune2: true }, { prop: true }, { seg: true }, { pocket: true }, { parity: true }, { prop: true, pocket: true, parity: true }]) for (const limit of [2, 1e9]) {
-      const a = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true }), b = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true, legCollide: true });
-      ok(!a.exceeded && !b.exceeded); eq(b.count, a.count, `count ${s}`); eq(b.paths, a.paths, `paths ${s}`); ok(b.nodes <= a.nodes, `nodes ${s}`); cmp++;
-    }
-  } ok(cmp === 2100);
+  }
+  ok(toggles > 250, `${toggles} toggles checked`);
 });
 t('solver: legCollide catches the reported forced-corridor-collision case (fewer nodes than baseline)', () => {
   const n = 7, p = makePuzzle(n);
@@ -1293,6 +1283,7 @@ ta('run: a signal that is already aborted runs nothing; a run that ends first le
   function* counting() { steps++; yield { frac: 0 }; return 'done'; }
   const job = cancellable(60000);
   job.cancel();
+  job.end(); // an armed clock keeps Node alive for its 60 s after the last test
   let error = null;
   try { await runAsync(counting(), { signal: job.signal }); } catch (e) { error = e; }
   ok(isAbort(error), 'rejects with an AbortError');
