@@ -66,7 +66,7 @@ npm run golden    # print fresh golden hashes, see "Determinism"
 
 A test that takes 0.5 s or more is marked slow (`t.slow(...)`, see `webapp/test/harness.js`): `npm test` skips it,
 `npm run test:slow` runs only those. A fast test over 3 s fails with a note to mark it. One test:
-`node --test-name-pattern=wrap test/tests.js`.
+`node test/run.mjs fast --test-name-pattern=wrap`.
 
 `npm run test:themes` tests the theme tooling, `npm run test:server` the backend code in
 `webapp/server/` and `npm run test:tools` the research tools (fits, simulations, evaluations; about

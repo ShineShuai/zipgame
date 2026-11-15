@@ -1,6 +1,6 @@
 // Tests of the "Exact" (Hidato-style) core: the number of a cell is its step on the path. Model
 // (core/model.js), rules (core/rules.js), plain-text format (core/format.js) and the exact-aware
-// solver (core/solver/solve.js). Registered by tests.js: exactTests(t, ok, eq).
+// solver (core/solver/solve.js). Registered by unit/exact.test.js: exactTests(t, ok, eq).
 import {
   makePuzzle, clonePuzzle, validate, cellCount, startCell, endCell, labelCount, numberedCells,
   checkpointCells, exactRanks, exactLegProblem,

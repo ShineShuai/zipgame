@@ -1,5 +1,5 @@
 // Tests of the Loop generator: the ring (gen/hampath.js ringPath), the numbers on it
-// (gen/checkpoints.js loopCheckpoints) and generateLoop (gen/loop.js). Registered by tests.js:
+// (gen/checkpoints.js loopCheckpoints) and generateLoop (gen/loop.js). Registered by unit/loop.test.js:
 // loopGenTests(t, ok, eq).
 import { validate, maxNumber, labelCount } from '../src/core/model.js';
 import { isSolved } from '../src/core/rules.js';

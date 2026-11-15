@@ -1,7 +1,7 @@
 // Tests of the theme system (src/themes): the whitelists, the bundle a theme arrives in, the device store, the files
 // the site serves, the pool, the controller (event -> offer -> take or leave; the dev reveal), and the page's inline head script, run for real
 // (node:vm) and compared with the pool code it mirrors. Fakes stand in for storage, the network and the page. The templates
-// themselves (the authoring side) are tested by themes/tools/test.mjs. Registered by tests.js.
+// themselves (the authoring side) are tested by themes/tools/test.mjs. Registered by unit/themes.test.js.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';

@@ -1,7 +1,7 @@
 // Tests of the "Loop" core: the path closes into a ring, so the last cell touches cell 1 and the
 // numbers 1..K are met in cyclic order. Model (core/model.js), rules (core/rules.js), plain-text
 // format (core/format.js) and the solver (core/solver/solve-loop.js, checked against a plain
-// brute-force search). Registered by tests.js: loopTests(t, ok, eq).
+// brute-force search). Registered by unit/loop.test.js: loopTests(t, ok, eq).
 import { makePuzzle, clonePuzzle, validate, cellCount, startCell, maxNumber } from '../src/core/model.js';
 import { isSolved, step, canStep } from '../src/core/rules.js';
 import { serialize, parse } from '../src/core/format.js';

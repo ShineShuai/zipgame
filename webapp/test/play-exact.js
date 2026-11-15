@@ -1,5 +1,5 @@
 // Tests of the Exact variant in the play app: what is pure in it (variants.js, icons.js, board.js,
-// the share link, the legs of the colour strip, the grade model). Registered by tests.js:
+// the share link, the legs of the colour strip, the grade model). Registered by unit/exact.test.js:
 // playExactTests(t, ok, eq).
 import { makePuzzle, labelCount, labelRanks, validate } from '../src/core/model.js';
 import { isSolved } from '../src/core/rules.js';

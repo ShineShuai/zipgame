@@ -221,7 +221,7 @@ if (!o.write) {
   }
   out('\n', r.stdout.trim().split('\n').pop());
   out('Now, by hand:');
-  out('  1. node test/tests.js: tests that pin a grade or the points need new expected values.');
+  out('  1. npm test: tests that pin a grade or the points need new expected values.');
   out('  2. Regenerate what is keyed to the badge: tools/gotd-fit.mjs (maps it onto the human');
   out('     scale), the calibration set (tools/calib-set.mjs: chosen by the old badge).');
   out('  3. Rebuild and deploy. Rows already collected keep their puzzles, so behaviour-eval can');

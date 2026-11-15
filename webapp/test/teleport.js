@@ -3,7 +3,7 @@
 // (core/format.js), the moves (core/rules.js), the edge ids (core/edges.js), the symmetry key of
 // duplicates (core/ratings-io.js) and the solver (core/solver/*.js), which is checked against a
 // plain
-// brute-force search under every pruning option. Registered by tests.js: teleportTests(t, ok, eq).
+// brute-force search under every pruning option. Registered by unit/teleport.test.js: teleportTests(t, ok, eq).
 import { makePuzzle, clonePuzzle, validate, cellCount } from '../src/core/model.js';
 import { isSolved, step, canStep } from '../src/core/rules.js';
 import { serialize, parse } from '../src/core/format.js';

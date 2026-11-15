@@ -2,7 +2,7 @@
 // (apps/design/holes.js), the board drawing (apps/design/board.js, on a recording stand-in for the page),
 // the random path / unique generator on a board of the designer's own (gen/generate.js o.holes), scatter on
 // such a board, the play-mode overlays (core/connectivity.js), the text format. (Which tools design.html shows is the page's own markup, not tested here.)
-// Registered by tests.js: designCutoutTests(t, ok, eq).
+// Registered by unit/cutout.test.js: designCutoutTests(t, ok, eq).
 import { makePuzzle, validate, cellCount, maxNumber } from '../src/core/model.js';
 import { edgeCells, setWallId, hasWallId, wallIds } from '../src/core/edges.js';
 import { serialize, parse } from '../src/core/format.js';

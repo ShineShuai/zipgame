@@ -5,7 +5,7 @@
 // only repairs what the move touched; backtracking undoes those changes from a trail (an undo log).
 //
 // Same rules, same result: the state after step() is exactly the state propagate.js's deduce() computes from
-// scratch for the new head (tests.js compares the two at every node of real searches, and the solver
+// scratch for the new head (test/unit/solver.test.js compares the two at every node of real searches, and the solver
 // results node for node). Why that holds:
 //   - The deductions are monotone: every forced edge, dropped edge and chain of the parent node is also a valid
 //     consequence of the child node. The child only adds facts: the head h is gone from the graph (its edges

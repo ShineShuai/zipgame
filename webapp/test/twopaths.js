@@ -1,7 +1,7 @@
 // Tests of the "Two paths" core: the model (core/model.js), the helpers (core/twopaths.js), the
 // rules (core/rules.js), the plain-text format (core/format.js), the share code
 // (core/share-code.js) and the solver (core/solver/solve-two.js, solve.js mustUse list), checked
-// against a plain brute-force search of the two paths. Registered by tests.js:
+// against a plain brute-force search of the two paths. Registered by unit/twopaths.test.js:
 // twoPathsTests(t, ok, eq).
 import { makePuzzle, clonePuzzle, validate, maxNumber } from '../src/core/model.js';
 import { isSolved, isSolvedPaths, step } from '../src/core/rules.js';

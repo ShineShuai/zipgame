@@ -1,4 +1,5 @@
-// Runs the unit tests of the app: every suite at once, as separate processes in parallel (node --test), in one tier.
+// Runs the unit tests of the app: every suite (a file of test/unit, test/coop, test/sync) at once, as separate processes in
+// parallel (node --test), in one tier.
 //   node test/run.mjs fast     npm test            what is not marked slow: the pre-commit hook, the Node 20 job
 //   node test/run.mjs slow     npm run test:slow   only the tests marked slow (generators, golden puzzles, solver comparisons)
 //   node test/run.mjs all      npm run test:all    both: the Node 22 job
@@ -16,8 +17,8 @@ if (!['fast', 'slow', 'all'].includes(tier)) {
 }
 
 const inDir = dir => fs.readdirSync(`${root}test/${dir}`).filter(file => file.endsWith('.test.js')).sort().map(file => `test/${dir}/${file}`);
-// The co-op and sync suites have no slow tests.
-const suites = ['test/tests.js', 'test/gotd-gen-cli.test.js', ...(tier === 'slow' ? [] : [...inDir('coop'), ...inDir('sync')])];
+// The co-op and sync suites have no slow tests. Files of test/unit may have either kind.
+const suites = [...inDir('unit'), 'test/gotd-gen-cli.test.js', ...(tier === 'slow' ? [] : [...inDir('coop'), ...inDir('sync')])];
 
 const result = spawnSync(process.execPath, ['--test', ...args, ...suites], {
   cwd: root,

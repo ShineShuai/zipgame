@@ -1,4 +1,4 @@
-// Tests of the "One way arrows" generator (gen/arrows.js). Registered by tests.js:
+// Tests of the "One way arrows" generator (gen/arrows.js). Registered by unit/arrows.test.js:
 // arrowsGenTests(t, ok, eq).
 import { validate, maxNumber, makePuzzle } from '../src/core/model.js';
 import { arrowIds, arrowDirId, pathEdgeIds, setArrowId, wallCount } from '../src/core/edges.js';

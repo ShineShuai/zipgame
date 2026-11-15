@@ -1,5 +1,5 @@
 // Tiny i18n for the play app. English is the fallback; both dictionaries must have the same keys and
-// {n} placeholders (test/tests.js checks). A value is a string with {0}, {1}.. placeholders, or a function
+// {n} placeholders (test/unit/ui.test.js checks). A value is a string with {0}, {1}.. placeholders, or a function
 // of the arguments (for plurals). Dev-only texts (hold "v") are intentionally not translated.
 // "2,3,5" (or a single number) as "2, 3 and 5".
 const andList = x => { const r = String(x).split(','); return r.length > 1 ? `${r.slice(0, -1).join(', ')} and ${r[r.length - 1]}` : r[0]; };

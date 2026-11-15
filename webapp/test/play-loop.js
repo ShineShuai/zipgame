@@ -1,6 +1,6 @@
 // Tests of the Loop variant in the play app and the shared code around it: the closed ring on the
 // board, the icon, the registry entry, the share code and record, the grade, a whole game and the
-// lucky game. The core and the generator are in loop.js and loop-gen.js. Registered by tests.js:
+// lucky game. The core and the generator are in loop.js and loop-gen.js. Registered by unit/loop.test.js:
 // loopPlayTests(t, ta, ok, eq).
 import { maxNumber } from '../src/core/model.js';
 import { wallIds } from '../src/core/edges.js';

@@ -1,4 +1,4 @@
-// Tests of the Exact puzzle generator (core/gen/exact.js). Registered by tests.js:
+// Tests of the Exact puzzle generator (core/gen/exact.js). Registered by unit/exact.test.js:
 // exactGenTests(t, ok, eq).
 import {
   validate, labelCount, cellCount, startCell, endCell,

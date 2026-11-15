@@ -1,7 +1,7 @@
 // Tests of the saved shared games: the radix coder (core/radix-code.js), the puzzle frame of
 // the share code (core/share-code.js), the colour-strip order and the merge of a duplicate
 // (features/share.js) and the collection kept on the device (features/shared-games.js).
-// Registered by tests.js: sharedGamesTests(t, ta, ok, eq).
+// Registered by unit/shared-games.test.js: sharedGamesTests(t, ta, ok, eq).
 import { RadixWriter, RadixReader, bitLength } from '../src/core/radix-code.js';
 import { encodeShare, decodeShare, VARIANTS, MAX_TENTHS } from '../src/core/share-code.js';
 import { validate, labelCount } from '../src/core/model.js';

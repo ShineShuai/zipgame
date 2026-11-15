@@ -1,6 +1,6 @@
 // Tests of the Pentagon boards (core/pentagon.js, the open-border support of
 // core/surface/topology.js, solve.js and gen.js) and of the Pentagon generator
-// (core/gen/pentagon.js). Registered by tests.js: pentagonTests(t, ok, eq).
+// (core/gen/pentagon.js). Registered by unit/pentagon.test.js: pentagonTests(t, ok, eq).
 // Set PENTAGON_SLOW=1 for the 100-cell board (a few seconds per puzzle).
 import { hashStr } from '../src/core/rng.js';
 import { runSync } from '../src/core/run.js';

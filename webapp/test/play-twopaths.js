@@ -1,7 +1,7 @@
 // Tests of the Two paths variant in the play app: the rules of the two drawn paths
 // (features/twopaths-play.js), the board (apps/play/board.js), the icon, the registry entry, the
 // texts in both languages (the hint button too), the share code and record, the grade. The core and
-// the generator are in twopaths.js and twopaths-gen.js. Registered by tests.js:
+// the generator are in twopaths.js and twopaths-gen.js. Registered by unit/twopaths.test.js:
 // twoPathsPlayTests(t, ok, eq).
 import { maxNumber } from '../src/core/model.js';
 import { canStep } from '../src/core/rules.js';

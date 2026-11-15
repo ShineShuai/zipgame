@@ -1,5 +1,5 @@
 // Tests of the "One way arrows" core: arrow edges (core/edges.js), the rules (core/rules.js) and
-// the directed solver (core/solver/solve-dir.js). Registered by tests.js: directedTests(t, ok,
+// the directed solver (core/solver/solve-dir.js). Registered by unit/arrows.test.js: directedTests(t, ok,
 // eq).
 import {
   makePuzzle, clonePuzzle, validate, cellCount, startCell, endCell, maxNumber,

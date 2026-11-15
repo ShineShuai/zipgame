@@ -1,5 +1,5 @@
-// The harness of test/tests.js and the suites it registers: t(name, fn) a test, ta(name, fn) an async test (these run after
-// all the sync ones), eq and ok the assertions. Tests run with node:test (node test/tests.js, npm test), so one can be picked
+// The harness of the unit suites (test/unit/*.test.js and the files they register): t(name, fn) a test, ta(name, fn) an async test (these run after
+// all the sync ones), eq and ok the assertions. Tests run with node:test (node test/unit/solver.test.js, npm test), so one can be picked
 // with --test-name-pattern.
 //
 // Tiers, picked by ZIGZAG_TESTS (the npm scripts set it):
@@ -7,15 +7,15 @@
 //   slow                only the tests marked slow: t.slow(name, fn), ta.slow(name, fn)
 //   all                 both: what the Node 22 job runs
 // A test that takes 0.5 s or more is marked slow. A fast test that takes longer than the budget (3 s, ZIGZAG_FAST_BUDGET_MS)
-// fails with a message to mark it, so the fast tier does not grow back unnoticed (not on CI, see FAST_BUDGET_MS).
+// fails with a message to mark it, so the fast tier does not grow back unnoticed (on CI it only warns).
 import test from 'node:test';
 
 export const TIER = process.env.ZIGZAG_TESTS || 'fast';
 if (!['fast', 'slow', 'all'].includes(TIER)) {
   throw new Error(`ZIGZAG_TESTS is "${TIER}": fast, slow or all`);
 }
-// 0 = not enforced; CI (the CI variable is set by GitHub Actions) does not enforce it: a slow runner is no regression.
-const FAST_BUDGET_MS = Number(process.env.ZIGZAG_FAST_BUDGET_MS ?? (process.env.CI ? 0 : 3000));
+const FAST_BUDGET_MS = Number(process.env.ZIGZAG_FAST_BUDGET_MS || 3000);
+const BUDGET_ONLY_WARNS = Boolean(process.env.CI); // set by GitHub Actions: a shared runner is slower than a laptop, which is no regression
 
 export const eq = (a, b, m = '') => {
   const A = JSON.stringify(a), B = JSON.stringify(b);
@@ -39,8 +39,12 @@ function register(name, fn, slow) {
     const start = Date.now();
     await fn();
     const took = Date.now() - start;
-    if (!slow && FAST_BUDGET_MS > 0 && took > FAST_BUDGET_MS) {
-      throw new Error(`took ${took} ms, over the fast-tier budget of ${FAST_BUDGET_MS} ms: mark it slow (t.slow / ta.slow)`);
+    if (!slow && took > FAST_BUDGET_MS) {
+      const message = `took ${took} ms, over the fast-tier budget of ${FAST_BUDGET_MS} ms: mark it slow (t.slow / ta.slow)`;
+      if (!BUDGET_ONLY_WARNS) {
+        throw new Error(message);
+      }
+      console.warn(`warning: ${name}: ${message}`);
     }
   });
 }

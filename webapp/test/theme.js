@@ -1,5 +1,5 @@
 // Tests of the light / dark theme: the token file css/theme.css (every colour of the play and stats pages comes from it), the contrast
-// of the pairs the screens put together, and the choice logic of src/ui/theme.js. Registered by tests.js: themeTests(t, ok, eq).
+// of the pairs the screens put together, and the choice logic of src/ui/theme.js. Registered by unit/themes.test.js: themeTests(t, ok, eq).
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { resolveTheme, parseTheme, THEME_KEY } from '../src/ui/theme.js';
 import { POOL_KEY } from '../src/themes/pool.js';

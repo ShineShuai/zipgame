@@ -1,6 +1,6 @@
 // Tests of the offer days (src/themes/calendar.js): the rule, the draw of 1-2 days a month, the
 // spread over the month, the offer day of a local date, and what a player can learn from the
-// days. Registered by tests.js.
+// days. Registered by unit/themes.test.js.
 import {
   MIN_GAP, candidates, dateValue, daysInMonth, eventAt, monthPlan, nextEvent, ruleExample, validDigits,
 } from '../src/themes/calendar.js';

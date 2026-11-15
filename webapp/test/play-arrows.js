@@ -1,5 +1,5 @@
 // Tests of the One way arrows variant in the play app: what is pure in it (variants.js, icons.js,
-// board.js, the share link). Registered by tests.js: playArrowsTests(t, ok, eq).
+// board.js, the share link). Registered by unit/arrows.test.js: playArrowsTests(t, ok, eq).
 import { makePuzzle, maxNumber } from '../src/core/model.js';
 import { edgeId, setArrowId, setWallId } from '../src/core/edges.js';
 import { solve } from '../src/core/solver/solve.js';
