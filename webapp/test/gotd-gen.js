@@ -10,7 +10,7 @@ import { TRAP_MODEL } from '../src/core/trap.js';
 import { utcDayNumber, dateOfDay as dailyDateOfDay } from '../src/features/daily.js';
 import { CYCLE_DAYS, SIZE_BAG, BIG_SIZE, BIG_GAP, sizeForDay, cycleOrder, orderOk, slotSeed, dayOfDate, dateOfDay } from '../src/core/gotd-schedule.js';
 import { GOTD_CFG, stampParts, genStamp, createDistinct, pathKey, puzzleId, hash64, vetCandidate, makeCandidate, candidateText, candidateFile, carriedOrigin } from '../src/core/gotd-gen.js';
-import { emptyIndex, parseIndex, formatIndex, planFill, fillQueue, applyFill, usable } from '../src/core/gotd-queue.js';
+import { emptyIndex, parseIndex, formatIndex, planFill, fillQueue, applyFill, usable, queueStatus } from '../src/core/gotd-queue.js';
 
 // 20261121 .. 20261220: the schedule is part of the product (a published day never changes, a future day is decided by this function), so it is pinned.
 const GOLDEN_SCHEDULE = '11,7,8,8,6,9,7,8,7,10,8,6,8,7,9,11,9,7,8,10,8,7,6,7,10,7,8,10,8,7';
@@ -249,6 +249,28 @@ export function gotdGenTests(t, ok, eq) {
     const plan = planFill({ today, horizon: 1, perSlot: 3, published: new Set(), index, stamp: 'S' });
     eq([plan.slots[0].have, plan.slots[0].need], [2, 1]);
     ok(usable(index.candidates[0], 'S') && !usable(index.candidates[1], 'S') && usable(index.candidates[2], 'S') && !usable(index.candidates[3], 'S'));
+  });
+
+  t('gotd status: per size the candidates of this stamp, of an older one, approved and rejected; the review plan; the stock of each day', () => {
+    const index = emptyIndex();
+    index.candidates = [
+      cand(id12(1), 7, '20261122'), // this stamp: stock, offered for the 7x7 day
+      cand(id12(2), 7, '20261122', { stamp: 'OLD' }), // an older stamp: neither stock nor offered
+      cand(id12(3), 8, '20261123', { stamp: 'OLD', status: 'approved' }), // approved: stock whatever its stamp, and it covers 20261123
+      cand(id12(4), 8, '20261123', { status: 'rejected' }),
+      cand(id12(5), 8, '20261123'), // this stamp, but no open 8x8 day is left: extra
+    ];
+    const status = queueStatus({ today, horizon: 3, published: new Set(), index, verdicts: [], stamp: 'S', sizes: [7, 8] });
+    eq(status.bySize, [
+      { size: 7, pending: 1, older: 1, approved: 0, rejected: 0 },
+      { size: 8, pending: 1, older: 0, approved: 1, rejected: 1 },
+    ]);
+    eq(status.review, { count: 2, fit: 1, extra: 1, open: 2, span: 3 }, 'open: 20261121 (11x11) and 20261122; 20261123 has its approved one');
+    eq(status.stock, { 20261122: 1, 20261123: 2 });
+    // the same queue under another stamp: the stamp is all that changes the counts
+    const other = queueStatus({ today, horizon: 3, published: new Set(), index, verdicts: [], stamp: 'OLD', sizes: [7, 8] });
+    eq(other.bySize.map(c => [c.pending, c.older]), [[1, 1], [0, 1]]);
+    eq(other.stock, { 20261122: 1, 20261123: 1 });
   });
 
   t('gotd plan: candidates of a day that is published (or past) move to the earliest open day of their size that lacks candidates', () => {

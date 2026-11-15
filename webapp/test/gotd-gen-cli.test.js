@@ -1,8 +1,10 @@
 // tools/gotd-gen.mjs end to end on temporary directories: fill (idempotent, deterministic), check (distinct up to symmetry), status, schedule, errors.
 // The generator runs for real in the fill tests (about 7 s) and in the top-up test (the slow tier, see harness.js). Every test about verdicts and promotion starts from the
 // frozen queue in test/fixtures/gotd-queue (2 candidates for each of 20261122 = 7x7 and 20261123 = 8x8); it holds data,
-// not what the generator makes today: world() gives its candidates the current stamp, so a refit of the model does not touch it
-// (promote only warns about a drift).
+// not what the generator makes today. Its candidates carry the stamp of the day they were made, so after a refit of the model they are "of
+// an older stamp": promotion does not care (an approved candidate counts whatever its stamp, a drift of the grade is only a warning), and
+// the counts that do depend on the stamp are tested on plain objects in test/gotd-gen.js (queueStatus, planFill). Only the top-up test
+// needs stock of the current stamp: it makes its queue with the real fill.
 // Rebuild it after a change of the queue's file format:
 //   node tools/gotd-gen.mjs fill --today 20261122 --horizon 2 --per-slot 2 --puzzles <empty dir> --queue test/fixtures/gotd-queue --ratings <file with []>
 // Run: node --test test/gotd-gen-cli.test.js   (npm run test:gotd)
@@ -17,7 +19,6 @@ import { fileURLToPath } from 'node:url';
 import { parse, serialize } from '../src/core/format.js';
 import { transformPuzzle, symmetryKey, ratingKey, parseRatingsJson } from '../src/core/ratings-io.js';
 import { makeVerdict, formatVerdicts, parseVerdicts } from '../src/core/gotd-verdict.js';
-import { genStamp } from '../src/core/gotd-gen.js';
 
 const tool = fileURLToPath(new URL('../tools/gotd-gen.mjs', import.meta.url));
 const FROZEN_QUEUE = fileURLToPath(new URL('./fixtures/gotd-queue', import.meta.url));
@@ -157,17 +158,15 @@ test('gotd-gen: bad arguments and unknown commands exit 1 with a message', FAST,
 
 // ---- the human's side: verdicts -> statuses -> published days ----
 const NOW = '2026-11-05T10:00:00Z';
-function world(name) { // fresh published dir + a copy of the frozen queue: 2 candidates for each of 20261122 (7x7) and 20261123 (8x8)
+function world(name, { real = false } = {}) { // fresh published dir + a copy of the frozen queue: 2 candidates for each of 20261122 (7x7) and 20261123 (8x8); real: 2 for 20261122 made by fill now
   const w = { pub: mk(`${name}-pub`), queue: path.join(tmp, `${name}-queue`), ratings };
   w.where = ['--puzzles', w.pub, '--queue', w.queue, '--ratings', ratings];
   w.cli = (...args) => run(...args, ...w.where);
-  fs.cpSync(FROZEN_QUEUE, w.queue, { recursive: true });
-  // The frozen candidates carry the stamp of the day they were made. A refit of the model changes the stamp the tool counts as current
-  // (the others are "of an older stamp" and not counted as stock), so they get the current one: this tests the queue, not the model.
-  const old = JSON.parse(fs.readFileSync(path.join(w.queue, 'index.json'), 'utf8')).candidates[0].stamp, current = genStamp();
-  for (const file of fs.readdirSync(w.queue)) {
-    const at = path.join(w.queue, file);
-    fs.writeFileSync(at, fs.readFileSync(at, 'utf8').replaceAll(old, current));
+  if (real) {
+    const made = w.cli('fill', '--today', '20261122', '--horizon', '1', '--per-slot', '2');
+    assert.equal(made.status, 0, made.stdout + made.stderr);
+  } else {
+    fs.cpSync(FROZEN_QUEUE, w.queue, { recursive: true });
   }
   w.index = () => JSON.parse(fs.readFileSync(path.join(w.queue, 'index.json'), 'utf8'));
   w.verdicts = list => fs.writeFileSync(path.join(w.queue, 'verdicts.json'), formatVerdicts(list));
@@ -219,7 +218,8 @@ test('gotd-gen promote: an approved candidate becomes the day, a rejected one mo
 });
 
 test('gotd-gen promote: the next fill tops the queue up (a rejected candidate does not count), and never repeats a rejected puzzle', SLOW, () => {
-  const w = world('p2'), rejected = w.index().candidates.filter(c => c.slot === '20261122');
+  const w = world('p2', { real: true }), rejected = w.index().candidates.filter(c => c.slot === '20261122');
+  assert.equal(rejected.length, 2);
   w.verdicts([w.say(rejected[0], 2)]);
   assert.equal(w.cli(...PROMOTE).status, 0);
   const rejectedKey = symmetryKey(parse(fs.readFileSync(path.join(w.queue, 'rejected', rejected[0].file), 'utf8')));
@@ -253,16 +253,18 @@ test('gotd-gen promote: an approved candidate that repeats a published puzzle is
   assert.deepEqual(fs.readdirSync(w.pub), [], 'nothing was published');
 });
 
-test('gotd-gen status: shows what is to review and the reviewed numbers per stamp', FAST, () => {
-  const w = world('p4'), [c7a, c7b, c8a] = w.index().candidates;
+test('gotd-gen status: prints the queue per size, the review line, the reviewed numbers per stamp and the next days', FAST, () => {
+  const w = world('p4'), [c7a, , c8a] = w.index().candidates;
   w.verdicts([w.say(c7a, 3), w.say(c8a, 1)]);
   let r = w.cli('status', '--today', '20261122');
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /review: 2 candidate\(s\) to review \(pending, this stamp: 1 can fill an open day, 1 extra\); 2 open day\(s\) of the next 3 without an approved candidate/,
-    `${c7a.id} is approved for 20261122, ${c8a.id} is rejected: three candidates in stock, so three days are looked at; the other 8x8 fills 20261123, the sibling ${c7b.id} of the approved one has no open 7x7 day there: extra`);
-  r = w.cli('status', '--today', '20261122', '--horizon', '2');
-  assert.match(r.stdout, /review: 2 candidate\(s\) to review \(pending, this stamp: 1 can fill an open day, 1 extra\); 1 open day\(s\) of the next 2 without an approved candidate/, 'a given horizon limits the days looked at: only the 8x8 day is open and without an approved candidate');
+  assert.match(r.stdout, /^stamp a\d+-[0-9a-f]{8}\n/);
+  assert.match(r.stdout, /queue \(size: pending \/ pending of an older stamp \/ approved \/ rejected\):\n {2}6x6: \d+ \/ \d+ \/ \d+ \/ \d+\n {2}7x7: \d+ \/ \d+ \/ \d+ \/ \d+\n {2}8x8: \d+ \/ \d+ \/ \d+ \/ \d+\n/);
+  assert.match(r.stdout, /review: \d+ candidate\(s\) to review \(pending, this stamp: \d+ can fill an open day, \d+ extra\); \d+ open day\(s\) of the next \d+ without an approved candidate/);
   assert.match(r.stdout, /stamp a\d+-[0-9a-f]{8}: 2 reviewed, 1 approved \(50%\), 1 rejected, human - model grade: mean -?\d+\.\d\d, worst -?\d+\.\d/);
+  assert.match(r.stdout, /next 14 days:\n {2}20261122 7x7 {2}open, \d+ candidate\(s\)\n {2}20261123 8x8 /);
+  r = w.cli('status', '--today', '20261122', '--horizon', '2');
+  assert.match(r.stdout, / of the next 2 without an approved candidate/, 'a given horizon limits the days looked at');
 });
 
 test('gotd-gen promote: no limit unless asked: every approved candidate gets the earliest open day of its size, past the days fill looked at; --until limits it', FAST, () => {

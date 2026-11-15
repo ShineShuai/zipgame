@@ -181,3 +181,24 @@ export function planReview({ today, horizon, published, index, verdicts, stamp, 
   if (reserve) for (const c of pending) if (!listed.has(c.id)) queue.push({ ...c, day: null, date: null });
   return { queue, open, plan, span };
 }
+
+// What `gotd-gen status` shows about the queue, as data: the counts that depend on the stamp are an argument of a plain function.
+//   sizes   the sizes of the schedule
+// -> { bySize: [{ size, pending (of this stamp), older (pending, of another stamp), approved, rejected }],
+//      review: { count, fit (can fill an open day), extra, open (days without an approved candidate), span }, stock: { slot date: usable candidates } }
+export function queueStatus({ today, horizon, published, index, verdicts, stamp, sizes }) {
+  const bySize = sizes.map(size => {
+    const mine = index.candidates.filter(c => c.size === size), count = f => mine.filter(f).length;
+    return {
+      size,
+      pending: count(c => c.status === 'pending' && c.stamp === stamp),
+      older: count(c => c.status === 'pending' && c.stamp !== stamp),
+      approved: count(c => c.status === 'approved'),
+      rejected: count(c => c.status === 'rejected'),
+    };
+  });
+  const { queue, open, span } = planReview({ today, horizon, published, index, verdicts, stamp, reserve: true });
+  const fit = queue.filter(c => c.date).length, stock = {};
+  for (const c of index.candidates) if (usable(c, stamp)) stock[c.slot] = (stock[c.slot] || 0) + 1;
+  return { bySize, review: { count: queue.length, fit, extra: queue.length - fit, open: open.length, span }, stock };
+}
