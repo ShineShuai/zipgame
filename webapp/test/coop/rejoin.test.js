@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generate } from '../../src/core/gen/generate.js';
-import { runSync } from '../../src/core/run.js';
+import { fixture } from '../fixtures/puzzles.js';
 import { solutionOf } from '../../src/features/hints.js';
 import { createMqtt } from '../../src/coop/mqtt.js';
 import { resumeRoom } from '../../src/coop/resume.js';
@@ -109,7 +108,7 @@ test('a break is mended: silence, a new meeting, one drawing', async () => {
   const wire = fakePair();
   const host = player('host', wire.a, secret, net, rtc, clock);
   const guest = player('guest', wire.b, secret, net, rtc, clock);
-  const puzzle = runSync(generate(6, 5));
+  const puzzle = fixture('std', 6, 5);
   const mine = host.session.newGame(puzzle, 5);
   wire.flush();
   const theirs = guest.session.replica;
@@ -153,7 +152,7 @@ test('a break that was only silence: heard again, nothing more is done', async (
   const wire = fakePair();
   const host = player('host', wire.a, secret, net, fakeRtc(), clock);
   const guest = player('guest', wire.b, secret, net, fakeRtc(), clock);
-  host.session.newGame(runSync(generate(6, 5)), 5);
+  host.session.newGame(fixture('std', 6, 5), 5);
   wire.flush();
   for (let i = 0; i < 4; i++) {
     clock.t += 5000;

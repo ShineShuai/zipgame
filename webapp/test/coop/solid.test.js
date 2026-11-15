@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generatePentagon } from '../../src/core/gen/pentagon.js';
+import { fixture } from '../fixtures/puzzles.js';
 import { runSync } from '../../src/core/run.js';
 import { topologyOf } from '../../src/core/surface/puzzle.js';
 import { cellDirection, turn } from '../../src/view/proj.js';
@@ -22,7 +22,7 @@ test('only the tetra, the cube and the ball are solids', async () => {
   for (const id of ['tetra', 'cube', 'ball']) {
     assert.equal(isSolid(await make(id)), true, id);
   }
-  assert.equal(isSolid(runSync(generatePentagon(4, 1))), false);
+  assert.equal(isSolid(fixture('pentagon', 4, 1)), false);
   assert.equal(isSolid({ n: 5, cp: [] }), false);
 });
 

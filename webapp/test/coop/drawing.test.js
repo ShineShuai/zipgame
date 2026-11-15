@@ -1,15 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateArrows } from '../../src/core/gen/arrows.js';
-import { generateCutout, CUTOUT_MAX_MS } from '../../src/core/gen/cutout.js';
-import { generateExact } from '../../src/core/gen/exact.js';
-import { generate } from '../../src/core/gen/generate.js';
-import { generatePentagon } from '../../src/core/gen/pentagon.js';
-import { generateLoop } from '../../src/core/gen/loop.js';
-import { generateTeleport } from '../../src/core/gen/teleport.js';
-import { generateTwoPaths } from '../../src/core/gen/twopaths.js';
 import { COOP_VARIANTS } from '../../src/coop/variants.js';
-import { runSync } from '../../src/core/run.js';
+import { fixture, fixtures } from '../fixtures/puzzles.js';
 import { makeRng, shuffle } from '../../src/core/rng.js';
 import { cellCount, makePuzzle } from '../../src/core/model.js';
 import { SLOTS } from '../../src/core/surface/topology.js';
@@ -141,9 +133,7 @@ test('every flat puzzle is played; of the surfaces only the known kinds', () => 
   assert.match(unsupported({ kind: 'dodecahedron', n: 1 }), /dodecahedron/);
 });
 
-const PUZZLES = [5, 6, 7, 8].flatMap(
-  n => [1, 2, 3, 4, 5, 6].map(seed => runSync(generate(n, seed))),
-);
+const PUZZLES = fixtures('std', [5, 6, 7, 8], [1, 2, 3, 4, 5, 6]);
 
 test('soundness: any part of the solution can be drawn, in any order, from anywhere', () => {
   const rnd = makeRng(2024);
@@ -257,26 +247,18 @@ test('Exact: a piece must fit between the first and the last step, either way ro
   assert.equal(drawing.add(7, 11), 'steps'); // five cells with 2 in the middle: no step 0
 });
 
-const CUTOUTS = [5, 6].flatMap(
-  n => [1, 2, 3].map(seed => runSync(generateCutout(n, seed, { maxMs: CUTOUT_MAX_MS }))),
-);
-const EXACTS = [5, 6, 7, 8].flatMap(n => [1, 2].map(seed => runSync(generateExact(n, seed))));
-const WRAPS = [4, 5, 6].flatMap(
-  n => [1, 2, 3].map(seed => runSync(generate(n, seed, { wrap: true }))),
-);
-const TELEPORTS = [5, 6, 7, 8].flatMap(n => [1, 2].map(seed => runSync(generateTeleport(n, seed))));
-const LOOPS = [6, 8].flatMap(n => [1, 2].map(seed => runSync(generateLoop(n, seed))));
-const TWO_PATHS = [5, 6, 7].flatMap(n => [1, 2].map(seed => runSync(generateTwoPaths(n, seed))));
-const PENTAGONS = [4, 6, 8].flatMap(n => [1, 2].map(seed => runSync(generatePentagon(n, seed))));
-const solids = (id, sizes, seeds) => {
-  const variant = COOP_VARIANTS.find(candidate => candidate.id === id);
-  return sizes.flatMap(n => seeds.map(seed => runSync(variant.generate(n, seed))));
-};
-await COOP_VARIANTS.find(variant => variant.id === 'ball').ready();
-const TETRAS = solids('tetra', [2, 3], [1, 2]);
-const CUBES = solids('cube', [2, 3], [1, 2]);
-const BALLS = solids('ball', [0], [1, 2, 3, 4]);
-const ARROWS = [5, 6, 7, 8].flatMap(n => [1, 2, 3].map(seed => runSync(generateArrows(n, seed))));
+const CUTOUTS = fixtures('cutout', [5, 6], [1, 2, 3]);
+const EXACTS = fixtures('exact', [5, 6, 7, 8], [1, 2]);
+const WRAPS = fixtures('wrap', [4, 5, 6], [1, 2, 3]);
+const TELEPORTS = fixtures('teleport', [5, 6, 7, 8], [1, 2]);
+const LOOPS = fixtures('loop', [6, 8], [1, 2]);
+const TWO_PATHS = fixtures('twopaths', [5, 6, 7], [1, 2]);
+const PENTAGONS = fixtures('pentagon', [4, 6, 8], [1, 2]);
+await COOP_VARIANTS.find(variant => variant.id === 'ball').ready(); // the catalog of the balls, to read a ball
+const TETRAS = fixtures('tetra', [2, 3], [1, 2]);
+const CUBES = fixtures('cube', [2, 3], [1, 2]);
+const BALLS = fixtures('ball', [0], [1, 2, 3, 4]);
+const ARROWS = fixtures('arrows', [5, 6, 7, 8], [1, 2, 3]);
 
 // Every pair of cells that a line may join, once each.
 function allEdges(puzzle) {
@@ -396,7 +378,7 @@ test('Arrows: the numbers choose the way along a piece, and the arrows must agre
 });
 
 test('Arrows: an arrow turned against the solution refuses that line, as a direction', () => {
-  const puzzle = runSync(generateArrows(5, 1));
+  const puzzle = fixture('arrows', 5, 1);
   const path = solutionOf(puzzle);
   const at = path.findIndex((cell, i) => i > 0
     && arrowDirId(puzzle.arrows, edgeId(5, path[i - 1], cell)) !== 0);

@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generate } from '../../src/core/gen/generate.js';
-import { runSync } from '../../src/core/run.js';
+import { fixture } from '../fixtures/puzzles.js';
 import { makeRng, shuffle } from '../../src/core/rng.js';
 import { solutionOf } from '../../src/features/hints.js';
 import { GUEST, HOST, createSession } from '../../src/coop/session.js';
@@ -51,7 +50,7 @@ test('hello, puzzle, ready, start: the same puzzle on both sides, and a started 
   wire.flush();
   assert.deepEqual(events.host[0], { type: 'peer', compatible: true });
   assert.deepEqual(events.guest[0], { type: 'peer', compatible: true });
-  const puzzle = runSync(generate(6, 5));
+  const puzzle = fixture('std', 6, 5);
   host.newGame(puzzle, 5);
   wire.flush();
   assert.deepEqual(types(events.guest), ['peer', 'puzzle', 'start']);
@@ -78,7 +77,7 @@ test('a different protocol version is reported', () => {
 test('lines drawn on one side appear on the other; the two draw the solution together', () => {
   const rnd = makeRng(3);
   const { wire, host, guest } = connect();
-  const puzzle = runSync(generate(6, 9));
+  const puzzle = fixture('std', 6, 9);
   const mineReplica = host.newGame(puzzle, 9);
   wire.flush();
   const theirReplica = guest.replica;
@@ -100,13 +99,13 @@ test('lines drawn on one side appear on the other; the two draw the solution tog
 
 test('a hint reaches the other side; a second game replaces the first', () => {
   const { wire, host, guest, events } = connect();
-  host.newGame(runSync(generate(5, 1)), 1);
+  host.newGame(fixture('std', 5, 1), 1);
   wire.flush();
   guest.sendHint({ kind: 'next', edge: [1, 2], used: 1 });
   wire.flush();
   const heard = events.host.find(e => e.type === 'hint');
   assert.deepEqual(heard.hint, { kind: 'next', edge: [1, 2], used: 1 });
-  const second = host.newGame(runSync(generate(5, 2)), 2);
+  const second = host.newGame(fixture('std', 5, 2), 2);
   wire.flush();
   assert.notEqual(guest.replica, null);
   assert.equal(guest.replica.count(), 0);
@@ -150,7 +149,7 @@ test('a channel `closed` report does not stop the session: the game still starts
   const { wire, host, guest, events } = connect();
   wire.b.onclose();
   wire.a.onclose();
-  host.newGame(runSync(generate(5, 4)), 4);
+  host.newGame(fixture('std', 5, 4), 4);
   wire.flush();
   assert.ok(types(events.host).includes('start'));
   assert.ok(types(events.guest).includes('start'));
@@ -159,7 +158,7 @@ test('a channel `closed` report does not stop the session: the game still starts
 test('a puzzle that was lost on the way is sent again until the guest is ready', () => {
   const timers = manualTimers();
   const { wire, host, events } = connect({ timers });
-  host.newGame(runSync(generate(5, 6)), 6);
+  host.newGame(fixture('std', 5, 6), 6);
   assert.equal(wire.drop('b'), 1);
   timers.fire(); // the host sends it again
   wire.flush();
@@ -171,7 +170,7 @@ test('a puzzle that was lost on the way is sent again until the guest is ready',
 test('a ready or start that was lost is asked for again; repeats change nothing', () => {
   const timers = manualTimers();
   const { wire, host, events } = connect({ timers });
-  host.newGame(runSync(generate(5, 7)), 7);
+  host.newGame(fixture('std', 5, 7), 7);
   wire.step('b'); // the guest has the puzzle and says ready
   assert.equal(wire.drop('a'), 1); // ... which is lost
   timers.fire(); // the host (no ready yet) sends the puzzle again
@@ -192,7 +191,7 @@ test('a late repeat of the same puzzle keeps the guest drawing', () => {
     sent.push(text);
     send.call(wire.a, text);
   };
-  const puzzle = runSync(generate(5, 8));
+  const puzzle = fixture('std', 5, 8);
   host.newGame(puzzle, 8);
   wire.flush();
   const replica = guest.replica;
@@ -206,7 +205,7 @@ test('a late repeat of the same puzzle keeps the guest drawing', () => {
 test('the host gives up when the guest never answers: stalled, and no more timers', () => {
   const timers = manualTimers();
   const { wire, host, events } = connect({ timers, resends: 2 });
-  host.newGame(runSync(generate(5, 3)), 3);
+  host.newGame(fixture('std', 5, 3), 3);
   while (timers.fire()) {
     wire.drop('b');
   }
@@ -216,7 +215,7 @@ test('the host gives up when the guest never answers: stalled, and no more timer
 
 test('a ready for another game is ignored', () => {
   const { wire, host, events } = connect({ timers: manualTimers() });
-  host.newGame(runSync(generate(5, 2)), 2);
+  host.newGame(fixture('std', 5, 2), 2);
   wire.drop('b');
   wire.a.onmessage(JSON.stringify({ t: 'ready', seed: 1 }));
   assert.deepEqual(types(events.host), []);

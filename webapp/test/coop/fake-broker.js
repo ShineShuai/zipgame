@@ -136,7 +136,27 @@ const makeGate = () => ({
 
 // -> { brokers: Map(url -> broker), WebSocket, device() } for the given urls. WebSocket reaches
 // every broker; device() -> { WebSocket, gate } is one device's view of the network.
+// The code under test arms long timers (a resend every 1.5 s, a connect timeout of 10 s, a keep-alive of 60 s). A test that ends
+// with a room or a game still open must not hold the process for them: every timer of `minMs` or more is unref'd, so only the
+// tests' own short waits keep Node alive. (Before, screen-room.test.js took 11 s for 0.6 s of tests.)
+let timersUnrefed = false;
+export function unrefLongTimers(minMs = 1000) {
+  if (timersUnrefed) {
+    return;
+  }
+  timersUnrefed = true;
+  const set = globalThis.setTimeout;
+  globalThis.setTimeout = (fn, ms, ...args) => {
+    const handle = set(fn, ms, ...args);
+    if (ms >= minMs) {
+      handle.unref?.();
+    }
+    return handle;
+  };
+}
+
 export function createNetwork(urls) {
+  unrefLongTimers();
   const brokers = new Map(urls.map(url => [url, createBroker(url)]));
 
   const socketClass = gate => class FakeWebSocket {

@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generate } from '../../src/core/gen/generate.js';
-import { runSync } from '../../src/core/run.js';
+import { fixture } from '../fixtures/puzzles.js';
 import { solutionOf } from '../../src/features/hints.js';
 import { createSession } from '../../src/coop/session.js';
 import { fakePair } from './fake-channel.js';
@@ -19,7 +18,7 @@ function play(extra = {}) {
   const guest = make('guest', wire.b);
   host.hello();
   guest.hello();
-  const puzzle = runSync(generate(6, 5));
+  const puzzle = fixture('std', 6, 5);
   const mine = host.newGame(puzzle, 5);
   wire.flush();
   return {
@@ -157,7 +156,7 @@ test('the host\'s game wins: a guest that comes back with another game gets it',
   } = play();
   const oldGame = guest.current.seed;
   wire.flush();
-  const second = host.newGame(runSync(generate(5, 8)), 8); // while the guest was away
+  const second = host.newGame(fixture('std', 5, 8), 8); // while the guest was away
   wire.drop('b');
   const again = fakePair();
   host.attach(again.a);
@@ -201,8 +200,8 @@ test('a silent channel is reported once, and again as alive when the other is he
 
 // A running game goes to a friend who has just connected: the friend takes the free place.
 async function shared(ownPid, ownRole = 'host') {
-  const first = createSession({ role: 'host', onEvent() {} });
-  const puzzle = runSync(generate(6, 5));
+  const first = createSession({ role: 'host', onEvent() {}, timers: manualTimers() }); // real timers would resend the offer for 9 s
+  const puzzle = fixture('std', 6, 5);
   const early = first.newGame(puzzle, 5);
   const solution = solutionOf(puzzle);
   early.add(solution[0], solution[1]); // pid 0

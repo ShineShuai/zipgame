@@ -73,6 +73,10 @@ A test that takes 0.5 s or more is marked slow (`t.slow(...)`, see `webapp/test/
 40 s, not part of `npm test`, run it after changing them). More tools (rating fits, Game of the Day
 seeding, benchmarks) are in [`webapp/tools/`](webapp/tools/README.md).
 
+Tests that only need a puzzle as input (co-op, play, share) read frozen ones from
+`webapp/test/fixtures/puzzles.json`; `npm run fixtures:puzzles` rebuilds that file after a test needs
+another one (add its kind, size and seed to `build-puzzles.mjs`).
+
 ## Play app
 
 - **Phones, tablets and computers.** One layout that adapts: a single column on a phone, and on a wide
