@@ -249,8 +249,9 @@ export function manualTimers() {
 }
 
 // Waits until `check()` is true: the tests wait for real crypto (a thread pool) and for the
-// messages of the fake network, which take several turns.
-export async function until(check, what = 'a condition', ms = 3000) {
+// messages of the fake network, which take several turns. The limit only matters when a test
+// fails; a loaded CI runner needs far more than a quiet laptop, so it is generous.
+export async function until(check, what = 'a condition', ms = 15000) {
   const end = Date.now() + ms;
   while (!check()) {
     if (Date.now() > end) {

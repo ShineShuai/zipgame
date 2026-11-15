@@ -7,6 +7,8 @@
 //   - every <script src> / <link href> / <a href> in the html pages points at a file that exists
 //   - the home page at the repository root (index.html next to webapp/) is checked the same way, and its
 //     two languages must have the same number of texts
+//   - every element id an app looks up ($('id'), getElementById('id')) exists in the page of the app
+//     (design.html, stats.html) or is written by the app itself
 // Run: node test/check.js
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -196,6 +198,27 @@ function checkBothLanguages(file) {
 }
 
 for (const file of filesUnder(root, '.html')) checkHtmlReferences(file);
+
+// The elements an app looks up by id must be in its page. The ids written by the app's own code
+// (templates, el.id = ...) count as present. An app whose `$` is a querySelector is not read.
+const ID_LOOKUP = /(?:\$|getElementById)\(\s*'([\w-]+)'\s*\)/g;
+function checkIdsOfApp(app, page) {
+  const pagePath = join(root, page);
+  if (!existsSync(pagePath)) return;
+  const known = new Set([...readFileSync(pagePath, 'utf8').matchAll(/\bid=\\?"([^"]+)"/g)].map(m => m[1]));
+  const sources = filesUnder(join(root, 'src/apps', app), '.js').map(file => [file, readFileSync(file, 'utf8')]);
+  for (const [, source] of sources) {
+    for (const match of source.matchAll(/\bid=\\?["']([\w-]+)|\.id = '([\w-]+)'/g)) known.add(match[1] || match[2]);
+  }
+  for (const [file, source] of sources) {
+    if (/const \$ = \w+ => \w+\.querySelector/.test(source)) continue;
+    for (const match of source.matchAll(ID_LOOKUP)) {
+      if (!known.has(match[1])) report(file, lineOf(source, match.index), `no element with id '${match[1]}' in ${page}`);
+    }
+  }
+}
+checkIdsOfApp('design', 'design.html');
+checkIdsOfApp('stats', 'stats.html');
 
 // Pages directly in the repository root (the folder holding webapp/). Skipped when webapp/ is not
 // inside a repository that has the .github folder next to it.

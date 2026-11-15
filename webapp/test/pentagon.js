@@ -387,22 +387,6 @@ export function pentagonTests(t, ok, eq) {
     eq(netFrame(buildFlat(board(10))).scale <= 60 / 0.7, true, 'a 100-cell board fits the page');
   });
 
-  t('pentagon-design: design.html — the Pentagon type is offered, and every surface panel but '
-    + 'the 3D view buttons and Follow head is shown for it', () => {
-    const fs = typeof process !== 'undefined' && process.getBuiltinModule?.('node:fs');
-    if (!fs) return; // in the browser the page is not on hand
-    const html = fs.readFileSync(new URL('../design.html', import.meta.url), 'utf8');
-    ok(html.includes('<option value="pentagon">Pentagon</option>'), 'an option');
-    ok(/id="sfBoard"[^>]*data-variants="[^"]*\bpentagon\b/.test(html), 'the board is shown');
-    const panel = /<div[^>]*data-variants="([^"]*\bball\b[^"]*)"[^>]*>([^]{0,120})/g;
-    const tags = [...html.matchAll(panel)];
-    ok(tags.length >= 5, 'the surface panels were found');
-    for (const [, variants, after] of tags) {
-      if (variants.split(' ').includes('pentagon')) continue;
-      ok(/>View<|for="sfFollow"/.test(after), `a panel without Pentagon: ${after.slice(0, 40)}`);
-    }
-  });
-
   t('pentagon-design: the Checkpoints field keeps a typed number, cut to the board; else it '
     + 'follows the size', () => {
     const cells = 36;

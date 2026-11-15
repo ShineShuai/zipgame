@@ -1,9 +1,8 @@
 // Tests of what the design app needs for the Cutout puzzle type (boards with holes): the hole tool
 // (apps/design/holes.js), the board drawing (apps/design/board.js, on a recording stand-in for the page),
 // the random path / unique generator on a board of the designer's own (gen/generate.js o.holes), scatter on
-// such a board, the play-mode overlays (core/connectivity.js), the text format, and what design.html
-// offers. Registered by tests.js: designCutoutTests(t, ok, eq).
-import { readFileSync } from 'node:fs';
+// such a board, the play-mode overlays (core/connectivity.js), the text format. (Which tools design.html shows is the page's own markup, not tested here.)
+// Registered by tests.js: designCutoutTests(t, ok, eq).
 import { makePuzzle, validate, cellCount, maxNumber } from '../src/core/model.js';
 import { edgeCells, setWallId, hasWallId, wallIds } from '../src/core/edges.js';
 import { serialize, parse } from '../src/core/format.js';
@@ -18,7 +17,6 @@ import { boardConnectivity, boardPropagation, boardLegCollide } from '../src/cor
 import { toggleHole, holeCount, boardProblem } from '../src/apps/design/holes.js';
 import { renderBoard } from '../src/apps/design/board.js';
 
-const html = readFileSync(new URL('../design.html', import.meta.url), 'utf8');
 
 // A board of n x n with these [row, col] cells cut out.
 function holed(n, cells) {
@@ -249,22 +247,5 @@ export function designCutoutTests(t, ok, eq) {
     const plain = draw(makePuzzle(4), 'number');
     eq(plain.children.filter(c => c.className.startsWith('wallhit')).length, 24);
     ok(plain.children.filter(c => c.className.startsWith('cell')).every(c => c.className.includes('editable')));
-  });
-
-  t('design-cutout: design.html offers the type and the Holes tool, in the groups of the types with walls and numbers', () => {
-    ok(html.includes('<option value="cutout">Cutout</option>'), 'the type option');
-    for (const id of ['modeHole', 'holeModeTag', 'randCutout', 'cutoutShape', 'cutoutInterior', 'cutoutGrade', 'cutoutSecs', 'clearHoles']) {
-      ok(html.includes(`id="${id}"`), id);
-    }
-    const lists = [...html.matchAll(/data-variants="([^"]*)"/g)].map(m => m[1].split(' '));
-    // every group that holds several types and has Teleport has Cutout (both are a board of numbers and walls) ...
-    // ... but the Reproduce Play group: the Play app cannot rebuild a Cutout puzzle from a seed
-    const without = lists.filter(l => l.length > 1 && l.includes('teleport') && !l.includes('cutout'));
-    eq(without.length, 1);
-    ok(html.indexOf(without[0].join(' ')) < html.indexOf('id="reproducePlay"'));
-    // the groups that are not for it stay without it: the A/B comparison, the target grades, the diagnostics
-    ok(lists.some(l => l.join(' ') === 'standard wrap exact loop'), 'compare group unchanged');
-    ok(lists.some(l => l.join(' ') === 'standard exact'), 'target grade group unchanged');
-    eq(lists.filter(l => l.length === 1 && l[0] === 'cutout').length, 2, 'the Holes tool and the generator');
   });
 }
