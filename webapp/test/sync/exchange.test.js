@@ -4,7 +4,7 @@ import { GOTD_KEY } from '../../src/features/stats-store.js';
 import { RULES_SEEN_KEY } from '../../src/features/rules-seen.js';
 import { toBase64Url } from '../../src/core/sync/base64.js';
 import { secretId } from '../../src/core/sync/cloud-keys.js';
-import { packSlice, SLICE_MAX } from '../../src/core/sync/slice.js';
+import { packSlice } from '../../src/core/sync/slice.js';
 import { createSync } from '../../src/platform/sync/engine.js';
 import {
   createReassembler, exchange, FRAME_MAX, MESSAGE_MAX, PARTS_MAX, toFrames,
@@ -179,7 +179,6 @@ test('the reassembler refuses what is out of order, too long, or not a message',
   re = createReassembler();
   re.push(frames[0]);
   assert.deepEqual(re.push('{"t":"done"}'), { t: 'done' }, 'a whole message drops a half one');
-  assert.ok(SLICE_MAX > 0);
 });
 
 test('messages that came before the exchange started are handled first', async () => {

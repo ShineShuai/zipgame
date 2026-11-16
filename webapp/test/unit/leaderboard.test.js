@@ -307,11 +307,13 @@ t('afterSubmit: complete = the minimal record; incomplete keeps done / rounds / 
 });
 
 t('afterSubmit: a backend that never answers is given up after MAX_ROUNDS rounds; offline (nothing stored) never counts', () => {
-  eq(MAX_ROUNDS, 3);
+  ok(MAX_ROUNDS >= 2, 'a first round that is not the last');
   let rec = afterSubmit(OWED, { status: 'ok', done: ['asia'], complete: false, backend: 'asia', summary: SUM(30) }, ORDER);
   eq([rec.sent, rec.rounds], [false, 1]);
-  rec = afterSubmit(rec, { status: 'failed', done: ['asia'], complete: false }, ORDER);
-  eq([rec.sent, rec.rounds], [false, 2]);
+  for (let round = 2; round < MAX_ROUNDS; round++) {
+    rec = afterSubmit(rec, { status: 'failed', done: ['asia'], complete: false }, ORDER);
+    eq([rec.sent, rec.rounds], [false, round]);
+  }
   rec = afterSubmit(rec, { status: 'failed', done: ['asia'], complete: false }, ORDER);
   eq(rec, { solved: true, time: 42.1, sent: true, stats: SUM(30) });
   let offline = OWED;

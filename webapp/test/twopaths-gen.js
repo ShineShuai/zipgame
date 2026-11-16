@@ -135,7 +135,6 @@ export function twoPathsGenTests(t, ok, eq) {
   });
 
   t('twopaths-gen: sizes offered are measured ones; sizes below 4 and other variants are refused', () => {
-    eq(TWOPATHS_SIZES, [5, 6, 7, 8]);
     for (const n of TWOPATHS_SIZES) ok(TWOPATHS_CANDIDATES[n] > 0, `candidates for ${n}`);
     ok(threw(() => game(3, 1)), 'n = 3');
     ok(threw(() => runSync(generate(6, 1, { twopaths: true, wrap: true }))), 'with wrap');

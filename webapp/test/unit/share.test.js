@@ -45,6 +45,7 @@ t('share-code: Game of Day and local records round-trip; codes are URL-safe and 
   }
   ok(encodeShare(GOTD_REC).length <= 14, 'a Game of Day with 7 legs is at most 14 characters');
   ok(encodeShare(LOCAL_REC).length <= 16, 'a standard 5x5 game is at most 16 characters');
+  // compat pin: the version of the links already shared
   ok(SHARE_VERSION === 1, 'the Game of Day frame keeps version 1: its links stay valid');
 });
 

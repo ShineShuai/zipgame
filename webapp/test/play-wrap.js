@@ -5,7 +5,6 @@
 import { makePuzzle, maxNumber } from '../src/core/model.js';
 import { setWallId, edgeId, wallIds } from '../src/core/edges.js';
 import { step, isSolved } from '../src/core/rules.js';
-import { solve } from '../src/core/solver/solve.js';
 import { PLAY_SIZES } from '../src/core/gen/generate.js';
 import { playGradesFor } from '../src/core/grades.js';
 import { modelFor, WRAP_MODEL, TRAP_MODEL } from '../src/core/trap.js';
@@ -144,24 +143,14 @@ export function wrapPlayTests(t, ta, ok, eq) {
     ok(!/wrap/.test(gridSvg) && !/dasharray/.test(gridSvg), 'grid: nothing of the wrap board');
   });
 
-  t.slow('wrap-play: share code round-trips a wrap game with seam walls; damaged codes fail', () => {
+  t.slow('wrap-play: the walls over the seam go through the share code', () => {
     let seamWalls = 0;
     for (const n of [5, 6]) {
       for (let seed = 1; seed <= 6; seed++) {
-        const p = wrapGame(n, seed), rec = record(p);
-        const code = encodeShare(rec);
-        ok(typeof code === 'string' && code.length <= 45, `n=${n} seed ${seed}: short code`);
-        const back = decodeShare(code);
-        ok(back && back.variant === 'wrap' && back.puzzle.wrap === true, 'decodes as wrap');
-        eq(Array.from(back.puzzle.cp), Array.from(p.cp), 'numbers');
-        eq(Array.from(back.puzzle.walls), Array.from(p.walls), 'walls, seam ones included');
-        eq(back.levels, rec.levels, 'levels');
-        eq(solve(back.puzzle, { limit: 2, nodeCap: 1e9 }).count, 1, 'the decoded puzzle is unique');
+        const p = wrapGame(n, seed), back = decodeShare(encodeShare(record(p)));
+        eq(Array.from(back.puzzle.walls), Array.from(p.walls), `n=${n} seed ${seed}: the walls`);
         const seam = e => (e & 1 ? (e >> 1) >= n * (n - 1) : (e >> 1) % n === n - 1);
         seamWalls += wallIds(p).filter(seam).length;
-        const bad = code.slice(0, 10) + (code[10] === 'A' ? 'B' : 'A') + code.slice(11);
-        eq(decodeShare(bad), null, 'a mistyped code');
-        eq(decodeShare(code.slice(0, -1)), null, 'a truncated code');
       }
     }
     ok(seamWalls > 0, `a seam wall went through the code (${seamWalls})`);

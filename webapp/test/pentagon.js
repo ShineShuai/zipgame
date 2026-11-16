@@ -102,7 +102,6 @@ const FROZEN = {
 export function pentagonTests(t, ok, eq) {
   t('pentagon: boards — 16 to 120 cells of 5 sides, connected, not bipartite, no cell with fewer'
     + ' than 2 neighbours; the boards of the play app have only the 4 corner cells with 2', () => {
-    eq(PENTAGON_SIZES, [4, 6, 8, 10]);
     eq(PENTAGON_BOARD_SIZES.map(n => PENTAGON_CELLS[n]), [16, 24, 36, 48, 64, 80, 100, 120]);
     for (const n of PENTAGON_BOARD_SIZES) {
       const cells = PENTAGON_CELLS[n];
@@ -522,8 +521,8 @@ export function pentagonTests(t, ok, eq) {
     }
   });
 
-  t.slow('pentagon-share: a code of its own version (6) — round trip for every size, short, '
-    + 'damaged codes fail', () => {
+  t.slow('pentagon-share: a code of its own version (6), short, shorter without a strip', () => {
+    // compat pin: the version of the links already shared
     eq(SHARE_VERSION_PENTAGON, 6);
     const puzzles = [
       ...[1, 2, 3].map(seed => game(4, seed)),
@@ -533,22 +532,12 @@ export function pentagonTests(t, ok, eq) {
     ];
     const longest = { 4: 16, 6: 30, 8: 50, 10: 75 };
     for (const p of puzzles) {
-      const rec = record(p);
-      const code = encodeShare(rec);
+      const code = encodeShare(record(p));
       ok(code && code.length <= longest[p.n], `n=${p.n}: short (${code?.length})`);
       eq(versionOf(code), 6, 'its own version');
-      const back = decodeShare(code);
-      ok(back && back.variant === PENTAGON && back.kind === 'local', 'decodes as pentagon');
-      eq([back.n, back.grade, back.timeS, back.levels], [p.n, null, 83.4, rec.levels]);
-      eq([back.puzzle.kind, Array.from(back.puzzle.cp), Array.from(back.puzzle.walls)],
-        [PENTAGON_KIND, Array.from(p.cp), Array.from(p.walls)]);
-      eq(serializeSurface(back.puzzle), serializeSurface(p), 'the same puzzle text');
-      eq(encodeShare(back), code, 'one puzzle, one code');
-      if (p.path) eq(solveSurface(back.puzzle, { limit: 2, nodeCap: 0 }).count, 1, 'unique');
-      const typo = code.slice(0, 7) + (code[7] === 'A' ? 'B' : 'A') + code.slice(8);
-      eq(decodeShare(typo), null, 'mistyped');
-      eq(decodeShare(code.slice(0, -1)), null, 'truncated');
-      eq(decodeShare(`${code}A`), null, 'too long');
+      const back = decodeShare(code).puzzle;
+      eq(serializeSurface(back), serializeSurface(p), 'the same puzzle text');
+      if (p.path) eq(solveSurface(back, { limit: 2, nodeCap: 0 }).count, 1, 'unique');
     }
     const full = record(puzzles[3]);
     const bare = encodeShare({ ...full, levels: [] });

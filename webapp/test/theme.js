@@ -53,6 +53,7 @@ export function themeTests(t, ok, eq) {
     eq([resolveTheme('dark', false), resolveTheme('light', true)], ['dark', 'light'], 'a saved choice wins');
     eq([resolveTheme(null, true), resolveTheme(null, false), resolveTheme('blue', true)], ['dark', 'light', 'dark']);
     eq([parseTheme('dark'), parseTheme('light'), parseTheme('x'), parseTheme(null)], ['dark', 'light', null, null]);
+    // compat pin: the key the page heads and the stored choice use
     eq(THEME_KEY, 'zip_theme', 'the page heads read this key before the first paint');
   });
 

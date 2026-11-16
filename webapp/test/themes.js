@@ -758,8 +758,12 @@ export function themeSystemTests(t, ok, eq, ta) {
   });
 
   t('themes: the slots follow the activity: 2, +1 at 12 Game-of-Day solves, +1 at a best streak of 30 days, 4 at most, never lowered', () => {
-    eq([SLOT_GOTD_SOLVES, SLOT_STREAK_DAYS], [12, 30]);
-    eq([{}, { gotdSolves: 11, bestStreak: 29 }, { gotdSolves: 12 }, { bestStreak: 30 }, { gotdSolves: 12, bestStreak: 30 }, { gotdSolves: 999, bestStreak: 999 }, { gotdSolves: NaN, bestStreak: undefined }, undefined].map(slotsFor), [2, 2, 3, 3, 4, 4, 2, 2]);
+    const G = SLOT_GOTD_SOLVES, S = SLOT_STREAK_DAYS;
+    eq([
+      {}, { gotdSolves: G - 1, bestStreak: S - 1 }, { gotdSolves: G }, { bestStreak: S },
+      { gotdSolves: G, bestStreak: S }, { gotdSolves: 999, bestStreak: 999 },
+      { gotdSolves: NaN, bestStreak: undefined }, undefined,
+    ].map(slotsFor), [2, 2, 3, 3, 4, 4, 2, 2]);
     const r = rig();
     r.ctl.start();
     let changes = 0;

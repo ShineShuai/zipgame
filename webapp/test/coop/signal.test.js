@@ -30,9 +30,8 @@ function device(net, extra = {}) {
   };
 }
 
-// Which brokers a hub is connected to, from its report: { mq: true, hv: false, em: true }.
-const upMap = hub => Object.fromEntries(hub.report().replace('signal ', '').split(' · ')
-  .map(part => part.split(' ')).map(([id, ms]) => [id, ms !== 'x']));
+// Which brokers a hub is connected to: { mq: true, hv: false, em: true }.
+const upMap = hub => Object.fromEntries(hub.state().map(({ id, up }) => [id, up]));
 const isUp = (hub, id) => upMap(hub)[id];
 const allUp = hub => Object.values(upMap(hub)).every(Boolean);
 
@@ -154,7 +153,7 @@ test('wake: down brokers are tried at once and everything is sent again', async 
   await until(() => broker.retained.get('r/one') === 'sealed', 'sent to it');
 });
 
-test('the report shows how long a connect took', async () => {
+test('state and report show how long a connect took, and x for a broker that is down', async () => {
   const net = createNetwork(URLS);
   const timers = manualTimers();
   let clock = 0;
@@ -171,7 +170,11 @@ test('the report shows how long a connect took', async () => {
     },
   });
   await until(() => hub.anyUp(), 'connected');
+  assert.deepEqual(hub.state(), [{ id: 'mq', up: true, ms: 350 }]);
   assert.equal(hub.report(), 'signal mq 0.35s');
+  hub.close();
+  assert.deepEqual(hub.state(), [{ id: 'mq', up: false, ms: null }]);
+  assert.equal(hub.report(), 'signal mq x');
 });
 
 test('a message that is too long, or empty, is not delivered; close ends everything', async () => {

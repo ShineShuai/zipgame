@@ -40,7 +40,7 @@ import {
 } from '../src/apps/play/pentagon-board.js';
 import { cellPoint, fullViewOf } from '../src/apps/play/puzzle-kit.js';
 import { EN, ZH } from '../src/ui/i18n.js';
-import { MAP_MIN_CELLS, MAP_PX, zoomMapHtml } from '../src/apps/play/zoom-map.js';
+import { MAP_PX, zoomMapHtml } from '../src/apps/play/zoom-map.js';
 
 const FULL = { x: 0, y: 0, w: 960, h: 960 }; // a 16x16 board
 const BOX = { left: 20, top: 100, width: 350, height: 350 }; // the svg on a phone
@@ -77,7 +77,7 @@ export function zoomTests(t, ok, eq) {
   });
 
   t('camera: the limit is a cell of about 110 px, within [2, 6]', () => {
-    eq([MIN_MAX_ZOOM, MAX_ZOOM_CAP], [2, 6]);
+    ok(1 < MIN_MAX_ZOOM && MIN_MAX_ZOOM <= MAX_ZOOM_CAP);
     eq(maxZoom(22), 5); // 16x16 on a phone
     eq(maxZoom(60), 2); // a cell that is big already
     eq(maxZoom(5), 6);
@@ -117,7 +117,7 @@ export function zoomTests(t, ok, eq) {
     }
     eq(zoomAt(FULL, { s: 5, cx: 480, cy: 480 }, 3, 6).s, 6);
     eq(zoomAt(FULL, { s: 1.2, cx: 480, cy: 480 }, 0.1, 6), fitCamera(FULL));
-    eq(ZOOM_STEP, 1.5);
+    ok(ZOOM_STEP > 1, 'a zoom step magnifies');
   });
 
   t('camera: panBy drags the picture with the finger (the point under it stays under it)', () => {
@@ -245,7 +245,6 @@ export function zoomTests(t, ok, eq) {
     ok(html.includes(`width:${MAP_PX}px`), 'its size');
     const none = zoomMapHtml(state(p, { path: [], finished: false }));
     ok(none.includes('d=""'), 'no path, no line');
-    eq(MAP_MIN_CELLS, 12);
     const two = makePuzzle(8);
     two.split = true;
     two.cp[0] = 1;

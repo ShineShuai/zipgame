@@ -25,6 +25,7 @@ import { GOLDEN } from '../golden.js';
 import { t, eq, ok, registerAsyncTests } from '../harness.js';
 
 t.slow('generate: ALGO_VERSION 6 golden puzzles cover every play size below 16 and are valid and unique', () => {
+  // compat pin: bump with the golden puzzles (README)
   eq(ALGO_VERSION, 6);
   for (const n of PLAY_SIZES.filter(size => size < 16)) {
     ok(GOLDEN.some(([size]) => size === n), `no golden puzzle for play size ${n}`);
@@ -239,8 +240,8 @@ t('minimizeFully: no budget = minimizeWalls exactly; with a budget it reaches a 
   // maxKept: even removing every undecided wall would leave more than this, so no second look
   const d = clonePuzzle(p0);
   eq(runSync(minimizeFully(d, order, makeRng(3), cap, K, { ...o, refineBudget: 1e8, maxKept: 0 })), ra); eq(serialize(d), serialize(a));
-  // the default per-pass caps are the documented ones
-  eq(REFINE_CAP_X, [8, 32, 128]);
+  // the default per-pass caps widen from pass to pass
+  ok(REFINE_CAP_X.every((x, i) => x > (REFINE_CAP_X[i - 1] ?? 1)), 'ascending multiples');
 });
 
 t.slow('generate(): the deeper look at undecided walls never adds walls to the winner and keeps it valid and unique with every kept wall needed', () => {
@@ -257,8 +258,8 @@ t.slow('generate(): the deeper look at undecided walls never adds walls to the w
 });
 
 t('flags: the freedEdge bit (minimize phase) round-trips, and every integer made before it still decodes to the same objects', () => {
-  // pinned: the design app's default flags and the play app's seed tag (generate() and the design app use the freedEdge minimize check)
-  eq(DEFAULT_FLAGS_INT, 0x1018101); eq(flagsToHex(PLAY_FLAGS_INT), '0x18101');
+  // compat pin: the play app's seed tag stays as it is in the links and records made with it
+  eq(flagsToHex(PLAY_FLAGS_INT), '0x18101');
   eq(decodeFlags(PLAY_FLAGS_INT).minimize.freedEdge, true);
   eq(decodeFlags(DEFAULT_FLAGS_INT).minimize.freedEdge, true);
   const before = 0x1010101; // the design app's default before the bit existed: still the plain two-solution check

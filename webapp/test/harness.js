@@ -7,6 +7,7 @@
 //   slow                only the tests marked slow: t.slow(name, fn), ta.slow(name, fn)
 //   all                 both: what the Node 22 job runs
 // A test that uses 0.5 s of CPU time or more belongs in the slow tier; test/budget.js reports and, off CI, fails the ones that are far over.
+import assert from 'node:assert/strict';
 import test from 'node:test';
 import './budget.js';
 
@@ -14,12 +15,9 @@ export const TIER = process.env.ZIGZAG_TESTS || 'fast';
 if (!['fast', 'slow', 'all'].includes(TIER)) {
   throw new Error(`ZIGZAG_TESTS is "${TIER}": fast, slow or all`);
 }
-export const eq = (a, b, m = '') => {
-  const A = JSON.stringify(a), B = JSON.stringify(b);
-  if (A !== B) {
-    throw new Error(`${m} expected ${B} got ${A}`);
-  }
-};
+// eq(actual, expected, message): deep and strict, so NaN is not null, a Set is not compared as {},
+// and a typed array is not an array.
+export const eq = (actual, expected, message) => assert.deepStrictEqual(actual, expected, message);
 export const ok = (c, m = 'assertion failed') => {
   if (!c) {
     throw new Error(m);

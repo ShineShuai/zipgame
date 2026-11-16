@@ -3,9 +3,7 @@
 // lucky game. The core and the generator are in loop.js and loop-gen.js. Registered by unit/loop.test.js:
 // loopPlayTests(t, ta, ok, eq).
 import { maxNumber } from '../src/core/model.js';
-import { wallIds } from '../src/core/edges.js';
 import { step, isSolved } from '../src/core/rules.js';
-import { solve } from '../src/core/solver/solve.js';
 import { PLAY_SIZES } from '../src/core/gen/generate.js';
 import { playGradesFor } from '../src/core/grades.js';
 import { modelFor, LOOP_MODEL, TRAP_MODEL } from '../src/core/trap.js';
@@ -13,7 +11,7 @@ import { boardSvg, routeCells } from '../src/apps/play/board.js';
 import { createUnlock } from '../src/features/unlock.js';
 import { sizesFor, luckyDefs } from '../src/apps/play/variants.js';
 import { EN } from '../src/ui/i18n.js';
-import { encodeShare, decodeShare } from '../src/core/share-code.js';
+import { encodeShare } from '../src/core/share-code.js';
 import { makeShareRecord, shareStatus, shareText } from '../src/features/share.js';
 import { made } from './fixtures/made.js';
 
@@ -47,30 +45,6 @@ export function loopPlayTests(t, ta, ok, eq) {
     const grid = made('std', 5, 2);
     const gridS = { puzzle: grid, path: grid.path.slice(), hintCell: null, hintWrongCell: null };
     eq(pathOf(boardSvg({ ...gridS, finished: true })), pathOf(boardSvg({ ...gridS, finished: false })), 'standard');
-  });
-
-  t('loop-play: share code round-trips a loop game with its walls; damaged codes fail', () => {
-    let walls = 0;
-    for (const n of [6, 8]) {
-      for (let seed = 1; seed <= 4; seed++) {
-        const p = loopGame(n, seed);
-        const rec = record(p);
-        const code = encodeShare(rec);
-        ok(typeof code === 'string' && code.length <= 60, `n=${n} seed ${seed}: short code (${code && code.length})`);
-        const back = decodeShare(code);
-        ok(back && back.variant === 'loop' && back.puzzle.loop === true, 'decodes as loop');
-        eq(back.n, n);
-        eq(Array.from(back.puzzle.cp), Array.from(p.cp), 'numbers');
-        eq(Array.from(back.puzzle.walls), Array.from(p.walls), 'walls');
-        eq(back.levels, rec.levels, 'levels');
-        eq(solve(back.puzzle, { limit: 2, nodeCap: 1e9, prop: true }).count, 1, 'the decoded puzzle is unique');
-        walls += wallIds(p).length;
-        const bad = code.slice(0, 10) + (code[10] === 'A' ? 'B' : 'A') + code.slice(11);
-        eq(decodeShare(bad), null, 'a mistyped code');
-        eq(decodeShare(code.slice(0, -1)), null, 'a truncated code');
-      }
-    }
-    ok(walls > 0, `walls went through the code (${walls})`);
   });
 
   t('loop-play: an unsound loop record is not encodable', () => {

@@ -43,12 +43,16 @@ export function gotdVerdictTests(t, ok, eq, ta) {
   });
 
   t('gotd verdict: a rating of Hard or more approves, below rejects; two grades use their midpoint and lean', () => {
-    eq(APPROVE_MIN, 3);
+    const A = APPROVE_MIN;
     const v = (lo, hi, lean = 0) => verdict(cand(1, 7, '20261121'), 0, { sel: { lo, hi, lean } }).verdict;
-    eq([v(3, 3), v(4, 4), v(5, 5), v(2, 2), v(0, 0)], ['approve', 'approve', 'approve', 'reject', 'reject']);
-    eq([v(2, 3), v(2, 3, 1), v(3, 4), v(3, 4, -1)], ['reject', 'reject', 'approve', 'approve'], '2 or 3 is 2.5, even closer to 3 is 2.75: below Hard');
-    eq(decide({ human: 2.99 }), 'reject');
-    eq(decide({ human: 3 }), 'approve');
+    ok(A >= 1, 'a grade below the limit exists');
+    eq([A, A + 1, A + 2, A - 1, 0].map(g => v(g, g)),
+      ['approve', 'approve', 'approve', 'reject', 'reject']);
+    eq([v(A - 1, A), v(A - 1, A, 1), v(A, A + 1), v(A, A + 1, -1)],
+      ['reject', 'reject', 'approve', 'approve'],
+      'A - 1 or A is A - 0.5, leaning up A - 0.25: below the limit; A or A + 1 is above');
+    eq(decide({ human: A - 0.01 }), 'reject');
+    eq(decide({ human: A }), 'approve');
   });
 
   t('gotd verdict: the reviewer\'s button decides, the rating only suggests; a verdict may have no rating', () => {
