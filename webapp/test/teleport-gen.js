@@ -110,7 +110,6 @@ export function teleportGenTests(t, ok, eq) {
 
   t.slow('teleport-gen: generateTeleport 5 to 9 — valid, unique, the one '
     + 'solution is the planted path and uses every portal', () => {
-    eq(TELEPORT_SIZES, [5, 6, 7, 8, 9]);
     for (const n of TELEPORT_SIZES) {
       for (const seed of n >= 8 ? [3] : [3, 4]) {
         const p = game(n, seed);

@@ -2,16 +2,14 @@
 // board.js, the share link). Registered by unit/arrows.test.js: playArrowsTests(t, ok, eq).
 import { makePuzzle, maxNumber } from '../src/core/model.js';
 import { edgeId, setArrowId, setWallId } from '../src/core/edges.js';
-import { solve } from '../src/core/solver/solve.js';
-import { runSync } from '../src/core/run.js';
-import { generateArrows, ARROW_SIZES } from '../src/core/gen/arrows.js';
+import { ARROW_SIZES } from '../src/core/gen/arrows.js';
 import { variantOf, sizesFor, nearestSize, PLAY_VARIANTS } from '../src/apps/play/variants.js';
 import { variantIcon } from '../src/apps/play/icons.js';
 import { boardSvg } from '../src/apps/play/board.js';
 import { EN, ZH } from '../src/ui/i18n.js';
-import { encodeShare, decodeShare, VARIANTS } from '../src/core/share-code.js';
+import { encodeShare, decodeShare } from '../src/core/share-code.js';
 import {
-  makeShareRecord, shareStatus, shareText, parseShareLink, shareUrl,
+  makeShareRecord, shareStatus, shareText, shareUrl,
 } from '../src/features/share.js';
 
 // A 3x3 puzzle: 1 at the top left, 2 at the bottom right, an arrow 4 -> 5 (right) and an arrow
@@ -75,36 +73,6 @@ export function playArrowsTests(t, ok, eq) {
     const bare = { puzzle: makePuzzle(3), path: [], hintCell: null, hintWrongCell: null };
     const plain = boardSvg(bare);
     ok(!plain.includes('arrow-mark') && !plain.includes('zip-svg arrows'));
-  });
-
-  t('share-code: an arrows game round-trips with its puzzle; codes are short and checked', () => {
-    eq(VARIANTS.slice(0, 4), [null, 'cutout', 'arrows', 'exact']); // ids are fixed; later ones append
-    const puzzles = [hand()];
-    for (const n of [5, 7, 8]) {
-      puzzles.push(runSync(generateArrows(n, 40 + n, { candidates: 1, refineNodes: 0 })));
-    }
-    for (const p of puzzles) {
-      const rec = record(p);
-      const code = encodeShare(rec);
-      ok(/^[A-Za-z0-9_-]+$/.test(code), code);
-      const back = decodeShare(code);
-      const head = [back.kind, back.variant, back.n, back.timeS, back.levels, back.grade];
-      eq(head, ['local', 'arrows', p.n, 83.4, rec.levels, null]);
-      const body = q => [[...q.cp], [...q.arrows], [...q.walls]];
-      eq(body(back.puzzle), body(p));
-      eq(encodeShare(back), code);
-      ok(decodeShare(code.slice(0, -1)) === null && decodeShare(code + 'A') === null);
-      ok(parseShareLink('?s=' + code).rec.puzzle.n === p.n);
-      ok(code.length <= 60, `${p.n}x${p.n}: ${code.length} characters`);
-      const r = solve(back.puzzle, { limit: 2, nodeCap: 5e6 });
-      ok(r.count >= 1, 'the shared puzzle is playable');
-    }
-    const code = encodeShare(record(puzzles[1]));
-    for (let at = 3; at < code.length - 2; at += 3) {
-      const other = code[at] === 'A' ? 'B' : 'A';
-      const changed = code.slice(0, at) + other + code.slice(at + 1);
-      ok(decodeShare(changed) === null, `a changed character at ${at}`);
-    }
   });
 
   t('share-code: an arrows record is refused when its puzzle is unsound', () => {

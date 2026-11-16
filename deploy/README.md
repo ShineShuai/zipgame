@@ -12,8 +12,10 @@ Promotes the newest commit of `main` that has been there for `SOAK_DAYS`, on `RE
 (or after 8 days without a release). It skips when: `PROD_FREEZE` is true; that commit is
 already live, or live is ahead of it; a change in it was reverted on `main` since. It fails
 (red run, e-mail) when live is not in `main`'s history (a hotfix not merged yet), when too few
-puzzles are ahead (`MIN_PUZZLE_DAYS`), or when build.json cannot be read. After the deploy it
-runs the smoke test; if that fails, the previous version is deployed again and the run stays red.
+puzzles are ahead (`MIN_PUZZLE_DAYS`), or when build.json cannot be read. On that commit it first
+runs `npm run check`, `npm run test:all` (every tier, so also a hotfix or a rollback is tested) and
+`npm run test:themes`. After the deploy it runs the smoke test; if that fails, the previous version
+is deployed again and the run stays red.
 
 Repository variables (Settings -> Secrets and variables -> Actions -> Variables):
 `SOAK_DAYS` (7), `RELEASE_DAYS` (comma list, `Tue` or `Tue,Fri`; spaces and case are ignored), `PROD_FREEZE` (`true` stops

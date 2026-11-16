@@ -147,7 +147,6 @@ export function exactGenTests(t, ok, eq) {
   });
 
   t('exact gen: the offered sizes and their candidate counts', () => {
-    eq(EXACT_SIZES, [5, 6, 7, 8, 9, 10, 11, 12]);
     ok(EXACT_SIZES.every(n => EXACT_CANDIDATES[n] > 0));
     const p = runSync(generateExact(9, 51, { candidates: 1, refineNodes: 0 }));
     eq([validate(p).ok, solve(p, CHECK).count], [true, 1]);

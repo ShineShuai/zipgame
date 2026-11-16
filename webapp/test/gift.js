@@ -125,7 +125,6 @@ export function giftTests(t, ta, ok, eq) {
     eq(recentGifts(ref, day(2027, 1, 20), 6).map(ymd), ['2027-01-01'], 'only one so far');
     eq(recentGifts(ref, day(2026, 12, 31), 6), [], 'none in the month of the reference day');
     eq(recentGifts(null, ref, 6), []);
-    eq(LIST_DAYS, 6);
   });
 
   t('gift: the tooltip lists the latest 6 happiest days, but only once 6 exist (a shorter list would hold the first gift)', () => {
@@ -185,7 +184,6 @@ export function giftTests(t, ta, ok, eq) {
     const ref = day(2026, 12, 1), first = firstGift(ref), g = createGift(memory(), ref, at(first));
     await g.init();
     eq(await g.claim(() => { throw new Error('no draw'); }, true), 'replay');
-    eq(OPEN_DAYS, 1);
     const late = createGift(memory(), ref, at(first + OPEN_DAYS)); await late.init();
     eq([late.view(), await late.claim(() => 0)], [null, null]);
   });

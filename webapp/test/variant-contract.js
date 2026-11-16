@@ -5,7 +5,9 @@
 import { runSync } from '../src/core/run.js';
 import { solve } from '../src/core/solver/solve.js';
 import { PLAY_SIZES } from '../src/core/gen/generate.js';
-import { VARIANTS } from '../src/core/share-code.js';
+import { labelCount } from '../src/core/model.js';
+import { VARIANTS, encodeShare, decodeShare } from '../src/core/share-code.js';
+import { makeShareRecord, parseShareLink } from '../src/features/share.js';
 import { variantIcon } from '../src/apps/play/icons.js';
 import {
   PLAY_VARIANTS, variantOf, variantById, sizesFor, luckyDefs,
@@ -92,6 +94,38 @@ export function variantContractTests(t, ok, eq) {
   });
 
   t('variants: the share ids of the built-in variants never change (links already sent depend on them)', () => {
+    // compat pin: the type field of the links already shared
     eq(VARIANTS, [null, 'cutout', 'arrows', 'exact', 'wrap', 'loop']);
+  });
+
+  // What every variant's share code has to do; what is special to one (its own version, the fields
+  // it adds, the records it refuses) is tested with the variant.
+  t.slow('variants: a share code gives back the puzzle and the time, one puzzle has one code, '
+    + 'a damaged code is refused', () => {
+    const flat = q => Object.fromEntries(
+      Object.entries(q).map(([key, x]) => [key, ArrayBuffer.isView(x) ? [...x] : x]));
+    const cases = PLAY_VARIANTS.flatMap(v => {
+      const sizes = sizesFor(v.id, PLAY_SIZES);
+      return [...new Set([sizes[0], SMALLEST_ONLY.includes(v.id) ? sizes[0] : sizes.at(-1)])]
+        .map(n => [v, puzzleOf(v, n), n === sizes[0]]);
+    });
+    for (const [v, p, smallest] of cases) {
+      const K = labelCount(p);
+      const rec = makeShareRecord({ n: p.n, timeS: 83.4, legs: [], K, variant: v.id, puzzle: p });
+      const code = encodeShare(rec);
+      ok(/^[A-Za-z0-9_-]+$/.test(code), `${v.id} ${p.n}: only characters that are safe in a link`);
+      ok(!smallest || code.length <= 60, `${v.id} ${p.n}: short (${code.length} characters)`);
+      const back = decodeShare(code);
+      eq([back.kind, back.variant, back.n, back.timeS, back.grade],
+        ['local', v.id, p.n, 83.4, null], `${v.id} ${p.n}: the record`);
+      eq(flat(back.puzzle), flat(rec.puzzle), `${v.id} ${p.n}: the same puzzle`);
+      ok(v.detect(back.puzzle), `${v.id} ${p.n}: the receiver plays it as the same variant`);
+      eq(encodeShare(back), code, `${v.id} ${p.n}: one puzzle, one code`);
+      eq(parseShareLink(`?s=${code}`).rec.puzzle.n, p.n, `${v.id} ${p.n}: the link`);
+      const changed = at => code.slice(0, at) + (code[at] === 'A' ? 'B' : 'A') + code.slice(at + 1);
+      const damaged = [code.slice(0, -1), `${code}A`, ...Array.from(code, (_, at) => changed(at))];
+      eq(damaged.map(decodeShare).filter(Boolean).length, 0,
+        `${v.id} ${p.n}: a truncated, a longer and every mistyped code is refused`);
+    }
   });
 }

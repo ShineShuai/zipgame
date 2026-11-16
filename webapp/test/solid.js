@@ -133,6 +133,7 @@ export function solidTests(t, ok, eq, ta) {
   });
 
   t('play app: icons and texts of the 3D puzzles', () => {
+    // compat pin: the kind ids are in the saved puzzle text
     eq(SOLID_KINDS, ['tetra', 'cube', 'ball']);
     ok(isSolidKind('ball') && !isSolidKind('cutout') && !isSolidKind(undefined));
     const icons = SOLID_KINDS.map(kind => variantIcon(kind));

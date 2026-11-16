@@ -7,7 +7,7 @@ import { serialize } from '../src/core/format.js';
 import { solve } from '../src/core/solver/solve.js';
 import { ringPath } from '../src/core/gen/hampath.js';
 import { loopCheckpoints, LOOP_TAIL } from '../src/core/gen/checkpoints.js';
-import { generateLoop, LOOP_SIZES } from '../src/core/gen/loop.js';
+import { generateLoop } from '../src/core/gen/loop.js';
 import { generate } from '../src/core/gen/generate.js';
 import { runSync } from '../src/core/run.js';
 import { gridAdjacent } from '../src/core/rules.js';
@@ -102,6 +102,5 @@ export function loopGenTests(t, ok, eq) {
       threw = true;
     }
     ok(threw);
-    eq(LOOP_SIZES, [6, 8, 10, 12]);
   });
 }

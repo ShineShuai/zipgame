@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   firstShown, hasSolidTab, isShown, levelOf, offeredSizes,
 } from '../../src/coop/access.js';
+import { SOLID_KINDS } from '../../src/core/solid/kinds.js';
 import { FLAT_IDS, isSolidId, SOLID_IDS, sizesFor } from '../../src/coop/variants.js';
 
 const INFO = {
@@ -55,8 +56,8 @@ test('the type to start from is the one asked for if shown, else the first that 
   assert.equal(firstShown(SOLID_IDS, 'ball', INFO, {}), 'tetra');
 });
 
-test('the solids are the three of the play app, the rest is flat', () => {
-  assert.deepEqual(SOLID_IDS, ['tetra', 'cube', 'ball']);
+test('the solids are the kinds of the core, the rest is flat', () => {
+  assert.deepEqual(SOLID_IDS, SOLID_KINDS);
   assert.ok(SOLID_IDS.every(isSolidId) && FLAT_IDS.every(id => !isSolidId(id)));
   assert.equal(FLAT_IDS[0], 'standard');
 });

@@ -3,7 +3,6 @@
 // playExactTests(t, ok, eq).
 import { makePuzzle, labelCount, labelRanks, validate } from '../src/core/model.js';
 import { isSolved } from '../src/core/rules.js';
-import { solve } from '../src/core/solver/solve.js';
 import { EXACT_SIZES } from '../src/core/gen/exact.js';
 import {
   variantOf, variantById, sizesFor, nearestSize, PLAY_VARIANTS,
@@ -11,9 +10,9 @@ import {
 import { variantIcon } from '../src/apps/play/icons.js';
 import { boardSvg, badgeColors, stepWrong, COLORS } from '../src/apps/play/board.js';
 import { EN, ZH } from '../src/ui/i18n.js';
-import { encodeShare, decodeShare, VARIANTS } from '../src/core/share-code.js';
+import { encodeShare, decodeShare } from '../src/core/share-code.js';
 import {
-  makeShareRecord, legsUndo, legLevels, shareText, parseShareLink, shareUrl,
+  makeShareRecord, legsUndo, legLevels, shareText,
 } from '../src/features/share.js';
 import { solutionOf, maxHints } from '../src/features/hints.js';
 import { playGradesFor } from '../src/core/grades.js';
@@ -67,29 +66,7 @@ export function playExactTests(t, ok, eq) {
     ok(ZH['game.step'].includes('{0}') && ZH['game.step'].includes('{1}'));
   });
 
-  t('play exact: a game round-trips through the share link; codes are short and checked', () => {
-    eq(VARIANTS.indexOf('exact'), 3);
-    for (const n of [5, 7, 9, 12]) {
-      const p = fast(n, 40 + n);
-      const rec = record(p);
-      const code = encodeShare(rec);
-      ok(/^[A-Za-z0-9_-]+$/.test(code), code);
-      const back = decodeShare(code);
-      const head = [back.kind, back.variant, back.n, back.timeS, back.levels, back.grade];
-      eq(head, ['local', 'exact', n, 83.4, rec.levels, null]);
-      const body = q => [[...q.cp], [...q.walls], q.exact];
-      eq(body(back.puzzle), body(p));
-      eq(encodeShare(back), code);
-      ok(decodeShare(code.slice(0, -1)) === null && decodeShare(code + 'A') === null);
-      const flipped = code.slice(0, 7) + (code[7] === 'A' ? 'B' : 'A') + code.slice(8);
-      ok(decodeShare(flipped) === null, 'a changed character is caught');
-      ok(parseShareLink('?s=' + code).rec.puzzle.n === n);
-      ok(shareUrl('https://x/y', rec).endsWith('?s=' + code));
-      const r = solve(back.puzzle, { limit: 2, nodeCap: 5e6, prop: true, parity: true });
-      eq([r.count, r.exceeded], [1, false], 'the shared puzzle is playable and unique');
-      const numbers = labelCount(p);
-      ok(code.length <= 28 + 3 * numbers, `${n}x${n}: ${code.length} chars, ${numbers} numbers`);
-    }
+  t('play exact: the step number 256 of a 16 x 16 board fits the code', () => {
     const big = exactPuzzle(16, { 0: 1, 240: 256 });
     eq(validate(big).ok, true);
     const bigBack = decodeShare(encodeShare(record(big, { legs: [] })));

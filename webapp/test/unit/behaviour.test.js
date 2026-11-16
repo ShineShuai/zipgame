@@ -13,7 +13,7 @@ import {
   packEv, unpackEv, describeRow, EV_MAX_EVENTS,
 } from '../../src/core/behaviour.js';
 import {
-  createBehaviour, sinksFromConfig, SINKS, QUEUE_KEY, ON_KEY, QUEUE_MAX,
+  createBehaviour, sinksFromConfig, QUEUE_KEY, ON_KEY, QUEUE_MAX,
   MAX_ROUNDS as BEHAVIOUR_ROUNDS,
 } from '../../src/platform/behaviour.js';
 import { BEHAVIOUR, LEADERBOARD } from '../../src/config.js';
@@ -60,6 +60,7 @@ t('behaviour: validateRow checks every column, fills defaults, refuses unknown k
   const full = { ...row, pz: packPuzzle(parse(BEH_TEXT)), ev: Uint8Array.of(1, 2) };
   eq(validateRow(fromWire(JSON.parse(JSON.stringify(toWire(full))))), full, 'through JSON');
   eq(fromWire({ ...toWire(full), pz: '!!' }), null); eq(rowArgs(full).length, COLUMNS.length); eq(rowArgs({ day: 1, ms: 2 }).slice(2), [null, null, null, null, null, null]);
+  // compat pin: the wire format of the rows already uploaded
   eq(COLUMN_NAMES, ['day', 'ms', 'u', 'deep', 's', 'pz', 'ev', 'v']);
 });
 
@@ -137,6 +138,7 @@ t('behaviour: rowFromGame — which solved games become a row', () => {
 });
 
 t('behaviour: hint and abandoned games are rows with a flag; the wrong turns travel in ev', () => {
+  // compat pin: the wire format of the rows already uploaded
   eq(ROW_VERSION, 1, 'version 1: per-kind skill, s bits 6-7, ev');
   const hint = rowFromGame(behGame({ hints: 2 }),
     BEH_CFG), gone = rowFromGame(behGame({ abandoned: true, ms: 9000 }), BEH_CFG);
@@ -254,8 +256,10 @@ ta('behaviour upload: the backup is tried only when the primary does not answer;
 ta('behaviour upload: a row nobody takes is kept for the next page loads, three in all, then dropped; one page load is one round', async () => {
   const st = fakeStorage(), cfg = { enabled: true, defaultOn: true }, mk = () => createBehaviour({ storage: st, cfg, sinks: behSinks(), fetchFn: behFetch(['down', 'down', 'down', 'down', 'down', 'down', 'down', 'down']), timeoutMs: 50 });
   let up = mk(); await up.enqueue(behRow()); eq(await up.pending(), 1, 'round 1 failed'); await up.flush(); await up.flush(); eq(await up.pending(), 1, 'more flushes in the same page load are not new rounds');
-  up = mk(); await up.flush(); eq(await up.pending(), 1, 'round 2 (a new page load)');
-  up = mk(); eq(BEHAVIOUR_ROUNDS, 3); await up.flush(); eq(await up.pending(), 0, 'round 3: dropped');
+  for (let round = 2; round < BEHAVIOUR_ROUNDS; round++) {
+    up = mk(); await up.flush(); eq(await up.pending(), 1, `round ${round} (a new page load)`);
+  }
+  up = mk(); await up.flush(); eq(await up.pending(), 0, 'the last round: dropped');
   const stored = JSON.parse((await st.get(QUEUE_KEY)).value); eq(stored, []);
 });
 
@@ -273,7 +277,7 @@ ta('behaviour upload: the switches — config.enabled, the device setting (defau
   ({ f, up } = behUp({}, Array(10).fill('down'))); await up.enqueue(behRow()); eq(await up.pending(), 1); await up.setOn(false); eq([await up.isOn(), await up.pending()], [false, 0], 'off empties the queue'); await up.flush(); eq(f.calls.length, 2, 'and nothing more is sent');
   const st = fakeStorage(); await st.set(QUEUE_KEY, JSON.stringify([{ row: toWire(behRow()), rounds: 0 }])); const g = behFetch();
   const off = createBehaviour({ storage: st, cfg: { enabled: false, defaultOn: true }, sinks: behSinks(), fetchFn: g, timeoutMs: 50 }); await off.flush(); eq([g.calls.length, JSON.parse((await st.get(QUEUE_KEY)).value)], [0, []], 'a queue left from an earlier run is discarded when the flag is off');
-  eq(ON_KEY, 'zip_behaviour_on'); eq(SINKS.turso !== undefined && SINKS.cloudflare !== undefined && SINKS.supabase === undefined, true);
+  eq(ON_KEY, 'zip_behaviour_on'); // compat pin: the stored choice of the player
 });
 
 registerAsyncTests();

@@ -3,6 +3,7 @@
 //   npm run test:tools
 // after a change to tools/ or to what they read (core/trap.js, features/playlog.js). They read the frozen
 // rated puzzles of test/fixtures/step-ratings.json, never tools/ratings.json, which grows (node test/fixtures/build-step-ratings.mjs).
+import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs';
 import { parse } from '../src/core/format.js';
@@ -15,8 +16,8 @@ import {
 } from '../tools/step-lib.mjs';
 import { simulateRows, ratedPuzzles } from '../tools/step-sim.mjs';
 
-const eq = (a, b, m = '') => { const A = JSON.stringify(a), B = JSON.stringify(b); if (A !== B) throw new Error(`${m} expected ${B} got ${A}`); };
-const ok = (c, m = 'assertion failed') => { if (!c) throw new Error(m); };
+const eq = (actual, expected, message) => assert.deepStrictEqual(actual, expected, message);
+const ok = (value, message) => assert.ok(value, message);
 const t = (name, fn) => test(name, fn);
 const ta = t;
 

@@ -97,8 +97,7 @@ export function unlockTests(t, ta, ok, eq) {
     ok([...a].some(x => !b.has(x)), 'the lucky dates of 2027 and 2028 differ');
   });
 
-  t('lucky: an offer lasts until the next lucky day replaces it, but at least 3 days', () => {
-    eq(OFFER_DAYS, 3);
+  t('lucky: an offer lasts until the next lucky day replaces it, at least OFFER_DAYS days', () => {
     eq([offerEnd(MON), activeOffers(MON), activeOffers(20742), activeOffers(20743)], [20743, [MON], [MON], [20743]]);
     for (let d = 20000; d < 20000 + 3000; d++) {
       const offers = activeOffers(d);
@@ -216,7 +215,6 @@ export function unlockTests(t, ta, ok, eq) {
   t('variants: ids are known to the share link, every text exists in '
     + 'both languages, the lucky sizes are on offer', () => {
     eq(PLAY_VARIANTS.map(v => v.id).slice(0, 3), ['cutout', 'arrows', 'exact']); // later ones append
-    eq(LUCKY_SIZES, [7, 8, 9, 10]);
     for (const v of PLAY_VARIANTS) {
       // Teleport, Two paths and Pentagon have a link version of their own (SHARE_VERSION_PORTAL,
       // SHARE_VERSION_SPLIT, SHARE_VERSION_PENTAGON), so that the type field of the older links
@@ -231,7 +229,7 @@ export function unlockTests(t, ta, ok, eq) {
     }
     eq([variantById('standard'), variantById(null), sizesFor('standard', [5, 6])], [null, null, [5, 6]]);
     const lucky = luckyDefs(PLAY_SIZES);
-    const sizes = [7, 8, 9, 10];
+    const sizes = LUCKY_SIZES;
     const first = [['cutout', sizes], ['arrows', sizes], ['exact', sizes]];
     eq(lucky.map(d => [d.id, d.locked]).slice(0, 3), first);
     ok(lucky.every(d => d.locked.every(n => d.pool.includes(n))));

@@ -112,11 +112,14 @@ jobs:
         with:
           node-version: 22
 
+      # Every tier, not only the fast one: the slow tier holds the golden puzzles (a changed hash
+      # means ALGO_VERSION has to be bumped). A hotfix branch or a rollback commit may never have
+      # had a green webapp-ci run.
       - name: Checks
         working-directory: webapp
         run: |
           npm run check
-          npm test
+          npm run test:all
           npm run test:themes
 
       - name: Stage the play app

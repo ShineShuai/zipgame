@@ -183,9 +183,10 @@ export function ballTests(t, ok, eq) {
     for (const entry of list) {
       ok(entry.ok && entry.r.length >= PLAY_MIN_CELLS && entry.r.length <= PLAY_MAX_CELLS);
     }
-    eq(PLAY_MIN_CELLS, 8);
-    eq(PLAY_MAX_CELLS, 100);
-    ok(list.some(e => e.id === 'octa') && !list.some(e => e.id === 'cube'), '8 cells in, 6 out');
+    const cells = id => BALL_CATALOG.find(e => e.id === id).r.length;
+    const has = id => list.some(e => e.id === id);
+    ok(has('octa') && cells('octa') === PLAY_MIN_CELLS, 'the smallest board is in');
+    ok(!has('cube') && cells('cube') < PLAY_MIN_CELLS, 'one below the minimum is out');
     ok(list.every(e => e.id !== 'cuboct'), 'unplayable boards are left out');
     eq(playableBalls(0, 1000).length, BALL_CATALOG.filter(e => e.ok).length);
     const rnd = makeRng(7);
