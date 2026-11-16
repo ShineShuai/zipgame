@@ -171,7 +171,7 @@ t.slow('target: every grade the generator can show is reachable (this is what to
   ok(hit >= 0.75 * total, `${hit}/${total} targets hit at 7x7, grades 0-3`);
 });
 
-t('target: wall-minimal mode keeps only needed walls and the reported grade is the grade of that puzzle; the retry cap stops the search and returns the closest puzzle', () => {
+t.slow('target: wall-minimal mode keeps only needed walls and the reported grade is the grade of that puzzle; the retry cap stops the search and returns the closest puzzle', () => {
   const r = runSync(generateTargeted(7, 3, 4)), p = r.puzzle;
   ok(r.minimal === true, 'minimal by default');
   for (const w of wallIds(p)) { // dropping any single wall must give a second solution (or an undecided check): the wall is needed

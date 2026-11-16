@@ -143,7 +143,7 @@ export function wrapGenTests(t, ok, eq) {
     ok(torusWalls > 2 * gridWalls, `walls: torus ${torusWalls}, grid ${gridWalls} (${N} puzzles)`);
   });
 
-  t('wrap-gen: same seed, same puzzle; the text format round-trips a generated puzzle', () => {
+  t.slow('wrap-gen: same seed, same puzzle; the text format round-trips a generated puzzle', () => {
     for (const n of [4, 6]) {
       const a = run(generate(n, 9, { wrap: true })), b = run(generate(n, 9, { wrap: true }));
       eq(Array.from(a.cp).join(), Array.from(b.cp).join(), `n=${n}: cp`);

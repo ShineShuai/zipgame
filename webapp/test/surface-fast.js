@@ -194,7 +194,7 @@ export function surfaceFastTests(t, ok, eq) {
     eq(solveSurface(p).count, 0, 'a cell with every side walled has no path');
   });
 
-  t('surface-fast: the path search gives the paths of the plain search, seed for seed', () => {
+  t.slow('surface-fast: the path search gives the paths of the plain search, seed for seed', () => {
     for (const [kind, n] of [...BOARDS, ['pentagon', 8], ['cube', 4]]) {
       const top = surfaceTopology(kind, n);
       for (let seed = 1; seed <= 6; seed++) {

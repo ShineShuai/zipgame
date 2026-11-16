@@ -2,6 +2,7 @@
 // the share code (core/share-code.js), the colour-strip order and the merge of a duplicate
 // (features/share.js) and the collection kept on the device (features/shared-games.js).
 // Registered by unit/shared-games.test.js: sharedGamesTests(t, ta, ok, eq).
+import { before } from 'node:test';
 import { RadixWriter, RadixReader, bitLength } from '../src/core/radix-code.js';
 import { encodeShare, decodeShare, VARIANTS, MAX_TENTHS } from '../src/core/share-code.js';
 import { validate, labelCount } from '../src/core/model.js';
@@ -119,6 +120,9 @@ const fakeStorage = () => ({
 });
 
 export function sharedGamesTests(t, ta, ok, eq) {
+  // The puzzles are made (and kept, see made.js) by the first test that asks; here, before the tests, so that one is not charged for it.
+  before(() => { PUZZLES(); });
+
   t('radix-code: count, subset, fixedSubset and distinct round-trip', () => {
     const rnd = makeRng(99);
     for (let trial = 0; trial < 300; trial++) {
@@ -213,7 +217,7 @@ export function sharedGamesTests(t, ta, ok, eq) {
     ok(throws(() => new RadixReader(5n).uint(0)));
   });
 
-  t('share-code: every puzzle type round-trips (with and without a strip), canonically', () => {
+  t.slow('share-code: every puzzle type round-trips (with and without a strip), canonically', () => {
     for (const [variant, puzzle] of PUZZLES()) {
       ok(validate(puzzle).ok, `${variant} sample is valid`);
       for (const rec of [

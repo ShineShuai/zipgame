@@ -144,7 +144,7 @@ export function wrapPlayTests(t, ta, ok, eq) {
     ok(!/wrap/.test(gridSvg) && !/dasharray/.test(gridSvg), 'grid: nothing of the wrap board');
   });
 
-  t('wrap-play: share code round-trips a wrap game with seam walls; damaged codes fail', () => {
+  t.slow('wrap-play: share code round-trips a wrap game with seam walls; damaged codes fail', () => {
     let seamWalls = 0;
     for (const n of [5, 6]) {
       for (let seed = 1; seed <= 6; seed++) {
@@ -225,7 +225,7 @@ export function wrapPlayTests(t, ta, ok, eq) {
     ok(isSolved(p, played), 'a hand-made torus puzzle');
   });
 
-  t('wrap-play: seamMarks: an out and an in arrowhead per seam step, in its direction', () => {
+  t.slow('wrap-play: seamMarks: an out and an in arrowhead per seam step, in its direction', () => {
     const n = 5, s = 60;
     eq(seamMarks(n, [0, 1, 2], s), [], 'no seam step, no marks');
     const right = seamMarks(n, [4, 0], s); // right over the seam, row 0
