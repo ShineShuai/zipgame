@@ -32,10 +32,10 @@ const where = ['--puzzles', pub, '--queue', queue, '--ratings', ratings];
 const run = (...args) => spawnSync(process.execPath, [tool, ...args], { encoding: 'utf8' });
 const snapshot = (dir, prefix = '') => Object.fromEntries(fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1)).flatMap(e => (e.isDirectory()
   ? Object.entries(snapshot(path.join(dir, e.name), `${prefix}${e.name}/`)) : [[prefix + e.name, fs.readFileSync(path.join(dir, e.name), 'utf8')]])));
-// 20261122 and 20261123 are a 7x7 and an 8x8 in the schedule: two quick candidates
+// 20261122 and 20261123 are a 7x7 and an 8x8 in the schedule. fill makes real candidates for them (the SLOW tests: the generator
+// runs for seconds), so the tests that only read a queue use a copy of the frozen one (world() below).
 // the seconds in a candidate's origin comment are the one thing that depends on the machine
 const notTimed = snap => Object.fromEntries(Object.entries(snap).map(([f, text]) => [f, text.replace(/, \d+\.\d s,/, ', X s,')]));
-const pristine = path.join(tmp, 'pristine');
 const FILL = ['fill', '--today', '20261122', '--horizon', '2', '--per-slot', '1', ...where];
 
 test('gotd-gen: an empty repository is fine, and a dry run writes nothing', FAST, () => {
@@ -50,7 +50,7 @@ test('gotd-gen: an empty repository is fine, and a dry run writes nothing', FAST
   assert.equal(fs.existsSync(queue), false, 'nothing is written');
 });
 
-test('gotd-gen: fill makes one candidate per open day of the scheduled size; the files and the index agree', FAST, () => {
+test('gotd-gen: fill makes one candidate per open day of the scheduled size; the files and the index agree', SLOW, () => {
   const r = run(...FILL);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /added 2 candidate\(s\) in \d+ generator run\(s\)/);
@@ -66,10 +66,9 @@ test('gotd-gen: fill makes one candidate per open day of the scheduled size; the
     assert.ok(index.slots[c.slot].attempts >= c.attempt + 1, 'the runs spent include the one that made the candidate');
   }
   assert.match(fs.readFileSync(path.join(queue, 'index.json'), 'utf8'), /^\{\n {2}"v": 1,\n {2}"slots": \{\n/);
-  fs.cpSync(queue, pristine, { recursive: true }); // the tests that follow break the queue on purpose
 });
 
-test('gotd-gen: the origin comment of a candidate says how to make it again: its gen-target command gives the same puzzle, and the summary line matches', FAST, () => {
+test('gotd-gen: the origin comment of a candidate says how to make it again: its gen-target command gives the same puzzle, and the summary line matches', SLOW, () => {
   const index = JSON.parse(fs.readFileSync(path.join(queue, 'index.json'), 'utf8'));
   for (const c of index.candidates.slice(0, 1)) {
     const text = fs.readFileSync(path.join(queue, c.file), 'utf8');
@@ -83,7 +82,7 @@ test('gotd-gen: the origin comment of a candidate says how to make it again: its
   }
 });
 
-test('gotd-gen: a second fill adds nothing and changes no byte; a fresh queue gets the same candidates (no clock, no randomness)', FAST, () => {
+test('gotd-gen: a second fill adds nothing and changes no byte; a fresh queue gets the same candidates (no clock, no randomness)', SLOW, () => {
   const before = snapshot(queue), r = run(...FILL);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /added 0 candidate\(s\) in 0 generator run\(s\)/);
@@ -96,38 +95,40 @@ test('gotd-gen: a second fill adds nothing and changes no byte; a fresh queue ge
 });
 
 test('gotd-gen: check passes for the queue, and fails for a copy of a candidate that is rotated, mirrored or numbered backwards', FAST, () => {
-  let r = run('check', ...where);
+  const w = world('check');
+  let r = w.cli('check');
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /^OK: 2 distinct puzzles \(0 published, 2 in the queue\)/);
-  const index = JSON.parse(fs.readFileSync(path.join(queue, 'index.json'), 'utf8')), c = index.candidates[0];
-  const original = parse(fs.readFileSync(path.join(queue, c.file), 'utf8'));
+  assert.match(r.stdout, /^OK: 4 distinct puzzles \(0 published, 4 in the queue\)/);
+  const c = w.index().candidates[0];
+  const original = parse(fs.readFileSync(path.join(w.queue, c.file), 'utf8'));
   for (const [k, rev] of [[0, false], [1, false], [5, true], [7, true]]) {
-    const copy = path.join(pub, '20261201.txt');
+    const copy = path.join(w.pub, '20261201.txt');
     fs.writeFileSync(copy, serialize(transformPuzzle(original, k, rev)) + '\n');
-    r = run('check', '--annotations', ...where);
+    r = w.cli('check', '--annotations');
     assert.equal(r.status, 1, `k=${k} rev=${rev}: ${r.stdout}`);
     // a published day comes first: the candidate that repeats it is the file the error names
     assert.match(r.stdout, /::error file=.*c-7-[0-9a-f]{12}\.txt::duplicate of .*20261201\.txt/);
     fs.rmSync(copy);
   }
-  r = run('check', ...where);
+  r = w.cli('check');
   assert.equal(r.status, 0, 'the copy is gone');
 });
 
 test('gotd-gen: check reports a broken index and a file that is not the candidate the index names', FAST, () => {
+  const w = world('broken'), queue = w.queue;
   const index = fs.readFileSync(path.join(queue, 'index.json'), 'utf8'), c = JSON.parse(index).candidates[0];
   fs.rmSync(path.join(queue, c.file));
-  let r = run('check', ...where);
+  let r = w.cli('check');
   assert.equal(r.status, 1);
   assert.match(r.stdout, new RegExp(`candidate ${c.id} \\(pending\\) has no file ${c.file}`));
   const other = JSON.parse(index).candidates[1];
   fs.copyFileSync(path.join(queue, other.file), path.join(queue, c.file));
-  r = run('check', ...where);
+  r = w.cli('check');
   assert.equal(r.status, 1);
   assert.match(r.stdout, /duplicate of|is not the one the index calls/);
   fs.rmSync(path.join(queue, c.file));
   fs.writeFileSync(path.join(queue, 'index.json'), '{"v":2}');
-  r = run('check', ...where);
+  r = w.cli('check');
   assert.equal(r.status, 1);
   assert.match(r.stderr, /index\.json: "v" must be 1/);
 });
@@ -137,8 +138,7 @@ test('gotd-gen: schedule and status run (what they count is tested on plain obje
   assert.equal(r.status, 0, r.stderr);
   const lines = r.stdout.trim().split('\n');
   assert.ok(lines.slice(0, 30).every(line => /^\d{8} \d+$/.test(line)), 'one "day size" line per day');
-  fs.writeFileSync(path.join(queue, 'index.json'), fs.readFileSync(path.join(pristine, 'index.json'), 'utf8'));
-  r = run('status', '--today', '20261122', ...where);
+  r = world('status').cli('status', '--today', '20261122');
   assert.equal(r.status, 0, r.stderr);
 });
 

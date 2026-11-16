@@ -1,5 +1,6 @@
 // The automatic Game of Day: the size schedule (core/gotd-schedule.js), the gates a candidate passes (core/gotd-gen.js) and the queue
 // (core/gotd-queue.js). Registered by unit/gotd-gen.test.js: gotdGenTests(). The command line is tested in test/gotd-gen-cli.test.js.
+import { readFileSync } from 'node:fs';
 import { makePuzzle } from '../src/core/model.js';
 import { setWallId } from '../src/core/edges.js';
 import { serialize, parse } from '../src/core/format.js';
@@ -147,15 +148,30 @@ export function gotdGenTests(t, ok, eq) {
     eq(d.conflict('some other puzzle'), null);
   });
 
-  // One real candidate of size 7 (about a second): the generator under the GOTD settings, then the gates.
+  // Two candidates of size 7. The frozen one is in the queue of test/fixtures/gotd-queue, as `fill` once made it: the fast tests of the
+  // file format and of the gates use it. The generated one is made when a slow test asks (the generator under the GOTD settings and
+  // the gates; several runs of the generator, about 7 s), once for the file.
   const stamp = 'a6-test', day = dayOfDate('20261122');
-  let made = null, attempt = 0;
-  const first = createDistinct();
-  for (; attempt < 8 && !made; attempt++) {
-    const r = makeCandidate({ stamp, day, date: '20261122', size: 7, attempt, distinct: first });
-    if (r.ok) made = r;
-  }
-  t('gotd candidate: a 7x7 slot yields a candidate that is Hard or harder with margin, unique, and recorded in the queue entry', () => {
+  let frozenOnce = null, generatedOnce = null;
+  const frozen = () => {
+    if (!frozenOnce) {
+      const dir = new URL('./fixtures/gotd-queue/', import.meta.url);
+      const entry = JSON.parse(readFileSync(new URL('index.json', dir), 'utf8')).candidates.find(c => c.size === 7);
+      const text = readFileSync(new URL(entry.file, dir), 'utf8');
+      const puzzle = parse(text);
+      frozenOnce = { entry, puzzle, origin: carriedOrigin(text), symKey: symmetryKey(puzzle) };
+    }
+    return frozenOnce;
+  };
+  const generated = () => {
+    for (let attempt = 0, distinct = createDistinct(); attempt < 8 && !generatedOnce; attempt++) {
+      const r = makeCandidate({ stamp, day, date: '20261122', size: 7, attempt, distinct });
+      if (r.ok) generatedOnce = r;
+    }
+    return generatedOnce;
+  };
+  t.slow('gotd candidate: a 7x7 slot yields a candidate that is Hard or harder with margin, unique, and recorded in the queue entry', () => {
+    const made = generated();
     ok(made, 'no candidate in 8 generator runs');
     const e = made.entry;
     ok(/^[0-9a-f]{12}$/.test(e.id) && e.id === puzzleId(made.symKey), e.id);
@@ -170,12 +186,12 @@ export function gotdGenTests(t, ok, eq) {
   const NOT_TIMED = text => text.replace(/, \d+\.\d s,/, ', X s,'); // the seconds are the one thing in a candidate's file that depends on the machine
 
   t('gotd candidate: the file is the puzzle, a line naming the candidate and the origin lines, no solution path; it parses back to the same puzzle', () => {
-    const text = candidateText(made.puzzle, made.entry, made.origin), e = made.entry;
+    const made = frozen(), e = made.entry, text = candidateText(made.puzzle, e, made.origin);
     ok(text.endsWith('\n') && !/^path /m.test(text), 'no path line: a reviewer plays it blind');
     const lines = text.split('\n').filter(l => l.startsWith('# ')).slice(-3);
-    eq(lines[0], `# gotd candidate ${e.id} for 20261122, attempt ${e.attempt}`);
+    eq(lines[0], `# gotd candidate ${e.id} for ${e.slot}, attempt ${e.attempt}`);
     ok(/^# seed \d+: grade \d \(target 3\+, inside the margin\), \d+ walls, \d+ checkpoints, \d+\.\d s, \d+ changes, \d+ tries$/.test(lines[1]), lines[1]);
-    eq(lines[2], `# gen ${stamp}: node tools/gen-target.mjs --size 7 --grade 3 --at-least --margin 0.5 --retries 12 --seed ${e.seed}`);
+    eq(lines[2], `# gen ${e.stamp}: node tools/gen-target.mjs --size 7 --grade 3 --at-least --margin 0.5 --retries 12 --seed ${e.seed}`);
     ok(lines[1].startsWith(`# seed ${e.seed}: `), 'the seed of the summary line is the candidate\'s');
     eq(symmetryKey(parse(text)), made.symKey);
     eq(ratingKey(text), ratingKey(serialize(made.puzzle)));
@@ -183,7 +199,7 @@ export function gotdGenTests(t, ok, eq) {
   });
 
   t.slow('gotd candidate: the comment is enough to make the puzzle again: gen-target options from the command line give the same puzzle, grade, walls, checkpoints, changes and tries', () => {
-    const cmd = made.origin[1], opt = name => cmd.match(new RegExp(`--${name} (\\S+)`))[1], summary = made.origin[0];
+    const made = generated(), cmd = made.origin[1], opt = name => cmd.match(new RegExp(`--${name} (\\S+)`))[1], summary = made.origin[0];
     const r = runSync(generateTargeted(+opt('size'), +opt('grade'), +opt('seed'), { atLeast: cmd.includes('--at-least'), margin: +opt('margin'), retries: +opt('retries') }));
     eq(symmetryKey(r.puzzle), made.symKey);
     eq(serialize(r.puzzle), serialize(made.puzzle));
@@ -191,7 +207,7 @@ export function gotdGenTests(t, ok, eq) {
   });
 
   t('gotd candidate: carriedOrigin takes the seed and gen lines of a candidate file (also the one gen line of the first queue files), nothing else', () => {
-    const text = candidateText(made.puzzle, made.entry, made.origin);
+    const made = frozen(), text = candidateText(made.puzzle, made.entry, made.origin);
     eq(carriedOrigin(text), made.origin);
     eq(carriedOrigin(serialize(made.puzzle)), []);
     eq(carriedOrigin('# Zip Puzzle\n# gotd candidate x\n# gen a6-t slot 20261122 seed 5 attempt 0\nsize 7\n'), ['gen a6-t slot 20261122 seed 5 attempt 0']);
@@ -199,29 +215,44 @@ export function gotdGenTests(t, ok, eq) {
   });
 
   t.slow('gotd candidate: the same arguments give the same candidate, text and entry (the seconds apart)', () => {
-    const again = makeCandidate({ stamp, day, date: '20261122', size: 7, attempt: made.entry.attempt, distinct: createDistinct() });
+    const made = generated(), again = makeCandidate({ stamp, day, date: '20261122', size: 7, attempt: made.entry.attempt, distinct: createDistinct() });
     ok(again.ok);
     eq(NOT_TIMED(candidateText(again.puzzle, again.entry, again.origin)), NOT_TIMED(candidateText(made.puzzle, made.entry, made.origin)));
     eq(again.entry, made.entry);
   });
 
+  // The grade a puzzle needs depends on the fitted model (tools/fit-trap.mjs refits it when the labels change), so the tests of the
+  // other gates hold the grade (holdGrade) and the frozen puzzle does not have to be Hard under every model.
   t('gotd gates: a duplicate (also rotated, mirrored or reversed) and a repeated solution path are refused with the reason', () => {
+    const { puzzle, entry, symKey } = frozen();
     const d = createDistinct();
-    d.add({ symKey: made.symKey, pathKey: made.entry.pathKey, where: 'queue candidate x' });
-    eq(vetCandidate(made.puzzle, 7, d), { ok: false, reason: 'duplicate', detail: 'queue candidate x' });
-    const turned = transformPuzzle(made.puzzle, 3, true);
+    d.add({ symKey, pathKey: entry.pathKey, where: 'queue candidate x' });
+    eq(vetCandidate(puzzle, 7, d), { ok: false, reason: 'duplicate', detail: 'queue candidate x' });
+    const turned = transformPuzzle(puzzle, 3, true);
     eq(vetCandidate(turned, 7, d).reason, 'duplicate', 'the same puzzle turned and numbered backwards');
     const onlyPath = createDistinct();
-    onlyPath.add({ pathKey: made.entry.pathKey, where: 'a published puzzle' });
-    eq(vetCandidate(made.puzzle, 7, onlyPath), { ok: false, reason: 'duplicate-path', detail: 'a published puzzle' });
-    const ok1 = vetCandidate(made.puzzle, 7, createDistinct());
-    ok(ok1.ok);
-    eq(ok1.entry, { id: made.entry.id, size: 7, K: made.entry.K, walls: made.entry.walls, pathKey: made.entry.pathKey, trap: made.entry.trap, corr: made.entry.corr });
+    onlyPath.add({ pathKey: entry.pathKey, where: 'a published puzzle' });
+    eq(vetCandidate(puzzle, 7, onlyPath, { holdGrade: true }), { ok: false, reason: 'duplicate-path', detail: 'a published puzzle' });
   });
 
-  t('gotd gates: the wrong size, an invalid puzzle and an easy puzzle are refused (grade), not accepted', () => {
-    eq(vetCandidate(made.puzzle, 8, createDistinct()).reason, 'size');
+  t('gotd gates: a puzzle that passes is described by an entry with its id, size, checkpoints, walls and path key', () => {
+    const { puzzle, entry } = frozen();
+    const r = vetCandidate(puzzle, 7, createDistinct(), { holdGrade: true });
+    ok(r.ok, JSON.stringify(r));
+    const { id, size, K, walls, pathKey: key } = r.entry;
+    eq({ id, size, K, walls, pathKey: key }, { id: entry.id, size: 7, K: entry.K, walls: entry.walls, pathKey: entry.pathKey });
+  });
+
+  t('gotd gates: the wrong size and an invalid puzzle are refused with the reason', () => {
+    eq(vetCandidate(frozen().puzzle, 8, createDistinct()).reason, 'size');
     eq(vetCandidate(makePuzzle(7), 7, createDistinct()).reason, 'invalid');
+  });
+
+  t.slow('gotd gates: a generated candidate passes, and an easy puzzle is refused (grade), not accepted', () => {
+    const made = generated();
+    const accepted = vetCandidate(made.puzzle, 7, createDistinct());
+    ok(accepted.ok, JSON.stringify(accepted).slice(0, 120));
+    eq(accepted.entry, { id: made.entry.id, size: 7, K: made.entry.K, walls: made.entry.walls, pathKey: made.entry.pathKey, trap: made.entry.trap, corr: made.entry.corr });
     const easy = runSync(generateTargeted(7, 1, 5, { retries: 3 })).puzzle;
     const r = vetCandidate(easy, 7, createDistinct());
     ok(!r.ok && (r.reason === 'grade' || r.reason === 'margin'), `an easy puzzle gave ${JSON.stringify(r).slice(0, 120)}`);

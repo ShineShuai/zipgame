@@ -1,6 +1,7 @@
 // Unit tests of small UI pieces: hold reveal, hint popover, texts, icons.
 // Part of `npm test` (test/run.mjs); the tiers and t / ta are in test/harness.js.
 import '../setup-balls.js';
+import { HINT_PENALTY_S, penalizedTime } from '../../src/features/hints.js';
 import { createHoldReveal } from '../../src/ui/hold-reveal.js';
 import { EN, ZH } from '../../src/ui/i18n.js';
 import { variantIcon, cardIcon } from '../../src/apps/play/icons.js';
@@ -71,6 +72,13 @@ ta('hint-popover: attaches plain-text hints, preserves markup children, and setH
     eq(dyn._children.filter(c => c.className === 'hint-popover').length, 1, 'updating text must not create a second popover node');
   } finally {
     globalThis.document = prevDoc; globalThis.window = prevWin;
+  }
+});
+
+t('hints: every hint adds HINT_PENALTY_S to the time, no hint adds nothing', () => {
+  eq(penalizedTime(42.5, 0), 42.5);
+  for (const hints of [1, 2, 3]) {
+    eq(penalizedTime(42.5, hints), 42.5 + hints * HINT_PENALTY_S, `${hints} hint(s)`);
   }
 });
 

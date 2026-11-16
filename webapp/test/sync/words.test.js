@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { SLOW } from '../harness.js';
 import {
   crc16, fromWords, newSecret, normalizePhrase, PhraseError, SECRET_BYTES, toWords, WORD_COUNT,
 } from '../../src/core/sync/words.js';
@@ -63,7 +64,7 @@ test('a word that is not one of ours is refused, and the position is told', () =
   }
 });
 
-test('every single wrong word is caught by the checksum (all 8 places, all 4095 others)', () => {
+test('every single wrong word is caught by the checksum (all 8 places, all 4095 others)', SLOW, () => {
   for (let round = 0; round < 3; round++) {
     const words = toWords(newSecret());
     for (let place = 0; place < WORD_COUNT; place++) {

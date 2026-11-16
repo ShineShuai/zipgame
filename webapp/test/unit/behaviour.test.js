@@ -27,7 +27,7 @@ const BEH_CFG = { localSizes: [7, 11], hiddenMaxMs: 5000 };
 
 const behGame = (extra = {}) => ({ puzzle: parse(BEH_TEXT), mode: 'local', day: utcDay(), ms: 21000, hints: 0, hiddenMs: 0, undone: 12, maxUndone: 5, skill: 6, ...extra });
 
-t('behaviour: the packed puzzle round-trips (generated 7x7 and 9x9, a rated one), is canonical and small', () => {
+t.slow('behaviour: the packed puzzle round-trips (generated 7x7 and 9x9, a rated one), is canonical and small', () => {
   for (const [n, seed] of [[7, 3], [9, 5]]) {
     const p = runSync(generate(n, seed)), b = packPuzzle(p);
     ok(b instanceof Uint8Array && b.length <= 40, `size ${n}: ${b && b.length} bytes`);
