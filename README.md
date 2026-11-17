@@ -443,6 +443,19 @@ workflow itself:
 `unique-puzzles.yml` checks that no two Game of the Day files hold the same puzzle, and `gotd-seed.yml`
 seeds tomorrow's Game of the Day in the backends every evening (`webapp/tools/gotd-seed.mjs`).
 
+### Code style
+
+Lines have fewer than 100 columns. [Biome](https://biomejs.dev) formats and lints (`webapp/biome.json`:
+2 spaces, single quotes, semicolons, trailing commas, line width 99). It is a development tool only; the
+app has no build step. Install it once with `npm install --save-dev --save-exact @biomejs/biome` in
+`webapp/`, then `npm run format` and `npm run lint`. It covers `webapp/test` and `webapp/tools` for now,
+and `webapp/src` follows. A formatter cannot rewrap comments or split strings, so `npm run check` also runs
+`test/check-width.js`: no file may have more lines of 100 columns or more than in `test/long-lines.json`
+(the number only goes down; `npm run width:update` lowers it after a clean-up). Write
+`// biome-ignore format: <reason>` above a table that is aligned by hand. The commit that formats a
+directory goes into `.git-blame-ignore-revs` (`git config blame.ignoreRevsFile .git-blame-ignore-revs`;
+GitHub reads the file by itself).
+
 ## Deployment
 
 Two sites are built from the same allowlist of files (`.github/scripts/stage-site.sh`):

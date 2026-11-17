@@ -6,7 +6,11 @@
     "node": ">=20"
   },
   "scripts": {
-    "check": "node test/check.js && node test/check-config.js",
+    "check": "node test/check.js && node test/check-config.js && node test/check-width.js",
+    "width:update": "node test/check-width.js --update",
+    "format": "biome format --write",
+    "format:check": "biome format",
+    "lint": "biome lint",
     "test": "node test/run.mjs fast",
     "test:slow": "node test/run.mjs slow",
     "test:all": "node test/run.mjs all",
