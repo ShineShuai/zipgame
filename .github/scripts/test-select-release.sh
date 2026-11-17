@@ -38,11 +38,9 @@ python3 -m http.server "$port" --bind 127.0.0.1 --directory "$tmp/site" \
 srv=$!
 sleep 1
 export SITE="http://127.0.0.1:$port"
-live() { # SHA DAYS_AGO_BUILT
-  printf '{"sha":"%s","built":"%s"}\n' "$1" "$(date -u -d "$2 days ago" +%FT%TZ)" \
-    > "$tmp/site/build.json"
+live() { # SHA
+  printf '{"sha":"%s"}\n' "$1" > "$tmp/site/build.json"
 }
-today=$(date -u +%a)
 
 # pick KEY=VALUE...: runs the script, leaves its outputs in $tmp/out, returns its status
 pick() {
@@ -59,28 +57,22 @@ check() { # NAME EXPECTED ACTUAL
     fails=$((fails + 1))
   fi
 }
-sched=(EVENT=schedule SOAK_DAYS=7 "RELEASE_DAYS=$today")
+sched=(EVENT=schedule SOAK_DAYS=7)
 
-live "$A" 2; pick "${sched[@]}"
+live "$A"; pick "${sched[@]}"
 check "promotes the newest commit that soaked 7 days" "run=true sha=$C dry=true" \
   "run=$(got run) sha=$(got sha) dry=$(got dry)"
 pick "${sched[@]}" DRY_RUN_VAR=false
 check "DRY_RUN=false deploys for real" false "$(got dry)"
-live "$C" 2; pick "${sched[@]}"
+live "$C"; pick "${sched[@]}"
 check "already live: nothing to do" false "$(got run)"
-live "$E" 2; pick "${sched[@]}"
+live "$E"; pick "${sched[@]}"
 check "live is ahead of the soaked commit: nothing to do" false "$(got run)"
-live "$A" 2; pick EVENT=schedule SOAK_DAYS=7 RELEASE_DAYS=Xyz
-check "not a release day" false "$(got run)"
-live "$A" 2; pick EVENT=schedule SOAK_DAYS=7 "RELEASE_DAYS=Xyz, ${today^^}"
-check "release days: spaces and case are ignored" true "$(got run)"
-live "$A" 9; pick EVENT=schedule SOAK_DAYS=7 RELEASE_DAYS=Xyz
-check "a missed release day is made up after 8 days" "true" "$(got run)"
-live "$A" 2; pick "${sched[@]}" PROD_FREEZE=true
+live "$A"; pick "${sched[@]}" PROD_FREEZE=true
 check "PROD_FREEZE" false "$(got run)"
-live "$A" 2; pick "${sched[@]}" SOAK_DAYS=100
+live "$A"; pick "${sched[@]}" SOAK_DAYS=100
 check "no commit is old enough" false "$(got run)"
-live "$H" 2
+live "$H"
 if pick "${sched[@]}"; then check "live not in main's history (hotfix) fails the run" fail ok
 else check "live not in main's history (hotfix) fails the run" fail fail; fi
 rm "$tmp/site/build.json"
@@ -94,10 +86,10 @@ commit 0 "Revert B
 This reverts commit $B." > /dev/null
 git push -q origin main
 git fetch -q origin
-live "$A" 2; pick "${sched[@]}"
+live "$A"; pick "${sched[@]}"
 check "a change reverted during the soak period is not shipped" false "$(got run)"
 
-live "$A" 2
+live "$A"
 pick EVENT=workflow_dispatch REF=main REASON=x
 check "manual: main" "run=true sha=$(git rev-parse origin/main)" "run=$(got run) sha=$(got sha)"
 pick EVENT=workflow_dispatch REF=hotfix/x REASON=x DRY_RUN_INPUT=true SMOKE_INPUT=false
