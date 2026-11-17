@@ -35,9 +35,14 @@ link buttons are then not shown; the cloud way needs only WebCrypto and a config
   line of their own, never in the button. While a flow is under way (a link opened here, a link made, a phrase shown or typed) it
   opens by itself. It sits below the menu grid: inside the grid a card that is not placed fills
   an empty area and lands among the others.
-* `test/sync/card.test.js` tests the HTML. `test/e2e/sync-cloud.e2e.py` is an end-to-end check in a
-  real Chromium (Python Playwright, not part of `npm test`): two browser contexts, a mocked
-  Supabase, a streak made on one device that the other must show after typing the phrase.
+* `test/sync/card.test.js` tests the HTML. The click and DOM wiring of `sync-ui.js` has no automated
+  test. The end-to-end script `test/e2e/sync-cloud.e2e.py` (real Chromium, Python Playwright, two
+  browser contexts, a mocked Supabase, a streak that the second device must show after typing the
+  phrase) was removed: it printed its results and asserted nothing, so it could not fail on a
+  regression. Show the last version with
+  `git show $(git log --diff-filter=D --format=%h -1 -- webapp/test/e2e/sync-cloud.e2e.py)^:webapp/test/e2e/sync-cloud.e2e.py`.
+  To cover the wiring again, port it to `node:test` on `test/coop/fake-dom.js` and `fakeSupabase()`
+  (`test/sync/helpers.js`).
 * Tests that stand a SQLite database in for Turso need `node:sqlite` (Node 22.5+); on Node 20
   they are skipped and the rest runs (`test/sync/helpers.js`, `server/turso/sync.test.mjs`).
 
