@@ -247,7 +247,7 @@ test('gotd-gen promote: an approved candidate that repeats a published puzzle is
   assert.deepEqual(fs.readdirSync(w.pub), [], 'nothing was published');
 });
 
-test('gotd-gen promote: no limit unless asked: every approved candidate gets the earliest open day of its size, past the days fill looked at; --until limits it', FAST, () => {
+test('gotd-gen promote: no limit unless asked: every approved candidate gets the earliest open day of its size, past the days fill looked at; --until limits it', SLOW, () => {
   const w = world('p6'), [c7a, c7b, c8a, c8b] = w.index().candidates;
   w.verdicts([c7a, c7b, c8a, c8b].map(c => w.say(c, 3)));
   let r = w.cli('promote', '--today', '20261122', '--until', '20261123', '--dry-run');

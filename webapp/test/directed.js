@@ -9,6 +9,7 @@ import {
   arrowCount, arrowProblem,
 } from '../src/core/edges.js';
 import { canStep, step } from '../src/core/rules.js';
+import { sampled } from './harness.js';
 import { solve } from '../src/core/solver/solve.js';
 import { buildMoves } from '../src/core/solver/solve-dir.js';
 import { makeDirPropagator } from '../src/core/solver/propagate-dir.js';
@@ -220,7 +221,8 @@ export function directedTests(t, ok, eq) {
   });
 
   // The solver against plain enumeration: same solution set for random arrows, walls and holes.
-  const differential = (name, cases, make) => t(`solve-dir: ${name} match brute force`, () => {
+  const differential = (name, allCases, make) => t(`solve-dir: ${name} match brute force`, () => {
+    const cases = sampled(allCases);
     let total = 0;
     let multi = 0;
     for (const [seed, n, K, arrowFrac, wallFrac, holes] of cases) {

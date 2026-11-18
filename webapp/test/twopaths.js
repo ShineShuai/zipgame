@@ -7,6 +7,7 @@ import { makePuzzle, clonePuzzle, validate, maxNumber } from '../src/core/model.
 import { isSolved, isSolvedPaths, step } from '../src/core/rules.js';
 import { serialize, parse } from '../src/core/format.js';
 import { solve } from '../src/core/solver/solve.js';
+import { sampled } from './harness.js';
 import {
   bridgeCells, splitPath, colourView, colourNumber, colourOfCell, colourCounts,
 } from '../src/core/twopaths.js';
@@ -128,8 +129,9 @@ export function twoPathsTests(t, ok, eq) {
     let compared = 0;
     let multi = 0;
     let adjacent = 0;
+    const seeds = sampled(Array.from({ length: 40 }, (_, i) => i + 1));
     for (const n of [3, 4, 5]) {
-      for (let seed = 1; seed <= 40; seed++) {
+      for (const seed of seeds) {
         const { p } = randomTwoPaths(n, seed, 0.15 + 0.05 * (seed % 6));
         const want = bruteTwoPaths(p);
         if (want.length > 1) multi++;
@@ -143,7 +145,8 @@ export function twoPathsTests(t, ok, eq) {
         }
       }
     }
-    ok(compared > 600 && multi > 20, `compared ${compared}, ${multi} puzzles with several solutions`);
+    const share = seeds.length / 40; // the guards below scale with the sample
+    ok(compared > 600 * share && multi > 20 * share, `compared ${compared}, ${multi} puzzles with several solutions`);
     ok(adjacent > 0, `${adjacent} puzzles whose bridge cells touch (that grid edge is never walked)`);
   });
 

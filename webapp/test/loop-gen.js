@@ -13,6 +13,7 @@ import { runSync } from '../src/core/run.js';
 import { gridAdjacent } from '../src/core/rules.js';
 import { makeRng } from '../src/core/rng.js';
 import { bruteLoop } from './loop.js';
+import { sampled } from './harness.js';
 
 const isRing = (n, ring) => {
   if (ring.length !== n * n || new Set(ring).size !== n * n) return false;
@@ -60,19 +61,18 @@ export function loopGenTests(t, ok, eq) {
   });
 
   t('loop-gen: generateLoop gives a valid, unique Loop puzzle with a solving path, K not on the last cell', () => {
-    for (const [n, seeds] of [[4, [1, 2, 3, 4]], [6, [1, 2, 3, 4]], [8, [1, 2]]]) {
-      for (const seed of seeds) {
-        const p = runSync(generateLoop(n, seed));
-        const label = `n ${n} seed ${seed}`;
-        ok(p.loop === true && validate(p).ok, label);
-        ok(maxNumber(p) >= 3 && labelCount(p) === maxNumber(p), label);
-        ok(isSolved(p, p.path), `${label}: the stored path solves it`);
-        const K = maxNumber(p);
-        ok(p.path[p.path.length - 1] !== p.cp.indexOf(K), `${label}: K is not the last cell`);
-        const found = solve(p, { limit: 2, nodeCap: 5e6, capture: true, prop: true, parity: true });
-        ok(found.count === 1 && !found.exceeded, `${label}: unique`);
-        eq(found.paths[0], p.path, `${label}: the solver finds the same ring`);
-      }
+    const cases = [[4, 1], [4, 2], [4, 3], [4, 4], [6, 1], [6, 2], [6, 3], [6, 4], [8, 1], [8, 2]];
+    for (const [n, seed] of sampled(cases)) {
+      const p = runSync(generateLoop(n, seed));
+      const label = `n ${n} seed ${seed}`;
+      ok(p.loop === true && validate(p).ok, label);
+      ok(maxNumber(p) >= 3 && labelCount(p) === maxNumber(p), label);
+      ok(isSolved(p, p.path), `${label}: the stored path solves it`);
+      const K = maxNumber(p);
+      ok(p.path[p.path.length - 1] !== p.cp.indexOf(K), `${label}: K is not the last cell`);
+      const found = solve(p, { limit: 2, nodeCap: 5e6, capture: true, prop: true, parity: true });
+      ok(found.count === 1 && !found.exceeded, `${label}: unique`);
+      eq(found.paths[0], p.path, `${label}: the solver finds the same ring`);
     }
   });
 
