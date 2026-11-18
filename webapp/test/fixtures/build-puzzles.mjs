@@ -13,6 +13,7 @@ const solid = id => (n, seed) => COOP_VARIANTS.find(variant => variant.id === id
 const MAKE = { ...CORE_MAKERS, tetra: solid('tetra'), cube: solid('cube'), ball: solid('ball') };
 
 const grid = (sizes, seeds) => sizes.flatMap(n => seeds.map(seed => [n, seed]));
+const FAST_GEN = { candidates: 1, refineNodes: 0 }; // the options the tests use to make a puzzle quickly
 const SPECS = [
   ['std', grid([5, 6, 7, 8], [1, 2, 3, 4, 5, 6])],
   ['std', [[5, 7], [5, 8], [6, 9], [6, 11], [5, 45], [6, 46], [7, 47]]],
@@ -27,13 +28,25 @@ const SPECS = [
   ['tetra', grid([2, 3], [1, 2])],
   ['cube', grid([2, 3], [1, 2])],
   ['ball', grid([0], [1, 2, 3, 4])],
+  // what made() used to generate in the tests (it thaws these now)
+  ['std', [[6, 12], [9, 3]]],
+  ['wrap', [[5, 4], [5, 7]]],
+  ['exact', [[5, 11]]],
+  ['loop', [[4, 3], [6, 4], [6, 5]]],
+  ['pentagon', [[6, 4], [6, 5]]],
+  ['teleport', [[5, 3], [6, 3], [6, 4], [6, 5], [6, 6]]],
+  ['twopaths', [[6, 3], [6, 4], [7, 4], [7, 5], [8, 2]]],
+  // [n, seed, options]
+  ['teleport', [[8, 3, { pairs: 2 }]]],
+  ['arrows', [[5, 3, FAST_GEN]]],
+  ['exact', [[6, 3], [6, 5], [6, 7], [6, 9], [7, 13]].map(([n, seed]) => [n, seed, FAST_GEN])],
 ];
 
 await COOP_VARIANTS.find(variant => variant.id === 'ball').ready();
 const made = {};
 for (const [kind, pairs] of SPECS) {
-  for (const [n, seed] of pairs) {
-    made[keyOf(kind, n, seed)] = freeze(runSync(MAKE[kind](n, seed)));
+  for (const [n, seed, opts] of pairs) {
+    made[keyOf(kind, n, seed, opts)] = freeze(runSync(MAKE[kind](n, seed, opts)));
   }
 }
 const text = `{\n${Object.keys(made).sort().map(key => `${JSON.stringify(key)}: ${JSON.stringify(made[key])}`).join(',\n')}\n}\n`;

@@ -67,7 +67,8 @@ npm run golden    # print fresh golden hashes, see "Determinism"
 A test that uses 0.5 s of CPU time or more is marked slow (`t.slow(...)`, or the `SLOW` option of `node:test`; see
 `webapp/test/harness.js`): `npm test` skips it, `npm run test:slow` runs only those. The fast tier reports the tests that are
 over that (`webapp/test/budget.js`; on CI also in the job summary) and, off CI, fails the ones over 1 s of CPU time or 3 s of
-wall time. One test: `node test/run.mjs fast --test-name-pattern=wrap`.
+wall time. A test that compares two implementations over a long list of cases takes every third case in the fast tier
+(`sampled` in `harness.js`); `npm run test:all` takes them all. One test: `node test/run.mjs fast --test-name-pattern=wrap`.
 
 `npm run test:themes` tests the theme tooling, `npm run test:server` the backend code in
 `webapp/server/` and `npm run test:tools` the research tools (fits, simulations, evaluations; about
@@ -75,8 +76,10 @@ wall time. One test: `node test/run.mjs fast --test-name-pattern=wrap`.
 seeding, benchmarks) are in [`webapp/tools/`](webapp/tools/README.md).
 
 Tests that only need a puzzle as input (co-op, play, share) read frozen ones from
-`webapp/test/fixtures/puzzles.json`; `npm run fixtures:puzzles` rebuilds that file after a test needs
-another one (add its kind, size and seed to `build-puzzles.mjs`).
+`webapp/test/fixtures/puzzles.json` (`made()` thaws them; a generator call with options is a key of its own);
+`npm run fixtures:puzzles` rebuilds that file after a test needs another one (add its kind, size and seed to
+`build-puzzles.mjs`). A slow-tier test (`unit/fixtures.test.js`) fails when the file no longer is what the
+generators make, so a generator change cannot leave it stale unseen.
 
 ## Play app
 

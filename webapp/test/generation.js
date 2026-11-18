@@ -52,13 +52,16 @@ export function generationTests(t, ok, eq, ta) {
     await assert.rejects(() => runJob({ task: 'nope' }, () => {}), /unknown generation job/);
   });
 
-  ta('generation job: progress events are plain and at most one per EVENT_MS', async () => {
+  // The events of a job: plain data, spaced by EVENT_MS. A 7x7 reports twice; a 9x9 (the slow tier) often enough to see the spacing.
+  const checkJobEvents = async n => {
     const times = [], events = [];
-    await runJob({ task: 'flat', mode: 'standard', n: 9, seed: 5 }, e => { times.push(performance.now()); events.push(e); });
-    ok(events.length > 0, 'a 9x9 takes long enough to report');
+    await runJob({ task: 'flat', mode: 'standard', n, seed: 5 }, e => { times.push(performance.now()); events.push(e); });
+    ok(events.length > 0, `a ${n}x${n} takes long enough to report`);
     for (const e of events) assert.deepStrictEqual(JSON.parse(JSON.stringify(e)), e, 'plain data');
     for (let i = 1; i < times.length; i++) ok(times[i] - times[i - 1] >= EVENT_MS - 2, 'spaced by EVENT_MS');
-  });
+  };
+  ta('generation job: progress events are plain and at most one per EVENT_MS', () => checkJobEvents(7));
+  ta.slow('generation job: progress events are plain and at most one per EVENT_MS on a 9x9', () => checkJobEvents(9));
 
   t('generation job: slim keeps numbers, text, booleans and null, and leaves objects, arrays and functions behind', () => {
     eq(slim({ frac: 0.5, phase: 'walls', done: true, none: null, puzzle: { n: 1 }, list: [1], f() {} }),
