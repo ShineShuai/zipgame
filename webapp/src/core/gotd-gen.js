@@ -31,7 +31,7 @@ export const GOTD_CFG = {
   horizon: 30,    // days ahead (counted from today) that `fill` makes candidates for; review and promote have no such limit
   maxDays: 366,   // the most days ahead review and promote look at: a safety cap, the candidates in stock decide how far they go
   maxAttemptsPerSlot: 40, // generator runs one slot may use in all before it is reported as starved
-  bufferDays: 10, // published days ahead below which status warns: the same default as MIN_PUZZLE_DAYS of the prod deploy (which fails a strict deploy below it)
+  bufferDays: 10, // published days ahead below which status warns: the same default as MIN_PUZZLE_DAYS of the puzzle release (gotd.yml, whose daily run fails below it)
 };
 
 // Everything that changes what a seed produces or what grade means. A candidate carries the stamp it was made and graded under.

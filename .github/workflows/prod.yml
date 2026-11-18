@@ -8,6 +8,8 @@ name: Production deploy
 #    hotfix/* branch, no waiting, e.g. a hotfix or a rollback).
 # The code comes from the chosen commit; the deploy config and the scripts come from the commit
 # this workflow runs on, so an old commit (rollback) deploys the same way. See deploy/README.md.
+# The Game of Day puzzles are not part of the soaked commit: they are released on their own
+# (gotd.yml), and every deploy here carries the puzzles of main as they are now.
 
 run-name: >-
   ${{ github.event_name == 'schedule' && 'prod scheduled promote'
@@ -54,7 +56,6 @@ jobs:
       live: ${{ steps.sel.outputs.live }}
       dry: ${{ steps.sel.outputs.dry }}
       smoke: ${{ steps.sel.outputs.smoke }}
-      strict: ${{ steps.sel.outputs.strict }}
       reason: ${{ steps.sel.outputs.reason }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -101,7 +102,7 @@ jobs:
           # deploy config and scripts: from the commit of this run, not from the one deployed
           mkdir -p "$RUNNER_TEMP/ctl"
           cp -a deploy/cloudflare .github/scripts/smoke-site.sh .github/scripts/assert-private.sh \
-            .github/scripts/stage-prod.sh "$RUNNER_TEMP/ctl/"
+            .github/scripts/stage-prod.sh .github/scripts/check-puzzles.mjs "$RUNNER_TEMP/ctl/"
           git checkout --quiet --detach "$SHA"
           rm -rf deploy/cloudflare
           mkdir -p deploy
@@ -121,27 +122,20 @@ jobs:
           npm run test:all
           npm run test:themes
 
-      - name: Stage the play app
-        run: bash "$RUNNER_TEMP/ctl/stage-prod.sh" dist "$SHA"
-
-      - name: Puzzle buffer
-        env:
-          MIN: ${{ vars.MIN_PUZZLE_DAYS }}
-          STRICT: ${{ needs.select.outputs.strict }}
+      # The puzzles are data that gotd.yml releases without a soak: the tree id of demo/GameOfDay
+      # on main, whatever commit the code comes from.
+      - name: Puzzles of main
         run: |
-          min=${MIN:-10}
-          n=0
-          while [ -f "dist/zigzag/demo/GameOfDay/$(date -u -d "+$n day" +%Y%m%d).txt" ]; do
-            n=$((n + 1))
-          done
-          echo "Game of Day puzzles ahead, counted from today (UTC): $n"
-          if [ "$n" -lt "$min" ]; then
-            if [ "$STRICT" = true ]; then
-              echo "::error::only $n puzzles ahead, fewer than MIN_PUZZLE_DAYS=$min: add puzzles"
-              exit 1
-            fi
-            echo "::warning::only $n puzzles ahead, fewer than MIN_PUZZLE_DAYS=$min"
-          fi
+          set -euo pipefail
+          echo "PUZZLES=$(git rev-parse --verify origin/main:demo/GameOfDay)" >> "$GITHUB_ENV"
+
+      - name: Stage the play app
+        run: bash "$RUNNER_TEMP/ctl/stage-prod.sh" dist "$SHA" "$PUZZLES"
+
+      # The code to deploy has to read the upcoming puzzles. Too few puzzles do not stop this
+      # release: that is the alarm of gotd.yml.
+      - name: Puzzles fit the code
+        run: node "$RUNNER_TEMP/ctl/check-puzzles.mjs" dist/zigzag/demo/GameOfDay
 
       - name: Deploy to Cloudflare
         if: ${{ needs.select.outputs.dry != 'true' }}
@@ -168,7 +162,7 @@ jobs:
           RUN_ID: ${{ github.run_id }}
         run: |
           bash "$RUNNER_TEMP/ctl/smoke-site.sh" \
-            https://play.vintoshine.com/zigzag dist/zigzag "$SHA"
+            https://play.vintoshine.com/zigzag dist/zigzag "$SHA" "$PUZZLES"
 
       # The run stays red, but the site is back on the version that was live before.
       - name: Roll back to the previous version
@@ -185,7 +179,7 @@ jobs:
           rm -rf deploy/cloudflare
           mkdir -p deploy
           cp -a "$RUNNER_TEMP/ctl/cloudflare" deploy/cloudflare
-          bash "$RUNNER_TEMP/ctl/stage-prod.sh" dist "$LIVE"
+          bash "$RUNNER_TEMP/ctl/stage-prod.sh" dist "$LIVE" "$PUZZLES"
           npx --yes "$WRANGLER" deploy --config deploy/cloudflare/wrangler.toml
           url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           tag="deploy/$(date -u +%Y%m%dT%H%M%SZ)"
@@ -201,6 +195,7 @@ jobs:
           {
             echo "### Production deploy"
             echo "- commit: \`${SHA:0:7}\`, live before: \`${LIVE:0:7}\`, dry run: $DRY"
+            echo "- puzzles of main: \`${PUZZLES:0:7}\`"
             echo "- reason: $REASON"
             echo "- earlier deploys, for a rollback (run again with one as ref):"
             git tag --list 'deploy/*' --sort=-refname | head -5 | sed 's/^/  - `/; s/$/`/'

@@ -1,0 +1,5 @@
+.DS_Store
+bench-output.txt
+_site/
+.wrangler/
+node_modules/

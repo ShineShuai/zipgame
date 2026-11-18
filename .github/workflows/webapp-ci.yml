@@ -83,11 +83,28 @@ jobs:
         if: matrix.node == 22
         run: bash ../.github/scripts/test-select-release.sh
 
+      # The rules that pick when the Game of Day puzzles are released (.github/scripts/select-puzzles.sh)
+      # and the check that the code reads them (.github/scripts/check-puzzles.mjs).
+      - name: Puzzle release self-test
+        if: matrix.node == 22
+        run: bash ../.github/scripts/test-select-puzzles.sh
+
       # What the deploy job publishes: an allowlist, then a scan for files and secrets that must never ship.
       - name: Dry-run site staging
         if: matrix.node == 22
         working-directory: .
         run: bash .github/scripts/stage-site.sh "$RUNNER_TEMP/site"
+
+      # The production folder with the puzzles laid over it from a tree id, as prod.yml and gotd.yml
+      # stage it; the puzzles of this commit have to be readable by this code.
+      - name: Dry-run production staging
+        if: matrix.node == 22
+        working-directory: .
+        run: |
+          puzzles=$(git rev-parse HEAD:demo/GameOfDay)
+          bash .github/scripts/stage-prod.sh "$RUNNER_TEMP/dist" "$(git rev-parse HEAD)" "$puzzles"
+          grep -q "\"puzzles\":\"$puzzles\"" "$RUNNER_TEMP/dist/zigzag/build.json"
+          node .github/scripts/check-puzzles.mjs "$RUNNER_TEMP/dist/zigzag/demo/GameOfDay"
 
   bench:
     name: Benchmark
