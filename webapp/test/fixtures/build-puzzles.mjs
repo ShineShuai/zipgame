@@ -13,7 +13,8 @@ const solid = id => (n, seed) => COOP_VARIANTS.find(variant => variant.id === id
 const MAKE = { ...CORE_MAKERS, tetra: solid('tetra'), cube: solid('cube'), ball: solid('ball') };
 
 const grid = (sizes, seeds) => sizes.flatMap(n => seeds.map(seed => [n, seed]));
-const FAST_GEN = { candidates: 1, refineNodes: 0 }; // the options the tests use to make a puzzle quickly
+// the options the tests use to make a puzzle quickly
+const FAST_GEN = { candidates: 1, refineNodes: 0 };
 const SPECS = [
   ['std', grid([5, 6, 7, 8], [1, 2, 3, 4, 5, 6])],
   ['std', [[5, 7], [5, 8], [6, 9], [6, 11], [5, 45], [6, 46], [7, 47]]],

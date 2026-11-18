@@ -9,8 +9,12 @@ import { looksLikeSurface, parseSurface, serializeSurface, isSurfacePuzzle } fro
 const FILE = new URL('./puzzles.json', import.meta.url);
 let all = null;
 
-// the options of a generator call are part of the key (as JSON, so write them in the order the test passes them)
-export const keyOf = (kind, n, seed, opts = {}) => `${kind}-${n}-${seed}${Object.keys(opts).length ? `@${JSON.stringify(opts)}` : ''}`;
+// The options of a generator call are part of the key, as JSON: write them in the order the test
+// passes them.
+export const keyOf = (kind, n, seed, opts = {}) => {
+  const options = Object.keys(opts).length ? `@${JSON.stringify(opts)}` : '';
+  return `${kind}-${n}-${seed}${options}`;
+};
 
 const load = () => (all ??= JSON.parse(fs.readFileSync(FILE, 'utf8')));
 export const hasFixture = (kind, n, seed, opts) => keyOf(kind, n, seed, opts) in load();
@@ -26,7 +30,10 @@ export const thaw = text => (looksLikeSurface(text) ? parseSurface(text) : parse
 // size and seed, as made when the file was built; a new object on every call
 export function fixture(kind, n, seed, opts) {
   const text = load()[keyOf(kind, n, seed, opts)];
-  if (text === undefined) throw new Error(`no fixture ${keyOf(kind, n, seed, opts)}: add it to test/fixtures/build-puzzles.mjs and run it`);
+  if (text === undefined) {
+    throw new Error(`no fixture ${keyOf(kind, n, seed, opts)}: add it to `
+      + 'test/fixtures/build-puzzles.mjs and run it');
+  }
   return thaw(text);
 }
 

@@ -1,5 +1,6 @@
-// The frozen test inputs are what their builders make now. Tests read them instead of running the generators (made() in
-// test/fixtures/made.js, tools.test.js), so without this check a generator change could leave them stale unseen.
+// The frozen test inputs are what their builders make now. Tests read them instead of running the
+// generators (made() in test/fixtures/made.js, tools.test.js), so without this check a generator
+// change could leave them stale unseen.
 // If it fails: npm run fixtures:puzzles (or fixtures:step-ratings), look at the diff, commit it.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
