@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { SYNCED_KEYS } from '../../src/core/sync/merge.js';
+import { CHAMP_KEY, createChamp } from '../../src/features/champ.js';
+import { dateOfDay } from '../../src/features/daily.js';
 import { createGift } from '../../src/features/gift.js';
 import { createReplay, earned } from '../../src/features/replay.js';
 import { createRulesSeen } from '../../src/features/rules-seen.js';
@@ -293,4 +295,28 @@ test('nothing the themes keep is synced: not the choice, not the themes, not the
   for (const key of keys) {
     assert.ok(!SYNCED_KEYS.some(synced => key.startsWith(synced) || synced.startsWith(key)), key);
   }
+});
+
+test('champion wins: counted over both devices, and a pick is handed out once', async () => {
+  const [a, b] = [await device(), await device()];
+  const cfg = { minPlayers: 4 };
+  const ca = createChamp(a.port, cfg, at(20000), a.sync);
+  const cb = createChamp(b.port, cfg, at(20000), b.sync);
+  await ca.init();
+  await cb.init();
+  const answer = { n: 9, mean: 40, top: 20, pct: 100 };
+  const won = (champ, k) => champ.judge(dateOfDay(19990 - k),
+    { solved: true, time: 10, sent: true, live: true, n: 5, stats: answer });
+  for (const k of [0, 1, 2]) assert.equal(await won(ca, k), true);
+  for (const k of [3, 4]) assert.equal(await won(cb, k), true);
+  assert.equal(await ca.takePicks(), 0, 'its own 3 wins');
+  await link(a, b);
+  assert.equal(ca.progress().wins, 5);
+  assert.equal(cb.progress().wins, 5);
+  assert.equal((await raw(b, CHAMP_KEY)).e.length, 2, 'the own copy holds only its own wins');
+  assert.equal(await cb.takePicks(), 1);
+  await link(a, b);
+  assert.equal(await ca.takePicks(), 0, 'B handed it out');
+  assert.equal(await won(ca, 3), false, 'a day another device won is not counted again');
+  assert.equal(ca.progress().wins, 5);
 });

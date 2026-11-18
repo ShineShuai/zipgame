@@ -3,6 +3,7 @@
 //   2. selectEntries             which candidates become seed players of a day: top 3 + the next 7 without min and max = 3..8
 //   3. withoutSeeds / fitTime    solve time of a puzzle from its grid size N and human-scale difficulty h, learned from the backends
 import { MIN_MS, MAX_MS, binOf } from './hist.js';
+import { FLOOR_S_PER_CELL, floorMs } from './floor.js';
 import { spearman, quantile, binLo, binHi } from './stats-merge.js';
 
 const sum = xs => xs.reduce((a, x) => a + x, 0);
@@ -100,8 +101,7 @@ export const selectEntries = (ranked, hOf, badge = null, minSkill = 0) => pickEn
 // Drawing the path alone takes time: the fastest play seen was 7.1 s on 36 cells (0.2 s per cell, a replay). A first solve of a puzzle with a
 // non-zero grade needs thinking on top, so a time below FLOOR_S_PER_CELL * N^2 is a replay, not a first solve: it is left out of the calibration
 // and no seed player is faster. Puzzles larger than 6x6 are never grade 0. 0.5 s per cell = drawing plus about as much again for thinking (a judgement).
-export const FLOOR_S_PER_CELL = 0.5;
-export const floorMs = n => Math.round(FLOOR_S_PER_CELL * 1000 * n * n);
+export { FLOOR_S_PER_CELL, floorMs }; // defined in floor.js
 export const needsThinking = (n, h) => n >= 7 || Math.round(h) >= 1;
 // bins without the ones entirely below the floor (the bin that contains it stays): { bins, n, cut } with `cut` players dropped.
 export function aboveFloor(bins, n) {

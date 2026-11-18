@@ -6,6 +6,7 @@ import { createStore } from '../../features/stats-store.js';
 import { tapCombo, DEV_TAP_MS, devLinkMode, savePin, loadPin } from '../../features/dev-reveal.js';
 import { createDaily } from '../../features/daily.js';
 import { createCalib, calibRequested } from '../../features/calib.js';
+import { createChamp } from '../../features/champ.js';
 import { createReplay } from '../../features/replay.js';
 import { createStreak } from '../../features/streak.js';
 import { createSlotsSync } from '../../features/slots-sync.js';
@@ -23,7 +24,7 @@ import { createUnlock } from '../../features/unlock.js';
 import { createGift } from '../../features/gift.js';
 import { createRulesSeen } from '../../features/rules-seen.js';
 import { VERSION } from '../../version.js';
-import { LEADERBOARD, BEHAVIOUR, SYNC } from '../../config.js';
+import { LEADERBOARD, BEHAVIOUR, CHAMP, SYNC } from '../../config.js';
 import { createSync } from '../../platform/sync/engine.js';
 import { bindSyncCard, initSyncUi, syncReveal } from './sync-ui.js';
 import { createLeaderboard, backendsFromConfig } from '../../platform/leaderboard.js';
@@ -36,12 +37,12 @@ import { genNoticeHtml, paintGenerating, renderGenerating } from './generating.j
 import { hintShown, renderGame } from './game-view.js';
 import {
   $, S, SIZES, bind, behaviour, dayNo, gift, giftRef, lastPointer, lb, modal, playlog, randomSeed,
-  replay, rulesSeen, slotsSync, solidRelease, statsLineT, storage, store, streak, sync, today, unlock,
+  champ, replay, rulesSeen, slotsSync, solidRelease, statsLineT, storage, store, streak, sync, today, unlock,
 } from './state.js';
 import { openReplay, renderReplay, startGameOfDay, startReplay } from './replay-ui.js';
 import {
-  awardThemeSlots, claimReward, finishLucky, leaveLucky, logPlay, onStreakMilestone, publishThemeSlots, shareGotd,
-  startLocal, startLucky, startTimer, stopTimer, watchThemeEvents,
+  awardThemeSlots, claimChampPicks, claimReward, finishLucky, grantChoice, leaveLucky, logPlay,
+  publishThemeSlots, shareGotd, startLocal, startLucky, startTimer, stopTimer, watchThemeEvents,
 } from './game-flow.js';
 import {
   closeRules, closeStatTips, hidePeek, openExport, openRulesSheet, setChanceTip, setGiftTip,
@@ -338,6 +339,17 @@ async function initLang() {
   try { streakRewards = (await streak.init()).rewards; } catch (e) { console.warn('streak init failed:', e); }
   bind({ unlock: createUnlock(storage, luckyDefs(SIZES, solidRelease), undefined, sync) });
   try { await unlock.init(); } catch (e) { console.warn('unlock init failed:', e); }
+  // The champion rule (features/champ.js): 5 wins (a live Game of Day answered "you beat 100%") earn a
+  // reward pick. champPicks: picks earned before the last close, granted once the rest is loaded.
+  let champPicks = 0;
+  if (CHAMP.enabled) {
+    bind({ champ: createChamp(storage, CHAMP, undefined, sync) });
+    try {
+      await champ.init();
+      await champ.catchUp(store);
+      champPicks = await champ.takePicks();
+    } catch (e) { console.warn('champion init failed:', e); }
+  }
   bind({ gift: createGift(storage, giftRef, undefined, sync) });
   try { await gift.init(); } catch (e) { console.warn('gift init failed:', e); }
   bind({ rulesSeen: createRulesSeen(storage, PLAY_VARIANTS.map(v => v.id), sync) });
@@ -345,7 +357,7 @@ async function initLang() {
   try { await slotsSync.init(); } catch (e) { console.warn('theme slots sync failed:', e); }
   // What the player's other devices did counts here too: the statistics are shown again, and the theme slots they earned or have (themes
   // themselves stay on each device: only the number of slots follows, src/themes/slots.js, features/slots-sync.js)
-  if (sync) sync.onChange(() => store.refresh().then(() => awardThemeSlots()).catch(e => console.warn('stats refresh failed:', e)));
+  if (sync) sync.onChange(() => store.refresh().then(() => awardThemeSlots()).then(claimChampPicks).catch(e => console.warn('stats refresh failed:', e)));
   await rulesSeen.init();
   bind({ shared: createSharedGames(storage) });
   if (lb.enabled) for (const { date } of await replay.unsent()) shareGotd(date); // today's and replayed days whose submit never got an answer
@@ -378,5 +390,5 @@ async function initLang() {
   render();
   watchGift();
   initSyncUi().catch(e => console.warn('device sync not started:', e));
-  for (let i = 0; i < streakRewards; i++) await onStreakMilestone();
+  for (let i = 0; i < streakRewards + champPicks; i++) await grantChoice();
 })();

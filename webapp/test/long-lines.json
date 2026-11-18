@@ -24,7 +24,7 @@
   "src/apps/design/surface.js": 1,
   "src/apps/play/board.js": 58,
   "src/apps/play/counters.js": 9,
-  "src/apps/play/game-flow.js": 33,
+  "src/apps/play/game-flow.js": 32,
   "src/apps/play/game-view.js": 29,
   "src/apps/play/gen-job.js": 5,
   "src/apps/play/gen-runner.js": 2,

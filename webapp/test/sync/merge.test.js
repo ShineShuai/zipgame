@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { newStat, updateStat } from '../../src/core/stats.js';
+import { fresh, judged, win } from '../../src/core/champ-seal.js';
 import { MERGES, RECENT_MAX, SHRINKS, SYNCED_KEYS } from '../../src/core/sync/merge.js';
+import { CHAMP_KEY } from '../../src/features/champ.js';
 import { GIFT_KEY } from '../../src/features/gift.js';
 import { CREDIT_KEY } from '../../src/features/replay.js';
 import { RULES_SEEN_KEY } from '../../src/features/rules-seen.js';
@@ -16,12 +18,14 @@ const C = 'CCCCCCCCCCC';
 const entry = (dev, value) => ({ dev, value });
 const near = (x, y, message) =>
   assert.ok(Math.abs(x - y) < 1e-9 * Math.max(1, Math.abs(x)), message);
+const ledgerOf = (id, days) =>
+  days.reduce((copy, day) => win(judged(copy, day), day, 9000), fresh(20000, id));
 const shuffled = list => list.map(x => [Math.random(), x])
   .sort((a, b) => a[0] - b[0]).map(x => x[1]);
 
 test('the synced keys are exactly these, and what is device-local is not among them', () => {
   assert.deepEqual([...SYNCED_KEYS].sort(), [STATS_KEY, GOTD_KEY, STREAK_KEY, UNLOCK_KEY,
-    CREDIT_KEY, GIFT_KEY, RULES_SEEN_KEY, SLOTS_KEY].sort());
+    CREDIT_KEY, GIFT_KEY, RULES_SEEN_KEY, SLOTS_KEY, CHAMP_KEY].sort());
   for (const local of ['zip_playlog_v2', 'zip_behaviour_on', 'zip_theme', 'zip_theme_seed',
     'zip_shared_games', 'zip_coop_stats', 'zip_sync', 'zip_sync_f']) {
     assert.ok(!SYNCED_KEYS.includes(local), local);
@@ -343,6 +347,7 @@ test('every rule is a function of the set of entries (any order, same value)', (
       { v: 1, seen: { a: true, c: true } }],
     [SLOTS_KEY]: [{ v: 1, cap: 3, themes: ['a'] }, { v: 1, cap: 0, themes: [] },
       { v: 1, cap: 4, themes: ['b', 'a'] }],
+    [CHAMP_KEY]: [ledgerOf(A, [20001, 20002]), ledgerOf(B, [20002, 20003]), ledgerOf(C, [])],
   };
   for (const [key, values] of Object.entries(samples)) {
     const entries = [A, B, C].map((dev, i) => entry(dev, MERGES[key].clean(values[i])));

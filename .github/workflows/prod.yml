@@ -90,6 +90,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       SHA: ${{ needs.select.outputs.sha }}
       LIVE: ${{ needs.select.outputs.live }}
+      GOTD_AHEAD: ${{ vars.GOTD_AHEAD }}   # the puzzle window of stage-prod.sh (unset = all puzzles)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

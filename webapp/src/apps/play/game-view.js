@@ -8,7 +8,7 @@ import { reached } from '../../features/twopaths-play.js';
 import { variantById } from './variants.js';
 import { t } from '../../ui/i18n.js';
 import { flagsToHex, PLAY_FLAGS_INT } from '../../core/gen/flags.js';
-import { $, S, replay, sec, statsLineT, store } from './state.js';
+import { $, S, champ, replay, sec, statsLineT, store } from './state.js';
 import { rulesTipHtml } from './popups.js';
 import { boardMarkup } from './puzzle-kit.js';
 import { luckyGameHtml } from './lucky-ui.js';
@@ -101,8 +101,12 @@ export function renderGame() {
   const hintDisabled = S.finished || S.hintsUsed >= cap ? 'disabled' : '';
   const gotdAttempt = S.isGotd ? store.attemptOn(S.gotdDate) : null; // today's record, or the replayed day's
   const gotdStats = S.finished && gotdAttempt && gotdAttempt.stats ? `<p class="note gotd-stats">${statsLineT(gotdAttempt.stats, S.showDev)}</p>` : '';
+  // a win on the live Game of Day (features/champ.js)
+  const cp = S.finished && S.champWon && champ ? champ.progress() : null;
+  const champKey = S.champWon && S.champWon.pick ? 'champ.pick' : 'champ.won';
+  const champNote = cp ? `<p class="note champ-won">${t(champKey, cp.total - cp.done)}</p>` : '';
   const penalty = S.hintsUsed ? t('game.penalty', sec(HINT_PENALTY_S * S.hintsUsed), S.hintsUsed) : '';
-  const solved = S.finished ? `<p class="solved">${t('game.solved', time, penalty)}</p>${gotdStats}` : '';
+  const solved = S.finished ? `<p class="solved">${t('game.solved', time, penalty)}</p>${gotdStats}${champNote}` : '';
 
   return `
     <div class="game-layout">

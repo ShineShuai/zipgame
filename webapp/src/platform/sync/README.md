@@ -11,7 +11,7 @@ It is **off for everybody until the player turns it on** on their device
 |---|---|---|
 | Merge rules, slice codec, sync phrase, key derivation and sealing | `src/core/sync/` | done, tested |
 | Identity, group view, exchange protocol | `src/platform/sync/engine.js`, `proto.js` | done, tested |
-| Features read the group's data | `stats-store`, `streak`, `unlock`, `replay`, `gift`, `rules-seen` (optional `sync` argument) | done, tested |
+| Features read the group's data | `stats-store`, `streak`, `unlock`, `replay`, `gift`, `rules-seen`, `champ` (optional `sync` argument) | done, tested |
 | Device-to-device link (option D) | `p2p.js`, wraps `coop/join.js`, `resume.js`, `rtc.js` | done, tested with fakes |
 | Cloud (option C: sync phrase, Supabase primary, Turso second; its own config `SYNC.cloud` and its own SQL, apart from the averages and behaviour rows) | `cloud.js`, `cloud/`, `server/supabase/sync.sql`, `server/turso/sync.sql`, `tools/sync-prune.mjs` | done; Turso side run for real on SQLite, Supabase SQL **not run** (no Postgres here), see below |
 | Menu card "Your devices" (the player's choice) | `src/apps/play/sync-card.js`, `sync-ui.js` | done; the card HTML is tested, the page itself is not run here |

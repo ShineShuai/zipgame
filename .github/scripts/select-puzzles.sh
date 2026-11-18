@@ -6,6 +6,9 @@
 #   EVENT                  push | schedule | workflow_dispatch
 #   manual: REASON DRY_RUN_INPUT SMOKE_INPUT
 #   automatic: PROD_FREEZE GOTD_DRY_RUN
+#   GOTD_AHEAD (optional)  only the puzzles of the next GOTD_AHEAD days ship (stage-prod.sh), so the
+#                          window is due once a UTC day: with the puzzles of main already live, an
+#                          automatic run still releases when the live build is from an earlier day.
 #   MIN                    puzzles that must be ahead in a row (MIN_PUZZLE_DAYS, default 10)
 #   SITE                   live site, default https://play.vintoshine.com/zigzag
 # sha is the live code, puzzles the tree id of demo/GameOfDay on main, live_puzzles the one that is
@@ -38,15 +41,17 @@ die() {
 # What is live: the code (sha) and the puzzles (a tree id) in build.json.
 live=
 livep=
+built=
 json=$(curl -fsSL --retry 3 --retry-all-errors --retry-delay 3 \
   "$site/build.json?cb=$(date +%s)" 2> /dev/null || true)
-read -r live livep < <(node -e '
+read -r live livep built < <(node -e '
   try {
     const j = JSON.parse(require("fs").readFileSync(0, "utf8"));
-    console.log((j.sha || "") + " " + (j.puzzles || ""));
+    console.log((j.sha || "") + " " + (j.puzzles || "-") + " " + (j.built || ""));
   } catch {
     console.log("");
   }' <<< "$json") || true
+[ "$livep" != - ] || livep=
 [ -n "$live" ] || die "cannot read $site/build.json (site down, or never deployed)"
 git cat-file -e "$live^{commit}" 2> /dev/null ||
   die "live commit $live is not in this clone (a deleted hotfix branch?)"
@@ -86,7 +91,11 @@ if [ "$EVENT" = workflow_dispatch ]; then
   exit 0
 fi
 
-[ "$puzzles" != "$livep" ] || skip "the puzzles of main (${puzzles:0:7}) are already live"
+# The window of GOTD_AHEAD is due when the live build is from an earlier UTC day.
+due=false
+[ -z "${GOTD_AHEAD:-}" ] || [ "${built%%T*}" = "$(date -u +%F)" ] || due=true
+[ "$puzzles" != "$livep" ] || [ "$due" = true ] ||
+  skip "the puzzles of main (${puzzles:0:7}) are already live"
 dry=true
 [ "${GOTD_DRY_RUN:-true}" != false ] || dry=false
 note "Release the puzzles ${puzzles:0:7} (live: ${livep:0:7}) with the live code ${live:0:7};" \
@@ -94,4 +103,8 @@ note "Release the puzzles ${puzzles:0:7} (live: ${livep:0:7}) with the live code
 out run true
 out dry "$dry"
 out smoke true
-out reason "$EVENT release of the puzzles ${puzzles:0:7}"
+if [ "$puzzles" = "$livep" ]; then
+  out reason "$EVENT release: the puzzle window (GOTD_AHEAD=$GOTD_AHEAD) moves on"
+else
+  out reason "$EVENT release of the puzzles ${puzzles:0:7}"
+fi

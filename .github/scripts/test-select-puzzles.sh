@@ -47,8 +47,9 @@ python3 -m http.server "$port" --bind 127.0.0.1 --directory "$tmp/site" > /dev/n
 srv=$!
 sleep 1
 export SITE="http://127.0.0.1:$port"
-live() { # SHA [PUZZLES]
-  printf '{"sha":"%s"%s}\n' "$1" "${2:+,\"puzzles\":\"$2\"}" > "$tmp/site/build.json"
+live() { # SHA [PUZZLES [BUILT]]
+  printf '{"sha":"%s"%s%s}\n' "$1" "${2:+,\"puzzles\":\"$2\"}" "${3:+,\"built\":\"$3\"}" \
+    > "$tmp/site/build.json"
 }
 
 # pick KEY=VALUE...: runs the script, leaves its outputs in $tmp/out, returns its status
@@ -80,6 +81,29 @@ pick EVENT=schedule PROD_FREEZE=true
 check "scheduled: PROD_FREEZE stops it" "false" "$(got run)"
 pick EVENT=workflow_dispatch REASON=x PROD_FREEZE=true
 check "manual: ignores PROD_FREEZE" "true" "$(got run)"
+
+# --- GOTD_AHEAD: only the next days ship, so the window is due once a UTC day
+now=$(date -u +%FT%TZ)
+yesterday=$(date -u -d '-1 day' +%FT%TZ)
+live "$A" "$T1" "$yesterday"
+pick EVENT=schedule GOTD_DRY_RUN=false
+check "no GOTD_AHEAD: a build of yesterday changes nothing" "false" "$(got run)"
+pick EVENT=schedule GOTD_DRY_RUN=false GOTD_AHEAD=2
+check "GOTD_AHEAD: puzzles live, built yesterday -> the window moves on" "true false $T1" \
+  "$(got run) $(got dry) $(got puzzles)"
+check "GOTD_AHEAD: the reason says why" \
+  "schedule release: the puzzle window (GOTD_AHEAD=2) moves on" "$(got reason)"
+pick EVENT=push GOTD_DRY_RUN=false GOTD_AHEAD=2
+check "GOTD_AHEAD: a push counts the same" "true" "$(got run)"
+live "$A" "$T1" "$now"
+pick EVENT=schedule GOTD_DRY_RUN=false GOTD_AHEAD=2
+check "GOTD_AHEAD: built today -> nothing to do" "false" "$(got run)"
+live "$A" "$T1"
+pick EVENT=schedule GOTD_DRY_RUN=false GOTD_AHEAD=2
+check "GOTD_AHEAD: no build time in build.json -> the window is due" "true" "$(got run)"
+live "$A" "$T1" "$yesterday"
+pick EVENT=schedule GOTD_DRY_RUN=false GOTD_AHEAD=2 PROD_FREEZE=true
+check "GOTD_AHEAD: PROD_FREEZE still stops it" "false" "$(got run)"
 
 # --- the buffer: 12 puzzles ahead in a row
 pick EVENT=schedule MIN=10

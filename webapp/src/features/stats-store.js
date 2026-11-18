@@ -140,7 +140,9 @@ export function createStore(storage, sizes, scopes = {}, sync = null) {
     gotdBest: n => best[n] || null,
     // pending: also submit to the averages backend (sent:false until it answers).
     // replay: the date is a past one; the per-size Game-of-Day time (b in the stats blob, shown in the menu table) belongs to the live game and stays as it is.
-    async recordGotd(n, date, time, pending = false, replay = false) {
+    // live: a live game (features/champ.js): the record keeps it, with the board size n, for the
+    // champion rule.
+    async recordGotd(n, date, time, pending = false, replay = false, live = false) {
       if (!replay) {
         const prev = best[n];
         if (!prev || prev.date !== date || prev.time > time) {
@@ -148,7 +150,8 @@ export function createStore(storage, sizes, scopes = {}, sync = null) {
           await patch(b => { const mine = b.b[n]; if (!mine || mine[0] !== date || mine[1] > time) b.b[n] = [date, time]; });
         }
       }
-      await store.saveAttempt(date, pending ? { solved: true, time, sent: false } : { solved: true, time });
+      const kept = live ? { live: true, n } : {};
+      await store.saveAttempt(date, pending ? { solved: true, time, sent: false, ...kept } : { solved: true, time });
     },
     gotdSolves: () => gotdCount, // Game-of-Day dates solved in total (as of the last load or save)
     attempt: () => attempts[attemptDate] || null, attemptDate: () => attemptDate, // today's record (as of the last hydrateAttempt)
