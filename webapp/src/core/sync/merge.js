@@ -18,6 +18,7 @@
 // behaviour upload and its switch, the theme choice and the theme trial, the device seed
 // of the theme offers, the shared games, the hints and the co-op game and its statistics.
 // Of the themes only the NUMBER of slots follows (zip_slots), not the themes.
+import { CHAMP_KEY } from '../../features/champ.js';
 import { GIFT_KEY, KINDS } from '../../features/gift.js';
 import { CREDIT_KEY } from '../../features/replay.js';
 import { RULES_SEEN_KEY } from '../../features/rules-seen.js';
@@ -25,6 +26,7 @@ import { SLOTS_KEY, sanitize as cleanSlots } from '../../features/slots-sync.js'
 import { GOTD_KEY, STATS_KEY } from '../../features/stats-store.js';
 import { FREEZE_EVERY, RAMP, STREAK_KEY } from '../../features/streak.js';
 import { PLAYED_KEPT, UNLOCK_KEY } from '../../features/unlock.js';
+import { clean as cleanLedger, view as viewLedger } from '../champ-seal.js';
 
 export const RECENT_MAX = 20; // the recent times a statistic keeps (core/stats.js)
 
@@ -318,6 +320,12 @@ const slots = {
   }),
 };
 
+// ---- champion wins: zip_ledger { v, id, j, e, c, g, hi, z } --------------------------------
+// A copy that fails its seals is dropped (core/champ-seal.js). The group's value is not one chain
+// but the wins of every device, one per day, with the picks handed out added up.
+
+const ledger = { clean: cleanLedger, view: viewLedger };
+
 export const MERGES = Object.freeze({
   [STATS_KEY]: stats,
   [GOTD_KEY]: gotd,
@@ -327,6 +335,7 @@ export const MERGES = Object.freeze({
   [GIFT_KEY]: gift,
   [RULES_SEEN_KEY]: rulesSeen,
   [SLOTS_KEY]: slots,
+  [CHAMP_KEY]: ledger,
 });
 
 export const SYNCED_KEYS = Object.freeze(Object.keys(MERGES));

@@ -334,6 +334,11 @@ select option, select optgroup { background: var(--surface); color: var(--headin
 .stat-replay .pip.on { background: var(--accent-text); }
 .stat-streak .pip.on { background: var(--flame); }
 .pips.week .pip:last-child { box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 4px var(--flame-soft); } /* the 7th dot: the reward */
+.stat-champ { flex-basis: 100%; }
+.gotd-card .stat-item.stat-champ { flex: 1 1 100%; }
+.stat-champ .stat-icon { display: grid; place-items: center; font-size: 1.4rem; line-height: 1; }
+.stat-champ.lit .stat-icon { color: var(--accent-text); }
+.stat-champ .pip.on { background: var(--accent-text); }
 .freezes { display: flex; gap: 4px; }
 .freeze { width: 16px; height: 16px; color: var(--line-strong); }
 .freeze.on { color: var(--accent-text); }

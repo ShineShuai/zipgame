@@ -16,8 +16,8 @@ import { sfxSolved } from '../../platform/sound.js';
 import { eventAt } from '../../themes/calendar.js';
 import { awardSlots, offerTheme, themes, watchDay } from '../../ui/theme.js';
 import {
-  $, S, SIZES, behaviour, calib, daily, dayNo, lb, playlog, randomInt, randomSeed, render, replay, sec,
-  slotsSync, solid, storage, store, streak, unlock,
+  $, S, SIZES, behaviour, calib, champ, daily, dayNo, lb, playlog, randomInt, randomSeed, render,
+  replay, sec, slotsSync, solid, storage, store, streak, unlock,
 } from './state.js';
 import { refreshNext } from './counters.js';
 import { gradePuzzle } from './puzzle-kit.js';
@@ -53,7 +53,7 @@ function uploadBehaviour(history, ms, mode, abandoned = false) {
 
 export function onSolved() {
   logPlay(true); // before the hint penalty below: the log keeps the raw time
-  if (streak) streak.record().then(milestone => { if (milestone) onStreakMilestone(); awardThemeSlots(); }).catch(e => console.warn('streak record failed:', e)); // a streak reward earned: a replay or unlock chance; a best streak of 30 days: a theme slot
+  if (streak) streak.record().then(milestone => { if (milestone) grantChoice(); awardThemeSlots(); }).catch(e => console.warn('streak record failed:', e)); // a streak reward earned: a replay or unlock chance; a best streak of 30 days: a theme slot
   S.finished = true; stopTimer(); sfxSolved();
   if (S.lucky) finishLucky();
   if (!S.penaltyApplied) { S.elapsed = penalizedTime(S.elapsed, S.hintsUsed); S.penaltyApplied = true; } // once, even if the path is reset and re-solved
@@ -67,7 +67,8 @@ export function onSolved() {
 // Game of Day (live or replay): record locally, count it towards the next replay chance, then submit to the averages backend
 // (stats are stored in the attempt record, so no refetch is needed). A replay is submitted like the live game: it counts in that day's averages.
 async function finishGotd(n, date, time, isReplay) {
-  await store.recordGotd(n, date, time, lb.enabled, isReplay);
+  const live = champ ? champ.live(date, isReplay) : false; // the champion rule (features/champ.js)
+  await store.recordGotd(n, date, time, lb.enabled, isReplay, live);
   awardThemeSlots(); // the 12th Game of Day solved: a theme slot
   if (isReplay) await healStreak(date);
   await replay.addSolved();
@@ -81,7 +82,7 @@ async function healStreak(date) {
     const healed = await streak.heal(dayOfDate(date));
     if (!healed) return;
     S.healed = true;
-    for (let i = 0; i < healed.rewards; i++) await onStreakMilestone();
+    for (let i = 0; i < healed.rewards; i++) await grantChoice();
     awardThemeSlots(); // a healed day can lift the best streak
     if (S.screen === 'game') render();
   } catch (e) { console.warn('streak heal failed:', e); }
@@ -125,7 +126,7 @@ export function checkThemeEvent(now = new Date()) {
 // Checks now, when the page is seen again, when the network is back and at local midnight, so an
 // offer day needs no reload.
 export const watchThemeEvents = () => watchDay(() => checkThemeEvent());
-export async function onStreakMilestone() {
+export async function grantChoice() {
   if (unlock && !unlock.view().allUnlocked) await unlock.addChoice(); else await replay.addBonus();
   if (S.screen === 'game' || S.screen === 'menu') render();
 }
@@ -136,7 +137,24 @@ export async function claimReward(kind) {
 // One submit round (platform/leaderboard.js submitAttempt): the attempt record says which backends already hold the solve.
 export async function shareGotd(date) {
   const saved = await submitAttempt(lb, store, date);
+  if (saved) await judgeChamp(date, saved);
   if (saved && (S.screen === 'menu' || (S.screen === 'game' && S.isGotd && S.finished))) render();
+}
+// The champion rule (features/champ.js): the first answer for a day is judged; a win may complete
+// the 5 that earn a reward pick. The retry of an unanswered submit comes through shareGotd too.
+async function judgeChamp(date, rec) {
+  if (!champ) return;
+  try {
+    const won = await champ.judge(date, rec);
+    const picks = await champ.takePicks();
+    if (won && S.isGotd && S.gotdDate === date) S.champWon = { pick: picks > 0 };
+    for (let i = 0; i < picks; i++) await grantChoice();
+  } catch (e) { console.warn('champion judge failed:', e); }
+}
+// Reward picks earned over the group's wins that no device has handed out yet (device sync).
+export async function claimChampPicks() {
+  const picks = champ ? await champ.takePicks() : 0;
+  for (let i = 0; i < picks; i++) await grantChoice();
 }
 
 // The solution path of a plain game (a variant has its own rules: none); null when there is none
@@ -158,7 +176,7 @@ export function beginGame(puzzle, gotdDate, isReplay = false, isShared = false, 
   S.sharedFocus = null;
   const variant = variantOf(puzzle);
   const difficulty = gradePuzzle(puzzle);
-  Object.assign(S, { variant, lucky, luckyResult: null, luckyNote: null, genNotice: null, healed: false, trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty, cam: null, pan: false });
+  Object.assign(S, { variant, lucky, luckyResult: null, luckyNote: null, genNotice: null, healed: false, champWon: null, trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty, cam: null, pan: false });
   S.calib = Boolean(puzzle.calib); // a calibration game: played blind, counted by its own counter
   S.sol = solutionOf(puzzle, variant);
   // the wrong turns of the game are the player's path against this

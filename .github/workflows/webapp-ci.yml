@@ -89,6 +89,11 @@ jobs:
         if: matrix.node == 22
         run: bash ../.github/scripts/test-select-puzzles.sh
 
+      # The puzzle window of the production site (GOTD_AHEAD, .github/scripts/stage-prod.sh).
+      - name: Puzzle window self-test
+        if: matrix.node == 22
+        run: bash ../.github/scripts/test-stage-prod.sh
+
       # What the deploy job publishes: an allowlist, then a scan for files and secrets that must never ship.
       - name: Dry-run site staging
         if: matrix.node == 22

@@ -5,7 +5,8 @@ name: Game of Day release
 # main.
 #  - Automatic: after a push to main that touches demo/GameOfDay, and once a day as a safety net.
 #    Only with GOTD_DRY_RUN=false (otherwise it checks and stages, nothing more), and only when the
-#    puzzles of main are not live yet. The daily run is also the alarm: it fails when fewer than
+#    puzzles of main are not live yet (or, with GOTD_AHEAD set, the live build is from an earlier
+#    UTC day: only the puzzles of the next GOTD_AHEAD days ship, so the window moves on daily). The daily run is also the alarm: it fails when fewer than
 #    MIN_PUZZLE_DAYS puzzles are ahead in a row. The rules: .github/scripts/select-puzzles.sh.
 #  - Manual: Actions -> Game of Day release -> Run workflow.
 # The code is the commit that build.json shows as live. The puzzles, the deploy config and the
@@ -76,6 +77,7 @@ jobs:
           SMOKE_INPUT: ${{ inputs.smoke }}
           PROD_FREEZE: ${{ vars.PROD_FREEZE }}
           GOTD_DRY_RUN: ${{ vars.GOTD_DRY_RUN }}
+          GOTD_AHEAD: ${{ vars.GOTD_AHEAD }}
           MIN: ${{ vars.MIN_PUZZLE_DAYS }}
         run: bash .github/scripts/select-puzzles.sh
 
@@ -104,6 +106,7 @@ jobs:
       url: https://play.vintoshine.com/zigzag/
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      GOTD_AHEAD: ${{ vars.GOTD_AHEAD }}
       SHA: ${{ needs.select.outputs.sha }}
       PUZZLES: ${{ needs.select.outputs.puzzles }}
       LIVE_PUZZLES: ${{ needs.select.outputs.live_puzzles }}

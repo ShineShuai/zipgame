@@ -26,7 +26,7 @@ previous code is deployed again (with the puzzles of `main`) and the run stays r
 Repository variables (Settings -> Secrets and variables -> Actions -> Variables):
 `SOAK_DAYS` (7), `PROD_FREEZE` (`true` stops
 everything), `DRY_RUN` (anything but `false` = check and stage only), `GOTD_DRY_RUN` (the same for
-`gotd.yml`), `MIN_PUZZLE_DAYS` (10), `CLOUDFLARE_ACCOUNT_ID`. GitHub stops scheduled runs after 60
+`gotd.yml`), `GOTD_AHEAD` (unset, see below), `MIN_PUZZLE_DAYS` (10), `CLOUDFLARE_ACCOUNT_ID`. GitHub stops scheduled runs after 60
 days without repository activity.
 
 ## Game of Day puzzles (`gotd.yml`)
@@ -48,6 +48,19 @@ alarm does not hold back the release. A push or a manual run only warns. The tag
 `deploy/...` belong to the code and are not moved. Manual: Actions -> Game of Day release -> Run
 workflow (`reason`, `dry_run`, `smoke`); it releases the puzzles of `main` again even if they are
 live. A wrong puzzle is fixed by a commit to `main`: the push releases the fix.
+
+### Puzzle window (`GOTD_AHEAD`, optional)
+The whole queue of puzzles ships by default, up to 17 days ahead, so a player who reads the site
+can solve tomorrow's puzzle today (and play it live for the champion rewards). With the repository
+variable `GOTD_AHEAD` = K only the puzzles of today and of the next K days (UTC) ship
+(`stage-prod.sh`, so `prod.yml` and `gotd.yml` both cut). The window moves on with each deploy:
+`gotd.yml` then also releases when the puzzles of `main` are already live but the live build is
+from an earlier UTC day, which makes its daily run (21:37 UTC) a daily release. The smoke test
+checks that the puzzle after the window is neither staged nor served. K=1 is the least (the next
+day's puzzle must exist at midnight); K=2 survives one failed daily release. If deploys stop
+(expired token, `PROD_FREEZE`), the site runs out of puzzles after K days: the red runs are the
+alarm. Unset = off, nothing changes. Delete the variable to roll back; the next release ships the
+whole queue again. `MIN_PUZZLE_DAYS` still counts the puzzles of `main`, not the ones that ship.
 
 ## Manual
 Actions -> Production deploy -> Run workflow (`ref`, `reason`). The `ref` must be on `main` or on

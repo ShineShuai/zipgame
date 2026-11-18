@@ -108,3 +108,12 @@ export const SOLID_RELEASE = {
   cube: 21,
   ball: 35,
 };
+
+// Champion rewards (features/champ.js, core/champ-seal.js): beat 100% of the players on the live
+// Game of the Day 5 times for a reward pick (a replay or an unlock chance). enabled: false turns
+// the whole feature off. minPlayers: the fewest players (the player included) a day needs for a
+// win: a day nobody seeded is one a clock set ahead can reach, and it is empty. It is SEED_MIN + 1
+// (core/hist.js): the seed players (tools/gotd-seed.mjs, 3..8 a day) plus the player. When the
+// seed players are removed, lower SEED_MIN there, then this, and check the host clock instead
+// (the `Date` header of the puzzle file's response) or the empty-day rule is gone.
+export const CHAMP = { enabled: true, minPlayers: 4 };

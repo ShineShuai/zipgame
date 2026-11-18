@@ -8,7 +8,8 @@ import { SOLID_KINDS } from '../../features/solid-release.js';
 import { BEHAVIOUR } from '../../config.js';
 import { t } from '../../ui/i18n.js';
 import {
-  S, SIZES, replay, sec, solid, statsLineT, storage, storageUsed, store, streak, today, unlock,
+  S, SIZES, champ, replay, sec, solid, statsLineT, storage, storageUsed, store, streak, today,
+  unlock,
 } from './state.js';
 import { ICON, weekday } from './menu-kit.js';
 import { sizeLabel } from './puzzle-kit.js';
@@ -242,5 +243,14 @@ function statusPanelHtml(chances, sv) { // sv: streak.view(), null before the st
         ${pips(pg.on, pg.total, 'week')}
         <span class="freezes">${Array.from({ length: FREEZE_MAX }, (_, i) => `<span class="freeze${i < sv.freezes ? ' on' : ''}">${ICON.snow}</span>`).join('')}</span>
       </span>`) : '';
-  return `<div class="status-panel">${replayCard}${streakCard}</div>`;
+  const cp = champ && champ.progress(); // wins towards a reward pick (features/champ.js)
+  const champLines = cp && [t('champ.next', cp.total - cp.done), t('champ.help', cp.total)];
+  const champCard = cp ? card('stat-champ' + (cp.wins > 0 ? ' lit' : ''), champLines, `
+      <span class="stat-icon" aria-hidden="true">★</span>
+      <span class="stat-main">
+        <span class="stat-top"><b>${cp.done}/${cp.total}</b>
+          <small>${t('champ.label')}</small></span>
+        ${pips(cp.done, cp.total)}
+      </span>`) : '';
+  return `<div class="status-panel">${replayCard}${streakCard}${champCard}</div>`;
 }

@@ -91,7 +91,10 @@ another one (add its kind, size and seed to `build-puzzles.mjs`).
 - **Game of the Day** loads `demo/GameOfDay/YYYYMMDD.txt` (the [text format](#puzzle-text-format)) from the
   same server as the play page, one attempt per day, and compares the time with other players' averages.
   If there is no file for today, there is no Game of the Day. Missed days of the last two weeks can be
-  replayed, and playing every day builds a day streak.
+  replayed, and playing every day builds a day streak. Beating 100% of the players on the live Game
+  of the Day (not a replay) is a **champion win**; every 5 earn a reward pick, a replay chance or an
+  unlock chance (`webapp/src/features/champ.js`, `webapp/src/core/champ-seal.js`: the wins are kept
+  in a sealed ledger, so editing the stored data earns nothing; the rules are in `config.js` `CHAMP`).
 - **Hints** in free play, and **share codes** to hand a puzzle to a friend.
 - Per-type, per-size **stats** (today and all time, by UTC day), kept in `localStorage` and falling back
   to memory when storage is unavailable. **Device sync** is optional and needs no account: link two of

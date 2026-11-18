@@ -55,6 +55,14 @@ if [ -n "$puzzles" ]; then
   done
 fi
 
+# GOTD_AHEAD=K (see stage-prod.sh): the puzzle after the window is neither staged nor served.
+if [ -n "${GOTD_AHEAD:-}" ]; then
+  beyond=$(date -u -d "+$((GOTD_AHEAD + 1)) day" +%Y%m%d)
+  [ ! -e "$dir/demo/GameOfDay/$beyond.txt" ] || fail "puzzle $beyond is staged: beyond GOTD_AHEAD"
+  code=$(curl -s -o /dev/null -w '%{http_code}' "$base/demo/GameOfDay/$beyond.txt?cb=$(date +%s)")
+  [ "$code" != 200 ] || fail "puzzle $beyond is served (GOTD_AHEAD=$GOTD_AHEAD)"
+fi
+
 # What must not be public: sources, tooling, and the pages that are not part of production.
 RUN_ID=$cb "$(dirname "$0")/assert-private.sh" "$base" \
   webapp/package.json webapp/server/README.md webapp/tools/ratings.json \

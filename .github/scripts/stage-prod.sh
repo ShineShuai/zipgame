@@ -3,6 +3,11 @@
 # pages that are not part of production, below DIST/zigzag/, plus the Cloudflare _headers and
 # build.json. The host root belongs to the portal Worker (repo play), not to this site. Run from the repo root; deploy/cloudflare/ must be there.
 #   stage-prod.sh DIST SHA [PUZZLES]
+#   GOTD_AHEAD  (optional, the repository variable of the same name; unset = off) K: only the
+#            puzzles of today and of the next K days (UTC) ship, so nobody can read tomorrow's
+#            puzzle in advance. The window moves on with every deploy: gotd.yml deploys once a UTC
+#            day for that (select-puzzles.sh). K=1 is the least, the next day's puzzle must be
+#            there at midnight; K=2 survives one failed daily release.
 #   PUZZLES  tree id of demo/GameOfDay (git rev-parse REF:demo/GameOfDay). Its puzzles replace
 #            the ones of the checked-out commit, so the Game of Day is released on its own, not
 #            with the code (see gotd.yml). build.json records the id as "puzzles".
@@ -35,6 +40,21 @@ if [ -n "$puzzles" ]; then
   mkdir -p "$dist/zigzag/demo/GameOfDay"
   rm -f "$dist/zigzag/demo/GameOfDay"/*.txt
   cp "${files[@]}" "$dist/zigzag/demo/GameOfDay/"
+fi
+
+if [ -n "${GOTD_AHEAD:-}" ]; then
+  [[ "$GOTD_AHEAD" =~ ^[0-9]+$ ]] || die "GOTD_AHEAD='$GOTD_AHEAD' is not a number of days"
+  last=$(date -u -d "+$GOTD_AHEAD day" +%Y%m%d)
+  dropped=0
+  for file in "$dist/zigzag/demo/GameOfDay"/*.txt; do
+    [ -e "$file" ] || continue
+    day=$(basename "$file" .txt)
+    if [[ "$day" =~ ^[0-9]{8}$ ]] && [ "$day" -gt "$last" ]; then
+      rm -f "$file"
+      dropped=$((dropped + 1))
+    fi
+  done
+  echo "GOTD_AHEAD=$GOTD_AHEAD: $dropped puzzle(s) after $last left out"
 fi
 
 cp deploy/cloudflare/_headers "$dist/"

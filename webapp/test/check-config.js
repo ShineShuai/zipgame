@@ -3,7 +3,8 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { LEADERBOARD, BEHAVIOUR, SOLID_RELEASE, SYNC, THEMES } from '../src/config.js';
+import { LEADERBOARD, BEHAVIOUR, CHAMP, SOLID_RELEASE, SYNC, THEMES } from '../src/config.js';
+import { SEED_MIN } from '../src/core/hist.js';
 import { releaseDays } from '../src/features/solid-release.js';
 import { validDigits } from '../src/themes/calendar.js';
 
@@ -80,4 +81,7 @@ for (const [page, network, extra] of pages) {
   assert.deepEqual(csp['connect-src'].filter(v => v !== "'self'").sort(), expected, `${page}: connect-src must list exactly the origins of config.js (and the brokers of src/coop/config.js on index.html)`);
   for (const name of ['object-src', 'base-uri']) assert.ok(csp[name], `${page}: ${name} missing`);
 }
+assert.equal(typeof CHAMP.enabled, 'boolean', 'CHAMP.enabled must be true or false');
+assert.ok(Number.isInteger(CHAMP.minPlayers) && CHAMP.minPlayers >= SEED_MIN + 1,
+  'CHAMP.minPlayers must be at least SEED_MIN + 1 (core/hist.js): the seed players and you');
 console.log('config ok');

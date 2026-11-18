@@ -173,7 +173,8 @@ export function createLeaderboard({ always, chain }, { fetchFn = (...a) => fetch
 export const MAX_ROUNDS = 3;
 
 // The attempt record after one submit round `r` (result of submit()); `order` = lb.readOrder.
-//   sent: true = nothing left to do (complete, rejected, skipped or out of rounds); the record is then { solved, time, sent, stats } only.
+//   sent: true = nothing left to do (complete, rejected, skipped or out of rounds); the record is then { solved, time, sent, stats } only
+//   (and { live, n } when it had them: the champion rule, features/champ.js).
 //   sent: false keeps { done, rounds, statsFrom } for the retry (replay.unsent() finds it by sent === false).
 // `stats` is the summary of the highest-priority backend that has answered so far: a retry replaces it only with an answer from a backend
 // earlier in `order`. Returns `prev` itself when nothing was stored anywhere (e.g. offline): the next page load tries again without counting a round.
@@ -185,8 +186,9 @@ export function afterSubmit(prev, r, order) {
   const rounds = (prev.rounds || 0) + 1;
   const finished = r.status === 'skipped' || r.status === 'rejected' || r.complete;
   const sent = finished || rounds >= MAX_ROUNDS;
-  if (sent) return { solved: prev.solved, time: prev.time, sent: true, stats };
-  return { solved: prev.solved, time: prev.time, sent: false, stats, statsFrom: better ? r.backend : prev.statsFrom, done: r.done, rounds };
+  const kept = prev.live ? { live: true, n: prev.n } : {};
+  if (sent) return { solved: prev.solved, time: prev.time, sent: true, ...kept, stats };
+  return { solved: prev.solved, time: prev.time, sent: false, ...kept, stats, statsFrom: better ? r.backend : prev.statsFrom, done: r.done, rounds };
 }
 
 // One submit round for the solved attempt of `date` (first submit, or a retry of a record with sent === false): writes the solve to the backends
