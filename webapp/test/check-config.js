@@ -84,4 +84,7 @@ for (const [page, network, extra] of pages) {
 assert.equal(typeof CHAMP.enabled, 'boolean', 'CHAMP.enabled must be true or false');
 assert.ok(Number.isInteger(CHAMP.minPlayers) && CHAMP.minPlayers >= SEED_MIN + 1,
   'CHAMP.minPlayers must be at least SEED_MIN + 1 (core/hist.js): the seed players and you');
+assert.ok(CHAMP.backfillUntil === null || (/^\d{4}-\d{2}-\d{2}$/.test(CHAMP.backfillUntil)
+  && new Date(CHAMP.backfillUntil).toISOString().startsWith(CHAMP.backfillUntil)),
+'CHAMP.backfillUntil must be null or a UTC date YYYY-MM-DD');
 console.log('config ok');

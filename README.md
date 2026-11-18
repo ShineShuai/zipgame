@@ -95,6 +95,8 @@ another one (add its kind, size and seed to `build-puzzles.mjs`).
   of the Day (not a replay) is a **champion win**; every 5 earn a reward pick, a replay chance or an
   unlock chance (`webapp/src/features/champ.js`, `webapp/src/core/champ-seal.js`: the wins are kept
   in a sealed ledger, so editing the stored data earns nothing; the rules are in `config.js` `CHAMP`).
+  Wins from before the rule are credited once per device from the old records, until
+  `CHAMP.backfillUntil` (`webapp/src/features/champ-backfill.js` lists what to delete afterwards).
 - **Hints** in free play, and **share codes** to hand a puzzle to a friend.
 - Per-type, per-size **stats** (today and all time, by UTC day), kept in `localStorage` and falling back
   to memory when storage is unavailable. **Device sync** is optional and needs no account: link two of

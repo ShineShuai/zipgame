@@ -238,16 +238,21 @@ ta('champ: the record keeps live and the board size through the submit rounds', 
   await store.recordGotd(7, dateAt(2), 31.2, false, false, true);
   eq(await store.loadAttempt(dateAt(0)),
     { solved: true, time: 31.2, sent: false, live: true, n: 7 });
-  eq(await store.loadAttempt(dateAt(1)), { solved: true, time: 31.2, sent: false }, 'a replay');
+  eq(await store.loadAttempt(dateAt(1)),
+    { solved: true, time: 31.2, sent: false, live: false }, 'a replay says it is not live');
   eq(await store.loadAttempt(dateAt(2)), { solved: true, time: 31.2 }, 'nothing to submit');
   const order = ['asia'], prev = await store.loadAttempt(dateAt(0));
   const done = r => afterSubmit(prev, { status: 'ok', done: ['asia'], complete: r, backend: 'asia',
     summary: stats() }, order);
   eq(done(true), { solved: true, time: 31.2, sent: true, live: true, n: 7, stats: stats() });
   eq(done(false).live, true);
-  eq(afterSubmit({ solved: true, time: 9, sent: false }, { status: 'ok', done: ['asia'],
-    complete: true, backend: 'asia', summary: stats() }, order),
-  { solved: true, time: 9, sent: true, stats: stats() }, 'a replay stays without the fields');
+  const reply = {
+    status: 'ok', done: ['asia'], complete: true, backend: 'asia', summary: stats(),
+  };
+  eq(afterSubmit({ solved: true, time: 9, sent: false }, reply, order),
+    { solved: true, time: 9, sent: true, stats: stats() }, 'an old record has no fields');
+  eq(afterSubmit({ solved: true, time: 9, sent: false, live: false }, reply, order),
+    { solved: true, time: 9, sent: true, live: false, stats: stats() }, 'live: false stays');
 });
 
 registerAsyncTests();
