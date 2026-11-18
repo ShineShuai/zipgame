@@ -1,0 +1,185 @@
+name: Game of Day release
+
+# Releases the Game of Day puzzles of main (demo/GameOfDay) to https://play.vintoshine.com/zigzag/
+# on their own, without the code release (prod.yml): the code that is live now plus the puzzles of
+# main.
+#  - Automatic: after a push to main that touches demo/GameOfDay, and once a day as a safety net.
+#    Only with GOTD_DRY_RUN=false (otherwise it checks and stages, nothing more), and only when the
+#    puzzles of main are not live yet. The daily run is also the alarm: it fails when fewer than
+#    MIN_PUZZLE_DAYS puzzles are ahead in a row. The rules: .github/scripts/select-puzzles.sh.
+#  - Manual: Actions -> Game of Day release -> Run workflow.
+# The code is the commit that build.json shows as live. The puzzles, the deploy config and the
+# scripts come from main. The tags (prod, deploy/...) mark the code, so nothing here moves them.
+# Every deploy of prod.yml carries the puzzles of main too, so the two never undo each other, and
+# they share one lock. See deploy/README.md.
+
+run-name: >-
+  ${{ github.event_name == 'workflow_dispatch' && format('gotd - {0}', inputs.reason)
+  || format('gotd {0}', github.event_name) }}
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'demo/GameOfDay/**'
+  schedule:
+    - cron: '37 21 * * *'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Why (shown in the run summary)
+        required: true
+      dry_run:
+        description: Run the checks and stage the site, deploy nothing
+        type: boolean
+        default: false
+      smoke:
+        description: Smoke test after the deploy
+        type: boolean
+        default: true
+
+concurrency:
+  group: prod-deploy   # the lock of prod.yml: the two never deploy at the same time
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  WRANGLER: wrangler@4   # pin the exact version printed in a deploy log, e.g. wrangler@4.x.y
+
+jobs:
+  select:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.sel.outputs.run }}
+      sha: ${{ steps.sel.outputs.sha }}
+      puzzles: ${{ steps.sel.outputs.puzzles }}
+      live_puzzles: ${{ steps.sel.outputs.live_puzzles }}
+      dry: ${{ steps.sel.outputs.dry }}
+      smoke: ${{ steps.sel.outputs.smoke }}
+      short: ${{ steps.sel.outputs.short }}
+      reason: ${{ steps.sel.outputs.reason }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select what to release
+        id: sel
+        env:
+          EVENT: ${{ github.event_name }}
+          REASON: ${{ inputs.reason }}
+          DRY_RUN_INPUT: ${{ inputs.dry_run }}
+          SMOKE_INPUT: ${{ inputs.smoke }}
+          PROD_FREEZE: ${{ vars.PROD_FREEZE }}
+          GOTD_DRY_RUN: ${{ vars.GOTD_DRY_RUN }}
+          MIN: ${{ vars.MIN_PUZZLE_DAYS }}
+        run: bash .github/scripts/select-puzzles.sh
+
+  # Red when the daily run finds too few puzzles ahead. It does not hold back the release above:
+  # the puzzles that exist should be live all the same.
+  alarm:
+    needs: select
+    if: ${{ needs.select.outputs.short == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Too few puzzles ahead
+        env:
+          MIN: ${{ vars.MIN_PUZZLE_DAYS }}
+        run: |
+          echo "::error::fewer than MIN_PUZZLE_DAYS=${MIN:-10} puzzles ahead in a row: add puzzles"
+          exit 1
+
+  deploy:
+    needs: select
+    if: ${{ needs.select.outputs.run == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://play.vintoshine.com/zigzag/
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      SHA: ${{ needs.select.outputs.sha }}
+      PUZZLES: ${{ needs.select.outputs.puzzles }}
+      LIVE_PUZZLES: ${{ needs.select.outputs.live_puzzles }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # SHA is the code that is live. The deploy config and the scripts stay those of main.
+      - name: Check out the live code
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ctl"
+          cp -a deploy/cloudflare .github/scripts/smoke-site.sh .github/scripts/assert-private.sh \
+            .github/scripts/stage-prod.sh .github/scripts/check-puzzles.mjs "$RUNNER_TEMP/ctl/"
+          git checkout --quiet --detach "$SHA"
+          rm -rf deploy/cloudflare
+          mkdir -p deploy
+          cp -a "$RUNNER_TEMP/ctl/cloudflare" deploy/cloudflare
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Stage the play app
+        run: bash "$RUNNER_TEMP/ctl/stage-prod.sh" dist "$SHA" "$PUZZLES"
+
+      # No test tiers: the code is the one that is live, and it was tested when it was released.
+      # What can go wrong is a puzzle that this code cannot read.
+      - name: Puzzles fit the live code
+        run: node "$RUNNER_TEMP/ctl/check-puzzles.mjs" dist/zigzag/demo/GameOfDay
+
+      - name: Deploy to Cloudflare
+        if: ${{ needs.select.outputs.dry != 'true' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          WRANGLER_SEND_METRICS: "false"
+        run: npx --yes "$WRANGLER" deploy --config deploy/cloudflare/wrangler.toml
+
+      - name: Smoke test
+        id: smoke
+        if: ${{ needs.select.outputs.dry != 'true' && needs.select.outputs.smoke == 'true' }}
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          bash "$RUNNER_TEMP/ctl/smoke-site.sh" \
+            https://play.vintoshine.com/zigzag dist/zigzag "$SHA" "$PUZZLES"
+
+      # The run stays red, but the site is back on the puzzles that were live before (the ones
+      # of the live commit itself when build.json did not name any).
+      - name: Roll back to the previous puzzles
+        if: ${{ failure() && steps.smoke.conclusion == 'failure' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          set -euo pipefail
+          previous=$LIVE_PUZZLES
+          if [ -n "$previous" ] && ! git cat-file -e "$previous^{tree}" 2> /dev/null; then
+            previous=
+          fi
+          bash "$RUNNER_TEMP/ctl/stage-prod.sh" dist "$SHA" "$previous"
+          npx --yes "$WRANGLER" deploy --config deploy/cloudflare/wrangler.toml
+          echo "::error::The smoke test failed: rolled back to the puzzles ${previous:0:7}"
+
+      - name: Summary
+        if: always()
+        env:
+          REASON: ${{ needs.select.outputs.reason }}
+          DRY: ${{ needs.select.outputs.dry }}
+        run: |
+          {
+            echo "### Game of Day release"
+            echo "- puzzles: \`${PUZZLES:0:7}\`, live before: \`${LIVE_PUZZLES:0:7}\`"
+            echo "- dry run: $DRY"
+            echo "- live code: \`${SHA:0:7}\`"
+            echo "- reason: $REASON"
+          } >> "$GITHUB_STEP_SUMMARY"

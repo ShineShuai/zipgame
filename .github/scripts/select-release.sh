@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Decides what the production workflow deploys. Run from a full clone (fetch-depth 0).
-# Writes sha, live, run, dry, smoke, strict, reason to $GITHUB_OUTPUT and a line to
+# Writes sha, live, run, dry, smoke, reason to $GITHUB_OUTPUT and a line to
 # $GITHUB_STEP_SUMMARY.
 #   EVENT                   workflow_dispatch | schedule
 #   manual: REF REASON DRY_RUN_INPUT SMOKE_INPUT
@@ -38,7 +38,6 @@ if [ "${EVENT:?}" = workflow_dispatch ]; then
   out run true
   out dry "${DRY_RUN_INPUT:-false}"
   out smoke "${SMOKE_INPUT:-true}"
-  out strict false
   out reason "$(tr '\n' ' ' <<< "${REASON:-}")"
   exit 0
 fi
@@ -78,5 +77,4 @@ out live "$live"
 out run true
 out dry "$dry"
 out smoke true
-out strict true
 out reason "scheduled promote of main@${cand:0:7}"
