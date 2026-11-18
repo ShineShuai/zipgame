@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { SYNCED_KEYS } from '../../src/core/sync/merge.js';
+import { backfillChamp } from '../../src/features/champ-backfill.js';
 import { CHAMP_KEY, createChamp } from '../../src/features/champ.js';
 import { dateOfDay } from '../../src/features/daily.js';
 import { createGift } from '../../src/features/gift.js';
@@ -319,4 +320,26 @@ test('champion wins: counted over both devices, and a pick is handed out once', 
   assert.equal(await ca.takePicks(), 0, 'B handed it out');
   assert.equal(await won(ca, 3), false, 'a day another device won is not counted again');
   assert.equal(ca.progress().wins, 5);
+});
+
+test('champion backfill: both devices credit the old records, the group counts once', async () => {
+  const [a, b] = [await device(), await device()];
+  const cfg = { minPlayers: 4, backfillUntil: '2026-12-02' };
+  const sa = createStore(a.port, SIZES, {}, a.sync), sb = createStore(b.port, SIZES, {}, b.sync);
+  const answer = { n: 9, mean: 40, top: 20, pct: 100 };
+  for (const k of [0, 1, 2]) {
+    const old = { solved: true, time: 30, sent: true, stats: answer };
+    await sa.saveAttempt(dateOfDay(19990 - k), old);
+  }
+  await link(a, b);
+  const ca = createChamp(a.port, cfg, at(20000), a.sync);
+  const cb = createChamp(b.port, cfg, at(20000), b.sync);
+  await ca.init();
+  await cb.init();
+  const now = () => new Date('2026-11-25T10:00:00Z');
+  assert.equal(await backfillChamp(ca, sa, a.port, cfg, now), 3);
+  assert.equal(await backfillChamp(cb, sb, b.port, cfg, now), 3, 'its own copy holds them too');
+  await link(a, b);
+  assert.equal(ca.progress().wins, 3, 'the group counts each day once');
+  assert.equal(cb.progress().wins, 3);
 });

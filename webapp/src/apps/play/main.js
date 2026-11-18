@@ -7,6 +7,7 @@ import { tapCombo, DEV_TAP_MS, devLinkMode, savePin, loadPin } from '../../featu
 import { createDaily } from '../../features/daily.js';
 import { createCalib, calibRequested } from '../../features/calib.js';
 import { createChamp } from '../../features/champ.js';
+import { backfillChamp } from '../../features/champ-backfill.js'; // BACKFILL
 import { createReplay } from '../../features/replay.js';
 import { createStreak } from '../../features/streak.js';
 import { createSlotsSync } from '../../features/slots-sync.js';
@@ -346,6 +347,7 @@ async function initLang() {
     bind({ champ: createChamp(storage, CHAMP, undefined, sync) });
     try {
       await champ.init();
+      await backfillChamp(champ, store, storage, CHAMP); // BACKFILL (see champ-backfill.js)
       await champ.catchUp(store);
       champPicks = await champ.takePicks();
     } catch (e) { console.warn('champion init failed:', e); }

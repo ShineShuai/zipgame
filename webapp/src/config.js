@@ -116,4 +116,7 @@ export const SOLID_RELEASE = {
 // (core/hist.js): the seed players (tools/gotd-seed.mjs, 3..8 a day) plus the player. When the
 // seed players are removed, lower SEED_MIN there, then this, and check the host clock instead
 // (the `Date` header of the puzzle file's response) or the empty-day rule is gone.
-export const CHAMP = { enabled: true, minPlayers: 4 };
+// backfillUntil: the UTC date (YYYY-MM-DD, inclusive) until which a device that has not done it
+// yet credits the wins of its old records once (features/champ-backfill.js): the release date
+// + 7 days. null = none. When it has passed, delete the backfill (the file lists what to remove).
+export const CHAMP = { enabled: true, minPlayers: 4, backfillUntil: '2026-12-02' };

@@ -140,9 +140,10 @@ export function createStore(storage, sizes, scopes = {}, sync = null) {
     gotdBest: n => best[n] || null,
     // pending: also submit to the averages backend (sent:false until it answers).
     // replay: the date is a past one; the per-size Game-of-Day time (b in the stats blob, shown in the menu table) belongs to the live game and stays as it is.
-    // live: a live game (features/champ.js): the record keeps it, with the board size n, for the
-    // champion rule.
-    async recordGotd(n, date, time, pending = false, replay = false, live = false) {
+    // live (features/champ.js): true = a live game, the record keeps it with the board size n for
+    // the champion rule; false = not live (a replay), kept as false so that a record from before
+    // the rule (no field) can be told apart; undefined = nothing is kept.
+    async recordGotd(n, date, time, pending = false, replay = false, live = undefined) {
       if (!replay) {
         const prev = best[n];
         if (!prev || prev.date !== date || prev.time > time) {
@@ -150,8 +151,17 @@ export function createStore(storage, sizes, scopes = {}, sync = null) {
           await patch(b => { const mine = b.b[n]; if (!mine || mine[0] !== date || mine[1] > time) b.b[n] = [date, time]; });
         }
       }
-      const kept = live ? { live: true, n } : {};
+      const kept = live === undefined ? {} : live ? { live: true, n } : { live: false };
       await store.saveAttempt(date, pending ? { solved: true, time, sent: false, ...kept } : { solved: true, time });
+    },
+    // BACKFILL (features/champ-backfill.js, remove with it): every stored record, as the group
+    // sees them (device sync): { date: record }.
+    async allAttempts() {
+      await convertAttempts();
+      const r = await storage.get(GOTD_KEY);
+      const blob = view(GOTD_KEY, r ? parseGotd(r.value) : null);
+      const records = Object.entries(blob ? blob.a : {}).filter(([, rec]) => isRecord(rec));
+      return Object.fromEntries(records);
     },
     gotdSolves: () => gotdCount, // Game-of-Day dates solved in total (as of the last load or save)
     attempt: () => attempts[attemptDate] || null, attemptDate: () => attemptDate, // today's record (as of the last hydrateAttempt)

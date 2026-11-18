@@ -61,13 +61,18 @@ export function createChamp(storage, cfg, now = () => new Date(), sync = null) {
       if (!s || !rec || !rec.live || !rec.stats) {
         return false;
       }
+      return this.settle(date, qualifies(rec, cfg.minPlayers), rec.time);
+    },
+
+    // The day of `date` is judged: a win (with the solve time in seconds) or not. Once per day:
+    // a day that was judged here or won anywhere in the group is not judged again. True = a win.
+    async settle(date, won, time) {
       const day = dayOfDate(date);
-      if (s.j.includes(day) || daysOf(group()).has(day)) {
+      if (!s || s.j.includes(day) || daysOf(group()).has(day)) {
         return false;
       }
-      const won = qualifies(rec, cfg.minPlayers);
       const next = judged(s, day);
-      return (await commit(won ? win(next, day, Math.round(rec.time * 1000)) : next)) && won;
+      return (await commit(won ? win(next, day, Math.round(time * 1000)) : next)) && won;
     },
 
     // Judges the days of the last CATCH_UP_DAYS that were played live, have an answer, and were
