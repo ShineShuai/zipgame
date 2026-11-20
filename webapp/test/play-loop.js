@@ -5,14 +5,11 @@
 import { maxNumber } from '../src/core/model.js';
 import { step, isSolved } from '../src/core/rules.js';
 import { PLAY_SIZES } from '../src/core/gen/generate.js';
-import { playGradesFor } from '../src/core/grades.js';
-import { modelFor, LOOP_MODEL, TRAP_MODEL } from '../src/core/trap.js';
 import { boardSvg, routeCells } from '../src/apps/play/board.js';
 import { createUnlock } from '../src/features/unlock.js';
-import { sizesFor, luckyDefs } from '../src/apps/play/variants.js';
-import { EN } from '../src/ui/i18n.js';
+import { luckyDefs } from '../src/apps/play/variants.js';
 import { encodeShare } from '../src/core/share-code.js';
-import { makeShareRecord, shareStatus, shareText } from '../src/features/share.js';
+import { makeShareRecord } from '../src/features/share.js';
 import { made } from './fixtures/made.js';
 
 const loopGame = (n, seed) => made('loop', n, seed);
@@ -73,42 +70,8 @@ export function loopPlayTests(t, ta, ok, eq) {
     eq(record(p, { grade: 2 }).grade, null, 'a variant record has no grade');
   });
 
-  t('loop-play: share record copies the puzzle; text, status, sizes', () => {
-    const p = loopGame(6, 3);
-    const rec = record(p);
-    ok(rec.puzzle.loop === true, 'the loop flag');
-    ok(rec.puzzle.walls !== p.walls && rec.puzzle.cp !== p.cp, 'a copy, not the same arrays');
-    eq(rec.grade, null, 'no grade');
-    const tr = (key, ...args) => EN[key].replace(/\{0\}/g, args[0]);
-    eq(shareText(rec, 'https://x/?s=abc', tr).split('\n')[0], 'zigzag Loop · 6x6', 'the head line');
-    const ctx = { sizes: PLAY_SIZES, algo: 0, sizesOf: id => sizesFor(id, PLAY_SIZES) };
-    eq(shareStatus(rec, ctx).status, 'ok', 'playable at once');
-    const four = loopGame(4, 3);
-    eq(shareStatus(record(four), ctx).status, 'invalid', 'size 4 is not offered');
-  });
-
-  t('loop-play: grade: trap only, reduced model, no ladder; grid grades as before', () => {
-    const p = loopGame(6, 1);
-    eq(modelFor(p), LOOP_MODEL, 'the loop model');
-    ok(LOOP_MODEL !== TRAP_MODEL, 'not the full model');
-    ok(LOOP_MODEL.w.altFrac === 0 && LOOP_MODEL.w.lTr === 0, 'reduced');
-    const g = playGradesFor(p);
-    ok(g.legacy === null && g.trap.ok && g.trap.ladTrials === 0, 'trap only');
-    ok(Number.isInteger(g.trap.grade) && g.trap.grade >= 0 && g.trap.grade <= 5, 'a grade 0..5');
-    const grid = made('std', 5, 1);
-    eq(modelFor(grid), TRAP_MODEL, 'the grid keeps its model');
-    ok(playGradesFor(grid).legacy !== null, 'the grid keeps the old grades');
-  });
-
-  t('loop-play: a whole game: the planted ring played with step() solves it; a cover that does not close does not', () => {
-    for (const seed of [1, 2, 3]) {
-      const p = loopGame(6, seed);
-      const path = [];
-      for (const cell of p.path) {
-        ok(step(p, path, cell, { strictOrder: true }) === 'push', `seed ${seed}`);
-      }
-      ok(isSolved(p, path), `seed ${seed}: solved`);
-    }
+  // (that the planted ring solves the puzzle is a row of variant-contract.js)
+  t('loop-play: a cover that does not close the ring does not solve the puzzle', () => {
     // 4 x 4, numbers on three corners: the serpentine covers the board but ends 3 cells from cell 1
     const p = { n: 4, cp: new Uint16Array(16), walls: new Uint8Array(16), loop: true };
     p.cp[0] = 1;

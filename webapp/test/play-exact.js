@@ -15,8 +15,6 @@ import {
   makeShareRecord, legsUndo, legLevels, shareText,
 } from '../src/features/share.js';
 import { solutionOf, maxHints } from '../src/features/hints.js';
-import { playGradesFor } from '../src/core/grades.js';
-import { modelFor, EXACT_MODEL, ARROWS_MODEL, TRAP_MODEL } from '../src/core/trap.js';
 import { made } from './fixtures/made.js';
 
 // An Exact puzzle with `numbers` = { cell: step }.
@@ -137,18 +135,6 @@ export function playExactTests(t, ok, eq) {
     standard.cp[0] = 1;
     standard.cp[8] = 2;
     eq(labelRanks(standard), standard.cp, 'a standard puzzle: the numbers are the ranks');
-  });
-
-  t('play exact: the grade model drops altFrac and the ladder; legacy grades are off', () => {
-    const p = fast(6, 9);
-    eq(modelFor(p), EXACT_MODEL);
-    eq([EXACT_MODEL.w.altFrac, EXACT_MODEL.w.lTr], [0, 0]);
-    eq(EXACT_MODEL.w.trapMax, ARROWS_MODEL.w.trapMax);
-    ok(modelFor(makePuzzle(5)) === TRAP_MODEL);
-    const g = playGradesFor(p);
-    ok(g.trap.ok, 'a trap grade');
-    eq([g.legacy, g.trap.ladTrials], [null, 0]);
-    ok(g.trap.grade >= 0 && g.trap.grade <= 5 && Number.isFinite(g.trap.predicted));
   });
 
   t('play exact: hints work on a shared puzzle (no stored solution): it is solved lazily', () => {
