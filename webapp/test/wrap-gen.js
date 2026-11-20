@@ -16,7 +16,7 @@ import { makeUnique } from '../src/core/gen/walls.js';
 import {
   generate, generateUnique, randomPathPuzzle, WRAP_CANDIDATES,
 } from '../src/core/gen/generate.js';
-import { bruteKeys } from './wrap.js';
+import { solutionKeys as bruteKeys } from './oracle.js';
 
 const run = g => {
   let step;

@@ -2,7 +2,7 @@
 // the directed solver (core/solver/solve-dir.js). Registered by unit/arrows.test.js: directedTests(t, ok,
 // eq).
 import {
-  makePuzzle, clonePuzzle, validate, cellCount, startCell, endCell, maxNumber,
+  makePuzzle, clonePuzzle, validate, endCell,
 } from '../src/core/model.js';
 import {
   edgeId, allEdges, setWallId, setArrowId, arrowDirId, arrowAllows, arrowMove, arrowIds,
@@ -10,6 +10,7 @@ import {
 } from '../src/core/edges.js';
 import { canStep, step } from '../src/core/rules.js';
 import { sampled } from './harness.js';
+import { solutionKeys } from './oracle.js';
 import { solve } from '../src/core/solver/solve.js';
 import { buildMoves } from '../src/core/solver/solve-dir.js';
 import { makeDirPropagator } from '../src/core/solver/propagate-dir.js';
@@ -62,33 +63,8 @@ function plantedArrowPuzzle(seed, n, K, arrowFrac) {
 }
 
 // Every solution by plain enumeration over the rules (canStep) and the checkpoint order, as sorted
-// "a,b,c" strings.
-function brute(p) {
-  const T = p.n * p.n;
-  const K = maxNumber(p);
-  const total = cellCount(p);
-  const end = endCell(p);
-  const vis = new Uint8Array(T);
-  const path = [];
-  const found = [];
-  const go = (cell, need) => {
-    vis[cell] = 1;
-    path.push(cell);
-    const mark = p.cp[cell];
-    if (!mark || mark === need) {
-      const next = mark ? need + 1 : need;
-      if (path.length < total) {
-        for (let v = 0; v < T; v++) if (!vis[v] && canStep(p, cell, v)) go(v, next);
-      } else if (cell === end && next === K + 1) {
-        found.push(path.join(','));
-      }
-    }
-    vis[cell] = 0;
-    path.pop();
-  };
-  go(startCell(p), 1);
-  return found.sort();
-}
+// "a,b,c" strings (test/oracle.js).
+const brute = solutionKeys;
 
 // The ways to run the directed solver: incremental propagation with the leg bound and the table of
 // dead positions (the default), without the table, without the leg bound, propagation recomputed

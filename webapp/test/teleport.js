@@ -16,6 +16,7 @@ import {
 import { symmetryKey, transformPuzzle, ratingKey } from '../src/core/ratings-io.js';
 import { boardConnectivity, boardPropagation } from '../src/core/connectivity.js';
 import { makeRng, shuffle } from '../src/core/rng.js';
+import { gridMoves, oracle } from './oracle.js';
 
 const threw = f => {
   try {
@@ -37,50 +38,9 @@ export function teleportPuzzle(n, numbers, portals) {
 }
 
 // Every solution of p by plain depth-first search over the grid and the portal edges, with no
-// pruning at all: the paths (as cell lists) that start on 1, visit the numbers in order, end on
-// the
-// highest and cover every cell.
-export function brutePaths(p) {
-  const n = p.n;
-  const T = n * n;
-  const K = Math.max(...p.cp);
-  const start = p.cp.indexOf(1);
-  const end = p.cp.indexOf(K);
-  const vis = new Uint8Array(T);
-  const paths = [];
-  const trail = [];
-  const around = cell => {
-    const out = [];
-    for (let d = 0; d < 4; d++) {
-      const v = neighbourCell(n, false, cell, d);
-      if (v >= 0 && !(p.walls[Math.min(cell, v)] & (Math.abs(cell - v) === 1 ? 1 : 2))) out.push(v);
-    }
-    const partner = portalPartner(p.portals, cell);
-    if (partner >= 0) out.push(partner);
-    return out;
-  };
-  const go = (cell, count, need) => {
-    vis[cell] = 1;
-    trail.push(cell);
-    let next = need;
-    let alive = true;
-    if (p.cp[cell]) {
-      if (p.cp[cell] !== next) alive = false;
-      else next++;
-    }
-    if (alive) {
-      if (count === T) {
-        if (cell === end && next === K + 1) paths.push(trail.slice());
-      } else {
-        for (const v of around(cell)) if (!vis[v]) go(v, count + 1, next);
-      }
-    }
-    trail.pop();
-    vis[cell] = 0;
-  };
-  if (start >= 0) go(start, 1, 1);
-  return paths;
-}
+// pruning at all (test/oracle.js): the paths (as cell lists) that start on 1, visit the numbers in
+// order, end on the highest and cover every cell.
+export const brutePaths = p => oracle(p, { moves: gridMoves(p) }).paths;
 
 // A random Hamiltonian path of the grid plus the portal edges: depth-first search in random order,
 // retried on a budget (null when none was found).

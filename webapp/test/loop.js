@@ -2,7 +2,7 @@
 // numbers 1..K are met in cyclic order. Model (core/model.js), rules (core/rules.js), plain-text
 // format (core/format.js) and the solver (core/solver/solve-loop.js, checked against a plain
 // brute-force search). Registered by unit/loop.test.js: loopTests(t, ok, eq).
-import { makePuzzle, clonePuzzle, validate, cellCount, startCell, maxNumber } from '../src/core/model.js';
+import { makePuzzle, clonePuzzle, validate } from '../src/core/model.js';
 import { isSolved, step, canStep } from '../src/core/rules.js';
 import { serialize, parse } from '../src/core/format.js';
 import { solve } from '../src/core/solver/solve.js';
@@ -10,6 +10,7 @@ import { loopClosers } from '../src/core/solver/solve-loop.js';
 import { allEdges, setWallId, edgeId } from '../src/core/edges.js';
 import { neighbourCell } from '../src/core/geom.js';
 import { makeRng, shuffle } from '../src/core/rng.js';
+import { closes, oracle, ruleMoves } from './oracle.js';
 
 const threw = f => {
   try {
@@ -36,33 +37,10 @@ const RING = [0, 1, 2, 3, 7, 6, 5, 9, 10, 11, 15, 14, 13, 12, 8, 4];
 
 // Every path that covers all cells, follows canStep, starts on number 1, meets the numbers in
 // order and ends on a cell that canStep to cell 1. The plain definition of the rule, with none of
-// the solver's pruning. -> every such path.
-export function bruteLoop(p) {
-  const total = cellCount(p);
-  const start = startCell(p);
-  const K = maxNumber(p);
-  const visited = new Uint8Array(p.n * p.n);
-  const path = [];
-  const found = [];
-  const walk = (cell, next) => {
-    const number = p.cp[cell];
-    if (number && number !== next) return;
-    path.push(cell);
-    visited[cell] = 1;
-    if (path.length === total) {
-      if (next - (number ? 0 : 1) === K && canStep(p, cell, start)) found.push(path.slice());
-    } else {
-      for (let d = 0; d < 4; d++) {
-        const v = neighbourCell(p.n, false, cell, d);
-        if (v >= 0 && !visited[v] && canStep(p, cell, v)) walk(v, number ? next + 1 : next);
-      }
-    }
-    visited[cell] = 0;
-    path.pop();
-  };
-  if (start >= 0) walk(start, 1);
-  return found;
-}
+// the solver's pruning (test/oracle.js). -> every such path.
+export const bruteLoop = p => oracle(p, {
+  moves: ruleMoves(p), endOnLast: false, accept: closes(p),
+}).paths;
 
 // Does the ring (the path and its closing edge) use the edge a-b?
 const usesEdge = (path, a, b) => {

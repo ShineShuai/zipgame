@@ -2,7 +2,7 @@
 // the distance and neighbour rules (core/geom.js), moves (core/rules.js), the solver on such
 // boards (core/solver/solve.js, checked against a plain brute-force search) and the plain-text
 // format (core/format.js). Registered by unit/wrap.test.js: wrapTests(t, ok, eq).
-import { makePuzzle, validate, cellCount, startCell, endCell } from '../src/core/model.js';
+import { makePuzzle, validate } from '../src/core/model.js';
 import { edgeId, edgeCells, allEdges, setWallId, wallIds, pathEdgeIds } from '../src/core/edges.js';
 import { canStep, step, isSolved } from '../src/core/rules.js';
 import { serialize, parse } from '../src/core/format.js';
@@ -10,6 +10,7 @@ import { solve } from '../src/core/solver/solve.js';
 import { buildNeighbors } from '../src/core/solver/prune.js';
 import { neighbourCell, gridDist, bipartite } from '../src/core/geom.js';
 import { makeRng, shuffle } from '../src/core/rng.js';
+import { solutionKeys } from './oracle.js';
 
 const torus = n => ({ ...makePuzzle(n), wrap: true });
 const threw = f => { try { f(); return false; } catch { return true; } };
@@ -49,31 +50,8 @@ function torusPuzzle(n, K, rnd, wallFrac = 0.3) {
   return { p, path };
 }
 
-// Every solution of p by plain depth-first search (no solver code): one legal move at a time, a
-// numbered cell only when its number is the next one, every cell once, ending on the last number.
-function bruteKeys(p) {
-  const T = p.n * p.n, total = cellCount(p), end = endCell(p), start = startCell(p);
-  const keys = [], path = [start], vis = new Uint8Array(T);
-  vis[start] = 1;
-  const walk = (cell, next) => {
-    if (path.length === total) {
-      if (cell === end && isSolved(p, path)) keys.push(path.join(','));
-      return;
-    }
-    for (let v = 0; v < T; v++) {
-      if (vis[v] || !canStep(p, cell, v)) continue;
-      const number = p.cp[v];
-      if (number && number !== next) continue;
-      vis[v] = 1;
-      path.push(v);
-      walk(v, number ? next + 1 : next);
-      path.pop();
-      vis[v] = 0;
-    }
-  };
-  walk(start, 2);
-  return keys.sort();
-}
+// Every solution of p by plain depth-first search (no solver code): test/oracle.js.
+const bruteKeys = solutionKeys;
 
 const ALL_PRUNES = {
   prune2: true, prop: true, seg: true, pocket: true, parity: true, legCollide: true,

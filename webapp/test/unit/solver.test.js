@@ -19,23 +19,10 @@ import { randomPathPuzzle } from '../../src/core/gen/generate.js';
 import { refNodeCap, REF_FLAGS } from '../../src/core/difficulty.js';
 import { solutionPath, trapProfile, TRAP_CFG } from '../../src/core/trap.js';
 import { t, eq, ok, registerAsyncTests, sampled } from '../harness.js';
+import { gridMoves, oracle } from '../oracle.js';
 import { cachedSamples, randPuzzle, sampleUniquePuzzles } from './helpers.js';
 
-// Exhaustive reference: enumerate every Hamiltonian path that obeys the rules.
-function brute(p) {
-  const n = p.n, T = n * n, K = Math.max(...p.cp), start = p.cp.indexOf(1), end = p.cp.indexOf(K), vis = new Uint8Array(T); let count = 0;
-  const nbr = i => { const r = (i / n) | 0, c = i % n, o = []; if (c < n - 1) o.push(i + 1); if (c > 0) o.push(i - 1); if (r < n - 1) o.push(i + n); if (r > 0) o.push(i - n); return o; };
-  const wall = (a, b) => p.walls[Math.min(a, b)] & (Math.abs(a - b) === 1 ? 1 : 2);
-  const go = (c, k, need) => {
-    vis[c] = 1;
-    let nd = need; if (p.cp[c]) { if (p.cp[c] !== nd) { vis[c] = 0; return; } nd++; }
-    if (k === T) { if (c === end && nd === K + 1) count++; vis[c] = 0; return; }
-    for (const v of nbr(c)) if (!vis[v] && !wall(c, v)) go(v, k + 1, nd);
-    vis[c] = 0;
-  };
-  if (start >= 0) go(start, 1, 1);
-  return count;
-}
+const brute = p => oracle(p, { moves: gridMoves(p), keep: false }).count;
 
 // The pruning options (prune2, prop, seg, parity, pocket, legCollide) only prune: with any of them on, in any combination, the
 // solver finds the same solutions in the same order, and visits no more nodes than without.
