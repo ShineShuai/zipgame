@@ -1,7 +1,6 @@
 // Tests of the Pentagon boards (core/pentagon.js, the open-border support of
 // core/surface/topology.js, solve.js and gen.js) and of the Pentagon generator
 // (core/gen/pentagon.js). Registered by unit/pentagon.test.js: pentagonTests(t, ok, eq).
-// Set PENTAGON_SLOW=1 for the 100-cell board (a few seconds per puzzle).
 import { hashStr } from '../src/core/rng.js';
 import { runSync } from '../src/core/run.js';
 import { surfaceTopology, SLOTS } from '../src/core/surface/topology.js';
@@ -37,7 +36,6 @@ import {
 } from '../src/core/surface/trap.js';
 import { TRAP_CFG, trapGradeOf, SIZE_GRADE_CAP } from '../src/core/trap.js';
 
-const slow = typeof process !== 'undefined' && Boolean(process.env.PENTAGON_SLOW);
 const board = n => surfaceTopology(PENTAGON_KIND, n);
 const neighboursOf = (top, cell) => {
   const found = [];
@@ -581,11 +579,9 @@ export function pentagonTests(t, ok, eq) {
     eq(shareStatus(small, { sizes: [5, 6, 7] }).status, 'invalid', 'without the registry');
   });
 
-  if (slow) {
-    t('pentagon-gen: a 100-cell puzzle has exactly one solution', () => {
-      const p = game(10, 1);
-      eq(solveSurface(p, { limit: 2, nodeCap: 0 }).count, 1);
-      ok(isSolved(p, p.path));
-    });
-  }
+  t.slow('pentagon-gen: a 100-cell puzzle has exactly one solution', () => {
+    const p = game(10, 1);
+    eq(solveSurface(p, { limit: 2, nodeCap: 0 }).count, 1);
+    ok(isSolved(p, p.path));
+  });
 }

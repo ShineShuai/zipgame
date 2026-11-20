@@ -72,7 +72,8 @@ wall time. A test that compares two implementations over a long list of cases ta
 
 `npm run test:themes` tests the theme tooling, `npm run test:server` the backend code in
 `webapp/server/` and `npm run test:tools` the research tools (fits, simulations, evaluations; about
-40 s, not part of `npm test`, run it after changing them). More tools (rating fits, Game of the Day
+40 s, not part of `npm test`, run it after changing them). `node test/run.mjs all coop` (or `sync`,
+`unit`, `cli`) runs one group of the unit tests; `npm run test:coop`, `test:sync` and `test:gotd` do. More tools (rating fits, Game of the Day
 seeding, benchmarks) are in [`webapp/tools/`](webapp/tools/README.md).
 
 Tests that only need a puzzle as input (co-op, play, share) read frozen ones from
@@ -441,8 +442,10 @@ workflow itself:
    page's links and its two languages; the app entry points need a browser, so the unit tests never load
    them and this catches a typo'd import that would otherwise break the page), then the unit, co-op
    and sync tests: the fast tier (`npm test`) on Node 20, every test (`npm run test:all`, the golden puzzles
-   included) on Node 22. On Node 22 it also runs the theme tests, the self-test of the release selection and
-   a dry run of the site staging.
+   included) on Node 22. On Node 22 it also runs the theme tests, the server and benchmark-result tests,
+   the self-test of the release selection and a dry run of the site staging. A separate job runs the
+   research tools' tests (`npm run test:tools`) when the tools, the engine they import or the frozen test
+   inputs changed.
 2. **Benchmark** on `main` and on demand (Actions → Webapp CI → Run workflow). It publishes the results
    in the job summary and as an artifact, and fails if the solver's pruning options ever change the
    solutions found. Timings depend on the runner, so treat them as informational.

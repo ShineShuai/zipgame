@@ -215,7 +215,7 @@
   "test/play-twopaths.js": 3,
   "test/play-wrap.js": 4,
   "test/print-golden.js": 1,
-  "test/run.mjs": 11,
+  "test/run.mjs": 8,
   "test/setup-balls.js": 1,
   "test/shared-games.js": 6,
   "test/solid.js": 5,
