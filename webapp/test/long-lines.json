@@ -182,7 +182,6 @@
   "test/coop/fake-broker.js": 5,
   "test/coop/invite.test.js": 1,
   "test/coop/join.test.js": 3,
-  "test/coop/pages.test.js": 16,
   "test/coop/replica.test.js": 1,
   "test/coop/screen-room.test.js": 3,
   "test/coop/session-ball.test.js": 1,
