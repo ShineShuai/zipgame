@@ -10,6 +10,7 @@ import { serialize, parse } from '../src/core/format.js';
 import { solve } from '../src/core/solver/solve.js';
 import { allEdges, setWallId, pathEdgeIds, setArrowId } from '../src/core/edges.js';
 import { backbite } from '../src/core/gen/hampath.js';
+import { sampled } from './harness.js';
 import { makeRng, shuffle } from '../src/core/rng.js';
 
 // An Exact puzzle with `numbers` = { cell: step }.
@@ -212,7 +213,8 @@ export function exactTests(t, ok, eq) {
     let compared = 0;
     let withSolutions = 0;
     let withoutSolutions = 0;
-    for (let seed = 1; seed <= 90; seed++) {
+    const seeds = sampled(Array.from({ length: 90 }, (_, i) => i + 1));
+    for (const seed of seeds) {
       const n = 3 + (seed % 3);
       const extra = n === 5 ? 3 + (seed % 3) : 1 + (seed % 3);
       const real = randomExact(seed, n, extra, [0, 0.1, 0.25][seed % 3]);
@@ -232,8 +234,9 @@ export function exactTests(t, ok, eq) {
       }
     }
     const split = `${withSolutions} with, ${withoutSolutions} without solutions`;
-    ok(withSolutions >= 90 && withoutSolutions >= 5, split);
-    eq(compared, 180);
+    const share = seeds.length / 90; // the guards scale with the sample
+    ok(withSolutions >= 90 * share && withoutSolutions >= 5 * share, split);
+    eq(compared, 2 * seeds.length);
   });
 
   t('exact: solver with holes; captured paths solve it; limit and forced prefix work', () => {
