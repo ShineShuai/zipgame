@@ -78,6 +78,14 @@ jobs:
         if: matrix.node == 22
         run: npm run test:themes
 
+      # The server code (the Cloudflare worker, the Turso schema and sync) and the checks of the benchmark's
+      # results run on in-memory fakes: about 3 seconds in all.
+      - name: Server and benchmark result tests
+        if: matrix.node == 22
+        run: |
+          npm run test:server
+          npm run test:bench
+
       # The rules that pick what production deploys (.github/scripts/select-release.sh).
       - name: Release selection self-test
         if: matrix.node == 22
@@ -110,6 +118,43 @@ jobs:
           bash .github/scripts/stage-prod.sh "$RUNNER_TEMP/dist" "$(git rev-parse HEAD)" "$puzzles"
           grep -q "\"puzzles\":\"$puzzles\"" "$RUNNER_TEMP/dist/zigzag/build.json"
           node .github/scripts/check-puzzles.mjs "$RUNNER_TEMP/dist/zigzag/demo/GameOfDay"
+
+  # The research tools (webapp/tools) have 11 tests of their own, about 45 seconds. They run when something they
+  # depend on changed: the tools, the engine they import, the frozen test inputs, or their tests; and when there
+  # is nothing to compare with (a manual run, a new branch). The pre-commit hook runs the tools on the data.
+  tools:
+    name: Research tools
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0       # the commit before the push, or the base of the pull request, has to be there
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Did the tools, or what they read, change?
+        id: changed
+        working-directory: .
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          run=true
+          if [ -n "$BASE" ] && [ "$BASE" != 0000000000000000000000000000000000000000 ] \
+              && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            if ! git diff --name-only "$BASE" HEAD \
+                | grep -qE '^webapp/(tools/|src/(core|features|platform|coop)/|test/tools\.test\.js|test/fixtures/)'; then
+              run=false
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "tools tests: $run"
+
+      - name: Research tools tests
+        if: steps.changed.outputs.run == 'true'
+        run: npm run test:tools
 
   bench:
     name: Benchmark
