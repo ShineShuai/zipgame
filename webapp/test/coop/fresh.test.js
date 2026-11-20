@@ -22,9 +22,10 @@ test('importsOf: static, side-effect, re-exported, multi-line, dynamic; no packa
     `const lazy = () => ${IMPORT}('./lazy.js');`,
     `${EXPORT} const text = '${IMPORT} x from "./not-found.js"'.length;`,
   );
-  assert.deepEqual(importsOf(source).sort(), [
-    '../core/b.js', './a.js', './d.js', './f.js', './lazy.js', './side.js', '/abs/g.js',
-  ].sort());
+  assert.deepEqual(
+    importsOf(source).sort(),
+    ['../core/b.js', './a.js', './d.js', './f.js', './lazy.js', './side.js', '/abs/g.js'].sort(),
+  );
   assert.deepEqual(importsOf('export const answer = 42;'), []);
 });
 
@@ -41,8 +42,7 @@ test('refreshModules fetches the entry and everything it imports, afresh, each o
   const asked = [];
   const fetcher = async (url, options) => {
     asked.push([url, options.cache]);
-    return files[url] === undefined
-      ? { ok: false } : { ok: true, text: async () => files[url] };
+    return files[url] === undefined ? { ok: false } : { ok: true, text: async () => files[url] };
   };
   const done = await refreshModules('http://x/src/coop/app.js', fetcher);
   assert.deepEqual(done.sort(), Object.keys(files).sort());

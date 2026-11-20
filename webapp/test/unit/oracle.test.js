@@ -22,7 +22,8 @@ const count = (p, options = {}) => oracle(p, { moves: gridMoves(p), ...options }
 test('oracle: a 3x3 board from corner to corner has the two snakes; a wall leaves one', () => {
   const p = board(3, { 0: 1, 8: 2 });
   assert.deepEqual(keysOf(oracle(p, { moves: gridMoves(p) })), [
-    '0,1,2,5,4,3,6,7,8', '0,3,6,7,4,1,2,5,8',
+    '0,1,2,5,4,3,6,7,8',
+    '0,3,6,7,4,1,2,5,8',
   ]);
   const right = board(3, { 0: 1, 8: 2 });
   right.walls[0] |= 1; // between cells 0 and 1: only the snake that starts downwards
@@ -38,7 +39,8 @@ test('oracle: numbers are visited in order; a number as a step is the step it is
   assert.equal(nine({ 0: 1, 4: 2, 8: 3 }), 2, 'the centre before the end: both snakes');
   const spirals = board(3, { 0: 1, 8: 2, 4: 3 }); // the centre after the end: the two spirals
   assert.deepEqual(keysOf(oracle(spirals, { moves: gridMoves(spirals) })), [
-    '0,1,2,5,8,7,6,3,4', '0,3,6,7,8,5,2,1,4',
+    '0,1,2,5,8,7,6,3,4',
+    '0,3,6,7,8,5,2,1,4',
   ]);
   assert.equal(nine({ 0: 1, 4: 5, 8: 9 }, { numbers: 'step' }), 2, 'steps 1, 5, 9');
   assert.equal(nine({ 0: 1, 3: 5, 8: 9 }, { numbers: 'step' }), 0, 'cell 3 is step 2 or 6');
@@ -70,7 +72,10 @@ const planted = (seed, n, K, wallFrac) => {
     used.add(`${Math.min(from, cell)}:${Math.abs(from - cell) === 1 ? 1 : 2}`);
   });
   for (let cell = 0; cell < n * n; cell++) {
-    for (const [bit, inside] of [[1, cell % n < n - 1], [2, cell < n * (n - 1)]]) {
+    for (const [bit, inside] of [
+      [1, cell % n < n - 1],
+      [2, cell < n * (n - 1)],
+    ]) {
       if (inside && !used.has(`${cell}:${bit}`) && rnd() < wallFrac) {
         p.walls[cell] |= bit;
       }
@@ -84,9 +89,8 @@ test('oracle: the rules written out here and the rules of core/rules.js agree', 
   for (let seed = 1; seed <= 60; seed++) {
     const n = 3 + (seed % 2);
     const K = 2 + (seed % 4);
-    const p = seed % 2
-      ? planted(seed, n, K, 0.1 * (seed % 5))
-      : randPuzzle(seed, n, K, 0.15 * (seed % 4));
+    const p =
+      seed % 2 ? planted(seed, n, K, 0.1 * (seed % 5)) : randPuzzle(seed, n, K, 0.15 * (seed % 4));
     const mine = oracle(p, { moves: gridMoves(p) });
     const theirs = oracle(p, { moves: ruleMoves(p) });
     assert.deepEqual(keysOf(mine), keysOf(theirs), `seed ${seed}`);

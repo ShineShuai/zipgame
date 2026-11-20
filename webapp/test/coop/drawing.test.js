@@ -67,7 +67,13 @@ test('numbers on one piece must rise or fall steadily, without gaps', () => {
   // cell 0 (number 1) joined to cell 5 would give 1, 2, 3, 4 in order: allowed
   assert.equal(drawing.add(0, 4), null);
   assert.equal(drawing.add(4, 5), null);
-  assert.deepEqual(drawing.path().map(cell => puzzle.cp[cell]).filter(Boolean), [1, 2, 3, 4]);
+  assert.deepEqual(
+    drawing
+      .path()
+      .map(cell => puzzle.cp[cell])
+      .filter(Boolean),
+    [1, 2, 3, 4],
+  );
 });
 
 test('refuses a piece with numbers out of order, or with a number skipped', () => {
@@ -82,7 +88,13 @@ test('refuses a piece with numbers out of order, or with a number skipped', () =
   assert.equal(order.add(4, 0), 'order'); // reading from cell 0: 1, 3, 2
   const gap = createDrawing(puzzle);
   // 1 (cell 0) - 1 - 2 - 3 - 7 - 11 - 15 (number 4): skips 2 and 3
-  [[0, 1], [1, 2], [2, 3], [3, 7], [7, 11]].forEach(([a, b]) => assert.equal(gap.add(a, b), null));
+  [
+    [0, 1],
+    [1, 2],
+    [2, 3],
+    [3, 7],
+    [7, 11],
+  ].forEach(([a, b]) => assert.equal(gap.add(a, b), null));
   assert.equal(gap.add(11, 15), 'gap');
 });
 
@@ -90,7 +102,12 @@ test('a descending piece is as good as an ascending one', () => {
   const puzzle = board();
   const drawing = createDrawing(puzzle);
   // 4 (cell 15) - 14 - 10 (number 3) - 6 - 5 (number 2): 4, 3, 2 read from cell 15
-  [[15, 14], [14, 10], [10, 6], [6, 5]].forEach(([a, b]) => assert.equal(drawing.add(a, b), null));
+  [
+    [15, 14],
+    [14, 10],
+    [10, 6],
+    [6, 5],
+  ].forEach(([a, b]) => assert.equal(drawing.add(a, b), null));
   assert.equal(drawing.add(5, 1), null);
   assert.equal(drawing.add(1, 0), null); // 4, 3, 2, 1: falling, no gap
 });
@@ -114,7 +131,11 @@ test('edges() lists the lines in the order they were drawn, smaller cell first',
   drawing.add(2, 1);
   drawing.add(5, 6);
   drawing.add(3, 2);
-  assert.deepEqual(drawing.edges(), [[1, 2], [5, 6], [2, 3]]);
+  assert.deepEqual(drawing.edges(), [
+    [1, 2],
+    [5, 6],
+    [2, 3],
+  ]);
 });
 
 test('every flat puzzle is played; of the surfaces only the known kinds', () => {
@@ -141,7 +162,10 @@ test('soundness: any part of the solution can be drawn, in any order, from anywh
     const edges = solutionEdgesOf(puzzle);
     for (let round = 0; round < 6; round++) {
       const drawing = createDrawing(puzzle);
-      const part = shuffle(edges.filter(() => rnd() < 0.3 + 0.12 * round), rnd);
+      const part = shuffle(
+        edges.filter(() => rnd() < 0.3 + 0.12 * round),
+        rnd,
+      );
       for (const [a, b] of part) {
         assert.equal(drawing.add(a, b), null, `n=${puzzle.n}: ${a}-${b} of the solution refused`);
       }
@@ -287,9 +311,17 @@ function allEdges(puzzle) {
 }
 
 const SETS = [
-  ['Cutout', CUTOUTS], ['Exact', EXACTS], ['Arrows', ARROWS], ['Wrap-around', WRAPS],
-  ['Teleport', TELEPORTS], ['Pentagon', PENTAGONS], ['Tetra', TETRAS], ['Cube', CUBES],
-  ['Ball', BALLS], ['Loop', LOOPS], ['Two paths', TWO_PATHS],
+  ['Cutout', CUTOUTS],
+  ['Exact', EXACTS],
+  ['Arrows', ARROWS],
+  ['Wrap-around', WRAPS],
+  ['Teleport', TELEPORTS],
+  ['Pentagon', PENTAGONS],
+  ['Tetra', TETRAS],
+  ['Cube', CUBES],
+  ['Ball', BALLS],
+  ['Loop', LOOPS],
+  ['Two paths', TWO_PATHS],
 ];
 for (const [label, puzzles] of SETS) {
   test(`${label}: any part of the solution can be drawn in any order; the whole is solved`, () => {
@@ -299,9 +331,16 @@ for (const [label, puzzles] of SETS) {
       const edges = solutionEdgesOf(puzzle);
       for (let round = 0; round < 6; round++) {
         const drawing = createDrawing(puzzle);
-        const part = shuffle(edges.filter(() => rnd() < 0.3 + 0.12 * round), rnd);
+        const part = shuffle(
+          edges.filter(() => rnd() < 0.3 + 0.12 * round),
+          rnd,
+        );
         for (const [a, b] of part) {
-          assert.equal(drawing.add(a, b), null, `n=${puzzle.n}: ${a}-${b} of the solution refused`);
+          assert.equal(
+            drawing.add(a, b),
+            null,
+            `n=${puzzle.n}: ${a}-${b} of the solution refused`,
+          );
         }
       }
       const drawing = createDrawing(puzzle);
@@ -325,8 +364,8 @@ for (const [label, puzzles] of SETS) {
         // a ring has as many lines as cells, two paths two fewer, a path one fewer
         const lines = cellCount(puzzle) - (puzzle.loop ? 0 : puzzle.split ? 2 : 1);
         const full = drawing.count() === lines;
-        const solved = puzzle.loop || puzzle.split
-          ? drawing.solved() : isSolved(puzzle, drawing.path());
+        const solved =
+          puzzle.loop || puzzle.split ? drawing.solved() : isSolved(puzzle, drawing.path());
         assert.equal(solved, full);
       }
     }
@@ -380,8 +419,9 @@ test('Arrows: the numbers choose the way along a piece, and the arrows must agre
 test('Arrows: an arrow turned against the solution refuses that line, as a direction', () => {
   const puzzle = fixture('arrows', 5, 1);
   const path = solutionOf(puzzle);
-  const at = path.findIndex((cell, i) => i > 0
-    && arrowDirId(puzzle.arrows, edgeId(5, path[i - 1], cell)) !== 0);
+  const at = path.findIndex(
+    (cell, i) => i > 0 && arrowDirId(puzzle.arrows, edgeId(5, path[i - 1], cell)) !== 0,
+  );
   assert.ok(at > 0, 'the puzzle has an arrow on its solution');
   const edge = edgeId(5, path[at - 1], path[at]);
   setArrowId(puzzle.arrows, edge, -arrowDirId(puzzle.arrows, edge));
@@ -433,7 +473,13 @@ const RING = [0, 1, 2, 3, 7, 6, 5, 9, 10, 11, 15, 14, 13, 12, 8, 4];
 function loopBoard() {
   const puzzle = makePuzzle(4);
   puzzle.loop = true;
-  [[0, 1], [3, 2], [6, 3], [10, 4], [4, 5]].forEach(([cell, number]) => {
+  [
+    [0, 1],
+    [3, 2],
+    [6, 3],
+    [10, 4],
+    [4, 5],
+  ].forEach(([cell, number]) => {
     puzzle.cp[cell] = number;
   });
   return puzzle;
@@ -459,7 +505,11 @@ test('Loop: the numbers of a piece are consecutive round the ring, and 5 is foll
 
 test('Loop: only the line that closes a piece covering the board makes a ring', () => {
   const drawing = createDrawing(loopBoard());
-  for (const [a, b] of [[0, 1], [1, 5], [5, 4]]) {
+  for (const [a, b] of [
+    [0, 1],
+    [1, 5],
+    [5, 4],
+  ]) {
     assert.equal(drawing.add(a, b), null);
   }
   assert.equal(drawing.add(4, 0), 'cycle'); // a ring of 4 cells is no ring of 16
@@ -493,7 +543,12 @@ const BLUE = [4, 5, 6, 7, 11, 10, 9, 8, 12, 13, 14, 15];
 function twoBoard() {
   const puzzle = makePuzzle(4);
   puzzle.split = 2;
-  [[0, 1], [3, 2], [4, 3], [15, 4]].forEach(([cell, number]) => {
+  [
+    [0, 1],
+    [3, 2],
+    [4, 3],
+    [15, 4],
+  ].forEach(([cell, number]) => {
     puzzle.cp[cell] = number;
   });
   return puzzle;
@@ -512,7 +567,12 @@ test('Two paths: cell 1, the last red number, the first blue one, the last one a
 test('Two paths: a piece holds red numbers or blue ones, never both', () => {
   const puzzle = makePuzzle(4);
   puzzle.split = 2;
-  [[0, 1], [1, 3], [8, 2], [15, 4]].forEach(([cell, number]) => {
+  [
+    [0, 1],
+    [1, 3],
+    [8, 2],
+    [15, 4],
+  ].forEach(([cell, number]) => {
     puzzle.cp[cell] = number;
   });
   const drawing = createDrawing(puzzle);

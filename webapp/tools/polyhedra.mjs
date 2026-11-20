@@ -152,7 +152,7 @@ export function dual(mesh) {
     sum += norm(cross(A, B)) / norm(sub(B, A));
   }
   const mid = sum / edges.length;
-  return meshOf(mesh.planes.map(({ n, d }) => mul(n, mid * mid / d)));
+  return meshOf(mesh.planes.map(({ n, d }) => mul(n, (mid * mid) / d)));
 }
 
 // A pyramid on every face, as high as keeps every side of the polyhedron (a taller pyramid makes
@@ -172,7 +172,14 @@ export function kis(mesh) {
       return add(base, mul(mesh.planes[i].n, height));
     });
     const next = hull([...mesh.verts, ...apexes]);
-    const got = new Set(next.faces.map(ring => ring.slice().sort((x, y) => x - y).join(',')));
+    const got = new Set(
+      next.faces.map(ring =>
+        ring
+          .slice()
+          .sort((x, y) => x - y)
+          .join(','),
+      ),
+    );
     if (next.faces.length === expected.size && [...expected].every(key => got.has(key))) {
       return normalizedMesh(next);
     }
@@ -216,7 +223,13 @@ export function snub(mesh) {
   const make = (turn, shrink) => hull(twisted(mesh, turn, shrink));
   let base = null;
   let at = null;
-  for (const [turn, shrink] of [[0.42, 0.62], [0.3, 0.62], [0.2, 0.7], [0.5, 0.5], [0.15, 0.8]]) {
+  for (const [turn, shrink] of [
+    [0.42, 0.62],
+    [0.3, 0.62],
+    [0.2, 0.7],
+    [0.5, 0.5],
+    [0.15, 0.8],
+  ]) {
     const tried = make(turn, shrink);
     if (tried.faces.length === want && isClosed(tried)) {
       base = tried;
@@ -238,7 +251,16 @@ export function snub(mesh) {
   let best = spread(at);
   for (let round = 0; round < 80 && step > 1e-7; round++) {
     let moved = false;
-    for (const [dt, ds] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+    for (const [dt, ds] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+      [1, 1],
+      [-1, -1],
+      [1, -1],
+      [-1, 1],
+    ]) {
       const trial = [at[0] + dt * step, at[1] + ds * step];
       const value = spread(trial);
       if (value < best) {
@@ -252,24 +274,42 @@ export function snub(mesh) {
     }
   }
   const tuned = make(at[0], at[1]);
-  const same = tuned.faces.length === want
-    && isClosed(tuned)
-    && tuned.faces.map(ringKey).sort().join('|') === base.faces.map(ringKey).sort().join('|');
+  const same =
+    tuned.faces.length === want &&
+    isClosed(tuned) &&
+    tuned.faces.map(ringKey).sort().join('|') === base.faces.map(ringKey).sort().join('|');
   return normalizedMesh(same ? tuned : base);
 }
 
 // ---------- seeds ----------
 
 const SIGNS = [
-  [1, 1, 1], [1, 1, -1], [1, -1, 1], [1, -1, -1],
-  [-1, 1, 1], [-1, 1, -1], [-1, -1, 1], [-1, -1, -1],
+  [1, 1, 1],
+  [1, 1, -1],
+  [1, -1, 1],
+  [1, -1, -1],
+  [-1, 1, 1],
+  [-1, 1, -1],
+  [-1, -1, 1],
+  [-1, -1, -1],
 ];
 
 // The vectors of `v` with every sign, in every order (`even`: only the cyclic orders).
 function arrange(v, even) {
   const orders = even
-    ? [[0, 1, 2], [1, 2, 0], [2, 0, 1]]
-    : [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+    ? [
+        [0, 1, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+      ]
+    : [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+      ];
   const out = [];
   for (const order of orders) {
     for (const s of SIGNS) {
@@ -311,16 +351,21 @@ export function seeds(maxN = 8) {
     ['dodeca', 'dodecahedron', [...SIGNS, ...arrange([0, 1 / PHI, PHI], true)]],
     ['icosa', 'icosahedron', arrange([0, 1, PHI], true)],
     ['cuboct', 'cuboctahedron', arrange([1, 1, 0], false)],
-    ['icosidodeca', 'icosidodecahedron', [
-      ...arrange([0, 0, PHI], true),
-      ...arrange([0.5, PHI / 2, PHI * PHI / 2], true),
-    ]],
+    [
+      'icosidodeca',
+      'icosidodecahedron',
+      [...arrange([0, 0, PHI], true), ...arrange([0.5, PHI / 2, (PHI * PHI) / 2], true)],
+    ],
     ['rhombicuboct', 'rhombicuboctahedron', arrange([1, 1, 1 + Math.SQRT2], false)],
-    ['rhombicosidodeca', 'rhombicosidodecahedron', [
-      ...arrange([1, 1, PHI ** 3], true),
-      ...arrange([PHI ** 2, PHI, 2 * PHI], true),
-      ...arrange([2 + PHI, 0, PHI ** 2], true),
-    ]],
+    [
+      'rhombicosidodeca',
+      'rhombicosidodecahedron',
+      [
+        ...arrange([1, 1, PHI ** 3], true),
+        ...arrange([PHI ** 2, PHI, 2 * PHI], true),
+        ...arrange([2 + PHI, 0, PHI ** 2], true),
+      ],
+    ],
   ];
   for (let n = 3; n <= Math.min(maxN, 5); n++) {
     out.push([`prism${n}`, `${n}-gonal prism`, prism(n)]);
@@ -413,7 +458,8 @@ export function canonical(rings) {
     ring.forEach((a, k) => owner.set(`${a},${ring[(k + 1) % ring.length]}`, [cell, k]));
   });
   const across = rings.map(ring =>
-    ring.map((a, k) => owner.get(`${ring[(k + 1) % ring.length]},${a}`)));
+    ring.map((a, k) => owner.get(`${ring[(k + 1) % ring.length]},${a}`)),
+  );
   const number = new Int32Array(T);
   const first = new Int32Array(T);
   const walk = (start, side, turn) => {

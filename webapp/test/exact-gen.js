@@ -1,14 +1,24 @@
 // Tests of the Exact puzzle generator (core/gen/exact.js). Registered by unit/exact.test.js:
 // exactGenTests(t, ok, eq).
-import {
-  validate, labelCount, cellCount, startCell, endCell,
-} from '../src/core/model.js';
+import { validate, labelCount, cellCount, startCell, endCell } from '../src/core/model.js';
 import { isSolved } from '../src/core/rules.js';
 import { solve } from '../src/core/solver/solve.js';
 import {
-  generateExact, generateTargetedExact, fullExactPuzzle, tryRemoveLabel, minimizeLabels,
-  refineLabels, shiftNumber, climbNumbers, easeNumbers, exactScore, EXACT_SIZES, EXACT_CANDIDATES,
-  EXACT_REFINE_CAP_X, EXACT_TARGET_TRIES, EXACT_CLIMB_PROPOSALS,
+  generateExact,
+  generateTargetedExact,
+  fullExactPuzzle,
+  tryRemoveLabel,
+  minimizeLabels,
+  refineLabels,
+  shiftNumber,
+  climbNumbers,
+  easeNumbers,
+  exactScore,
+  EXACT_SIZES,
+  EXACT_CANDIDATES,
+  EXACT_REFINE_CAP_X,
+  EXACT_TARGET_TRIES,
+  EXACT_CLIMB_PROPOSALS,
 } from '../src/core/gen/exact.js';
 import { trapGradeOf, EXACT_MODEL } from '../src/core/trap.js';
 import { targetBand, maxTargetGrade } from '../src/core/gen/target.js';
@@ -24,24 +34,43 @@ const HIT_SEEDS = 6; // seeds tried from a base seed before a target test calls 
 const interior = p => [...p.cp.keys()].filter(c => p.cp[c] > 1 && p.cp[c] < cellCount(p));
 
 export function exactGenTests(t, ok, eq) {
-  t.slow('exact gen: puzzles are valid, unique, wall-free, solved by their path, 1 and the end', () => {
-    for (const [n, seed] of [[5, 1], [5, 2], [6, 3], [6, 4], [7, 5], [7, 6], [8, 7], [8, 8]]) {
-      const p = runSync(generateExact(n, seed));
-      const tag = `n=${n} seed=${seed}`;
-      eq(validate(p).ok, true, tag);
-      const plain = [p.exact, p.seed, p.walls.some(Boolean), !!p.holes, !!p.arrows];
-      eq(plain, [true, seed, false, false, false], tag);
-      const r = solve(p, CHECK);
-      eq([r.count, r.exceeded], [1, false], tag);
-      eq(isSolved(p, p.path), true, tag);
-      const ends = [p.cp[startCell(p)], p.cp[endCell(p)], endCell(p) === p.path[n * n - 1]];
-      eq(ends, [1, n * n, true], tag);
-      ok(labelCount(p) >= 2 && labelCount(p) < n * n / 2, `${tag}: ${labelCount(p)} numbers`);
-    }
-  });
+  t.slow(
+    'exact gen: puzzles are valid, unique, wall-free, solved by their path, 1 and the end',
+    () => {
+      for (const [n, seed] of [
+        [5, 1],
+        [5, 2],
+        [6, 3],
+        [6, 4],
+        [7, 5],
+        [7, 6],
+        [8, 7],
+        [8, 8],
+      ]) {
+        const p = runSync(generateExact(n, seed));
+        const tag = `n=${n} seed=${seed}`;
+        eq(validate(p).ok, true, tag);
+        const plain = [p.exact, p.seed, p.walls.some(Boolean), !!p.holes, !!p.arrows];
+        eq(plain, [true, seed, false, false, false], tag);
+        const r = solve(p, CHECK);
+        eq([r.count, r.exceeded], [1, false], tag);
+        eq(isSolved(p, p.path), true, tag);
+        const ends = [p.cp[startCell(p)], p.cp[endCell(p)], endCell(p) === p.path[n * n - 1]];
+        eq(ends, [1, n * n, true], tag);
+        ok(labelCount(p) >= 2 && labelCount(p) < (n * n) / 2, `${tag}: ${labelCount(p)} numbers`);
+      }
+    },
+  );
 
   t('exact gen: no number can be taken off (each interior number is needed), 5x5 to 7x7', () => {
-    const cases = [[5, 11], [5, 12], [6, 13], [6, 14], [7, 15], [7, 16]];
+    const cases = [
+      [5, 11],
+      [5, 12],
+      [6, 13],
+      [6, 14],
+      [7, 15],
+      [7, 16],
+    ];
     for (const [n, seed] of sampled(cases)) {
       const p = runSync(generateExact(n, seed));
       for (const cell of interior(p)) {
@@ -60,7 +89,10 @@ export function exactGenTests(t, ok, eq) {
     eq([...a.cp], [...b.cp]);
     eq(a.path, b.path);
     const others = [22, 23, 24].map(seed => [...runSync(generateExact(6, seed)).cp].join());
-    ok(others.some(cp => cp !== [...a.cp].join()), 'seeds differ');
+    ok(
+      others.some(cp => cp !== [...a.cp].join()),
+      'seeds differ',
+    );
     const floored = runSync(generateExact(6, 21, { floor: labelCount(a) + 3 }));
     eq(labelCount(floored), labelCount(a) + 3, 'stops at the floor');
     const r = solve(floored, CHECK);
@@ -78,9 +110,18 @@ export function exactGenTests(t, ok, eq) {
       fracs.push(step.value.frac);
       counts.push(step.value.labels);
     }
-    ok(fracs.every(f => f >= 0 && f <= 1), 'frac in range');
-    ok(fracs.every((f, i) => i === 0 || f >= fracs[i - 1] - 1e-9), 'frac rises');
-    ok(counts.every((c, i) => i === 0 || c <= counts[i - 1]), 'numbers never increase');
+    ok(
+      fracs.every(f => f >= 0 && f <= 1),
+      'frac in range',
+    );
+    ok(
+      fracs.every((f, i) => i === 0 || f >= fracs[i - 1] - 1e-9),
+      'frac rises',
+    );
+    ok(
+      counts.every((c, i) => i === 0 || c <= counts[i - 1]),
+      'numbers never increase',
+    );
     eq([fracs[fracs.length - 1], counts[counts.length - 1]], [1, labelCount(step.value)]);
   });
 
@@ -137,16 +178,21 @@ export function exactGenTests(t, ok, eq) {
     eq([none.removed, none.nodes], [0, 0]);
   });
 
-  t.slow('exact gen: more candidates never leave more numbers, and often fewer (same seed)', () => {
-    let fewer = 0;
-    for (let seed = 61; seed <= 70; seed++) {
-      const one = labelCount(runSync(generateExact(7, seed, { candidates: 1, refineNodes: 0 })));
-      const many = labelCount(runSync(generateExact(7, seed, { candidates: 8, refineNodes: 0 })));
-      ok(many <= one, `seed ${seed}: ${many} against ${one}`);
-      if (many < one) fewer++;
-    }
-    ok(fewer >= 3, `fewer numbers in ${fewer} of 10`);
-  });
+  t.slow(
+    'exact gen: more candidates never leave more numbers, and often fewer (same seed)',
+    () => {
+      let fewer = 0;
+      for (let seed = 61; seed <= 70; seed++) {
+        const one = labelCount(runSync(generateExact(7, seed, { candidates: 1, refineNodes: 0 })));
+        const many = labelCount(
+          runSync(generateExact(7, seed, { candidates: 8, refineNodes: 0 })),
+        );
+        ok(many <= one, `seed ${seed}: ${many} against ${one}`);
+        if (many < one) fewer++;
+      }
+      ok(fewer >= 3, `fewer numbers in ${fewer} of 10`);
+    },
+  );
 
   t('exact gen: the offered sizes and their candidate counts', () => {
     ok(EXACT_SIZES.every(n => EXACT_CANDIDATES[n] > 0));
@@ -156,9 +202,20 @@ export function exactGenTests(t, ok, eq) {
 
   t.slow('exact gen target: a puzzle of the grade (or harder): hit, unique, valid, solved', () => {
     // The tries are bounded, and a refit moves the cuts, so no fixed seed is sure to hit: from each base seed take the first one that does.
-    for (const [n, grade, base] of [[7, 2, 1], [7, 2, 2], [8, 3, 3], [8, 3, 4], [10, 2, 5]]) {
-      let p, seed = base;
-      while (!(p = runSync(generateExact(n, seed, { grade }))).score.hit && seed < base + HIT_SEEDS - 1) seed++;
+    for (const [n, grade, base] of [
+      [7, 2, 1],
+      [7, 2, 2],
+      [8, 3, 3],
+      [8, 3, 4],
+      [10, 2, 5],
+    ]) {
+      let p,
+        seed = base;
+      while (
+        !(p = runSync(generateExact(n, seed, { grade }))).score.hit &&
+        seed < base + HIT_SEEDS - 1
+      )
+        seed++;
       const tag = `n=${n} grade ${grade} seed ${seed} (base ${base})`;
       const s = p.score;
       eq([s.hit, s.miss, s.target, s.atLeast], [true, 0, grade, true], tag);
@@ -182,59 +239,74 @@ export function exactGenTests(t, ok, eq) {
     eq([q.score.hit, q.score.grade], [true, 2]);
   });
 
-  t.slow('exact gen target: clamped to the size, deterministic, bounded by tries, events rise', () => {
-    const small = runSync(generateExact(5, 3, { grade: 5 }));
-    eq(small.score.target, maxTargetGrade(5, EXACT_MODEL), 'a 5x5 puzzle cannot show grade 5');
-    const a = runSync(generateExact(7, 21, { grade: 3 }));
-    const b = runSync(generateExact(7, 21, { grade: 3 }));
-    eq([[...a.cp], a.path, a.score], [[...b.cp], b.path, b.score]);
-    const one = runSync(generateExact(7, 22, { grade: 4, tries: 1, proposals: 5 }));
-    eq(one.score.tries, 1);
-    ok(one.score.hit || one.score.miss > 0, 'without a hit the closest comes back, with its miss');
-    eq(solve(one, CHECK).count, 1);
-    const fracs = [];
-    const counts = [];
-    const gen = generateTargetedExact(7, 23, { grade: 3 });
-    let step = gen.next();
-    for (; !step.done; step = gen.next()) {
-      fracs.push(step.value.frac);
-      counts.push(step.value.labels);
-    }
-    ok(fracs.every(f => f >= 0 && f <= 1), 'frac in range');
-    ok(fracs.every((f, i) => !i || f >= fracs[i - 1] - 1e-9), 'frac rises');
-    eq([fracs[fracs.length - 1], counts[counts.length - 1]], [1, labelCount(step.value)]);
-    ok(!('score' in runSync(generateExact(6, 31))), 'the default puzzle carries no score');
-    for (const n of EXACT_SIZES) {
-      ok(EXACT_TARGET_TRIES[n] > 0 && EXACT_CLIMB_PROPOSALS[n] > 0, `budgets for ${n}`);
-    }
-  });
+  t.slow(
+    'exact gen target: clamped to the size, deterministic, bounded by tries, events rise',
+    () => {
+      const small = runSync(generateExact(5, 3, { grade: 5 }));
+      eq(small.score.target, maxTargetGrade(5, EXACT_MODEL), 'a 5x5 puzzle cannot show grade 5');
+      const a = runSync(generateExact(7, 21, { grade: 3 }));
+      const b = runSync(generateExact(7, 21, { grade: 3 }));
+      eq([[...a.cp], a.path, a.score], [[...b.cp], b.path, b.score]);
+      const one = runSync(generateExact(7, 22, { grade: 4, tries: 1, proposals: 5 }));
+      eq(one.score.tries, 1);
+      ok(
+        one.score.hit || one.score.miss > 0,
+        'without a hit the closest comes back, with its miss',
+      );
+      eq(solve(one, CHECK).count, 1);
+      const fracs = [];
+      const counts = [];
+      const gen = generateTargetedExact(7, 23, { grade: 3 });
+      let step = gen.next();
+      for (; !step.done; step = gen.next()) {
+        fracs.push(step.value.frac);
+        counts.push(step.value.labels);
+      }
+      ok(
+        fracs.every(f => f >= 0 && f <= 1),
+        'frac in range',
+      );
+      ok(
+        fracs.every((f, i) => !i || f >= fracs[i - 1] - 1e-9),
+        'frac rises',
+      );
+      eq([fracs[fracs.length - 1], counts[counts.length - 1]], [1, labelCount(step.value)]);
+      ok(!('score' in runSync(generateExact(6, 31))), 'the default puzzle carries no score');
+      for (const n of EXACT_SIZES) {
+        ok(EXACT_TARGET_TRIES[n] > 0 && EXACT_CLIMB_PROPOSALS[n] > 0, `budgets for ${n}`);
+      }
+    },
+  );
 
-  t.slow('exact gen target: shiftNumber moves a number on the path; climb and ease stay unique', () => {
-    const p = runSync(generateExact(7, 41, { candidates: 1, refineNodes: 0 }));
-    const rnd = makeRng(3);
-    let moved = null;
-    for (let i = 0; i < 50 && !moved; i++) moved = shiftNumber(p, rnd);
-    ok(moved, 'a shift lands somewhere');
-    eq(labelCount(moved), labelCount(p));
-    const gone = [...p.cp.keys()].filter(c => p.cp[c] && !moved.cp[c]);
-    const came = [...moved.cp.keys()].filter(c => moved.cp[c] && !p.cp[c]);
-    eq([gone.length, came.length], [1, 1]);
-    eq(moved.cp[came[0]], moved.path.indexOf(came[0]) + 1, 'the number is the step of its cell');
-    ok(Math.abs(moved.cp[came[0]] - p.cp[gone[0]]) <= 3, 'at most 3 steps');
-    ok(p.cp[gone[0]] > 1 && p.cp[gone[0]] < 49, 'never the start or the end');
-    eq([...p.cp].filter(Boolean).length, labelCount(p), 'the original is not touched');
-    const band = targetBand(4, 7, EXACT_MODEL);
-    const start = exactScore(p);
-    const opts = { proposals: 60, checkCap: 1e5 };
-    const climbed = runSync(climbNumbers(p, start, band, makeRng(8), opts));
-    ok(climbed.score >= start, `${climbed.score} from ${start}`);
-    eq([solve(climbed.puzzle, CHECK).count, exactScore(climbed.puzzle)], [1, climbed.score]);
-    const hard = runSync(generateExact(8, 5, { grade: 3 }));
-    const gentle = targetBand(1, 8, EXACT_MODEL, 0.15, false);
-    const easy = easeNumbers(hard, hard.score.predicted, gentle, makeRng(2), 64);
-    ok(labelCount(easy.puzzle) > labelCount(hard), 'more numbers');
-    ok(easy.score < hard.score.predicted, 'easier');
-    eq(solve(easy.puzzle, CHECK).count, 1);
-    ok(easy.score >= gentle.a && easy.score <= gentle.b, `inside the band: ${easy.score}`);
-  });
+  t.slow(
+    'exact gen target: shiftNumber moves a number on the path; climb and ease stay unique',
+    () => {
+      const p = runSync(generateExact(7, 41, { candidates: 1, refineNodes: 0 }));
+      const rnd = makeRng(3);
+      let moved = null;
+      for (let i = 0; i < 50 && !moved; i++) moved = shiftNumber(p, rnd);
+      ok(moved, 'a shift lands somewhere');
+      eq(labelCount(moved), labelCount(p));
+      const gone = [...p.cp.keys()].filter(c => p.cp[c] && !moved.cp[c]);
+      const came = [...moved.cp.keys()].filter(c => moved.cp[c] && !p.cp[c]);
+      eq([gone.length, came.length], [1, 1]);
+      eq(moved.cp[came[0]], moved.path.indexOf(came[0]) + 1, 'the number is the step of its cell');
+      ok(Math.abs(moved.cp[came[0]] - p.cp[gone[0]]) <= 3, 'at most 3 steps');
+      ok(p.cp[gone[0]] > 1 && p.cp[gone[0]] < 49, 'never the start or the end');
+      eq([...p.cp].filter(Boolean).length, labelCount(p), 'the original is not touched');
+      const band = targetBand(4, 7, EXACT_MODEL);
+      const start = exactScore(p);
+      const opts = { proposals: 60, checkCap: 1e5 };
+      const climbed = runSync(climbNumbers(p, start, band, makeRng(8), opts));
+      ok(climbed.score >= start, `${climbed.score} from ${start}`);
+      eq([solve(climbed.puzzle, CHECK).count, exactScore(climbed.puzzle)], [1, climbed.score]);
+      const hard = runSync(generateExact(8, 5, { grade: 3 }));
+      const gentle = targetBand(1, 8, EXACT_MODEL, 0.15, false);
+      const easy = easeNumbers(hard, hard.score.predicted, gentle, makeRng(2), 64);
+      ok(labelCount(easy.puzzle) > labelCount(hard), 'more numbers');
+      ok(easy.score < hard.score.predicted, 'easier');
+      eq(solve(easy.puzzle, CHECK).count, 1);
+      ok(easy.score >= gentle.a && easy.score <= gentle.b, `inside the band: ${easy.score}`);
+    },
+  );
 }

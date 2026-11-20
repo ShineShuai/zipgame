@@ -12,9 +12,10 @@ import { cellCount } from '../src/core/model.js';
 import { canStep } from '../src/core/rules.js';
 import { neighbourCell, portalPartner } from '../src/core/geom.js';
 
-export function oracle(p, {
-  moves, total = cellCount(p), numbers = 'order', endOnLast = true, accept = null, keep = true,
-}) {
+export function oracle(
+  p,
+  { moves, total = cellCount(p), numbers = 'order', endOnLast = true, accept = null, keep = true },
+) {
   const K = Math.max(...p.cp);
   const start = p.cp.indexOf(1);
   const claimed = new Set(p.cp.filter(Boolean));
@@ -51,7 +52,7 @@ export function oracle(p, {
         found();
       }
     } else {
-      const options = scratch[length] ??= [];
+      const options = (scratch[length] ??= []);
       options.length = 0;
       moves(cell, options);
       for (const to of options) {
@@ -80,7 +81,10 @@ export const gridMoves = p => (cell, out) => {
   const col = cell % n;
   const open = to => !(p.walls[Math.min(cell, to)] & (Math.abs(cell - to) === 1 ? 1 : 2));
   const steps = [
-    [col < n - 1, cell + 1], [col > 0, cell - 1], [row < n - 1, cell + n], [row > 0, cell - n],
+    [col < n - 1, cell + 1],
+    [col > 0, cell - 1],
+    [row < n - 1, cell + n],
+    [row > 0, cell - n],
   ];
   for (const [inside, to] of steps) {
     if (inside && open(to)) {

@@ -121,7 +121,9 @@ const fakeStorage = () => ({
 
 export function sharedGamesTests(t, ta, ok, eq) {
   // The puzzles are made (and kept, see made.js) by the first test that asks; here, before the tests, so that one is not charged for it.
-  before(() => { PUZZLES(); });
+  before(() => {
+    PUZZLES();
+  });
 
   t('radix-code: count, subset, fixedSubset and distinct round-trip', () => {
     const rnd = makeRng(99);
@@ -221,10 +223,7 @@ export function sharedGamesTests(t, ta, ok, eq) {
   t('share-code: a standard puzzle round-trips (with and without a strip), canonically', () => {
     const [, puzzle] = PUZZLES()[0];
     ok(validate(puzzle).ok, 'the sample is valid');
-    for (const rec of [
-      recordOf(null, puzzle),
-      recordOf(null, puzzle, { legs: [], K: 1 }),
-    ]) {
+    for (const rec of [recordOf(null, puzzle), recordOf(null, puzzle, { legs: [], K: 1 })]) {
       const code = encodeShare(rec);
       ok(/^[A-Za-z0-9_-]+$/.test(code), code);
       const back = decodeShare(code);
@@ -356,7 +355,8 @@ export function sharedGamesTests(t, ta, ok, eq) {
     const other = { ...rec, timeS: 999.9, grade: 0, levels: rec.levels.map(() => 3) };
     eq(shareKey(other), shareKey(rec));
     ok(
-      shareKey(rec) && shareKey({ ...rec, puzzle: PUZZLES()[0][1], grade: null }) === shareKey(rec),
+      shareKey(rec) &&
+        shareKey({ ...rec, puzzle: PUZZLES()[0][1], grade: null }) === shareKey(rec),
     );
     ok(shareKey(recordOf(null, made('std', 6, 12))) !== shareKey(rec), 'another puzzle');
     ok(shareKey(recordOf('cutout', PUZZLES()[1][1])) !== shareKey(rec));
@@ -401,7 +401,8 @@ export function sharedGamesTests(t, ta, ok, eq) {
     const [, puzzle] = PUZZLES()[0],
       K = labelCount(puzzle);
     const withStrip = levels => ({ ...recordOf(null, puzzle, { legs: [] }), levels });
-    const strip = (...levels) => withStrip(Array.from({ length: K - 1 }, (_, i) => levels[i] || 0));
+    const strip = (...levels) =>
+      withStrip(Array.from({ length: K - 1 }, (_, i) => levels[i] || 0));
     const green = strip(),
       yellow = strip(1, 1, 1),
       spike = strip(3); // yellow: (3, 3), spike: (3, 9)
@@ -504,7 +505,10 @@ export function sharedGamesTests(t, ta, ok, eq) {
         (await b.add({ ...recordOf(null, puzzle, { legs: [] }), levels: lv(2) })).outcome,
         'replaced',
       );
-      eq((await b.add({ ...recordOf(null, puzzle, { legs: [] }), levels: lv(1) })).outcome, 'kept');
+      eq(
+        (await b.add({ ...recordOf(null, puzzle, { legs: [] }), levels: lv(1) })).outcome,
+        'kept',
+      );
       const c = createSharedGames(st);
       await c.init();
       eq(
@@ -520,11 +524,27 @@ export function sharedGamesTests(t, ta, ok, eq) {
   );
 
   ta('shared-games: past the cap the oldest games are dropped', async () => {
-    const st = fakeStorage(), games = PUZZLES().slice(0, 3).map(([variant, puzzle]) => recordOf(variant, puzzle, { grade: variant ? null : 2 }));
-    let clock = 1; const g = createSharedGames(st, () => clock++, 2); await g.init();
-    const keys = []; for (const rec of games) keys.push((await g.add(rec)).key);
-    eq(g.list().map(e => e.key), keys.slice(1), 'the first game was the oldest');
-    const again = createSharedGames(st, () => clock++, 2); await again.init(); eq(again.list().map(e => e.key), keys.slice(1), 'and it is gone from the store');
+    const st = fakeStorage(),
+      games = PUZZLES()
+        .slice(0, 3)
+        .map(([variant, puzzle]) => recordOf(variant, puzzle, { grade: variant ? null : 2 }));
+    let clock = 1;
+    const g = createSharedGames(st, () => clock++, 2);
+    await g.init();
+    const keys = [];
+    for (const rec of games) keys.push((await g.add(rec)).key);
+    eq(
+      g.list().map(e => e.key),
+      keys.slice(1),
+      'the first game was the oldest',
+    );
+    const again = createSharedGames(st, () => clock++, 2);
+    await again.init();
+    eq(
+      again.list().map(e => e.key),
+      keys.slice(1),
+      'and it is gone from the store',
+    );
   });
 
   ta('shared-games: two instances taking turns lose nothing; prune drops entries', async () => {

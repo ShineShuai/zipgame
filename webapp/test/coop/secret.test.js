@@ -1,9 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  deriveResume, deriveRoom, fingerprint, isPublicKey, keyOfSecret, makeToken, newId, newPair,
-  newSecret, pairKey, pairSecret, seal,
-  signalSupported, splitToken, unseal,
+  deriveResume,
+  deriveRoom,
+  fingerprint,
+  isPublicKey,
+  keyOfSecret,
+  makeToken,
+  newId,
+  newPair,
+  newSecret,
+  pairKey,
+  pairSecret,
+  seal,
+  signalSupported,
+  splitToken,
+  unseal,
 } from '../../src/coop/secret.js';
 
 test('a secret is 22 characters of base64url, and secrets differ', () => {
@@ -44,7 +56,7 @@ test('seal and unseal: round trip, fresh iv, and every kind of tampering is refu
   assert.equal(await unseal(key, 'a/b', '***'), null);
 });
 
-test('two sides derive the same shared key from each other\'s public key', async () => {
+test("two sides derive the same shared key from each other's public key", async () => {
   const host = await newPair();
   const guest = await newPair();
   assert.ok(isPublicKey(host.pub) && isPublicKey(guest.pub));

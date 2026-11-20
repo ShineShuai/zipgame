@@ -36,42 +36,47 @@ async function device(enable = true) {
 
 // a tells b everything it has (and b a); then both look again
 async function link(a, b) {
-  for (const [x, y] of [[a, b], [b, a]]) {
+  for (const [x, y] of [
+    [a, b],
+    [b, a],
+  ]) {
     await x.sync.refresh();
     await y.sync.receive(x.sync.slicesFor(y.sync.have()));
   }
 }
 
-test('statistics: the other device\'s games show in the totals, once, and the '
-  + 'own blob stays own', async () => {
-  const [a, b] = [await device(), await device()];
-  const sa = createStore(a.port, SIZES, {}, a.sync);
-  const sb = createStore(b.port, SIZES, {}, b.sync);
-  await sa.hydrate('20261030');
-  await sb.hydrate('20261030');
-  await sa.recordSolve(5, 20000, 10);
-  await sa.recordSolve(5, 20000, 20);
-  await sb.recordSolve(5, 20000, 30);
-  assert.equal(sa.total(5).n, 2);
-  await link(a, b);
-  await link(a, b); // again: nothing is counted twice
-  await sa.refresh();
-  await sb.refresh();
-  for (const s of [sa, sb]) {
-    assert.equal(s.total(5).n, 3);
-    assert.ok(Math.abs(s.total(5).mean - 20) < 1e-9);
-    assert.equal(s.today(5, 20000).n, 3);
-  }
-  assert.equal((await raw(a, STATS_KEY)).t['5'][0], 2, 'A\'s blob holds A\'s two games');
-  assert.equal((await raw(b, STATS_KEY)).t['5'][0], 1, 'B\'s blob holds B\'s one game');
+test(
+  "statistics: the other device's games show in the totals, once, and the " + 'own blob stays own',
+  async () => {
+    const [a, b] = [await device(), await device()];
+    const sa = createStore(a.port, SIZES, {}, a.sync);
+    const sb = createStore(b.port, SIZES, {}, b.sync);
+    await sa.hydrate('20261030');
+    await sb.hydrate('20261030');
+    await sa.recordSolve(5, 20000, 10);
+    await sa.recordSolve(5, 20000, 20);
+    await sb.recordSolve(5, 20000, 30);
+    assert.equal(sa.total(5).n, 2);
+    await link(a, b);
+    await link(a, b); // again: nothing is counted twice
+    await sa.refresh();
+    await sb.refresh();
+    for (const s of [sa, sb]) {
+      assert.equal(s.total(5).n, 3);
+      assert.ok(Math.abs(s.total(5).mean - 20) < 1e-9);
+      assert.equal(s.today(5, 20000).n, 3);
+    }
+    assert.equal((await raw(a, STATS_KEY)).t['5'][0], 2, "A's blob holds A's two games");
+    assert.equal((await raw(b, STATS_KEY)).t['5'][0], 1, "B's blob holds B's one game");
 
-  await sb.recordSolve(5, 20000, 40); // a new game on B shows on both after the next exchange
-  assert.equal(sb.total(5).n, 4);
-  assert.equal((await raw(b, STATS_KEY)).t['5'][0], 2);
-  await link(a, b);
-  await sa.refresh();
-  assert.equal(sa.total(5).n, 4);
-});
+    await sb.recordSolve(5, 20000, 40); // a new game on B shows on both after the next exchange
+    assert.equal(sb.total(5).n, 4);
+    assert.equal((await raw(b, STATS_KEY)).t['5'][0], 2);
+    await link(a, b);
+    await sa.refresh();
+    assert.equal(sa.total(5).n, 4);
+  },
+);
 
 test('statistics: with sync off the store is what it always was', async () => {
   const off = await device(false);
@@ -83,42 +88,46 @@ test('statistics: with sync off the store is what it always was', async () => {
   assert.deepEqual([...off.storage.raw.keys()], [STATS_KEY]);
 });
 
-test('Game of Day: a solve on one device is the played record on the other, '
-  + 'without a resubmit', async () => {
-  const [a, b] = [await device(), await device()];
-  const sa = createStore(a.port, SIZES, {}, a.sync);
-  const sb = createStore(b.port, SIZES, {}, b.sync);
-  await sa.hydrate('20261030');
-  await sb.hydrate('20261030');
-  await sa.saveAttempt('20261030', { solved: true, time: 41, sent: false });
-  await link(a, b);
-  assert.deepEqual(await sb.loadAttempt('20261030'), { solved: true, time: 41 });
-  assert.deepEqual(await sa.loadAttempt('20261030'), { solved: true, time: 41, sent: false });
-  assert.equal(await sb.loadAttempt('20261030', true), null, 'what B itself played: nothing');
-  assert.equal(sb.gotdSolves(), 1);
-});
+test(
+  'Game of Day: a solve on one device is the played record on the other, ' + 'without a resubmit',
+  async () => {
+    const [a, b] = [await device(), await device()];
+    const sa = createStore(a.port, SIZES, {}, a.sync);
+    const sb = createStore(b.port, SIZES, {}, b.sync);
+    await sa.hydrate('20261030');
+    await sb.hydrate('20261030');
+    await sa.saveAttempt('20261030', { solved: true, time: 41, sent: false });
+    await link(a, b);
+    assert.deepEqual(await sb.loadAttempt('20261030'), { solved: true, time: 41 });
+    assert.deepEqual(await sa.loadAttempt('20261030'), { solved: true, time: 41, sent: false });
+    assert.equal(await sb.loadAttempt('20261030', true), null, 'what B itself played: nothing');
+    assert.equal(sb.gotdSolves(), 1);
+  },
+);
 
-test('replay chances: earned anywhere, spent anywhere, the first run counts '
-  + 'only own games', async () => {
-  const [a, b] = [await device(), await device()];
-  const storeA = createStore(a.port, SIZES, {}, a.sync);
-  await storeA.hydrate('20261030');
-  const ra = createReplay(a.port, storeA, at(20000), a.sync);
-  await ra.init();
-  await ra.addBonus();
-  await ra.addBonus();
-  await ra.addSolved();
-  const storeB = createStore(b.port, SIZES, {}, b.sync);
-  await storeB.hydrate('20261030');
-  await link(a, b);
-  await storeB.refresh();
-  const rb = createReplay(b.port, storeB, at(20000), b.sync);
-  await rb.init(); // B's first run: A's solve is in the group's records, but B did not play it
-  assert.equal((await raw(b, 'zip_gotd_credit')).solved, 0);
-  const expected = earned(1) + 2; // A's one solve and its two bonus chances
-  assert.equal(rb.chances(), expected);
-  assert.equal(ra.chances(), expected);
-});
+test(
+  'replay chances: earned anywhere, spent anywhere, the first run counts ' + 'only own games',
+  async () => {
+    const [a, b] = [await device(), await device()];
+    const storeA = createStore(a.port, SIZES, {}, a.sync);
+    await storeA.hydrate('20261030');
+    const ra = createReplay(a.port, storeA, at(20000), a.sync);
+    await ra.init();
+    await ra.addBonus();
+    await ra.addBonus();
+    await ra.addSolved();
+    const storeB = createStore(b.port, SIZES, {}, b.sync);
+    await storeB.hydrate('20261030');
+    await link(a, b);
+    await storeB.refresh();
+    const rb = createReplay(b.port, storeB, at(20000), b.sync);
+    await rb.init(); // B's first run: A's solve is in the group's records, but B did not play it
+    assert.equal((await raw(b, 'zip_gotd_credit')).solved, 0);
+    const expected = earned(1) + 2; // A's one solve and its two bonus chances
+    assert.equal(rb.chances(), expected);
+    assert.equal(ra.chances(), expected);
+  },
+);
 
 test('unlock chances: earned on one device, spent on the other, once', async () => {
   const [a, b] = [await device(), await device()];
@@ -132,7 +141,7 @@ test('unlock chances: earned on one device, spent on the other, once', async () 
   assert.deepEqual([ub.view().choices, ub.view().tokens], [1, 1]);
   assert.equal(await ub.takeChoice(), true);
   assert.equal(await ub.takeChoice(), false, 'one chance, spent');
-  assert.equal((await raw(b, UNLOCK_KEY)).choices, -1, 'B\'s own net is below 0');
+  assert.equal((await raw(b, UNLOCK_KEY)).choices, -1, "B's own net is below 0");
   await link(a, b);
   assert.deepEqual([ua.view().choices, ub.view().choices], [0, 0]);
   assert.equal(await ua.takeChoice(), false, 'A sees it spent too');
@@ -140,9 +149,17 @@ test('unlock chances: earned on one device, spent on the other, once', async () 
 
 test('unlock: a variant unlocked on one device is unlocked on the other', async () => {
   const [a, b] = [await device(), await device()];
-  await a.storage.set(UNLOCK_KEY, JSON.stringify({
-    v: 1, unlocked: { a: 19990 }, tokens: 0, choices: 0, played: [], active: null,
-  }));
+  await a.storage.set(
+    UNLOCK_KEY,
+    JSON.stringify({
+      v: 1,
+      unlocked: { a: 19990 },
+      tokens: 0,
+      choices: 0,
+      played: [],
+      active: null,
+    }),
+  );
   const ub = createUnlock(b.port, defs, at(20000), b.sync);
   await ub.init();
   assert.equal(ub.unlocked('a'), false);
@@ -150,27 +167,29 @@ test('unlock: a variant unlocked on one device is unlocked on the other', async 
   assert.equal(ub.unlocked('a'), true);
 });
 
-test('streak: a solve on one device is the streak on the other; the next day '
-  + 'builds on it', async () => {
-  const [a, b] = [await device(), await device()];
-  const sa = createStreak(a.port, noLog, at(20000), a.sync);
-  const sb = createStreak(b.port, noLog, at(20000), b.sync);
-  await sa.init();
-  await sb.init();
-  await sa.record();
-  await link(a, b);
-  assert.deepEqual([sb.view().streak, sb.view().today], [1, true]);
-  assert.equal(await sb.record(), false, 'today is done: nothing to record');
-  const tomorrow = createStreak(b.port, noLog, at(20001), b.sync);
-  await tomorrow.init();
-  await tomorrow.record();
-  assert.equal(tomorrow.view().streak, 2, 'day two counts on A\'s day one');
-  assert.equal((await raw(b, STREAK_KEY)).streak, 2);
-  await link(a, b);
-  const aTomorrow = createStreak(a.port, noLog, at(20001), a.sync);
-  await aTomorrow.init();
-  assert.equal(aTomorrow.view().streak, 2);
-});
+test(
+  'streak: a solve on one device is the streak on the other; the next day ' + 'builds on it',
+  async () => {
+    const [a, b] = [await device(), await device()];
+    const sa = createStreak(a.port, noLog, at(20000), a.sync);
+    const sb = createStreak(b.port, noLog, at(20000), b.sync);
+    await sa.init();
+    await sb.init();
+    await sa.record();
+    await link(a, b);
+    assert.deepEqual([sb.view().streak, sb.view().today], [1, true]);
+    assert.equal(await sb.record(), false, 'today is done: nothing to record');
+    const tomorrow = createStreak(b.port, noLog, at(20001), b.sync);
+    await tomorrow.init();
+    await tomorrow.record();
+    assert.equal(tomorrow.view().streak, 2, "day two counts on A's day one");
+    assert.equal((await raw(b, STREAK_KEY)).streak, 2);
+    await link(a, b);
+    const aTomorrow = createStreak(a.port, noLog, at(20001), a.sync);
+    await aTomorrow.init();
+    assert.equal(aTomorrow.view().streak, 2);
+  },
+);
 
 test('gift: opened on one device, opened on the other', async () => {
   const [a, b] = [await device(), await device()];
@@ -211,7 +230,7 @@ test('turning sync off brings every feature back to its own data', async () => {
   assert.equal(rb.seen('cutout'), false);
 });
 
-test('GOTD_KEY is kept apart from the group: B\'s blob never holds A\'s record', async () => {
+test("GOTD_KEY is kept apart from the group: B's blob never holds A's record", async () => {
   const [a, b] = [await device(), await device()];
   const sa = createStore(a.port, SIZES, {}, a.sync);
   await sa.hydrate('20261030');
@@ -224,56 +243,72 @@ test('GOTD_KEY is kept apart from the group: B\'s blob never holds A\'s record',
   assert.deepEqual(Object.keys(own.a), ['20261029']);
 });
 
-test('theme slots follow the activity of all devices; the themes themselves '
-  + 'stay on each device', async () => {
-  const [a, b] = [await device(), await device()];
-  const sa = createStore(a.port, SIZES, {}, a.sync);
-  const sb = createStore(b.port, SIZES, {}, b.sync);
-  await sa.hydrate('20261030');
-  await sb.hydrate('20261030');
-  for (let i = 0; i < 7; i++) await sa.saveAttempt(`2026100${i + 1}`, { solved: true, time: 30 });
-  for (let i = 0; i < 5; i++) await sb.saveAttempt(`2026101${i}`, { solved: true, time: 30 });
-  const slots = s => slotsFor({ gotdSolves: s.gotdSolves(), bestStreak: 0 });
-  assert.deepEqual([slots(sa), slots(sb)], [MIN_CAP, MIN_CAP], 'each alone: 7 and 5 of 12');
-  await b.sync.leave();
-  await b.sync.enable({ p2p: true });
-  await link(a, b);
-  await sb.refresh();
-  await sa.refresh();
-  assert.equal(sb.gotdSolves(), 12, 'the dates of both devices');
-  assert.deepEqual([slots(sa), slots(sb)], [MIN_CAP + 1, MIN_CAP + 1]);
-  await b.sync.disable();
-  await sb.refresh();
-  assert.equal(sb.gotdSolves(), 12, 'turning sync off does not take a slot back');
-});
+test(
+  'theme slots follow the activity of all devices; the themes themselves ' + 'stay on each device',
+  async () => {
+    const [a, b] = [await device(), await device()];
+    const sa = createStore(a.port, SIZES, {}, a.sync);
+    const sb = createStore(b.port, SIZES, {}, b.sync);
+    await sa.hydrate('20261030');
+    await sb.hydrate('20261030');
+    for (let i = 0; i < 7; i++)
+      await sa.saveAttempt(`2026100${i + 1}`, { solved: true, time: 30 });
+    for (let i = 0; i < 5; i++) await sb.saveAttempt(`2026101${i}`, { solved: true, time: 30 });
+    const slots = s => slotsFor({ gotdSolves: s.gotdSolves(), bestStreak: 0 });
+    assert.deepEqual([slots(sa), slots(sb)], [MIN_CAP, MIN_CAP], 'each alone: 7 and 5 of 12');
+    await b.sync.leave();
+    await b.sync.enable({ p2p: true });
+    await link(a, b);
+    await sb.refresh();
+    await sa.refresh();
+    assert.equal(sb.gotdSolves(), 12, 'the dates of both devices');
+    assert.deepEqual([slots(sa), slots(sb)], [MIN_CAP + 1, MIN_CAP + 1]);
+    await b.sync.disable();
+    await sb.refresh();
+    assert.equal(sb.gotdSolves(), 12, 'turning sync off does not take a slot back');
+  },
+);
 
-test('the number of theme slots follows the best device; its themes stay, only their ids are '
-  + 'a hint', async () => {
-  const [a, b] = [await device(), await device()];
-  const sa = createSlotsSync(a.port, a.sync);
-  const sb = createSlotsSync(b.port, b.sync);
-  await sa.init();
-  await sb.init();
-  await sa.publish(3, ['candy']);
-  await sb.publish(2, ['wood']);
-  assert.equal(slotsFor({ groupCap: sb.view().cap }), MIN_CAP, 'alone: its own number');
-  await link(a, b);
-  for (const s of [sa, sb]) {
-    assert.equal(s.view().cap, 3);
-    assert.deepEqual([...s.view().themes].sort(), ['candy', 'wood']);
-  }
-  assert.equal(slotsFor({ groupCap: sb.view().cap }), MIN_CAP + 1);
-  assert.deepEqual(await raw(b, SLOTS_KEY), { v: 1, cap: 2, themes: ['wood'] }, 'its own copy');
-  await sa.publish(2, []);
-  assert.deepEqual(await raw(a, SLOTS_KEY), { v: 1, cap: 3, themes: [] }, 'never lowered');
-  await b.sync.disable();
-  assert.equal(sb.view().cap, 2, 'without sync: its own');
-});
+test(
+  'the number of theme slots follows the best device; its themes stay, only their ids are ' +
+    'a hint',
+  async () => {
+    const [a, b] = [await device(), await device()];
+    const sa = createSlotsSync(a.port, a.sync);
+    const sb = createSlotsSync(b.port, b.sync);
+    await sa.init();
+    await sb.init();
+    await sa.publish(3, ['candy']);
+    await sb.publish(2, ['wood']);
+    assert.equal(slotsFor({ groupCap: sb.view().cap }), MIN_CAP, 'alone: its own number');
+    await link(a, b);
+    for (const s of [sa, sb]) {
+      assert.equal(s.view().cap, 3);
+      assert.deepEqual([...s.view().themes].sort(), ['candy', 'wood']);
+    }
+    assert.equal(slotsFor({ groupCap: sb.view().cap }), MIN_CAP + 1);
+    assert.deepEqual(await raw(b, SLOTS_KEY), { v: 1, cap: 2, themes: ['wood'] }, 'its own copy');
+    await sa.publish(2, []);
+    assert.deepEqual(await raw(a, SLOTS_KEY), { v: 1, cap: 3, themes: [] }, 'never lowered');
+    await b.sync.disable();
+    assert.equal(sb.view().cap, 2, 'without sync: its own');
+  },
+);
 
 test('the best streak of any device can earn the slot', async () => {
   const [a, b] = [await device(), await device()];
-  await a.storage.set('zip_streak', JSON.stringify({
-    last: 20000, streak: 30, best: 30, freezes: 0, earned: 3, prog: 2, brk: null }));
+  await a.storage.set(
+    'zip_streak',
+    JSON.stringify({
+      last: 20000,
+      streak: 30,
+      best: 30,
+      freezes: 0,
+      earned: 3,
+      prog: 2,
+      brk: null,
+    }),
+  );
   const sb = createStreak(b.port, noLog, at(20000), b.sync);
   await sb.init();
   assert.equal(slotsFor({ gotdSolves: 0, bestStreak: sb.view().best }), MIN_CAP);
@@ -282,10 +317,14 @@ test('the best streak of any device can earn the slot', async () => {
 });
 
 test('nothing the themes keep is synced: not the choice, not the themes, not the trial', () => {
-  const files = [...readdirSync(new URL('../../src/themes/', import.meta.url))
-    .map(f => new URL(`../../src/themes/${f}`, import.meta.url)),
-  ...readdirSync(new URL('../../src/ui/', import.meta.url)).filter(f => f.startsWith('theme'))
-    .map(f => new URL(`../../src/ui/${f}`, import.meta.url))];
+  const files = [
+    ...readdirSync(new URL('../../src/themes/', import.meta.url)).map(
+      f => new URL(`../../src/themes/${f}`, import.meta.url),
+    ),
+    ...readdirSync(new URL('../../src/ui/', import.meta.url))
+      .filter(f => f.startsWith('theme'))
+      .map(f => new URL(`../../src/ui/${f}`, import.meta.url)),
+  ];
   const keys = new Set();
   for (const file of files) {
     if (!file.pathname.endsWith('.js')) continue;
@@ -306,8 +345,15 @@ test('champion wins: counted over both devices, and a pick is handed out once', 
   await ca.init();
   await cb.init();
   const answer = { n: 9, mean: 40, top: 20, pct: 100 };
-  const won = (champ, k) => champ.judge(dateOfDay(19990 - k),
-    { solved: true, time: 10, sent: true, live: true, n: 5, stats: answer });
+  const won = (champ, k) =>
+    champ.judge(dateOfDay(19990 - k), {
+      solved: true,
+      time: 10,
+      sent: true,
+      live: true,
+      n: 5,
+      stats: answer,
+    });
   for (const k of [0, 1, 2]) assert.equal(await won(ca, k), true);
   for (const k of [3, 4]) assert.equal(await won(cb, k), true);
   assert.equal(await ca.takePicks(), 0, 'its own 3 wins');
@@ -325,7 +371,8 @@ test('champion wins: counted over both devices, and a pick is handed out once', 
 test('champion backfill: both devices credit the old records, the group counts once', async () => {
   const [a, b] = [await device(), await device()];
   const cfg = { minPlayers: 4, backfillUntil: '2026-12-02' };
-  const sa = createStore(a.port, SIZES, {}, a.sync), sb = createStore(b.port, SIZES, {}, b.sync);
+  const sa = createStore(a.port, SIZES, {}, a.sync),
+    sb = createStore(b.port, SIZES, {}, b.sync);
   const answer = { n: 9, mean: 40, top: 20, pct: 100 };
   for (const k of [0, 1, 2]) {
     const old = { solved: true, time: 30, sent: true, stats: answer };

@@ -30,8 +30,10 @@ import { releaseDays } from '../src/features/solid-release.js';
 import { EN, ZH, t as translate } from '../src/ui/i18n.js';
 
 // the channels of every fill="rgb(r,g,b)" in a markup
-const fills = markup => [...markup.matchAll(/fill="rgb\((\d+),(\d+),(\d+)\)"/g)]
-  .map(match => match.slice(1).map(Number));
+const fills = markup =>
+  [...markup.matchAll(/fill="rgb\((\d+),(\d+),(\d+)\)"/g)].map(match =>
+    match.slice(1).map(Number),
+  );
 
 registerBalls(BALL_CATALOG);
 
@@ -113,8 +115,14 @@ export function solidTests(t, ok, eq, ta) {
     };
     const dark = surfaceSvg(view, state).markup;
     const light = surfaceSvg(view, { ...state, palette: LIGHT_PALETTE }).markup;
-    ok(fills(dark).every(rgb => Math.max(...rgb) < 140), 'the default palette is dark');
-    ok(fills(light).every(rgb => Math.min(...rgb) > 120), 'the light palette is light');
+    ok(
+      fills(dark).every(rgb => Math.max(...rgb) < 140),
+      'the default palette is dark',
+    );
+    ok(
+      fills(light).every(rgb => Math.min(...rgb) > 120),
+      'the light palette is light',
+    );
     ok(dark.includes(DARK_PALETTE.play) && !light.includes(DARK_PALETTE.play), 'path colour');
     ok(light.includes(LIGHT_PALETTE.play), 'the orange path of the flat game');
     ok(!light.includes('NaN') && !dark.includes('NaN'));
@@ -148,9 +156,20 @@ export function solidTests(t, ok, eq, ta) {
         ok(EN[key] && ZH[key], `${key} in both languages`);
       }
     }
-    for (const key of ['gen.subSolid', 'game.tetraTitle', 'game.cubeTitle', 'game.ballTitle',
-      'solid.title', 'solid.turn', 'solid.netNote', 'solid.mapNote', 'solid.follow',
-      'solid.followTip', 'solid.followOn', 'solid.followOff']) {
+    for (const key of [
+      'gen.subSolid',
+      'game.tetraTitle',
+      'game.cubeTitle',
+      'game.ballTitle',
+      'solid.title',
+      'solid.turn',
+      'solid.netNote',
+      'solid.mapNote',
+      'solid.follow',
+      'solid.followTip',
+      'solid.followOn',
+      'solid.followOff',
+    ]) {
       ok(EN[key] && ZH[key], `${key} in both languages`);
     }
     eq(translate('solid.cells', 1), '1 cell');
@@ -158,17 +177,18 @@ export function solidTests(t, ok, eq, ta) {
   });
 
   t('play app: the card of the 3D puzzles in the menu', () => {
-    const make = showDev => createSolidPlay({
-      S: { showDev, screen: 'menu' },
-      $: () => null,
-      t: translate,
-      render: () => {},
-      genNoticeHtml: () => '',
-      paintGenerating: () => {},
-      startTimer: () => {},
-      stopTimer: () => {},
-      randomSeed: () => 1,
-    });
+    const make = showDev =>
+      createSolidPlay({
+        S: { showDev, screen: 'menu' },
+        $: () => null,
+        t: translate,
+        render: () => {},
+        genNoticeHtml: () => '',
+        paintGenerating: () => {},
+        startTimer: () => {},
+        stopTimer: () => {},
+        randomSeed: () => 1,
+      });
     const hidden = make(false).cardHtml();
     ok(/id="solidCard" style="display:none"/.test(hidden), 'hidden unless V is held');
     const shown = make(true).cardHtml();
@@ -203,11 +223,19 @@ export function solidTests(t, ok, eq, ta) {
       const [a, b] = [poly[slot], poly[(slot + 1) % poly.length]];
       const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
       const [cx, cy] = net.centers[cell];
-      return { from: [cx, cy], past: [mid[0] + (mid[0] - cx) * 0.5, mid[1] + (mid[1] - cy) * 0.5], mid };
+      return {
+        from: [cx, cy],
+        past: [mid[0] + (mid[0] - cx) * 0.5, mid[1] + (mid[1] - cy) * 0.5],
+        mid,
+      };
     };
     const out = through(cut);
     const across = top.nb[cut[0] * SLOTS + cut[1]];
-    eq(crossedCut(top, net, cut[0], out.from, out.past), across, 'out over a cut: the cell across');
+    eq(
+      crossedCut(top, net, cut[0], out.from, out.past),
+      across,
+      'out over a cut: the cell across',
+    );
     const [cx, cy] = net.centers[cut[0]];
     const inside = [(cx + out.mid[0]) / 2, (cy + out.mid[1]) / 2];
     eq(crossedCut(top, net, cut[0], [cx, cy], inside), -1, 'inside the cell');
@@ -254,7 +282,11 @@ export function solidTests(t, ok, eq, ta) {
     const came = made.path.slice(0, at + 2);
     const arrived = surfaceSvg(net, { ...state, path: came, continues: () => false });
     ok(count(arrived.markup, 'sf-land') === 1, 'the cell the path came in by');
-    const ringed = surfaceSvg(net, { ...state, hintCell: made.path[at + 1], hintWrongCell: 0 }).markup;
+    const ringed = surfaceSvg(net, {
+      ...state,
+      hintCell: made.path[at + 1],
+      hintWrongCell: 0,
+    }).markup;
     eq(count(ringed, 'sf-hint'), 1, 'the hinted cell');
     eq(count(ringed, 'sf-wrong'), 1, 'the wrong cell');
     eq(count(surfaceSvg(net, state).markup, 'sf-hint'), 0, 'no hint, no ring');
@@ -266,21 +298,26 @@ export function solidTests(t, ok, eq, ta) {
   });
 
   t('play app: the card lists only Random until the ball catalog is loaded', () => {
-    const make = () => createSolidPlay({
-      S: { showDev: true, screen: 'menu' },
-      $: () => null,
-      t: translate,
-      render: () => {},
-      genNoticeHtml: () => '',
-      paintGenerating: () => {},
-      startTimer: () => {},
-      stopTimer: () => {},
-      randomSeed: () => 1,
-      openExport: () => {},
-    });
+    const make = () =>
+      createSolidPlay({
+        S: { showDev: true, screen: 'menu' },
+        $: () => null,
+        t: translate,
+        render: () => {},
+        genNoticeHtml: () => '',
+        paintGenerating: () => {},
+        startTimer: () => {},
+        stopTimer: () => {},
+        randomSeed: () => 1,
+        openExport: () => {},
+      });
     registerBalls([]);
     try {
-      const options = [...make().cardHtml().matchAll(/<option value="([^"]+)"/g)].map(m => m[1]);
+      const options = [
+        ...make()
+          .cardHtml()
+          .matchAll(/<option value="([^"]+)"/g),
+      ].map(m => m[1]);
       eq(options, ['random'], 'no catalog, no balls yet');
     } finally {
       registerBalls(BALL_CATALOG);
@@ -290,7 +327,7 @@ export function solidTests(t, ok, eq, ta) {
 
   t('play app: the card of the 3D puzzles follows the release dates', () => {
     const rel = releaseDays({ first: 20261201, tetra: 7, cube: 21, ball: 35 });
-    const make = (day, { unlocked = () => false, showDev = false, release = rel } = {}) => (
+    const make = (day, { unlocked = () => false, showDev = false, release = rel } = {}) =>
       createSolidPlay({
         S: { showDev, screen: 'menu' },
         $: () => null,
@@ -304,13 +341,13 @@ export function solidTests(t, ok, eq, ta) {
         release,
         today: () => day,
         unlocked,
-      }).cardHtml()
-    );
-    const tiles = html => [...html.matchAll(/id="solidOpt-(\w+)"( style="display:none")?/g)]
-      .filter(match => !match[2])
-      .map(match => match[1]);
-    const sizes = html => [...html.matchAll(/<option value="(\d+)"/g)]
-      .map(match => Number(match[1]));
+      }).cardHtml();
+    const tiles = html =>
+      [...html.matchAll(/id="solidOpt-(\w+)"( style="display:none")?/g)]
+        .filter(match => !match[2])
+        .map(match => match[1]);
+    const sizes = html =>
+      [...html.matchAll(/<option value="(\d+)"/g)].map(match => Number(match[1]));
     const locked = html => (html.match(/variant-locked/g) || []).length;
     const hiddenCard = /id="solidCard" style="display:none"/;
     const first = rel.first;
@@ -336,16 +373,19 @@ export function solidTests(t, ok, eq, ta) {
     eq(locked(make(first)), 2, 'cube and ball are marked, the tetra is not');
   });
 
-  t('solid: one list of the solid kinds, shared by the core and the play app; the board of a '
-    + 'puzzle is its kind', () => {
-    eq(CORE_SOLID_KINDS, [...SIZED_SOLIDS, BALL_KIND]);
-    eq(SOLID_KINDS, CORE_SOLID_KINDS, 'the play app uses the list of the core');
-    ok(!CORE_SOLID_KINDS.includes(PENTAGON_KIND), 'the Pentagon board is not a solid');
-    for (const kind of SIZED_SOLIDS) {
-      const p = makeSurfacePuzzle(kind, 2);
-      eq([p.kind, p.surface], [kind, undefined], `${kind}: the field is kind`);
-    }
-  });
+  t(
+    'solid: one list of the solid kinds, shared by the core and the play app; the board of a ' +
+      'puzzle is its kind',
+    () => {
+      eq(CORE_SOLID_KINDS, [...SIZED_SOLIDS, BALL_KIND]);
+      eq(SOLID_KINDS, CORE_SOLID_KINDS, 'the play app uses the list of the core');
+      ok(!CORE_SOLID_KINDS.includes(PENTAGON_KIND), 'the Pentagon board is not a solid');
+      for (const kind of SIZED_SOLIDS) {
+        const p = makeSurfacePuzzle(kind, 2);
+        eq([p.kind, p.surface], [kind, undefined], `${kind}: the field is kind`);
+      }
+    },
+  );
 
   ta('play app: a new 3D puzzle opens in the view the player chose last', async () => {
     registerBalls(BALL_CATALOG);
@@ -353,21 +393,25 @@ export function solidTests(t, ok, eq, ta) {
     const els = {};
     const calls = () => new Proxy({}, { get: () => () => null });
     const rect = { left: 0, top: 0, width: 100, height: 100 };
-    const element = () => new Proxy({ style: {}, classList: calls(), innerHTML: '' }, {
-      get: (target, key) => {
-        if (key in target) {
-          return target[key];
-        }
-        // what the zoom asks of the board: its svgs and their box
-        const own = {
-          querySelectorAll: () => [],
-          querySelector: () => element(),
-          getBoundingClientRect: () => rect,
-        };
-        return own[key] ?? (() => null);
-      },
-      set: (target, key, value) => Object.assign(target, { [key]: value }) && true,
-    });
+    const element = () =>
+      new Proxy(
+        { style: {}, classList: calls(), innerHTML: '' },
+        {
+          get: (target, key) => {
+            if (key in target) {
+              return target[key];
+            }
+            // what the zoom asks of the board: its svgs and their box
+            const own = {
+              querySelectorAll: () => [],
+              querySelector: () => element(),
+              getBoundingClientRect: () => rect,
+            };
+            return own[key] ?? (() => null);
+          },
+          set: (target, key, value) => Object.assign(target, { [key]: value }) && true,
+        },
+      );
     const play = createSolidPlay({
       S: { showDev: false, screen: 'menu' },
       $: id => (els[id] ??= element()),
@@ -399,32 +443,35 @@ export function solidTests(t, ok, eq, ta) {
     eq(label(), translate('solid.net'), 'a new puzzle keeps the solid');
   });
 
-  ta('play app: Cancel while a 3D puzzle is made goes back to the menu without a message, and a lucky chance comes back', async () => {
-    registerBalls(BALL_CATALOG);
-    const S = { showDev: false, screen: 'menu' };
-    let refunds = 0;
-    const play = createSolidPlay({
-      S,
-      $: () => null,
-      t: translate,
-      render: () => {},
-      genNoticeHtml: () => '',
-      paintGenerating: () => {},
-      startTimer: () => {},
-      stopTimer: () => {},
-      randomSeed: () => {
-        S.genJob.cancel(); // the player presses Cancel while the puzzle is being made
-        return 7;
-      },
-      luckyFailed: async () => {
-        refunds++;
-      },
-      openExport: () => {},
-    });
-    await play.start({ kind: 'tetra', size: 3, lucky: true });
-    eq(S.screen, 'menu', 'back on the menu');
-    eq(S.genNotice, null, 'a cancel is not a failure: no message');
-    eq(refunds, 1, 'the unlock chance of the lucky game is given back');
-    eq(S.genJob, null, 'the job is closed');
-  });
+  ta(
+    'play app: Cancel while a 3D puzzle is made goes back to the menu without a message, and a lucky chance comes back',
+    async () => {
+      registerBalls(BALL_CATALOG);
+      const S = { showDev: false, screen: 'menu' };
+      let refunds = 0;
+      const play = createSolidPlay({
+        S,
+        $: () => null,
+        t: translate,
+        render: () => {},
+        genNoticeHtml: () => '',
+        paintGenerating: () => {},
+        startTimer: () => {},
+        stopTimer: () => {},
+        randomSeed: () => {
+          S.genJob.cancel(); // the player presses Cancel while the puzzle is being made
+          return 7;
+        },
+        luckyFailed: async () => {
+          refunds++;
+        },
+        openExport: () => {},
+      });
+      await play.start({ kind: 'tetra', size: 3, lucky: true });
+      eq(S.screen, 'menu', 'back on the menu');
+      eq(S.genNotice, null, 'a cancel is not a failure: no message');
+      eq(refunds, 1, 'the unlock chance of the lucky game is given back');
+      eq(S.genJob, null, 'the job is closed');
+    },
+  );
 }

@@ -25,78 +25,206 @@ import { fitCandidate, dedupe, predictH, isMonotone } from '../src/core/gotd-mod
 
 const args = process.argv.slice(2);
 const here = p => new URL(p, import.meta.url).pathname;
-const ratingsFile = args.find(a => a.endsWith('.json') && a !== args[args.indexOf('--out') + 1]) || here('./ratings.json');
-const outFile = args.includes('--out') ? args[args.indexOf('--out') + 1] : here('./gotd-models.json');
-const raw = fs.readFileSync(ratingsFile, 'utf8'), sha = crypto.createHash('sha256').update(raw).digest('hex');
+const ratingsFile =
+  args.find(a => a.endsWith('.json') && a !== args[args.indexOf('--out') + 1]) ||
+  here('./ratings.json');
+const outFile = args.includes('--out')
+  ? args[args.indexOf('--out') + 1]
+  : here('./gotd-models.json');
+const raw = fs.readFileSync(ratingsFile, 'utf8'),
+  sha = crypto.createHash('sha256').update(raw).digest('hex');
 
 if (args.includes('--check')) {
-  const have = fs.existsSync(outFile) ? JSON.parse(fs.readFileSync(outFile, 'utf8')).ratings?.sha256 : null;
-  console.log(have === sha ? 'gotd-models.json matches ratings.json' : 'gotd-models.json is stale: run  node tools/gotd-fit.mjs');
+  const have = fs.existsSync(outFile)
+    ? JSON.parse(fs.readFileSync(outFile, 'utf8')).ratings?.sha256
+    : null;
+  console.log(
+    have === sha
+      ? 'gotd-models.json matches ratings.json'
+      : 'gotd-models.json is stale: run  node tools/gotd-fit.mjs',
+  );
   process.exit(have === sha ? 0 : 1);
 }
 
-const R = JSON.parse(raw), H = R.map(r => r.human), W = R.map(ratingWeight);
-const t0 = Date.now(), F = R.map(featuresOf);
-const BASE = { 'grade:decisionNodes': 'decisionNodes/cell', 'grade:B': 'B/N', 'grade:cross': 'crossPerSeg', 'grade:trap': 'trapPredicted' };
-const familyOf = id => BASE[id] || id, MIN_SKILL = 0.02;
+const R = JSON.parse(raw),
+  H = R.map(r => r.human),
+  W = R.map(ratingWeight);
+const t0 = Date.now(),
+  F = R.map(featuresOf);
+const BASE = {
+  'grade:decisionNodes': 'decisionNodes/cell',
+  'grade:B': 'B/N',
+  'grade:cross': 'crossPerSeg',
+  'grade:trap': 'trapPredicted',
+};
+const familyOf = id => BASE[id] || id,
+  MIN_SKILL = 0.02;
 // A row counts for a candidate when its value is finite (a rating without a solution path has NaN trap metrics: one such row would
 // poison the whole fit of every trap candidate) and, for a solver metric, when the reference solve was not capped.
-const defined = id => F.map((f, i) => i).filter(i => Number.isFinite(F[i][id]) && !(needsSolver(id) && F[i]._capped));
+const defined = id =>
+  F.map((f, i) => i).filter(i => Number.isFinite(F[i][id]) && !(needsSolver(id) && F[i]._capped));
 const column = (id, rows) => rows.map(i => F[i][id]);
 
-const fitOn = (id, rows) => fitCandidate(column(id, rows), rows.map(i => H[i]), rows.map(i => W[i]), { bucket: isGrade(id) });
-const cands = NAMES.filter(id => id !== 'n').map(id => {
-  const rows = defined(id), fit = fitOn(id, rows);
-  return fit && { id, group: GROUP[id], rows, solver: needsSolver(id), ...fit };
-}).filter(c => c && c.skill > MIN_SKILL).sort((a, b) => b.skill - a.skill);
-const unstable = cands.filter(c => !(c.rho > 0)).map(c => ({ id: c.id, because: `its leave-one-out predictions rank the puzzles against the ratings (rho ${c.rho === null ? 'n/a' : c.rho.toFixed(2)})` }));
+const fitOn = (id, rows) =>
+  fitCandidate(
+    column(id, rows),
+    rows.map(i => H[i]),
+    rows.map(i => W[i]),
+    { bucket: isGrade(id) },
+  );
+const cands = NAMES.filter(id => id !== 'n')
+  .map(id => {
+    const rows = defined(id),
+      fit = fitOn(id, rows);
+    return fit && { id, group: GROUP[id], rows, solver: needsSolver(id), ...fit };
+  })
+  .filter(c => c && c.skill > MIN_SKILL)
+  .sort((a, b) => b.skill - a.skill);
+const unstable = cands
+  .filter(c => !(c.rho > 0))
+  .map(c => ({
+    id: c.id,
+    because: `its leave-one-out predictions rank the puzzles against the ratings (rho ${c.rho === null ? 'n/a' : c.rho.toFixed(2)})`,
+  }));
 
 const corrCache = new Map();
 const corr = (a, b) => {
   const key = a + '|' + b;
   if (!corrCache.has(key)) {
-    const rows = defined(a).filter(i => defined(b).includes(i)), r = spearman(column(a, rows), column(b, rows));
+    const rows = defined(a).filter(i => defined(b).includes(i)),
+      r = spearman(column(a, rows), column(b, rows));
     corrCache.set(key, r === null ? 0 : Math.abs(r));
   }
   return corrCache.get(key);
 };
 const ordered = cands.filter(c => c.rho > 0 && (!isGrade(c.id) || isMonotone(c.model)));
-const notOrdered = cands.filter(c => !ordered.includes(c) && c.rho > 0).map(c => ({ id: c.id, because: 'its grades are not rated in increasing order: ' + (c.model.kind === 'bucket' ? Object.entries(c.model.table).map(([g, h]) => `${g}:${h.toFixed(2)}`).join(' ') : 'negative slope') }));
-const { kept, dropped: dups } = dedupe(ordered, familyOf, corr), dropped = [...notOrdered, ...unstable, ...dups];
+const notOrdered = cands
+  .filter(c => !ordered.includes(c) && c.rho > 0)
+  .map(c => ({
+    id: c.id,
+    because:
+      'its grades are not rated in increasing order: ' +
+      (c.model.kind === 'bucket'
+        ? Object.entries(c.model.table)
+            .map(([g, h]) => `${g}:${h.toFixed(2)}`)
+            .join(' ')
+        : 'negative slope'),
+  }));
+const { kept, dropped: dups } = dedupe(ordered, familyOf, corr),
+  dropped = [...notOrdered, ...unstable, ...dups];
 
 // Bootstrap: refit every kept candidate on a resample, score it on the rows the resample did not contain.
-const rnd = makeRng(12345), B = 200, top3 = {}, top10 = {}, sk = {};
+const rnd = makeRng(12345),
+  B = 200,
+  top3 = {},
+  top10 = {},
+  sk = {};
 for (let b = 0; b < B; b++) {
-  const inBag = Array.from({ length: R.length }, () => Math.floor(rnd() * R.length)), oob = new Set(R.map((_, i) => i));
+  const inBag = Array.from({ length: R.length }, () => Math.floor(rnd() * R.length)),
+    oob = new Set(R.map((_, i) => i));
   inBag.forEach(i => oob.delete(i));
   const scored = [];
   for (const c of kept) {
-    const rows = inBag.filter(i => c.rows.includes(i)), test = [...oob].filter(i => c.rows.includes(i)), fit = fitOn(c.id, rows);
+    const rows = inBag.filter(i => c.rows.includes(i)),
+      test = [...oob].filter(i => c.rows.includes(i)),
+      fit = fitOn(c.id, rows);
     if (!fit || !test.length) continue;
-    const wsum = rs => rs.reduce((s, i) => s + W[i], 0), mean = rows.reduce((s, i) => s + W[i] * H[i], 0) / wsum(rows);
+    const wsum = rs => rs.reduce((s, i) => s + W[i], 0),
+      mean = rows.reduce((s, i) => s + W[i] * H[i], 0) / wsum(rows);
     const err = pred => test.reduce((s, i) => s + W[i] * Math.abs(pred(i) - H[i]), 0) / wsum(test);
     const skill = 1 - err(i => predictH(fit.model, F[i][c.id])) / err(() => mean);
-    scored.push({ id: c.id, skill }); (sk[c.id] = sk[c.id] || []).push(skill);
+    scored.push({ id: c.id, skill });
+    (sk[c.id] = sk[c.id] || []).push(skill);
   }
-  scored.sort((a, b2) => b2.skill - a.skill).forEach((s, k) => { if (k < 3) top3[s.id] = (top3[s.id] || 0) + 1; if (k < 10) top10[s.id] = (top10[s.id] || 0) + 1; });
+  scored
+    .sort((a, b2) => b2.skill - a.skill)
+    .forEach((s, k) => {
+      if (k < 3) top3[s.id] = (top3[s.id] || 0) + 1;
+      if (k < 10) top10[s.id] = (top10[s.id] || 0) + 1;
+    });
 }
 
-const sd = xs => { const m = xs.reduce((a, v) => a + v, 0) / (xs.length || 1); return Math.sqrt(xs.reduce((a, v) => a + (v - m) ** 2, 0) / Math.max(1, xs.length - 1)); };
+const sd = xs => {
+  const m = xs.reduce((a, v) => a + v, 0) / (xs.length || 1);
+  return Math.sqrt(xs.reduce((a, v) => a + (v - m) ** 2, 0) / Math.max(1, xs.length - 1));
+};
 const r4 = x => (x === null || x === undefined ? x : +x.toFixed(4));
-const roundModel = m => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, typeof v === 'number' ? r4(v) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([g, x]) => [g, r4(x)])) : v]));
-const ranked = kept.map(c => ({ id: c.id, group: c.group, solver: c.solver, rows: c.rows.length, ...(isGrade(c.id) ? { seen: [...new Set(c.rows.map(i => F[i][c.id]))].sort((a, b) => a - b) } : {}), skill: r4(c.skill), skillSd: r4(sd(sk[c.id] || [])), looMae: r4(c.mae), looRho: r4(c.rho), top3: (top3[c.id] || 0) / B, top10: (top10[c.id] || 0) / B, model: roundModel(c.model) }));
+const roundModel = m =>
+  Object.fromEntries(
+    Object.entries(m).map(([k, v]) => [
+      k,
+      typeof v === 'number'
+        ? r4(v)
+        : v && typeof v === 'object'
+          ? Object.fromEntries(Object.entries(v).map(([g, x]) => [g, r4(x)]))
+          : v,
+    ]),
+  );
+const ranked = kept.map(c => ({
+  id: c.id,
+  group: c.group,
+  solver: c.solver,
+  rows: c.rows.length,
+  ...(isGrade(c.id)
+    ? { seen: [...new Set(c.rows.map(i => F[i][c.id]))].sort((a, b) => a - b) }
+    : {}),
+  skill: r4(c.skill),
+  skillSd: r4(sd(sk[c.id] || [])),
+  looMae: r4(c.mae),
+  looRho: r4(c.rho),
+  top3: (top3[c.id] || 0) / B,
+  top10: (top10[c.id] || 0) / B,
+  model: roundModel(c.model),
+}));
 const out = {
-  ratings: { n: R.length, sha256: sha }, trapFitN: TRAP_MODEL.fit ? TRAP_MODEL.fit.n : null,
-  note: 'generated by tools/gotd-fit.mjs, do not edit by hand', ranked, dropped,
+  ratings: { n: R.length, sha256: sha },
+  trapFitN: TRAP_MODEL.fit ? TRAP_MODEL.fit.n : null,
+  note: 'generated by tools/gotd-fit.mjs, do not edit by hand',
+  ranked,
+  dropped,
 };
 fs.writeFileSync(outFile, JSON.stringify(out, null, 1) + '\n');
 
-console.log(`${R.length} ratings, ${NAMES.length - 1} metrics fitted in ${((Date.now() - t0) / 1000).toFixed(1)}s -> ${ranked.length} candidates kept, ${dropped.length} dropped`);
+console.log(
+  `${R.length} ratings, ${NAMES.length - 1} metrics fitted in ${((Date.now() - t0) / 1000).toFixed(1)}s -> ${ranked.length} candidates kept, ${dropped.length} dropped`,
+);
 const nonFinite = NAMES.filter(id => id !== 'n' && F.some(f => !Number.isFinite(f[id])));
-if (nonFinite.length) console.log(`NOTE: rows with a non-finite value are left out of the fit of: ${nonFinite.join(', ')}`);
-console.log('rank  candidate              group    rows  skill   +-sd  LOO-MAE  LOO-rho  top3  top10  fit');
-ranked.forEach((c, i) => console.log(String(i + 1).padStart(4), ' ', c.id.padEnd(22), c.group.padEnd(8), String(c.rows).padStart(4), c.skill.toFixed(2).padStart(6), c.skillSd.toFixed(2).padStart(6), c.looMae.toFixed(3).padStart(8), String(c.looRho?.toFixed(2) ?? '—').padStart(8), (c.top3 * 100).toFixed(0).padStart(4) + '%', (c.top10 * 100).toFixed(0).padStart(5) + '%', ' ', c.model.kind === 'bucket' ? 'bucket means' : `${c.model.kind}: ${c.model.a} + ${c.model.b}*x`));
-console.log('dropped: ' + dropped.map(d => `${d.id} (${d.because.includes(' ') ? d.because : '~' + d.because})`).join('; '));
-console.log(`no better than a constant (skill <= ${MIN_SKILL}): ` + NAMES.filter(id => id !== 'n' && !cands.some(c => c.id === id)).join(', '));
+if (nonFinite.length)
+  console.log(
+    `NOTE: rows with a non-finite value are left out of the fit of: ${nonFinite.join(', ')}`,
+  );
+console.log(
+  'rank  candidate              group    rows  skill   +-sd  LOO-MAE  LOO-rho  top3  top10  fit',
+);
+ranked.forEach((c, i) =>
+  console.log(
+    String(i + 1).padStart(4),
+    ' ',
+    c.id.padEnd(22),
+    c.group.padEnd(8),
+    String(c.rows).padStart(4),
+    c.skill.toFixed(2).padStart(6),
+    c.skillSd.toFixed(2).padStart(6),
+    c.looMae.toFixed(3).padStart(8),
+    String(c.looRho?.toFixed(2) ?? '—').padStart(8),
+    (c.top3 * 100).toFixed(0).padStart(4) + '%',
+    (c.top10 * 100).toFixed(0).padStart(5) + '%',
+    ' ',
+    c.model.kind === 'bucket' ? 'bucket means' : `${c.model.kind}: ${c.model.a} + ${c.model.b}*x`,
+  ),
+);
+console.log(
+  'dropped: ' +
+    dropped
+      .map(d => `${d.id} (${d.because.includes(' ') ? d.because : '~' + d.because})`)
+      .join('; '),
+);
+console.log(
+  `no better than a constant (skill <= ${MIN_SKILL}): ` +
+    NAMES.filter(id => id !== 'n' && !cands.some(c => c.id === id)).join(', '),
+);
 const trapOf = TRAP_MODEL.fit && (TRAP_MODEL.fit.of ?? TRAP_MODEL.fit.n); // ratings.json size at fit time (n can be smaller: unsolvable puzzles are skipped)
-if (trapOf != null && trapOf !== R.length) console.log(`WARNING: the trap model was fitted from a ratings.json of ${trapOf} ratings, now it has ${R.length}: run node tools/fit-trap.mjs --write first, then this tool again`);
+if (trapOf != null && trapOf !== R.length)
+  console.log(
+    `WARNING: the trap model was fitted from a ratings.json of ${trapOf} ratings, now it has ${R.length}: run node tools/fit-trap.mjs --write first, then this tool again`,
+  );

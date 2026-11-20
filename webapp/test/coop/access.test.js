@@ -1,8 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  firstShown, hasSolidTab, isShown, levelOf, offeredSizes,
-} from '../../src/coop/access.js';
+import { firstShown, hasSolidTab, isShown, levelOf, offeredSizes } from '../../src/coop/access.js';
 import { SOLID_KINDS } from '../../src/core/solid/kinds.js';
 import { FLAT_IDS, isSolidId, SOLID_IDS, sizesFor } from '../../src/coop/variants.js';
 
@@ -46,7 +44,11 @@ test('a type open in part keeps to its open sizes, until revealed', () => {
   assert.deepEqual(offeredSizes(INFO, 'tetra', true), sizesFor('tetra'));
   assert.deepEqual(offeredSizes(INFO, 'cube'), sizesFor('cube'));
   const stale = { ...INFO, sizes: { tetra: [99] } };
-  assert.deepEqual(offeredSizes(stale, 'tetra'), sizesFor('tetra'), 'sizes that do not exist: all');
+  assert.deepEqual(
+    offeredSizes(stale, 'tetra'),
+    sizesFor('tetra'),
+    'sizes that do not exist: all',
+  );
 });
 
 test('the type to start from is the one asked for if shown, else the first that is', () => {

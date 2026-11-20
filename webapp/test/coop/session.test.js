@@ -34,10 +34,16 @@ function connect(extra = {}) {
   const wire = fakePair();
   const events = { host: [], guest: [] };
   const host = createSession({
-    role: 'host', channel: wire.a, onEvent: e => events.host.push(e), ...extra,
+    role: 'host',
+    channel: wire.a,
+    onEvent: e => events.host.push(e),
+    ...extra,
   });
   const guest = createSession({
-    role: 'guest', channel: wire.b, onEvent: e => events.guest.push(e), ...extra,
+    role: 'guest',
+    channel: wire.b,
+    onEvent: e => events.guest.push(e),
+    ...extra,
   });
   return { wire, host, guest, events };
 }
@@ -82,7 +88,10 @@ test('lines drawn on one side appear on the other; the two draw the solution tog
   wire.flush();
   const theirReplica = guest.replica;
   const solution = solutionOf(puzzle);
-  const edges = shuffle(solution.slice(1).map((cell, i) => [solution[i], cell]), rnd);
+  const edges = shuffle(
+    solution.slice(1).map((cell, i) => [solution[i], cell]),
+    rnd,
+  );
   edges.forEach(([a, b], i) => {
     assert.equal((i % 3 === 0 ? theirReplica : mineReplica).add(a, b), null);
     if (rnd() < 0.4) {
@@ -93,7 +102,10 @@ test('lines drawn on one side appear on the other; the two draw the solution tog
   assert.equal(mineReplica.solved(), true);
   assert.equal(theirReplica.solved(), true);
   const owners = edges.map(([a, b]) => mineReplica.ownerOf(a, b));
-  assert.deepEqual(owners, edges.map(([a, b]) => theirReplica.ownerOf(a, b)));
+  assert.deepEqual(
+    owners,
+    edges.map(([a, b]) => theirReplica.ownerOf(a, b)),
+  );
   assert.ok(owners.includes(0) && owners.includes(1));
 });
 

@@ -2,9 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createMqtt } from '../../src/coop/mqtt.js';
 import { createHub, matches } from '../../src/coop/signal.js';
-import {
-  createNetwork, manualTimers, settle, until,
-} from './fake-broker.js';
+import { createNetwork, manualTimers, settle, until } from './fake-broker.js';
 
 const URLS = ['wss://mq', 'wss://hv', 'wss://em'];
 const brokers = URLS.map((url, i) => ({ id: ['mq', 'hv', 'em'][i], url }));
@@ -18,15 +16,23 @@ function device(net, extra = {}) {
     timers,
     now: () => 0,
     random: () => 1,
-    connect: (url, handlers) => createMqtt({
-      url, clientId: 'c', WebSocketImpl: net.WebSocket, timers, ...handlers,
-    }),
+    connect: (url, handlers) =>
+      createMqtt({
+        url,
+        clientId: 'c',
+        WebSocketImpl: net.WebSocket,
+        timers,
+        ...handlers,
+      }),
     ...extra,
   });
   const got = [];
   const listen = filter => hub.subscribe(filter, (topic, text) => got.push(`${topic}=${text}`));
   return {
-    hub, timers, got, listen,
+    hub,
+    timers,
+    got,
+    listen,
   };
 }
 
@@ -163,7 +169,11 @@ test('state and report show how long a connect took, and x for a broker that is 
     now: () => clock,
     connect: (url, handlers) => {
       const mqtt = createMqtt({
-        url, clientId: 'c', WebSocketImpl: net.WebSocket, timers, ...handlers,
+        url,
+        clientId: 'c',
+        WebSocketImpl: net.WebSocket,
+        timers,
+        ...handlers,
       });
       clock = 350; // the connect started at 0 and the broker answers at 350 ms
       return mqtt;

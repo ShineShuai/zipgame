@@ -5,15 +5,17 @@ import { makePuzzle, labelCount, labelRanks, validate } from '../src/core/model.
 import { isSolved } from '../src/core/rules.js';
 import { EXACT_SIZES } from '../src/core/gen/exact.js';
 import {
-  variantOf, variantById, sizesFor, nearestSize, PLAY_VARIANTS,
+  variantOf,
+  variantById,
+  sizesFor,
+  nearestSize,
+  PLAY_VARIANTS,
 } from '../src/apps/play/variants.js';
 import { variantIcon } from '../src/apps/play/icons.js';
 import { boardSvg, badgeColors, stepWrong, COLORS } from '../src/apps/play/board.js';
 import { EN, ZH } from '../src/ui/i18n.js';
 import { encodeShare, decodeShare } from '../src/core/share-code.js';
-import {
-  makeShareRecord, legsUndo, legLevels, shareText,
-} from '../src/features/share.js';
+import { makeShareRecord, legsUndo, legLevels, shareText } from '../src/features/share.js';
 import { solutionOf, maxHints } from '../src/features/hints.js';
 import { made } from './fixtures/made.js';
 
@@ -28,9 +30,16 @@ function exactPuzzle(n, numbers) {
 }
 
 const fast = (n, seed) => made('exact', n, seed, { candidates: 1, refineNodes: 0 });
-const record = (p, extra = {}) => makeShareRecord({
-  n: p.n, timeS: 83.4, legs: [0, 2, 3], K: labelCount(p), variant: 'exact', puzzle: p, ...extra,
-});
+const record = (p, extra = {}) =>
+  makeShareRecord({
+    n: p.n,
+    timeS: 83.4,
+    legs: [0, 2, 3],
+    K: labelCount(p),
+    variant: 'exact',
+    puzzle: p,
+    ...extra,
+  });
 
 export function playExactTests(t, ok, eq) {
   t('play exact: registry, detect, offered sizes, generator', () => {
@@ -50,13 +59,24 @@ export function playExactTests(t, ok, eq) {
   t('play exact: the icon has 16 tiles and 4 step badges; both languages have the texts', () => {
     const icon = variantIcon('exact');
     eq((icon.match(/rx="1\.6"/g) || []).length, 16);
-    eq([...icon.matchAll(/class="vi-num"[^>]*>(\d+)</g)].map(m => +m[1]), [1, 7, 12, 16]);
+    eq(
+      [...icon.matchAll(/class="vi-num"[^>]*>(\d+)</g)].map(m => +m[1]),
+      [1, 7, 12, 16],
+    );
     ok(icon.includes('vi-exact'));
     ok(icon !== variantIcon('standard') && icon !== variantIcon('arrows'));
     ok(!variantIcon('standard').includes('vi-badge'));
     for (const dict of [EN, ZH]) {
-      const keys = ['mode.exact', 'mode.exactTag', 'gen.subExact', 'game.exactTitle',
-        'game.sharedExactTitle', 'share.exact', 'share.headExact', 'game.step'];
+      const keys = [
+        'mode.exact',
+        'mode.exactTag',
+        'gen.subExact',
+        'game.exactTitle',
+        'game.sharedExactTitle',
+        'share.exact',
+        'share.headExact',
+        'game.step',
+      ];
       for (const key of keys) ok(dict[key], key);
       ok(dict['gen.labels'](3).includes('3') && dict['gen.labels'](1).includes('1'));
     }
@@ -77,7 +97,13 @@ export function playExactTests(t, ok, eq) {
     const refused = changes => {
       const q = { ...good, cp: good.cp.slice(), walls: good.walls.slice(), ...changes };
       const rec = {
-        kind: 'local', variant: 'exact', n: 6, grade: null, timeS: 5, levels: [], puzzle: q,
+        kind: 'local',
+        variant: 'exact',
+        n: 6,
+        grade: null,
+        timeS: 5,
+        levels: [],
+        puzzle: q,
       };
       return encodeShare(rec) === null;
     };
@@ -103,15 +129,32 @@ export function playExactTests(t, ok, eq) {
     const exact = fast(6, 3);
     const arrows = made('arrows', 5, 3, { candidates: 1, refineNodes: 0 });
     const cutout = made('cutout', 6, 8, { boards: 1, effort: 0.1 });
-    for (const [variant, puzzle] of [['exact', exact], ['arrows', arrows], ['cutout', cutout]]) {
+    for (const [variant, puzzle] of [
+      ['exact', exact],
+      ['arrows', arrows],
+      ['cutout', cutout],
+    ]) {
       const rec = makeShareRecord({
-        n: puzzle.n, grade: 3, timeS: 12.3, legs: [], K: labelCount(puzzle), variant, puzzle,
+        n: puzzle.n,
+        grade: 3,
+        timeS: 12.3,
+        legs: [],
+        K: labelCount(puzzle),
+        variant,
+        puzzle,
       });
       eq(rec.grade, null, variant);
       ok(encodeShare(rec) !== null, `${variant}: encodes with a grade given`);
     }
     const standard = made('std', 5, 3);
-    const local = makeShareRecord({ n: 5, grade: 3, timeS: 1, legs: [], K: labelCount(standard), puzzle: standard });
+    const local = makeShareRecord({
+      n: 5,
+      grade: 3,
+      timeS: 1,
+      legs: [],
+      K: labelCount(standard),
+      puzzle: standard,
+    });
     eq(local.grade, 3, 'a standard game keeps its grade');
     ok(encodeShare(local) !== null, 'and encodes with its puzzle');
   });
@@ -159,11 +202,18 @@ export function playExactTests(t, ok, eq) {
     eq([badge(right, 0), badge(right, 2), badge(right, 8)], blue);
     const wrong = board(p, [0, 3, 4, 1, 2]); // number 3 reached on step 5
     eq([badge(wrong, 0), badge(wrong, 2)], [COLORS.numberVisited, COLORS.numberWrong]);
-    const flags = [[0, 1, 2], [0, 3, 4, 1, 2]].map(path => stepWrong(p, path, 2));
+    const flags = [
+      [0, 1, 2],
+      [0, 3, 4, 1, 2],
+    ].map(path => stepWrong(p, path, 2));
     eq([...flags, stepWrong(makePuzzle(3), [0, 1, 2], 2)], [false, true, false]);
     const idle = { fill: COLORS.numberFill, stroke: COLORS.numberRing, text: COLORS.number };
     eq(badgeColors(false), idle);
-    eq(badgeColors(true), { fill: COLORS.numberVisited, stroke: COLORS.numberVisitedRing, text: COLORS.numberVisitedText });
+    eq(badgeColors(true), {
+      fill: COLORS.numberVisited,
+      stroke: COLORS.numberVisitedRing,
+      text: COLORS.numberVisitedText,
+    });
     const ink = COLORS.numberWrong;
     const red = { fill: ink, stroke: ink, text: COLORS.numberVisitedText };
     eq(badgeColors(true, true), red);

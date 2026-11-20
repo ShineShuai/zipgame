@@ -13,9 +13,16 @@ import { makeShareRecord } from '../src/features/share.js';
 import { made } from './fixtures/made.js';
 
 const loopGame = (n, seed) => made('loop', n, seed);
-const record = (p, extra = {}) => makeShareRecord({
-  n: p.n, timeS: 83.4, legs: [0, 2, 3], K: maxNumber(p), variant: 'loop', puzzle: p, ...extra,
-});
+const record = (p, extra = {}) =>
+  makeShareRecord({
+    n: p.n,
+    timeS: 83.4,
+    legs: [0, 2, 3],
+    K: maxNumber(p),
+    variant: 'loop',
+    puzzle: p,
+    ...extra,
+  });
 // The number of line segments of an SVG path d.
 const segments = d => (d.match(/[ML]/g) || []).length;
 const pathOf = svg => svg.match(/data-role="path" d="([^"]*)"/)[1];
@@ -27,22 +34,33 @@ export function loopPlayTests(t, ta, ok, eq) {
     eq(routeCells(p, path, false), path, 'not solved yet: the line as it is');
     eq(routeCells(p, path, true), [...path, path[0]], 'solved: back to cell 1');
     const standard = made('std', 5, 1);
-    eq(routeCells(standard, standard.path, true), standard.path, 'a standard puzzle is not closed');
+    eq(
+      routeCells(standard, standard.path, true),
+      standard.path,
+      'a standard puzzle is not closed',
+    );
     eq(routeCells(p, [path[0]], true), [path[0]], 'a line of one cell');
   });
 
-  t('loop-play: boardSvg draws one more segment when the ring is solved; other boards as before', () => {
-    const p = loopGame(6, 2);
-    const S = { puzzle: p, path: p.path.slice(), hintCell: null, hintWrongCell: null };
-    const open = pathOf(boardSvg({ ...S, finished: false }));
-    const closed = pathOf(boardSvg({ ...S, finished: true }));
-    eq(segments(closed), segments(open) + 1, 'the closing segment');
-    ok(closed.startsWith(open), 'the same line first');
-    ok(!/wrap/.test(boardSvg({ ...S, finished: true })), 'not a wrap board');
-    const grid = made('std', 5, 2);
-    const gridS = { puzzle: grid, path: grid.path.slice(), hintCell: null, hintWrongCell: null };
-    eq(pathOf(boardSvg({ ...gridS, finished: true })), pathOf(boardSvg({ ...gridS, finished: false })), 'standard');
-  });
+  t(
+    'loop-play: boardSvg draws one more segment when the ring is solved; other boards as before',
+    () => {
+      const p = loopGame(6, 2);
+      const S = { puzzle: p, path: p.path.slice(), hintCell: null, hintWrongCell: null };
+      const open = pathOf(boardSvg({ ...S, finished: false }));
+      const closed = pathOf(boardSvg({ ...S, finished: true }));
+      eq(segments(closed), segments(open) + 1, 'the closing segment');
+      ok(closed.startsWith(open), 'the same line first');
+      ok(!/wrap/.test(boardSvg({ ...S, finished: true })), 'not a wrap board');
+      const grid = made('std', 5, 2);
+      const gridS = { puzzle: grid, path: grid.path.slice(), hintCell: null, hintWrongCell: null };
+      eq(
+        pathOf(boardSvg({ ...gridS, finished: true })),
+        pathOf(boardSvg({ ...gridS, finished: false })),
+        'standard',
+      );
+    },
+  );
 
   t('loop-play: an unsound loop record is not encodable', () => {
     const p = loopGame(6, 4);
@@ -52,20 +70,54 @@ export function loopPlayTests(t, ta, ok, eq) {
       change(rec);
       return encodeShare(rec) === null;
     };
-    ok(broken(rec => { rec.puzzle.loop = false; }), 'no loop flag');
-    ok(broken(rec => { rec.puzzle.holes = new Uint8Array(36); }), 'holes');
-    ok(broken(rec => { rec.puzzle.wrap = true; }), 'wrap');
-    ok(broken(rec => { rec.puzzle.cp[rec.puzzle.cp.indexOf(2)] = 99; }), 'a gap in the numbers');
-    ok(broken(rec => { rec.grade = 2; }), 'a record with a grade');
+    ok(
+      broken(rec => {
+        rec.puzzle.loop = false;
+      }),
+      'no loop flag',
+    );
+    ok(
+      broken(rec => {
+        rec.puzzle.holes = new Uint8Array(36);
+      }),
+      'holes',
+    );
+    ok(
+      broken(rec => {
+        rec.puzzle.wrap = true;
+      }),
+      'wrap',
+    );
+    ok(
+      broken(rec => {
+        rec.puzzle.cp[rec.puzzle.cp.indexOf(2)] = 99;
+      }),
+      'a gap in the numbers',
+    );
+    ok(
+      broken(rec => {
+        rec.grade = 2;
+      }),
+      'a record with a grade',
+    );
     const odd = loopGame(6, 4);
     const five = { n: 5, cp: new Uint16Array(25), walls: new Uint8Array(25), loop: true };
     five.cp[0] = 1;
     five.cp[4] = 2;
     five.cp[24] = 3;
     ok(encodeShare(record(five)) === null, 'an odd board');
-    const two = { n: 6, cp: odd.cp.map(v => (v > 2 ? 0 : v)), walls: odd.walls.slice(), loop: true };
+    const two = {
+      n: 6,
+      cp: odd.cp.map(v => (v > 2 ? 0 : v)),
+      walls: odd.walls.slice(),
+      loop: true,
+    };
     ok(encodeShare(record(two)) === null, 'two numbers only');
-    eq(record({ ...p, holes: new Uint8Array(36) }).puzzle.holes, undefined, 'holes are not copied');
+    eq(
+      record({ ...p, holes: new Uint8Array(36) }).puzzle.holes,
+      undefined,
+      'holes are not copied',
+    );
     eq(record({ ...p, loop: false }).puzzle.loop, true, 'the variant sets the flag');
     eq(record(p, { grade: 2 }).grade, null, 'a variant record has no grade');
   });
@@ -84,48 +136,55 @@ export function loopPlayTests(t, ta, ok, eq) {
     ok(!isSolved(p, path), 'but the last cell does not touch cell 1');
   });
 
-  ta('loop-play: lucky game: 8 and 10 while loop is locked, 6 to 12 once it is unlocked', async () => {
-    const memory = () => {
-      const map = new Map();
-      return {
-        map,
-        async get(k) { return map.has(k) ? { value: map.get(k) } : null; },
-        async set(k, v) { map.set(k, v); },
+  ta(
+    'loop-play: lucky game: 8 and 10 while loop is locked, 6 to 12 once it is unlocked',
+    async () => {
+      const memory = () => {
+        const map = new Map();
+        return {
+          map,
+          async get(k) {
+            return map.has(k) ? { value: map.get(k) } : null;
+          },
+          async set(k, v) {
+            map.set(k, v);
+          },
+        };
       };
-    };
-    const defs = luckyDefs(PLAY_SIZES);
-    const index = defs.findIndex(d => d.id === 'loop');
-    const MON = 20731;
-    const at = day => () => new Date(day * 86400000);
-    const pick = (...values) => {
-      const q = [...values];
-      return () => q.shift();
-    };
-    const store = memory();
-    let u = createUnlock(store, defs, at(MON));
-    await u.init();
-    await u.addChoice();
-    await u.takeChoice();
-    await u.addToken();
-    const seen = [];
-    for (let k = 0; k < defs[index].locked.length; k++) {
-      const game = await u.begin(pick(index, k));
-      seen.push(game.size);
-      eq(game.isNew, true, 'a locked variant');
-      await u.refund();
-    }
-    eq(seen, [8, 10], 'locked: only 8 and 10');
-    await u.begin(pick(index, 0));
-    eq((await u.finish(true)).newly, true, 'solved: unlocked');
-    u = createUnlock(store, defs, at(20743));
-    await u.init();
-    const sizes = [];
-    for (let k = 0; k < defs[index].pool.length; k++) {
-      const game = await u.begin(pick(index, k));
-      sizes.push(game.size);
-      eq(game.isNew, false, 'an unlocked variant');
-      await u.refund();
-    }
-    eq(sizes, [6, 8, 10, 12], 'unlocked: the sizes of free play');
-  });
+      const defs = luckyDefs(PLAY_SIZES);
+      const index = defs.findIndex(d => d.id === 'loop');
+      const MON = 20731;
+      const at = day => () => new Date(day * 86400000);
+      const pick = (...values) => {
+        const q = [...values];
+        return () => q.shift();
+      };
+      const store = memory();
+      let u = createUnlock(store, defs, at(MON));
+      await u.init();
+      await u.addChoice();
+      await u.takeChoice();
+      await u.addToken();
+      const seen = [];
+      for (let k = 0; k < defs[index].locked.length; k++) {
+        const game = await u.begin(pick(index, k));
+        seen.push(game.size);
+        eq(game.isNew, true, 'a locked variant');
+        await u.refund();
+      }
+      eq(seen, [8, 10], 'locked: only 8 and 10');
+      await u.begin(pick(index, 0));
+      eq((await u.finish(true)).newly, true, 'solved: unlocked');
+      u = createUnlock(store, defs, at(20743));
+      await u.init();
+      const sizes = [];
+      for (let k = 0; k < defs[index].pool.length; k++) {
+        const game = await u.begin(pick(index, k));
+        sizes.push(game.size);
+        eq(game.isNew, false, 'an unlocked variant');
+        await u.refund();
+      }
+      eq(sizes, [6, 8, 10, 12], 'unlocked: the sizes of free play');
+    },
+  );
 }

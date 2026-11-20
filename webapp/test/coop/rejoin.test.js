@@ -71,9 +71,14 @@ function player(role, wire, secret, net, rtc, clock) {
       brokers,
       timers: hubTimers,
       random: () => 1,
-      connect: (url, handlers) => createMqtt({
-        url, clientId: 'c', WebSocketImpl: WebSocket, timers: hubTimers, ...handlers,
-      }),
+      connect: (url, handlers) =>
+        createMqtt({
+          url,
+          clientId: 'c',
+          WebSocketImpl: WebSocket,
+          timers: hubTimers,
+          ...handlers,
+        }),
     });
     state.room = await resumeRoom({
       hub,
@@ -96,7 +101,10 @@ function player(role, wire, secret, net, rtc, clock) {
     });
   }
   return {
-    session, timers, events, state,
+    session,
+    timers,
+    events,
+    state,
   };
 }
 

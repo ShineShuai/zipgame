@@ -21,7 +21,10 @@ const dom = installFakeDom();
 const net = createNetwork(SIGNAL_BROKERS.map(broker => broker.url));
 globalThis.WebSocket = net.WebSocket;
 const env = {
-  stats: {}, saveStats() {}, onClose() {}, isRevealed: () => false,
+  stats: {},
+  saveStats() {},
+  onClose() {},
+  isRevealed: () => false,
 };
 const stubRtc = {
   createInvite: async () => ({ code: 'offer', connection: { close() {} } }),
@@ -37,7 +40,7 @@ const opened = (t, thing) => {
   return thing;
 };
 
-test('the host\'s screen: link, requests, greeting box, accept, decline, cancel', async t => {
+test("the host's screen: link, requests, greeting box, accept, decline, cancel", async t => {
   const screen = opened(t, openScreen(env));
   dom.click('host');
   await until(() => dom.html().includes('id="coopLink"'), 'the link');
@@ -47,15 +50,18 @@ test('the host\'s screen: link, requests, greeting box, accept, decline, cancel'
 
   const stages = [];
   const infos = [];
-  const guest = opened(t, await joinRoom({
-    hub: createHub({ brokers: SIGNAL_BROKERS }),
-    token: link.split('#j=')[1],
-    rtc: stubRtc,
-    onState: (stage, info) => {
-      stages.push(stage);
-      infos.push(info);
-    },
-  }));
+  const guest = opened(
+    t,
+    await joinRoom({
+      hub: createHub({ brokers: SIGNAL_BROKERS }),
+      token: link.split('#j=')[1],
+      rtc: stubRtc,
+      onState: (stage, info) => {
+        stages.push(stage);
+        infos.push(info);
+      },
+    }),
+  );
   await until(() => stages.includes('ready'), 'the guest finds the room');
 
   dom.typed.set('coopNeedGreeting', true);
@@ -63,7 +69,7 @@ test('the host\'s screen: link, requests, greeting box, accept, decline, cancel'
   await until(() => infos.at(-1).needGreeting === true, 'the guest learns a greeting is wanted');
 
   await guest.ask('Anna <b>&</b>');
-  await until(() => dom.html().includes('coop-request'), 'the request on the host\'s screen');
+  await until(() => dom.html().includes('coop-request'), "the request on the host's screen");
   assert.ok(dom.html().includes('Anna &lt;b>&amp;&lt;/b>') && !dom.html().includes('<b>&'));
   await until(() => stages.includes('seen'), 'the guest is told');
 
@@ -72,9 +78,14 @@ test('the host\'s screen: link, requests, greeting box, accept, decline, cancel'
   await until(() => stages.at(-1) === 'declined', 'declined');
   assert.ok(!dom.html().includes('coop-request'), 'the card is gone');
 
-  const second = opened(t, await joinRoom({
-    hub: createHub({ brokers: SIGNAL_BROKERS }), token: link.split('#j=')[1], rtc: stubRtc,
-  }));
+  const second = opened(
+    t,
+    await joinRoom({
+      hub: createHub({ brokers: SIGNAL_BROKERS }),
+      token: link.split('#j=')[1],
+      rtc: stubRtc,
+    }),
+  );
   await second.ask('Bea');
   await until(() => dom.html().includes('coop-request'), 'a second request');
   dom.click('accept', { id: /data-act="accept" data-id="([^"]+)"/.exec(dom.html())[1] });
@@ -87,14 +98,17 @@ test('the host\'s screen: link, requests, greeting box, accept, decline, cancel'
   assert.deepEqual(remaining(), [], 'the brokers are left clean');
 });
 
-test('the guest\'s screen: the greeting form, the news, and a failing connection', async t => {
+test("the guest's screen: the greeting form, the news, and a failing connection", async t => {
   const asked = [];
-  const host = opened(t, await hostRoom({
-    hub: createHub({ brokers: SIGNAL_BROKERS }),
-    rtc: stubRtc,
-    needGreeting: true,
-    onRequest: list => asked.push(list),
-  }));
+  const host = opened(
+    t,
+    await hostRoom({
+      hub: createHub({ brokers: SIGNAL_BROKERS }),
+      rtc: stubRtc,
+      needGreeting: true,
+      onRequest: list => asked.push(list),
+    }),
+  );
   const screen = opened(t, openScreen(env));
   screen.joinFrom(host.token, true);
   await until(() => dom.html().includes('id="coopGreeting"'), 'the form');
@@ -223,7 +237,7 @@ test('rejoining shows the game with its time, and looks for the other device', a
   assert.equal(screen !== null, true);
 });
 
-test('the guest\'s kept game is taken up with its own role and lines', async t => {
+test("the guest's kept game is taken up with its own role and lines", async t => {
   withRtc(t);
   const storage = memory();
   const record = await kept('guest');
@@ -234,7 +248,7 @@ test('the guest\'s kept game is taken up with its own role and lines', async t =
   await until(() => dom.html().includes('id="coopBoard"'), 'the game');
   const { room } = await deriveResume(fromBase64Url(record.secret));
   const broker = net.brokers.get(SIGNAL_BROKERS[1].url);
-  await until(() => broker.retained.has(`zipcoop/1/${room}/here/1`), 'the guest\'s presence');
+  await until(() => broker.retained.has(`zipcoop/1/${room}/here/1`), "the guest's presence");
   assert.ok(dom.html().includes('id="coopNew" disabled'), 'only the host starts games');
   dom.click('menu');
   if (dom.html().includes('data-act="leave"')) {
@@ -250,7 +264,10 @@ test('the game page offers to invite a friend while nobody else is in it', async
   await until(() => dom.html().includes('data-act="rejoin"'), 'the card');
   dom.click('rejoin');
   await until(() => dom.html().includes('id="coopHelp"'), 'the game with its button');
-  assert.ok(!/id="coopHelp" style="display:none"/.test(dom.html()), 'it shows: the friend is away');
+  assert.ok(
+    !/id="coopHelp" style="display:none"/.test(dom.html()),
+    'it shows: the friend is away',
+  );
   assert.ok(dom.html().includes(EN.inviteHelp));
 
   dom.click('invite-help');
@@ -269,7 +286,9 @@ test('the game page offers to invite a friend while nobody else is in it', async
 test('the message says which side is cut off', async t => {
   withRtc(t);
   Object.defineProperty(globalThis, 'navigator', {
-    value: { onLine: false }, configurable: true, writable: true,
+    value: { onLine: false },
+    configurable: true,
+    writable: true,
   });
   t.after(() => {
     const none = { value: {}, configurable: true, writable: true };
@@ -310,7 +329,11 @@ test('when the friend shows up on the brokers, it says so', async t => {
 test('the menu shows the types the player has unlocked, as the app answers', t => {
   const locked = { access: { standard: 'all', cutout: 'none' }, sizes: {}, solid: false };
   const screen = opened(t, openScreen({ ...env, access: () => locked }));
-  assert.ok(/id="coopOpt-cutout"[^>]*variant-locked|variant-locked[^>]*id="coopOpt-cutout"/.test(dom.html()));
+  assert.ok(
+    /id="coopOpt-cutout"[^>]*variant-locked|variant-locked[^>]*id="coopOpt-cutout"/.test(
+      dom.html(),
+    ),
+  );
   assert.ok(/id="coopOpt-cutout"[^>]*display:none/.test(dom.html()));
   assert.ok(/id="coopTabs"[^>]*display:none/.test(dom.html()), 'no solid on offer: no 3D tab');
   screen.setRevealed(true); // revealed: the screen is told, nothing throws, and the answer is asked afresh on the next draw

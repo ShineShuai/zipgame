@@ -38,8 +38,12 @@ function register(name, fn, slow) {
 export const t = (name, fn) => register(name, fn, false);
 t.slow = (name, fn) => register(name, fn, true);
 
-export const ta = (name, fn) => { pending.push([name, fn, false]); };
-ta.slow = (name, fn) => { pending.push([name, fn, true]); };
+export const ta = (name, fn) => {
+  pending.push([name, fn, false]);
+};
+ta.slow = (name, fn) => {
+  pending.push([name, fn, true]);
+};
 
 // after every suite has registered its tests
 export function registerAsyncTests() {
@@ -51,8 +55,8 @@ export function registerAsyncTests() {
 // For a test that compares two implementations over a long list of cases (seeds, sizes): the fast
 // tier takes every `every`-th case, the all tier every case. The fast tier runs the same checks on
 // fewer inputs; the full list runs in the Node 22 job and before a release.
-export const sampled = (cases, every = 3) => (
-  TIER === 'fast' ? cases.filter((_, index) => index % every === 0) : cases);
+export const sampled = (cases, every = 3) =>
+  TIER === 'fast' ? cases.filter((_, index) => index % every === 0) : cases;
 
 // For a file that calls node:test itself: test(name, FAST, fn) or test(name, SLOW, fn) puts the test in its tier.
 export const FAST = TIER === 'slow' ? { skip: 'fast tier' } : {};

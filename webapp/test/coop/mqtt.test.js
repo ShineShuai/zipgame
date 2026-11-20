@@ -1,23 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  connectPacket, createMqtt, createParser, publishPacket, readPublish, subscribePacket,
+  connectPacket,
+  createMqtt,
+  createParser,
+  publishPacket,
+  readPublish,
+  subscribePacket,
 } from '../../src/coop/mqtt.js';
-import {
-  createNetwork, manualTimers, settle, until,
-} from './fake-broker.js';
+import { createNetwork, manualTimers, settle, until } from './fake-broker.js';
 
-const bytes = (...parts) => Uint8Array.from(parts.flatMap(part => {
-  if (typeof part === 'string') {
-    return [...Buffer.from(part)];
-  }
-  return typeof part === 'number' ? [part] : [...part];
-}));
+const bytes = (...parts) =>
+  Uint8Array.from(
+    parts.flatMap(part => {
+      if (typeof part === 'string') {
+        return [...Buffer.from(part)];
+      }
+      return typeof part === 'number' ? [part] : [...part];
+    }),
+  );
 
 test('CONNECT: MQTT 3.1.1, clean session, the keep-alive and the client id', () => {
-  assert.deepEqual(connectPacket('abc', 60), bytes(
-    0x10, 15, 0, 4, 'MQTT', 4, 2, 0, 60, 0, 3, 'abc',
-  ));
+  assert.deepEqual(
+    connectPacket('abc', 60),
+    bytes(0x10, 15, 0, 4, 'MQTT', 4, 2, 0, 60, 0, 3, 'abc'),
+  );
 });
 
 test('SUBSCRIBE and PUBLISH have the right flags; a retained one sets the retain bit', () => {

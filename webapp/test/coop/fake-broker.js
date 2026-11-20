@@ -9,7 +9,8 @@ const decoder = new TextDecoder();
 const matches = (filter, topic) => {
   const want = filter.split('/');
   const have = topic.split('/');
-  const fits = (part, i) => part === '#' || (i < have.length && (part === '+' || part === have[i]));
+  const fits = (part, i) =>
+    part === '#' || (i < have.length && (part === '+' || part === have[i]));
   return want.every(fits) && (want.at(-1) === '#' || want.length === have.length);
 };
 
@@ -44,7 +45,9 @@ function packets(bytes) {
       scale *= 128;
     } while (byte & 128);
     out.push({
-      type: bytes[at] >> 4, flags: bytes[at] & 15, body: [...bytes.slice(next, next + length)],
+      type: bytes[at] >> 4,
+      flags: bytes[at] & 15,
+      body: [...bytes.slice(next, next + length)],
     });
     at = next + length;
   }
@@ -97,7 +100,9 @@ export function createBroker(url) {
         }
         client.push(frame(0x90, [body[0], body[1], ...filters.map(() => 0)]));
         client.filters.push(...filters);
-        broker.retained.forEach((message, topic) => deliver(client, topic, message, true, filters));
+        broker.retained.forEach((message, topic) =>
+          deliver(client, topic, message, true, filters),
+        );
       } else if (type === 3) {
         const [topic, next] = string(body, 0);
         const message = text(body.slice(next));
@@ -159,54 +164,55 @@ export function createNetwork(urls) {
   unrefLongTimers();
   const brokers = new Map(urls.map(url => [url, createBroker(url)]));
 
-  const socketClass = gate => class FakeWebSocket {
-    constructor(url, protocol) {
-      this.url = url;
-      this.protocol = protocol;
-      this.readyState = 0;
-      this.filters = [];
-      this.broker = brokers.get(url);
-      queueMicrotask(() => {
-        if (!this.broker || this.broker.down || gate.all || gate.blocked.has(url)) {
-          this.readyState = 3;
-          this.onerror?.();
-          this.onclose?.();
+  const socketClass = gate =>
+    class FakeWebSocket {
+      constructor(url, protocol) {
+        this.url = url;
+        this.protocol = protocol;
+        this.readyState = 0;
+        this.filters = [];
+        this.broker = brokers.get(url);
+        queueMicrotask(() => {
+          if (!this.broker || this.broker.down || gate.all || gate.blocked.has(url)) {
+            this.readyState = 3;
+            this.onerror?.();
+            this.onclose?.();
+            return;
+          }
+          this.readyState = 1;
+          this.broker.clients.add(this);
+          gate.sockets.add(this);
+          this.onopen?.();
+        });
+      }
+
+      send(bytes) {
+        if (this.readyState !== 1) {
+          throw new Error('not open');
+        }
+        // like a real WebSocket: what was sent before close() still arrives
+        const copy = Uint8Array.from(bytes);
+        queueMicrotask(() => this.broker.handle(this, copy));
+      }
+
+      push(bytes) {
+        queueMicrotask(() => this.readyState === 1 && this.onmessage?.({ data: bytes.buffer }));
+      }
+
+      shut() {
+        if (this.readyState === 3) {
           return;
         }
-        this.readyState = 1;
-        this.broker.clients.add(this);
-        gate.sockets.add(this);
-        this.onopen?.();
-      });
-    }
-
-    send(bytes) {
-      if (this.readyState !== 1) {
-        throw new Error('not open');
+        this.readyState = 3;
+        this.broker.clients.delete(this);
+        gate.sockets.delete(this);
+        queueMicrotask(() => this.onclose?.());
       }
-      // like a real WebSocket: what was sent before close() still arrives
-      const copy = Uint8Array.from(bytes);
-      queueMicrotask(() => this.broker.handle(this, copy));
-    }
 
-    push(bytes) {
-      queueMicrotask(() => this.readyState === 1 && this.onmessage?.({ data: bytes.buffer }));
-    }
-
-    shut() {
-      if (this.readyState === 3) {
-        return;
+      close() {
+        this.shut();
       }
-      this.readyState = 3;
-      this.broker.clients.delete(this);
-      gate.sockets.delete(this);
-      queueMicrotask(() => this.onclose?.());
-    }
-
-    close() {
-      this.shut();
-    }
-  };
+    };
   return {
     brokers,
     WebSocket: socketClass(makeGate()),
@@ -231,7 +237,8 @@ export function manualTimers() {
     advance(ms) {
       const end = now + ms;
       for (;;) {
-        const due = [...waiting].filter(([, timer]) => timer.at <= end)
+        const due = [...waiting]
+          .filter(([, timer]) => timer.at <= end)
           .sort((a, b) => a[1].at - b[1].at)[0];
         if (!due) {
           break;

@@ -31,49 +31,101 @@ import { validate } from '../src/core/model.js';
 import { trapMetrics } from '../src/core/trap.js';
 import { binOf } from '../src/core/hist.js';
 import { NAMES, INFO, featuresOf, needsSolver, isGrade } from './features.mjs';
-import { TIME_PRIOR, EXTRA_MIN_SKILL, pickEntries, predictH, clampH, withoutSeeds, fitTime, predictMs, floorMs, needsThinking, aboveFloor, FLOOR_S_PER_CELL } from '../src/core/gotd-model.js';
+import {
+  TIME_PRIOR,
+  EXTRA_MIN_SKILL,
+  pickEntries,
+  predictH,
+  clampH,
+  withoutSeeds,
+  fitTime,
+  predictMs,
+  floorMs,
+  needsThinking,
+  aboveFloor,
+  FLOOR_S_PER_CELL,
+} from '../src/core/gotd-model.js';
 const BADGE = 'trapPredicted';
 
-const args = process.argv.slice(2), here = p => new URL(p, import.meta.url).pathname;
+const args = process.argv.slice(2),
+  here = p => new URL(p, import.meta.url).pathname;
 const opt = name => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
 const optAll = name => args.flatMap((a, i) => (a === name ? [args[i + 1]] : []));
-const dry = args.includes('--dry-run'), only = opt('--only');
+const dry = args.includes('--dry-run'),
+  only = opt('--only');
 const setup = backendsFromConfig(LEADERBOARD);
-const note = (level, msg) => console.log(args.includes('--annotations') ? `::${level}::${msg}` : `${level.toUpperCase()}: ${msg}`);
-const die = msg => { note('error', msg); process.exit(1); };
+const note = (level, msg) =>
+  console.log(
+    args.includes('--annotations') ? `::${level}::${msg}` : `${level.toUpperCase()}: ${msg}`,
+  );
+const die = msg => {
+  note('error', msg);
+  process.exit(1);
+};
 
 // the token is read first, so a wrong path fails at once and not after the calibration
 const readToken = (name = '--token-file') => {
   const file = opt(name) || die(`${name} FILE is required (or --dry-run)`);
-  let t; try { t = fs.readFileSync(file, 'utf8').trim(); } catch (e) { die(`cannot read the token file ${file}: ${e.code || e.message}`); }
+  let t;
+  try {
+    t = fs.readFileSync(file, 'utf8').trim();
+  } catch (e) {
+    die(`cannot read the token file ${file}: ${e.code || e.message}`);
+  }
   return t || die(`the token file ${file} is empty`);
 };
-if (args.includes('--print-supabase-sql')) { // Supabase keeps only the SHA-256 of the secret (gotd_secret); this is the statement for its SQL editor
-  console.log(`insert into gotd_secret (name, hash) values ('seed', '${crypto.createHash('sha256').update(readToken(), 'utf8').digest('hex')}') on conflict (name) do update set hash = excluded.hash;`);
+if (args.includes('--print-supabase-sql')) {
+  // Supabase keeps only the SHA-256 of the secret (gotd_secret); this is the statement for its SQL editor
+  console.log(
+    `insert into gotd_secret (name, hash) values ('seed', '${crypto.createHash('sha256').update(readToken(), 'utf8').digest('hex')}') on conflict (name) do update set hash = excluded.hash;`,
+  );
   process.exit(0);
 }
-if (only && !setup.list.some(be => be.name === only)) die(`--only ${only}: no such configured backend (${setup.list.map(be => be.name).join(', ')})`);
-const targets = setup.list.filter(be => !only || only === be.name), isTurso = be => LEADERBOARD.backends[be.name].type === 'turso';
+if (only && !setup.list.some(be => be.name === only))
+  die(`--only ${only}: no such configured backend (${setup.list.map(be => be.name).join(', ')})`);
+const targets = setup.list.filter(be => !only || only === be.name),
+  isTurso = be => LEADERBOARD.backends[be.name].type === 'turso';
 const token = dry || !targets.some(be => !isTurso(be)) ? null : readToken();
 const tursoToken = dry || !targets.some(isTurso) ? null : readToken('--turso-token-file');
 
 const day = opt('--day') || utcDateString(new Date(Date.now() + 86400000));
 if (!/^\d{8}$/.test(day)) die(`bad --day ${day}`);
-const dir = opt('--puzzles') || here('../../demo/GameOfDay'), puzzleFile = d => `${dir}/${d}.txt`;
-if (!fs.existsSync(puzzleFile(day))) { note('warning', `no puzzle file ${puzzleFile(day)}: nothing to seed for ${day}`); process.exit(0); }
+const dir = opt('--puzzles') || here('../../demo/GameOfDay'),
+  puzzleFile = d => `${dir}/${d}.txt`;
+if (!fs.existsSync(puzzleFile(day))) {
+  note('warning', `no puzzle file ${puzzleFile(day)}: nothing to seed for ${day}`);
+  process.exit(0);
+}
 
 // ---------- candidates of the day ----------
-const models = JSON.parse(fs.readFileSync(opt('--models') || here('./gotd-models.json'), 'utf8')), byId = Object.fromEntries(models.ranked.map(c => [c.id, c]));
+const models = JSON.parse(fs.readFileSync(opt('--models') || here('./gotd-models.json'), 'utf8')),
+  byId = Object.fromEntries(models.ranked.map(c => [c.id, c]));
 const unknown = models.ranked.filter(c => !NAMES.includes(c.id)).map(c => c.id);
-if (unknown.length) die(`gotd-models.json names metrics that no longer exist (${unknown.join(', ')}): run node tools/gotd-fit.mjs`);
-const sha = crypto.createHash('sha256').update(fs.readFileSync(here('./ratings.json'))).digest('hex');
-if (sha !== models.ratings.sha256) note('warning', 'gotd-models.json was fitted on a different ratings.json: run node tools/gotd-fit.mjs');
+if (unknown.length)
+  die(
+    `gotd-models.json names metrics that no longer exist (${unknown.join(', ')}): run node tools/gotd-fit.mjs`,
+  );
+const sha = crypto
+  .createHash('sha256')
+  .update(fs.readFileSync(here('./ratings.json')))
+  .digest('hex');
+if (sha !== models.ratings.sha256)
+  note(
+    'warning',
+    'gotd-models.json was fitted on a different ratings.json: run node tools/gotd-fit.mjs',
+  );
 
-const text = fs.readFileSync(puzzleFile(day), 'utf8'), puzzle = parse(text);
+const text = fs.readFileSync(puzzleFile(day), 'utf8'),
+  puzzle = parse(text);
 if (!validate(puzzle).ok) die(`${puzzleFile(day)} is not a valid puzzle`);
 const f = featuresOf({ key: text });
-if (!Number.isFinite(f[BADGE])) note('warning', 'no trap grade for this puzzle: the production grade is not among the seed players');
-const hOfCandidate = id => (needsSolver(id) && f._capped ? undefined : predictH(byId[id].model, f[id]));
+if (!Number.isFinite(f[BADGE]))
+  note(
+    'warning',
+    'no trap grade for this puzzle: the production grade is not among the seed players',
+  );
+const hOfCandidate = id =>
+  needsSolver(id) && f._capped ? undefined : predictH(byId[id].model, f[id]);
 const badge = Number.isFinite(f[BADGE]) ? { id: BADGE, h: clampH(f[BADGE]) } : null;
 let picked;
 try {
@@ -98,71 +150,171 @@ async function loadDays() {
   const list = dayList(45);
   const results = await fetchStats(setup.list, { from: list[0], to: list.at(-1) });
   for (const r of results) {
-    console.log(`read ${r.name}: ${r.status}${r.status === 'ok' ? `, ${r.days.length} day(s)` : ` (${r.error})`}`);
+    console.log(
+      `read ${r.name}: ${r.status}${r.status === 'ok' ? `, ${r.days.length} day(s)` : ` (${r.error})`}`,
+    );
   }
-  return combineDays(results.filter(r => r.status === 'ok'), LEADERBOARD.replicatedFrom, LEADERBOARD.replicatedTo);
+  return combineDays(
+    results.filter(r => r.status === 'ok'),
+    LEADERBOARD.replicatedFrom,
+    LEADERBOARD.replicatedTo,
+  );
 }
-const points = [], skipped = [];
+const points = [],
+  skipped = [];
 for (const d of await loadDays()) {
   if (String(d.d) === day || !fs.existsSync(puzzleFile(d.d))) continue;
   const real = withoutSeeds(d);
-  if (!real) { note('warning', `${d.d}: the seeds do not fit into the aggregate, day skipped`); continue; }
-  if (real.n < TIME_PRIOR.minReal) { skipped.push(`${d.d} (${real.n} players)`); continue; }
-  const p = parse(fs.readFileSync(puzzleFile(d.d), 'utf8')), m = trapMetrics(p);
+  if (!real) {
+    note('warning', `${d.d}: the seeds do not fit into the aggregate, day skipped`);
+    continue;
+  }
+  if (real.n < TIME_PRIOR.minReal) {
+    skipped.push(`${d.d} (${real.n} players)`);
+    continue;
+  }
+  const p = parse(fs.readFileSync(puzzleFile(d.d), 'utf8')),
+    m = trapMetrics(p);
   if (!m.ok) continue;
-  const h = clampH(m.predicted), cut = needsThinking(p.n, h) ? aboveFloor(real.bins, p.n) : { bins: real.bins, n: real.n, cut: 0 };
-  if (cut.n < TIME_PRIOR.minReal) { skipped.push(`${d.d} (${cut.n} of ${real.n} players above the ${(floorMs(p.n) / 1000).toFixed(0)} s floor)`); continue; }
+  const h = clampH(m.predicted),
+    cut = needsThinking(p.n, h)
+      ? aboveFloor(real.bins, p.n)
+      : { bins: real.bins, n: real.n, cut: 0 };
+  if (cut.n < TIME_PRIOR.minReal) {
+    skipped.push(
+      `${d.d} (${cut.n} of ${real.n} players above the ${(floorMs(p.n) / 1000).toFixed(0)} s floor)`,
+    );
+    continue;
+  }
   points.push({ day: d.d, n: p.n, h, y: Math.log(quantile(cut.bins, 0.5)), count: cut.n });
 }
-const tm = fitTime(points), [a, g, c] = tm.mean, [sa, sg, sc] = tm.sd;
-console.log(`time model from ${points.length} past day(s) with >= ${TIME_PRIOR.minReal} real players${points.length ? '' : ' (none: prior only)'}${skipped.length ? `; too few players, not used: ${skipped.join(', ')}` : ''}:`);
-console.log(`  median at 7x7, h ${TIME_PRIOR.refH}: ${(Math.exp(a) / 1000).toFixed(1)} s (x${Math.exp(sa).toFixed(2)})  size exponent ${g.toFixed(2)} (+-${sg.toFixed(2)})  per grade x${Math.exp(c).toFixed(2)} (c ${c.toFixed(2)} +-${sc.toFixed(2)})`);
+const tm = fitTime(points),
+  [a, g, c] = tm.mean,
+  [sa, sg, sc] = tm.sd;
+console.log(
+  `time model from ${points.length} past day(s) with >= ${TIME_PRIOR.minReal} real players${points.length ? '' : ' (none: prior only)'}${skipped.length ? `; too few players, not used: ${skipped.join(', ')}` : ''}:`,
+);
+console.log(
+  `  median at 7x7, h ${TIME_PRIOR.refH}: ${(Math.exp(a) / 1000).toFixed(1)} s (x${Math.exp(sa).toFixed(2)})  size exponent ${g.toFixed(2)} (+-${sg.toFixed(2)})  per grade x${Math.exp(c).toFixed(2)} (c ${c.toFixed(2)} +-${sc.toFixed(2)})`,
+);
 
-const timeAt = h => Math.max(predictMs(tm, puzzle.n, h), needsThinking(puzzle.n, h) ? floorMs(puzzle.n) : 0);
-console.log(`drawing floor ${(floorMs(puzzle.n) / 1000).toFixed(1)} s (${FLOOR_S_PER_CELL} s per cell): no seed player is faster when the puzzle needs thinking (larger than 6x6, or grade >= 1)`);
+const timeAt = h =>
+  Math.max(predictMs(tm, puzzle.n, h), needsThinking(puzzle.n, h) ? floorMs(puzzle.n) : 0);
+console.log(
+  `drawing floor ${(floorMs(puzzle.n) / 1000).toFixed(1)} s (${FLOOR_S_PER_CELL} s per cell): no seed player is faster when the puzzle needs thinking (larger than 6x6, or grade >= 1)`,
+);
 const times = entries.map(e => ({ ...e, ms: timeAt(e.h) })).sort((x, y) => x.ms - y.ms);
 const cutTimes = picked.cut.map(e => ({ ...e, ms: timeAt(e.h) }));
-const ms = times.map(t => t.ms), bins = ms.map(binOf);
-console.log(`${day}: ${puzzle.n}x${puzzle.n}${f._capped ? ', reference solve capped: solver metrics skipped' : ''} -> ${times.length} seed players (h = difficulty on the 0-5 scale of the hand ratings)`);
-for (const t of times) console.log(`  ${(t.ms / 1000).toFixed(1).padStart(7)} s  h ${t.h.toFixed(2)}  ${t.role.padEnd(5)} ${t.id}${t.id === BADGE ? '  (production grade, Play badge before it is cut into a grade)' : ''}`);
+const ms = times.map(t => t.ms),
+  bins = ms.map(binOf);
+console.log(
+  `${day}: ${puzzle.n}x${puzzle.n}${f._capped ? ', reference solve capped: solver metrics skipped' : ''} -> ${times.length} seed players (h = difficulty on the 0-5 scale of the hand ratings)`,
+);
+for (const t of times)
+  console.log(
+    `  ${(t.ms / 1000).toFixed(1).padStart(7)} s  h ${t.h.toFixed(2)}  ${t.role.padEnd(5)} ${t.id}${t.id === BADGE ? '  (production grade, Play badge before it is cut into a grade)' : ''}`,
+  );
 if (cutTimes.length) {
-  console.log('not played: of the candidates behind the top 3 (skill >= threshold) the lowest and the highest h of THIS puzzle are dropped, whatever their skill rank:');
+  console.log(
+    'not played: of the candidates behind the top 3 (skill >= threshold) the lowest and the highest h of THIS puzzle are dropped, whatever their skill rank:',
+  );
   for (const t of cutTimes) {
-    console.log(`  ${(t.ms / 1000).toFixed(1).padStart(7)} s  h ${t.h.toFixed(2)}  ${t.role.padEnd(7)} ${t.id}`);
+    console.log(
+      `  ${(t.ms / 1000).toFixed(1).padStart(7)} s  h ${t.h.toFixed(2)}  ${t.role.padEnd(7)} ${t.id}`,
+    );
   }
 }
 if (picked.weak.length) {
-  console.log(`not considered, skill < ${EXTRA_MIN_SKILL}: ${picked.weak.map(c => `${c.id} (${c.skill.toFixed(2)})`).join(', ')}`);
+  console.log(
+    `not considered, skill < ${EXTRA_MIN_SKILL}: ${picked.weak.map(c => `${c.id} (${c.skill.toFixed(2)})`).join(', ')}`,
+  );
 }
 console.log('what the selected names mean (design app label in brackets):');
-for (const t of [...times, ...cutTimes]) console.log(`  ${t.id}: ${INFO[t.id][0]}${INFO[t.id][1] ? ` [${INFO[t.id][1]}]` : ' [not shown in the design app]'}`);
+for (const t of [...times, ...cutTimes])
+  console.log(
+    `  ${t.id}: ${INFO[t.id][0]}${INFO[t.id][1] ? ` [${INFO[t.id][1]}]` : ' [not shown in the design app]'}`,
+  );
 // time of a puzzle of this size at grade g = 0..5 of metric `id`. A grade:* metric first maps its own grade onto h (the mean rating of the rated puzzles
 // with that grade, see gotd-fit.mjs); `*` = no rated puzzle had that grade (interpolated); [x] = the grade this puzzle has.
-const GRADES = [0, 1, 2, 3, 4, 5], sec = ms => (ms < 1e5 ? (ms / 1000).toFixed(1) : (ms / 1000).toFixed(0));
-const seenOf = id => byId[id].seen || (byId[id].model.kind === 'bucket' ? Object.keys(byId[id].model.table).map(Number) : null);
-const byGrade = id => GRADES.map(g => { const h = isGrade(id) ? predictH(byId[id].model, g) : g; return { h, ms: timeAt(h), guess: isGrade(id) && !!seenOf(id) && !seenOf(id).includes(g), own: isGrade(id) && f[id] === g }; });
-const grid = [['Play badge', GRADES.map(g => ({ h: g, ms: timeAt(g) }))], ...times.map(t => [t.id, byGrade(t.id)])];
+const GRADES = [0, 1, 2, 3, 4, 5],
+  sec = ms => (ms < 1e5 ? (ms / 1000).toFixed(1) : (ms / 1000).toFixed(0));
+const seenOf = id =>
+  byId[id].seen ||
+  (byId[id].model.kind === 'bucket' ? Object.keys(byId[id].model.table).map(Number) : null);
+const byGrade = id =>
+  GRADES.map(g => {
+    const h = isGrade(id) ? predictH(byId[id].model, g) : g;
+    return {
+      h,
+      ms: timeAt(h),
+      guess: isGrade(id) && !!seenOf(id) && !seenOf(id).includes(g),
+      own: isGrade(id) && f[id] === g,
+    };
+  });
+const grid = [
+  ['Play badge', GRADES.map(g => ({ h: g, ms: timeAt(g) }))],
+  ...times.map(t => [t.id, byGrade(t.id)]),
+];
 const cell = c => (c.guess ? '*' : '') + (c.own ? `[${sec(c.ms)}]` : sec(c.ms));
-console.log(`time (s) at grade 0..5, ${puzzle.n}x${puzzle.n}. Play badge row: grade g = h g. grade:* metrics: their own grade g means the h on the line below (mean rating of the rated puzzles with that grade); every other metric is on h already. [x] = this puzzle's grade, * = no rated puzzle had it`);
+console.log(
+  `time (s) at grade 0..5, ${puzzle.n}x${puzzle.n}. Play badge row: grade g = h g. grade:* metrics: their own grade g means the h on the line below (mean rating of the rated puzzles with that grade); every other metric is on h already. [x] = this puzzle's grade, * = no rated puzzle had it`,
+);
 for (const [id, row] of grid) {
-  console.log(`  ${id.padEnd(14)}${row.map(c => cell(c).padStart(8)).join('')}${row.some((c, i) => i && c.ms < row[i - 1].ms) ? '  not monotone' : ''}`);
-  if (isGrade(id)) console.log(`  ${'  h at grade'.padEnd(14)}${row.map(c => c.h.toFixed(2).padStart(8)).join('')}`);
+  console.log(
+    `  ${id.padEnd(14)}${row.map(c => cell(c).padStart(8)).join('')}${row.some((c, i) => i && c.ms < row[i - 1].ms) ? '  not monotone' : ''}`,
+  );
+  if (isGrade(id))
+    console.log(
+      `  ${'  h at grade'.padEnd(14)}${row.map(c => c.h.toFixed(2).padStart(8)).join('')}`,
+    );
 }
-if (opt('--summary')) fs.appendFileSync(opt('--summary'), `### Seeds ${day} (${puzzle.n}x${puzzle.n}${dry ? ', dry run' : ''})\n| s | h | role | candidate |\n|--:|--:|---|---|\n${times.map(t => `| ${(t.ms / 1000).toFixed(1)} | ${t.h.toFixed(2)} | ${t.role} | ${t.id} |`).join('\n')}\n\ntime (s) at grade 0..5\n\n| candidate | 0 | 1 | 2 | 3 | 4 | 5 |\n|---|--:|--:|--:|--:|--:|--:|\n${grid.map(([id, row]) => `| ${id} | ${row.map(cell).join(' | ')} |`).join('\n')}\n\ntime model from ${points.length} day(s)\n${cutTimes.length ? `\nnot played (lowest / highest h of the extras): ${cutTimes.map(t => `${t.id} h ${t.h.toFixed(2)}`).join(', ')}\n` : ''}`);
-if (dry) { console.log('dry run: nothing sent'); process.exit(0); }
+if (opt('--summary'))
+  fs.appendFileSync(
+    opt('--summary'),
+    `### Seeds ${day} (${puzzle.n}x${puzzle.n}${dry ? ', dry run' : ''})\n| s | h | role | candidate |\n|--:|--:|---|---|\n${times.map(t => `| ${(t.ms / 1000).toFixed(1)} | ${t.h.toFixed(2)} | ${t.role} | ${t.id} |`).join('\n')}\n\ntime (s) at grade 0..5\n\n| candidate | 0 | 1 | 2 | 3 | 4 | 5 |\n|---|--:|--:|--:|--:|--:|--:|\n${grid.map(([id, row]) => `| ${id} | ${row.map(cell).join(' | ')} |`).join('\n')}\n\ntime model from ${points.length} day(s)\n${cutTimes.length ? `\nnot played (lowest / highest h of the extras): ${cutTimes.map(t => `${t.id} h ${t.h.toFixed(2)}`).join(', ')}\n` : ''}`,
+  );
+if (dry) {
+  console.log('dry run: nothing sent');
+  process.exit(0);
+}
 
 // ---------- write (once per backend; "exists" = already seeded) ----------
-const d = +day, trim = u => u.replace(/\/+$/, '');
+const d = +day,
+  trim = u => u.replace(/\/+$/, '');
 const REQUEST = {
-  cloudflare: ({ url }) => ({ url: trim(url) + '/seed', headers: { Authorization: 'Bearer ' + token }, body: { d, ms, bins } }),
-  supabase: ({ url, key }) => ({ url: trim(url) + '/rest/v1/rpc/seed_gotd', headers: { apikey: key }, body: { p_token: token, p_day: d, p_ms: ms, p_bin: bins } }),
+  cloudflare: ({ url }) => ({
+    url: trim(url) + '/seed',
+    headers: { Authorization: 'Bearer ' + token },
+    body: { d, ms, bins },
+  }),
+  supabase: ({ url, key }) => ({
+    url: trim(url) + '/rest/v1/rpc/seed_gotd',
+    headers: { apikey: key },
+    body: { p_token: token, p_day: d, p_ms: ms, p_bin: bins },
+  }),
   // Turso: one row in `seed` (the bins are computed by the database); INSERT OR IGNORE changes no row when the day is already seeded. The answer is an Hrana envelope.
   turso: ({ url }) => ({
-    url: trim(url) + '/v2/pipeline', headers: { Authorization: 'Bearer ' + tursoToken },
-    body: { requests: [{ type: 'execute', stmt: { sql: 'INSERT OR IGNORE INTO seed (day, ms) VALUES (?1, ?2)', args: [{ type: 'integer', value: String(d) }, { type: 'text', value: JSON.stringify(ms) }] } }, { type: 'close' }] },
+    url: trim(url) + '/v2/pipeline',
+    headers: { Authorization: 'Bearer ' + tursoToken },
+    body: {
+      requests: [
+        {
+          type: 'execute',
+          stmt: {
+            sql: 'INSERT OR IGNORE INTO seed (day, ms) VALUES (?1, ?2)',
+            args: [
+              { type: 'integer', value: String(d) },
+              { type: 'text', value: JSON.stringify(ms) },
+            ],
+          },
+        },
+        { type: 'close' },
+      ],
+    },
     answer: reply => {
       const r = reply.results && reply.results[0];
-      if (!r || r.type !== 'ok') return `failed: ${(r && r.error && r.error.message) || 'no result'}`;
+      if (!r || r.type !== 'ok')
+        return `failed: ${(r && r.error && r.error.message) || 'no result'}`;
       return r.response.result.affected_row_count ? 'ok' : 'exists';
     },
   }),
@@ -171,15 +323,27 @@ async function send(name) {
   const entry = LEADERBOARD.backends[name];
   const { url, headers, body, answer } = REQUEST[entry.type](entry);
   for (let attempt = 1, why; attempt <= 3; attempt++) {
-    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 15000);
+    const ctl = new AbortController(),
+      timer = setTimeout(() => ctl.abort(), 15000);
     try {
-      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body), signal: ctl.signal });
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify(body),
+        signal: ctl.signal,
+      });
       const reply = await res.json().catch(() => ({}));
       if (res.ok && answer) return answer(reply);
-      if (res.ok || res.status === 409) return reply.status === 'exists' || res.status === 409 ? 'exists' : 'ok';
-      if (res.status < 500 && res.status !== 429) return `failed: HTTP ${res.status} ${JSON.stringify(reply).slice(0, 120)}`; // rejected input / wrong token: retrying cannot help
+      if (res.ok || res.status === 409)
+        return reply.status === 'exists' || res.status === 409 ? 'exists' : 'ok';
+      if (res.status < 500 && res.status !== 429)
+        return `failed: HTTP ${res.status} ${JSON.stringify(reply).slice(0, 120)}`; // rejected input / wrong token: retrying cannot help
       why = `HTTP ${res.status}`;
-    } catch (e) { why = e.name === 'AbortError' ? 'timeout' : e.message; } finally { clearTimeout(timer); }
+    } catch (e) {
+      why = e.name === 'AbortError' ? 'timeout' : e.message;
+    } finally {
+      clearTimeout(timer);
+    }
     if (attempt < 3) await new Promise(r => setTimeout(r, 2000 * attempt));
     else return `failed: ${why}`;
   }
@@ -188,6 +352,9 @@ let failed = 0;
 for (const { name } of targets) {
   const r = await send(name);
   console.log(`${name}: ${r}`);
-  if (r.startsWith('failed')) { failed++; note('error', `${name} ${r}`); }
+  if (r.startsWith('failed')) {
+    failed++;
+    note('error', `${name} ${r}`);
+  }
 }
 process.exit(failed ? 1 : 0);

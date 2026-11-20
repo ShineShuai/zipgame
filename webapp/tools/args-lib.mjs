@@ -17,8 +17,12 @@ export class ArgsError extends Error {}
 
 // the node budget shared by the tools that solve puzzles (lib.mjs evalCap)
 export const capOption = {
-  type: 'int', arg: 'NODES', min: 1, default: DEFAULT_EVAL_CAP,
-  help: 'solver budget per puzzle, in nodes (the solution path and the legacy metrics); a ' +
+  type: 'int',
+  arg: 'NODES',
+  min: 1,
+  default: DEFAULT_EVAL_CAP,
+  help:
+    'solver budget per puzzle, in nodes (the solution path and the legacy metrics); a ' +
     'puzzle that still hits it is reported, never silently graded',
 };
 
@@ -46,13 +50,23 @@ function convert(name, def, text) {
 // -> { values, rest, help }: values by option name (defaults filled in), rest = the positional
 // arguments, help = --help / -h was given. Throws ArgsError for anything wrong.
 export function parseArgs(argv, spec) {
-  const options = spec.options || {}, values = {}, rest = [];
+  const options = spec.options || {},
+    values = {},
+    rest = [];
   let help = false;
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i];
-    if (tok === '--help' || tok === '-h') { help = true; continue; }
-    if (!tok.startsWith('--')) { rest.push(tok); continue; }
-    const eq = tok.indexOf('='), name = tok.slice(2, eq < 0 ? undefined : eq), def = options[name];
+    if (tok === '--help' || tok === '-h') {
+      help = true;
+      continue;
+    }
+    if (!tok.startsWith('--')) {
+      rest.push(tok);
+      continue;
+    }
+    const eq = tok.indexOf('='),
+      name = tok.slice(2, eq < 0 ? undefined : eq),
+      def = options[name];
     if (!def) throw new ArgsError(`unknown option --${name}`);
     if (def.type === 'flag') {
       if (eq >= 0) throw new ArgsError(`--${name} takes no value`);
@@ -86,8 +100,10 @@ const wrap = (text, width) => {
   const lines = [];
   let line = '';
   for (const word of text.split(/\s+/)) {
-    if (line && line.length + word.length + 1 > width) { lines.push(line); line = word; }
-    else line = line ? line + ' ' + word : word;
+    if (line && line.length + word.length + 1 > width) {
+      lines.push(line);
+      line = word;
+    } else line = line ? line + ' ' + word : word;
   }
   return line ? [...lines, line] : lines;
 };
@@ -101,8 +117,10 @@ export function helpText(spec) {
     const left = '--' + name + (def.type === 'flag' ? '' : ' ' + (def.arg || 'VALUE'));
     const dflt = def.defaultText ?? (def.default !== undefined ? String(def.default) : null);
     const extra = [
-      def.choices ? `one of ${def.choices.join(' | ')}` : null, def.required ? 'required' : null,
-      def.type === 'list' ? 'may be repeated' : null, dflt !== null ? `default ${dflt}` : null,
+      def.choices ? `one of ${def.choices.join(' | ')}` : null,
+      def.required ? 'required' : null,
+      def.type === 'list' ? 'may be repeated' : null,
+      dflt !== null ? `default ${dflt}` : null,
     ];
     const tail = extra.filter(Boolean).join('; ');
     rows.push([left, def.help + (tail ? ` (${tail})` : '')]);

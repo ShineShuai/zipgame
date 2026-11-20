@@ -64,7 +64,7 @@ test('Two paths: the bridge between the paths is no line, so no hint asks for it
   const edges = solutionEdges(two);
   assert.equal(edges.length, 23); // 25 cells, two paths
   const path = solutionOf(two);
-  const bridge = [path.indexOf(two.cp.indexOf(two.split)) ].filter(at => at >= 0);
+  const bridge = [path.indexOf(two.cp.indexOf(two.split))].filter(at => at >= 0);
   assert.equal(bridge.length, 1);
   const [at] = bridge;
   const isBridge = ([a, b]) => a === path[at] && b === path[at + 1];

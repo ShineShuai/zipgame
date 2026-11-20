@@ -46,21 +46,34 @@ import { sum, fmt, pct } from './stats-lib.mjs';
 
 const { values: o, rest } = cli({
   usage: 'node tools/step-fit.mjs rows.json [options]',
-  summary: 'Fit the step-level model of wrong turns (rate of a wrong move per trap bucket) to ' +
+  summary:
+    'Fit the step-level model of wrong turns (rate of a wrong move per trap bucket) to ' +
     'the rows that carry wrong-turn events, compare it with the grade the game uses today, and ' +
     'print the verdict of the acceptance rule (see the header of this file).',
-  positional: [{ name: 'rows.json', required: true,
-    help: 'the export of `node tools/behaviour.mjs export --out rows.json` (row version 1 has ' +
-      'the wrong turns; older rows are skipped)' }],
+  positional: [
+    {
+      name: 'rows.json',
+      required: true,
+      help:
+        'the export of `node tools/behaviour.mjs export --out rows.json` (row version 1 has ' +
+        'the wrong turns; older rows are skipped)',
+    },
+  ],
   options: FIT_OPTIONS,
 });
 const file = rest[0];
-const GOTD_DIR = o['gotd-dir'], CAP = o.cap, SEED = o.seed;
-const BOOT = o.boot, PBOOT = o.pboot, FOLDS = o.folds, NO_SKILL = o['no-skill'];
+const GOTD_DIR = o['gotd-dir'],
+  CAP = o.cap,
+  SEED = o.seed;
+const BOOT = o.boot,
+  PBOOT = o.pboot,
+  FOLDS = o.folds,
+  NO_SKILL = o['no-skill'];
 const out = (...parts) => console.log(parts.join(''));
 
 const rows = readRows(file, { gotdDir: GOTD_DIR });
-const stepCache = new Map(), trapCache = new Map();
+const stepCache = new Map(),
+  trapCache = new Map();
 const stepsFor = key => {
   if (!stepCache.has(key)) stepCache.set(key, stepsOfPuzzle(key, CAP));
   return stepCache.get(key);
@@ -70,19 +83,41 @@ const current = key => {
   return trapCache.get(key);
 };
 
-const { data, held, res } = analyse(rows, stepsFor, current,
-  { folds: FOLDS, boot: BOOT, seed: SEED, useSkill: !NO_SKILL });
-const g = data.games, w = data.why, nPuzzles = new Set(g.map(x => x.key)).size;
+const { data, held, res } = analyse(rows, stepsFor, current, {
+  folds: FOLDS,
+  boot: BOOT,
+  seed: SEED,
+  useSkill: !NO_SKILL,
+});
+const g = data.games,
+  w = data.why,
+  nPuzzles = new Set(g.map(x => x.key)).size;
 out(`${w.rows} rows read; usable games ${g.length} on ${nPuzzles} puzzles`);
-out('left out: no wrong-turn record ', w.noEvents, ' (older page), abandoned ', w.abandoned,
-  ', hint ', w.hint, ', hit the event cap ', w.capped, ', no puzzle or solution ', w.noPuzzle);
+out(
+  'left out: no wrong-turn record ',
+  w.noEvents,
+  ' (older page), abandoned ',
+  w.abandoned,
+  ', hint ',
+  w.hint,
+  ', hit the event cap ',
+  w.capped,
+  ', no puzzle or solution ',
+  w.noPuzzle,
+);
 if (!g.length) {
   out('Nothing to fit: no game with wrong-turn events yet (needs row version 1).');
   process.exit(0);
 }
-out('wrong turns ', data.events, ' (', (data.events / g.length).toFixed(1), ' per game); ',
+out(
+  'wrong turns ',
+  data.events,
+  ' (',
+  (data.events / g.length).toFixed(1),
+  ' per game); ',
   pct(data.unexplained / Math.max(1, data.events)),
-  ' at a step the profile lists no wrong move for');
+  ' at a step the profile lists no wrong move for',
+);
 out(pct(g.filter(x => !x.m.size).length / g.length), ' of the games had no wrong turn at all');
 
 // ---------- the fitted buckets ----------
@@ -90,19 +125,36 @@ const per = [0, 1, 2, 3].map(b => sum(g.map(x => sum(x.P.steps.map(s => s.c[b]))
 const par = parameters(g, { boot: PBOOT, seed: SEED });
 const ci = c => `[${fmt(c[0]).trim()}, ${fmt(c[1]).trim()}]`;
 const cell = (v, c, digits, width) => `${v.toFixed(digits)} ${ci(c)}`.padEnd(width);
-out('\nbucket    wrong moves  lambda [95% CI]        D cells [CI]       w cells [CI]',
-  '        points [CI]        hand');
+out(
+  '\nbucket    wrong moves  lambda [95% CI]        D cells [CI]       w cells [CI]',
+  '        points [CI]        hand',
+);
 BUCKETS.forEach((name, b) => {
-  out(name.padEnd(9), ' ', String(per[b]).padStart(10), '  ',
-    cell(par.est.lambda[b], par.ci.lambda[b], 4, 22), cell(par.est.D[b], par.ci.D[b], 1, 19),
-    cell(par.est.w[b], par.ci.w[b], 3, 21), cell(par.est.points[b], par.ci.points[b], 2, 19),
-    TRAP_CFG.points[b]);
+  out(
+    name.padEnd(9),
+    ' ',
+    String(per[b]).padStart(10),
+    '  ',
+    cell(par.est.lambda[b], par.ci.lambda[b], 4, 22),
+    cell(par.est.D[b], par.ci.D[b], 1, 19),
+    cell(par.est.w[b], par.ci.w[b], 3, 21),
+    cell(par.est.points[b], par.ci.points[b], 2, 19),
+    TRAP_CFG.points[b],
+  );
 });
-out('skill effect gamma ', par.est.gamma.toFixed(2), ' ', ci(par.ci.gamma),
-  ' per 3 skill buckets', NO_SKILL ? ' (switched off)' : '');
+out(
+  'skill effect gamma ',
+  par.est.gamma.toFixed(2),
+  ' ',
+  ci(par.ci.gamma),
+  ' per 3 skill buckets',
+  NO_SKILL ? ' (switched off)' : '',
+);
 
 // ---------- the two gates ----------
-const e = res.est, c = res.ci, f3 = v => v.toFixed(3);
+const e = res.est,
+  c = res.ci,
+  f3 = v => v.toFixed(3);
 out(`\nheld-out log-likelihood per game (${FOLDS}-fold by puzzle, ${held.length} games)`);
 out('  hand-set points over equal rates  ', f3(e.dUni), ' ', ci(c.dUni));
 out('  free bucket rates over hand-set   ', f3(e.dLL), ' ', ci(c.dLL), '   <- gate A');
@@ -110,14 +162,20 @@ out('\nSpearman rho of a puzzle score with the cells the games wasted (u / T), h
 out('  new score (expected cells wasted)  ', fmt(e.rn), ' ', ci(c.rn));
 out("  trapPredicted (today's grade)      ", fmt(e.rc), ' ', ci(c.rc));
 out('  wrong moves per cell (no traps)    ', fmt(e.ra), ' ', ci(c.ra));
-out("  new minus today's                  ", fmt(e.diff), ' ', ci(c.diff),
-  `   <- gate B (>= ${RULE.minDeltaRho})`);
+out(
+  "  new minus today's                  ",
+  fmt(e.diff),
+  ' ',
+  ci(c.diff),
+  `   <- gate B (>= ${RULE.minDeltaRho})`,
+);
 
 const say = {
   ACCEPT: 'the weights differ from the hand-set points and the new score predicts better',
   REJECT: 'the data give no reason to change the grade',
   'NO EVIDENCE YET': `no difference so far; ${RULE.confirmGames} games are needed to rule one out`,
-  INCONCLUSIVE: `not enough data: ${res.games}/${RULE.minGames} games, ` +
+  INCONCLUSIVE:
+    `not enough data: ${res.games}/${RULE.minGames} games, ` +
     `${res.puzzles}/${RULE.minPuzzles} puzzles`,
   PARTIAL: res.gate.A
     ? 'only A: the weights differ from the hand-set points, the new score is not better than ' +
@@ -126,9 +184,18 @@ const say = {
 };
 const yes = ok => (ok ? 'pass' : 'fail');
 out('\nVERDICT ', res.verdict, ': ', say[res.verdict]);
-out('  data ', res.gate.enough ? 'ok' : 'too few', ' | A ', yes(res.gate.A),
-  ' | B ', yes(res.gate.B));
+out(
+  '  data ',
+  res.gate.enough ? 'ok' : 'too few',
+  ' | A ',
+  yes(res.gate.A),
+  ' | B ',
+  yes(res.gate.B),
+);
 if (res.gate.A) {
-  out('suggested TRAP_CFG.points = [', par.est.points.map(v => +v.toFixed(1)).join(', '),
-    '] (from the free fit)');
+  out(
+    'suggested TRAP_CFG.points = [',
+    par.est.points.map(v => +v.toFixed(1)).join(', '),
+    '] (from the free fit)',
+  );
 }

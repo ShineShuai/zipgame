@@ -13,15 +13,27 @@ import { solutionOf } from '../../src/features/hints.js';
 import { createDrawing, unsupported } from '../../src/coop/drawing.js';
 import { parsePuzzle, serializePuzzle, solutionEdges } from '../../src/coop/model.js';
 import {
-  COOP_VARIANTS, nearestSize, sizeName, sizesFor, statKey, variantById, variantOf,
+  COOP_VARIANTS,
+  nearestSize,
+  sizeName,
+  sizesFor,
+  statKey,
+  variantById,
+  variantOf,
 } from '../../src/coop/variants.js';
 
 test('the sizes on offer: every size, except Exact and arrows, which keep to their own', () => {
   assert.deepEqual(sizesFor('standard'), PLAY_SIZES);
   assert.deepEqual(sizesFor('cutout'), PLAY_SIZES);
-  assert.deepEqual(sizesFor('exact'), PLAY_SIZES.filter(n => EXACT_SIZES.includes(n)));
+  assert.deepEqual(
+    sizesFor('exact'),
+    PLAY_SIZES.filter(n => EXACT_SIZES.includes(n)),
+  );
   assert.ok(!sizesFor('exact').includes(16));
-  assert.deepEqual(sizesFor('arrows'), PLAY_SIZES.filter(n => ARROW_SIZES.includes(n)));
+  assert.deepEqual(
+    sizesFor('arrows'),
+    PLAY_SIZES.filter(n => ARROW_SIZES.includes(n)),
+  );
   assert.deepEqual(sizesFor('wrap'), WRAP_SIZES); // from 4: smaller than the play app's own list
   assert.deepEqual(sizesFor('teleport'), TELEPORT_SIZES);
   assert.deepEqual(sizesFor('pentagon'), PENTAGON_SIZES);

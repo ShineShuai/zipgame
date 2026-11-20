@@ -23,12 +23,13 @@ test('the sync has its own backends: Supabase primary, Turso second, no id share
 test('an entry without url or key is left out, so the shipped config uses Supabase alone', () => {
   const used = cloudBackends(SYNC.cloud, SYNC.cloud.backends);
   const configured = Object.entries(SYNC.cloud.backends)
-    .filter(([, entry]) => entry.url && entry.key).map(([id]) => id);
+    .filter(([, entry]) => entry.url && entry.key)
+    .map(([id]) => id);
   assert.deepEqual(used.map(b => b.name).sort(), configured.sort());
   assert.equal(used[0].kind, 'supabase', 'the primary comes first');
 });
 
-test('the sync does not reuse the leaderboard\'s tokens or keys', () => {
+test("the sync does not reuse the leaderboard's tokens or keys", () => {
   const leaderboardKeys = new Set(Object.values(LEADERBOARD.backends).map(b => b.key));
   for (const [id, entry] of Object.entries(SYNC.cloud.backends)) {
     if (entry.type === 'turso') {

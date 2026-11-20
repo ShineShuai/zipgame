@@ -4,8 +4,23 @@
 import '../setup-balls.js';
 import { CHAMP } from '../../src/config.js';
 import {
-  E_KEPT, FLOOR_FROM, HI_STEP, PER_PICK, clean, daysOf, fresh, handedOut, isLive, judged, owedOf,
-  progressOf, qualifies, rise, view, win, winsOf,
+  E_KEPT,
+  FLOOR_FROM,
+  HI_STEP,
+  PER_PICK,
+  clean,
+  daysOf,
+  fresh,
+  handedOut,
+  isLive,
+  judged,
+  owedOf,
+  progressOf,
+  qualifies,
+  rise,
+  view,
+  win,
+  winsOf,
 } from '../../src/core/champ-seal.js';
 import { floorMs } from '../../src/core/floor.js';
 import { SEED_MIN } from '../../src/core/hist.js';
@@ -16,10 +31,17 @@ import { afterSubmit } from '../../src/platform/leaderboard.js';
 import { t, ta, eq, ok, registerAsyncTests } from '../harness.js';
 import { atDay, fakeStorage } from './helpers.js';
 
-const A = 'AAAAAAAAAAA', B = 'BBBBBBBBBBB';
+const A = 'AAAAAAAAAAA',
+  B = 'BBBBBBBBBBB';
 const stats = (pct = 100, n = 9) => ({ n, mean: 40, top: 20, pct });
 const rec = (over = {}) => ({
-  solved: true, time: 30, sent: true, live: true, n: 7, stats: stats(), ...over,
+  solved: true,
+  time: 30,
+  sent: true,
+  live: true,
+  n: 7,
+  stats: stats(),
+  ...over,
 });
 const wins = (v, days) => days.reduce((acc, day) => win(judged(acc, day), day, 30000), v);
 const days = (from, count) => Array.from({ length: count }, (_, i) => from + i);
@@ -34,17 +56,81 @@ t('champ: the config asks for the seed players and the player; the floor is 0.5 
 t('champ: a copy survives a round trip; any edit of it fails the seals', () => {
   const v = wins(fresh(20000, A), days(20001, 3));
   eq(clean(JSON.parse(JSON.stringify(v))), v);
-  const edit = change => { const c = JSON.parse(JSON.stringify(v)); change(c); return clean(c); };
-  eq(edit(c => { c.g = 1; }), null, 'picks handed out');
-  eq(edit(c => { c.hi = 1; }), null, 'clock mark');
-  eq(edit(c => { c.j.pop(); }), null, 'judged days');
-  eq(edit(c => { c.c[0] = 50; }), null, 'checkpoint count');
-  eq(edit(c => { c.e[1][1] = 1; }), null, 'a time');
-  eq(edit(c => { c.e[1][0] += 1; }), null, 'a day');
-  eq(edit(c => { c.e.push([20009, 5, 'x']); }), null, 'a win made up');
-  eq(edit(c => { c.e.splice(0, 1); }), null, 'a win cut from the front');
-  eq(edit(c => { c.e.splice(1, 1); }), null, 'a win cut from the middle');
-  eq(edit(c => { c.id = B; }), null, 'another id');
+  const edit = change => {
+    const c = JSON.parse(JSON.stringify(v));
+    change(c);
+    return clean(c);
+  };
+  eq(
+    edit(c => {
+      c.g = 1;
+    }),
+    null,
+    'picks handed out',
+  );
+  eq(
+    edit(c => {
+      c.hi = 1;
+    }),
+    null,
+    'clock mark',
+  );
+  eq(
+    edit(c => {
+      c.j.pop();
+    }),
+    null,
+    'judged days',
+  );
+  eq(
+    edit(c => {
+      c.c[0] = 50;
+    }),
+    null,
+    'checkpoint count',
+  );
+  eq(
+    edit(c => {
+      c.e[1][1] = 1;
+    }),
+    null,
+    'a time',
+  );
+  eq(
+    edit(c => {
+      c.e[1][0] += 1;
+    }),
+    null,
+    'a day',
+  );
+  eq(
+    edit(c => {
+      c.e.push([20009, 5, 'x']);
+    }),
+    null,
+    'a win made up',
+  );
+  eq(
+    edit(c => {
+      c.e.splice(0, 1);
+    }),
+    null,
+    'a win cut from the front',
+  );
+  eq(
+    edit(c => {
+      c.e.splice(1, 1);
+    }),
+    null,
+    'a win cut from the middle',
+  );
+  eq(
+    edit(c => {
+      c.id = B;
+    }),
+    null,
+    'another id',
+  );
   eq(clean({ ...v, v: 2 }), null);
   eq(clean(null), null);
 });
@@ -80,7 +166,10 @@ t('champ: every PER_PICK wins is one pick; handed-out picks are not owed again',
 t('champ: the group has the wins of all devices, one per day, and the picks added up', () => {
   const a = wins(fresh(20000, A), [20001, 20002, 20003]);
   const b = wins(fresh(20000, B), [20003, 20004, 20005]);
-  const entries = [{ dev: A, value: a }, { dev: B, value: b }];
+  const entries = [
+    { dev: A, value: a },
+    { dev: B, value: b },
+  ];
   const group = view(entries);
   eq([winsOf(group), [...daysOf(group)].sort()], [5, [20001, 20002, 20003, 20004, 20005]]);
   eq(owedOf(group), 1);
@@ -107,7 +196,7 @@ t('champ: a win is a live game, pct 100, enough players, and a time above the fl
   ok(!qualifies(rec({ n: undefined }), min), 'no board size');
 });
 
-t('champ: live = not a replay, today\'s date, and a clock not set back', () => {
+t("champ: live = not a replay, today's date, and a clock not set back", () => {
   const v = fresh(100, A);
   ok(isLive(v, 100, 100, false));
   ok(!isLive(v, 100, 100, true), 'a replay');
@@ -130,7 +219,7 @@ const setup = async (clock = atDay(19), st = fakeStorage(), sync = null) => {
 };
 const winOn = async (champ, k) => champ.judge(dateAt(k), rec());
 
-ta('champ: live only for today\'s game, never for a replay', async () => {
+ta("champ: live only for today's game, never for a replay", async () => {
   const { champ } = await setup();
   ok(champ.live(dateAt(0), false));
   ok(!champ.live(dateAt(0), true));
@@ -166,7 +255,8 @@ ta('champ: a copy that fails its seals starts again; nothing is earned by editin
   const { st, champ } = await setup();
   for (let k = 0; k < 5; k++) await winOn(champ, k);
   const stored = JSON.parse((await st.get(CHAMP_KEY)).value);
-  stored.g = 0; stored.c[0] = 40;
+  stored.g = 0;
+  stored.c[0] = 40;
   await st.set(CHAMP_KEY, JSON.stringify(stored));
   const again = createChamp(st, { minPlayers: 4 }, atDay(19));
   await again.init();
@@ -191,7 +281,9 @@ ta('champ: a write that is refused is not a win and not a pick', async () => {
 ta('champ: the start judges a stored live answer that was never judged (once)', async () => {
   const { champ } = await setup();
   const records = {
-    [dateAt(0)]: rec(), [dateAt(1)]: rec(), [dateAt(2)]: rec({ live: undefined }),
+    [dateAt(0)]: rec(),
+    [dateAt(1)]: rec(),
+    [dateAt(2)]: rec({ live: undefined }),
     [dateAt(3)]: rec(),
   };
   const store = { loadAttempt: async date => records[date] || null };
@@ -214,11 +306,15 @@ ta('champ: a clock set back is not live; a clock far ahead rises a little a laun
   ok(!later.live(dateAt(0), false), 'the mark rose to 21: day 19 is behind it until the clock is');
 });
 
-ta('champ: with device sync the picks follow the group\'s wins, handed out once', async () => {
+ta("champ: with device sync the picks follow the group's wins, handed out once", async () => {
   const other = wins(fresh(DAY0, B), [DAY0 - 10, DAY0 - 11]);
   const group = { value: other };
   const sync = {
-    view: (key, local) => view([{ dev: A, value: local }, { dev: B, value: group.value }]),
+    view: (key, local) =>
+      view([
+        { dev: A, value: local },
+        { dev: B, value: group.value },
+      ]),
   };
   const { champ } = await setup(atDay(19), fakeStorage(), sync);
   for (let k = 0; k < 3; k++) await winOn(champ, k);
@@ -231,28 +327,52 @@ ta('champ: with device sync the picks follow the group\'s wins, handed out once'
 // ---- the record fields -----------------------------------------------------------------------
 
 ta('champ: the record keeps live and the board size through the submit rounds', async () => {
-  const st = fakeStorage(), store = createStore(st, [7]);
+  const st = fakeStorage(),
+    store = createStore(st, [7]);
   await store.hydrate(dateAt(0));
   await store.recordGotd(7, dateAt(0), 31.2, true, false, true);
   await store.recordGotd(7, dateAt(1), 31.2, true, true, false);
   await store.recordGotd(7, dateAt(2), 31.2, false, false, true);
-  eq(await store.loadAttempt(dateAt(0)),
-    { solved: true, time: 31.2, sent: false, live: true, n: 7 });
-  eq(await store.loadAttempt(dateAt(1)),
-    { solved: true, time: 31.2, sent: false, live: false }, 'a replay says it is not live');
+  eq(await store.loadAttempt(dateAt(0)), {
+    solved: true,
+    time: 31.2,
+    sent: false,
+    live: true,
+    n: 7,
+  });
+  eq(
+    await store.loadAttempt(dateAt(1)),
+    { solved: true, time: 31.2, sent: false, live: false },
+    'a replay says it is not live',
+  );
   eq(await store.loadAttempt(dateAt(2)), { solved: true, time: 31.2 }, 'nothing to submit');
-  const order = ['asia'], prev = await store.loadAttempt(dateAt(0));
-  const done = r => afterSubmit(prev, { status: 'ok', done: ['asia'], complete: r, backend: 'asia',
-    summary: stats() }, order);
+  const order = ['asia'],
+    prev = await store.loadAttempt(dateAt(0));
+  const done = r =>
+    afterSubmit(
+      prev,
+      { status: 'ok', done: ['asia'], complete: r, backend: 'asia', summary: stats() },
+      order,
+    );
   eq(done(true), { solved: true, time: 31.2, sent: true, live: true, n: 7, stats: stats() });
   eq(done(false).live, true);
   const reply = {
-    status: 'ok', done: ['asia'], complete: true, backend: 'asia', summary: stats(),
+    status: 'ok',
+    done: ['asia'],
+    complete: true,
+    backend: 'asia',
+    summary: stats(),
   };
-  eq(afterSubmit({ solved: true, time: 9, sent: false }, reply, order),
-    { solved: true, time: 9, sent: true, stats: stats() }, 'an old record has no fields');
-  eq(afterSubmit({ solved: true, time: 9, sent: false, live: false }, reply, order),
-    { solved: true, time: 9, sent: true, live: false, stats: stats() }, 'live: false stays');
+  eq(
+    afterSubmit({ solved: true, time: 9, sent: false }, reply, order),
+    { solved: true, time: 9, sent: true, stats: stats() },
+    'an old record has no fields',
+  );
+  eq(
+    afterSubmit({ solved: true, time: 9, sent: false, live: false }, reply, order),
+    { solved: true, time: 9, sent: true, live: false, stats: stats() },
+    'live: false stays',
+  );
 });
 
 registerAsyncTests();

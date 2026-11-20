@@ -4,9 +4,7 @@ import { fixture } from '../fixtures/puzzles.js';
 import { maxNumber } from '../../src/core/model.js';
 import { solutionOf } from '../../src/features/hints.js';
 import { createDrawing } from '../../src/coop/drawing.js';
-import {
-  PLAYER_COLORS, boardMarkup, boardView, edgeMiddle,
-} from '../../src/coop/view.js';
+import { PLAYER_COLORS, boardMarkup, boardView, edgeMiddle } from '../../src/coop/view.js';
 
 const puzzle = fixture('std', 6, 3);
 const solution = solutionOf(puzzle);
@@ -16,10 +14,8 @@ test('the board has a badge per number and a line per drawn edge', () => {
   const drawing = createDrawing(puzzle);
   const empty = boardMarkup(puzzle, drawing);
   assert.equal(count(empty, /data-num-cell=/g), maxNumber(puzzle));
-  const lines = text => count(
-    text.slice(text.indexOf('data-role="lines"')).split('</g>')[0],
-    /<line /g,
-  );
+  const lines = text =>
+    count(text.slice(text.indexOf('data-role="lines"')).split('</g>')[0], /<line /g);
   assert.equal(lines(empty), 0);
   drawing.add(solution[0], solution[1]);
   drawing.add(solution[5], solution[6]);
@@ -54,9 +50,8 @@ test('lines are drawn in the colour of the player who drew them', () => {
   drawing.add(solution[5], solution[6], 1);
   drawing.add(solution[6], solution[7], 1);
   const markup = boardMarkup(puzzle, drawing);
-  const group = player => markup.match(
-    new RegExp(`data-player="${player}"[^>]*>((?:<line [^>]*>)*)</g>`),
-  );
+  const group = player =>
+    markup.match(new RegExp(`data-player="${player}"[^>]*>((?:<line [^>]*>)*)</g>`));
   assert.equal(count(group(0)[1], /<line /g), 1);
   assert.equal(count(group(1)[1], /<line /g), 2);
   assert.ok(markup.includes(`data-player="0" stroke="${PLAYER_COLORS[0]}"`));
@@ -72,20 +67,16 @@ test('a Wrap-around board has a margin and a dashed outline; a seam is two stubs
   assert.ok(empty.includes('data-role="outline"'));
   assert.ok(empty.includes('class="zip-svg coop-svg wrap"'));
   drawing.add(4, 0); // the right seam of row 0
-  const lines = text => count(
-    text.slice(text.indexOf('data-role="lines"')).split('</g>')[0],
-    /<line /g,
-  );
+  const lines = text =>
+    count(text.slice(text.indexOf('data-role="lines"')).split('</g>')[0], /<line /g);
   assert.equal(lines(boardMarkup(wrap, drawing)), 2);
 });
 
 test('a Teleport board shows its portals; a jump is one dotted curve; the partner pulses', () => {
   const tele = fixture('teleport', 6, 2);
   const drawing = createDrawing(tele);
-  const inLines = text => count(
-    text.slice(text.indexOf('data-role="lines"')).split('</g>')[0],
-    /<line /g,
-  );
+  const inLines = text =>
+    count(text.slice(text.indexOf('data-role="lines"')).split('</g>')[0], /<line /g);
   const [a, b] = tele.portals[0];
   const text = boardMarkup(tele, drawing);
   assert.equal(count(text, /data-portal-cell=/g), 2);
@@ -107,10 +98,8 @@ test('a Pentagon board has a tile per cell, a badge per number and a line per dr
   assert.ok(text.includes('class="zip-svg coop-svg pentagon"'));
   assert.equal(count(text, /<polygon /g), 36);
   assert.equal(count(text, /data-num-cell=/g), maxNumber(pentagon));
-  const inLines = markup => count(
-    markup.slice(markup.indexOf('data-role="lines"')).split('</g>')[0],
-    /<line /g,
-  );
+  const inLines = markup =>
+    count(markup.slice(markup.indexOf('data-role="lines"')).split('</g>')[0], /<line /g);
   assert.equal(inLines(text), 0);
   const path = solutionOf(pentagon);
   drawing.add(path[0], path[1]);

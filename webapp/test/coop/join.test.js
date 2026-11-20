@@ -3,14 +3,25 @@ import assert from 'node:assert/strict';
 import { createMqtt } from '../../src/coop/mqtt.js';
 import { createHub } from '../../src/coop/signal.js';
 import {
-  ASK_MS, GREETING_MAX, HUB_WAIT_MS, ROOM_MS, SEEN_WAIT_MS, cleanGreeting, hostRoom, joinRoom,
+  ASK_MS,
+  GREETING_MAX,
+  HUB_WAIT_MS,
+  ROOM_MS,
+  SEEN_WAIT_MS,
+  cleanGreeting,
+  hostRoom,
+  joinRoom,
 } from '../../src/coop/join.js';
 import {
-  deriveRoom, newId, newPair, pairKey, seal, splitToken, unseal,
+  deriveRoom,
+  newId,
+  newPair,
+  pairKey,
+  seal,
+  splitToken,
+  unseal,
 } from '../../src/coop/secret.js';
-import {
-  createNetwork, manualTimers, settle, until,
-} from './fake-broker.js';
+import { createNetwork, manualTimers, settle, until } from './fake-broker.js';
 
 const URLS = ['wss://mq', 'wss://hv', 'wss://em'];
 const brokers = URLS.map((url, i) => ({ id: ['mq', 'hv', 'em'][i], url }));
@@ -24,9 +35,14 @@ function device(net, blocked = []) {
     brokers,
     timers,
     random: () => 1,
-    connect: (url, handlers) => createMqtt({
-      url, clientId: 'c', WebSocketImpl: WebSocket, timers, ...handlers,
-    }),
+    connect: (url, handlers) =>
+      createMqtt({
+        url,
+        clientId: 'c',
+        WebSocketImpl: WebSocket,
+        timers,
+        ...handlers,
+      }),
   });
   return { hub, timers, gate };
 }
@@ -73,7 +89,12 @@ async function openHost(net, options = {}) {
     ...options.room,
   });
   return {
-    ...dev, room, log, secrets, requests, last: () => requests.at(-1) ?? [],
+    ...dev,
+    room,
+    log,
+    secrets,
+    requests,
+    last: () => requests.at(-1) ?? [],
   };
 }
 
@@ -99,7 +120,14 @@ async function openGuest(net, token, options = {}) {
     ...options.room,
   });
   return {
-    ...dev, room, log, secrets, stages, infos, stage: () => stages.at(-1), info: () => infos.at(-1),
+    ...dev,
+    room,
+    log,
+    secrets,
+    stages,
+    infos,
+    stage: () => stages.at(-1),
+    info: () => infos.at(-1),
   };
 }
 
@@ -195,7 +223,9 @@ test('the host enforces the greeting itself, whatever a guest sends', async () =
   rogue.hub.publish(to, await seal(key, to, { pub: pair.pub, greeting: '' }));
   await until(() => refusals.length === 1, 'an answer');
   assert.equal(refusals[0][1][0], 'N');
-  assert.deepEqual(await unseal(key, refusals[0][0], refusals[0][1].slice(1)), { why: 'greeting' });
+  assert.deepEqual(await unseal(key, refusals[0][0], refusals[0][1].slice(1)), {
+    why: 'greeting',
+  });
   assert.deepEqual(host.last(), []);
 });
 
@@ -277,7 +307,10 @@ test('someone else with the link cannot answer for the guest', async () => {
   attacker.hub.publish(to, await seal(key, to, { answer: 'EVIL-ANSWER' }));
   await host.room.accept(id);
   await until(() => guest.stage() === 'connecting', 'accepted');
-  await until(() => host.log.some(line => line.startsWith('host: acceptReply')), 'the real answer');
+  await until(
+    () => host.log.some(line => line.startsWith('host: acceptReply')),
+    'the real answer',
+  );
   assert.ok(!host.log.some(line => line.includes('EVIL')));
 });
 

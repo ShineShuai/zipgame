@@ -63,8 +63,10 @@ for (let i = 0; i < args.length; i++) {
 const [kind, size] = positional;
 const n = kind === BALL_KIND ? size : Number(size);
 if (!kind || (kind === BALL_KIND ? !size : !Number.isInteger(n))) {
-  fail('usage: node tools/solid-gen.mjs <tetra|cube> <n> | ball <id> [--seed S] [--count C] ' +
-    '[--k K] [--path] [--quiet]');
+  fail(
+    'usage: node tools/solid-gen.mjs <tetra|cube> <n> | ball <id> [--seed S] [--count C] ' +
+      '[--k K] [--path] [--quiet]',
+  );
 }
 let cells;
 try {

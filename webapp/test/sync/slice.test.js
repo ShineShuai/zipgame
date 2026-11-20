@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { SHRINKS } from '../../src/core/sync/merge.js';
 import {
-  isDev, isSlice, newDevId, packSlice, SLICE_MAX, sliceFromText, sliceToText, unpackSlice,
+  isDev,
+  isSlice,
+  newDevId,
+  packSlice,
+  SLICE_MAX,
+  sliceFromText,
+  sliceToText,
+  unpackSlice,
   UNPACKED_MAX,
 } from '../../src/core/sync/slice.js';
 
@@ -24,8 +31,16 @@ test('device ids are 11 characters of base64url', () => {
 
 test('a slice is an object with version, device, a sequence number and keys', () => {
   assert.ok(isSlice(slice()));
-  for (const bad of [null, [], {}, { ...slice(), v: 2 }, { ...slice(), dev: 'x' },
-    { ...slice(), seq: -1 }, { ...slice(), seq: 1.5 }, { ...slice(), keys: [] }]) {
+  for (const bad of [
+    null,
+    [],
+    {},
+    { ...slice(), v: 2 },
+    { ...slice(), dev: 'x' },
+    { ...slice(), seq: -1 },
+    { ...slice(), seq: 1.5 },
+    { ...slice(), keys: [] },
+  ]) {
     assert.ok(!isSlice(bad), JSON.stringify(bad));
   }
 });
@@ -42,8 +57,14 @@ test('a packed slice comes back as it was, through bytes and through text', asyn
 test('anything that is not a packed slice gives null, never an error', async () => {
   const good = await packSlice(slice());
   const cases = [
-    null, 'text', [], new Uint8Array(0), new Uint8Array(1), new Uint8Array([9, 1, 2, 3]),
-    new Uint8Array([1, 1, 2, 3, 4, 5]), new Uint8Array([0, 123]),
+    null,
+    'text',
+    [],
+    new Uint8Array(0),
+    new Uint8Array(1),
+    new Uint8Array([9, 1, 2, 3]),
+    new Uint8Array([1, 1, 2, 3, 4, 5]),
+    new Uint8Array([0, 123]),
     Uint8Array.of(0, ...new TextEncoder().encode('{"v":1}')),
     Uint8Array.of(0, ...new TextEncoder().encode('[1,2]')),
     Uint8Array.of(0, 0xff, 0xfe, 0xfd),

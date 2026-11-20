@@ -8,13 +8,33 @@ import { showNotice } from '../../src/ui/notice.js';
 
 // just enough of a page for showNotice
 function fakeDoc() {
-  const body = { children: [], append(...els) { this.children.push(...els); } };
+  const body = {
+    children: [],
+    append(...els) {
+      this.children.push(...els);
+    },
+  };
   const make = tag => ({
-    tag, className: '', attrs: {}, children: [], listeners: {}, textContent: '', removed: false,
-    setAttribute(k, v) { this.attrs[k] = v; },
-    append(...els) { this.children.push(...els); },
-    addEventListener(type, fn) { this.listeners[type] = fn; },
-    remove() { this.removed = true; body.children = body.children.filter(c => c !== this); },
+    tag,
+    className: '',
+    attrs: {},
+    children: [],
+    listeners: {},
+    textContent: '',
+    removed: false,
+    setAttribute(k, v) {
+      this.attrs[k] = v;
+    },
+    append(...els) {
+      this.children.push(...els);
+    },
+    addEventListener(type, fn) {
+      this.listeners[type] = fn;
+    },
+    remove() {
+      this.removed = true;
+      body.children = body.children.filter(c => c !== this);
+    },
   });
   return {
     body,
@@ -29,10 +49,18 @@ const timers = () => {
   const pending = new Map();
   let next = 1;
   return {
-    setTimer: (fn, ms) => { pending.set(next, { fn, ms }); return next++; },
+    setTimer: (fn, ms) => {
+      pending.set(next, { fn, ms });
+      return next++;
+    },
     clearTimer: id => pending.delete(id),
     pending,
-    fire: () => { for (const [id, t] of [...pending]) { pending.delete(id); t.fn(); } },
+    fire: () => {
+      for (const [id, t] of [...pending]) {
+        pending.delete(id);
+        t.fn();
+      }
+    },
   };
 };
 
@@ -53,15 +81,24 @@ test('it goes by itself, or when it is closed; a new one with the same key repla
   const doc = fakeDoc();
   const clock = timers();
   showNotice({ key: 'k', text: 'one', ms: 5000 }, { doc, ...clock });
-  assert.deepEqual([...clock.pending.values()].map(t => t.ms), [5000]);
+  assert.deepEqual(
+    [...clock.pending.values()].map(t => t.ms),
+    [5000],
+  );
   clock.fire();
   assert.equal(doc.body.children.length, 0);
   showNotice({ key: 'k', text: 'two' }, { doc, ...clock });
   showNotice({ key: 'k', text: 'three' }, { doc, ...clock });
   showNotice({ key: 'other', text: 'four' }, { doc, ...clock });
-  assert.deepEqual(doc.body.children.map(el => el.children[0].textContent), ['three', 'four']);
+  assert.deepEqual(
+    doc.body.children.map(el => el.children[0].textContent),
+    ['three', 'four'],
+  );
   doc.body.children[0].children[1].listeners.click();
-  assert.deepEqual(doc.body.children.map(el => el.children[0].textContent), ['four']);
+  assert.deepEqual(
+    doc.body.children.map(el => el.children[0].textContent),
+    ['four'],
+  );
 });
 
 test('text with markup is shown as text', () => {
@@ -71,14 +108,27 @@ test('text with markup is shown as text', () => {
 });
 
 test('each event of health.js has its words, in both languages', () => {
-  const events = ['cloud-failed', 'cloud-refused', 'cloud-toobig', 'cloud-recovered',
-    'meet-failed'].map(kind => ({ kind }));
+  const events = [
+    'cloud-failed',
+    'cloud-refused',
+    'cloud-toobig',
+    'cloud-recovered',
+    'meet-failed',
+  ].map(kind => ({ kind }));
   const used = new Set();
-  const tr = key => { used.add(key); return key; };
+  const tr = key => {
+    used.add(key);
+    return key;
+  };
   const notices = events.map(event => noticeOf(event, tr));
-  assert.deepEqual(notices.map(n => n.key),
-    ['sync-cloud', 'sync-cloud', 'sync-cloud', 'sync-cloud', 'sync-meet']);
-  assert.deepEqual(notices.map(n => n.kind), ['bad', 'bad', 'bad', 'ok', 'bad']);
+  assert.deepEqual(
+    notices.map(n => n.key),
+    ['sync-cloud', 'sync-cloud', 'sync-cloud', 'sync-cloud', 'sync-meet'],
+  );
+  assert.deepEqual(
+    notices.map(n => n.kind),
+    ['bad', 'bad', 'bad', 'ok', 'bad'],
+  );
   const link = noticeOf({ kind: 'link-failed', reason: 'expired' }, tr);
   assert.deepEqual([link.key, link.kind, link.text], ['sync-link', 'bad', 'sync.failExpired']);
   assert.equal(noticeOf({ kind: 'something-else' }, tr), null);

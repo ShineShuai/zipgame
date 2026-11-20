@@ -8,12 +8,10 @@ import { createCloud } from '../../src/platform/sync/cloud.js';
 import { supabaseCloud } from '../../src/platform/sync/cloud/supabase.js';
 import { tursoCloud } from '../../src/platform/sync/cloud/turso.js';
 import { createSync } from '../../src/platform/sync/engine.js';
-import {
-  fakeSupabase, fakeTurso, memoryStorage, sqliteTest, tursoDatabase,
-} from './helpers.js';
+import { fakeSupabase, fakeTurso, memoryStorage, sqliteTest, tursoDatabase } from './helpers.js';
 
-const rules = (...ids) => JSON.stringify(
-  { v: 1, seen: Object.fromEntries(ids.map(id => [id, true])) });
+const rules = (...ids) =>
+  JSON.stringify({ v: 1, seen: Object.fromEntries(ids.map(id => [id, true])) });
 const FAST = 1000;
 const TURSO = { url: 'https://zipgame-x.turso.io', key: 'public-token' };
 
@@ -26,7 +24,9 @@ function servers() {
     supa,
     db: null,
     flags,
-    tick: ms => { clock += ms; },
+    tick: ms => {
+      clock += ms;
+    },
     async make() {
       this.db = await tursoDatabase();
       return this;
@@ -53,7 +53,10 @@ async function device(world, { data = {}, secret = null, order, minPushMs = 0 } 
   await sync.init();
   await sync.enable({ cloud: true, ...(secret ? { secret } : {}) });
   const cloud = createCloud({
-    sync, backends: world.backends(order), iterations: FAST, minPushMs,
+    sync,
+    backends: world.backends(order),
+    iterations: FAST,
+    minPushMs,
     now: () => Date.now(),
   });
   return { storage, sync, cloud };
@@ -65,24 +68,26 @@ const seenOf = async (d, id) => {
   return Boolean(view && view.seen[id]);
 };
 
-sqliteTest('devices that are never open together meet through the servers, '
-  + 'both ways', async () => {
-  const world = await servers().make();
-  const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('cutout') } });
-  const secret = a.sync.secret();
-  const b = await device(world, { data: { [RULES_SEEN_KEY]: rules('arrows') }, secret });
-  const first = await a.cloud.sync();
-  assert.deepEqual([first.ok, first.pushed], [true, 2], 'A wrote to both servers');
-  const second = await b.cloud.sync();
-  assert.equal(second.accepted, 1);
-  assert.ok(await seenOf(b, 'cutout') && await seenOf(b, 'arrows'));
-  world.tick(10000);
-  const third = await a.cloud.sync();
-  assert.equal(third.accepted, 1);
-  assert.ok(await seenOf(a, 'arrows'));
-  assert.equal(a.cloud.status().error, null);
-  assert.ok(a.cloud.status().lastOk > 0);
-});
+sqliteTest(
+  'devices that are never open together meet through the servers, ' + 'both ways',
+  async () => {
+    const world = await servers().make();
+    const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('cutout') } });
+    const secret = a.sync.secret();
+    const b = await device(world, { data: { [RULES_SEEN_KEY]: rules('arrows') }, secret });
+    const first = await a.cloud.sync();
+    assert.deepEqual([first.ok, first.pushed], [true, 2], 'A wrote to both servers');
+    const second = await b.cloud.sync();
+    assert.equal(second.accepted, 1);
+    assert.ok((await seenOf(b, 'cutout')) && (await seenOf(b, 'arrows')));
+    world.tick(10000);
+    const third = await a.cloud.sync();
+    assert.equal(third.accepted, 1);
+    assert.ok(await seenOf(a, 'arrows'));
+    assert.equal(a.cloud.status().error, null);
+    assert.ok(a.cloud.status().lastOk > 0);
+  },
+);
 
 sqliteTest('a second round with nothing new says nothing and writes nothing', async () => {
   const world = await servers().make();
@@ -96,19 +101,26 @@ sqliteTest('a second round with nothing new says nothing and writes nothing', as
   assert.equal(world.supa.calls.filter(c => c.name === 'sync_put').length, puts);
 });
 
-sqliteTest('a group is only its secret: another secret finds nothing, and what is '
-  + 'stored is ciphertext', async () => {
-  const world = await servers().make();
-  const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('secretrule') } });
-  await a.cloud.sync();
-  const stranger = await device(world);
-  assert.equal((await stranger.cloud.sync()).accepted, 0);
-  const stored = JSON.stringify([...world.supa.groups.values()].map(g => [...g.slices.values()]))
-    + JSON.stringify(world.db.prepare('SELECT data FROM sync').all());
-  assert.ok(!stored.includes('secretrule'));
-  assert.ok(!stored.includes('cutout'));
-  assert.deepEqual([...world.supa.groups.keys()].every(id => /^[0-9a-f]{32}$/.test(id)), true);
-});
+sqliteTest(
+  'a group is only its secret: another secret finds nothing, and what is ' +
+    'stored is ciphertext',
+  async () => {
+    const world = await servers().make();
+    const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('secretrule') } });
+    await a.cloud.sync();
+    const stranger = await device(world);
+    assert.equal((await stranger.cloud.sync()).accepted, 0);
+    const stored =
+      JSON.stringify([...world.supa.groups.values()].map(g => [...g.slices.values()])) +
+      JSON.stringify(world.db.prepare('SELECT data FROM sync').all());
+    assert.ok(!stored.includes('secretrule'));
+    assert.ok(!stored.includes('cutout'));
+    assert.deepEqual(
+      [...world.supa.groups.keys()].every(id => /^[0-9a-f]{32}$/.test(id)),
+      true,
+    );
+  },
+);
 
 sqliteTest('one server down: the other carries it; both down: an error, and no harm', async () => {
   const world = await servers().make();
@@ -152,7 +164,8 @@ sqliteTest('junk rows on the public Turso table are skipped, and writing goes on
   const dev = a.sync.status().dev;
   const day = Math.floor(Date.now() / 86400000);
   const insert = world.db.prepare(
-    'INSERT INTO sync (id, dev, seq, day, data) VALUES (?, ?, ?, ?, ?)');
+    'INSERT INTO sync (id, dev, seq, day, data) VALUES (?, ?, ?, ?, ?)',
+  );
   const junk = (device, seq, data) => insert.run(id, device, seq, day, data);
   junk(dev, 50, 'x'.repeat(60)); // above the real row, and not sealed
   junk('ZZZZZZZZZZZ', 1, 'y'.repeat(60)); // a device that does not exist
@@ -167,30 +180,42 @@ sqliteTest('junk rows on the public Turso table are skipped, and writing goes on
   assert.ok(await seenOf(b, 'wrap'));
 });
 
-sqliteTest('a sealed row put under another device id does not open (the tag '
-  + 'covers the device)', async () => {
-  const world = await servers().make();
-  const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('cutout') }, order: ['turso'] });
-  await a.cloud.sync();
-  const row = world.db.prepare('SELECT id, data FROM sync').get();
-  world.db.prepare('INSERT INTO sync (id, dev, seq, day, data) VALUES (?, ?, 1, ?, ?)')
-    .run(row.id, 'ZZZZZZZZZZZ', Math.floor(Date.now() / 86400000), row.data);
-  const b = await device(world, { secret: a.sync.secret(), order: ['turso'] });
-  await b.cloud.sync();
-  assert.equal(b.sync.status().devices, 2, 'B and A only: the copy under another id was refused');
-});
+sqliteTest(
+  'a sealed row put under another device id does not open (the tag ' + 'covers the device)',
+  async () => {
+    const world = await servers().make();
+    const a = await device(world, {
+      data: { [RULES_SEEN_KEY]: rules('cutout') },
+      order: ['turso'],
+    });
+    await a.cloud.sync();
+    const row = world.db.prepare('SELECT id, data FROM sync').get();
+    world.db
+      .prepare('INSERT INTO sync (id, dev, seq, day, data) VALUES (?, ?, 1, ?, ?)')
+      .run(row.id, 'ZZZZZZZZZZZ', Math.floor(Date.now() / 86400000), row.data);
+    const b = await device(world, { secret: a.sync.secret(), order: ['turso'] });
+    await b.cloud.sync();
+    assert.equal(
+      b.sync.status().devices,
+      2,
+      'B and A only: the copy under another id was refused',
+    );
+  },
+);
 
-sqliteTest('pushes are not more often than minPushMs, unless forced; and only '
-  + 'when something changed', async () => {
-  const world = await servers().make();
-  const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('a') }, minPushMs: 60000 });
-  assert.equal((await a.cloud.push()).ok, 2);
-  await a.storage.set(RULES_SEEN_KEY, rules('a', 'b'));
-  assert.equal((await a.cloud.push()).skipped, 'soon');
-  world.tick(10000);
-  assert.deepEqual([(await a.cloud.push({ force: true })).ok], [2]);
-  assert.equal((await a.cloud.push({ force: true })).skipped, 'current');
-});
+sqliteTest(
+  'pushes are not more often than minPushMs, unless forced; and only ' + 'when something changed',
+  async () => {
+    const world = await servers().make();
+    const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('a') }, minPushMs: 60000 });
+    assert.equal((await a.cloud.push()).ok, 2);
+    await a.storage.set(RULES_SEEN_KEY, rules('a', 'b'));
+    assert.equal((await a.cloud.push()).skipped, 'soon');
+    world.tick(10000);
+    assert.deepEqual([(await a.cloud.push({ force: true })).ok], [2]);
+    assert.equal((await a.cloud.push({ force: true })).skipped, 'current');
+  },
+);
 
 test('a device without data, or without the cloud way, pushes nothing', async () => {
   const world = await servers().make();
@@ -198,8 +223,7 @@ test('a device without data, or without the cloud way, pushes nothing', async ()
   assert.equal((await empty.cloud.push({ force: true })).skipped, 'empty');
   await empty.sync.disable({ cloud: true });
   assert.equal((await empty.cloud.push({ force: true })).skipped, 'off');
-  assert.deepEqual(await empty.cloud.sync(),
-    { accepted: 0, pushed: 0, ok: false, error: null });
+  assert.deepEqual(await empty.cloud.sync(), { accepted: 0, pushed: 0, ok: false, error: null });
   assert.equal(empty.cloud.status().on, false);
 });
 
@@ -217,36 +241,41 @@ test('a new secret means a new group: the keys and what was seen are forgotten',
   assert.ok(await seenOf(b, 'one'));
 });
 
-sqliteTest('erase: deleted where a player may delete, left to expire where not, '
-  + 'then forgotten', async () => {
-  const world = await servers().make();
-  const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('cutout') } });
-  await a.cloud.sync();
-  const result = await a.cloud.erase();
-  assert.equal(result.forgotten, true);
-  assert.deepEqual(result.servers, [
-    { name: 'supabase-asia', removed: true },
-    { name: 'turso-asia', removed: false, reason: 'expires' }]);
-  assert.equal(world.supa.groups.size, 0);
-  assert.equal(a.sync.secret(), null);
-  assert.equal(a.sync.cloudOn(), false);
-  const kept = world.db.prepare('SELECT COUNT(*) c FROM sync').get().c;
-  assert.equal(kept > 0, true, 'Turso keeps ciphertext');
-});
+sqliteTest(
+  'erase: deleted where a player may delete, left to expire where not, ' + 'then forgotten',
+  async () => {
+    const world = await servers().make();
+    const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('cutout') } });
+    await a.cloud.sync();
+    const result = await a.cloud.erase();
+    assert.equal(result.forgotten, true);
+    assert.deepEqual(result.servers, [
+      { name: 'supabase-asia', removed: true },
+      { name: 'turso-asia', removed: false, reason: 'expires' },
+    ]);
+    assert.equal(world.supa.groups.size, 0);
+    assert.equal(a.sync.secret(), null);
+    assert.equal(a.sync.cloudOn(), false);
+    const kept = world.db.prepare('SELECT COUNT(*) c FROM sync').get().c;
+    assert.equal(kept > 0, true, 'Turso keeps ciphertext');
+  },
+);
 
-test('erase while the deleting server is unreachable forgets nothing, so it '
-  + 'can be tried again', async () => {
-  const world = await servers().make();
-  const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('cutout') } });
-  await a.cloud.sync();
-  world.flags.supabaseDown = true;
-  const result = await a.cloud.erase();
-  assert.equal(result.forgotten, false);
-  assert.equal(result.servers[0].reason, 'network');
-  assert.notEqual(a.sync.secret(), null);
-  world.flags.supabaseDown = false;
-  assert.equal((await a.cloud.erase()).forgotten, true);
-});
+test(
+  'erase while the deleting server is unreachable forgets nothing, so it ' + 'can be tried again',
+  async () => {
+    const world = await servers().make();
+    const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('cutout') } });
+    await a.cloud.sync();
+    world.flags.supabaseDown = true;
+    const result = await a.cloud.erase();
+    assert.equal(result.forgotten, false);
+    assert.equal(result.servers[0].reason, 'network');
+    assert.notEqual(a.sync.secret(), null);
+    world.flags.supabaseDown = false;
+    assert.equal((await a.cloud.erase()).forgotten, true);
+  },
+);
 
 test('events tell what the cloud is doing, and syncs do not overlap', async () => {
   const world = await servers().make();
@@ -276,7 +305,8 @@ test('a slice too big even after shrinking is not sent, and says so', async () =
   const world = await servers().make();
   const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('x') } });
   const records = {};
-  for (let i = 0; i < 3000; i++) { // records that stay records: nothing can shrink them
+  for (let i = 0; i < 3000; i++) {
+    // records that stay records: nothing can shrink them
     records[String(20100101 + i)] = { solved: true, time: Math.random() * 1000, n: Math.random() };
   }
   await a.storage.set('zip_gotd_v2', JSON.stringify({ v: 2, a: records, n: 3000 }));
@@ -286,24 +316,26 @@ test('a slice too big even after shrinking is not sent, and says so', async () =
   assert.equal(world.supa.groups.size, 0, 'nothing was sent');
 });
 
-test('a failed round says so as an event and in the status; the next good '
-  + 'one clears it', async () => {
-  const world = await servers().make();
-  const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('x') } });
-  const events = [];
-  a.cloud.onEvent(event => events.push(`${event.state}${event.error ? ':' + event.error : ''}`));
-  world.flags.supabaseDown = true;
-  world.flags.tursoDown = true;
-  const failed = await a.cloud.sync();
-  assert.deepEqual([failed.ok, failed.error], [false, 'network']);
-  assert.equal(a.cloud.status().error, 'network');
-  world.flags.supabaseDown = false;
-  world.flags.tursoDown = false;
-  const good = await a.cloud.sync({ force: true });
-  assert.deepEqual([good.ok, good.error], [true, null]);
-  assert.equal(a.cloud.status().error, null);
-  assert.deepEqual(events, ['syncing', 'failed:network', 'syncing', 'ok']);
-});
+test(
+  'a failed round says so as an event and in the status; the next good ' + 'one clears it',
+  async () => {
+    const world = await servers().make();
+    const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('x') } });
+    const events = [];
+    a.cloud.onEvent(event => events.push(`${event.state}${event.error ? ':' + event.error : ''}`));
+    world.flags.supabaseDown = true;
+    world.flags.tursoDown = true;
+    const failed = await a.cloud.sync();
+    assert.deepEqual([failed.ok, failed.error], [false, 'network']);
+    assert.equal(a.cloud.status().error, 'network');
+    world.flags.supabaseDown = false;
+    world.flags.tursoDown = false;
+    const good = await a.cloud.sync({ force: true });
+    assert.deepEqual([good.ok, good.error], [true, null]);
+    assert.equal(a.cloud.status().error, null);
+    assert.deepEqual(events, ['syncing', 'failed:network', 'syncing', 'ok']);
+  },
+);
 
 test('a slice that is too big is an error of the round even when a server answered', async () => {
   const world = await servers().make();
@@ -321,27 +353,29 @@ test('a slice that is too big is an error of the round even when a server answer
   assert.equal(a.cloud.status().error, 'toobig');
 });
 
-sqliteTest('a push round of its own tells its result; one with nothing to '
-  + 'push is quiet', async () => {
-  const world = await servers().make();
-  const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('x') } });
-  const events = [];
-  a.cloud.onEvent(event => events.push(event.state));
-  const pushed = await a.cloud.pushRound({ force: true });
-  assert.deepEqual([pushed.ok, pushed.pushed, pushed.error], [true, 2, null]);
-  assert.deepEqual(events, ['syncing', 'ok']);
-  events.length = 0;
-  const quiet = await a.cloud.pushRound({ force: true });
-  assert.equal(quiet.skipped, 'current');
-  assert.deepEqual(events, ['syncing', 'idle'], 'no ok or failed event');
-  world.flags.supabaseDown = true;
-  world.flags.tursoDown = true;
-  await a.storage.set(RULES_SEEN_KEY, rules('x', 'y'));
-  events.length = 0;
-  const failed = await a.cloud.pushRound({ force: true });
-  assert.deepEqual([failed.ok, failed.error], [false, 'network']);
-  assert.deepEqual(events, ['syncing', 'failed']);
-});
+sqliteTest(
+  'a push round of its own tells its result; one with nothing to ' + 'push is quiet',
+  async () => {
+    const world = await servers().make();
+    const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('x') } });
+    const events = [];
+    a.cloud.onEvent(event => events.push(event.state));
+    const pushed = await a.cloud.pushRound({ force: true });
+    assert.deepEqual([pushed.ok, pushed.pushed, pushed.error], [true, 2, null]);
+    assert.deepEqual(events, ['syncing', 'ok']);
+    events.length = 0;
+    const quiet = await a.cloud.pushRound({ force: true });
+    assert.equal(quiet.skipped, 'current');
+    assert.deepEqual(events, ['syncing', 'idle'], 'no ok or failed event');
+    world.flags.supabaseDown = true;
+    world.flags.tursoDown = true;
+    await a.storage.set(RULES_SEEN_KEY, rules('x', 'y'));
+    events.length = 0;
+    const failed = await a.cloud.pushRound({ force: true });
+    assert.deepEqual([failed.ok, failed.error], [false, 'network']);
+    assert.deepEqual(events, ['syncing', 'failed']);
+  },
+);
 
 test('a push round while the cloud way is off does nothing', async () => {
   const world = await servers().make();
@@ -350,28 +384,32 @@ test('a push round while the cloud way is off does nothing', async () => {
   assert.equal((await a.cloud.pushRound({ force: true })).skipped, 'off');
 });
 
-test('Supabase alone (what Node 20 runs): devices meet, and the cloud '
-  + 'copy can be deleted', async () => {
-  let clock = Date.now();
-  const supa = fakeSupabase({ now: () => clock });
-  const backends = () => [supabaseCloud(supa.entry, 'supabase-asia', { fetchFn: supa.fetchFn })];
-  const make = async (data, secret) => {
-    const sync = createSync({ storage: memoryStorage(data) });
-    await sync.init();
-    await sync.enable({ cloud: true, ...(secret ? { secret } : {}) });
-    const cloud = createCloud({ sync, backends: backends(), iterations: FAST, minPushMs: 0 });
-    return { sync, cloud, storage: sync };
-  };
-  const a = await make({ [RULES_SEEN_KEY]: rules('cutout') });
-  const b = await make({ [RULES_SEEN_KEY]: rules('arrows') }, a.sync.secret());
-  assert.deepEqual([(await a.cloud.sync()).ok, (await a.cloud.sync()).pushed], [true, 0]);
-  assert.equal(supa.groups.size, 1);
-  assert.equal((await b.cloud.sync()).accepted, 1);
-  assert.equal(b.sync.status().devices, 2);
-  clock += 10000;
-  const erased = await a.cloud.erase();
-  assert.deepEqual(erased,
-    { forgotten: true, servers: [{ name: 'supabase-asia', removed: true }] });
-  assert.equal(supa.groups.size, 0);
-  assert.equal(a.sync.cloudOn(), false);
-});
+test(
+  'Supabase alone (what Node 20 runs): devices meet, and the cloud ' + 'copy can be deleted',
+  async () => {
+    let clock = Date.now();
+    const supa = fakeSupabase({ now: () => clock });
+    const backends = () => [supabaseCloud(supa.entry, 'supabase-asia', { fetchFn: supa.fetchFn })];
+    const make = async (data, secret) => {
+      const sync = createSync({ storage: memoryStorage(data) });
+      await sync.init();
+      await sync.enable({ cloud: true, ...(secret ? { secret } : {}) });
+      const cloud = createCloud({ sync, backends: backends(), iterations: FAST, minPushMs: 0 });
+      return { sync, cloud, storage: sync };
+    };
+    const a = await make({ [RULES_SEEN_KEY]: rules('cutout') });
+    const b = await make({ [RULES_SEEN_KEY]: rules('arrows') }, a.sync.secret());
+    assert.deepEqual([(await a.cloud.sync()).ok, (await a.cloud.sync()).pushed], [true, 0]);
+    assert.equal(supa.groups.size, 1);
+    assert.equal((await b.cloud.sync()).accepted, 1);
+    assert.equal(b.sync.status().devices, 2);
+    clock += 10000;
+    const erased = await a.cloud.erase();
+    assert.deepEqual(erased, {
+      forgotten: true,
+      servers: [{ name: 'supabase-asia', removed: true }],
+    });
+    assert.equal(supa.groups.size, 0);
+    assert.equal(a.sync.cloudOn(), false);
+  },
+);

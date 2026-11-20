@@ -66,14 +66,19 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     ran++;
   }
   if (env.SUPABASE_URL && env.SUPABASE_KEY && env.SYNC_PRUNE_TOKEN) {
-    const deleted = await pruneSupabase(
-      { url: env.SUPABASE_URL, key: env.SUPABASE_KEY, token: env.SYNC_PRUNE_TOKEN });
+    const deleted = await pruneSupabase({
+      url: env.SUPABASE_URL,
+      key: env.SUPABASE_KEY,
+      token: env.SYNC_PRUNE_TOKEN,
+    });
     console.log(`supabase: ${deleted} idle groups deleted`);
     ran++;
   }
   if (!ran) {
-    console.error('nothing to do: set TURSO_URL + TURSO_PRUNE_TOKEN and/or SUPABASE_URL'
-      + ' + SUPABASE_KEY + SYNC_PRUNE_TOKEN');
+    console.error(
+      'nothing to do: set TURSO_URL + TURSO_PRUNE_TOKEN and/or SUPABASE_URL' +
+        ' + SUPABASE_KEY + SYNC_PRUNE_TOKEN',
+    );
     process.exit(2);
   }
 }

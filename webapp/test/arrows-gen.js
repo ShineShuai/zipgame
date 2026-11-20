@@ -6,7 +6,10 @@ import { solve } from '../src/core/solver/solve.js';
 import { runSync } from '../src/core/run.js';
 import { makeRng } from '../src/core/rng.js';
 import {
-  generateArrows, makeUniqueArrows, tryRemoveArrow, ARROW_MIN_ARROWS,
+  generateArrows,
+  makeUniqueArrows,
+  tryRemoveArrow,
+  ARROW_MIN_ARROWS,
 } from '../src/core/gen/arrows.js';
 import { backbite } from '../src/core/gen/hampath.js';
 import { gapCheckpoints } from '../src/core/gen/checkpoints.js';
@@ -16,7 +19,13 @@ const solutions = (p, opts = {}) => solve(p, { limit: 2, capture: true, nodeCap:
 
 export function arrowsGenTests(t, ok, eq) {
   t('generateArrows: valid, wall-free, one solution = p.path (propagation on and off)', () => {
-    for (const [n, seed] of [[5, 1], [5, 2], [6, 3], [6, 4], [7, 5]]) {
+    for (const [n, seed] of [
+      [5, 1],
+      [5, 2],
+      [6, 3],
+      [6, 4],
+      [7, 5],
+    ]) {
       const p = make(n, seed);
       const tag = `n ${n} seed ${seed}`;
       ok(validate(p).ok, `${tag}: ${validate(p).msg}`);
@@ -34,7 +43,13 @@ export function arrowsGenTests(t, ok, eq) {
 
   t('generateArrows: every arrow is necessary (removing any gives a second solution)', () => {
     let checked = 0;
-    for (const [n, seed] of [[5, 11], [6, 12], [6, 13], [7, 14], [7, 15]]) {
+    for (const [n, seed] of [
+      [5, 11],
+      [6, 12],
+      [6, 13],
+      [7, 14],
+      [7, 15],
+    ]) {
       const p = make(n, seed);
       for (const e of arrowIds(p)) {
         const dir = arrowDirId(p.arrows, e);
@@ -48,8 +63,12 @@ export function arrowsGenTests(t, ok, eq) {
     ok(checked >= 15, `${checked} arrows checked`);
   });
 
-  t('generateArrows: pathArrows = false keeps the solution\'s edges free of arrows', () => {
-    for (const [n, seed] of [[5, 21], [6, 22], [7, 23]]) {
+  t("generateArrows: pathArrows = false keeps the solution's edges free of arrows", () => {
+    for (const [n, seed] of [
+      [5, 21],
+      [6, 22],
+      [7, 23],
+    ]) {
       const p = make(n, seed, { pathArrows: false });
       const onPath = new Set(pathEdgeIds(n, p.path));
       for (const e of arrowIds(p)) ok(!onPath.has(e), `n ${n} seed ${seed}: arrow on a path edge`);
@@ -64,7 +83,12 @@ export function arrowsGenTests(t, ok, eq) {
   });
 
   t('generateArrows: seedFraction is an option; any share of seeded edges ends unique', () => {
-    for (const [seedFraction, seed] of [[0, 91], [0.1, 92], [0.25, 93], [0.6, 94]]) {
+    for (const [seedFraction, seed] of [
+      [0, 91],
+      [0.1, 92],
+      [0.25, 93],
+      [0.6, 94],
+    ]) {
       const p = make(6, seed, { seedFraction });
       const tag = `seedFraction ${seedFraction}`;
       eq(solutions(p).count, 1, tag);
@@ -85,12 +109,19 @@ export function arrowsGenTests(t, ok, eq) {
       ok(counts[i] <= counts[i - 1], `arrows rose at event ${i}`);
     }
     const fracs = events.map(ev => ev.frac).filter(x => x !== null && x !== undefined);
-    ok(fracs.every(x => x >= 0 && x <= 1), 'frac in [0, 1]');
+    ok(
+      fracs.every(x => x >= 0 && x <= 1),
+      'frac in [0, 1]',
+    );
     eq(events[events.length - 1], { frac: 1, arrows: arrowIds(p).length, K: maxNumber(p) });
   });
 
   t('tryRemoveArrow: both checks keep a needed arrow, accept a spare one', () => {
-    for (const [n, seed] of [[5, 51], [6, 52], [6, 53]]) {
+    for (const [n, seed] of [
+      [5, 51],
+      [6, 52],
+      [6, 53],
+    ]) {
       const p = make(n, seed);
       const before = Array.from(p.arrows);
       for (const e of arrowIds(p)) {

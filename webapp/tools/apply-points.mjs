@@ -35,7 +35,12 @@ import { spawnSync } from 'node:child_process';
 import { parse } from '../src/core/format.js';
 import { cellCount } from '../src/core/model.js';
 import {
-  solutionPath, trapProfile, trapMetricsFromProfile, ladderTrials, TRAP_CFG, TRAP_MODEL,
+  solutionPath,
+  trapProfile,
+  trapMetricsFromProfile,
+  ladderTrials,
+  TRAP_CFG,
+  TRAP_MODEL,
 } from '../src/core/trap.js';
 import { makeRng } from '../src/core/rng.js';
 import { cli } from './args-lib.mjs';
@@ -46,26 +51,52 @@ import { spearman, resampleClusters, interval, fmt, pct } from './stats-lib.mjs'
 
 const { values: o, rest } = cli({
   usage: 'node tools/apply-points.mjs rows.json [options]',
-  summary: 'Check the acceptance rule of step-fit, show what the trap points found in the ' +
-    'players\' wrong turns would change in the grade (human ratings and behaviour rows), and ' +
+  summary:
+    'Check the acceptance rule of step-fit, show what the trap points found in the ' +
+    "players' wrong turns would change in the grade (human ratings and behaviour rows), and " +
     'with --write rewrite TRAP_CFG.points and TRAP_MODEL in src/core/trap.js. Without --write ' +
     'nothing is written.',
-  positional: [{ name: 'rows.json', required: true,
-    help: 'the export of `node tools/behaviour.mjs export --out rows.json` (row version 1)' }],
+  positional: [
+    {
+      name: 'rows.json',
+      required: true,
+      help: 'the export of `node tools/behaviour.mjs export --out rows.json` (row version 1)',
+    },
+  ],
   options: {
     ...FIT_OPTIONS,
-    ratings: { type: 'string', arg: 'FILE', defaultText: 'tools/ratings.json',
-      help: 'the human ratings the grade model is refitted on (the file of fit-trap.mjs)' },
-    stuck: { type: 'number', arg: 'F', min: 0.01, max: 1, default: 0.3,
-      help: 'a game counts as "stuck" when its deepest single take-back is at least F x the ' +
-        'cells of the board (as behaviour-eval --stuck)' },
-    write: { type: 'flag',
-      help: 'rewrite TRAP_CFG.points and the TRAP_MODEL block of trap.js; without it nothing is ' +
-        'written (dry run). Needs enough data and gate A; --force does not override that' },
-    force: { type: 'flag',
-      help: 'go on with the dry run although the rule does not allow a change' },
-    target: { type: 'string', arg: 'FILE', defaultText: 'src/core/trap.js',
-      help: 'the trap.js that --write rewrites; to try it on a copy first' },
+    ratings: {
+      type: 'string',
+      arg: 'FILE',
+      defaultText: 'tools/ratings.json',
+      help: 'the human ratings the grade model is refitted on (the file of fit-trap.mjs)',
+    },
+    stuck: {
+      type: 'number',
+      arg: 'F',
+      min: 0.01,
+      max: 1,
+      default: 0.3,
+      help:
+        'a game counts as "stuck" when its deepest single take-back is at least F x the ' +
+        'cells of the board (as behaviour-eval --stuck)',
+    },
+    write: {
+      type: 'flag',
+      help:
+        'rewrite TRAP_CFG.points and the TRAP_MODEL block of trap.js; without it nothing is ' +
+        'written (dry run). Needs enough data and gate A; --force does not override that',
+    },
+    force: {
+      type: 'flag',
+      help: 'go on with the dry run although the rule does not allow a change',
+    },
+    target: {
+      type: 'string',
+      arg: 'FILE',
+      defaultText: 'src/core/trap.js',
+      help: 'the trap.js that --write rewrites; to try it on a copy first',
+    },
   },
 });
 const out = (...parts) => console.log(parts.join(''));
@@ -73,14 +104,24 @@ const ratingsFile = o.ratings ?? new URL('./ratings.json', import.meta.url).path
 const fitTrap = new URL('./fit-trap.mjs', import.meta.url).pathname;
 
 // ---------- the puzzles, graded by the grade of today and by a candidate ----------
-const infos = new Map(), stepCache = new Map();
+const infos = new Map(),
+  stepCache = new Map();
 function puzzleInfo(key) {
   if (!infos.has(key)) {
-    const p = parse(key), p0 = solutionPath(p, OFFLINE_TRAP_CFG.pathCap);
-    infos.set(key, p0 ? {
-      p, path: p0, T: cellCount(p), profile: trapProfile(p, p0, OFFLINE_TRAP_CFG),
-      ladTrials: ladderTrials(p, OFFLINE_TRAP_CFG),
-    } : null);
+    const p = parse(key),
+      p0 = solutionPath(p, OFFLINE_TRAP_CFG.pathCap);
+    infos.set(
+      key,
+      p0
+        ? {
+            p,
+            path: p0,
+            T: cellCount(p),
+            profile: trapProfile(p, p0, OFFLINE_TRAP_CFG),
+            ladTrials: ladderTrials(p, OFFLINE_TRAP_CFG),
+          }
+        : null,
+    );
   }
   return infos.get(key);
 }
@@ -96,17 +137,23 @@ const stepsFor = key => {
 // ---------- 1. the rule ----------
 const rows = readRows(rest[0], { gotdDir: o['gotd-dir'] });
 const current = key => metrics(key, OFFLINE_TRAP_CFG, TRAP_MODEL).predicted;
-const { data, res } = analyse(rows, stepsFor, current,
-  { folds: o.folds, boot: o.boot, seed: o.seed, useSkill: !o['no-skill'] });
+const { data, res } = analyse(rows, stepsFor, current, {
+  folds: o.folds,
+  boot: o.boot,
+  seed: o.seed,
+  useSkill: !o['no-skill'],
+});
 if (!data.games.length) {
   out('No game with wrong-turn events in ', rest[0], ': nothing to apply (needs row version 1).');
   process.exit(1);
 }
 const par = parameters(data.games, { boot: o.pboot, seed: o.seed });
 const yes = ok => (ok ? 'pass' : 'fail');
-out(`step-fit rule: ${res.games} games on ${res.puzzles} puzzles (needs ${RULE.minGames} / ` +
-  `${RULE.minPuzzles}) | data ${res.gate.enough ? 'ok' : 'too few'} | ` +
-  `gate A ${yes(res.gate.A)} | gate B ${yes(res.gate.B)} -> ${res.verdict}`);
+out(
+  `step-fit rule: ${res.games} games on ${res.puzzles} puzzles (needs ${RULE.minGames} / ` +
+    `${RULE.minPuzzles}) | data ${res.gate.enough ? 'ok' : 'too few'} | ` +
+    `gate A ${yes(res.gate.A)} | gate B ${yes(res.gate.B)} -> ${res.verdict}`,
+);
 const points = par.est.points.map(v => +v.toFixed(2));
 const ci = c => `[${fmt(c[0]).trim()}, ${fmt(c[1]).trim()}]`;
 out('\ntrap points (shallow = 1)   obvious  shallow  deep   capped');
@@ -114,16 +161,23 @@ out('  now                       ', TRAP_CFG.points.map(v => String(v).padStart(
 out('  from the wrong turns      ', points.map(v => v.toFixed(2).padStart(7)).join('  '));
 out('  95% interval              ', par.ci.points.map(c => ci(c).padStart(7)).join('  '));
 if (points.some((v, i) => i && v < points[i - 1])) {
-  out('  WARNING: the points do not rise with the depth of the trap;',
-    ' look at step-fit before applying.');
+  out(
+    '  WARNING: the points do not rise with the depth of the trap;',
+    ' look at step-fit before applying.',
+  );
 }
 const allowed = res.gate.enough && res.gate.A;
 if (!allowed) {
-  out('\nRefused: a change needs enough data and gate A (the free bucket rates beat the hand-set ',
-    'points on held-out wrong turns).');
+  out(
+    '\nRefused: a change needs enough data and gate A (the free bucket rates beat the hand-set ',
+    'points on held-out wrong turns).',
+  );
   if (!o.force || o.write) {
-    out(o.write && o.force ? '--write never overrides the rule.'
-      : 'Use --force for a dry run anyway.');
+    out(
+      o.write && o.force
+        ? '--write never overrides the rule.'
+        : 'Use --force for a dry run anyway.',
+    );
     process.exit(1);
   }
   out('--force: the dry run goes on, nothing will be written.');
@@ -133,16 +187,19 @@ if (!allowed) {
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'apply-points-'));
 const runFit = (name, extra) => {
   const json = path.join(tmp, name + '.json');
-  const r = spawnSync(process.execPath,
+  const r = spawnSync(
+    process.execPath,
     [fitTrap, ratingsFile, '--cap', String(o.cap), '--json', json, ...extra],
-    { encoding: 'utf8', maxBuffer: 1 << 27 });
+    { encoding: 'utf8', maxBuffer: 1 << 27 },
+  );
   if (r.status !== 0) {
     console.error(r.stdout + r.stderr);
     process.exit(1);
   }
   return JSON.parse(fs.readFileSync(json, 'utf8'));
 };
-const was = runFit('now', []), will = runFit('new', ['--points', points.join(',')]);
+const was = runFit('now', []),
+  will = runFit('new', ['--points', points.join(',')]);
 const frac = a => `${a[0]}/${a[1]}`.padStart(7);
 const row2 = (label, a, b) => out(`  ${label.padEnd(38)} ${a.padStart(8)}  ${b.padStart(8)}`);
 out(`\nhuman ratings (leave-one-out, ${was.loo.n} of ${was.loo.of} rated puzzles)`);
@@ -150,25 +207,39 @@ out('                                           now       new');
 row2('Spearman rho of the score', was.loo.rho.toFixed(2), will.loo.rho.toFixed(2));
 row2('mean absolute error of the badge', was.loo.mae.toFixed(2), will.loo.mae.toFixed(2));
 row2('rated <= 0.5 shown as badge 0', frac(was.loo.anchors.easy), frac(will.loo.anchors.easy));
-row2('rated >= 3.5 shown as badge >= 3', frac(was.loo.anchors.hard3),
-  frac(will.loo.anchors.hard3));
+row2(
+  'rated >= 3.5 shown as badge >= 3',
+  frac(was.loo.anchors.hard3),
+  frac(will.loo.anchors.hard3),
+);
 row2('badges produced 0..5', was.loo.badges.join('/'), will.loo.badges.join('/'));
 row2('cut points of the grade', was.model.cuts.join(' '), will.model.cuts.join(' '));
 
 // ---------- 3. before / after on the behaviour rows ----------
 const newCfg = { ...OFFLINE_TRAP_CFG, points };
-const games = rows.filter(r => isPlain(r) && r.key && puzzleInfo(r.key)).map(r => {
-  const T = puzzleInfo(r.key).T, a = metrics(r.key, OFFLINE_TRAP_CFG, TRAP_MODEL);
-  const b = metrics(r.key, newCfg, will.model);
-  return {
-    key: r.key, group: r.kind === 'local' ? 'local' : 'daily', was: a, now: b,
-    y: [Math.log(r.ms / 1000 / T), r.u / T, r.deep / T, r.deep / T >= o.stuck ? 1 : 0],
-  };
-});
-const labels = ['ln(s per cell)', 'cells taken back (u/T)', 'deepest take-back (deep/T)',
-  `stuck (deep >= ${o.stuck} T)`];
+const games = rows
+  .filter(r => isPlain(r) && r.key && puzzleInfo(r.key))
+  .map(r => {
+    const T = puzzleInfo(r.key).T,
+      a = metrics(r.key, OFFLINE_TRAP_CFG, TRAP_MODEL);
+    const b = metrics(r.key, newCfg, will.model);
+    return {
+      key: r.key,
+      group: r.kind === 'local' ? 'local' : 'daily',
+      was: a,
+      now: b,
+      y: [Math.log(r.ms / 1000 / T), r.u / T, r.deep / T, r.deep / T >= o.stuck ? 1 : 0],
+    };
+  });
+const labels = [
+  'ln(s per cell)',
+  'cells taken back (u/T)',
+  'deepest take-back (deep/T)',
+  `stuck (deep >= ${o.stuck} T)`,
+];
 for (const name of ['local', 'daily']) {
-  const g = games.filter(x => x.group === name), keys = [...new Set(g.map(x => x.key))];
+  const g = games.filter(x => x.group === name),
+    keys = [...new Set(g.map(x => x.key))];
   if (g.length < 20) {
     out(`\nbehaviour rows, ${name}: ${g.length} games, too few to compare`);
     continue;
@@ -176,29 +247,50 @@ for (const name of ['local', 'daily']) {
   const idx = keys.map(() => []);
   g.forEach((x, i) => idx[keys.indexOf(x.key)].push(i));
   const rnd = makeRng(o.seed + 7);
-  const stat = ix => labels.map((_, l) => {
-    const y = ix.map(i => g[i].y[l]), a = spearman(ix.map(i => g[i].was.predicted), y);
-    return [a, spearman(ix.map(i => g[i].now.predicted), y)];
-  });
+  const stat = ix =>
+    labels.map((_, l) => {
+      const y = ix.map(i => g[i].y[l]),
+        a = spearman(
+          ix.map(i => g[i].was.predicted),
+          y,
+        );
+      return [
+        a,
+        spearman(
+          ix.map(i => g[i].now.predicted),
+          y,
+        ),
+      ];
+    });
   const all = stat(g.map((_, i) => i));
   const draws = Array.from({ length: o.boot }, () => stat(resampleClusters(idx, rnd)));
-  out(`\nbehaviour rows, ${name} (${g.length} games on ${keys.length} puzzles):`,
-    ' Spearman rho of the grade score with what the players did');
+  out(
+    `\nbehaviour rows, ${name} (${g.length} games on ${keys.length} puzzles):`,
+    ' Spearman rho of the grade score with what the players did',
+  );
   out('                                    now     new    new - now [95% CI over puzzles]');
   labels.forEach((label, l) => {
-    const d = draws.map(s => s[l][1] - s[l][0]), diff = all[l][1] - all[l][0];
-    out(`  ${label.padEnd(30)} ${fmt(all[l][0])} ${fmt(all[l][1])}   ${fmt(diff)}  `,
-      ci(interval(d, o.boot)));
+    const d = draws.map(s => s[l][1] - s[l][0]),
+      diff = all[l][1] - all[l][0];
+    out(
+      `  ${label.padEnd(30)} ${fmt(all[l][0])} ${fmt(all[l][1])}   ${fmt(diff)}  `,
+      ci(interval(d, o.boot)),
+    );
   });
   const count = k => [0, 1, 2, 3, 4, 5].map(b => g.filter(x => x[k].grade === b).length).join('/');
   out('  games per badge 0..5: now ', count('was'), ' | new ', count('now'));
 }
-out('\nThe behaviour figures are in-sample: the points were fitted to the wrong turns of ',
-  'these games.');
-const e = res.est, c = res.ci;
-out(`Held out (gate B), rho with the cells taken back: today's grade score ${fmt(e.rc).trim()}, `,
+out(
+  '\nThe behaviour figures are in-sample: the points were fitted to the wrong turns of ',
+  'these games.',
+);
+const e = res.est,
+  c = res.ci;
+out(
+  `Held out (gate B), rho with the cells taken back: today's grade score ${fmt(e.rc).trim()}, `,
   `expected-waste score of the step model ${fmt(e.rn).trim()} (difference ${fmt(e.diff).trim()} `,
-  `${ci(c.diff)}).`);
+  `${ci(c.diff)}).`,
+);
 if (e.diff >= RULE.minDeltaRho) {
   out('Note: the step model ranks the games better than the grade does, and new points alone');
   out('move the grade less than that: the grade is a ridge model over the worst steps (trapMax,');
@@ -208,11 +300,22 @@ if (e.diff >= RULE.minDeltaRho) {
 
 // ---------- 4. write ----------
 if (!o.write) {
-  out('\nDry run: nothing written. Rerun with --write to rewrite TRAP_CFG.points and ',
-    'TRAP_MODEL in ', o.target ?? 'src/core/trap.js', '.');
+  out(
+    '\nDry run: nothing written. Rerun with --write to rewrite TRAP_CFG.points and ',
+    'TRAP_MODEL in ',
+    o.target ?? 'src/core/trap.js',
+    '.',
+  );
 } else {
-  const args = [fitTrap, ratingsFile, '--cap', String(o.cap), '--points', points.join(','),
-    '--write'];
+  const args = [
+    fitTrap,
+    ratingsFile,
+    '--cap',
+    String(o.cap),
+    '--points',
+    points.join(','),
+    '--write',
+  ];
   if (o.target) args.push('--target', o.target);
   const r = spawnSync(process.execPath, args, { encoding: 'utf8', maxBuffer: 1 << 27 });
   if (r.status !== 0) {

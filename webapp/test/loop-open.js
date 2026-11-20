@@ -13,29 +13,35 @@ import { EN, ZH } from '../src/ui/i18n.js';
 function loopOn(path) {
   const p = makePuzzle(4);
   p.loop = true;
-  [0, 5, 9].forEach((at, i) => { p.cp[path[at]] = i + 1; });
+  [0, 5, 9].forEach((at, i) => {
+    p.cp[path[at]] = i + 1;
+  });
   return p;
 }
 // a snake: it covers the board, but its last cell is 3 rows from its first
 const SNAKE = [0, 1, 2, 3, 7, 6, 5, 4, 8, 9, 10, 11, 15, 14, 13, 12];
 
 export function loopOpenTests(t, ok, eq) {
-  t('loopOpen: a full path that does not close is open, a closed ring, a partial path and other puzzles are not', () => {
-    const snake = loopOn(SNAKE);
-    ok(loopOpen(snake, SNAKE), 'covers every cell, ends far from cell 1');
-    ok(!isSolved(snake, SNAKE));
-    ok(!loopOpen(snake, SNAKE.slice(0, 15)), 'one cell short: still being drawn');
-    ok(!loopOpen(snake, []), 'nothing drawn');
+  t(
+    'loopOpen: a full path that does not close is open, a closed ring, a partial path and other puzzles are not',
+    () => {
+      const snake = loopOn(SNAKE);
+      ok(loopOpen(snake, SNAKE), 'covers every cell, ends far from cell 1');
+      ok(!isSolved(snake, SNAKE));
+      ok(!loopOpen(snake, SNAKE.slice(0, 15)), 'one cell short: still being drawn');
+      ok(!loopOpen(snake, []), 'nothing drawn');
 
-    const ring = ringPath(4, makeRng(2));
-    const closed = loopOn(ring);
-    ok(isSolved(closed, ring), 'a ring through the numbers in order is solved');
-    ok(!loopOpen(closed, ring), 'closed: nothing to report');
+      const ring = ringPath(4, makeRng(2));
+      const closed = loopOn(ring);
+      ok(isSolved(closed, ring), 'a ring through the numbers in order is solved');
+      ok(!loopOpen(closed, ring), 'closed: nothing to report');
 
-    const standard = makePuzzle(4);
-    standard.cp[0] = 1; standard.cp[12] = 2;
-    ok(!loopOpen(standard, SNAKE), 'only Loop puzzles have a ring');
-  });
+      const standard = makePuzzle(4);
+      standard.cp[0] = 1;
+      standard.cp[12] = 2;
+      ok(!loopOpen(standard, SNAKE), 'only Loop puzzles have a ring');
+    },
+  );
 
   t('loopOpen: a wall on the closing edge keeps a ring open', () => {
     const ring = ringPath(4, makeRng(2));

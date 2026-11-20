@@ -24,26 +24,54 @@ import { cli } from './args-lib.mjs';
 
 const { values: o } = cli({
   usage: 'node tools/calib-set.mjs --out DIR [options]',
-  summary: 'Build the calibration set: targeted puzzles of every Play badge, in a ' +
-    'block-balanced play order, for the testers\' ?calib games (src/features/calib.js).',
+  summary:
+    'Build the calibration set: targeted puzzles of every Play badge, in a ' +
+    "block-balanced play order, for the testers' ?calib games (src/features/calib.js).",
   options: {
-    out: { type: 'string', arg: 'DIR', required: true,
-      help: 'where to write cal-<n>-<NNN>.txt, index.json (read by the app) and manifest.json ' +
-        '(badge per file, for you)' },
-    plan: { type: 'string', arg: 'N:K,...', default: '9:20,7:8',
-      help: 'per board size N, K puzzles for each Play badge 0..max (a 5x5 shows badges 0-2, a ' +
-        '6x6 0-3, larger 0-5); the play order is blocks of one puzzle per badge' },
-    seed: { type: 'int', arg: 'N', default: 1,
-      help: 'base seed of the puzzle generation and of the play-order shuffle: the same seed ' +
-        '(and cache) gives the same files' },
-    exclude: { type: 'list', arg: 'DIR',
-      help: 'folder of *.txt puzzles that must not be repeated, e.g. demo/GameOfDay' },
-    cache: { type: 'string', arg: 'DIR', defaultText: '<tmp>/calib-pool',
-      help: 'generated puzzles are kept here, so an interrupted run resumes where it stopped' },
+    out: {
+      type: 'string',
+      arg: 'DIR',
+      required: true,
+      help:
+        'where to write cal-<n>-<NNN>.txt, index.json (read by the app) and manifest.json ' +
+        '(badge per file, for you)',
+    },
+    plan: {
+      type: 'string',
+      arg: 'N:K,...',
+      default: '9:20,7:8',
+      help:
+        'per board size N, K puzzles for each Play badge 0..max (a 5x5 shows badges 0-2, a ' +
+        '6x6 0-3, larger 0-5); the play order is blocks of one puzzle per badge',
+    },
+    seed: {
+      type: 'int',
+      arg: 'N',
+      default: 1,
+      help:
+        'base seed of the puzzle generation and of the play-order shuffle: the same seed ' +
+        '(and cache) gives the same files',
+    },
+    exclude: {
+      type: 'list',
+      arg: 'DIR',
+      help: 'folder of *.txt puzzles that must not be repeated, e.g. demo/GameOfDay',
+    },
+    cache: {
+      type: 'string',
+      arg: 'DIR',
+      defaultText: '<tmp>/calib-pool',
+      help: 'generated puzzles are kept here, so an interrupted run resumes where it stopped',
+    },
   },
 });
-const out = o.out, seed0 = o.seed, cache = o.cache ?? path.join(os.tmpdir(), 'calib-pool');
-const die = msg => { console.error('calib-set: ' + msg); process.exit(1); };
+const out = o.out,
+  seed0 = o.seed,
+  cache = o.cache ?? path.join(os.tmpdir(), 'calib-pool');
+const die = msg => {
+  console.error('calib-set: ' + msg);
+  process.exit(1);
+};
 const plan = o.plan.split(',').map(x => x.split(':').map(Number));
 const validPair = ([n, k]) =>
   Number.isInteger(n) && n >= 5 && n <= 16 && Number.isInteger(k) && k >= 1;
@@ -68,7 +96,8 @@ fs.mkdirSync(cache, { recursive: true });
 // one puzzle of badge g at size n: the cached file of seed s, else generated (and cached)
 function puzzleFor(n, g, base) {
   for (let miss = 0; miss < MAX_MISSES; miss++) {
-    const seed = base + 1000 * miss, file = path.join(cache, `zip-${n}x${n}-g${g}-s${seed}.txt`);
+    const seed = base + 1000 * miss,
+      file = path.join(cache, `zip-${n}x${n}-g${g}-s${seed}.txt`);
     let text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
     if (!text) {
       const r = runSync(generateTargeted(n, g, seed, { retries: 30 }));
@@ -85,20 +114,31 @@ function puzzleFor(n, g, base) {
 }
 
 fs.mkdirSync(out, { recursive: true });
-const index = { v: 1, sizes: {}, block: {} }, manifest = [];
+const index = { v: 1, sizes: {}, block: {} },
+  manifest = [];
 for (const [n, per] of plan) {
-  const top = maxTargetGrade(n), rnd = makeRng(seed0 * 1000 + n), byGrade = [];
+  const top = maxTargetGrade(n),
+    rnd = makeRng(seed0 * 1000 + n),
+    byGrade = [];
   for (let g = 0; g <= top; g++) {
-    byGrade.push(Array.from({ length: per }, (_, i) => {
-      const p = puzzleFor(n, g, seed0 + 10 * i + 100000 * (n * 10 + g));
-      if (!p) die(`no puzzle for ${n}x${n} badge ${g} (try another --seed)`);
-      return p;
-    }));
+    byGrade.push(
+      Array.from({ length: per }, (_, i) => {
+        const p = puzzleFor(n, g, seed0 + 10 * i + 100000 * (n * 10 + g));
+        if (!p) die(`no puzzle for ${n}x${n} badge ${g} (try another --seed)`);
+        return p;
+      }),
+    );
     console.error(`${n}x${n} badge ${g}: ${per} puzzles`);
   }
   index.block[n] = top + 1;
   const ordered = [];
-  for (let b = 0; b < per; b++) ordered.push(...shuffle(byGrade.map(list => list[b]), rnd));
+  for (let b = 0; b < per; b++)
+    ordered.push(
+      ...shuffle(
+        byGrade.map(list => list[b]),
+        rnd,
+      ),
+    );
   index.sizes[n] = ordered.map((p, i) => {
     const file = `cal-${n}-${String(i).padStart(3, '0')}.txt`;
     fs.writeFileSync(path.join(out, file), p.text);

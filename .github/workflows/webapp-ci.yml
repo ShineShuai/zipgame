@@ -62,6 +62,13 @@ jobs:
       - name: Syntax and import check
         run: npm run check
 
+      # The code style (README, Code style): Biome is pinned in package.json and package-lock.json.
+      - name: Format check (Biome)
+        if: matrix.node == 22
+        run: |
+          npm ci
+          npm run format:check
+
       # Node 20 runs the fast tier: the tests that are not marked slow (test/harness.js), under a minute.
       - name: Unit tests (fast tier)
         if: matrix.node == 20

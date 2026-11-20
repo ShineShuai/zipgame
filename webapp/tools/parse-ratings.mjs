@@ -15,55 +15,123 @@
 //   equivalent  the same puzzle up to rotation / reflection / reversed numbering (see symmetryKey): listed with locations and
 //               ratings so you can decide; only an error with --strict.
 import fs from 'node:fs';
-import { parseRatingComment, findDuplicateGroups, ratingKey, toRatingsJson, parseRatingsJson } from '../src/core/ratings-io.js';
+import {
+  parseRatingComment,
+  findDuplicateGroups,
+  ratingKey,
+  toRatingsJson,
+  parseRatingsJson,
+} from '../src/core/ratings-io.js';
 import { printDuplicateGroups, labelText, sameLabel } from './lib.mjs';
 
 const args = process.argv.slice(2);
-const opt = n => { const i = args.indexOf('--' + n); return i >= 0 ? args[i + 1] : null; };
+const opt = n => {
+  const i = args.indexOf('--' + n);
+  return i >= 0 ? args[i + 1] : null;
+};
 const flag = n => args.includes('--' + n);
 const file = args.find(a => !a.startsWith('--') && a !== opt('base') && a !== opt('out'));
-if (!file) { console.error('usage: node tools/parse-ratings.mjs difficulty_rate.txt [--base tools/ratings.json] [--out tools/ratings.json] [--check-labels] [--update-labels] [--strict]'); process.exit(1); }
-if (flag('update-labels') && !opt('base')) { console.error('--update-labels needs --base'); process.exit(1); }
+if (!file) {
+  console.error(
+    'usage: node tools/parse-ratings.mjs difficulty_rate.txt [--base tools/ratings.json] [--out tools/ratings.json] [--check-labels] [--update-labels] [--strict]',
+  );
+  process.exit(1);
+}
+if (flag('update-labels') && !opt('base')) {
+  console.error('--update-labels needs --base');
+  process.exit(1);
+}
 
 let base = [];
 if (opt('base')) {
   const parsed = parseRatingsJson(fs.readFileSync(opt('base'), 'utf8'));
-  if (parsed.problems.length) { console.error(`${opt('base')} has problems:\n  ` + parsed.problems.join('\n  ')); process.exit(1); }
+  if (parsed.problems.length) {
+    console.error(`${opt('base')} has problems:\n  ` + parsed.problems.join('\n  '));
+    process.exit(1);
+  }
   base = parsed.ratings;
 }
 const baseByKey = new Map(base.map((r, i) => [r.key, i]));
 
 // ---- read the text file into blocks ----
-const blocks = []; let comment = [], cur = null, start = 0, afterBlock = false;
-fs.readFileSync(file, 'utf8').split(/\r?\n/).forEach((raw, i) => {
-  const l = raw.trim();
-  if (!l || l.startsWith('#')) return;
-  if (l.startsWith('size ')) { cur = { lines: [l], comment: comment.join(' '), line: i + 1 }; comment = []; return; }
-  if (cur && l.startsWith('checkpoints')) { cur.lines.push(l); return; }
-  if (cur && l.startsWith('walls')) { cur.lines.push(l); blocks.push(cur); cur = null; afterBlock = true; return; }
-  if (afterBlock && /^path\b/i.test(l)) return; // play-mode export: the solution path line belongs to the block above, not to the next comment
+const blocks = [];
+let comment = [],
+  cur = null,
+  start = 0,
   afterBlock = false;
-  comment.push(l);
+fs.readFileSync(file, 'utf8')
+  .split(/\r?\n/)
+  .forEach((raw, i) => {
+    const l = raw.trim();
+    if (!l || l.startsWith('#')) return;
+    if (l.startsWith('size ')) {
+      cur = { lines: [l], comment: comment.join(' '), line: i + 1 };
+      comment = [];
+      return;
+    }
+    if (cur && l.startsWith('checkpoints')) {
+      cur.lines.push(l);
+      return;
+    }
+    if (cur && l.startsWith('walls')) {
+      cur.lines.push(l);
+      blocks.push(cur);
+      cur = null;
+      afterBlock = true;
+      return;
+    }
+    if (afterBlock && /^path\b/i.test(l)) return; // play-mode export: the solution path line belongs to the block above, not to the next comment
+    afterBlock = false;
+    comment.push(l);
+  });
+blocks.forEach((b, i) => {
+  b.i = i + 1;
+  b.where = `puzzle #${i + 1} (line ${b.line})`;
+  try {
+    b.key = ratingKey(b.lines.join('\n'));
+  } catch (e) {
+    b.key = null;
+    b.err = e.message;
+  }
+  b.parsed = parseRatingComment(b.comment);
 });
-blocks.forEach((b, i) => { b.i = i + 1; b.where = `puzzle #${i + 1} (line ${b.line})`; try { b.key = ratingKey(b.lines.join('\n')); } catch (e) { b.key = null; b.err = e.message; } b.parsed = parseRatingComment(b.comment); });
 
 const errors = [];
-for (const b of blocks) if (!b.key) errors.push(`${b.where}: the puzzle does not parse (${b.err})`);
+for (const b of blocks)
+  if (!b.key) errors.push(`${b.where}: the puzzle does not parse (${b.err})`);
 const good = blocks.filter(b => b.key);
-const labelOf = b => (b.parsed.ok ? b.parsed : (baseByKey.has(b.key) ? base[baseByKey.get(b.key)] : null));
+const labelOf = b =>
+  b.parsed.ok ? b.parsed : baseByKey.has(b.key) ? base[baseByKey.get(b.key)] : null;
 
 // ---- 1. exact duplicates inside the file ----
 const dupFile = findDuplicateGroups(good.map(b => ({ key: b.key }))).exact;
-const exactGroups = dupFile.map(g => g.map(i => ({ where: good[i].where, key: good[i].key, label: labelOf(good[i]) })));
-const { conflicts: exactConflicts } = printDuplicateGroups('EXACT duplicates in the text file (the same puzzle commented twice)', exactGroups);
-if (exactConflicts) errors.push(`${exactConflicts} exact duplicate group(s) with different ratings (listed above)`);
+const exactGroups = dupFile.map(g =>
+  g.map(i => ({ where: good[i].where, key: good[i].key, label: labelOf(good[i]) })),
+);
+const { conflicts: exactConflicts } = printDuplicateGroups(
+  'EXACT duplicates in the text file (the same puzzle commented twice)',
+  exactGroups,
+);
+if (exactConflicts)
+  errors.push(`${exactConflicts} exact duplicate group(s) with different ratings (listed above)`);
 
 // ---- 2. new puzzles: first copy of each key, not already in the base ----
-const seen = new Set(), added = [], known = []; let inBase = 0; // known: first file copy of each puzzle already in the base
+const seen = new Set(),
+  added = [],
+  known = [];
+let inBase = 0; // known: first file copy of each puzzle already in the base
 for (const b of good) {
-  if (seen.has(b.key)) continue; seen.add(b.key);
-  if (baseByKey.has(b.key)) { inBase++; known.push(b); continue; }
-  if (!b.parsed.ok) { errors.push(`${b.where}: ${b.parsed.why}`); continue; }
+  if (seen.has(b.key)) continue;
+  seen.add(b.key);
+  if (baseByKey.has(b.key)) {
+    inBase++;
+    known.push(b);
+    continue;
+  }
+  if (!b.parsed.ok) {
+    errors.push(`${b.where}: ${b.parsed.why}`);
+    continue;
+  }
   added.push(b);
 }
 
@@ -71,36 +139,84 @@ for (const b of good) {
 if (flag('check-labels')) {
   const diffs = [];
   for (const b of good) {
-    const j = baseByKey.get(b.key); if (j == null) continue;
-    if (!b.parsed.ok) { diffs.push(`${b.where}: comment not machine-readable (${b.parsed.why.slice(0, 50)}...) — label kept from ratings.json: ${labelText(base[j])}`); continue; }
-    if (!sameLabel(b.parsed, base[j]) || !!b.parsed.unsure !== !!base[j].unsure) diffs.push(`${b.where}: comment says ${labelText(b.parsed)} but ratings.json has ${labelText(base[j])}`);
+    const j = baseByKey.get(b.key);
+    if (j == null) continue;
+    if (!b.parsed.ok) {
+      diffs.push(
+        `${b.where}: comment not machine-readable (${b.parsed.why.slice(0, 50)}...) — label kept from ratings.json: ${labelText(base[j])}`,
+      );
+      continue;
+    }
+    if (!sameLabel(b.parsed, base[j]) || !!b.parsed.unsure !== !!base[j].unsure)
+      diffs.push(
+        `${b.where}: comment says ${labelText(b.parsed)} but ratings.json has ${labelText(base[j])}`,
+      );
   }
-  console.error(`\nold comments vs ${opt('base') || 'the base'}: ${diffs.length ? diffs.length + ' difference(s)' : 'all readable comments match'}` + (diffs.length ? ':\n  ' + diffs.join('\n  ') : ''));
+  console.error(
+    `\nold comments vs ${opt('base') || 'the base'}: ${diffs.length ? diffs.length + ' difference(s)' : 'all readable comments match'}` +
+      (diffs.length ? ':\n  ' + diffs.join('\n  ') : ''),
+  );
 }
 
 // ---- 3b. --update-labels: for puzzles already in the base, a readable comment replaces the JSON label ----
-const asRow = (key, p) => ({ key, human: p.human, lo: p.lo, hi: p.hi, ...(p.unsure ? { unsure: true } : {}) });
+const asRow = (key, p) => ({
+  key,
+  human: p.human,
+  lo: p.lo,
+  hi: p.hi,
+  ...(p.unsure ? { unsure: true } : {}),
+});
 const relabel = new Map(); // base index -> block whose comment differs from the JSON
-if (flag('update-labels')) for (const b of known) {
-  const j = baseByKey.get(b.key);
-  if (b.parsed.ok && (!sameLabel(b.parsed, base[j]) || !!b.parsed.unsure !== !!base[j].unsure)) relabel.set(j, b);
-}
+if (flag('update-labels'))
+  for (const b of known) {
+    const j = baseByKey.get(b.key);
+    if (b.parsed.ok && (!sameLabel(b.parsed, base[j]) || !!b.parsed.unsure !== !!base[j].unsure))
+      relabel.set(j, b);
+  }
 const finalBase = base.map((r, j) => (relabel.has(j) ? asRow(r.key, relabel.get(j).parsed) : r));
 
 // ---- 4. equivalent (rotated / mirrored / reversed) puzzles over the final list ----
-const finalList = [...finalBase.map((r, i) => ({ key: r.key, where: `ratings.json #${i + 1}`, label: r })), ...added.map(b => ({ key: b.key, where: `NEW ${b.where}`, label: b.parsed }))];
+const finalList = [
+  ...finalBase.map((r, i) => ({ key: r.key, where: `ratings.json #${i + 1}`, label: r })),
+  ...added.map(b => ({ key: b.key, where: `NEW ${b.where}`, label: b.parsed })),
+];
 const fileWhere = new Map(good.map(b => [b.key, b.where]));
-const eq = findDuplicateGroups(finalList).equivalent.map(g => g.map(i => ({ ...finalList[i], where: finalList[i].where.startsWith('NEW') ? finalList[i].where : `${finalList[i].where}${fileWhere.has(finalList[i].key) ? ' = ' + fileWhere.get(finalList[i].key) : ''}` })));
-printDuplicateGroups('EQUIVALENT puzzles (same up to rotation / reflection / reversed numbering)', eq);
+const eq = findDuplicateGroups(finalList).equivalent.map(g =>
+  g.map(i => ({
+    ...finalList[i],
+    where: finalList[i].where.startsWith('NEW')
+      ? finalList[i].where
+      : `${finalList[i].where}${fileWhere.has(finalList[i].key) ? ' = ' + fileWhere.get(finalList[i].key) : ''}`,
+  })),
+);
+printDuplicateGroups(
+  'EQUIVALENT puzzles (same up to rotation / reflection / reversed numbering)',
+  eq,
+);
 const exactInFinal = findDuplicateGroups(finalList).exact;
-if (exactInFinal.length) errors.push(`${exactInFinal.length} exact duplicate(s) inside ratings.json itself: ${exactInFinal.map(g => g.map(i => finalList[i].where).join(' = ')).join('; ')}`);
+if (exactInFinal.length)
+  errors.push(
+    `${exactInFinal.length} exact duplicate(s) inside ratings.json itself: ${exactInFinal.map(g => g.map(i => finalList[i].where).join(' = ')).join('; ')}`,
+  );
 if (flag('strict') && eq.length) errors.push(`--strict: ${eq.length} equivalent puzzle group(s)`);
 
 // ---- result ----
-console.error(`\n${blocks.length} puzzles in the file, ${inBase} already in the base${flag('update-labels') ? ` (${relabel.size} relabelled)` : ''}, ${added.length} new${exactGroups.length ? `, ${exactGroups.length} exact-duplicate group(s)` : ''}.`);
-for (const [j, b] of relabel) console.error(`  relabel ${b.where}: ${labelText(base[j])} -> ${labelText(b.parsed)}`);
-for (const b of added) console.error(`  new ${b.where}: "${b.comment.slice(0, 50)}" -> ${labelText(b.parsed)} [${b.parsed.form}]`);
-if (errors.length) { console.error('\nNOTHING WRITTEN. Fix these first:\n  ' + errors.join('\n  ')); process.exit(1); }
+console.error(
+  `\n${blocks.length} puzzles in the file, ${inBase} already in the base${flag('update-labels') ? ` (${relabel.size} relabelled)` : ''}, ${added.length} new${exactGroups.length ? `, ${exactGroups.length} exact-duplicate group(s)` : ''}.`,
+);
+for (const [j, b] of relabel)
+  console.error(`  relabel ${b.where}: ${labelText(base[j])} -> ${labelText(b.parsed)}`);
+for (const b of added)
+  console.error(
+    `  new ${b.where}: "${b.comment.slice(0, 50)}" -> ${labelText(b.parsed)} [${b.parsed.form}]`,
+  );
+if (errors.length) {
+  console.error('\nNOTHING WRITTEN. Fix these first:\n  ' + errors.join('\n  '));
+  process.exit(1);
+}
 const out = [...finalBase, ...added.map(b => asRow(b.key, b.parsed))];
 const json = toRatingsJson(out);
-if (opt('out')) { fs.writeFileSync(opt('out'), json); console.error(`wrote ${opt('out')} (${out.length} ratings)`); } else process.stdout.write(json);
+if (opt('out')) {
+  fs.writeFileSync(opt('out'), json);
+  console.error(`wrote ${opt('out')} (${out.length} ratings)`);
+} else process.stdout.write(json);

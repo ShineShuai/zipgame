@@ -6,8 +6,9 @@ import { fakePair } from './fake-channel.js';
 
 // This file is kept apart (the tests run one process per file) so that the catalog of the balls
 // is not loaded when it starts, as on a guest's device that has not played a ball yet.
-const BALL = 'surface ball dual-antiprism7\ncheckpoints 3=1 4=2 13=3 12=4\nwalls 0,17,22,27\n'
-  + 'path 3 4 5 11 10 9 1 7 8 0 2 13 6 12\n';
+const BALL =
+  'surface ball dual-antiprism7\ncheckpoints 3=1 4=2 13=3 12=4\nwalls 0,17,22,27\n' +
+  'path 3 4 5 11 10 9 1 7 8 0 2 13 6 12\n';
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 

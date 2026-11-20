@@ -34,13 +34,37 @@ for (const n of sizes) {
     const t0 = Date.now();
     const onCandidate = c => boards.push(c);
     const p = runSync(generateCutout(n, seed, { maxMs, onCandidate }));
-    const layout = layoutFor(n, adjacency(n, p.holes), p.path), shape = layout.stats(layout.positionsOf(p.cp));
-    results.push({ ...p.score, ms: Date.now() - t0, shape: p.shape, ...shape, cut: pathCrossings(n, p.path), cross_: shape.cross });
+    const layout = layoutFor(n, adjacency(n, p.holes), p.path),
+      shape = layout.stats(layout.positionsOf(p.cp));
+    results.push({
+      ...p.score,
+      ms: Date.now() - t0,
+      shape: p.shape,
+      ...shape,
+      cut: pathCrossings(n, p.path),
+      cross_: shape.cross,
+    });
   }
   const hits = results.filter(r => r.hit).length;
-  console.log(`\nn=${n}: ${hits}/${results.length} puzzles reached grade ${CUTOUT_GRADE}, ${Math.round(mean(results.map(r => r.ms)))} ms each (max ${Math.max(...results.map(r => r.ms))}), ${boards.length} boards climbed`);
-  console.log(`  winners: grades ${results.map(r => r.grade).join('')}, walls ${fmt(mean(results.map(r => r.walls)))}, interior holes ${fmt(mean(results.map(r => r.interior)))}`);
-  console.log(`  layout of the winners: middle-line crossings ${fmt(mean(results.map(r => r.cut)))}, legs that change quadrant ${fmt(mean(results.map(r => r.switches)))}, detour ${fmt(mean(results.map(r => r.detour)))}, overlap of legs ${fmt(mean(results.map(r => r.overlap)))}, crossing ${fmt(mean(results.map(r => r.cross_)))}`);
-  describe('boards that got there / tried (mean predicted rating), by interior holes', boards, r => r.interior, [0, 1, 2, 3, 4]);
-  describe('by outline                                                              ', boards, r => r.label, [...new Set(boards.map(r => r.label))]);
+  console.log(
+    `\nn=${n}: ${hits}/${results.length} puzzles reached grade ${CUTOUT_GRADE}, ${Math.round(mean(results.map(r => r.ms)))} ms each (max ${Math.max(...results.map(r => r.ms))}), ${boards.length} boards climbed`,
+  );
+  console.log(
+    `  winners: grades ${results.map(r => r.grade).join('')}, walls ${fmt(mean(results.map(r => r.walls)))}, interior holes ${fmt(mean(results.map(r => r.interior)))}`,
+  );
+  console.log(
+    `  layout of the winners: middle-line crossings ${fmt(mean(results.map(r => r.cut)))}, legs that change quadrant ${fmt(mean(results.map(r => r.switches)))}, detour ${fmt(mean(results.map(r => r.detour)))}, overlap of legs ${fmt(mean(results.map(r => r.overlap)))}, crossing ${fmt(mean(results.map(r => r.cross_)))}`,
+  );
+  describe(
+    'boards that got there / tried (mean predicted rating), by interior holes',
+    boards,
+    r => r.interior,
+    [0, 1, 2, 3, 4],
+  );
+  describe(
+    'by outline                                                              ',
+    boards,
+    r => r.label,
+    [...new Set(boards.map(r => r.label))],
+  );
 }

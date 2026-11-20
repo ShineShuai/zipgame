@@ -27,15 +27,20 @@ const line = (label, rows) => {
   const ms = rows.map(r => r.ms);
   const walls = rows.map(r => r.walls);
   const K = rows.map(r => r.K);
-  console.log(`${label}  time ms: median ${median(ms).toFixed(0)}, worst ${Math.max(...ms).toFixed(0)}`
-    + ` | walls: median ${median(walls)}, worst ${Math.max(...walls)} | K median ${median(K)}`);
+  console.log(
+    `${label}  time ms: median ${median(ms).toFixed(0)}, worst ${Math.max(...ms).toFixed(0)}` +
+      ` | walls: median ${median(walls)}, worst ${Math.max(...walls)} | K median ${median(K)}`,
+  );
 };
 
 for (const n of sizes) {
   for (const kind of standard ? ['two paths', 'standard'] : ['two paths']) {
     const rows = [];
     for (let seed = 1; seed <= seeds; seed++) {
-      const o = { ...(kind === 'two paths' ? { twopaths: true } : {}), ...(candidates ? { candidates: +candidates } : {}) };
+      const o = {
+        ...(kind === 'two paths' ? { twopaths: true } : {}),
+        ...(candidates ? { candidates: +candidates } : {}),
+      };
       const t0 = performance.now();
       const p = runSync(generate(n, seed * 101 + n, o));
       const ms = performance.now() - t0;

@@ -28,10 +28,11 @@ function sourceFiles(dir) {
 
 // The 1-based numbers of the lines that are too wide (code points <= UTF-16 units, so the
 // cheap length test comes first).
-export const longLines = text => text.split('\n').flatMap((line, index) => {
-  const wide = line.length > MAX_COLUMNS && [...line.replace(/\r$/, '')].length > MAX_COLUMNS;
-  return wide ? [index + 1] : [];
-});
+export const longLines = text =>
+  text.split('\n').flatMap((line, index) => {
+    const wide = line.length > MAX_COLUMNS && [...line.replace(/\r$/, '')].length > MAX_COLUMNS;
+    return wide ? [index + 1] : [];
+  });
 
 function measure() {
   const lines = {};
@@ -49,14 +50,16 @@ function main() {
   const lines = measure();
   const allowed = file => baseline?.[file] ?? 0;
   // The first --update has nothing to compare with.
-  const raised = known || !update
-    ? Object.keys(lines).filter(file => lines[file].length > allowed(file)) : [];
+  const raised =
+    known || !update ? Object.keys(lines).filter(file => lines[file].length > allowed(file)) : [];
 
   if (raised.length) {
     for (const file of raised.slice(0, SHOWN_FILES)) {
       const last = lines[file].slice(-3).join(', ');
-      console.error(`${file}: ${lines[file].length} lines of more than ${MAX_COLUMNS} columns, `
-        + `${allowed(file)} allowed (last: ${last})`);
+      console.error(
+        `${file}: ${lines[file].length} lines of more than ${MAX_COLUMNS} columns, ` +
+          `${allowed(file)} allowed (last: ${last})`,
+      );
     }
     if (raised.length > SHOWN_FILES) {
       console.error(`... and ${raised.length - SHOWN_FILES} more files`);
@@ -66,17 +69,23 @@ function main() {
   }
   if (update) {
     const next = Object.fromEntries(
-      Object.keys(lines).sort().map(file => [file, lines[file].length]));
+      Object.keys(lines)
+        .sort()
+        .map(file => [file, lines[file].length]),
+    );
     writeFileSync(baselinePath, `${JSON.stringify(next, null, 2)}\n`);
     const total = Object.values(next).reduce((sum, n) => sum + n, 0);
     console.log(`long-lines.json: ${Object.keys(next).length} files, ${total} lines`);
     return;
   }
-  const lowered = Object.keys(baseline ?? {})
-    .filter(file => (lines[file]?.length ?? 0) < baseline[file]);
+  const lowered = Object.keys(baseline ?? {}).filter(
+    file => (lines[file]?.length ?? 0) < baseline[file],
+  );
   if (lowered.length) {
-    console.log(`${lowered.length} files are below their number in long-lines.json: `
-      + 'run npm run width:update to keep it.');
+    console.log(
+      `${lowered.length} files are below their number in long-lines.json: ` +
+        'run npm run width:update to keep it.',
+    );
   }
   console.log(`ok: no file has more lines of more than ${MAX_COLUMNS} columns than before`);
 }

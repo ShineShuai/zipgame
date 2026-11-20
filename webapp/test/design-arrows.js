@@ -3,7 +3,12 @@
 // Registered by unit/arrows.test.js: designArrowsTests(t, ok, eq).
 import { makePuzzle, validate } from '../src/core/model.js';
 import {
-  edgeId, setArrowId, setWallId, arrowIds, arrowDirId, arrowCount,
+  edgeId,
+  setArrowId,
+  setWallId,
+  arrowIds,
+  arrowDirId,
+  arrowCount,
 } from '../src/core/edges.js';
 import { serialize, parse } from '../src/core/format.js';
 import { solve } from '../src/core/solver/solve.js';
@@ -31,7 +36,10 @@ export function designArrowsTests(t, ok, eq) {
     const p = hand();
     const out = serialize(p);
     ok(out.includes('arrows 1,1>1,2 2,1>1,1'), out);
-    ok(out.split('\n').some(l => l.startsWith('# arrows ')), 'a header comment explains the line');
+    ok(
+      out.split('\n').some(l => l.startsWith('# arrows ')),
+      'a header comment explains the line',
+    );
     const q = parse(out);
     eq([[...q.arrows], [...q.cp], [...q.walls]], [[...p.arrows], [...p.cp], [...p.walls]]);
     eq(serialize(q), out);
@@ -111,8 +119,10 @@ export function designArrowsTests(t, ok, eq) {
     }
     eq(solve(p, { limit: 2, nodeCap: 5e6 }).count, 1);
     const events = [];
-    const r = runSync(minimizeArrowsFully(p, arrowIds(p), rnd, 200000, 4, { refineBudget: 1e6 }),
-      ev => events.push(ev));
+    const r = runSync(
+      minimizeArrowsFully(p, arrowIds(p), rnd, 200000, 4, { refineBudget: 1e6 }),
+      ev => events.push(ev),
+    );
     eq(r.uncertain, []);
     ok(r.removed >= 1 && r.kept === arrowCount(p), `${r.removed} removed, ${r.kept} kept`);
     eq(solve(p, { limit: 2, nodeCap: 5e6 }).count, 1);
@@ -127,10 +137,19 @@ export function designArrowsTests(t, ok, eq) {
     const [up] = point(arrowMarkPoints(3, 7, 4));
     eq(up, [1.5, 2 - 0.2], '7 -> 4 points up');
     const back = point(arrowMarkPoints(3, 4, 5)).slice(1);
-    ok(back.every(([x]) => x < 2), 'the base is behind the middle');
+    ok(
+      back.every(([x]) => x < 2),
+      'the base is behind the middle',
+    );
     eq(point(arrowMarkPoints(3, 4, 5, 10))[0], [22, 15], 'scaled');
     const marks = arrowMarks(hand());
-    eq(marks.map(m => [m.from, m.to]), [[4, 5], [7, 4]]);
+    eq(
+      marks.map(m => [m.from, m.to]),
+      [
+        [4, 5],
+        [7, 4],
+      ],
+    );
     eq(arrowMarks(makePuzzle(3)), []);
   });
 
