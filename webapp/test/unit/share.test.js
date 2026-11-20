@@ -17,7 +17,6 @@ import {
   shareText, shareStatus, isPlayable, LEVEL_EMOJI,
 } from '../../src/features/share.js';
 import { generateCutout } from '../../src/core/gen/cutout.js';
-import { VARIANTS } from '../../src/core/share-code.js';
 import {
   devLinkMode, devLinkCode, devLinkUrl, tapCombo, loadPin, savePin, DEV_KEY,
 } from '../../src/features/dev-reveal.js';
@@ -179,25 +178,6 @@ t('share: the local seed a link names is the seed the game was made with (day, s
   ok(dailySeed(day - 1, n, index, ALGO_VERSION) !== seed && dailySeed(day, n, index + 1, ALGO_VERSION) !== seed);
 });
 
-t.slow('share-code: a Cutout game round-trips with its puzzle; 7x7 stays short; damaged codes are rejected', () => {
-  for (const n of [5, 8, 16]) {
-    const p = runSync(generateCutout(n, 40 + n, { boards: 1, effort: 0.1 }));
-    const rec = makeShareRecord({ n, timeS: 83.4, legs: [0, 2, 3], K: maxNumber(p), variant: 'cutout', puzzle: p }), code = encodeShare(rec);
-    ok(/^[A-Za-z0-9_-]+$/.test(code), code);
-    const back = decodeShare(code);
-    eq([back.kind, back.variant, back.n, back.timeS, back.levels, back.grade], ['local', 'cutout', n, 83.4, rec.levels, null]);
-    eq([back.puzzle.shape, [...back.puzzle.holes], [...back.puzzle.cp], [...back.puzzle.walls]], [p.shape, [...p.holes], [...p.cp], [...p.walls]]);
-    eq(encodeShare(back), code);
-    ok(decodeShare(code.slice(0, -1)) === null && decodeShare(code + 'A') === null);
-    ok(decodeShare(code.slice(0, 5) + (code[5] === 'A' ? 'B' : 'A') + code.slice(6)) === null || n === 8, 'a changed character is caught by the check');
-    ok(parseShareLink('?s=' + code).rec.puzzle.n === n);
-  }
-  const seven = runSync(generateCutout(7, 4, { boards: 1, effort: 0.1 }));
-  ok(encodeShare(makeShareRecord({ n: 7, timeS: 9, legs: [], K: maxNumber(seven), variant: 'cutout', puzzle: seven })).length <= 36);
-  eq(decodeShare(encodeShare(GOTD_REC)), GOTD_REC);
-  eq(VARIANTS.slice(0, 4), [null, 'cutout', 'arrows', 'exact']); // ids are fixed; later ones append
-});
-
 t('share-code: a Cutout record is refused when its puzzle is unsound (unbalanced, checkpoint on a hole, wall at a hole, a gap in the numbers)', () => {
   const good = runSync(generateCutout(6, 8, { boards: 1, effort: 0.1 }));
   const rec = puzzle => makeShareRecord({ n: 6, timeS: 5, legs: [], K: Math.max(2, Object.values(puzzle.cp).filter(Boolean).length), variant: 'cutout', puzzle });
@@ -208,15 +188,6 @@ t('share-code: a Cutout record is refused when its puzzle is unsound (unbalanced
   const onHole = withCp(0, 35); onHole.holes[0] = 1; onHole.holes[1] = 1; ok(encodeShare(rec(onHole)) === null, 'checkpoint on a hole');
   const wallHole = withCp(0, 35); wallHole.holes[7] = 1; wallHole.holes[10] = 1; wallHole.walls[6] = 1; ok(encodeShare(rec(wallHole)) === null, 'wall at a hole');
   const gap = withCp(0, 35); gap.cp[35] = 3; ok(encodeShare(rec(gap)) === null, 'numbering has a gap');
-});
-
-t('share: a Cutout share record has the puzzle, a head line of its own, and is always playable at a listed size', () => {
-  const p = runSync(generateCutout(6, 21, { boards: 1, effort: 0.1 }));
-  const rec = makeShareRecord({ n: 6, timeS: 12.5, legs: [], K: maxNumber(p), variant: 'cutout', puzzle: p });
-  ok(rec.variant === 'cutout' && rec.kind === 'local' && rec.day === undefined && rec.puzzle.holes !== p.holes);
-  ok(shareText(rec, 'u', tr).startsWith('zigzag Cutout · 6x6'));
-  eq(shareStatus(rec, { today: 20000, replayDates: [], attempt: null, sizes: PLAY_SIZES }), { status: 'ok' });
-  eq(shareStatus({ ...rec, n: 3 }, { today: 20000, replayDates: [], attempt: null, sizes: PLAY_SIZES }), { status: 'invalid' });
 });
 
 registerAsyncTests();

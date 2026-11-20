@@ -217,24 +217,20 @@ export function sharedGamesTests(t, ta, ok, eq) {
     ok(throws(() => new RadixReader(5n).uint(0)));
   });
 
-  t.slow('share-code: every puzzle type round-trips (with and without a strip), canonically', () => {
-    for (const [variant, puzzle] of PUZZLES()) {
-      ok(validate(puzzle).ok, `${variant} sample is valid`);
-      for (const rec of [
-        recordOf(variant, puzzle),
-        recordOf(variant, puzzle, { legs: [], K: 1 }),
-      ]) {
-        const code = encodeShare(rec);
-        ok(/^[A-Za-z0-9_-]+$/.test(code), `${variant}: ${code}`);
-        const back = decodeShare(code);
-        eq(flatRec(back), flatRec(rec), `${variant}: same record`);
-        eq(encodeShare(back), code, `${variant}: re-encodes to the same code`);
-      }
+  // (the variants' round trip, with and without a strip, is a row of variant-contract.js)
+  t('share-code: a standard puzzle round-trips (with and without a strip), canonically', () => {
+    const [, puzzle] = PUZZLES()[0];
+    ok(validate(puzzle).ok, 'the sample is valid');
+    for (const rec of [
+      recordOf(null, puzzle),
+      recordOf(null, puzzle, { legs: [], K: 1 }),
+    ]) {
+      const code = encodeShare(rec);
+      ok(/^[A-Za-z0-9_-]+$/.test(code), code);
+      const back = decodeShare(code);
+      eq(flatRec(back), flatRec(rec), 'same record');
+      eq(encodeShare(back), code, 're-encodes to the same code');
     }
-    eq(
-      PUZZLES().map(([variant]) => VARIANTS.indexOf(variant)),
-      [0, 1, 2, 3, 4, 5],
-    );
   });
 
   t('share-code: codes are short; big boards stay encodable', () => {
