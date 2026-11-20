@@ -582,7 +582,7 @@ export function gotdVerdictTests(t, ok, eq, ta) {
           v = approve(first);
         verdicts.push(v);
         const got = w.review(verdicts).plan.find(p => p.id === first.id);
-        eq(got && got.date, first.date, `candidate ${+first.id} is shown for ${first.date}`);
+        eq(got?.date, first.date, `candidate ${+first.id} is shown for ${first.date}`);
         days.push(first.date);
       }
       eq(

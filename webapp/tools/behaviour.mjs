@@ -98,7 +98,7 @@ try {
       );
     } else {
       const sel = {
-        ids: opt('--ids') && opt('--ids').split(','),
+        ids: opt('--ids')?.split(','),
         puzzle: opt('--puzzle') && fs.readFileSync(opt('--puzzle'), 'utf8'),
         gotd: opt('--gotd'),
         day: opt('--day'),

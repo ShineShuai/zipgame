@@ -22,8 +22,8 @@ import {
 import { solutionKeys as bruteKeys } from './oracle.js';
 
 const run = g => {
-  let step;
-  while (!(step = g.next()).done);
+  let step = g.next();
+  while (!step.done) step = g.next();
   return step.value;
 };
 const walls = p => allEdges(p.n, null, true).filter(e => hasWallId(p.walls, e));

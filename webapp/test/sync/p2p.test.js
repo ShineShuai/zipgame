@@ -150,7 +150,7 @@ async function linked() {
 const seenIn = async (d, id) => {
   const raw = await d.storage.get(RULES_SEEN_KEY);
   const view = d.sync.view(RULES_SEEN_KEY, raw ? JSON.parse(raw.value) : null);
-  return Boolean(view && view.seen[id]);
+  return Boolean(view?.seen[id]);
 };
 
 coopTest('a link made on one device and opened on the other links them, both ways', async () => {

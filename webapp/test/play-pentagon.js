@@ -151,9 +151,9 @@ export function playPentagonTests(t, ok, eq) {
         eq(count(markup, 'data-num-cell='), maxNumber(p), 'badges');
         let border = 0;
         for (let i = 0; i < top.T * SLOTS; i++) if (i % SLOTS < 5 && top.nb[i] < 0) border++;
-        const walls = markup.match(/data-role="walls"[^>]*>([^]*?)<\/g>/)[1];
+        const walls = markup.match(/data-role="walls"[^>]*>([\s\S]*?)<\/g>/)[1];
         eq(count(walls, '<line'), wallCount(p), 'one line per wall');
-        const outline = markup.match(/data-role="outline"[^>]*>([^]*?)<\/g>/)[1];
+        const outline = markup.match(/data-role="outline"[^>]*>([\s\S]*?)<\/g>/)[1];
         eq(count(outline, '<line'), border, 'border');
         eq(count(markup.match(/data-role="path" d="([^"]*)"/)[1], 'L'), 5, 'the path of 6 cells');
         ok(

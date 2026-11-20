@@ -10,7 +10,7 @@
     "width:update": "node test/check-width.js --update",
     "format": "biome format --write",
     "format:check": "biome format",
-    "lint": "biome lint",
+    "lint": "biome lint --error-on-warnings",
     "test": "node test/run.mjs fast",
     "test:slow": "node test/run.mjs slow",
     "test:all": "node test/run.mjs all",

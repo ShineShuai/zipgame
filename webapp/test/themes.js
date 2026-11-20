@@ -207,7 +207,7 @@ function runBoot({ storage = {}, dark = false } = {}) {
     querySelector: sel =>
       sel.includes('theme-color')
         ? {
-            setAttribute: (k, v) => {
+            setAttribute: (_k, v) => {
               meta.color = v;
             },
           }
@@ -272,12 +272,12 @@ export function themeSystemTests(t, ok, eq, ta) {
       'gradients, a clip path, a pattern, a blur, a blend mode and a short label pass unchanged',
     );
     eq(
-      cleanSvg('<text x=\"2\" y=\"2\">1&gt;</text>'),
-      '<text x=\"2\" y=\"2\">1&gt;</text>',
+      cleanSvg('<text x="2" y="2">1&gt;</text>'),
+      '<text x="2" y="2">1&gt;</text>',
       'a prompt sign is a label too',
     );
-    eq(cleanSvg('<text x=\"2\" y=\"2\">1&amp;</text>'), null, 'any other entity is not');
-    eq(cleanSvg('<text x=\"2\" y=\"2\">1<b>2</b></text>'), null, 'nor is markup in a label');
+    eq(cleanSvg('<text x="2" y="2">1&amp;</text>'), null, 'any other entity is not');
+    eq(cleanSvg('<text x="2" y="2">1<b>2</b></text>'), null, 'nor is markup in a label');
   });
 
   t(
@@ -289,7 +289,8 @@ export function themeSystemTests(t, ok, eq, ta) {
         scopeIds(piece, 'x'),
         '<defs><linearGradient id="g1-x"><stop offset="0" stop-color="#fff"/></linearGradient></defs><rect fill="url(#g1-x)" stroke="url(#g1-x)"/>',
       );
-      ok(freshScope() !== freshScope(), 'every call a new scope');
+      const [scopeA, scopeB] = [freshScope(), freshScope()];
+      ok(scopeA !== scopeB, 'every call a new scope');
       eq(scopeIds('<path d="M0 0"/>', 'x'), '<path d="M0 0"/>', 'nothing to rename');
       const scoped = scopeIds(piece, freshScope());
       ok(cleanSvg(scoped) === scoped, 'a scoped piece is still clean');
@@ -938,7 +939,7 @@ export function themeSystemTests(t, ok, eq, ta) {
       const els = {};
       const holder = {
         classList: {
-          toggle: (c, on) => {
+          toggle: (_c, on) => {
             attrs.hasArt = on;
           },
         },
@@ -959,7 +960,7 @@ export function themeSystemTests(t, ok, eq, ta) {
           },
         },
         querySelector: () => ({
-          setAttribute: (k, v) => {
+          setAttribute: (_k, v) => {
             attrs.chrome = v;
           },
         }),

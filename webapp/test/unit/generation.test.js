@@ -549,7 +549,6 @@ t.slow(
     ]) {
       const off = runSync(generate(n, seed, { refineNodes: 0 })),
         on = runSync(generate(n, seed));
-      const walls = p => wallCount(p.walls ? p : p);
       ok(validate(on).ok);
       const r = solve(on, { limit: 2, nodeCap: 5e6, prop: true });
       eq([r.count, r.exceeded], [1, false]);
@@ -654,7 +653,7 @@ t(
           dense = runSync(
             tryGenerate(n, Kmax, rnd, Math.max(300000, 20 * cap), cells, 0, { prop: true }),
           );
-        ok(dense && dense.order, 'no dense puzzle');
+        ok(dense?.order, 'no dense puzzle');
         runSync(minimizeWalls(dense, dense.order, rnd, cap, Kmax, { prop: true, freedEdge }));
         const r = solve(dense, { limit: 2, nodeCap: 2e6, prop: true });
         eq([r.count, r.exceeded], [1, false], `n=${n} freedEdge=${freedEdge}`);

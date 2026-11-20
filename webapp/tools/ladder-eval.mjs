@@ -8,7 +8,7 @@
 //
 // Rating comments: numbers are taken from the text after removing "you graded as N", "not [word] N",
 // "instead of N", "more than N", "N/5"; several numbers -> their mean; "rather N" -> N.
-import fs from 'fs';
+import fs from 'node:fs';
 import { parse } from '../src/core/format.js';
 import { ladder, LEVELS } from '../src/core/ladder.js';
 import { isSolved } from '../src/core/rules.js';

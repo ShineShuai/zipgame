@@ -310,7 +310,7 @@ ta("champ: with device sync the picks follow the group's wins, handed out once",
   const other = wins(fresh(DAY0, B), [DAY0 - 10, DAY0 - 11]);
   const group = { value: other };
   const sync = {
-    view: (key, local) =>
+    view: (_key, local) =>
       view([
         { dev: A, value: local },
         { dev: B, value: group.value },

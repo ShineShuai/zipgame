@@ -6,7 +6,6 @@ import { serialize, parse } from '../../src/core/format.js';
 import { dailySeed } from '../../src/core/rng.js';
 import { step } from '../../src/core/rules.js';
 import { createDaily, utcDayNumber } from '../../src/features/daily.js';
-import { t as tr } from '../../src/ui/i18n.js';
 import { createStore } from '../../src/features/stats-store.js';
 import {
   newTrace,
@@ -35,7 +34,6 @@ import { withEviction, migrateKey, usage } from '../../src/platform/storage.js';
 import { STATS_KEY, GOTD_KEY, ATTEMPT_KEEP_DAYS } from '../../src/features/stats-store.js';
 import { skillBucket } from '../../src/core/behaviour.js';
 import { createCalib, calibRequested, CALIB_DIR } from '../../src/features/calib.js';
-import fs from 'node:fs';
 import { pickStorage } from '../../src/platform/storage.js';
 import { t, ta, eq, ok, registerAsyncTests } from '../harness.js';
 import { atDay, fakeStorage } from './helpers.js';
@@ -764,7 +762,7 @@ ta(
       { key: 'size 7', human: 3, lo: 3, hi: 3, metrics: m2, note: 'x' },
     ];
     const sorted = v =>
-      JSON.stringify(v, (k, x) =>
+      JSON.stringify(v, (_k, x) =>
         x && typeof x === 'object' && !Array.isArray(x)
           ? Object.fromEntries(Object.entries(x).sort())
           : x,

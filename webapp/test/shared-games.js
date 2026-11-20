@@ -238,7 +238,7 @@ export function sharedGamesTests(t, ta, ok, eq) {
     const big = snake(16, [0, 40, 100, 160, 255]),
       rec = recordOf(null, big, { legs: [1, 0, 3, 2] });
     const code = encodeShare(rec);
-    ok(code && code.length <= 24, `a 16x16 board with 5 numbers: ${code && code.length}`);
+    ok(code && code.length <= 24, `a 16x16 board with 5 numbers: ${code?.length}`);
     eq(flatRec(decodeShare(code)), flatRec(rec));
     const noStrip = recordOf(
       null,

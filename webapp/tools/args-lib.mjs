@@ -78,8 +78,10 @@ export function parseArgs(argv, spec) {
       throw new ArgsError(`--${name} needs a value (${def.arg || 'VALUE'})`);
     }
     const v = convert(name, def, text);
-    if (def.type === 'list') (values[name] ||= []).push(v);
-    else values[name] = v;
+    if (def.type === 'list') {
+      values[name] ||= [];
+      values[name].push(v);
+    } else values[name] = v;
   }
   if (help) return { values, rest, help };
   for (const [name, def] of Object.entries(options)) {

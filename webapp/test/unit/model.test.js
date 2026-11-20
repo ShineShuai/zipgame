@@ -52,7 +52,7 @@ t('format: serialize/parse round trip, size 2..16, errors', () => {
     let threw = false;
     try {
       parse(bad);
-    } catch (e) {
+    } catch {
       threw = true;
     }
     ok(threw, 'should reject: ' + bad);
@@ -80,7 +80,7 @@ t(
       let threw = false;
       try {
         parse(bad);
-      } catch (e) {
+      } catch {
         threw = true;
       }
       ok(threw, 'should reject: ' + bad);
@@ -90,14 +90,14 @@ t(
     let threw = false;
     try {
       parse(serialize(walled, { path: [] }) + '\npath 0,0 0,1');
-    } catch (e) {
+    } catch {
       threw = true;
     }
     ok(threw, 'should reject path crossing a wall');
     threw = false;
     try {
       parse('size 3\npath 0,0 0,1 0,0');
-    } catch (e) {
+    } catch {
       threw = true;
     }
     ok(threw, 'should reject repeated cell');

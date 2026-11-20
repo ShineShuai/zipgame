@@ -52,7 +52,7 @@ export function solidTests(t, ok, eq, ta) {
     }
     const cube = surfaceTopology('cube', 3);
     const view = buildView(cube, overview(cube));
-    const away = view.hidden.findIndex(hidden => hidden === 1);
+    const away = view.hidden.indexOf(1);
     ok(headTurnedAway(cube, view, [away], false), 'a cell on the far side of a cube');
 
     // the turner runs frames until the cell faces the viewer, and stops when told to
@@ -270,7 +270,7 @@ export function solidTests(t, ok, eq, ta) {
       solutions: [],
       visible: [],
       palette: LIGHT_PALETTE,
-      continues: (from, to) => canPush(made.puzzle, path, to, { strictOrder: true }),
+      continues: (_from, to) => canPush(made.puzzle, path, to, { strictOrder: true }),
     };
     const count = (markup, name) =>
       (markup.match(new RegExp(`class="${name}"`, 'g')) || []).length;

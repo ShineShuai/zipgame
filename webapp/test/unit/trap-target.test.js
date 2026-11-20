@@ -284,7 +284,7 @@ function renderDiagnostics(p) {
         textContent: '',
         innerHTML: '',
         classList: { toggle() {}, add() {}, remove() {} },
-        set onclick(f) {},
+        set onclick(_f) {},
         querySelectorAll: () => [],
       };
     },

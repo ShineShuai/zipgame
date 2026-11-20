@@ -25,7 +25,6 @@ const fromHrana = v =>
       : v.type === 'blob'
         ? toB64u(Uint8Array.from(atob(v.base64), c => c.charCodeAt(0)))
         : v.value;
-const hranaArg = v => (v === null ? { type: 'null' } : typeof v === 'number' ? hranaInt(v) : v);
 
 export function createAdmin({ turso, cloudflare, fetchFn = (...a) => fetch(...a) }) {
   // turso: { url, token } (token: -p all:data_read -p play:data_delete; the owner's own token for migrate); cloudflare: { url, secret } (PLAY_ADMIN_SECRET)
@@ -37,8 +36,7 @@ export function createAdmin({ turso, cloudflare, fetchFn = (...a) => fetch(...a)
     });
     if (!res.ok) throw new Error('Turso: HTTP ' + res.status);
     return (await res.json()).results.slice(0, stmts.length).map(r => {
-      if (r.type !== 'ok')
-        throw new Error('Turso: ' + ((r.error && r.error.message) || 'no result'));
+      if (r.type !== 'ok') throw new Error('Turso: ' + (r.error?.message || 'no result'));
       const { cols, rows, affected_row_count } = r.response.result;
       return {
         rows: rows.map(row => Object.fromEntries(cols.map((c, i) => [c.name, fromHrana(row[i])]))),

@@ -209,13 +209,13 @@ export function exactGenTests(t, ok, eq) {
       [8, 3, 4],
       [10, 2, 5],
     ]) {
-      let p,
-        seed = base;
-      while (
-        !(p = runSync(generateExact(n, seed, { grade }))).score.hit &&
-        seed < base + HIT_SEEDS - 1
-      )
+      const generateAt = at => runSync(generateExact(n, at, { grade }));
+      let seed = base;
+      let p = generateAt(seed);
+      while (!p.score.hit && seed < base + HIT_SEEDS - 1) {
         seed++;
+        p = generateAt(seed);
+      }
       const tag = `n=${n} grade ${grade} seed ${seed} (base ${base})`;
       const s = p.score;
       eq([s.hit, s.miss, s.target, s.atLeast], [true, 0, grade, true], tag);

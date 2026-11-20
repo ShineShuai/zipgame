@@ -544,7 +544,7 @@ test(
         transformPuzzle(parse(fs.readFileSync(path.join(w.queue, c7a.file), 'utf8')), 2, true),
       ) + '\n',
     );
-    let r = w.cli(...PROMOTE);
+    const r = w.cli(...PROMOTE);
     assert.equal(r.status, 1, 'the failed candidate is still an error');
     assert.match(
       r.stdout,

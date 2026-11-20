@@ -345,7 +345,7 @@ const modelOut = {
   features,
   mean: per(k => +stats[k].mean.toFixed(4)),
   sd: per(k => +stats[k].sd.toFixed(4)),
-  w: per((k, i) => +w[i + 1].toFixed(4)),
+  w: per((_k, i) => +w[i + 1].toFixed(4)),
   b: +w[0].toFixed(4),
   cuts,
   fit: {

@@ -44,7 +44,6 @@ const record = (p, extra = {}) =>
     puzzle: p,
     ...extra,
   });
-const pathOf = svg => svg.match(/data-role="path" d="([^"]*)"/)[1];
 const jumpSteps = (p, path) =>
   path.filter((cell, i) => i > 0 && isPortalPair(p.portals, path[i - 1], cell)).length;
 const stateOf = (p, path, extra = {}) => ({

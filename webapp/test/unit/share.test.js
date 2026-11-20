@@ -227,7 +227,7 @@ t(
   'share: levelOf thresholds and legLevels (K-1 legs; extra legs merge into the last; none for K<2 or too many)',
   () => {
     eq([0, 1, 2, 3, 6, 7, 99].map(levelOf), [0, 1, 1, 2, 2, 3, 3]);
-    eq(legLevels([2, , 9], 3), [1, 3]); // leg 2 (index 2) is beyond K-1 = 2 legs: merged into the last
+    eq(legLevels([2, undefined, 9], 3), [1, 3]); // leg 2 (index 2) is beyond K-1 = 2 legs: merged into the last
     eq(legLevels([], 4), [0, 0, 0]);
     eq([legLevels([1], 1), legLevels([1], 0), legLevels([], MAX_LEGS + 2)], [[], [], []]);
     eq(legLevels([], MAX_LEGS + 1).length, MAX_LEGS);

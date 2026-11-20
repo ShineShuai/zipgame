@@ -12,7 +12,6 @@ import { edgeId, edgeCells, allEdges, setWallId, hasWallId } from '../../src/cor
 import { parse } from '../../src/core/format.js';
 import { makeRng } from '../../src/core/rng.js';
 import { solve } from '../../src/core/solver/solve.js';
-import { step } from '../../src/core/rules.js';
 import { boardConnectivity, boardLegCollide } from '../../src/core/connectivity.js';
 import {
   buildNeighbors,
@@ -258,9 +257,6 @@ t('forcedEdges: standalone deduction sound against exhaustive completion enumera
       if (all.length === 0) continue; // forcedEdges may under-detect infeasibility (that's fine, it's a sound-not-complete prune) — nothing to check
       // Every forced direction must be an edge actually used (u adjacent to its dir-d neighbour
       // in the path) in EVERY completion — the precise meaning of "this edge is forced".
-      const DR = [0, 0, 1, -1],
-        DC = [1, -1, 0, 0],
-        n = p.n;
       for (const u of forced) {
         for (let d = 0; d < 4; d++) {
           if (!((dirs[u] >> d) & 1)) continue;
@@ -450,7 +446,6 @@ t(
     for (let i = 0; i < T; i++) if (p.cp[i]) pos[p.cp[i]] = i;
 
     const collideAt = new Array(fullPath.length + 1).fill(false);
-    const noDeadEnd0 = makeNoDeadEnd(nb, new Uint8Array(T), pos[K]);
     for (let cut = 1; cut <= fullPath.length; cut++) {
       const prefix = fullPath.slice(0, cut);
       const vis = new Uint8Array(T);
@@ -749,7 +744,6 @@ t(
     for (const [bi, p] of boards.entries())
       for (const seed of [1, 2, 3]) {
         const n = p.n,
-          wallFrac = 0,
           T = n * n,
           { nb } = buildNeighbors(p);
         const start = p.cp.indexOf(1),

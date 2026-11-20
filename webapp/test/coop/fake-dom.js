@@ -1,7 +1,7 @@
 // Just enough of a page for src/coop/screen.js to run in Node: one root element that keeps the
 // markup the screen writes, lookups by id into that markup, and clicks sent to the screen's own
 // click handler. What the player "types" is set with dom.typed.set(id, value).
-const unescape = text =>
+const unescapeHtml = text =>
   text
     .replace(/&quot;/g, '"')
     .replace(/&lt;/g, '<')
@@ -40,7 +40,7 @@ export function installFakeDom() {
     const fromMarkup = /value="([^"]*)"/.exec(tag)?.[1];
     return {
       get value() {
-        return typed.has(id) ? typed.get(id) : unescape(fromMarkup ?? '');
+        return typed.has(id) ? typed.get(id) : unescapeHtml(fromMarkup ?? '');
       },
       get checked() {
         return typed.has(id) ? typed.get(id) : /\schecked/.test(tag);
@@ -94,7 +94,7 @@ export function installFakeDom() {
     html: () => root.innerHTML,
     // the text of the status note
     status: () =>
-      live.coopStatus ?? unescape(/id="coopStatus"[^>]*>([^<]*)</.exec(markup)?.[1] ?? ''),
+      live.coopStatus ?? unescapeHtml(/id="coopStatus"[^>]*>([^<]*)</.exec(markup)?.[1] ?? ''),
     // the text of the message line under the board
     message: () => live.coopMsg ?? '',
     failed: () => live.error ?? /class="note error" id="coopStatus"/.test(markup),

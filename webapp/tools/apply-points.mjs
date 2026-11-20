@@ -47,7 +47,7 @@ import { cli } from './args-lib.mjs';
 import { OFFLINE_TRAP_CFG } from './lib.mjs';
 import { readRows, isPlain } from './rows-lib.mjs';
 import { FIT_OPTIONS, RULE, stepsOfPuzzle, analyse, parameters } from './step-lib.mjs';
-import { spearman, resampleClusters, interval, fmt, pct } from './stats-lib.mjs';
+import { spearman, resampleClusters, interval, fmt } from './stats-lib.mjs';
 
 const { values: o, rest } = cli({
   usage: 'node tools/apply-points.mjs rows.json [options]',

@@ -16,7 +16,7 @@ import {
   toRatingsJson,
   keyDifference,
 } from '../src/core/ratings-io.js';
-import { parsePairsJson, pairKeyOf } from '../src/core/pairs-io.js';
+import { parsePairsJson } from '../src/core/pairs-io.js';
 import { printDuplicateGroups } from './lib.mjs';
 
 const args = process.argv.slice(2);

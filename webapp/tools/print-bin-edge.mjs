@@ -25,7 +25,7 @@ export function binEdges() {
     lo[b] = ms;
     prev = b;
   }
-  const empty = lo.findIndex(x => x === null);
+  const empty = lo.indexOf(null);
   if (empty >= 0)
     throw new Error(
       `bin ${empty} holds no whole millisecond up to MAX_MS = ${MAX_MS}: NB is too large for T0_MS / RATIO`,

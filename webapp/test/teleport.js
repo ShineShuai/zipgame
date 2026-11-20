@@ -99,7 +99,7 @@ const randomTeleport = (seed, n, K, wallFraction, pairs, odd) => {
   const path = portalPath(n, portals, rnd);
   if (!path) return null;
   const p = makePuzzle(n);
-  const free = path.map((cell, i) => i).filter(i => i > 0 && i < T - 1 && !used.has(path[i]));
+  const free = path.map((_cell, i) => i).filter(i => i > 0 && i < T - 1 && !used.has(path[i]));
   const inner = shuffle(free, rnd)
     .slice(0, Math.max(0, K - 2))
     .sort((x, y) => x - y);
@@ -333,7 +333,7 @@ export function teleportTests(t, ok, eq) {
           1 + (seed % 3 === 1 ? 1 : 0),
           odd,
         );
-        if (!p || !p.portals.length || !validate(p).ok) continue;
+        if (!p?.portals.length || !validate(p).ok) continue;
         const want = brutePaths(p).map(String).sort();
         boards++;
         if (want.length) withSolutions++;

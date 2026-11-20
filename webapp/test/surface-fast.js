@@ -126,7 +126,7 @@ function relaxed(p, rnd, keepShare) {
   q.cp.forEach((number, cell) => {
     if (number) cells[number - 1] = cell;
   });
-  const kept = cells.filter((cell, i) => i === 0 || i === cells.length - 1 || rnd() < keepShare);
+  const kept = cells.filter((_cell, i) => i === 0 || i === cells.length - 1 || rnd() < keepShare);
   q.cp.fill(0);
   kept.forEach((cell, i) => {
     q.cp[cell] = i + 1;

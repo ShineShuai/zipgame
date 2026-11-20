@@ -101,7 +101,10 @@ const resid = (y, x) => {
   return y.map((v, i) => v - a - b * x[i]);
 };
 let seed = 12345;
-const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+const rnd = () => {
+  seed = (seed * 1664525 + 1013904223) >>> 0;
+  return seed / 2 ** 32;
+};
 const col = k => F.map(f => f[k]);
 const dist = (g, i) => (g < LO[i] ? LO[i] - g : g > HI[i] ? g - HI[i] : 0);
 const clampGrade = p => Math.max(0, Math.min(5, Math.round(p)));
@@ -493,21 +496,17 @@ console.log(
 );
 const idxOfKey = new Map(R.map((r, i) => [r.key, i])),
   extraF = new Map();
-const featOf = key =>
-  idxOfKey.has(key)
-    ? F[idxOfKey.get(key)]
-    : (extraF.has(key) ||
-        extraF.set(
-          key,
-          (() => {
-            try {
-              return featuresOf({ key }, CAP);
-            } catch {
-              return null;
-            }
-          })(),
-        ),
-      extraF.get(key));
+const featOf = key => {
+  if (idxOfKey.has(key)) return F[idxOfKey.get(key)];
+  if (!extraF.has(key)) {
+    try {
+      extraF.set(key, featuresOf({ key }, CAP));
+    } catch {
+      extraF.set(key, null);
+    }
+  }
+  return extraF.get(key);
+};
 const valueOfMetric = k => key => {
   const f = featOf(key);
   return f ? f[k] : undefined;

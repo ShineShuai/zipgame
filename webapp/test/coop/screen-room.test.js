@@ -41,7 +41,7 @@ const opened = (t, thing) => {
 };
 
 test("the host's screen: link, requests, greeting box, accept, decline, cancel", async t => {
-  const screen = opened(t, openScreen(env));
+  opened(t, openScreen(env));
   dom.click('host');
   await until(() => dom.html().includes('id="coopLink"'), 'the link');
   const link = /value="([^"]+)"/.exec(dom.html())[1];
