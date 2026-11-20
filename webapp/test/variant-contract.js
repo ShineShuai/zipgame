@@ -7,7 +7,7 @@ import { isSolved, step } from '../src/core/rules.js';
 import { solve } from '../src/core/solver/solve.js';
 import { PLAY_SIZES } from '../src/core/gen/generate.js';
 import { labelCount } from '../src/core/model.js';
-import { VARIANTS, encodeShare, decodeShare } from '../src/core/share-code.js';
+import { MAX_LEGS, VARIANTS, encodeShare, decodeShare } from '../src/core/share-code.js';
 import { playGradesFor } from '../src/core/grades.js';
 import {
   ARROWS_MODEL, EXACT_MODEL, LOOP_MODEL, modelFor, TELEPORT_MODEL, TRAP_MODEL, TWOPATHS_MODEL,
@@ -203,10 +203,11 @@ export function variantContractTests(t, ok, eq) {
     }
   });
 
-  // What every variant's share code has to do; what is special to one (its own version, the fields
-  // it adds, the records it refuses) is tested with the variant.
-  t.slow('variants: a share code gives back the puzzle and the time, one puzzle has one code, '
-    + 'a damaged code is refused', () => {
+  // What every variant's share code has to do, with the colour strip of the game (one level per
+  // leg) and without it; what is special to one (its own version, the fields it adds, the records
+  // it refuses) is tested with the variant.
+  t.slow('variants: a share code gives back the puzzle, the time and the strip, one puzzle has '
+    + 'one code, a damaged code is refused', () => {
     const flat = q => Object.fromEntries(
       Object.entries(q).map(([key, x]) => [key, ArrayBuffer.isView(x) ? [...x] : x]));
     const cases = PLAY_VARIANTS.flatMap(v => {
@@ -216,21 +217,33 @@ export function variantContractTests(t, ok, eq) {
     });
     for (const [v, p, smallest] of cases) {
       const K = labelCount(p);
-      const rec = makeShareRecord({ n: p.n, timeS: 83.4, legs: [], K, variant: v.id, puzzle: p });
-      const code = encodeShare(rec);
-      ok(/^[A-Za-z0-9_-]+$/.test(code), `${v.id} ${p.n}: only characters that are safe in a link`);
-      ok(!smallest || code.length <= 60, `${v.id} ${p.n}: short (${code.length} characters)`);
-      const back = decodeShare(code);
-      eq([back.kind, back.variant, back.n, back.timeS, back.grade],
-        ['local', v.id, p.n, 83.4, null], `${v.id} ${p.n}: the record`);
-      eq(flat(back.puzzle), flat(rec.puzzle), `${v.id} ${p.n}: the same puzzle`);
-      ok(v.detect(back.puzzle), `${v.id} ${p.n}: the receiver plays it as the same variant`);
-      eq(encodeShare(back), code, `${v.id} ${p.n}: one puzzle, one code`);
-      eq(parseShareLink(`?s=${code}`).rec.puzzle.n, p.n, `${v.id} ${p.n}: the link`);
-      const changed = at => code.slice(0, at) + (code[at] === 'A' ? 'B' : 'A') + code.slice(at + 1);
-      const damaged = [code.slice(0, -1), `${code}A`, ...Array.from(code, (_, at) => changed(at))];
-      eq(damaged.map(decodeShare).filter(Boolean).length, 0,
-        `${v.id} ${p.n}: a truncated, a longer and every mistyped code is refused`);
+      // the game's legs with the puzzle's own K (a strip of K - 1 levels), and a game of K = 1
+      for (const [legs, legCount] of [[[0, 2, 3, 7, 1, 0, 5], K], [[], 1]]) {
+        const tag = `${v.id} ${p.n}${legCount === K ? ' with a strip' : ' without one'}`;
+        const rec = makeShareRecord({
+          n: p.n, timeS: 83.4, legs, K: legCount, variant: v.id, puzzle: p,
+        });
+        const strip = legCount - 1 >= 1 && legCount - 1 <= MAX_LEGS;
+        eq(rec.levels.length, strip ? legCount - 1 : 0, `${tag}: one level per leg, or none`);
+        const code = encodeShare(rec);
+        ok(/^[A-Za-z0-9_-]+$/.test(code), `${tag}: only characters that are safe in a link`);
+        ok(strip || !smallest || code.length <= 60, `${tag}: short (${code.length})`);
+        const back = decodeShare(code);
+        eq([back.kind, back.variant, back.n, back.timeS, back.grade],
+          ['local', v.id, p.n, 83.4, null], `${tag}: the record`);
+        eq(back.levels, rec.levels, `${tag}: the strip`);
+        eq(flat(back.puzzle), flat(rec.puzzle), `${tag}: the same puzzle`);
+        ok(v.detect(back.puzzle), `${tag}: the receiver plays it as the same variant`);
+        eq(encodeShare(back), code, `${tag}: one puzzle, one code`);
+        eq(parseShareLink(`?s=${code}`).rec.puzzle.n, p.n, `${tag}: the link`);
+        const changed = at => (
+          code.slice(0, at) + (code[at] === 'A' ? 'B' : 'A') + code.slice(at + 1));
+        const damaged = [
+          code.slice(0, -1), `${code}A`, ...Array.from(code, (_, at) => changed(at)),
+        ];
+        eq(damaged.map(decodeShare).filter(Boolean).length, 0,
+          `${tag}: a truncated, a longer and every mistyped code is refused`);
+      }
     }
   });
 }

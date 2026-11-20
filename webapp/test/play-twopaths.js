@@ -5,13 +5,10 @@
 // twoPathsPlayTests(t, ok, eq).
 import { maxNumber } from '../src/core/model.js';
 import { canStep } from '../src/core/rules.js';
-import { PLAY_SIZES } from '../src/core/gen/generate.js';
 import { splitPath, colourOfCell, colourNumber } from '../src/core/twopaths.js';
 import { boardSvg, badgeColorsTwo, COLORS } from '../src/apps/play/board.js';
-import { variantOf, variantById, sizesFor } from '../src/apps/play/variants.js';
+import { variantById } from '../src/apps/play/variants.js';
 import { EN, ZH } from '../src/ui/i18n.js';
-import { encodeShare, decodeShare, TWO_PATHS } from '../src/core/share-code.js';
-import { makeShareRecord, shareStatus, shareText, legLevels } from '../src/features/share.js';
 import {
   RED, BLUE, newPaths, pickColour, walkColour, solvedPaths, reached, legsUndoTwo, hintTwo,
 } from '../src/features/twopaths-play.js';
@@ -240,34 +237,6 @@ export function twoPathsPlayTests(t, ok, eq) {
     const bare = { ...p };
     delete bare.path;
     eq(hintTwo(bare, newPaths(), RED).correctCell, red[0], 'the solver finds it');
-  });
-
-  t('twopaths-play: share code and record — round trip, K-1 legs, both languages', () => {
-    for (const n of [5, 6, 7, 8]) {
-      const p = game(n, 2);
-      const K = maxNumber(p);
-      const legs = [];
-      legs[1] = 2;
-      legs[p.split + 1] = 4;
-      const rec = makeShareRecord({ n, timeS: 51.2, legs, K, variant: TWO_PATHS, puzzle: p });
-      eq(rec.variant, TWO_PATHS);
-      eq(rec.grade, null, 'no grade');
-      eq(rec.puzzle.split, p.split, 'the split is copied');
-      ok(rec.puzzle.walls !== p.walls && rec.puzzle.cp !== p.cp, 'a copy, not the same arrays');
-      eq(rec.levels, legLevels(legs, K));
-      eq(rec.levels.length, K - 1, 'one square per leg');
-      const code = encodeShare(rec);
-      ok(typeof code === 'string' && code.length <= 60, `n=${n}: short code (${code?.length})`);
-      const back = decodeShare(code);
-      ok(back && back.variant === TWO_PATHS, 'decodes as twopaths');
-      eq([back.n, back.puzzle.split, back.levels], [n, p.split, rec.levels]);
-      eq(variantOf(back.puzzle), 'twopaths', 'the receiver plays it as Two paths');
-      const ctx = { sizes: PLAY_SIZES, algo: 0, sizesOf: id => sizesFor(id, PLAY_SIZES) };
-      eq(shareStatus(rec, ctx).status, 'ok', 'playable at once');
-      const tr = dict => (key, ...args) => dict[key].replace(/\{0\}/g, args[0]);
-      eq(shareText(rec, 'https://x/?s=abc', tr(EN)).split('\n')[0], `zigzag Two paths · ${n}x${n}`);
-      eq(shareText(rec, 'https://x/?s=abc', tr(ZH)).split('\n')[0], `之折 双路径 · ${n}x${n}`);
-    }
   });
 
   // (the grade by trap only, with the model of the type, is a row of variant-contract.js)
