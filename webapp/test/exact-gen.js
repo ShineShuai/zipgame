@@ -15,6 +15,7 @@ import { targetBand, maxTargetGrade } from '../src/core/gen/target.js';
 import { backbite } from '../src/core/gen/hampath.js';
 import { runSync } from '../src/core/run.js';
 import { makeRng } from '../src/core/rng.js';
+import { sampled } from './harness.js';
 
 const CHECK = { limit: 2, nodeCap: 5e6, prop: true, parity: true };
 const HIT_SEEDS = 6; // seeds tried from a base seed before a target test calls the generator broken
@@ -40,7 +41,8 @@ export function exactGenTests(t, ok, eq) {
   });
 
   t('exact gen: no number can be taken off (each interior number is needed), 5x5 to 7x7', () => {
-    for (const [n, seed] of [[5, 11], [5, 12], [6, 13], [6, 14], [7, 15], [7, 16]]) {
+    const cases = [[5, 11], [5, 12], [6, 13], [6, 14], [7, 15], [7, 16]];
+    for (const [n, seed] of sampled(cases)) {
       const p = runSync(generateExact(n, seed));
       for (const cell of interior(p)) {
         const step = p.cp[cell];

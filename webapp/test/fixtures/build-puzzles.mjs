@@ -5,12 +5,27 @@
 import fs from 'node:fs';
 import { runSync } from '../../src/core/run.js';
 import { COOP_VARIANTS } from '../../src/coop/variants.js';
-import { freeze, keyOf } from './puzzles.js';
+import { freeze, keyOf, SAMPLES } from './puzzles.js';
 import { MAKE as CORE_MAKERS } from './makers.js';
+import { generateUnique } from '../../src/core/gen/generate.js';
+import { makeRng } from '../../src/core/rng.js';
 
 const solid = id => (n, seed) => COOP_VARIANTS.find(variant => variant.id === id).generate(n, seed);
 // the solids belong to the co-op trial, which test/fixtures/makers.js (used by made()) may not import
-const MAKE = { ...CORE_MAKERS, tetra: solid('tetra'), cube: solid('cube'), ball: solid('ball') };
+const MAKE = {
+  ...CORE_MAKERS,
+  tetra: solid('tetra'),
+  cube: solid('cube'),
+  ball: solid('ball'),
+  sample: sampleJob,
+};
+
+// a unique puzzle with K checkpoints, as unit/helpers.js used to make it
+function* sampleJob(n, seed, { K }) {
+  const found = yield* generateUnique(n, K, makeRng(seed), { tries: 20 });
+  if (!found.unique) throw new Error(`no unique sample puzzle for n=${n} K=${K} seed=${seed}`);
+  return found.puzzle;
+}
 
 const grid = (sizes, seeds) => sizes.flatMap(n => seeds.map(seed => [n, seed]));
 // the options the tests use to make a puzzle quickly
@@ -41,6 +56,7 @@ const SPECS = [
   ['teleport', [[8, 3, { pairs: 2 }]]],
   ['arrows', [[5, 3, FAST_GEN]]],
   ['exact', [[6, 3], [6, 5], [6, 7], [6, 9], [7, 13]].map(([n, seed]) => [n, seed, FAST_GEN])],
+  ['sample', SAMPLES.map(([n, K, seed]) => [n, seed, { K }])],
 ];
 
 await COOP_VARIANTS.find(variant => variant.id === 'ball').ready();

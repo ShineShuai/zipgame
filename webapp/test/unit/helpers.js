@@ -3,9 +3,8 @@
 import { makePuzzle } from '../../src/core/model.js';
 import { allEdges, setWallId } from '../../src/core/edges.js';
 import { makeRng, shuffle } from '../../src/core/rng.js';
-import { generateUnique } from '../../src/core/gen/generate.js';
-import { runSync } from '../../src/core/run.js';
 import { ok } from '../harness.js';
+import { fixture, SAMPLES } from '../fixtures/puzzles.js';
 
 export const randPuzzle = (seed, n, K, wallFrac) => {
   const rnd = makeRng(seed), p = makePuzzle(n), T = n * n, cells = shuffle([...Array(T).keys()], rnd).slice(0, K);
@@ -14,12 +13,7 @@ export const randPuzzle = (seed, n, K, wallFrac) => {
   return p;
 };
 export function sampleUniquePuzzles() {
-  const cases = [[7, 6, 11], [9, 8, 22], [11, 10, 33]]; // [n, K, seed]
-  const out = [];
-  for (const [n, K, seed] of cases) {
-    const r = runSync(generateUnique(n, K, makeRng(seed), { tries: 20 }));
-    if (r.unique) out.push(r.puzzle);
-  }
+  const out = SAMPLES.map(([n, K, seed]) => fixture('sample', n, seed, { K }));
   ok(out.length > 0, 'expected at least one unique sample puzzle to test against');
   return out;
 }

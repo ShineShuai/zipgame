@@ -7,6 +7,11 @@ import { parse, serialize } from '../../src/core/format.js';
 import { looksLikeSurface, parseSurface, serializeSurface, isSurfacePuzzle } from '../../src/core/surface/puzzle.js';
 
 const FILE = new URL('./puzzles.json', import.meta.url);
+
+// The unique puzzles that unit/helpers.js hands to the solver and grading tests: [n, K, seed].
+// Four test files used them and each made them again (0.3 s a file); they are frozen as kind
+// 'sample'.
+export const SAMPLES = [[7, 6, 11], [9, 8, 22], [11, 10, 33]];
 let all = null;
 
 // The options of a generator call are part of the key, as JSON: write them in the order the test

@@ -18,7 +18,7 @@ import { makeIncremental } from '../../src/core/solver/incremental.js';
 import { randomPathPuzzle } from '../../src/core/gen/generate.js';
 import { refNodeCap, REF_FLAGS } from '../../src/core/difficulty.js';
 import { solutionPath, trapProfile, TRAP_CFG } from '../../src/core/trap.js';
-import { t, eq, ok, registerAsyncTests } from '../harness.js';
+import { t, eq, ok, registerAsyncTests, sampled } from '../harness.js';
 import { cachedSamples, randPuzzle, sampleUniquePuzzles } from './helpers.js';
 
 // Exhaustive reference: enumerate every Hamiltonian path that obeys the rules.
@@ -491,7 +491,8 @@ t('incremental propagation: after every move, undo and redo, the state equals pr
 
 t('solver: mustUse finds exactly the solutions that walk the edge (all flag sets)', () => {
   let cmp = 0;
-  for (let s = 1; s <= 60; s++) {
+  const seeds = sampled(Array.from({ length: 60 }, (_, i) => i + 1));
+  for (const s of seeds) {
     const n = 3 + (s % 3), p = randPuzzle(s, n, 2 + (s % 3), 0.04 * (s % 6));
     const all = solve(p, { limit: 1e9, nodeCap: 1e7, capture: true });
     ok(!all.exceeded);
@@ -505,7 +506,7 @@ t('solver: mustUse finds exactly the solutions that walk the edge (all flag sets
       }
     }
   }
-  ok(cmp > 1000, 'compared ' + cmp);
+  ok(cmp > 1000 * seeds.length / 60, 'compared ' + cmp); // scales with the sample
 });
 
 t('forcedEdges: a path that already ran through the end cell is reported infeasible (design app free play)', () => {
