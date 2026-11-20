@@ -42,7 +42,7 @@ function randomArrowPuzzle(seed, n, K, arrowFrac, wallFrac = 0, holeCount = 0) {
         p.holes[c] = 1;
       });
   }
-  const cells = [...Array(n * n).keys()].filter(c => !(p.holes && p.holes[c]));
+  const cells = [...Array(n * n).keys()].filter(c => !p.holes?.[c]);
   shuffle(cells, rnd)
     .slice(0, K)
     .forEach((c, i) => {

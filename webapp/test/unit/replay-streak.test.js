@@ -468,7 +468,11 @@ const span = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
 // The days of an unbroken streak from day 1 that earn a reward: after RAMP[0] days, RAMP[1] more, ..., then every FREEZE_EVERY.
 const rewardDays = upto => {
   const days = [];
-  for (let day = 0, k = 0; (day += RAMP[k++] ?? FREEZE_EVERY) <= upto; ) days.push(day);
+  for (let day = 0, k = 0; ; k++) {
+    day += RAMP[k] ?? FREEZE_EVERY;
+    if (day > upto) break;
+    days.push(day);
+  }
   return days;
 };
 
@@ -831,7 +835,7 @@ ta(
   async () => {
     const st = fakeStorage(),
       u = d => Math.floor(Date.UTC(2026, 0, d, 12) / 86400000);
-    let d = 8;
+    const d = 8;
     await st.set(
       'zip_streak',
       JSON.stringify({

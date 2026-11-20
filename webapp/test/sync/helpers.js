@@ -185,7 +185,7 @@ const hranaValue = v => {
 
 export const fakeTurso =
   (db, { token = 'public-token', down = () => false } = {}) =>
-  async (url, init) => {
+  async (_url, init) => {
     if (down()) throw new Error('offline');
     if (init.headers.Authorization !== `Bearer ${token}`) {
       return { ok: false, status: 401, json: async () => ({}) };

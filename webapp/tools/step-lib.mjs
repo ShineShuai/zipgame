@@ -365,7 +365,7 @@ export function verdict(held, current, { boot = 400, seed = 1, rule = RULE } = {
     const at = f => idx.map(i => f(held[i], i));
     const dLL = mean(at(h => h.ll.free - h.ll.hand));
     const dUni = mean(at(h => h.ll.hand - h.ll.uniform));
-    const y = at((h, i) => regret[i]);
+    const y = at((_h, i) => regret[i]);
     const rn = spearman(
         at(h => h.score),
         y,
@@ -376,7 +376,7 @@ export function verdict(held, current, { boot = 400, seed = 1, rule = RULE } = {
       );
     const rc = haveCur
       ? spearman(
-          at((h, i) => cur[i]),
+          at((_h, i) => cur[i]),
           y,
         )
       : NaN;

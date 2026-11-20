@@ -158,7 +158,7 @@ test('a channel that cannot send (not open yet) does not break leaving or hello'
 test('a channel `closed` report does not stop the session: the game still starts', () => {
   // A browser can call a connection failed while the host has not pasted the reply yet, and
   // the channel opens after all; the session must not stay mute then.
-  const { wire, host, guest, events } = connect();
+  const { wire, host, events } = connect();
   wire.b.onclose();
   wire.a.onclose();
   host.newGame(fixture('std', 5, 4), 4);

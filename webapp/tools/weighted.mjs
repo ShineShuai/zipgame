@@ -1,5 +1,5 @@
 // Exploratory composites of ladder() outputs vs hand ratings. Usage: node tools/weighted.mjs [tools/ratings.json]
-import { loadLabeled, spearman, features } from './ladder-eval.mjs';
+import { loadLabeled, spearman } from './ladder-eval.mjs';
 import { ladder } from '../src/core/ladder.js';
 const rows = loadLabeled(
   process.argv[2] || new URL('./ratings.json', import.meta.url).pathname,

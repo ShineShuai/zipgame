@@ -147,8 +147,8 @@ test('supabase: a POST to the function with the anon key (keepalive when asked)'
 });
 
 test('a slow server is cut off with a "network" error', async () => {
-  const slow = (url, init) =>
-    new Promise((resolve, reject) => {
+  const slow = (_url, init) =>
+    new Promise((_resolve, reject) => {
       init.signal.addEventListener('abort', () => reject(new Error('aborted')));
     });
   assert.equal(await codeOf(() => fetchJson(slow, 'https://x', {}, 20)), 'network');

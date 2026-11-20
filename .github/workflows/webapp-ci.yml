@@ -63,11 +63,13 @@ jobs:
         run: npm run check
 
       # The code style (README, Code style): Biome is pinned in package.json and package-lock.json.
-      - name: Format check (Biome)
+      # Its warnings fail the step too, so the findings stay at zero.
+      - name: Format and lint (Biome)
         if: matrix.node == 22
         run: |
           npm ci
           npm run format:check
+          npm run lint
 
       # Node 20 runs the fast tier: the tests that are not marked slow (test/harness.js), under a minute.
       - name: Unit tests (fast tier)

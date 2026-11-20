@@ -57,7 +57,6 @@ const baseByKey = new Map(base.map((r, i) => [r.key, i]));
 const blocks = [];
 let comment = [],
   cur = null,
-  start = 0,
   afterBlock = false;
 fs.readFileSync(file, 'utf8')
   .split(/\r?\n/)

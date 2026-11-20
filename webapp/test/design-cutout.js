@@ -4,7 +4,7 @@
 // such a board, the play-mode overlays (core/connectivity.js), the text format. (Which tools design.html shows is the page's own markup, not tested here.)
 // Registered by unit/cutout.test.js: designCutoutTests(t, ok, eq).
 import { makePuzzle, validate, cellCount, maxNumber } from '../src/core/model.js';
-import { edgeCells, setWallId, hasWallId, wallIds } from '../src/core/edges.js';
+import { edgeCells, setWallId, wallIds } from '../src/core/edges.js';
 import { serialize, parse } from '../src/core/format.js';
 import { isSolved } from '../src/core/rules.js';
 import { solve } from '../src/core/solver/solve.js';

@@ -57,6 +57,7 @@ if (first === '--encode') {
   if (rec.kind === 'gotd') {
     extra.date = dateOfDay(rec.day);
   }
-  const plain = (key, value) => (ArrayBuffer.isView(value) ? [...value] : value); // typed -> plain
+  // typed arrays -> plain arrays
+  const plain = (_key, value) => (ArrayBuffer.isView(value) ? [...value] : value);
   console.log(JSON.stringify({ ...rec, ...extra }, plain, 2));
 }

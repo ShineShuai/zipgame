@@ -17,7 +17,8 @@ class FakeWorker {
     this.terminated = false;
   }
   addEventListener(type, f) {
-    (this.listeners[type] ||= new Set()).add(f);
+    this.listeners[type] ||= new Set();
+    this.listeners[type].add(f);
   }
   removeEventListener(type, f) {
     this.listeners[type]?.delete(f);

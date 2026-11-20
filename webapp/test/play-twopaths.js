@@ -77,7 +77,7 @@ export function twoPathsPlayTests(t, ok, eq) {
     eq((svg.match(/<circle class="num-shape"/g) || []).length, p.split, 'a circle per red number');
     const squares = (svg.match(/<rect class="num-shape"/g) || []).length;
     eq(squares, K - p.split, 'a square per blue number');
-    const blueNumbers = [...svg.matchAll(/data-colour="1">[^]*?<text[^>]*>(\d+)<\/text>/g)]
+    const blueNumbers = [...svg.matchAll(/data-colour="1">[\s\S]*?<text[^>]*>(\d+)<\/text>/g)]
       .map(m => +m[1])
       .sort((a, b) => a - b);
     eq(
@@ -85,7 +85,7 @@ export function twoPathsPlayTests(t, ok, eq) {
       Array.from({ length: K - p.split }, (_, i) => i + 1),
       'blue counts from 1',
     );
-    const redNumbers = [...svg.matchAll(/data-colour="0">[^]*?<text[^>]*>(\d+)<\/text>/g)]
+    const redNumbers = [...svg.matchAll(/data-colour="0">[\s\S]*?<text[^>]*>(\d+)<\/text>/g)]
       .map(m => +m[1])
       .sort((a, b) => a - b);
     eq(
@@ -270,7 +270,7 @@ export function twoPathsPlayTests(t, ok, eq) {
       wrongCell: null,
     });
     // red went wrong at its 2nd cell
-    const stray = p.cp.findIndex((v, cell) => cell !== red[0] && cell !== red[1]);
+    const stray = p.cp.findIndex((_v, cell) => cell !== red[0] && cell !== red[1]);
     eq(hintTwo(p, [[red[0], stray], []], RED), {
       colour: RED,
       correctCell: red[1],

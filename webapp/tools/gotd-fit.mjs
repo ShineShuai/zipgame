@@ -62,7 +62,7 @@ const familyOf = id => BASE[id] || id,
 // A row counts for a candidate when its value is finite (a rating without a solution path has NaN trap metrics: one such row would
 // poison the whole fit of every trap candidate) and, for a solver metric, when the reference solve was not capped.
 const defined = id =>
-  F.map((f, i) => i).filter(i => Number.isFinite(F[i][id]) && !(needsSolver(id) && F[i]._capped));
+  F.map((_f, i) => i).filter(i => Number.isFinite(F[i][id]) && !(needsSolver(id) && F[i]._capped));
 const column = (id, rows) => rows.map(i => F[i][id]);
 
 const fitOn = (id, rows) =>
@@ -134,7 +134,8 @@ for (let b = 0; b < B; b++) {
     const err = pred => test.reduce((s, i) => s + W[i] * Math.abs(pred(i) - H[i]), 0) / wsum(test);
     const skill = 1 - err(i => predictH(fit.model, F[i][c.id])) / err(() => mean);
     scored.push({ id: c.id, skill });
-    (sk[c.id] = sk[c.id] || []).push(skill);
+    sk[c.id] ||= [];
+    sk[c.id].push(skill);
   }
   scored
     .sort((a, b2) => b2.skill - a.skill)

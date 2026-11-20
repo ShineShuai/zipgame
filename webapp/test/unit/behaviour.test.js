@@ -5,7 +5,6 @@ import { makePuzzle } from '../../src/core/model.js';
 import { serialize, parse } from '../../src/core/format.js';
 import { generate } from '../../src/core/gen/generate.js';
 import { runSync } from '../../src/core/run.js';
-import { t as tr } from '../../src/ui/i18n.js';
 import { newTrace, traceTrack, traceEvents } from '../../src/features/playlog.js';
 import {
   packPuzzle,
@@ -70,7 +69,7 @@ t.slow(
     ]) {
       const p = runSync(generate(n, seed)),
         b = packPuzzle(p);
-      ok(b instanceof Uint8Array && b.length <= 40, `size ${n}: ${b && b.length} bytes`);
+      ok(b instanceof Uint8Array && b.length <= 40, `size ${n}: ${b?.length} bytes`);
       eq(serialize(unpackPuzzle(b)), serialize(p), `size ${n}`);
       eq([...packPuzzle(unpackPuzzle(b))], [...b], 'equal puzzles are equal bytes');
       ok(serialize(p).length > 4 * b.length, 'the plain text is several times larger');
@@ -418,7 +417,7 @@ t('behaviour: packEv / unpackEv: a version byte, 2 bytes per wrong turn, at most
   ];
   bads.push(new Uint8Array(66).fill(1));
   for (const bad of bads) {
-    const bytes = bad instanceof Array ? Uint8Array.from(bad) : bad;
+    const bytes = Array.isArray(bad) ? Uint8Array.from(bad) : bad;
     eq(unpackEv(bytes), null, 'not this layout: ' + bad);
   }
 });

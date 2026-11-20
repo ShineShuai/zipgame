@@ -312,9 +312,8 @@ const REQUEST = {
       ],
     },
     answer: reply => {
-      const r = reply.results && reply.results[0];
-      if (!r || r.type !== 'ok')
-        return `failed: ${(r && r.error && r.error.message) || 'no result'}`;
+      const r = reply.results?.[0];
+      if (r?.type !== 'ok') return `failed: ${r?.error?.message || 'no result'}`;
       return r.response.result.affected_row_count ? 'ok' : 'exists';
     },
   }),

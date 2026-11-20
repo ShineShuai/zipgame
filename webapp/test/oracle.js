@@ -52,7 +52,8 @@ export function oracle(
         found();
       }
     } else {
-      const options = (scratch[length] ??= []);
+      scratch[length] ??= [];
+      const options = scratch[length];
       options.length = 0;
       moves(cell, options);
       for (const to of options) {

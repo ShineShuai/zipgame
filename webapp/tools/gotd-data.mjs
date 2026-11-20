@@ -51,7 +51,7 @@ export function loadPuzzles(dir, { log = console.log } = {}) {
     try {
       const p = parse(text),
         m = validate(p).ok ? trapMetrics(p) : null;
-      if (!m || !m.ok) {
+      if (!m?.ok) {
         log(`skipped ${f}: no trap grade`);
         continue;
       }

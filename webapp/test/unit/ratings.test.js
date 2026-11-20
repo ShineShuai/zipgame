@@ -1,9 +1,8 @@
 // Unit tests of ratings and pairs (ratings.json format, the design panel, the tools that check them).
 // Part of `npm test` (test/run.mjs); the tiers and t / ta are in test/harness.js.
 import '../setup-balls.js';
-import { serialize, parse } from '../../src/core/format.js';
+import { serialize } from '../../src/core/format.js';
 import { loadRatings, saveRatings, loadPairs, savePairs } from '../../src/core/log-store.js';
-import fs from 'node:fs';
 import { mountDifficultyPanel } from '../../src/apps/design/difficulty-panel.js';
 import {
   ratingKey,
@@ -714,7 +713,10 @@ ta(
       createElement: () => ({ click() {}, remove() {} }),
       body: { appendChild() {} },
     };
-    URL.createObjectURL = b => ((blob = b), 'blob:t');
+    URL.createObjectURL = b => {
+      blob = b;
+      return 'blob:t';
+    };
     URL.revokeObjectURL = () => {};
     try {
       await dom.sel('#diffLogExport').onclick();
@@ -849,7 +851,10 @@ ta(
       createElement: () => ({ click() {}, remove() {} }),
       body: { appendChild() {} },
     };
-    URL.createObjectURL = b => ((blob = b), 'blob:t');
+    URL.createObjectURL = b => {
+      blob = b;
+      return 'blob:t';
+    };
     URL.revokeObjectURL = () => {};
     try {
       await dom.sel('#diffPairExport').onclick();

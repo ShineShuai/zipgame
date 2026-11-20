@@ -65,7 +65,7 @@ async function device(world, { data = {}, secret = null, order, minPushMs = 0 } 
 const seenOf = async (d, id) => {
   const raw = await d.storage.get(RULES_SEEN_KEY);
   const view = d.sync.view(RULES_SEEN_KEY, raw ? JSON.parse(raw.value) : null);
-  return Boolean(view && view.seen[id]);
+  return Boolean(view?.seen[id]);
 };
 
 sqliteTest(

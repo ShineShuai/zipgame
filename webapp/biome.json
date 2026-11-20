@@ -26,6 +26,17 @@
         "noUnusedImports": "error",
         "noUnusedVariables": "error",
         "noUndeclaredVariables": "error"
+      },
+      "style": {
+        "useTemplate": "off"
+      },
+      "suspicious": {
+        "useIterableCallbackReturn": {
+          "level": "error",
+          "options": {
+            "checkForEach": false
+          }
+        }
       }
     }
   },

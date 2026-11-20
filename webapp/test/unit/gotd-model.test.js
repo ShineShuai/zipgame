@@ -611,18 +611,20 @@ t(
     ok(Math.abs(Math.exp(one.mean[0]) - 40000) < 5000, 'level moves to the data');
     ok(Math.abs(one.mean[2] - Math.LN2) < 0.05, 'slope stays at the prior with one day');
     let s = 11;
-    const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32,
-      pts = Array.from({ length: 80 }, () => {
-        const n = 5 + Math.floor(rnd() * 7),
-          h = rnd() * 4;
-        return {
-          n,
-          h,
-          y:
-            Math.log(40000) + 0.9 * Math.log((n * n) / 49) + 0.6 * (h - 1.5) + 0.1 * (rnd() - 0.5),
-          count: 10,
-        };
-      });
+    const rnd = () => {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 2 ** 32;
+    };
+    const pts = Array.from({ length: 80 }, () => {
+      const n = 5 + Math.floor(rnd() * 7),
+        h = rnd() * 4;
+      return {
+        n,
+        h,
+        y: Math.log(40000) + 0.9 * Math.log((n * n) / 49) + 0.6 * (h - 1.5) + 0.1 * (rnd() - 0.5),
+        count: 10,
+      };
+    });
     const m = fitTime(pts);
     ok(
       Math.abs(m.mean[1] - 0.9) < 0.1 &&
@@ -658,7 +660,7 @@ t('format: commentTimes reads back the times serialize writes, and nothing else'
 t(
   'gotd-model: timePoints drops seed players, plays below the floor and thin days; the author time counts once above the floor',
   () => {
-    const day = (d, n, reals, seeds) => {
+    const day = (d, _n, reals, seeds) => {
       const all = [...reals, ...seeds],
         bins = new Array(NB).fill(0);
       for (const x of all) bins[binOf(x)]++;
@@ -717,7 +719,7 @@ t(
 t(
   'gotd-model: playPoints keeps thin days, weights them by player count and pools sigma from days with >= 3 plays',
   () => {
-    const day = (d, n, reals, seeds) => {
+    const day = (d, _n, reals, seeds) => {
       const all = [...reals, ...seeds],
         bins = new Array(NB).fill(0);
       for (const x of all) bins[binOf(x)]++;
@@ -769,8 +771,11 @@ t(
       [-0.97, -0.44, 0, 0.39, 1.03, 1.56],
     ); // time ~ cells, x2 per grade
     let s = 5;
-    const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32,
-      gauss = () => Math.sqrt(-2 * Math.log(1 - rnd())) * Math.cos(2 * Math.PI * rnd());
+    const rnd = () => {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 2 ** 32;
+    };
+    const gauss = () => Math.sqrt(-2 * Math.log(1 - rnd())) * Math.cos(2 * Math.PI * rnd());
     const U = { 6: -0.2, 8: 0.3 },
       pts = Array.from({ length: 120 }, (_, i) => {
         const n = 6 + (i % 5),

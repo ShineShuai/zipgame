@@ -1,7 +1,6 @@
 // Unit tests of the leaderboard: backends, failover, adapters, config, after-submit rounds, share flow.
 // Part of `npm test` (test/run.mjs); the tiers and t / ta are in test/harness.js.
 import '../setup-balls.js';
-import { solve } from '../../src/core/solver/solve.js';
 import { createReplay } from '../../src/features/replay.js';
 import { createStore } from '../../src/features/stats-store.js';
 import { binOf } from '../../src/core/hist.js';
@@ -115,7 +114,7 @@ const reply = (status, body) => ({
 
 const GOOD = { n: 3, sum: 90000, below: 1, cnt: 1, best: [10000, 30000, 50000] };
 
-const hang = (url, { signal }) =>
+const hang = (_url, { signal }) =>
   new Promise((_, rej) => signal.addEventListener('abort', () => rej(new Error('aborted'))));
 
 const CF = { url: 'https://w.example/' },
@@ -249,7 +248,7 @@ const ALL = { 'asia.example': meanOf(30), 'w.example': meanOf(40), 's.example': 
 
 const down = async () => reply(503, {});
 
-const brief = r => [r.status, r.backend, r.summary && r.summary.mean, r.done, r.complete];
+const brief = r => [r.status, r.backend, r.summary?.mean, r.done, r.complete];
 
 ta(
   'leaderboard: always + first backup are both written, the summary comes from always, the later backups stay untouched',
@@ -311,7 +310,7 @@ ta(
     ]);
     const hung = three({
       ...ALL,
-      'asia.example': (url, { signal }) =>
+      'asia.example': (_url, { signal }) =>
         new Promise((_, reject) =>
           signal.addEventListener('abort', () => reject(new Error('aborted'))),
         ),
@@ -412,7 +411,7 @@ ta(
         url: `https://wrapped.example/r?${from}-${to}`,
         init: { method: 'GET' },
       }),
-      decode: (kind, json) => {
+      decode: (_kind, json) => {
         if (json.error) return json.error === 'invalid' ? { rejected: true } : null;
         return json.result;
       },
@@ -514,8 +513,9 @@ t(
     const uid = () =>
       JSON.parse(be.request({ d: 20261004, t: 42130, b }).init.body).requests[0].stmt.args[0]
         .value;
+    const uids = [uid(), uid()];
     ok(
-      uid().length >= 8 && uid().length <= 64 && uid() !== uid(),
+      uids.every(id => id.length >= 8 && id.length <= 64) && uids[0] !== uids[1],
       'a fresh random uid of 8..64 characters per request',
     );
     const r = be.read({ from: 20261001, to: 20261004 });
