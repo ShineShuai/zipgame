@@ -209,7 +209,7 @@
   "test/pentagon.js": 4,
   "test/play-arrows.js": 2,
   "test/play-exact.js": 3,
-  "test/play-loop.js": 10,
+  "test/play-loop.js": 8,
   "test/play-pentagon.js": 2,
   "test/play-teleport.js": 3,
   "test/play-twopaths.js": 4,

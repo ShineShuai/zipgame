@@ -10,16 +10,15 @@ import { parse } from '../src/core/format.js';
 import { step, isSolved } from '../src/core/rules.js';
 import { PLAY_SIZES } from '../src/core/gen/generate.js';
 import { isPortalPair } from '../src/core/geom.js';
-import { playGradesFor } from '../src/core/grades.js';
-import { modelFor, TELEPORT_MODEL, TRAP_MODEL, trapProfile } from '../src/core/trap.js';
+import { trapProfile } from '../src/core/trap.js';
 import { boardSvg, routeD, jumpMarksSvg, portalIconsSvg } from '../src/apps/play/board.js';
 import { createUnlock } from '../src/features/unlock.js';
-import { sizesFor, luckyDefs } from '../src/apps/play/variants.js';
+import { luckyDefs } from '../src/apps/play/variants.js';
 import { EN, ZH } from '../src/ui/i18n.js';
 import {
   encodeShare, decodeShare, VARIANTS, SHARE_VERSION_PORTAL, TELEPORT,
 } from '../src/core/share-code.js';
-import { makeShareRecord, shareStatus, shareText } from '../src/features/share.js';
+import { makeShareRecord } from '../src/features/share.js';
 import { portalD, miniPreviewSvg } from '../src/apps/design/board.js';
 import {
   portalColor, portalShape, PORTAL_COLORS, PORTAL_SHAPES,
@@ -158,35 +157,16 @@ export function teleportPlayTests(t, ta, ok, eq) {
     }
   });
 
-  t('teleport-play: share record copies the puzzle; text, status, sizes', () => {
+  t('teleport-play: a share record copies the portal pairs', () => {
     const p = tele(6, 3);
-    const rec = record(p);
-    const copied = rec.puzzle.portals;
+    const copied = record(p).puzzle.portals;
     ok(Array.isArray(copied) && copied !== p.portals && copied[0] !== p.portals[0],
       'the pairs are copied');
-    ok(rec.puzzle.walls !== p.walls && rec.puzzle.cp !== p.cp, 'a copy, not the same arrays');
-    eq(rec.grade, null, 'no grade');
-    eq(rec.variant, TELEPORT);
-    const tr = (key, ...args) => EN[key].replace(/\{0\}/g, args[0]);
-    eq(shareText(rec, 'https://x/?s=abc', tr).split('\n')[0], 'zigzag Teleport · 6x6',
-      'the head line');
-    const ctx = { sizes: PLAY_SIZES, algo: 0, sizesOf: id => sizesFor(id, PLAY_SIZES) };
-    eq(shareStatus(rec, ctx).status, 'ok', 'playable at once');
-    eq(shareStatus(record(tele(5, 3)), ctx).status, 'ok', 'size 5');
   });
 
-  t('teleport-play: grade: trap only, reduced model, no ladder; grid grades as before', () => {
-    const p = tele(6, 1);
-    eq(modelFor(p), TELEPORT_MODEL, 'the teleport model');
-    ok(TELEPORT_MODEL !== TRAP_MODEL, 'not the full model');
-    ok(TELEPORT_MODEL.w.altFrac === 0 && TELEPORT_MODEL.w.lTr === 0, 'reduced');
-    const g = playGradesFor(p);
-    ok(g.legacy === null && g.trap.ok && g.trap.ladTrials === 0, 'trap only');
-    ok(Number.isInteger(g.trap.grade) && g.trap.grade >= 0 && g.trap.grade <= 5, 'a grade 0..5');
-    ok(ladder(p).error, 'the technique ladder says it does not know portals');
-    const grid = made('std', 5, 1);
-    eq(modelFor(grid), TRAP_MODEL, 'the grid keeps its model');
-    ok(playGradesFor(grid).legacy !== null, 'the grid keeps the old grades');
+  // (the grade by trap only, with the model of the type, is a row of variant-contract.js)
+  t('teleport-play: the technique ladder says it does not know portals', () => {
+    ok(ladder(tele(6, 1)).error, 'the technique ladder says it does not know portals');
   });
 
   t('teleport-play: the trap profile counts the portal as a move: '

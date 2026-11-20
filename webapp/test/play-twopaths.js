@@ -7,8 +7,6 @@ import { maxNumber } from '../src/core/model.js';
 import { canStep } from '../src/core/rules.js';
 import { PLAY_SIZES } from '../src/core/gen/generate.js';
 import { splitPath, colourOfCell, colourNumber } from '../src/core/twopaths.js';
-import { playGradesFor } from '../src/core/grades.js';
-import { modelFor, TWOPATHS_MODEL, TRAP_MODEL } from '../src/core/trap.js';
 import { boardSvg, badgeColorsTwo, COLORS } from '../src/apps/play/board.js';
 import { variantOf, variantById, sizesFor } from '../src/apps/play/variants.js';
 import { EN, ZH } from '../src/ui/i18n.js';
@@ -272,14 +270,9 @@ export function twoPathsPlayTests(t, ok, eq) {
     }
   });
 
-  t('twopaths-play: grade — trap only, the reduced model, no ladder', () => {
+  // (the grade by trap only, with the model of the type, is a row of variant-contract.js)
+  t('twopaths-play: colourNumber counts each colour from 1', () => {
     const p = game(6, 1);
-    eq(modelFor(p), TWOPATHS_MODEL);
-    ok(TWOPATHS_MODEL !== TRAP_MODEL, 'not the full model');
-    ok(TWOPATHS_MODEL.w.altFrac === 0 && TWOPATHS_MODEL.w.lTr === 0, 'reduced');
-    const g = playGradesFor(p);
-    ok(g.legacy === null && g.trap.ok && g.trap.ladTrials === 0, 'trap only');
-    ok(Number.isInteger(g.trap.grade) && g.trap.grade >= 0 && g.trap.grade <= 5, 'a grade 0..5');
     eq(colourNumber(p, p.split + 1), 1, 'colourNumber');
   });
 }

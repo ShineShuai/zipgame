@@ -6,8 +6,6 @@ import { makePuzzle, maxNumber } from '../src/core/model.js';
 import { setWallId, edgeId, wallIds } from '../src/core/edges.js';
 import { step, isSolved } from '../src/core/rules.js';
 import { PLAY_SIZES } from '../src/core/gen/generate.js';
-import { playGradesFor } from '../src/core/grades.js';
-import { modelFor, WRAP_MODEL, TRAP_MODEL } from '../src/core/trap.js';
 import { makeRng } from '../src/core/rng.js';
 import {
   cellAtPoint, pathD, wallSegments, seamMarks, WRAP_PAD, SEAM_STUB,
@@ -15,9 +13,8 @@ import {
 import { boardSvg, seamMarksSvg, CELL } from '../src/apps/play/board.js';
 import { createUnlock } from '../src/features/unlock.js';
 import { sizesFor, luckyDefs } from '../src/apps/play/variants.js';
-import { EN } from '../src/ui/i18n.js';
 import { encodeShare, decodeShare } from '../src/core/share-code.js';
-import { makeShareRecord, shareStatus, shareText } from '../src/features/share.js';
+import { makeShareRecord, shareStatus } from '../src/features/share.js';
 import { torusPuzzle } from './wrap.js';
 import { made } from './fixtures/made.js';
 
@@ -177,38 +174,8 @@ export function wrapPlayTests(t, ta, ok, eq) {
     eq(record(p, { grade: 2 }).grade, null, 'a variant record has no grade');
   });
 
-  t('wrap-play: share record copies the puzzle; text, status', () => {
-    const p = wrapGame(6, 3), rec = record(p);
-    ok(rec.puzzle.wrap === true, 'the wrap flag');
-    ok(rec.puzzle.walls !== p.walls && rec.puzzle.cp !== p.cp, 'a copy, not the same arrays');
-    eq(rec.grade, null, 'no grade');
-    const tr = (key, ...args) => EN[key].replace(/\{0\}/g, args[0]);
-    const text = shareText(rec, 'https://x/?s=abc', tr);
-    eq(text.split('\n')[0], 'zigzag Wrap-around · 6x6', 'the head line');
-    eq(shareStatus(rec, { sizes: PLAY_SIZES, algo: 0 }).status, 'ok', 'playable at once');
-  });
-
-  t('wrap-play: grade: trap only, reduced model, no ladder; grid grades as before', () => {
-    const p = wrapGame(5, 1);
-    eq(modelFor(p), WRAP_MODEL, 'the wrap model');
-    ok(WRAP_MODEL !== TRAP_MODEL, 'not the full model');
-    ok(WRAP_MODEL.w.altFrac === 0 && WRAP_MODEL.w.lTr === 0, 'reduced');
-    const g = playGradesFor(p);
-    ok(g.legacy === null && g.trap.ok && g.trap.ladTrials === 0, 'trap only');
-    ok(Number.isInteger(g.trap.grade) && g.trap.grade >= 0 && g.trap.grade <= 5, 'a grade 0..5');
-    const grid = made('std', 5, 1);
-    eq(modelFor(grid), TRAP_MODEL, 'the grid keeps its model');
-    ok(playGradesFor(grid).legacy !== null, 'the grid keeps the old grades');
-  });
-
-  t('wrap-play: a whole game: the planted path played with step() solves it', () => {
-    for (const seed of [1, 2, 3]) {
-      const p = wrapGame(6, seed), path = [];
-      for (const cell of p.path) {
-        ok(step(p, path, cell, { strictOrder: true }) === 'push', `seed ${seed}`);
-      }
-      ok(isSolved(p, path), `seed ${seed}: solved`);
-    }
+  // (that the planted path solves the puzzle is a row of variant-contract.js)
+  t('wrap-play: a whole game on a hand-made torus puzzle', () => {
     const { p, path } = torusPuzzle(5, 5, makeRng(5), 0.3), played = [];
     for (const cell of path) step(p, played, cell);
     ok(isSolved(p, played), 'a hand-made torus puzzle');
