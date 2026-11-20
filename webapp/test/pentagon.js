@@ -18,6 +18,7 @@ import {
   generatePentagon, pentagonK, pentagonDefaultK, PENTAGON_CANDIDATES,
 } from '../src/core/gen/pentagon.js';
 import { makeRng } from '../src/core/rng.js';
+import { oracle, topologyMoves } from './oracle.js';
 import { pickK, kRange } from '../src/core/gen/pick-k.js';
 import { generate } from '../src/core/gen/generate.js';
 import { maxNumber as flatMax, makePuzzle } from '../src/core/model.js';
@@ -61,29 +62,13 @@ const made = (n, cells, edges) => {
 const threw = f => { try { f(); return false; } catch { return true; } };
 const game = (n, seed, o) => runSync(generatePentagon(n, seed, o));
 
-// Every Hamiltonian path that obeys the rules, by plain search with no pruning at all.
+// Every Hamiltonian path that obeys the rules, by plain search with no pruning at all
+// (test/oracle.js).
 function brute(p) {
   const top = board(p.n);
-  const K = maxNumber(p);
-  const vis = new Uint8Array(top.T);
-  let count = 0;
-  const go = (cell, depth, next) => {
-    vis[cell] = 1;
-    if (depth === top.T) {
-      if (next === K + 1 && p.cp[cell] === K) count++;
-    } else {
-      for (let k = 0; k < top.deg[cell]; k++) {
-        const other = top.nb[cell * SLOTS + k];
-        if (other < 0 || vis[other] || p.walls[top.edgeAt[cell * SLOTS + k]]) continue;
-        const number = p.cp[other];
-        if (number && number !== next) continue;
-        go(other, depth + 1, number ? next + 1 : next);
-      }
-    }
-    vis[cell] = 0;
-  };
-  go(p.cp.indexOf(1), 1, 2);
-  return count;
+  return oracle(p, {
+    moves: topologyMoves(p, top, SLOTS), total: top.T, keep: false,
+  }).count;
 }
 
 // The numbering of every board is frozen: puzzles and share codes refer to cell numbers. If this

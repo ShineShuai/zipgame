@@ -2,7 +2,7 @@
 // (core/model.js), rules (core/rules.js), plain-text format (core/format.js) and the exact-aware
 // solver (core/solver/solve.js). Registered by unit/exact.test.js: exactTests(t, ok, eq).
 import {
-  makePuzzle, clonePuzzle, validate, cellCount, startCell, endCell, labelCount, numberedCells,
+  makePuzzle, clonePuzzle, validate, cellCount, labelCount, numberedCells,
   checkpointCells, exactRanks, exactLegProblem,
 } from '../src/core/model.js';
 import { isSolved, step, canStep } from '../src/core/rules.js';
@@ -11,6 +11,7 @@ import { solve } from '../src/core/solver/solve.js';
 import { allEdges, setWallId, pathEdgeIds, setArrowId } from '../src/core/edges.js';
 import { backbite } from '../src/core/gen/hampath.js';
 import { sampled } from './harness.js';
+import { oracle, ruleMoves } from './oracle.js';
 import { makeRng, shuffle } from '../src/core/rng.js';
 
 // An Exact puzzle with `numbers` = { cell: step }.
@@ -31,34 +32,11 @@ const EXAMPLE_PATH = [
 ];
 
 // Every path that covers all cells, follows canStep, starts on number 1 and puts each number on
-// its own step. The plain definition of the rule, with none of the solver's pruning.
-// -> { count, first }.
+// its own step. The plain definition of the rule, with none of the solver's pruning
+// (test/oracle.js). -> { count, first }.
 function bruteExact(p) {
-  const total = cellCount(p);
-  const start = startCell(p);
-  const claimed = new Set(p.cp.filter(Boolean));
-  const visited = new Uint8Array(p.n * p.n);
-  const path = [];
-  let count = 0;
-  let first = null;
-  const walk = (cell, length) => {
-    const number = p.cp[cell];
-    if (number ? number !== length : claimed.has(length)) return;
-    path.push(cell);
-    if (length === total) {
-      count++;
-      first = first || path.slice();
-    } else {
-      visited[cell] = 1;
-      for (let next = 0; next < p.n * p.n; next++) {
-        if (!visited[next] && canStep(p, cell, next)) walk(next, length + 1);
-      }
-      visited[cell] = 0;
-    }
-    path.pop();
-  };
-  if (start >= 0) walk(start, 1);
-  return { count, first };
+  const { count, paths } = oracle(p, { moves: ruleMoves(p), numbers: 'step' });
+  return { count, first: paths[0] ?? null };
 }
 
 // A random puzzle that has at least one solution: random Hamiltonian path, `extra` numbers besides

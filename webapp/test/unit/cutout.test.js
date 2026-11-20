@@ -27,20 +27,11 @@ import { ladder } from '../../src/core/ladder.js';
 import { boardSvg } from '../../src/apps/play/board.js';
 import { designCutoutTests } from '../design-cutout.js';
 import { t, eq, ok, registerAsyncTests } from '../harness.js';
+import { oracle, ruleMoves } from '../oracle.js';
 import { randPuzzle } from './helpers.js';
 
-const holesBrute = p => { // every Hamiltonian path of the cells that are left, in checkpoint order
-  const n = p.n, T = n * n, K = Math.max(...p.cp), start = p.cp.indexOf(1), end = p.cp.indexOf(K), TC = cellCount(p), vis = new Uint8Array(T); let count = 0;
-  const go = (c, len, need) => {
-    if (p.cp[c]) { if (p.cp[c] !== need) return; need++; }
-    if (len === TC) { if (c === end && need === K + 1) count++; return; }
-    vis[c] = 1;
-    for (const v of [c + 1, c - 1, c + n, c - n]) if (v >= 0 && v < T && !vis[v] && canStep(p, c, v)) go(v, len + 1, need);
-    vis[c] = 0;
-  };
-  go(start, 1, 1);
-  return count;
-};
+// every Hamiltonian path of the cells that are left, in checkpoint order (test/oracle.js)
+const holesBrute = p => oracle(p, { moves: ruleMoves(p), keep: false }).count;
 
 const holesBoard = (seed, n) => { // random board with holes, checkpoints along a random path, random walls off that path
   const rnd = makeRng(seed), p = makePuzzle(n); p.holes = new Uint8Array(n * n);
