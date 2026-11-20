@@ -335,7 +335,6 @@ select option, select optgroup { background: var(--surface); color: var(--headin
 .stat-streak .pip.on { background: var(--flame); }
 .pips.week .pip:last-child { box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 4px var(--flame-soft); } /* the 7th dot: the reward */
 .stat-champ { flex-basis: 100%; }
-.gotd-card .stat-item.stat-champ { flex: 1 1 100%; }
 .stat-champ .stat-icon { display: grid; place-items: center; font-size: 1.4rem; line-height: 1; }
 .stat-champ.lit .stat-icon { color: var(--accent-text); }
 .stat-champ .pip.on { background: var(--accent-text); }
@@ -571,7 +570,7 @@ button.sync-head:focus-visible { outline: 2px solid var(--accent); outline-offse
 
 .gotd-card .blurb { margin-bottom: 12px; }
 .gotd-card .button-row .btn { min-height: 48px; }
-.gotd-card .status-panel { margin-top: auto; padding-top: 14px; flex-direction: column; gap: 10px; }
+.gotd-card .status-panel { margin-top: auto; padding-top: 14px; flex-direction: column; flex-wrap: nowrap; gap: 10px; }
 .gotd-card .stat-item { flex: none; width: 100%; }
 .gotd-card .storage-note { margin-top: 10px; }
 
@@ -951,8 +950,9 @@ tr:last-child td { border-bottom: 0; }
   .menu-layout.has-gift { grid-template-areas: "intro" "gift" "today" "play" "shared"; }
   .coop-card { grid-template-columns: minmax(0, 1fr) auto; }
   .coop-card .blurb { grid-column: 1 / -1; grid-row: 2; }
-  .gotd-card .status-panel { flex-direction: row; }
+  .gotd-card .status-panel { flex-direction: row; flex-wrap: wrap; }
   .gotd-card .stat-item { flex: 1 1 0; width: auto; }
+  .gotd-card .stat-item.stat-champ { flex: 1 1 100%; } /* its own row under the replay and streak cards */
 }
 
 @media (max-width: 900px) {
