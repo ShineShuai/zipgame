@@ -20,14 +20,37 @@ const near = (x, y, message) =>
   assert.ok(Math.abs(x - y) < 1e-9 * Math.max(1, Math.abs(x)), message);
 const ledgerOf = (id, days) =>
   days.reduce((copy, day) => win(judged(copy, day), day, 9000), fresh(20000, id));
-const shuffled = list => list.map(x => [Math.random(), x])
-  .sort((a, b) => a[0] - b[0]).map(x => x[1]);
+const shuffled = list =>
+  list
+    .map(x => [Math.random(), x])
+    .sort((a, b) => a[0] - b[0])
+    .map(x => x[1]);
 
 test('the synced keys are exactly these, and what is device-local is not among them', () => {
-  assert.deepEqual([...SYNCED_KEYS].sort(), [STATS_KEY, GOTD_KEY, STREAK_KEY, UNLOCK_KEY,
-    CREDIT_KEY, GIFT_KEY, RULES_SEEN_KEY, SLOTS_KEY, CHAMP_KEY].sort());
-  for (const local of ['zip_playlog_v2', 'zip_behaviour_on', 'zip_theme', 'zip_theme_seed',
-    'zip_shared_games', 'zip_coop_stats', 'zip_sync', 'zip_sync_f']) {
+  assert.deepEqual(
+    [...SYNCED_KEYS].sort(),
+    [
+      STATS_KEY,
+      GOTD_KEY,
+      STREAK_KEY,
+      UNLOCK_KEY,
+      CREDIT_KEY,
+      GIFT_KEY,
+      RULES_SEEN_KEY,
+      SLOTS_KEY,
+      CHAMP_KEY,
+    ].sort(),
+  );
+  for (const local of [
+    'zip_playlog_v2',
+    'zip_behaviour_on',
+    'zip_theme',
+    'zip_theme_seed',
+    'zip_shared_games',
+    'zip_coop_stats',
+    'zip_sync',
+    'zip_sync_f',
+  ]) {
     assert.ok(!SYNCED_KEYS.includes(local), local);
   }
 });
@@ -48,7 +71,8 @@ test('statistics: merging two devices equals the statistics of all their games',
   const xs = [10, 12.5, 9, 30, 21];
   const ys = [15, 11, 40];
   const view = MERGES[STATS_KEY].view([
-    entry(A, statsCopy({ s: packed(statOf(xs)) })), entry(B, statsCopy({ s: packed(statOf(ys)) })),
+    entry(A, statsCopy({ s: packed(statOf(xs)) })),
+    entry(B, statsCopy({ s: packed(statOf(ys)) })),
   ]);
   const all = statOf([...xs, ...ys]);
   const [n, mean, M2, recent] = view.t.s;
@@ -58,19 +82,27 @@ test('statistics: merging two devices equals the statistics of all their games',
   assert.deepEqual(recent, [...xs, ...ys]);
 });
 
-test('statistics: three devices in any order give the same totals; a device '
-  + 'alone is itself', () => {
-  const sets = [[1, 2, 3, 4], [10, 20], [7, 7, 7, 9, 100]];
-  const entries = [A, B, C].map((dev, i) => entry(dev, statsCopy({ s: packed(statOf(sets[i])) })));
-  const all = statOf(sets.flat());
-  for (let round = 0; round < 10; round++) {
-    const [n, mean, M2] = MERGES[STATS_KEY].view(shuffled(entries)).t.s;
-    assert.equal(n, all.n);
-    near(mean, all.mean, 'mean');
-    near(M2, all.M2, 'M2');
-  }
-  assert.deepEqual(MERGES[STATS_KEY].view([entries[0]]).t.s, entries[0].value.t.s);
-});
+test(
+  'statistics: three devices in any order give the same totals; a device ' + 'alone is itself',
+  () => {
+    const sets = [
+      [1, 2, 3, 4],
+      [10, 20],
+      [7, 7, 7, 9, 100],
+    ];
+    const entries = [A, B, C].map((dev, i) =>
+      entry(dev, statsCopy({ s: packed(statOf(sets[i])) })),
+    );
+    const all = statOf(sets.flat());
+    for (let round = 0; round < 10; round++) {
+      const [n, mean, M2] = MERGES[STATS_KEY].view(shuffled(entries)).t.s;
+      assert.equal(n, all.n);
+      near(mean, all.mean, 'mean');
+      near(M2, all.M2, 'M2');
+    }
+    assert.deepEqual(MERGES[STATS_KEY].view([entries[0]]).t.s, entries[0].value.t.s);
+  },
+);
 
 test('statistics: the recent times are capped; scopes only one device has are kept', () => {
   const many = Array.from({ length: 30 }, (_, i) => i);
@@ -128,37 +160,53 @@ test('statistics: shrink keeps the numbers and drops the recent times', () => {
 
 const gotdCopy = (a, n = 0) => ({ v: 2, a, n });
 
-test('Game of Day: own solved record stands (with its pending submit); others '
-  + 'fill the gaps', () => {
-  const view = MERGES[GOTD_KEY].view([
-    entry(A, gotdCopy({ 20261030: { solved: true, time: 50, sent: false } })),
-    entry(B, gotdCopy({
-      20261030: { solved: true, time: 30, sent: true },
-      20261029: { solved: true, time: 45, sent: false, stats: { n: 3 } },
-      20261028: { solved: false, time: null },
-    })),
-  ], A);
-  assert.deepEqual(view.a['20261030'], { solved: true, time: 50, sent: false });
-  assert.deepEqual(view.a['20261029'], { solved: true, time: 45, stats: { n: 3 } });
-  assert.deepEqual(view.a['20261028'], { solved: false, time: null });
-});
+test(
+  'Game of Day: own solved record stands (with its pending submit); others ' + 'fill the gaps',
+  () => {
+    const view = MERGES[GOTD_KEY].view(
+      [
+        entry(A, gotdCopy({ 20261030: { solved: true, time: 50, sent: false } })),
+        entry(
+          B,
+          gotdCopy({
+            20261030: { solved: true, time: 30, sent: true },
+            20261029: { solved: true, time: 45, sent: false, stats: { n: 3 } },
+            20261028: { solved: false, time: null },
+          }),
+        ),
+      ],
+      A,
+    );
+    assert.deepEqual(view.a['20261030'], { solved: true, time: 50, sent: false });
+    assert.deepEqual(view.a['20261029'], { solved: true, time: 45, stats: { n: 3 } });
+    assert.deepEqual(view.a['20261028'], { solved: false, time: null });
+  },
+);
 
-test('Game of Day: another device\'s solve replaces an abandoned try; the '
-  + 'fastest other wins', () => {
-  const view = MERGES[GOTD_KEY].view([
-    entry(A, gotdCopy({ 20261030: { solved: false, time: null } })),
-    entry(B, gotdCopy({ 20261030: { solved: true, time: 60 } })),
-    entry(C, gotdCopy({ 20261030: { solved: true, time: 40, sent: false } })),
-  ], A);
-  assert.deepEqual(view.a['20261030'], { solved: true, time: 40 });
-});
+test(
+  "Game of Day: another device's solve replaces an abandoned try; the " + 'fastest other wins',
+  () => {
+    const view = MERGES[GOTD_KEY].view(
+      [
+        entry(A, gotdCopy({ 20261030: { solved: false, time: null } })),
+        entry(B, gotdCopy({ 20261030: { solved: true, time: 60 } })),
+        entry(C, gotdCopy({ 20261030: { solved: true, time: 40, sent: false } })),
+      ],
+      A,
+    );
+    assert.deepEqual(view.a['20261030'], { solved: true, time: 40 });
+  },
+);
 
 test('Game of Day: n only grows, and counts the dates the records show', () => {
   const solved = { solved: true, time: 1 };
-  const view = MERGES[GOTD_KEY].view([
-    entry(A, gotdCopy({ 20261030: solved }, 10)),
-    entry(B, gotdCopy({ 20261029: solved, 20261028: solved }, 3)),
-  ], A);
+  const view = MERGES[GOTD_KEY].view(
+    [
+      entry(A, gotdCopy({ 20261030: solved }, 10)),
+      entry(B, gotdCopy({ 20261029: solved, 20261028: solved }, 3)),
+    ],
+    A,
+  );
   assert.equal(view.n, 10);
   const two = gotdCopy({ 10000001: solved, 10000002: solved }, 1);
   const many = MERGES[GOTD_KEY].view([entry(A, two)], A);
@@ -166,10 +214,16 @@ test('Game of Day: n only grows, and counts the dates the records show', () => {
 });
 
 test('Game of Day: clean keeps records of real dates only', () => {
-  const clean = MERGES[GOTD_KEY].clean({ v: 2, n: 4, a: {
-    20261030: { solved: true, time: 5 }, x: { solved: true }, 20261031: { solved: 'yes' },
-    2026: {},
-  } });
+  const clean = MERGES[GOTD_KEY].clean({
+    v: 2,
+    n: 4,
+    a: {
+      20261030: { solved: true, time: 5 },
+      x: { solved: true },
+      20261031: { solved: 'yes' },
+      2026: {},
+    },
+  });
   assert.deepEqual(clean, { v: 2, n: 4, a: { 20261030: { solved: true, time: 5 } } });
   assert.equal(MERGES[GOTD_KEY].clean({ v: 1, a: {} }), null);
   assert.equal(MERGES[GOTD_KEY].clean({ v: 2, a: {}, n: -1 }).n, 0);
@@ -178,7 +232,14 @@ test('Game of Day: clean keeps records of real dates only', () => {
 // ---- streak ----------------------------------------------------------------------------------
 
 const streakCopy = (over = {}) => ({
-  last: 20000, streak: 3, best: 3, freezes: 0, earned: 1, prog: 1, brk: null, ...over,
+  last: 20000,
+  streak: 3,
+  best: 3,
+  freezes: 0,
+  earned: 1,
+  prog: 1,
+  brk: null,
+  ...over,
 });
 
 test('streak: the state that got furthest wins; the best streak is the best of all', () => {
@@ -194,12 +255,16 @@ test('streak: the state that got furthest wins; the best streak is the best of a
 
 test('streak: a tie goes to the more rewards, then to the first device id', () => {
   const pick = [
-    entry(A, streakCopy({ earned: 1, prog: 0 })), entry(B, streakCopy({ earned: 2, prog: 0 })),
+    entry(A, streakCopy({ earned: 1, prog: 0 })),
+    entry(B, streakCopy({ earned: 2, prog: 0 })),
   ];
   assert.equal(MERGES[STREAK_KEY].view(pick).earned, 2);
-  assert.equal(MERGES[STREAK_KEY].view(shuffled([
-    entry(A, streakCopy({ freezes: 1 })), entry(B, streakCopy({ freezes: 2 })),
-  ])).freezes, 1);
+  assert.equal(
+    MERGES[STREAK_KEY].view(
+      shuffled([entry(A, streakCopy({ freezes: 1 })), entry(B, streakCopy({ freezes: 2 }))]),
+    ).freezes,
+    1,
+  );
 });
 
 test('streak: a player with no solve yet (last null) loses to one with a solve', () => {
@@ -215,8 +280,15 @@ test('streak: clean converts an old state, refuses nonsense', () => {
   assert.equal(old.earned, 3);
   assert.equal(old.prog, 2); // 9 % 7
   assert.equal(old.brk, null);
-  for (const bad of [null, [], {}, streakCopy({ streak: -1 }), streakCopy({ last: 'x' }),
-    streakCopy({ prog: 99 }), streakCopy({ earned: 1.5 })]) {
+  for (const bad of [
+    null,
+    [],
+    {},
+    streakCopy({ streak: -1 }),
+    streakCopy({ last: 'x' }),
+    streakCopy({ prog: 99 }),
+    streakCopy({ earned: 1.5 }),
+  ]) {
     assert.equal(MERGES[STREAK_KEY].clean(bad), null, JSON.stringify(bad));
   }
   assert.equal(MERGES[STREAK_KEY].clean(streakCopy({ brk: { from: 'x' } })).brk, null);
@@ -225,7 +297,13 @@ test('streak: clean converts an old state, refuses nonsense', () => {
 // ---- unlock ----------------------------------------------------------------------------------
 
 const unlockCopy = (over = {}) => ({
-  v: 1, unlocked: {}, tokens: 0, choices: 0, played: [], active: null, ...over,
+  v: 1,
+  unlocked: {},
+  tokens: 0,
+  choices: 0,
+  played: [],
+  active: null,
+  ...over,
 });
 
 test('unlock: variants unlocked anywhere count, on the earliest day', () => {
@@ -243,28 +321,38 @@ test('unlock: chances are sums of what each device earned minus spent, never bel
   ]);
   assert.deepEqual([view.tokens, view.choices], [1, 0]);
   const debt = MERGES[UNLOCK_KEY].view([
-    entry(A, unlockCopy({ tokens: 0 })), entry(B, unlockCopy({ tokens: -1 })),
+    entry(A, unlockCopy({ tokens: 0 })),
+    entry(B, unlockCopy({ tokens: -1 })),
     entry(C, unlockCopy({ tokens: -1 })),
   ]);
   assert.equal(debt.tokens, 0);
 });
 
-test('unlock: offers played anywhere count; the list is capped; a game in '
-  + 'progress is not shared', () => {
-  const view = MERGES[UNLOCK_KEY].view([
-    entry(A, unlockCopy({ played: [1, 2, 3, 4, 5], active: { id: 'a' } })),
-    entry(B, unlockCopy({ played: [3, 4, 5, 6, 7, 8, 9, 10] })),
-  ]);
-  assert.deepEqual(view.played, [3, 4, 5, 6, 7, 8, 9, 10].slice(-PLAYED_KEPT));
-  assert.equal(view.active, null);
-});
+test(
+  'unlock: offers played anywhere count; the list is capped; a game in ' +
+    'progress is not shared',
+  () => {
+    const view = MERGES[UNLOCK_KEY].view([
+      entry(A, unlockCopy({ played: [1, 2, 3, 4, 5], active: { id: 'a' } })),
+      entry(B, unlockCopy({ played: [3, 4, 5, 6, 7, 8, 9, 10] })),
+    ]);
+    assert.deepEqual(view.played, [3, 4, 5, 6, 7, 8, 9, 10].slice(-PLAYED_KEPT));
+    assert.equal(view.active, null);
+  },
+);
 
 test('unlock: clean takes negative nets and the old token list, refuses the rest', () => {
   assert.equal(MERGES[UNLOCK_KEY].clean(unlockCopy({ tokens: -2 })).tokens, -2);
   assert.equal(MERGES[UNLOCK_KEY].clean(unlockCopy({ tokens: [1, 2, 3] })).tokens, 3);
   assert.equal(MERGES[UNLOCK_KEY].clean(unlockCopy({ active: { id: 'a' } })).active, null);
-  for (const bad of [null, {}, unlockCopy({ tokens: 1.5 }), unlockCopy({ played: ['x'] }),
-    unlockCopy({ unlocked: 5 }), { ...unlockCopy(), v: 2 }]) {
+  for (const bad of [
+    null,
+    {},
+    unlockCopy({ tokens: 1.5 }),
+    unlockCopy({ played: ['x'] }),
+    unlockCopy({ unlocked: 5 }),
+    { ...unlockCopy(), v: 2 },
+  ]) {
     assert.equal(MERGES[UNLOCK_KEY].clean(bad), null, JSON.stringify(bad));
   }
   const dirty = unlockCopy({ unlocked: { a: 1, b: 'x', c: -1 } });
@@ -275,11 +363,15 @@ test('unlock: clean takes negative nets and the old token list, refuses the rest
 
 test('replay chances: the three counters add up', () => {
   const view = MERGES[CREDIT_KEY].view([
-    entry(A, { solved: 3, used: 1, bonus: 0 }), entry(B, { solved: 4, used: 2, bonus: 5 }),
+    entry(A, { solved: 3, used: 1, bonus: 0 }),
+    entry(B, { solved: 4, used: 2, bonus: 5 }),
   ]);
   assert.deepEqual(view, { solved: 7, used: 3, bonus: 5 });
-  assert.deepEqual(MERGES[CREDIT_KEY].clean({ solved: 1, used: 0 }),
-    { solved: 1, used: 0, bonus: 0 });
+  assert.deepEqual(MERGES[CREDIT_KEY].clean({ solved: 1, used: 0 }), {
+    solved: 1,
+    used: 0,
+    bonus: 0,
+  });
   for (const bad of [null, {}, { solved: -1, used: 0 }, { solved: 1, used: 0, bonus: 1.5 }]) {
     assert.equal(MERGES[CREDIT_KEY].clean(bad), null);
   }
@@ -287,7 +379,8 @@ test('replay chances: the three counters add up', () => {
 
 test('gift: the record of the latest day; none yet loses to any', () => {
   const view = MERGES[GIFT_KEY].view([
-    entry(A, { v: 1, day: null, kind: null }), entry(B, { v: 1, day: 20000, kind: 'replay' }),
+    entry(A, { v: 1, day: null, kind: null }),
+    entry(B, { v: 1, day: 20000, kind: 'replay' }),
     entry(C, { v: 1, day: 19990, kind: 'unlock' }),
   ]);
   assert.deepEqual(view, { v: 1, day: 20000, kind: 'replay' });
@@ -295,13 +388,16 @@ test('gift: the record of the latest day; none yet loses to any', () => {
   assert.deepEqual(MERGES[GIFT_KEY].clean({ v: 1, day: null }), { v: 1, day: null, kind: null });
 });
 
-test('rules shown: any device\'s counts', () => {
+test("rules shown: any device's counts", () => {
   const view = MERGES[RULES_SEEN_KEY].view([
-    entry(A, { v: 1, seen: { cutout: true } }), entry(B, { v: 1, seen: { arrows: true } }),
+    entry(A, { v: 1, seen: { cutout: true } }),
+    entry(B, { v: 1, seen: { arrows: true } }),
   ]);
   assert.deepEqual(view, { v: 1, seen: { cutout: true, arrows: true } });
-  assert.deepEqual(MERGES[RULES_SEEN_KEY].clean({ v: 1, seen: { a: true, b: false, c: 1 } }),
-    { v: 1, seen: { a: true } });
+  assert.deepEqual(MERGES[RULES_SEEN_KEY].clean({ v: 1, seen: { a: true, b: false, c: 1 } }), {
+    v: 1,
+    seen: { a: true },
+  });
 });
 
 // ---- theme slots ---------------------------------------------------------------------------
@@ -317,10 +413,20 @@ test('theme slots: the group has the most slots of any device, and the ids of th
 test('theme slots: a copy is cleaned (number in range, pool ids, at most four)', () => {
   const { clean } = MERGES[SLOTS_KEY];
   const messy = ['a', 'a', 'B', '<x>', 7, 'b-2', 'c', 'd', 'e'];
-  assert.deepEqual(clean({ v: 1, cap: 4, themes: messy }),
-    { v: 1, cap: 4, themes: ['a', 'b-2', 'c', 'd'] });
-  for (const bad of [null, 'x', { v: 2, cap: 3, themes: [] }, { v: 1, cap: 5, themes: [] },
-    { v: 1, cap: -1, themes: [] }, { v: 1, cap: 2.5, themes: [] }, { v: 1, cap: 3 }]) {
+  assert.deepEqual(clean({ v: 1, cap: 4, themes: messy }), {
+    v: 1,
+    cap: 4,
+    themes: ['a', 'b-2', 'c', 'd'],
+  });
+  for (const bad of [
+    null,
+    'x',
+    { v: 2, cap: 3, themes: [] },
+    { v: 1, cap: 5, themes: [] },
+    { v: 1, cap: -1, themes: [] },
+    { v: 1, cap: 2.5, themes: [] },
+    { v: 1, cap: 3 },
+  ]) {
     assert.equal(clean(bad), null, JSON.stringify(bad));
   }
 });
@@ -330,23 +436,39 @@ test('theme slots: a copy is cleaned (number in range, pool ids, at most four)',
 test('every rule is a function of the set of entries (any order, same value)', () => {
   const samples = {
     [GOTD_KEY]: [
-      gotdCopy({ 20261030: { solved: true, time: 50 },
-        20261029: { solved: false, time: null } }, 4),
+      gotdCopy(
+        { 20261030: { solved: true, time: 50 }, 20261029: { solved: false, time: null } },
+        4,
+      ),
       gotdCopy({ 20261030: { solved: true, time: 30 }, 20261029: { solved: true, time: 20 } }, 2),
       gotdCopy({ 20261028: { solved: true, time: 22 } }, 9),
     ],
     [STREAK_KEY]: [streakCopy(), streakCopy({ last: 20002 }), streakCopy({ streak: 5, best: 7 })],
-    [UNLOCK_KEY]: [unlockCopy({ tokens: 2, played: [3] }),
+    [UNLOCK_KEY]: [
+      unlockCopy({ tokens: 2, played: [3] }),
       unlockCopy({ tokens: -1, played: [1, 2] }),
-      unlockCopy({ unlocked: { a: 4 }, choices: 3 })],
-    [CREDIT_KEY]: [{ solved: 1, used: 0, bonus: 0 }, { solved: 2, used: 1, bonus: 1 },
-      { solved: 5, used: 5, bonus: 0 }],
-    [GIFT_KEY]: [{ v: 1, day: 5, kind: 'replay' }, { v: 1, day: 9, kind: 'unlock' },
-      { v: 1, day: null, kind: null }],
-    [RULES_SEEN_KEY]: [{ v: 1, seen: { a: true } }, { v: 1, seen: { b: true } },
-      { v: 1, seen: { a: true, c: true } }],
-    [SLOTS_KEY]: [{ v: 1, cap: 3, themes: ['a'] }, { v: 1, cap: 0, themes: [] },
-      { v: 1, cap: 4, themes: ['b', 'a'] }],
+      unlockCopy({ unlocked: { a: 4 }, choices: 3 }),
+    ],
+    [CREDIT_KEY]: [
+      { solved: 1, used: 0, bonus: 0 },
+      { solved: 2, used: 1, bonus: 1 },
+      { solved: 5, used: 5, bonus: 0 },
+    ],
+    [GIFT_KEY]: [
+      { v: 1, day: 5, kind: 'replay' },
+      { v: 1, day: 9, kind: 'unlock' },
+      { v: 1, day: null, kind: null },
+    ],
+    [RULES_SEEN_KEY]: [
+      { v: 1, seen: { a: true } },
+      { v: 1, seen: { b: true } },
+      { v: 1, seen: { a: true, c: true } },
+    ],
+    [SLOTS_KEY]: [
+      { v: 1, cap: 3, themes: ['a'] },
+      { v: 1, cap: 0, themes: [] },
+      { v: 1, cap: 4, themes: ['b', 'a'] },
+    ],
     [CHAMP_KEY]: [ledgerOf(A, [20001, 20002]), ledgerOf(B, [20002, 20003]), ledgerOf(C, [])],
   };
   for (const [key, values] of Object.entries(samples)) {

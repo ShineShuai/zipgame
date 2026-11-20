@@ -2,15 +2,23 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { SLOW } from '../harness.js';
 import {
-  crc16, fromWords, newSecret, normalizePhrase, PhraseError, SECRET_BYTES, toWords, WORD_COUNT,
+  crc16,
+  fromWords,
+  newSecret,
+  normalizePhrase,
+  PhraseError,
+  SECRET_BYTES,
+  toWords,
+  WORD_COUNT,
 } from '../../src/core/sync/words.js';
 
 const CONSONANTS = 'bdfghjklmnprstvz';
 const VOWELS = 'aeio';
 const allWords = [];
-for (const c1 of CONSONANTS) for (const v1 of VOWELS) {
-  for (const c2 of CONSONANTS) for (const v2 of VOWELS) allWords.push(c1 + v1 + c2 + v2);
-}
+for (const c1 of CONSONANTS)
+  for (const v1 of VOWELS) {
+    for (const c2 of CONSONANTS) for (const v2 of VOWELS) allWords.push(c1 + v1 + c2 + v2);
+  }
 
 test('there are 4096 different words, each of two syllables', () => {
   assert.equal(new Set(allWords).size, 4096);
@@ -48,35 +56,52 @@ test('a phrase may be typed in any case, with blanks, commas or hyphens', () => 
 test('a phrase with the wrong number of words is refused', () => {
   const words = toWords(newSecret());
   for (const bad of [[], words.slice(1), [...words, 'baba'], 'baba']) {
-    assert.throws(() => fromWords(bad), error => error instanceof PhraseError
-      && error.reason === 'count');
+    assert.throws(
+      () => fromWords(bad),
+      error => error instanceof PhraseError && error.reason === 'count',
+    );
   }
 });
 
 test('a word that is not one of ours is refused, and the position is told', () => {
   const words = toWords(newSecret());
-  const cases = [[0, 'hello'], [3, 'baca'], [7, 'bab'], [5, 'ba1a'], [2, 'uuuu']];
+  const cases = [
+    [0, 'hello'],
+    [3, 'baca'],
+    [7, 'bab'],
+    [5, 'ba1a'],
+    [2, 'uuuu'],
+  ];
   for (const [position, bad] of cases) {
     const copy = words.slice();
     copy[position] = bad;
-    assert.throws(() => fromWords(copy), error => error.reason === 'word'
-      && error.position === position);
+    assert.throws(
+      () => fromWords(copy),
+      error => error.reason === 'word' && error.position === position,
+    );
   }
 });
 
-test('every single wrong word is caught by the checksum (all 8 places, all 4095 others)', SLOW, () => {
-  for (let round = 0; round < 3; round++) {
-    const words = toWords(newSecret());
-    for (let place = 0; place < WORD_COUNT; place++) {
-      for (const other of allWords) {
-        if (other === words[place]) continue;
-        const copy = words.slice();
-        copy[place] = other;
-        assert.throws(() => fromWords(copy), error => error.reason === 'checksum');
+test(
+  'every single wrong word is caught by the checksum (all 8 places, all 4095 others)',
+  SLOW,
+  () => {
+    for (let round = 0; round < 3; round++) {
+      const words = toWords(newSecret());
+      for (let place = 0; place < WORD_COUNT; place++) {
+        for (const other of allWords) {
+          if (other === words[place]) continue;
+          const copy = words.slice();
+          copy[place] = other;
+          assert.throws(
+            () => fromWords(copy),
+            error => error.reason === 'checksum',
+          );
+        }
       }
     }
-  }
-});
+  },
+);
 
 test('two swapped words are caught almost always', () => {
   let caught = 0;
@@ -87,7 +112,11 @@ test('two swapped words are caught almost always', () => {
     if (words[x] === words[y]) continue;
     [words[x], words[y]] = [words[y], words[x]];
     tried++;
-    try { fromWords(words); } catch { caught++; }
+    try {
+      fromWords(words);
+    } catch {
+      caught++;
+    }
   }
   assert.ok(caught / tried > 0.999, `${caught}/${tried}`);
 });

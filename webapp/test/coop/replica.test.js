@@ -22,10 +22,14 @@ function pair(puzzle) {
   const rejectedA = [];
   const rejectedB = [];
   const a = createReplica(puzzle, {
-    pid: 0, send: op => toB.push(op), onRejected: op => rejectedA.push(op),
+    pid: 0,
+    send: op => toB.push(op),
+    onRejected: op => rejectedA.push(op),
   });
   const b = createReplica(puzzle, {
-    pid: 1, send: op => toA.push(op), onRejected: op => rejectedB.push(op),
+    pid: 1,
+    send: op => toA.push(op),
+    onRejected: op => rejectedB.push(op),
   });
   const deliver = (queue, target) => {
     while (queue.length) {
@@ -39,9 +43,11 @@ function pair(puzzle) {
   return { a, b, toA, toB, rejectedA, rejectedB, sync };
 }
 
-const view = replica => replica.edges()
-  .map(([x, y]) => `${x}-${y}@${replica.ownerOf(x, y)}`)
-  .sort();
+const view = replica =>
+  replica
+    .edges()
+    .map(([x, y]) => `${x}-${y}@${replica.ownerOf(x, y)}`)
+    .sort();
 
 test('lines drawn by one player reach the other, with their owner', () => {
   const { a, b, sync } = pair(board());
@@ -79,7 +85,10 @@ test('two lines that cannot both stand: the older stamp wins on both devices, on
   // the stamps are (1,0) a 1-2, (1,1) b 2-6, (2,0) a 2-3: 2-3 comes last and is refused
   assert.deepEqual(view(a), ['1-2@0', '2-6@1']);
   assert.deepEqual(view(b), view(a));
-  assert.deepEqual(rejectedA.map(op => [op.a, op.b]), [[2, 3]]);
+  assert.deepEqual(
+    rejectedA.map(op => [op.a, op.b]),
+    [[2, 3]],
+  );
   assert.deepEqual(rejectedB, []);
 });
 
@@ -97,7 +106,7 @@ test('the result does not depend on the order or the number of deliveries', () =
       const x = Math.floor(rnd() * cells);
       const y = rnd() < 0.5 ? x + 1 : x + 4;
       if (y < cells) {
-        (rnd() < 0.75 ? replica.add(x, y) : replica.remove(x, y));
+        rnd() < 0.75 ? replica.add(x, y) : replica.remove(x, y);
       }
     }
     // a third replica hears all operations in a random order, some twice
@@ -120,7 +129,10 @@ test('two players draw the whole solution, in pieces and at the same time: solve
     const puzzle = fixture('std', n, 40 + n);
     const solution = solutionOf(puzzle);
     const { a, b, sync } = pair(puzzle);
-    const edges = shuffle(solution.slice(1).map((cell, i) => [solution[i], cell]), rnd);
+    const edges = shuffle(
+      solution.slice(1).map((cell, i) => [solution[i], cell]),
+      rnd,
+    );
     edges.forEach(([x, y], i) => {
       assert.equal((i % 2 ? b : a).add(x, y), null);
       if (rnd() < 0.3) {
@@ -149,8 +161,16 @@ test('Clear erases only the lines of the player who clears', () => {
 test('malformed or foreign operations are ignored', () => {
   const replica = createReplica(board(), { pid: 0 });
   const good = { kind: 'add', a: 1, b: 2, owner: 1, clock: 1, pid: 1, seq: 0 };
-  for (const bad of [null, {}, { ...good, kind: 'x' }, { ...good, a: 99 }, { ...good, b: -1 },
-    { ...good, clock: 'z' }, { ...good, pid: 99 }, { ...good, owner: 99 }]) {
+  for (const bad of [
+    null,
+    {},
+    { ...good, kind: 'x' },
+    { ...good, a: 99 },
+    { ...good, b: -1 },
+    { ...good, clock: 'z' },
+    { ...good, pid: 99 },
+    { ...good, owner: 99 },
+  ]) {
     assert.equal(replica.receive(bad), false);
   }
   assert.equal(replica.count(), 0);
@@ -167,7 +187,11 @@ test('ops() lists every operation, oldest first, as copies', () => {
   a.remove(0, 1);
   const ops = a.ops();
   const shape = ops.map(op => [op.kind, op.a, op.b]);
-  assert.deepEqual(shape, [['add', 0, 1], ['add', 1, 2], ['remove', 0, 1]]);
+  assert.deepEqual(shape, [
+    ['add', 0, 1],
+    ['add', 1, 2],
+    ['remove', 0, 1],
+  ]);
   ops[0].kind = 'x';
   assert.equal(a.ops()[0].kind, 'add', 'a copy: changing it changes nothing');
 });
@@ -187,7 +211,11 @@ test('a device gets back its own operations that it lost, and does not reuse the
   const again = createReplica(puzzle, { pid: 1, send: op => sent.push(op) });
   lost.forEach(op => again.receive(op));
   again.add(2, 3);
-  assert.deepEqual(sent.map(op => op.seq), [2], 'the next number follows the last one');
+  assert.deepEqual(
+    sent.map(op => op.seq),
+    [2],
+    'the next number follows the last one',
+  );
   assert.equal(again.count(), 3);
 });
 

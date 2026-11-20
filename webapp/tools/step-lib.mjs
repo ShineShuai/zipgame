@@ -29,28 +29,57 @@ import { capOption } from './args-lib.mjs';
 
 export const BUCKETS = ['obvious', 'shallow', 'deep', 'capped'];
 export const bucketOf = (w, cfg = TRAP_CFG) =>
-  (w.capped ? 3 : w.sub <= cfg.obvious ? 0 : w.sub <= cfg.shallow ? 1 : 2);
+  w.capped ? 3 : w.sub <= cfg.obvious ? 0 : w.sub <= cfg.shallow ? 1 : 2;
 
 // The command-line options of everything that runs the fit (step-fit.mjs, apply-points.mjs).
 export const FIT_OPTIONS = {
-  'gotd-dir': { type: 'string', arg: 'DIR',
-    help: 'folder with the Game-of-Day puzzles, DIR/<YYYYMMDD>.txt, for the rows without ' +
-      'a puzzle' },
+  'gotd-dir': {
+    type: 'string',
+    arg: 'DIR',
+    help:
+      'folder with the Game-of-Day puzzles, DIR/<YYYYMMDD>.txt, for the rows without ' +
+      'a puzzle',
+  },
   cap: capOption,
-  folds: { type: 'int', arg: 'F', min: 2, default: 5,
-    help: 'cross-validation folds: the puzzles are split into F groups and each group is judged ' +
-      'by models fitted on the other F-1, so no puzzle is judged by a model that has seen it' },
-  boot: { type: 'int', arg: 'N', min: 1, default: 400,
-    help: 'bootstrap resamples for the intervals of gates A and B: whole puzzles are redrawn ' +
-      'with replacement N times and the statistic is computed again; more = smoother, slower' },
-  pboot: { type: 'int', arg: 'N', min: 1, default: 100,
-    help: 'bootstrap refits for the intervals of the fitted-parameter table (each one refits ' +
-      'the model, so this is the slow part)' },
-  seed: { type: 'int', arg: 'N', default: 1,
-    help: 'seed of the fold assignment and of the redraws: the same seed gives the same output' },
-  'no-skill': { type: 'flag',
-    help: 'switch the skill effect off, all players count alike (default: the skill bucket of a ' +
-      'game, when known, scales its wrong-turn rate)' },
+  folds: {
+    type: 'int',
+    arg: 'F',
+    min: 2,
+    default: 5,
+    help:
+      'cross-validation folds: the puzzles are split into F groups and each group is judged ' +
+      'by models fitted on the other F-1, so no puzzle is judged by a model that has seen it',
+  },
+  boot: {
+    type: 'int',
+    arg: 'N',
+    min: 1,
+    default: 400,
+    help:
+      'bootstrap resamples for the intervals of gates A and B: whole puzzles are redrawn ' +
+      'with replacement N times and the statistic is computed again; more = smoother, slower',
+  },
+  pboot: {
+    type: 'int',
+    arg: 'N',
+    min: 1,
+    default: 100,
+    help:
+      'bootstrap refits for the intervals of the fitted-parameter table (each one refits ' +
+      'the model, so this is the slow part)',
+  },
+  seed: {
+    type: 'int',
+    arg: 'N',
+    default: 1,
+    help: 'seed of the fold assignment and of the redraws: the same seed gives the same output',
+  },
+  'no-skill': {
+    type: 'flag',
+    help:
+      'switch the skill effect off, all players count alike (default: the skill bucket of a ' +
+      'game, when known, scales its wrong-turn rate)',
+  },
 };
 
 // The acceptance rule (written in full in step-fit.mjs).
@@ -82,19 +111,40 @@ const skillTerm = r => (r.skill == null || r.skill === 15 ? 0 : (r.skill - 7) / 
 export function gamesOf(rows, stepsFor, { useSkill = true } = {}) {
   const why = { rows: rows.length, noEvents: 0, abandoned: 0, hint: 0, capped: 0, noPuzzle: 0 };
   const games = [];
-  let events = 0, unexplained = 0;
+  let events = 0,
+    unexplained = 0;
   for (const r of rows) {
-    if (r.abandoned) { why.abandoned++; continue; }
-    if (r.hint) { why.hint++; continue; }
-    if (!Array.isArray(r.events)) { why.noEvents++; continue; }
-    if (r.events.length >= EV_MAX_EVENTS) { why.capped++; continue; }
+    if (r.abandoned) {
+      why.abandoned++;
+      continue;
+    }
+    if (r.hint) {
+      why.hint++;
+      continue;
+    }
+    if (!Array.isArray(r.events)) {
+      why.noEvents++;
+      continue;
+    }
+    if (r.events.length >= EV_MAX_EVENTS) {
+      why.capped++;
+      continue;
+    }
     const P = r.key ? stepsFor(r.key) : null;
-    if (!P) { why.noPuzzle++; continue; }
-    const at = new Map(P.steps.map(s => [s.i, s])), m = new Map(), depths = [];
+    if (!P) {
+      why.noPuzzle++;
+      continue;
+    }
+    const at = new Map(P.steps.map(s => [s.i, s])),
+      m = new Map(),
+      depths = [];
     for (const [step, d] of r.events) {
       events++;
       const st = at.get(step - 1);
-      if (!st) { unexplained++; continue; } // a wrong turn the profile does not list
+      if (!st) {
+        unexplained++;
+        continue;
+      } // a wrong turn the profile does not list
       m.set(st.i, (m.get(st.i) || 0) + 1);
       depths.push([st, d]);
     }
@@ -106,13 +156,15 @@ export function gamesOf(rows, stepsFor, { useSkill = true } = {}) {
 // ---------- the models ----------
 // hu(theta, c, s, u): h of one step (c = counts per bucket, s = the game's skill term) and its
 // gradient wrt theta in u. theta holds log-rates and gamma (the skill effect) last.
-const POINTS = TRAP_CFG.points, FLOOR_MAX = 0.5;
+const POINTS = TRAP_CFG.points,
+  FLOOR_MAX = 0.5;
 export const MODELS = {
   uniform: {
     k: 2,
     hu(th, c, s, u) {
       const h = Math.exp(th[0] + th[1] * s) * (c[0] + c[1] + c[2] + c[3]);
-      u[0] = h; u[1] = s * h;
+      u[0] = h;
+      u[1] = s * h;
       return h;
     },
     rates: th => [0, 1, 2, 3].map(() => Math.exp(th[0])),
@@ -123,7 +175,10 @@ export const MODELS = {
     hu(th, c, s, u) {
       const g = Math.exp(th[4] * s);
       let h = 0;
-      for (let b = 0; b < 4; b++) { u[b] = g * c[b] * Math.exp(th[b]); h += u[b]; }
+      for (let b = 0; b < 4; b++) {
+        u[b] = g * c[b] * Math.exp(th[b]);
+        h += u[b];
+      }
       u[4] = s * h;
       return h;
     },
@@ -138,19 +193,29 @@ const floorOf = t => FLOOR_MAX / (1 + Math.exp(-t));
 export const handModel = D => ({
   k: 3,
   hu(th, c, s, u) {
-    const f = floorOf(th[1]), g = Math.exp(th[0] + th[2] * s);
-    let h = 0, n = 0;
-    for (let b = 0; b < 4; b++) { h += c[b] * (POINTS[b] + f) / D[b]; n += c[b] / D[b]; }
-    h *= g; u[0] = h; u[1] = g * n * f * (1 - f / FLOOR_MAX); u[2] = s * h;
+    const f = floorOf(th[1]),
+      g = Math.exp(th[0] + th[2] * s);
+    let h = 0,
+      n = 0;
+    for (let b = 0; b < 4; b++) {
+      h += (c[b] * (POINTS[b] + f)) / D[b];
+      n += c[b] / D[b];
+    }
+    h *= g;
+    u[0] = h;
+    u[1] = g * n * f * (1 - f / FLOOR_MAX);
+    u[2] = s * h;
     return h;
   },
-  rates: th => POINTS.map((p, b) => Math.exp(th[0]) * (p + floorOf(th[1])) / D[b]),
+  rates: th => POINTS.map((p, b) => (Math.exp(th[0]) * (p + floorOf(th[1]))) / D[b]),
   init: r => [Math.log(r.rate / (r.meanPoints + FLOOR_MAX / 2)), 0, 0],
 });
 
 // Crude figures of a set of games, to start the fits from: the rate of wrong turns per wrong move.
 function crude(games) {
-  let ev = 0, alt = 0, pts = 0;
+  let ev = 0,
+    alt = 0,
+    pts = 0;
   for (const G of games) {
     ev += sum([...G.m.values()]);
     for (const st of G.P.steps) {
@@ -163,15 +228,19 @@ function crude(games) {
 
 // log-likelihood (and, with `grad`, its gradient g and Fisher information I) of games at theta.
 function evaluate(model, th, games, grad) {
-  const k = th.length, u = new Array(k).fill(0);
-  const g = new Array(k).fill(0), I = Array.from({ length: k }, () => new Array(k).fill(0));
+  const k = th.length,
+    u = new Array(k).fill(0);
+  const g = new Array(k).fill(0),
+    I = Array.from({ length: k }, () => new Array(k).fill(0));
   let ll = 0;
   for (const G of games) {
     for (const st of G.P.steps) {
-      const m = G.m.get(st.i) || 0, h = model.hu(th, st.c, G.s, u);
+      const m = G.m.get(st.i) || 0,
+        h = model.hu(th, st.c, G.s, u);
       ll += m * Math.log(h) - (m + 1) * Math.log1p(h);
       if (!grad) continue;
-      const w = 1 / (h * (1 + h)), a = (m - h) * w;
+      const w = 1 / (h * (1 + h)),
+        a = (m - h) * w;
       for (let j = 0; j < k; j++) {
         g[j] += a * u[j];
         for (let l = 0; l < k; l++) I[j][l] += w * u[j] * u[l];
@@ -188,16 +257,23 @@ export function fitModel(model, games, { tau = 0.5, maxIter = 60 } = {}) {
   const th0 = model.init(crude(games));
   let th = th0.slice();
   const pen = t => -0.5 * tau * sum(t.map((v, j) => (v - th0[j]) ** 2));
-  let cur = evaluate(model, th, games, true), iters = 0;
+  let cur = evaluate(model, th, games, true),
+    iters = 0;
   for (; iters < maxIter; iters++) {
-    const k = th.length, g = cur.g.map((v, j) => v - tau * (th[j] - th0[j]));
+    const k = th.length,
+      g = cur.g.map((v, j) => v - tau * (th[j] - th0[j]));
     const I = cur.I.map((row, j) => row.map((v, l) => v + (j === l ? tau : 0)));
-    const inv = invert(I), d = inv.map(row => sum(row.map((v, j) => v * g[j])));
-    let t = 1, next = null;
+    const inv = invert(I),
+      d = inv.map(row => sum(row.map((v, j) => v * g[j])));
+    let t = 1,
+      next = null;
     for (let tries = 0; tries < 20; tries++, t /= 2) {
       const cand = th.map((v, j) => v + t * d[j]);
       const e = evaluate(model, cand, games, false);
-      if (e.ll + pen(cand) >= cur.ll + pen(th) - 1e-9) { next = cand; break; }
+      if (e.ll + pen(cand) >= cur.ll + pen(th) - 1e-9) {
+        next = cand;
+        break;
+      }
     }
     if (!next) break;
     const move = Math.max(...next.map((v, j) => Math.abs(v - th[j])));
@@ -213,13 +289,19 @@ export function fitModel(model, games, { tau = 0.5, maxIter = 60 } = {}) {
 // whose wrong moves are all of one bucket (then the bucket of the move taken is known); a bucket
 // with few such events leans on the overall mean (5 pseudo-events).
 export function depthMeans(games) {
-  const s = [0, 0, 0, 0], n = [0, 0, 0, 0];
-  let all = 0, cnt = 0;
+  const s = [0, 0, 0, 0],
+    n = [0, 0, 0, 0];
+  let all = 0,
+    cnt = 0;
   for (const G of games) {
     for (const [st, d] of G.depths) {
-      all += d; cnt++;
+      all += d;
+      cnt++;
       const used = st.c.map((v, b) => (v ? b : -1)).filter(b => b >= 0);
-      if (used.length === 1) { s[used[0]] += d; n[used[0]]++; }
+      if (used.length === 1) {
+        s[used[0]] += d;
+        n[used[0]]++;
+      }
     }
   }
   const overall = cnt ? all / cnt : 1;
@@ -247,14 +329,20 @@ export function crossValidate(games, { folds = 5, seed = 1 } = {}) {
     const train = games.filter(g => fold.get(g.key) !== f);
     const test = games.filter(g => fold.get(g.key) === f);
     if (!train.length || !test.length) continue;
-    const D = depthMeans(train), model = { ...MODELS, hand: handModel(D) }, th = {};
+    const D = depthMeans(train),
+      model = { ...MODELS, hand: handModel(D) },
+      th = {};
     for (const name of Object.keys(model)) th[name] = fitModel(model[name], train).th;
     const lambda = MODELS.free.rates(th.free);
     for (const G of test) {
       const ll = {};
       for (const name of Object.keys(model)) ll[name] = logLik(model[name], th[name], [G]);
       out.push({
-        key: G.key, T: G.P.T, ll, score: puzzleScore(G.P, lambda, D), u: G.u,
+        key: G.key,
+        T: G.P.T,
+        ll,
+        score: puzzleScore(G.P, lambda, D),
+        u: G.u,
         alts: sum(G.P.steps.map(s => sum(s.c))) / G.P.T,
       });
     }
@@ -267,7 +355,8 @@ export function crossValidate(games, { folds = 5, seed = 1 } = {}) {
 // -> estimates and 95% intervals (bootstrap over whole puzzles) for the two gates, and the
 // verdict.
 export function verdict(held, current, { boot = 400, seed = 1, rule = RULE } = {}) {
-  const keys = [...new Set(held.map(h => h.key))], groups = keys.map(() => []);
+  const keys = [...new Set(held.map(h => h.key))],
+    groups = keys.map(() => []);
   held.forEach((h, i) => groups[keys.indexOf(h.key)].push(i));
   const regret = held.map(h => h.u / h.T);
   const cur = held.map(h => current(h.key));
@@ -277,13 +366,31 @@ export function verdict(held, current, { boot = 400, seed = 1, rule = RULE } = {
     const dLL = mean(at(h => h.ll.free - h.ll.hand));
     const dUni = mean(at(h => h.ll.hand - h.ll.uniform));
     const y = at((h, i) => regret[i]);
-    const rn = spearman(at(h => h.score), y), ra = spearman(at(h => h.alts), y);
-    const rc = haveCur ? spearman(at((h, i) => cur[i]), y) : NaN;
+    const rn = spearman(
+        at(h => h.score),
+        y,
+      ),
+      ra = spearman(
+        at(h => h.alts),
+        y,
+      );
+    const rc = haveCur
+      ? spearman(
+          at((h, i) => cur[i]),
+          y,
+        )
+      : NaN;
     return { dLL, dUni, rn, rc, ra, diff: rn - rc };
   };
-  const all = held.map((_, i) => i), est = stat(all), rnd = makeRng(seed + 1);
+  const all = held.map((_, i) => i),
+    est = stat(all),
+    rnd = makeRng(seed + 1);
   const draws = Array.from({ length: boot }, () => stat(resampleClusters(groups, rnd)));
-  const ci = k => interval(draws.map(d => d[k]), boot);
+  const ci = k =>
+    interval(
+      draws.map(d => d[k]),
+      boot,
+    );
   const res = { games: held.length, puzzles: keys.length, est, ci: {} };
   for (const k of Object.keys(est)) res.ci[k] = ci(k);
   const enough = res.games >= rule.minGames && res.puzzles >= rule.minPuzzles;
@@ -293,8 +400,15 @@ export function verdict(held, current, { boot = 400, seed = 1, rule = RULE } = {
     B: haveCur && res.ci.diff[0] > 0 && est.diff >= rule.minDeltaRho,
   };
   const none = !res.gate.A && !res.gate.B;
-  res.verdict = !enough ? 'INCONCLUSIVE' : res.gate.A && res.gate.B ? 'ACCEPT'
-    : none ? (res.games >= rule.confirmGames ? 'REJECT' : 'NO EVIDENCE YET') : 'PARTIAL';
+  res.verdict = !enough
+    ? 'INCONCLUSIVE'
+    : res.gate.A && res.gate.B
+      ? 'ACCEPT'
+      : none
+        ? res.games >= rule.confirmGames
+          ? 'REJECT'
+          : 'NO EVIDENCE YET'
+        : 'PARTIAL';
   return res;
 }
 
@@ -304,17 +418,25 @@ export function verdict(held, current, { boot = 400, seed = 1, rule = RULE } = {
 // bucket).
 export function parameters(games, { boot = 100, seed = 1 } = {}) {
   const describe = gs => {
-    const fit = fitModel(MODELS.free, gs), lambda = MODELS.free.rates(fit.th), D = depthMeans(gs);
+    const fit = fitModel(MODELS.free, gs),
+      lambda = MODELS.free.rates(fit.th),
+      D = depthMeans(gs);
     const w = lambda.map((l, b) => l * D[b]);
     return { lambda, D, w, points: w.map(v => v / w[1]), gamma: fit.th[4] };
   };
   const est = describe(games);
-  const keys = [...new Set(games.map(g => g.key))], groups = keys.map(() => []);
+  const keys = [...new Set(games.map(g => g.key))],
+    groups = keys.map(() => []);
   games.forEach((g, i) => groups[keys.indexOf(g.key)].push(i));
   const rnd = makeRng(seed + 2);
   const draws = Array.from({ length: boot }, () =>
-    describe(resampleClusters(groups, rnd).map(i => games[i])));
-  const ci = (get, b) => interval(draws.map(d => get(d)[b]), boot);
+    describe(resampleClusters(groups, rnd).map(i => games[i])),
+  );
+  const ci = (get, b) =>
+    interval(
+      draws.map(d => get(d)[b]),
+      boot,
+    );
   return {
     est,
     ci: {
@@ -322,14 +444,21 @@ export function parameters(games, { boot = 100, seed = 1 } = {}) {
       D: [0, 1, 2, 3].map(b => ci(d => d.D, b)),
       w: [0, 1, 2, 3].map(b => ci(d => d.w, b)),
       points: [0, 1, 2, 3].map(b => ci(d => d.points, b)),
-      gamma: interval(draws.map(d => d.gamma), boot),
+      gamma: interval(
+        draws.map(d => d.gamma),
+        boot,
+      ),
     },
   };
 }
 
 // rows -> usable games -> cross-validated comparison -> verdict, in one go.
-export function analyse(rows, stepsFor, current,
-  { folds = 5, boot = 400, seed = 1, useSkill = true } = {}) {
+export function analyse(
+  rows,
+  stepsFor,
+  current,
+  { folds = 5, boot = 400, seed = 1, useSkill = true } = {},
+) {
   const data = gamesOf(rows, stepsFor, { useSkill });
   const held = crossValidate(data.games, { folds, seed });
   return { data, held, res: verdict(held, current, { boot, seed }) };

@@ -29,14 +29,21 @@ import {
   zoomAt,
 } from '../src/view/camera.js';
 import {
-  ANCHOR_MOVE, COMMIT_SLOP, FINGER_MOVED, classifyPair, createRouter,
+  ANCHOR_MOVE,
+  COMMIT_SLOP,
+  FINGER_MOVED,
+  classifyPair,
+  createRouter,
 } from '../src/apps/play/gesture.js';
 import { SLOTS, surfaceTopology } from '../src/core/surface/topology.js';
 import { IDENTITY, buildView, orbit } from '../src/view/proj.js';
 import { headTurnedAway } from '../src/view/solid-nav.js';
 import { CELL, boardSvg, boardView } from '../src/apps/play/board.js';
 import {
-  pentagonBoardSvg, pentagonCellAt, pentagonPoint, pentagonView,
+  pentagonBoardSvg,
+  pentagonCellAt,
+  pentagonPoint,
+  pentagonView,
 } from '../src/apps/play/pentagon-board.js';
 import { cellPoint, fullViewOf } from '../src/apps/play/puzzle-kit.js';
 import { EN, ZH } from '../src/ui/i18n.js';
@@ -48,7 +55,12 @@ const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
 const nearAll = (a, b, eps = 1e-6) => a.every((v, i) => near(v, b[i], eps));
 const nearCam = (a, b) => nearAll([a.s, a.cx, a.cy], [b.s, b.cx, b.cy]);
 const state = (p, extra = {}) => ({
-  puzzle: p, path: [], paths: [[], []], hintCell: null, hintWrongCell: null, ...extra,
+  puzzle: p,
+  path: [],
+  paths: [[], []],
+  hintCell: null,
+  hintWrongCell: null,
+  ...extra,
 });
 
 export function zoomTests(t, ok, eq) {
@@ -69,7 +81,12 @@ export function zoomTests(t, ok, eq) {
     const corner = clampCamera(FULL, { s: 2, cx: -100, cy: 5000 }, 4);
     eq(viewOf(FULL, corner), { x: 0, y: 480, w: 480, h: 480 });
     for (const s of [1, 1.3, 2, 3.7]) {
-      for (const [cx, cy] of [[0, 0], [960, 960], [480, 100], [333, 777]]) {
+      for (const [cx, cy] of [
+        [0, 0],
+        [960, 960],
+        [480, 100],
+        [333, 777],
+      ]) {
         const v = viewOf(FULL, clampCamera(FULL, { s, cx, cy }, 6));
         ok(v.x >= -1e-9 && v.y >= -1e-9 && v.x + v.w <= 960 + 1e-9 && v.y + v.h <= 960 + 1e-9);
       }
@@ -85,29 +102,46 @@ export function zoomTests(t, ok, eq) {
     eq(maxZoom(NaN), 2);
   });
 
-  t('camera: boardRect is the svg box at s = 1, and maps every pixel to the cell the old code found', () => {
-    eq(boardRect(BOX, FULL, fitCamera(FULL)), { left: 20, top: 100, width: 350, height: 350 });
-    const n = 16;
-    for (const cam of [
-      { s: 1, cx: 480, cy: 480 }, { s: 2, cx: 300, cy: 700 }, { s: 3.3, cx: 100, cy: 100 },
-      { s: 5, cx: 900, cy: 50 },
-    ]) {
-      const c = clampCamera(FULL, cam, 6);
-      const rect = boardRect(BOX, FULL, c);
-      for (let x = BOX.left; x < BOX.left + BOX.width; x += 13.7) {
-        for (let y = BOX.top; y < BOX.top + BOX.height; y += 17.3) {
-          const [bx, by] = boardPoint(BOX, FULL, c, x, y);
-          const want = Math.floor(by / CELL) * n + Math.floor(bx / CELL);
-          const got = cellAtPoint(n, x - rect.left, y - rect.top, rect.width, rect.height, 0, false);
-          eq(got, want, `s=${c.s} ${x},${y}`);
+  t(
+    'camera: boardRect is the svg box at s = 1, and maps every pixel to the cell the old code found',
+    () => {
+      eq(boardRect(BOX, FULL, fitCamera(FULL)), { left: 20, top: 100, width: 350, height: 350 });
+      const n = 16;
+      for (const cam of [
+        { s: 1, cx: 480, cy: 480 },
+        { s: 2, cx: 300, cy: 700 },
+        { s: 3.3, cx: 100, cy: 100 },
+        { s: 5, cx: 900, cy: 50 },
+      ]) {
+        const c = clampCamera(FULL, cam, 6);
+        const rect = boardRect(BOX, FULL, c);
+        for (let x = BOX.left; x < BOX.left + BOX.width; x += 13.7) {
+          for (let y = BOX.top; y < BOX.top + BOX.height; y += 17.3) {
+            const [bx, by] = boardPoint(BOX, FULL, c, x, y);
+            const want = Math.floor(by / CELL) * n + Math.floor(bx / CELL);
+            const got = cellAtPoint(
+              n,
+              x - rect.left,
+              y - rect.top,
+              rect.width,
+              rect.height,
+              0,
+              false,
+            );
+            eq(got, want, `s=${c.s} ${x},${y}`);
+          }
         }
       }
-    }
-  });
+    },
+  );
 
   t('camera: zoomAt keeps the spot at (fx, fy) of the box still, and the limits hold', () => {
     const cam = { s: 1.7, cx: 400, cy: 600 };
-    for (const [fx, fy] of [[0.5, 0.5], [0.2, 0.8], [0.9, 0.1]]) {
+    for (const [fx, fy] of [
+      [0.5, 0.5],
+      [0.2, 0.8],
+      [0.9, 0.1],
+    ]) {
       const x = BOX.left + fx * BOX.width;
       const y = BOX.top + fy * BOX.height;
       const before = boardPoint(BOX, FULL, cam, x, y);
@@ -131,25 +165,45 @@ export function zoomTests(t, ok, eq) {
     eq([viewOf(FULL, edge).x, viewOf(FULL, edge).y], [0, 0]);
   });
 
-  t('camera: a pinch zooms by the ratio of the finger gaps and keeps the spot between the fingers', () => {
-    const cam0 = fitCamera(FULL);
-    const a0 = [BOX.left + 100, BOX.top + 150];
-    const b0 = [BOX.left + 200, BOX.top + 150];
-    const mid0 = [(a0[0] + b0[0]) / 2, (a0[1] + b0[1]) / 2];
-    const spot = boardPoint(BOX, FULL, cam0, mid0[0], mid0[1]);
-    // apart by 1.6x, the middle moved by (30, -20)
-    const a1 = [mid0[0] + 30 - 80, mid0[1] - 20];
-    const b1 = [mid0[0] + 30 + 80, mid0[1] - 20];
-    const next = pinchCamera(FULL, cam0, 6, BOX, [a0, b0], [a1, b1]);
-    ok(near(next.s, 1.6));
-    ok(nearAll(boardPoint(BOX, FULL, next, mid0[0] + 30, mid0[1] - 20), spot, 1e-6));
-    ok(nearCam(pinchCamera(FULL, cam0, 6, BOX, [a0, b0], [a0, b0]), cam0), 'no move: no change');
-    eq(pinchCamera(FULL, cam0, 6, BOX, [a0, b0], [[0, 0], [1000, 0]]).s, 6); // the limit
-    eq(pinchCamera(FULL, { s: 2, cx: 300, cy: 300 }, 6, BOX, [a0, b0], [a0, [a0[0] + 1, a0[1]]]).s, 1);
-    // two fingers on one spot at the start: no zoom, no NaN
-    const same = pinchCamera(FULL, cam0, 6, BOX, [a0, a0], [a1, b1]);
-    ok(Number.isFinite(same.cx) && same.s === 1);
-  });
+  t(
+    'camera: a pinch zooms by the ratio of the finger gaps and keeps the spot between the fingers',
+    () => {
+      const cam0 = fitCamera(FULL);
+      const a0 = [BOX.left + 100, BOX.top + 150];
+      const b0 = [BOX.left + 200, BOX.top + 150];
+      const mid0 = [(a0[0] + b0[0]) / 2, (a0[1] + b0[1]) / 2];
+      const spot = boardPoint(BOX, FULL, cam0, mid0[0], mid0[1]);
+      // apart by 1.6x, the middle moved by (30, -20)
+      const a1 = [mid0[0] + 30 - 80, mid0[1] - 20];
+      const b1 = [mid0[0] + 30 + 80, mid0[1] - 20];
+      const next = pinchCamera(FULL, cam0, 6, BOX, [a0, b0], [a1, b1]);
+      ok(near(next.s, 1.6));
+      ok(nearAll(boardPoint(BOX, FULL, next, mid0[0] + 30, mid0[1] - 20), spot, 1e-6));
+      ok(nearCam(pinchCamera(FULL, cam0, 6, BOX, [a0, b0], [a0, b0]), cam0), 'no move: no change');
+      eq(
+        pinchCamera(
+          FULL,
+          cam0,
+          6,
+          BOX,
+          [a0, b0],
+          [
+            [0, 0],
+            [1000, 0],
+          ],
+        ).s,
+        6,
+      ); // the limit
+      eq(
+        pinchCamera(FULL, { s: 2, cx: 300, cy: 300 }, 6, BOX, [a0, b0], [a0, [a0[0] + 1, a0[1]]])
+          .s,
+        1,
+      );
+      // two fingers on one spot at the start: no zoom, no NaN
+      const same = pinchCamera(FULL, cam0, 6, BOX, [a0, a0], [a1, b1]);
+      ok(Number.isFinite(same.cx) && same.s === 1);
+    },
+  );
 
   t('camera: keepInView moves the view the least that puts the head inside the middle', () => {
     const cam = clampCamera(FULL, { s: 3, cx: 480, cy: 480 }, 6); // the view is 320 wide
@@ -164,22 +218,25 @@ export function zoomTests(t, ok, eq) {
     eq(viewOf(FULL, left).x, 0);
   });
 
-  t('camera: the edge band scrolls: zero in the middle, signed at the edges, growing to the speed', () => {
-    const mid = [BOX.left + BOX.width / 2, BOX.top + BOX.height / 2];
-    eq(edgeVelocity(mid[0], mid[1], BOX), [0, 0]);
-    const band = EDGE_BAND * BOX.width;
-    eq(edgeVelocity(BOX.left + band + 1, mid[1], BOX), [0, 0]);
-    const [vx] = edgeVelocity(BOX.left + band / 2, mid[1], BOX);
-    ok(near(vx, -EDGE_SPEED / 2), 'half way into the left band');
-    eq(edgeVelocity(BOX.left - 50, mid[1], BOX)[0], -EDGE_SPEED);
-    eq(edgeVelocity(BOX.left + BOX.width + 50, mid[1], BOX)[0], EDGE_SPEED);
-    eq(edgeVelocity(mid[0], BOX.top + 1, BOX)[1] < 0, true);
-    eq(edgeVelocity(mid[0], BOX.top + BOX.height - 1, BOX)[1] > 0, true);
-    const cam = clampCamera(FULL, { s: 2, cx: 480, cy: 480 }, 6);
-    const moved = drift(FULL, cam, 6, [0.5, 0], 0.5); // a quarter of the view (480 wide) = 120
-    ok(near(moved.cx, 600) && moved.cy === 480);
-    eq(drift(FULL, cam, 6, [100, 0], 1).cx, 720); // never past the picture
-  });
+  t(
+    'camera: the edge band scrolls: zero in the middle, signed at the edges, growing to the speed',
+    () => {
+      const mid = [BOX.left + BOX.width / 2, BOX.top + BOX.height / 2];
+      eq(edgeVelocity(mid[0], mid[1], BOX), [0, 0]);
+      const band = EDGE_BAND * BOX.width;
+      eq(edgeVelocity(BOX.left + band + 1, mid[1], BOX), [0, 0]);
+      const [vx] = edgeVelocity(BOX.left + band / 2, mid[1], BOX);
+      ok(near(vx, -EDGE_SPEED / 2), 'half way into the left band');
+      eq(edgeVelocity(BOX.left - 50, mid[1], BOX)[0], -EDGE_SPEED);
+      eq(edgeVelocity(BOX.left + BOX.width + 50, mid[1], BOX)[0], EDGE_SPEED);
+      eq(edgeVelocity(mid[0], BOX.top + 1, BOX)[1] < 0, true);
+      eq(edgeVelocity(mid[0], BOX.top + BOX.height - 1, BOX)[1] > 0, true);
+      const cam = clampCamera(FULL, { s: 2, cx: 480, cy: 480 }, 6);
+      const moved = drift(FULL, cam, 6, [0.5, 0], 0.5); // a quarter of the view (480 wide) = 120
+      ok(near(moved.cx, 600) && moved.cy === 480);
+      eq(drift(FULL, cam, 6, [100, 0], 1).cx, 720); // never past the picture
+    },
+  );
 
   t('camera: blend goes from one camera to the other, evenly in s', () => {
     const a = { s: 1, cx: 480, cy: 480 };
@@ -189,42 +246,58 @@ export function zoomTests(t, ok, eq) {
     ok(near(blend(a, b, 0.5).s, 2), 'half way is the geometric mean');
   });
 
-  t('zoom board: no camera = the same picture as before; a camera writes its part into the viewBox', () => {
-    const p = makePuzzle(5);
-    p.cp[0] = 1;
-    p.cp[24] = 2;
-    const plain = boardSvg(state(p));
-    ok(plain.startsWith('<svg viewBox="0 0 300 300" class="zip-svg'), plain.slice(0, 60));
-    ok(!plain.includes('zoomed'));
-    eq(boardSvg(state(p, { cam: fitCamera(boardView(p)) })), plain);
-    const zoomed = boardSvg(state(p, { cam: { s: 2, cx: 75, cy: 75 } }));
-    ok(zoomed.startsWith('<svg viewBox="0 0 150 150" class="zip-svg zoomed'), zoomed.slice(0, 70));
-    eq(boardView(p), { x: 0, y: 0, w: 300, h: 300 });
-    p.wrap = true;
-    const wrapped = boardView(p);
-    ok(near(wrapped.x, -24) && near(wrapped.w, 348), JSON.stringify(wrapped));
-  });
+  t(
+    'zoom board: no camera = the same picture as before; a camera writes its part into the viewBox',
+    () => {
+      const p = makePuzzle(5);
+      p.cp[0] = 1;
+      p.cp[24] = 2;
+      const plain = boardSvg(state(p));
+      ok(plain.startsWith('<svg viewBox="0 0 300 300" class="zip-svg'), plain.slice(0, 60));
+      ok(!plain.includes('zoomed'));
+      eq(boardSvg(state(p, { cam: fitCamera(boardView(p)) })), plain);
+      const zoomed = boardSvg(state(p, { cam: { s: 2, cx: 75, cy: 75 } }));
+      ok(
+        zoomed.startsWith('<svg viewBox="0 0 150 150" class="zip-svg zoomed'),
+        zoomed.slice(0, 70),
+      );
+      eq(boardView(p), { x: 0, y: 0, w: 300, h: 300 });
+      p.wrap = true;
+      const wrapped = boardView(p);
+      ok(near(wrapped.x, -24) && near(wrapped.w, 348), JSON.stringify(wrapped));
+    },
+  );
 
-  t('zoom board: a pentagon board is zoomed the same way; the pointer maps through boardRect', () => {
-    const p = runSync(generatePentagon(6, 3));
-    const full = pentagonView(p);
-    eq(fullViewOf(p), full);
-    ok(pentagonBoardSvg(state(p)).includes(`viewBox="${viewBoxAttr(full)}"`));
-    const cam = clampCamera(full, { s: 2.4, cx: full.x + 0.3 * full.w, cy: full.y + 0.6 * full.h }, 6);
-    const svg = pentagonBoardSvg(state(p, { cam }));
-    ok(svg.includes(`viewBox="${viewBoxAttr(viewOf(full, cam))}"`) && svg.includes(' zoomed"'));
-    const box = { left: 10, top: 20, width: 300, height: (300 * full.h) / full.w };
-    const rect = boardRect(box, full, cam);
-    for (let x = box.left; x < box.left + box.width; x += 21) {
-      for (let y = box.top; y < box.top + box.height; y += 19) {
-        const viaRect = pentagonPoint(p, rect, x, y);
-        ok(nearAll(viaRect, boardPoint(box, full, cam, x, y), 1e-6), `${x},${y}`);
-        eq(pentagonCellAt(p, ...viaRect), pentagonCellAt(p, ...boardPoint(box, full, cam, x, y)));
+  t(
+    'zoom board: a pentagon board is zoomed the same way; the pointer maps through boardRect',
+    () => {
+      const p = runSync(generatePentagon(6, 3));
+      const full = pentagonView(p);
+      eq(fullViewOf(p), full);
+      ok(pentagonBoardSvg(state(p)).includes(`viewBox="${viewBoxAttr(full)}"`));
+      const cam = clampCamera(
+        full,
+        { s: 2.4, cx: full.x + 0.3 * full.w, cy: full.y + 0.6 * full.h },
+        6,
+      );
+      const svg = pentagonBoardSvg(state(p, { cam }));
+      ok(svg.includes(`viewBox="${viewBoxAttr(viewOf(full, cam))}"`) && svg.includes(' zoomed"'));
+      const box = { left: 10, top: 20, width: 300, height: (300 * full.h) / full.w };
+      const rect = boardRect(box, full, cam);
+      for (let x = box.left; x < box.left + box.width; x += 21) {
+        for (let y = box.top; y < box.top + box.height; y += 19) {
+          const viaRect = pentagonPoint(p, rect, x, y);
+          ok(nearAll(viaRect, boardPoint(box, full, cam, x, y), 1e-6), `${x},${y}`);
+          eq(
+            pentagonCellAt(p, ...viaRect),
+            pentagonCellAt(p, ...boardPoint(box, full, cam, x, y)),
+          );
+        }
       }
-    }
-    const c = cellPoint(p, 0);
-    ok(c.length === 2 && Number.isFinite(c[0]));
-  });
+      const c = cellPoint(p, 0);
+      ok(c.length === 2 && Number.isFinite(c[0]));
+    },
+  );
 
   t('zoom board: the centre of a cell of a square board', () => {
     const p = makePuzzle(7);
@@ -241,14 +314,26 @@ export function zoomTests(t, ok, eq) {
     ok(html.includes('id="zoomMap" hidden'), 'drawn hidden');
     ok(html.includes('viewBox="0 0 720 720"'), 'the whole picture');
     eq((html.match(/<circle /g) ?? []).length, 3, 'a dot per checkpoint');
-    ok(html.includes('<path data-colour="0" d="M30 30'), 'the path starts at the middle of cell 0');
+    ok(
+      html.includes('<path data-colour="0" d="M30 30'),
+      'the path starts at the middle of cell 0',
+    );
     ok(html.includes(`width:${MAP_PX}px`), 'its size');
     const none = zoomMapHtml(state(p, { path: [], finished: false }));
     ok(none.includes('d=""'), 'no path, no line');
     const two = makePuzzle(8);
     two.split = true;
     two.cp[0] = 1;
-    const both = zoomMapHtml(state(two, { path: [], paths: [[0, 1], [9, 10]], finished: false }));
+    const both = zoomMapHtml(
+      state(two, {
+        path: [],
+        paths: [
+          [0, 1],
+          [9, 10],
+        ],
+        finished: false,
+      }),
+    );
     eq((both.match(/<path data-colour=/g) ?? []).length, 2, 'one line per colour');
   });
 
@@ -258,20 +343,43 @@ export function zoomTests(t, ok, eq) {
     }
   });
 
-  t('zoom solid: a head, or a cell it can step to, that is out of the zoomed view counts as turned away', () => {
-    const top = surfaceTopology('cube', 3);
-    const layout = buildView(top, orbit(IDENTITY, 0.6, 0.5));
-    const heads = [...Array(top.T).keys()].filter(c => !headTurnedAway(top, layout, [c], false));
-    ok(heads.length > 0, 'a corner view has cells that see only visible cells');
-    const head = heads[0];
-    const next = [...Array(top.deg[head]).keys()].map(k => top.nb[head * SLOTS + k]);
-    const far = [...Array(top.T).keys()].find(c => c !== head && !next.includes(c));
-    eq(headTurnedAway(top, layout, [head], false, () => false), false, 'no zoom: as before');
-    eq(headTurnedAway(top, layout, [head], false, c => c === head), true, 'the head is out');
-    eq(headTurnedAway(top, layout, [head], false, c => c === next[0]), true, 'a next cell is out');
-    eq(headTurnedAway(top, layout, [head], false, c => c === far), false, 'a far cell is not asked');
-    eq(headTurnedAway(top, layout, [head, next[0]], false, c => c === head), false, 'passed cells');
-  });
+  t(
+    'zoom solid: a head, or a cell it can step to, that is out of the zoomed view counts as turned away',
+    () => {
+      const top = surfaceTopology('cube', 3);
+      const layout = buildView(top, orbit(IDENTITY, 0.6, 0.5));
+      const heads = [...Array(top.T).keys()].filter(c => !headTurnedAway(top, layout, [c], false));
+      ok(heads.length > 0, 'a corner view has cells that see only visible cells');
+      const head = heads[0];
+      const next = [...Array(top.deg[head]).keys()].map(k => top.nb[head * SLOTS + k]);
+      const far = [...Array(top.T).keys()].find(c => c !== head && !next.includes(c));
+      eq(
+        headTurnedAway(top, layout, [head], false, () => false),
+        false,
+        'no zoom: as before',
+      );
+      eq(
+        headTurnedAway(top, layout, [head], false, c => c === head),
+        true,
+        'the head is out',
+      );
+      eq(
+        headTurnedAway(top, layout, [head], false, c => c === next[0]),
+        true,
+        'a next cell is out',
+      );
+      eq(
+        headTurnedAway(top, layout, [head], false, c => c === far),
+        false,
+        'a far cell is not asked',
+      );
+      eq(
+        headTurnedAway(top, layout, [head, next[0]], false, c => c === head),
+        false,
+        'passed cells',
+      );
+    },
+  );
 
   // ---------------- the router ----------------
   const ev = (id, type, x, y, extra = {}) => ({ id, type, x, y, button: 0, ...extra });
@@ -298,7 +406,9 @@ export function zoomTests(t, ok, eq) {
     eq(r.down(ev(1, 'touch', 50, 60)), [{ do: 'timer', ms: 70 }]);
     eq(r.mode(), 'pending');
     eq(r.up(ev(1, 'touch', 50, 60)), [
-      { do: 'timer-clear' }, { do: 'draw-start', x: 50, y: 60 }, { do: 'draw-end' },
+      { do: 'timer-clear' },
+      { do: 'draw-start', x: 50, y: 60 },
+      { do: 'draw-end' },
     ]);
     eq(r.mode(), 'idle');
   });
@@ -330,7 +440,8 @@ export function zoomTests(t, ok, eq) {
     const r = createRouter();
     r.down(ev(1, 'touch', 100, 100));
     eq(r.down(ev(2, 'touch', 200, 100)), [
-      { do: 'timer-clear' }, { do: 'gesture-start', a: [100, 100], b: [200, 100] },
+      { do: 'timer-clear' },
+      { do: 'gesture-start', a: [100, 100], b: [200, 100] },
     ]);
     eq(r.mode(), 'gesture');
     eq(r.move(ev(1, 'touch', 80, 100)), [{ do: 'gesture-move', a: [80, 100], b: [200, 100] }]);
@@ -359,23 +470,26 @@ export function zoomTests(t, ok, eq) {
     eq(r.mode(), 'idle');
   });
 
-  t('gesture: a cancelled touch draws nothing; a third finger and repeated events change nothing', () => {
-    const r = createRouter();
-    r.down(ev(1, 'touch', 10, 10));
-    eq(r.up(ev(1, 'touch', 10, 10, { cancel: true })), [{ do: 'timer-clear' }]);
-    eq(r.mode(), 'idle');
-    r.down(ev(1, 'touch', 10, 10));
-    r.down(ev(2, 'touch', 50, 10));
-    eq(r.down(ev(3, 'touch', 90, 10)), [], 'a third finger');
-    eq(r.down(ev(2, 'touch', 50, 10)), [], 'the same pointer twice');
-    eq(r.up(ev(9, 'touch', 0, 0)), [], 'a pointer that was never down');
-    eq(kinds(r.move(ev(3, 'touch', 95, 10))), [], 'not one of the two');
-    r.up(ev(1, 'touch', 10, 10));
-    r.up(ev(2, 'touch', 50, 10));
-    eq(r.mode(), 'spent');
-    r.up(ev(3, 'touch', 90, 10));
-    eq(r.mode(), 'idle');
-  });
+  t(
+    'gesture: a cancelled touch draws nothing; a third finger and repeated events change nothing',
+    () => {
+      const r = createRouter();
+      r.down(ev(1, 'touch', 10, 10));
+      eq(r.up(ev(1, 'touch', 10, 10, { cancel: true })), [{ do: 'timer-clear' }]);
+      eq(r.mode(), 'idle');
+      r.down(ev(1, 'touch', 10, 10));
+      r.down(ev(2, 'touch', 50, 10));
+      eq(r.down(ev(3, 'touch', 90, 10)), [], 'a third finger');
+      eq(r.down(ev(2, 'touch', 50, 10)), [], 'the same pointer twice');
+      eq(r.up(ev(9, 'touch', 0, 0)), [], 'a pointer that was never down');
+      eq(kinds(r.move(ev(3, 'touch', 95, 10))), [], 'not one of the two');
+      r.up(ev(1, 'touch', 10, 10));
+      r.up(ev(2, 'touch', 50, 10));
+      eq(r.mode(), 'spent');
+      r.up(ev(3, 'touch', 90, 10));
+      eq(r.mode(), 'idle');
+    },
+  );
 
   t('gesture: in pan mode every press pans (a mouse, a finger); a second finger pinches', () => {
     let panning = true;
@@ -386,7 +500,8 @@ export function zoomTests(t, ok, eq) {
     eq(r.down(ev(2, 'touch', 50, 50)), [{ do: 'pan-start' }], 'no wait for a touch');
     eq(r.move(ev(2, 'touch', 40, 50)), [{ do: 'pan-move', dx: -10, dy: 0 }]);
     eq(r.down(ev(3, 'touch', 150, 50)), [
-      { do: 'pan-end' }, { do: 'gesture-start', a: [40, 50], b: [150, 50] },
+      { do: 'pan-end' },
+      { do: 'gesture-start', a: [40, 50], b: [150, 50] },
     ]);
     eq(r.move(ev(3, 'touch', 170, 50)), [{ do: 'gesture-move', a: [40, 50], b: [170, 50] }]);
     r.up(ev(2, 'touch', 40, 50));
@@ -396,24 +511,86 @@ export function zoomTests(t, ok, eq) {
     eq(r.down(ev(4, 'touch', 1, 1)), [{ do: 'timer', ms: 70 }], 'out of pan mode a touch waits');
   });
 
-  t('gesture: two fingers on a solid are a pinch or a drag together, called once both have moved', () => {
-    const start = [[100, 100], [160, 100]];
-    // the events come one finger at a time: a lone finger that moved is not yet a pinch
-    eq(classifyPair(start, [[100, 100], [160, 100]]), null, 'nothing moved');
-    eq(classifyPair(start, [[120, 100], [160, 100]]), null, 'one finger, a little');
-    eq(FINGER_MOVED < ANCHOR_MOVE, true);
-    // together to the right (one finger ahead of the other)
-    eq(classifyPair(start, [[120, 100], [165, 100]]), 'turn');
-    eq(classifyPair(start, [[120, 108], [180, 108]]), 'turn');
-    // apart / together
-    eq(classifyPair(start, [[90, 100], [170, 100]]), 'zoom');
-    eq(classifyPair(start, [[110, 100], [150, 100]]), 'zoom');
-    // a pinch about a finger that stays: once the other has gone far
-    eq(classifyPair(start, [[100, 100], [180, 100]]), null);
-    eq(classifyPair(start, [[100, 100], [160 + ANCHOR_MOVE, 100]]), 'zoom');
-    // across each other (a twist): nothing until it is clear
-    eq(classifyPair(start, [[100, 104], [160, 96]]), null);
-  });
+  t(
+    'gesture: two fingers on a solid are a pinch or a drag together, called once both have moved',
+    () => {
+      const start = [
+        [100, 100],
+        [160, 100],
+      ];
+      // the events come one finger at a time: a lone finger that moved is not yet a pinch
+      eq(
+        classifyPair(start, [
+          [100, 100],
+          [160, 100],
+        ]),
+        null,
+        'nothing moved',
+      );
+      eq(
+        classifyPair(start, [
+          [120, 100],
+          [160, 100],
+        ]),
+        null,
+        'one finger, a little',
+      );
+      eq(FINGER_MOVED < ANCHOR_MOVE, true);
+      // together to the right (one finger ahead of the other)
+      eq(
+        classifyPair(start, [
+          [120, 100],
+          [165, 100],
+        ]),
+        'turn',
+      );
+      eq(
+        classifyPair(start, [
+          [120, 108],
+          [180, 108],
+        ]),
+        'turn',
+      );
+      // apart / together
+      eq(
+        classifyPair(start, [
+          [90, 100],
+          [170, 100],
+        ]),
+        'zoom',
+      );
+      eq(
+        classifyPair(start, [
+          [110, 100],
+          [150, 100],
+        ]),
+        'zoom',
+      );
+      // a pinch about a finger that stays: once the other has gone far
+      eq(
+        classifyPair(start, [
+          [100, 100],
+          [180, 100],
+        ]),
+        null,
+      );
+      eq(
+        classifyPair(start, [
+          [100, 100],
+          [160 + ANCHOR_MOVE, 100],
+        ]),
+        'zoom',
+      );
+      // across each other (a twist): nothing until it is clear
+      eq(
+        classifyPair(start, [
+          [100, 104],
+          [160, 96],
+        ]),
+        null,
+      );
+    },
+  );
 
   t('gesture: a touch while a mouse button is down is ignored', () => {
     const r = createRouter();

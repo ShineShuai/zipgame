@@ -6,8 +6,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
-  confirmDialog, exportDialog, gamePage, generatingPage, invitePage, joinPage, lobbyPage,
-  menuPage, resultCard, roomInvitePage, roomJoinPage, STAGE_TEXT,
+  confirmDialog,
+  exportDialog,
+  gamePage,
+  generatingPage,
+  invitePage,
+  joinPage,
+  lobbyPage,
+  menuPage,
+  resultCard,
+  roomInvitePage,
+  roomJoinPage,
+  STAGE_TEXT,
 } from '../../src/coop/pages.js';
 import { GREETING_MAX, STAGES } from '../../src/coop/join.js';
 import { EN, ZH } from '../../src/coop/texts.js';
@@ -16,30 +26,47 @@ import { COOP_VARIANTS, sizesFor } from '../../src/coop/variants.js';
 const IDS = COOP_VARIANTS.map(variant => variant.id);
 
 const view = (over = {}) => ({
-  n: 7, online: false, pid: 0, peerHere: true, revealed: false, grade: 3,
+  n: 7,
+  online: false,
+  pid: 0,
+  peerHere: true,
+  revealed: false,
+  grade: 3,
   seedText: 'seed 5 · solo',
-  devText: 'trap 1.20', time: 12.34, hintsLeft: { used: 1, cap: 7 }, canNew: true, ...over,
+  devText: 'trap 1.20',
+  time: 12.34,
+  hintsLeft: { used: 1, cap: 7 },
+  canNew: true,
+  ...over,
 });
 
 const sizes = html => [...html.matchAll(/<option value="(\d+)"/g)].map(match => Number(match[1]));
-const picked = html => (
-  /<input type="radio" name="coopVariant" value="(\w+)" checked /.exec(html)?.[1]);
+const picked = html =>
+  /<input type="radio" name="coopVariant" value="(\w+)" checked /.exec(html)?.[1];
 
 // What the player has unlocked in free play (apps/play/menu.js coopAccess): locked types stay
 // locked.
 const INFO = {
   access: {
-    standard: 'all', cutout: 'all', arrows: 'none', exact: 'none', wrap: 'none', loop: 'none',
-    teleport: 'none', twopaths: 'none', pentagon: 'none', tetra: 'part', cube: 'none',
+    standard: 'all',
+    cutout: 'all',
+    arrows: 'none',
+    exact: 'none',
+    wrap: 'none',
+    loop: 'none',
+    teleport: 'none',
+    twopaths: 'none',
+    pentagon: 'none',
+    tetra: 'part',
+    cube: 'none',
     ball: 'none',
   },
   sizes: { tetra: [4] },
   solid: true,
 };
 const tag = (html, id) => new RegExp(`<label[^>]*id="coopOpt-${id}"[^>]*>`).exec(html)[0];
-const group = (html, tab) => new RegExp(
-  `<div class="variant-options[^"]*" id="coopTiles-${tab}"[^>]*>`,
-).exec(html)[0];
+const group = (html, tab) =>
+  new RegExp(`<div class="variant-options[^"]*" id="coopTiles-${tab}"[^>]*>`).exec(html)[0];
 const tabsHidden = html => /id="coopTabs"[^>]*display:none/.test(html);
 
 test('what comes from outside is escaped: greetings, links, codes, the exported text', () => {
@@ -50,7 +77,9 @@ test('what comes from outside is escaped: greetings, links, codes, the exported 
     'join code': joinPage({ code: hostile, status: 's' }),
     'room link': roomInvitePage({ link: hostile, status: 's' }),
     'request greeting': roomInvitePage({
-      link: 'l', status: 's', requests: [{ id: hostile, greeting: hostile }],
+      link: 'l',
+      status: 's',
+      requests: [{ id: hostile, greeting: hostile }],
     }),
     'guest greeting': roomJoinPage({ stage: 'ready', status: 's', greeting: hostile }),
   };
@@ -78,7 +107,10 @@ test('the host starts and decides; the guest only waits and may ask', () => {
   const asked = roomInvitePage({
     link: 'l',
     status: 's',
-    requests: [{ id: 'A_-0123456b', greeting: 'Anna' }, { id: 'B', greeting: '' }],
+    requests: [
+      { id: 'A_-0123456b', greeting: 'Anna' },
+      { id: 'B', greeting: '' },
+    ],
   });
   for (const act of ['accept', 'decline']) {
     assert.equal([...asked.matchAll(new RegExp(`data-act="${act}"`, 'g'))].length, 2, act);
@@ -100,8 +132,12 @@ test('the invite, join and lobby pages offer what their state allows', () => {
   assert.ok(invite.includes(`value="${link}"`) && invite.includes('data-act="connect"'));
   assert.ok(!invitePage({ link: '', status: 'Preparing' }).includes('coopReply'), 'no reply box');
   for (const [page, canShare] of [
-    [invitePage, true], [joinPage, true], [roomInvitePage, true],
-    [invitePage, false], [joinPage, false], [roomInvitePage, false],
+    [invitePage, true],
+    [joinPage, true],
+    [roomInvitePage, true],
+    [invitePage, false],
+    [joinPage, false],
+    [roomInvitePage, false],
   ]) {
     const html = page({ link: 'l', code: 'az9', status: 's', canShare });
     assert.equal(html.includes('data-act="share"'), canShare, `${page.name} canShare=${canShare}`);
@@ -111,8 +147,11 @@ test('the invite, join and lobby pages offer what their state allows', () => {
   assert.ok(down.includes('data-act="manual"'));
   assert.ok(!roomInvitePage({ link: 'l', status: 's' }).includes('data-act="manual"'));
   assert.ok(!roomInvitePage({ link: '', status: 'Preparing' }).includes('coopLink'));
-  assert.ok(/id="coopNeedGreeting"[^>]*checked/.test(
-    roomInvitePage({ link: 'l', status: 's', needGreeting: true })));
+  assert.ok(
+    /id="coopNeedGreeting"[^>]*checked/.test(
+      roomInvitePage({ link: 'l', status: 's', needGreeting: true }),
+    ),
+  );
   assert.ok(!roomInvitePage({ link: 'l', status: 's' }).includes(' checked'));
   const form = roomJoinPage({ stage: 'ready', status: 's', needGreeting: true });
   assert.ok(form.includes(`maxlength="${GREETING_MAX}"`), 'a greeting has a length limit');
@@ -175,8 +214,12 @@ test('the picker offers every type of the registry, with the sizes of its type',
   }
   const cube = menuPage({ size: 3, rtc: true, variant: 'cube' });
   assert.match(cube, /<option value="3" selected>3 \(\d+ cells\)/, 'a solid says its cells');
-  assert.ok(/for="coopSize" id="coopSizeLabel">Shape</.test(
-    menuPage({ size: 0, rtc: true, variant: 'ball' })), 'a ball has a shape, not a size');
+  assert.ok(
+    /for="coopSize" id="coopSizeLabel">Shape</.test(
+      menuPage({ size: 0, rtc: true, variant: 'ball' }),
+    ),
+    'a ball has a shape, not a size',
+  );
   const lobby = lobbyPage({ role: 'host', size: 6, status: '', variant: 'cutout' });
   assert.equal(picked(lobby), 'cutout');
   assert.ok(lobby.includes('<option value="6" selected>'));
@@ -202,7 +245,11 @@ test('locks, tabs and open sizes follow what the player has unlocked, as in free
   assert.ok(html.includes('data-coop-tab="flat"') && html.includes('data-coop-tab="3d"'));
   assert.ok(!tabsHidden(html));
   const cube = menuPage({
-    size: 3, rtc: true, access: INFO, variant: 'cube', held: new Set(['cube']),
+    size: 3,
+    rtc: true,
+    access: INFO,
+    variant: 'cube',
+    held: new Set(['cube']),
   });
   assert.ok(!group(cube, '3d').includes('hidden') && group(cube, 'flat').includes('hidden'));
   assert.ok(cube.includes('data-coop-tab="3d" aria-selected="true"'));
@@ -238,32 +285,53 @@ test('the result card shows the time and every line of it', () => {
 // is read from its source: it lives inside the click handler and cannot be reached from a test.
 test('the pages and the screen controller agree on the actions', () => {
   const rich = view({
-    online: true, peerHere: false, revealed: true, variantName: 'Cube', viewLabel: 'Net',
+    online: true,
+    peerHere: false,
+    revealed: true,
+    variantName: 'Cube',
+    viewLabel: 'Net',
     helpAvailable: true,
   });
   const pages = [
-    menuPage({ size: 7, rtc: true, saved: true, status: 's', access: INFO }), gamePage(rich),
+    menuPage({ size: 7, rtc: true, saved: true, status: 's', access: INFO }),
+    gamePage(rich),
     invitePage({ link: 'l', status: 's', canShare: true }),
     joinPage({ code: 'c', status: 's', canShare: true }),
     lobbyPage({ role: 'host', size: 7, status: 's' }),
     lobbyPage({ role: 'guest', size: 7, status: 's' }),
     roomInvitePage({
-      link: 'l', status: 's', canShare: true, down: true, requests: [{ id: 'a', greeting: '' }],
+      link: 'l',
+      status: 's',
+      canShare: true,
+      down: true,
+      requests: [{ id: 'a', greeting: '' }],
     }),
     ...STAGES.map(stage => roomJoinPage({ stage, status: 's' })),
     generatingPage({ percent: 5, waiting: false, online: true }),
-    confirmDialog(), exportDialog('x'), resultCard({ solved: 's', lines: [] }),
+    confirmDialog(),
+    exportDialog('x'),
+    resultCard({ solved: 's', lines: [] }),
   ];
-  const emitted = new Set(pages.flatMap(
-    html => [...html.matchAll(/data-act="([\w-]+)"/g)].map(match => match[1]),
-  ));
+  const emitted = new Set(
+    pages.flatMap(html => [...html.matchAll(/data-act="([\w-]+)"/g)].map(match => match[1])),
+  );
   const source = fs.readFileSync(new URL('../../src/coop/screen.js', import.meta.url), 'utf8');
   const block = source.slice(
-    source.indexOf('const actions = {'), source.indexOf('actions[button.dataset.act]'),
+    source.indexOf('const actions = {'),
+    source.indexOf('actions[button.dataset.act]'),
   );
-  const handled = new Set([...block.matchAll(/^ {6}(?:'([\w-]+)'|(\w+))[:,]/gm)]
-    .map(match => match[1] ?? match[2]));
+  const handled = new Set(
+    [...block.matchAll(/^ {6}(?:'([\w-]+)'|(\w+))[:,]/gm)].map(match => match[1] ?? match[2]),
+  );
   assert.ok(handled.size > 20, `the actions map of screen.js was not found (${handled.size})`);
-  assert.deepEqual([...emitted].filter(act => !handled.has(act)), [], 'an act no handler takes');
-  assert.deepEqual([...handled].filter(act => !emitted.has(act)), [], 'a handler no page offers');
+  assert.deepEqual(
+    [...emitted].filter(act => !handled.has(act)),
+    [],
+    'an act no handler takes',
+  );
+  assert.deepEqual(
+    [...handled].filter(act => !emitted.has(act)),
+    [],
+    'a handler no page offers',
+  );
 });

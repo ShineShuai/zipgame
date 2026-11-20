@@ -84,7 +84,9 @@ const threw = f => {
 function brute(p) {
   const top = surfaceTopology(p.kind, p.n);
   return oracle(p, {
-    moves: topologyMoves(p, top, SLOTS), total: top.T, keep: false,
+    moves: topologyMoves(p, top, SLOTS),
+    total: top.T,
+    keep: false,
   }).count;
 }
 
@@ -172,7 +174,10 @@ export function surfaceTests(t, ok, eq) {
             eq(top.nb[cell * SLOTS + k], -1, 'unused slot');
           }
         }
-        ok(timesSeen.every(count => count === 2), 'every edge belongs to exactly two cells');
+        ok(
+          timesSeen.every(count => count === 2),
+          'every edge belongs to exactly two cells',
+        );
         eq(edgeBetween(top, 0, 0), -1);
       }
     }
@@ -208,7 +213,12 @@ export function surfaceTests(t, ok, eq) {
         if (kind === 'cube') {
           eq(c[face >> 1] * (face & 1 ? -1 : 1) > 0.999, true, 'cube face f is +x -x +y -y +z -z');
         } else {
-          const corner = [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]][face];
+          const corner = [
+            [1, 1, 1],
+            [1, -1, -1],
+            [-1, 1, -1],
+            [-1, -1, 1],
+          ][face];
           const dot = corner[0] * c[0] + corner[1] * c[1] + corner[2] * c[2];
           ok(Math.abs(dot + 1) < 1e-9, 'tetra face f is the one opposite corner f');
         }
@@ -242,7 +252,11 @@ export function surfaceTests(t, ok, eq) {
   });
 
   t('surface solver: same number of solutions as brute force on random puzzles', () => {
-    const boards = [['tetra', 2, 0.15], ['cube', 1, 0.1], ['cube', 2, 0.5]];
+    const boards = [
+      ['tetra', 2, 0.15],
+      ['cube', 1, 0.1],
+      ['cube', 2, 0.5],
+    ];
     for (const [kind, n, share] of boards) {
       for (let seed = 1; seed <= 40; seed++) {
         const p = randomPuzzle(kind, n, seed, share);
@@ -302,7 +316,10 @@ export function surfaceTests(t, ok, eq) {
     eq(capped.capped, true);
     ok(capped.nodes <= 4);
     const bad = makeSurfacePuzzle('cube', 2);
-    ok(threw(() => solveSurface(bad)), 'no numbers: invalid');
+    ok(
+      threw(() => solveSurface(bad)),
+      'no numbers: invalid',
+    );
   });
 
   t('surface puzzle: validate, canStep and isSolved', () => {
@@ -371,12 +388,18 @@ export function surfaceTests(t, ok, eq) {
       'surface cube 2\nfoo',
     ];
     for (const text of bad) {
-      ok(threw(() => parseSurface(text)), `should reject: ${JSON.stringify(text)}`);
+      ok(
+        threw(() => parseSurface(text)),
+        `should reject: ${JSON.stringify(text)}`,
+      );
     }
     const top = surfaceTopology('cube', 2);
     const wall = edgeBetween(top, 0, top.nb[0]);
     const throughWall = `surface cube 2\nwalls ${wall}\npath 0 ${top.nb[0]}`;
-    ok(threw(() => parseSurface(throughWall)), 'path through a wall');
+    ok(
+      threw(() => parseSurface(throughWall)),
+      'path through a wall',
+    );
   });
 
   t('surface generator: random Hamiltonian path on every board size', () => {
@@ -435,29 +458,40 @@ export function surfaceTests(t, ok, eq) {
     eq(maxNumber(generateSurface('tetra', 3, 1, { K: 36 }).puzzle), 36);
   });
 
-  t.slow('surface generator: the play app draws K like the square boards (pickK), after the path', () => {
-    // the range: from the square root of the cells to a quarter of them, mean at 30% of the way
-    const cases = [['tetra', 3, 36], ['tetra', 5, 100], ['cube', 2, 24], ['cube', 4, 96]];
-    for (const [kind, n, cells] of cases) {
-      const min = Math.max(4, Math.round(Math.sqrt(cells)));
-      const max = Math.max(min + 1, Math.round(cells / 4));
-      const rnd = makeRng(5);
-      const draws = Array.from({ length: 4000 }, () => pickSurfaceK(kind, n, rnd));
-      ok(draws.every(K => K >= min && K <= max), `${kind} ${n}: within [${min}, ${max}]`);
-      const mean = draws.reduce((sum, K) => sum + K, 0) / draws.length;
-      ok(Math.abs(mean - (min + 0.3 * (max - min))) < 0.4, `${kind} ${n}: mean ${mean}`);
-      ok(new Set(draws).size > 1, `${kind} ${n}: K varies`);
-    }
-    // without opts.K the generator draws it; with it the stream (and so the numbers) is as before
-    const drawn = new Set();
-    for (let seed = 1; seed <= 12; seed++) {
-      drawn.add(generateSurface('cube', 3, seed).K);
-    }
-    ok(drawn.size > 1, 'K differs between seeds');
-    const [a, b] = [generateSurface('tetra', 3, 1), generateSurface('tetra', 3, 1, { K: 9 })];
-    eq(a.path, b.path, 'the path of a seed does not depend on K');
-    eq(b.K, 9);
-  });
+  t.slow(
+    'surface generator: the play app draws K like the square boards (pickK), after the path',
+    () => {
+      // the range: from the square root of the cells to a quarter of them, mean at 30% of the way
+      const cases = [
+        ['tetra', 3, 36],
+        ['tetra', 5, 100],
+        ['cube', 2, 24],
+        ['cube', 4, 96],
+      ];
+      for (const [kind, n, cells] of cases) {
+        const min = Math.max(4, Math.round(Math.sqrt(cells)));
+        const max = Math.max(min + 1, Math.round(cells / 4));
+        const rnd = makeRng(5);
+        const draws = Array.from({ length: 4000 }, () => pickSurfaceK(kind, n, rnd));
+        ok(
+          draws.every(K => K >= min && K <= max),
+          `${kind} ${n}: within [${min}, ${max}]`,
+        );
+        const mean = draws.reduce((sum, K) => sum + K, 0) / draws.length;
+        ok(Math.abs(mean - (min + 0.3 * (max - min))) < 0.4, `${kind} ${n}: mean ${mean}`);
+        ok(new Set(draws).size > 1, `${kind} ${n}: K varies`);
+      }
+      // without opts.K the generator draws it; with it the stream (and so the numbers) is as before
+      const drawn = new Set();
+      for (let seed = 1; seed <= 12; seed++) {
+        drawn.add(generateSurface('cube', 3, seed).K);
+      }
+      ok(drawn.size > 1, 'K differs between seeds');
+      const [a, b] = [generateSurface('tetra', 3, 1), generateSurface('tetra', 3, 1, { K: 9 })];
+      eq(a.path, b.path, 'the path of a seed does not depend on K');
+      eq(b.K, 9);
+    },
+  );
 
   t('surface generator: pinned puzzles (change only with a deliberate generator change)', () => {
     const tetra = generateSurface('tetra', 3, 1);
@@ -513,7 +547,11 @@ export function surfaceTests(t, ok, eq) {
   });
 
   t('surface step: walking a generated solution is accepted all the way and solves it', () => {
-    for (const [kind, n, seed] of [['tetra', 3, 1], ['tetra', 4, 2], ['cube', 2, 1]]) {
+    for (const [kind, n, seed] of [
+      ['tetra', 3, 1],
+      ['tetra', 4, 2],
+      ['cube', 2, 1],
+    ]) {
       const g = generateSurface(kind, n, seed);
       const path = [];
       for (const cell of g.path) {
@@ -546,7 +584,10 @@ export function surfaceTests(t, ok, eq) {
     eq(events[0].phase, 'path');
     const checks = events.filter(e => e.phase === 'walls');
     ok(checks.length > 0, 'a check for every wall of the start');
-    eq(checks.map(e => e.done), checks.map((_, i) => i + 1));
+    eq(
+      checks.map(e => e.done),
+      checks.map((_, i) => i + 1),
+    );
     eq(checks[0].total, checks.length);
     eq(made.walls, 0);
     const cube = [];
@@ -603,7 +644,10 @@ export function surfaceTests(t, ok, eq) {
   });
 
   t('surface net: every cell has its sides of one length, no two cells overlap', () => {
-    for (const [kind, sizes] of [['tetra', [1, 2, 3, 4, 5]], ['cube', [1, 2, 3, 4]]]) {
+    for (const [kind, sizes] of [
+      ['tetra', [1, 2, 3, 4, 5]],
+      ['cube', [1, 2, 3, 4]],
+    ]) {
       for (const n of sizes) {
         const top = surfaceTopology(kind, n);
         const net = buildNet(top);
@@ -623,12 +667,20 @@ export function surfaceTests(t, ok, eq) {
   });
 
   t('surface net: the cuts, their letters, and sides glued the same from both cells', () => {
-    const cases = [['tetra', 3, 3], ['tetra', 5, 3], ['cube', 2, 7], ['cube', 4, 7]];
+    const cases = [
+      ['tetra', 3, 3],
+      ['tetra', 5, 3],
+      ['cube', 2, 7],
+      ['cube', 4, 7],
+    ];
     for (const [kind, n, cuts] of cases) {
       const top = surfaceTopology(kind, n);
       const net = buildNet(top);
       eq(net.cuts.length, cuts, `${kind} ${n} cuts`);
-      eq(net.cuts.map(c => c.letter), [...'ABCDEFG'].slice(0, cuts));
+      eq(
+        net.cuts.map(c => c.letter),
+        [...'ABCDEFG'].slice(0, cuts),
+      );
       for (const cut of net.cuts) {
         eq(cut.copies.size, 2, 'two copies of a cut');
         for (const sides of cut.copies.values()) {
@@ -650,7 +702,10 @@ export function surfaceTests(t, ok, eq) {
   });
 
   t('surface net: pickSide gives the side nearest to a point in the cell', () => {
-    for (const [kind, n] of [['tetra', 3], ['cube', 3]]) {
+    for (const [kind, n] of [
+      ['tetra', 3],
+      ['cube', 3],
+    ]) {
       const top = surfaceTopology(kind, n);
       const net = buildNet(top);
       for (let cell = 0; cell < top.T; cell++) {
@@ -721,13 +776,25 @@ export function surfaceTests(t, ok, eq) {
     eq(routeCrossings(net, [cut[0]]), []);
     const marks = routeCrossings(net, cut);
     const slot = slotBetween(top, cut[0], cut[1]);
-    eq(marks.map(m => m.kind), ['out', 'in']);
-    eq(marks[0], { kind: 'out', cell: cut[0], slot, letter: net.letterAt.get(cut[0] * SLOTS + slot) });
+    eq(
+      marks.map(m => m.kind),
+      ['out', 'in'],
+    );
+    eq(marks[0], {
+      kind: 'out',
+      cell: cut[0],
+      slot,
+      letter: net.letterAt.get(cut[0] * SLOTS + slot),
+    });
     eq(marks[1].cell, cut[1]);
     eq(marks[1].slot, top.rev[cut[0] * SLOTS + slot]);
     eq(marks[1].letter, marks[0].letter);
     const hidden = { ...net, hidden: top.faceOf.map(face => face === top.faceOf[cut[1]]) };
-    eq(routeCrossings(hidden, cut).map(m => m.kind), ['out'], 'a hidden cell has no mark');
+    eq(
+      routeCrossings(hidden, cut).map(m => m.kind),
+      ['out'],
+      'a hidden cell has no mark',
+    );
     eq(routePieces(hidden, cut).length, 1, 'and no piece');
     eq(routePieces(hidden, [cut[1], cut[0]]).length, 1);
     eq(routePieces(hidden, [cut[1], cut[1]]), [], 'nothing of cells that are all hidden');
@@ -745,9 +812,11 @@ export function surfaceTests(t, ok, eq) {
     }
     const rows = [R.slice(0, 3), R.slice(3, 6), R.slice(6, 9)];
     const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-    rows.forEach((a, i) => rows.forEach((b, j) => {
-      ok(Math.abs(dot(a, b) - (i === j ? 1 : 0)) < 1e-9, `rows ${i} ${j} orthonormal`);
-    }));
+    rows.forEach((a, i) =>
+      rows.forEach((b, j) => {
+        ok(Math.abs(dot(a, b) - (i === j ? 1 : 0)) < 1e-9, `rows ${i} ${j} orthonormal`);
+      }),
+    );
     const [a, b, c] = rows;
     const bc = [b[1] * c[2] - b[2] * c[1], b[2] * c[0] - b[0] * c[2], b[0] * c[1] - b[1] * c[0]];
     const triple = dot(a, bc);
@@ -769,10 +838,18 @@ export function surfaceTests(t, ok, eq) {
     const cube = surfaceTopology('cube', 3);
     const front = turnToward(IDENTITY, cellDirection(cube, 4));
     ok(near(faceFrame(front, cube, 4), [1, 0, 0, 1]), 'facing the viewer: as flat');
-    for (const [kind, n] of [['tetra', 3], ['cube', 3]]) {
+    for (const [kind, n] of [
+      ['tetra', 3],
+      ['cube', 3],
+    ]) {
       const top = surfaceTopology(kind, n);
       let R = overview(top);
-      for (const turned of [[0, 0], [0.4, 0.2], [1.3, -0.5], [2.4, 0.9]]) {
+      for (const turned of [
+        [0, 0],
+        [0.4, 0.2],
+        [1.3, -0.5],
+        [2.4, 0.9],
+      ]) {
         R = orbit(R, ...turned);
         const view = buildView(top, R);
         for (let cell = 0; cell < top.T; cell++) {
@@ -793,11 +870,16 @@ export function surfaceTests(t, ok, eq) {
   });
 
   t('proj view: three faces from a corner, counter-clockwise, the box never moves', () => {
-    const area = poly => poly.reduce((sum, [x, y], i) => {
-      const [nx, ny] = poly[(i + 1) % poly.length];
-      return sum + (x * ny - nx * y) / 2;
-    }, 0);
-    for (const [kind, n] of [['tetra', 3], ['cube', 3], ['cube', 2]]) {
+    const area = poly =>
+      poly.reduce((sum, [x, y], i) => {
+        const [nx, ny] = poly[(i + 1) % poly.length];
+        return sum + (x * ny - nx * y) / 2;
+      }, 0);
+    for (const [kind, n] of [
+      ['tetra', 3],
+      ['cube', 3],
+      ['cube', 2],
+    ]) {
       const top = surfaceTopology(kind, n);
       const view = buildView(top, overview(top));
       eq(view.hidden.filter(h => !h).length, 3 * n * n, `${kind} ${n}: three faces`);
@@ -831,7 +913,10 @@ export function surfaceTests(t, ok, eq) {
     eq(marks.filter(m => m.kind === 'out').length, outs);
     eq(marks.filter(m => m.kind === 'in').length, ins);
     eq(routePieces(view, g.path).length, runs, 'one piece per run of seen cells');
-    ok(marks.every(m => m.letter === '' && !view.hidden[m.cell]), 'no letters, seen cells');
+    ok(
+      marks.every(m => m.letter === '' && !view.hidden[m.cell]),
+      'no letters, seen cells',
+    );
   });
 
   t('surface board: the solid shows the cells that are seen, shaded by face, without cuts', () => {

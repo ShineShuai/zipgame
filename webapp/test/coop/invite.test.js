@@ -9,13 +9,25 @@ const MDNS_HOST = `a=candidate:1 1 udp 2113937151 ${NAME} 54321 typ host`;
 const SRFLX = 'a=candidate:3 1 udp 1677729535 203.0.113.45 54321 typ srflx raddr 0.0.0.0 rport 0';
 
 // What a browser makes for a data channel, after gathering: `candidates` are its lines.
-const sdpWith = (candidates, extra = {}) => [
-  'v=0', 'o=- 99 2 IN IP4 127.0.0.1', 's=-', 't=0 0', 'a=group:BUNDLE 0',
-  'm=application 9 UDP/DTLS/SCTP webrtc-datachannel', 'c=IN IP4 0.0.0.0', ...candidates,
-  `a=ice-ufrag:${extra.ufrag ?? 'aB+/'}`, `a=ice-pwd:${extra.pwd ?? 'Zz09+/Zz09+/Zz09+/Zz09'}`,
-  'a=ice-options:trickle', `a=fingerprint:${extra.print ?? PRINT}`,
-  `a=setup:${extra.setup ?? 'actpass'}`, 'a=mid:0', 'a=sctp-port:5000', '',
-].join('\r\n');
+const sdpWith = (candidates, extra = {}) =>
+  [
+    'v=0',
+    'o=- 99 2 IN IP4 127.0.0.1',
+    's=-',
+    't=0 0',
+    'a=group:BUNDLE 0',
+    'm=application 9 UDP/DTLS/SCTP webrtc-datachannel',
+    'c=IN IP4 0.0.0.0',
+    ...candidates,
+    `a=ice-ufrag:${extra.ufrag ?? 'aB+/'}`,
+    `a=ice-pwd:${extra.pwd ?? 'Zz09+/Zz09+/Zz09+/Zz09'}`,
+    'a=ice-options:trickle',
+    `a=fingerprint:${extra.print ?? PRINT}`,
+    `a=setup:${extra.setup ?? 'actpass'}`,
+    'a=mid:0',
+    'a=sctp-port:5000',
+    '',
+  ].join('\r\n');
 
 const SDP = sdpWith([MDNS_HOST, SRFLX]);
 // A description the compact form cannot hold (a second media section): sent whole, as before.
@@ -36,7 +48,10 @@ test('the whole-text code is shorter than the description it carries', async () 
 });
 
 test('a plain data channel description gets the compact code, a fifth of the size', async () => {
-  for (const [kind, sdp] of [['o', SDP], ['a', answerOf(SDP)]]) {
+  for (const [kind, sdp] of [
+    ['o', SDP],
+    ['a', answerOf(SDP)],
+  ]) {
     const code = await encodeCode(kind, sdp);
     assert.match(code, /^[oa]c[A-Za-z0-9_-]+$/);
     assert.ok(code.length < (await encodeCode(kind, ODD)).length / 3, `${code.length}`);
@@ -49,9 +64,11 @@ test('a plain data channel description gets the compact code, a fifth of the siz
 // What Chrome really makes once gathering is done: m= and c= name the default candidate.
 const CHROME = sdpWith([
   `a=candidate:1856 1 udp 2113937151 ${NAME} 56152 typ host generation 0 network-cost 999`,
-  'a=candidate:1787 1 udp 1677729535 203.0.113.45 56152 typ srflx raddr 0.0.0.0 rport 0'
-  + ' generation 0 network-cost 999',
-]).replace('m=application 9', 'm=application 56152').replace('IP4 0.0.0.0', 'IP4 203.0.113.45');
+  'a=candidate:1787 1 udp 1677729535 203.0.113.45 56152 typ srflx raddr 0.0.0.0 rport 0' +
+    ' generation 0 network-cost 999',
+])
+  .replace('m=application 9', 'm=application 56152')
+  .replace('IP4 0.0.0.0', 'IP4 203.0.113.45');
 
 test('the description of a browser that finished gathering gets the compact code too', async () => {
   const code = await encodeCode('o', CHROME);
@@ -78,8 +95,20 @@ test('anything else is refused with one error', async () => {
   const code = await encodeCode('o', ODD);
   const compact = await encodeCode('o', SDP);
   const junk = [
-    '', 'hello', 'xz1234', 'oz', 'oz!!!!', 'or@@@', `o${code.slice(1, 12)}`, 'ozAAAA', 'orQUJD',
-    'oc', 'ocAAAA', compact.slice(0, -4), `${compact}AAAA`, `oc${compact.slice(2, 30)}`,
+    '',
+    'hello',
+    'xz1234',
+    'oz',
+    'oz!!!!',
+    'or@@@',
+    `o${code.slice(1, 12)}`,
+    'ozAAAA',
+    'orQUJD',
+    'oc',
+    'ocAAAA',
+    compact.slice(0, -4),
+    `${compact}AAAA`,
+    `oc${compact.slice(2, 30)}`,
   ];
   for (const text of junk) {
     await assert.rejects(decodeCode(text), /bad code/, JSON.stringify(text));
@@ -87,10 +116,15 @@ test('anything else is refused with one error', async () => {
 });
 
 // The lines of a description that tell the other side where and how to connect.
-const wanted = sdp => sdp.split('\r\n')
-  .filter(line => /^a=(ice-ufrag|ice-pwd|fingerprint|setup|candidate)/.test(line))
-  .map(line => line.replace(/^a=candidate:\d+ 1 (?:udp|UDP) /, 'a=candidate:')
-    .replace(/( typ \w+).*/, '$1'));
+const wanted = sdp =>
+  sdp
+    .split('\r\n')
+    .filter(line => /^a=(ice-ufrag|ice-pwd|fingerprint|setup|candidate)/.test(line))
+    .map(line =>
+      line
+        .replace(/^a=candidate:\d+ 1 (?:udp|UDP) /, 'a=candidate:')
+        .replace(/( typ \w+).*/, '$1'),
+    );
 
 test('compact form keeps credentials, fingerprint, addresses, ports and priorities', () => {
   const candidates = [

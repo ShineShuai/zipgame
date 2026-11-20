@@ -5,7 +5,14 @@ import { CELL } from '../../src/apps/play/board.js';
 import { pentagonView } from '../../src/apps/play/pentagon-board.js';
 import { makeSurfacePuzzle, topologyOf } from '../../src/core/surface/puzzle.js';
 import {
-  cellAtClient, cellCentre, cellPxOf, edgeMiddleOf, edgeSegments, jumpCurve, padOf, pressPoint,
+  cellAtClient,
+  cellCentre,
+  cellPxOf,
+  edgeMiddleOf,
+  edgeSegments,
+  jumpCurve,
+  padOf,
+  pressPoint,
 } from '../../src/coop/layout.js';
 
 const plain = { n: 4 };
@@ -21,14 +28,23 @@ test('a plain edge is one chord between the cell centres', () => {
 test('an edge across a seam is two stubs: out at one border, in at the other', () => {
   const out = 4 + SEAM_STUB;
   const into = -SEAM_STUB;
-  assert.deepEqual(edgeSegments(wrap, 7, 4), [[3.5, 1.5, out, 1.5], [into, 1.5, 0.5, 1.5]]);
-  assert.deepEqual(edgeSegments(wrap, 4, 7), [[0.5, 1.5, into, 1.5], [out, 1.5, 3.5, 1.5]]);
-  assert.deepEqual(edgeSegments(wrap, 13, 1), [[1.5, 3.5, 1.5, out], [1.5, into, 1.5, 0.5]]);
+  assert.deepEqual(edgeSegments(wrap, 7, 4), [
+    [3.5, 1.5, out, 1.5],
+    [into, 1.5, 0.5, 1.5],
+  ]);
+  assert.deepEqual(edgeSegments(wrap, 4, 7), [
+    [0.5, 1.5, into, 1.5],
+    [out, 1.5, 3.5, 1.5],
+  ]);
+  assert.deepEqual(edgeSegments(wrap, 13, 1), [
+    [1.5, 3.5, 1.5, out],
+    [1.5, into, 1.5, 0.5],
+  ]);
   // a mark goes on the stub of the first cell named
   assert.deepEqual(edgeMiddleOf(wrap, 7, 4), [(3.5 + out) / 2, 1.5]);
 });
 
-test('the margin of a Wrap-around board is the play app\'s; other boards have none', () => {
+test("the margin of a Wrap-around board is the play app's; other boards have none", () => {
   assert.equal(padOf(wrap), WRAP_PAD);
   assert.equal(padOf(plain), 0);
   assert.equal(padOf(portals), 0);
@@ -61,8 +77,9 @@ test('on a Pentagon board a cell is where the tiling puts it, a line runs betwee
   const [x, y] = cellCentre(pentagon, 7, CELL);
   assert.deepEqual([x, y], [top.centres[14] * CELL, top.centres[15] * CELL]);
   assert.deepEqual(cellCentre(plain, 5), [1.5, 1.5]);
-  assert.deepEqual(edgeSegments(pentagon, 7, 8, CELL), [[...cellCentre(pentagon, 7, CELL),
-    ...cellCentre(pentagon, 8, CELL)]]);
+  assert.deepEqual(edgeSegments(pentagon, 7, 8, CELL), [
+    [...cellCentre(pentagon, 7, CELL), ...cellCentre(pentagon, 8, CELL)],
+  ]);
   const [mx, my] = edgeMiddleOf(pentagon, 7, 8, CELL);
   const [ax, ay] = cellCentre(pentagon, 7, CELL);
   const [bx, by] = cellCentre(pentagon, 8, CELL);

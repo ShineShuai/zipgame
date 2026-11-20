@@ -85,7 +85,10 @@ function exportedNames(file) {
   }
   for (const match of source.matchAll(/export\s*\{([^}]*)\}/g)) {
     for (const part of match[1].split(',')) {
-      const name = part.trim().split(/\s+as\s+/).pop();
+      const name = part
+        .trim()
+        .split(/\s+as\s+/)
+        .pop();
       if (name) names.add(name);
     }
   }
@@ -134,7 +137,14 @@ for (const file of jsFiles) {
   try {
     execFileSync(process.execPath, ['--check', file], { stdio: 'pipe' });
   } catch (error) {
-    report(file, 1, 'syntax error: ' + String(error.stderr).split('\n').find(line => line.includes('Error')));
+    report(
+      file,
+      1,
+      'syntax error: ' +
+        String(error.stderr)
+          .split('\n')
+          .find(line => line.includes('Error')),
+    );
     continue;
   }
 
@@ -151,7 +161,11 @@ for (const file of jsFiles) {
     }
     for (const layer of LAYERS) {
       const name = shortName(file);
-      if (name.startsWith(layer.in) && !layer.except.includes(name) && layer.deny.includes(shortName(target))) {
+      if (
+        name.startsWith(layer.in) &&
+        !layer.except.includes(name) &&
+        layer.deny.includes(shortName(target))
+      ) {
         report(file, line, `layering: ${name} must not import ${shortName(target)}`);
       }
     }
@@ -160,8 +174,11 @@ for (const file of jsFiles) {
     if (inCoop(imported) && !inCoop(importer)) {
       report(file, line, `coop: ${importer} must not import ${imported} (the trial is removable)`);
     }
-    if (importer.startsWith('src/coop/') && !inCoop(imported)
-      && !COOP_MAY_IMPORT.some(allowed => allowed.test(imported))) {
+    if (
+      importer.startsWith('src/coop/') &&
+      !inCoop(imported) &&
+      !COOP_MAY_IMPORT.some(allowed => allowed.test(imported))
+    ) {
       report(file, line, `coop: ${importer} may not import ${imported}`);
     }
     if (!namedList) continue;
@@ -169,7 +186,8 @@ for (const file of jsFiles) {
     if (!exported) continue;
     for (const part of namedList.split(',')) {
       const name = part.trim().split(/\s+as\s+/)[0];
-      if (name && !exported.has(name)) report(file, line, `'${name}' is not exported by ${shortName(target)}`);
+      if (name && !exported.has(name))
+        report(file, line, `'${name}' is not exported by ${shortName(target)}`);
     }
   }
 }
@@ -180,7 +198,8 @@ function checkHtmlReferences(file) {
     const reference = match[1];
     if (/^(?:[a-z]+:|#|\/\/)/i.test(reference)) continue; // http:, data:, #anchor, //cdn
     const target = resolve(dirname(file), reference.split(/[?#]/)[0]);
-    if (!existsSync(target)) report(file, lineOf(source, match.index), `'${reference}' does not exist`);
+    if (!existsSync(target))
+      report(file, lineOf(source, match.index), `'${reference}' does not exist`);
   }
 }
 
@@ -189,11 +208,16 @@ function checkHtmlReferences(file) {
 function checkBothLanguages(file) {
   const source = readFileSync(file, 'utf8');
   if (!source.includes('data-lang')) return;
-  const count = language => (source.match(new RegExp(`<(?!html)[^>]*\\blang="${language}"`, 'g')) || []).length;
+  const count = language =>
+    (source.match(new RegExp(`<(?!html)[^>]*\\blang="${language}"`, 'g')) || []).length;
   const english = count('en');
   const chinese = count('zh');
   if (english !== chinese) {
-    report(file, 1, `${english} lang="en" elements but ${chinese} lang="zh" elements: every text needs both languages`);
+    report(
+      file,
+      1,
+      `${english} lang="en" elements but ${chinese} lang="zh" elements: every text needs both languages`,
+    );
   }
 }
 
@@ -205,15 +229,22 @@ const ID_LOOKUP = /(?:\$|getElementById)\(\s*'([\w-]+)'\s*\)/g;
 function checkIdsOfApp(app, page) {
   const pagePath = join(root, page);
   if (!existsSync(pagePath)) return;
-  const known = new Set([...readFileSync(pagePath, 'utf8').matchAll(/\bid=\\?"([^"]+)"/g)].map(m => m[1]));
-  const sources = filesUnder(join(root, 'src/apps', app), '.js').map(file => [file, readFileSync(file, 'utf8')]);
+  const known = new Set(
+    [...readFileSync(pagePath, 'utf8').matchAll(/\bid=\\?"([^"]+)"/g)].map(m => m[1]),
+  );
+  const sources = filesUnder(join(root, 'src/apps', app), '.js').map(file => [
+    file,
+    readFileSync(file, 'utf8'),
+  ]);
   for (const [, source] of sources) {
-    for (const match of source.matchAll(/\bid=\\?["']([\w-]+)|\.id = '([\w-]+)'/g)) known.add(match[1] || match[2]);
+    for (const match of source.matchAll(/\bid=\\?["']([\w-]+)|\.id = '([\w-]+)'/g))
+      known.add(match[1] || match[2]);
   }
   for (const [file, source] of sources) {
     if (/const \$ = \w+ => \w+\.querySelector/.test(source)) continue;
     for (const match of source.matchAll(ID_LOOKUP)) {
-      if (!known.has(match[1])) report(file, lineOf(source, match.index), `no element with id '${match[1]}' in ${page}`);
+      if (!known.has(match[1]))
+        report(file, lineOf(source, match.index), `no element with id '${match[1]}' in ${page}`);
     }
   }
 }
@@ -224,7 +255,9 @@ checkIdsOfApp('stats', 'stats.html');
 // inside a repository that has the .github folder next to it.
 const repoRoot = resolve(root, '..');
 const rootPages = existsSync(join(repoRoot, '.github'))
-  ? readdirSync(repoRoot).filter(name => name.endsWith('.html')).map(name => join(repoRoot, name))
+  ? readdirSync(repoRoot)
+      .filter(name => name.endsWith('.html'))
+      .map(name => join(repoRoot, name))
   : [];
 for (const file of rootPages) {
   checkHtmlReferences(file);
@@ -237,4 +270,6 @@ if (problems.length > 0) {
   process.exit(1);
 }
 const pages = rootPages.length ? ` (${rootPages.length} home page checked too)` : '';
-console.log(`ok: ${jsFiles.length} js files parse; all imports and html references resolve${pages}`);
+console.log(
+  `ok: ${jsFiles.length} js files parse; all imports and html references resolve${pages}`,
+);

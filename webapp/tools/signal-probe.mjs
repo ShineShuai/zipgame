@@ -20,27 +20,29 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const hex = () => Math.random().toString(16).slice(2, 10);
 
 // A connected client whose messages can be waited for: -> { client, wait(topic) }.
-const connect = url => new Promise((resolve, reject) => {
-  const waiting = new Map();
-  const timer = setTimeout(() => reject(new Error('no connection')), timeout);
-  const client = createMqtt({
-    url,
-    clientId: `zp${hex()}${hex()}`,
-    WebSocketImpl: WebSocket,
-    onopen() {
-      clearTimeout(timer);
-      resolve({
-        client,
-        wait: topic => new Promise((done, fail) => {
-          waiting.set(topic, done);
-          setTimeout(() => fail(new Error(`nothing on ${topic}`)), timeout);
-        }),
-      });
-    },
-    onmessage: (topic, text) => waiting.get(topic)?.(text),
-    onclose: () => reject(new Error('closed')),
+const connect = url =>
+  new Promise((resolve, reject) => {
+    const waiting = new Map();
+    const timer = setTimeout(() => reject(new Error('no connection')), timeout);
+    const client = createMqtt({
+      url,
+      clientId: `zp${hex()}${hex()}`,
+      WebSocketImpl: WebSocket,
+      onopen() {
+        clearTimeout(timer);
+        resolve({
+          client,
+          wait: topic =>
+            new Promise((done, fail) => {
+              waiting.set(topic, done);
+              setTimeout(() => fail(new Error(`nothing on ${topic}`)), timeout);
+            }),
+        });
+      },
+      onmessage: (topic, text) => waiting.get(topic)?.(text),
+      onclose: () => reject(new Error('closed')),
+    });
   });
-});
 
 async function probe({ url }) {
   const topic = `zipcoop/probe/${hex()}${hex()}`;

@@ -4,7 +4,14 @@
 // collisions) on Exact boards and on one-way arrows, and the A/B compare on a torus. Registered by
 // unit/arrows.test.js: designVariantsTests(t, ta, ok, eq).
 import { makePuzzle, validate, labelCount } from '../src/core/model.js';
-import { setWallId, hasWallId, wallIds, clearSeamWalls, edgeId, setArrowId } from '../src/core/edges.js';
+import {
+  setWallId,
+  hasWallId,
+  wallIds,
+  clearSeamWalls,
+  edgeId,
+  setArrowId,
+} from '../src/core/edges.js';
 import { solve } from '../src/core/solver/solve.js';
 import { runSync } from '../src/core/run.js';
 import { makeRng } from '../src/core/rng.js';
@@ -27,9 +34,15 @@ export function designVariantsTests(t, ta, ok, eq) {
     eq(chordSegments(5, false, 0, 4), [[0.5, 0.5, 4.5, 0.5]], 'a grid never wraps');
     eq(chordSegments(5, true, 0, 2), [[0.5, 0.5, 2.5, 0.5]], 'no seam on the short way');
     // 0 -> 4 on a row of 5: one step left over the seam, so a stub out of 0 and a stub into 4
-    eq(chordSegments(5, true, 0, 4), [[0.5, 0.5, -0.5, 0.5], [5.5, 0.5, 4.5, 0.5]]);
+    eq(chordSegments(5, true, 0, 4), [
+      [0.5, 0.5, -0.5, 0.5],
+      [5.5, 0.5, 4.5, 0.5],
+    ]);
     // down over the bottom seam: cell 20 (last row, column 0) -> cell 0
-    eq(chordSegments(5, true, 20, 0), [[0.5, 4.5, 0.5, 5.5], [0.5, -0.5, 0.5, 0.5]]);
+    eq(chordSegments(5, true, 20, 0), [
+      [0.5, 4.5, 0.5, 5.5],
+      [0.5, -0.5, 0.5, 0.5],
+    ]);
     // both axes at once (diagonal): 0 -> 24
     const diag = chordSegments(5, true, 0, 24);
     eq(diag.length, 2);
@@ -51,7 +64,8 @@ export function designVariantsTests(t, ta, ok, eq) {
 
   t('scatter: on a wrap-around board it numbers K cells 1..K and is deterministic', () => {
     const w = randomPathPuzzle(6, 5, makeRng(9), true);
-    const a = scatter(w, 5, makeRng(10)), b = scatter(w, 5, makeRng(10));
+    const a = scatter(w, 5, makeRng(10)),
+      b = scatter(w, 5, makeRng(10));
     eq([...a], [...b]);
     eq([...a].filter(Boolean).sort(), [1, 2, 3, 4, 5]);
     // the nearest-next order walks across a seam: the cells 0 and 5 are neighbours on a torus only
@@ -61,41 +75,81 @@ export function designVariantsTests(t, ta, ok, eq) {
     eq([...tight].filter(Boolean).length, 6);
   });
 
-  t('boardLegCollide: never calls a prefix of the real solution stuck, on Exact and wrap-around boards', () => {
-    const exact = runSync(generateExact(5, 7, { candidates: 3, refineNodes: 0 }));
-    const wrap = runSync(generateUnique(5, 6, makeRng(3), { maxWalls: 8, tries: 40, wrap: true })).puzzle;
-    for (const p of [exact, wrap]) {
-      const path = solve(p, { limit: 2, nodeCap: 5e6, capture: true, prop: true }).paths[0];
-      for (let len = 1; len < path.length; len++) {
-        const r = boardLegCollide(p, path.slice(0, len));
-        ok(!r.infeasible, `${p.exact ? 'exact' : 'wrap'} prefix ${len}: ${JSON.stringify(r.conflicts)}`);
+  t(
+    'boardLegCollide: never calls a prefix of the real solution stuck, on Exact and wrap-around boards',
+    () => {
+      const exact = runSync(generateExact(5, 7, { candidates: 3, refineNodes: 0 }));
+      const wrap = runSync(
+        generateUnique(5, 6, makeRng(3), { maxWalls: 8, tries: 40, wrap: true }),
+      ).puzzle;
+      for (const p of [exact, wrap]) {
+        const path = solve(p, { limit: 2, nodeCap: 5e6, capture: true, prop: true }).paths[0];
+        for (let len = 1; len < path.length; len++) {
+          const r = boardLegCollide(p, path.slice(0, len));
+          ok(
+            !r.infeasible,
+            `${p.exact ? 'exact' : 'wrap'} prefix ${len}: ${JSON.stringify(r.conflicts)}`,
+          );
+        }
       }
-    }
-  });
+    },
+  );
 
-  t('boardLegCollide: an Exact board reports the same collision as the standard one with the same order', () => {
-    // The position of the standard test in unit/solver.test.js (7x7, path cut at 13 cells), but with the numbers
-    // 5, 10, 15... instead of 1, 2, 3...: Exact numbers are steps, the legs run by their order.
-    const n = 7, rc = (r, c) => r * n + c;
-    const make = scale => {
-      const q = makePuzzle(n);
-      for (const [r, c, k] of [[0, 0, 6], [0, 5, 5], [1, 5, 7], [3, 2, 4], [3, 6, 3], [5, 1, 1], [6, 5, 2]]) {
-        q.cp[rc(r, c)] = k * scale;
-      }
-      for (const [type, r, c] of [['V', 3, 0], ['V', 3, 4], ['H', 4, 1], ['V', 5, 0], ['V', 5, 1], ['V', 6, 4]]) {
-        const other = type === 'V' ? rc(r, c + 1) : rc(r + 1, c);
-        setWallId(q.walls, edgeId(n, rc(r, c), other), true);
-      }
-      return q;
-    };
-    const path = [[5, 1], [6, 1], [6, 0], [5, 0], [4, 0], [3, 0], [2, 0], [2, 1], [2, 2], [2, 3], [2, 4], [3, 4], [4, 4]]
-      .map(([r, c]) => rc(r, c));
-    const standard = boardLegCollide(make(1), path);
-    ok(standard.infeasible, 'the standard position is stuck');
-    const exact = make(5);
-    exact.exact = true;
-    eq(boardLegCollide(exact, path), standard);
-  });
+  t(
+    'boardLegCollide: an Exact board reports the same collision as the standard one with the same order',
+    () => {
+      // The position of the standard test in unit/solver.test.js (7x7, path cut at 13 cells), but with the numbers
+      // 5, 10, 15... instead of 1, 2, 3...: Exact numbers are steps, the legs run by their order.
+      const n = 7,
+        rc = (r, c) => r * n + c;
+      const make = scale => {
+        const q = makePuzzle(n);
+        for (const [r, c, k] of [
+          [0, 0, 6],
+          [0, 5, 5],
+          [1, 5, 7],
+          [3, 2, 4],
+          [3, 6, 3],
+          [5, 1, 1],
+          [6, 5, 2],
+        ]) {
+          q.cp[rc(r, c)] = k * scale;
+        }
+        for (const [type, r, c] of [
+          ['V', 3, 0],
+          ['V', 3, 4],
+          ['H', 4, 1],
+          ['V', 5, 0],
+          ['V', 5, 1],
+          ['V', 6, 4],
+        ]) {
+          const other = type === 'V' ? rc(r, c + 1) : rc(r + 1, c);
+          setWallId(q.walls, edgeId(n, rc(r, c), other), true);
+        }
+        return q;
+      };
+      const path = [
+        [5, 1],
+        [6, 1],
+        [6, 0],
+        [5, 0],
+        [4, 0],
+        [3, 0],
+        [2, 0],
+        [2, 1],
+        [2, 2],
+        [2, 3],
+        [2, 4],
+        [3, 4],
+        [4, 4],
+      ].map(([r, c]) => rc(r, c));
+      const standard = boardLegCollide(make(1), path);
+      ok(standard.infeasible, 'the standard position is stuck');
+      const exact = make(5);
+      exact.exact = true;
+      eq(boardLegCollide(exact, path), standard);
+    },
+  );
 
   // 3x3, cells 0..8 row by row; arrows: [a, b] = the one move a -> b that the edge allows
   const arrowBoard = (moves, cps = {}) => {
@@ -107,24 +161,43 @@ export function designVariantsTests(t, ta, ok, eq) {
   };
 
   t('arrows overlays: a head that every arrow points at has nowhere to go (connectivity)', () => {
-    const p = arrowBoard([[1, 0], [3, 0]], { 0: 1, 8: 2 });
+    const p = arrowBoard(
+      [
+        [1, 0],
+        [3, 0],
+      ],
+      { 0: 1, 8: 2 },
+    );
     const r = boardConnectivity(p, [0]);
     eq(r.reachable.size, 0);
-    eq([...r.unreachable].sort((a, b) => a - b), [1, 2, 3, 4, 5, 6, 7, 8]);
+    eq(
+      [...r.unreachable].sort((a, b) => a - b),
+      [1, 2, 3, 4, 5, 6, 7, 8],
+    );
     eq(r.connOk, false);
     const open = makePuzzle(3);
-    open.cp[0] = 1; open.cp[8] = 2;
+    open.cp[0] = 1;
+    open.cp[8] = 2;
     eq(boardConnectivity(open, [0]).connOk, true, 'the same board without arrows is connected');
   });
 
-  t('arrows overlays: a cell that cannot be left is a dead end and is cut off from the end', () => {
-    // arrows 2 -> 1 and 4 -> 1: cell 1 can be entered from 0, 2 and 4 but only left back onto the head
-    const p = arrowBoard([[2, 1], [4, 1]], { 0: 1, 8: 2 });
-    const r = boardConnectivity(p, [0]);
-    eq([...r.deadEnd], [1]);
-    eq([...r.unreachable], [1], 'the others still reach the end');
-    eq(r.connOk, false);
-  });
+  t(
+    'arrows overlays: a cell that cannot be left is a dead end and is cut off from the end',
+    () => {
+      // arrows 2 -> 1 and 4 -> 1: cell 1 can be entered from 0, 2 and 4 but only left back onto the head
+      const p = arrowBoard(
+        [
+          [2, 1],
+          [4, 1],
+        ],
+        { 0: 1, 8: 2 },
+      );
+      const r = boardConnectivity(p, [0]);
+      eq([...r.deadEnd], [1]);
+      eq([...r.unreachable], [1], 'the others still reach the end');
+      eq(r.connOk, false);
+    },
+  );
 
   t('arrows overlays: a one-way move that is the only one left is forced', () => {
     const p = arrowBoard([[3, 0]], { 0: 1, 8: 2 }); // 3 -> 0 only: the head on 0 cannot go down
@@ -136,12 +209,24 @@ export function designVariantsTests(t, ta, ok, eq) {
 
   t('segBlockerDir: arrows make a cell a bottleneck that a two-way board does not have', () => {
     // only 1 -> 4 / 3 -> 4 can leave the top-left corner area: moves 1 -> 2 and 3 -> 6 are not allowed
-    const p = arrowBoard([[2, 1], [6, 3]], { 0: 1, 8: 2 });
-    const { out } = buildMoves(p), { nb } = buildNeighbors(p), vis = new Uint8Array(9);
+    const p = arrowBoard(
+      [
+        [2, 1],
+        [6, 3],
+      ],
+      { 0: 1, 8: 2 },
+    );
+    const { out } = buildMoves(p),
+      { nb } = buildNeighbors(p),
+      vis = new Uint8Array(9);
     vis[0] = 1;
     eq([...segBlockerDir(out, 9, vis, 0, 8)], [4]);
     eq([...segBlocker(nb, 9, vis, 0, 8)], [], 'two-way: other routes exist');
-    eq([...segBlockerDir(out, 9, new Uint8Array(9).fill(1), 0, 8)], [], 'nothing to pass when everything is visited');
+    eq(
+      [...segBlockerDir(out, 9, new Uint8Array(9).fill(1), 0, 8)],
+      [],
+      'nothing to pass when everything is visited',
+    );
     const r = boardLegCollide(p, [0]);
     eq(r.infeasible, false);
   });
@@ -153,9 +238,13 @@ export function designVariantsTests(t, ta, ok, eq) {
       const next = new Map(path.map((c, i) => [c, path[i + 1]]));
       const consecutive = (a, b) => next.get(a) === b || next.get(b) === a;
       for (let len = 1; len < path.length; len++) {
-        const prefix = path.slice(0, len), at = `seed ${seed}, prefix ${len}`;
+        const prefix = path.slice(0, len),
+          at = `seed ${seed}, prefix ${len}`;
         const conn = boardConnectivity(p, prefix);
-        ok(conn.connOk && conn.unreachable.size === 0 && conn.deadEnd.size === 0, `connectivity, ${at}`);
+        ok(
+          conn.connOk && conn.unreachable.size === 0 && conn.deadEnd.size === 0,
+          `connectivity, ${at}`,
+        );
         const prop = boardPropagation(p, prefix);
         ok(!prop.infeasible, `propagation, ${at}`);
         for (let u = 0; u < 25; u++) {
@@ -170,40 +259,65 @@ export function designVariantsTests(t, ta, ok, eq) {
     }
   });
 
-  const adjacent = (n, a, b) => Math.abs(((a / n) | 0) - ((b / n) | 0)) + Math.abs((a % n) - (b % n)) === 1;
+  const adjacent = (n, a, b) =>
+    Math.abs(((a / n) | 0) - ((b / n) | 0)) + Math.abs((a % n) - (b % n)) === 1;
 
-  t('randomPathPuzzle with loop: a ring cut at cell 1, at least 3 numbers in order, solvable', () => {
-    for (const [n, K, seed] of [[4, 4, 1], [6, 5, 2], [6, 2, 3]]) {
-      const p = randomPathPuzzle(n, K, makeRng(seed), false, true);
-      ok(p.loop && !p.wrap, 'a Loop puzzle');
-      eq(p.path.length, n * n);
-      ok(adjacent(n, p.path[0], p.path[n * n - 1]), 'the last cell touches the first: a ring');
-      eq(p.cp[p.path[0]], 1);
-      eq(labelCount(p), Math.max(3, Math.min(K, n * n)), 'K is at least 3');
-      const numbers = p.path.map(c => p.cp[c]).filter(Boolean);
-      eq(numbers, [...numbers].sort((a, b) => a - b), 'in order along the ring');
-      ok(validate(p).ok, validate(p).msg);
-      ok(solve(p, { limit: 2, nodeCap: 5e6, prop: true }).count >= 1, 'the ring solves it');
-    }
-  });
+  t(
+    'randomPathPuzzle with loop: a ring cut at cell 1, at least 3 numbers in order, solvable',
+    () => {
+      for (const [n, K, seed] of [
+        [4, 4, 1],
+        [6, 5, 2],
+        [6, 2, 3],
+      ]) {
+        const p = randomPathPuzzle(n, K, makeRng(seed), false, true);
+        ok(p.loop && !p.wrap, 'a Loop puzzle');
+        eq(p.path.length, n * n);
+        ok(adjacent(n, p.path[0], p.path[n * n - 1]), 'the last cell touches the first: a ring');
+        eq(p.cp[p.path[0]], 1);
+        eq(labelCount(p), Math.max(3, Math.min(K, n * n)), 'K is at least 3');
+        const numbers = p.path.map(c => p.cp[c]).filter(Boolean);
+        eq(
+          numbers,
+          [...numbers].sort((a, b) => a - b),
+          'in order along the ring',
+        );
+        ok(validate(p).ok, validate(p).msg);
+        ok(solve(p, { limit: 2, nodeCap: 5e6, prop: true }).count >= 1, 'the ring solves it');
+      }
+    },
+  );
 
   t('generateUnique with loop: a unique ring puzzle; an odd board is refused', () => {
     const r = runSync(generateUnique(6, 6, makeRng(3), { maxWalls: 10, tries: 40, loop: true }));
     ok(r.unique && r.puzzle.loop && validate(r.puzzle).ok);
     eq(solve(r.puzzle, { limit: 2, nodeCap: 5e6, prop: true }).count, 1);
     let thrown = false;
-    try { runSync(generateUnique(5, 5, makeRng(3), { loop: true })); } catch { thrown = true; }
+    try {
+      runSync(generateUnique(5, 5, makeRng(3), { loop: true }));
+    } catch {
+      thrown = true;
+    }
     ok(thrown, 'no ring on an odd board');
   });
 
   t('loop overlays: nothing is flagged on any prefix of the real ring', () => {
-    for (const [n, seed] of [[4, 1], [6, 2]]) {
+    for (const [n, seed] of [
+      [4, 1],
+      [6, 2],
+    ]) {
       const p = runSync(generateLoop(n, seed));
       const path = solve(p, { limit: 2, nodeCap: 5e6, capture: true, prop: true }).paths[0];
-      const T = n * n, onRing = new Set();
-      path.forEach((c, i) => { const d = path[(i + 1) % T]; onRing.add(`${c}-${d}`); onRing.add(`${d}-${c}`); });
+      const T = n * n,
+        onRing = new Set();
+      path.forEach((c, i) => {
+        const d = path[(i + 1) % T];
+        onRing.add(`${c}-${d}`);
+        onRing.add(`${d}-${c}`);
+      });
       for (let len = 2; len < T; len++) {
-        const prefix = path.slice(0, len), at = `${n}x${n} seed ${seed}, prefix ${len}`;
+        const prefix = path.slice(0, len),
+          at = `${n}x${n} seed ${seed}, prefix ${len}`;
         const conn = boardConnectivity(p, prefix);
         ok(conn.connOk && !conn.unreachable.size && !conn.deadEnd.size, `connectivity, ${at}`);
         const prop = boardPropagation(p, prefix);
@@ -220,21 +334,28 @@ export function designVariantsTests(t, ta, ok, eq) {
     }
   });
 
-  t('loop overlays: a ring that can no longer close is reported (cell 1 has no free neighbour)', () => {
-    const p = makePuzzle(4);
-    p.loop = true;
-    p.cp[0] = 1; p.cp[10] = 2; p.cp[15] = 3;
-    // cell 1's neighbours, 4 and 1, are both on the path in the middle: nothing can ever close the ring
-    const stuck = boardConnectivity(p, [0, 4, 8, 9, 5, 1, 2]);
-    ok(!stuck.connOk && stuck.unreachable.has(0), 'cell 1 is cut off');
-    ok(boardConnectivity(p, [0, 4, 8]).connOk, 'a healthy start');
-    eq(boardConnectivity(p, [0]).connOk, true, 'only cell 1 so far: nothing to say');
-  });
+  t(
+    'loop overlays: a ring that can no longer close is reported (cell 1 has no free neighbour)',
+    () => {
+      const p = makePuzzle(4);
+      p.loop = true;
+      p.cp[0] = 1;
+      p.cp[10] = 2;
+      p.cp[15] = 3;
+      // cell 1's neighbours, 4 and 1, are both on the path in the middle: nothing can ever close the ring
+      const stuck = boardConnectivity(p, [0, 4, 8, 9, 5, 1, 2]);
+      ok(!stuck.connOk && stuck.unreachable.has(0), 'cell 1 is cut off');
+      ok(boardConnectivity(p, [0, 4, 8]).connOk, 'a healthy start');
+      eq(boardConnectivity(p, [0]).connOk, true, 'only cell 1 so far: nothing to say');
+    },
+  );
 
   t('miniPreviewSvg: a Loop route is drawn closed', () => {
     const p = makePuzzle(4);
     p.loop = true;
-    p.cp[0] = 1; p.cp[3] = 2; p.cp[15] = 3;
+    p.cp[0] = 1;
+    p.cp[3] = 2;
+    p.cp[15] = 3;
     const points = svg => svg.match(/<polyline points="([^"]*)"/)[1].split(' ');
     const closed = points(miniPreviewSvg(p, [0, 1, 2, 3], '#fff'));
     eq(closed.length, 5);
@@ -246,31 +367,63 @@ export function designVariantsTests(t, ta, ok, eq) {
   ta('compare A / B with loop: both runs build ring puzzles', async () => {
     const flags = decodeFlags(DEFAULT_FLAGS_INT);
     const r = await runCompare({
-      n: 6, K: 6, maxWalls: 10, tries: 40, hardest: false, seed: 3, flagsA: flags, flagsB: flags, loop: true,
+      n: 6,
+      K: 6,
+      maxWalls: 10,
+      tries: 40,
+      hardest: false,
+      seed: 3,
+      flagsA: flags,
+      flagsB: flags,
+      loop: true,
     });
     ok(r.a.unique && r.b.unique && r.a.puzzle.loop && r.b.puzzle.loop);
   });
 
-  t('miniPreviewSvg: a wrap-around board draws its path as a path with seam stubs and a margin', () => {
-    const p = runSync(generateUnique(5, 6, makeRng(3), { maxWalls: 8, tries: 40, wrap: true })).puzzle;
-    const svg = miniPreviewSvg(p, p.path, '#fff');
-    ok(svg.includes('<path d="M') && !svg.includes('<polyline'), 'a path, not a polyline');
-    ok(svg.includes('viewBox="-0.3 -0.3 5.6 5.6"'), 'margin for the stubs');
-    const grid = makePuzzle(5);
-    grid.cp[0] = 1; grid.cp[24] = 2;
-    ok(miniPreviewSvg(grid, [0, 1, 2], '#fff').includes('<polyline'), 'a grid keeps the polyline');
-  });
+  t(
+    'miniPreviewSvg: a wrap-around board draws its path as a path with seam stubs and a margin',
+    () => {
+      const p = runSync(
+        generateUnique(5, 6, makeRng(3), { maxWalls: 8, tries: 40, wrap: true }),
+      ).puzzle;
+      const svg = miniPreviewSvg(p, p.path, '#fff');
+      ok(svg.includes('<path d="M') && !svg.includes('<polyline'), 'a path, not a polyline');
+      ok(svg.includes('viewBox="-0.3 -0.3 5.6 5.6"'), 'margin for the stubs');
+      const grid = makePuzzle(5);
+      grid.cp[0] = 1;
+      grid.cp[24] = 2;
+      ok(
+        miniPreviewSvg(grid, [0, 1, 2], '#fff').includes('<polyline'),
+        'a grid keeps the polyline',
+      );
+    },
+  );
 
   ta('compare A / B on a torus: both runs build wrap-around puzzles', async () => {
     const flags = decodeFlags(DEFAULT_FLAGS_INT);
     const r = await runCompare({
-      n: 5, K: 6, maxWalls: 10, tries: 40, hardest: false, seed: 3, flagsA: flags, flagsB: flags, wrap: true,
+      n: 5,
+      K: 6,
+      maxWalls: 10,
+      tries: 40,
+      hardest: false,
+      seed: 3,
+      flagsA: flags,
+      flagsB: flags,
+      wrap: true,
     });
     ok(r.a.unique && r.b.unique, 'both found a puzzle');
     ok(r.a.puzzle.wrap && r.b.puzzle.wrap, 'both are wrap-around');
     eq([...r.a.puzzle.cp], [...r.b.puzzle.cp], 'same flags, same seed, same puzzle');
     const plain = await runCompare({
-      n: 5, K: 6, maxWalls: 10, tries: 40, hardest: false, seed: 3, flagsA: flags, flagsB: flags,
+      n: 5,
+      K: 6,
+      maxWalls: 10,
+      tries: 40,
+      hardest: false,
+      seed: 3,
+      flagsA: flags,
+      flagsB: flags,
     });
     ok(!plain.a.puzzle.wrap, 'without wrap it is a grid puzzle');
   });

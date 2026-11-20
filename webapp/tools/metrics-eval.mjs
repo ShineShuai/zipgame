@@ -21,128 +21,390 @@ import { parsePairsJson, impliedPairs, pairAccuracy } from '../src/core/pairs-io
 import { evalCap } from './lib.mjs';
 
 const args = process.argv.slice(2);
-const file = args.find(a => a.endsWith('.json')) || new URL('./ratings.json', import.meta.url).pathname;
+const file =
+  args.find(a => a.endsWith('.json')) || new URL('./ratings.json', import.meta.url).pathname;
 const csvOut = args.includes('--csv') ? args[args.indexOf('--csv') + 1] : null;
-const PAIRS_FILE = args.includes('--pairs') ? args[args.indexOf('--pairs') + 1] : new URL('./pairs.json', import.meta.url).pathname;
+const PAIRS_FILE = args.includes('--pairs')
+  ? args[args.indexOf('--pairs') + 1]
+  : new URL('./pairs.json', import.meta.url).pathname;
 const SPLIT = args.includes('--split') ? +args[args.indexOf('--split') + 1] : 43;
 const CAP = evalCap(args);
 const R = JSON.parse(fs.readFileSync(file, 'utf8'));
-const n = R.length, H = R.map(r => r.human), LO = R.map(r => r.lo ?? r.human), HI = R.map(r => r.hi ?? r.human), WGT = R.map(ratingWeight);
+const n = R.length,
+  H = R.map(r => r.human),
+  LO = R.map(r => r.lo ?? r.human),
+  HI = R.map(r => r.hi ?? r.human),
+  WGT = R.map(ratingWeight);
 const dups = findDuplicateGroups(R);
-if (dups.exact.length || dups.equivalent.length) console.log(`WARNING: ${dups.exact.length} exact and ${dups.equivalent.length} equivalent duplicate group(s) in the ratings: they count more than once below. Run: node tools/check-ratings.mjs`);
-if (WGT.some(w => w < 1)) console.log(`${WGT.filter(w => w < 1).length} unsure rating(s) count at weight ${UNSURE_WEIGHT} in every ridge fit below (correlations and in-range scores count each puzzle once).`);
+if (dups.exact.length || dups.equivalent.length)
+  console.log(
+    `WARNING: ${dups.exact.length} exact and ${dups.equivalent.length} equivalent duplicate group(s) in the ratings: they count more than once below. Run: node tools/check-ratings.mjs`,
+  );
+if (WGT.some(w => w < 1))
+  console.log(
+    `${WGT.filter(w => w < 1).length} unsure rating(s) count at weight ${UNSURE_WEIGHT} in every ridge fit below (correlations and in-range scores count each puzzle once).`,
+  );
 
 // ---------- 1. every metric, per puzzle (the definitions live in features.mjs) ----------
 const t0 = Date.now();
-const F = R.map(r =>featuresOf(r, CAP));
-console.log(`${n} rated puzzles, all metrics computed in ${((Date.now() - t0) / 1000).toFixed(1)}s (reference-solve cap ${CAP.toLocaleString('en')} nodes)`);
-if (F.some(f => f._capped)) console.log(`WARNING: ${F.filter(f => f._capped).length} puzzle(s) hit the cap: their solver metrics are lower bounds and their grades count as 5. Raise it, e.g. --cap ${CAP * 10}`);
-if (csvOut) fs.writeFileSync(csvOut, ['human', 'lo', 'hi', ...NAMES].join(',') + '\n' + F.map((f, i) => [H[i], LO[i], HI[i], ...NAMES.map(k => f[k])].join(',')).join('\n'));
+const F = R.map(r => featuresOf(r, CAP));
+console.log(
+  `${n} rated puzzles, all metrics computed in ${((Date.now() - t0) / 1000).toFixed(1)}s (reference-solve cap ${CAP.toLocaleString('en')} nodes)`,
+);
+if (F.some(f => f._capped))
+  console.log(
+    `WARNING: ${F.filter(f => f._capped).length} puzzle(s) hit the cap: their solver metrics are lower bounds and their grades count as 5. Raise it, e.g. --cap ${CAP * 10}`,
+  );
+if (csvOut)
+  fs.writeFileSync(
+    csvOut,
+    ['human', 'lo', 'hi', ...NAMES].join(',') +
+      '\n' +
+      F.map((f, i) => [H[i], LO[i], HI[i], ...NAMES.map(k => f[k])].join(',')).join('\n'),
+  );
 
 // ---------- stats helpers ----------
 const mean = a => a.reduce((s, v) => s + v, 0) / a.length;
-const sd = a => { const m = mean(a); return Math.sqrt(mean(a.map(v => (v - m) ** 2))) || 1; };
-function rank(a) { const ix = a.map((v, i) => [v, i]).sort((x, y) => x[0] - y[0]), r = []; let i = 0; while (i < ix.length) { let j = i; while (j + 1 < ix.length && ix[j + 1][0] === ix[i][0]) j++; for (let k = i; k <= j; k++) r[ix[k][1]] = (i + j) / 2; i = j + 1; } return r; }
-function pearson(x, y) { const mx = mean(x), my = mean(y); let a = 0, b = 0, c = 0; for (let i = 0; i < x.length; i++) { a += (x[i] - mx) * (y[i] - my); b += (x[i] - mx) ** 2; c += (y[i] - my) ** 2; } return b && c ? a / Math.sqrt(b * c) : NaN; }
+const sd = a => {
+  const m = mean(a);
+  return Math.sqrt(mean(a.map(v => (v - m) ** 2))) || 1;
+};
+function rank(a) {
+  const ix = a.map((v, i) => [v, i]).sort((x, y) => x[0] - y[0]),
+    r = [];
+  let i = 0;
+  while (i < ix.length) {
+    let j = i;
+    while (j + 1 < ix.length && ix[j + 1][0] === ix[i][0]) j++;
+    for (let k = i; k <= j; k++) r[ix[k][1]] = (i + j) / 2;
+    i = j + 1;
+  }
+  return r;
+}
+function pearson(x, y) {
+  const mx = mean(x),
+    my = mean(y);
+  let a = 0,
+    b = 0,
+    c = 0;
+  for (let i = 0; i < x.length; i++) {
+    a += (x[i] - mx) * (y[i] - my);
+    b += (x[i] - mx) ** 2;
+    c += (y[i] - my) ** 2;
+  }
+  return b && c ? a / Math.sqrt(b * c) : NaN;
+}
 const spearman = (x, y) => pearson(rank(x), rank(y));
-const resid = (y, x) => { const b = pearson(x, y) * sd(y) / sd(x), a = mean(y) - b * mean(x); return y.map((v, i) => v - a - b * x[i]); };
-let seed = 12345; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+const resid = (y, x) => {
+  const b = (pearson(x, y) * sd(y)) / sd(x),
+    a = mean(y) - b * mean(x);
+  return y.map((v, i) => v - a - b * x[i]);
+};
+let seed = 12345;
+const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
 const col = k => F.map(f => f[k]);
-const dist = (g, i) => g < LO[i] ? LO[i] - g : g > HI[i] ? g - HI[i] : 0;
+const dist = (g, i) => (g < LO[i] ? LO[i] - g : g > HI[i] ? g - HI[i] : 0);
 const clampGrade = p => Math.max(0, Math.min(5, Math.round(p)));
 
 // ---------- Part 1: per-metric table ----------
-const rn = rank(col('n')), rH = rank(H);
+const rn = rank(col('n')),
+  rH = rank(H);
 const rows = NAMES.map(k => {
-  const x = col(k), rho = spearman(x, H), rx = rank(x);
-  const boots = []; for (let b = 0; b < 1000; b++) { const ii = Array.from({ length: n }, () => (rnd() * n) | 0); const v = spearman(ii.map(i => x[i]), ii.map(i => H[i])); if (Number.isFinite(v)) boots.push(v); }
+  const x = col(k),
+    rho = spearman(x, H),
+    rx = rank(x);
+  const boots = [];
+  for (let b = 0; b < 1000; b++) {
+    const ii = Array.from({ length: n }, () => (rnd() * n) | 0);
+    const v = spearman(
+      ii.map(i => x[i]),
+      ii.map(i => H[i]),
+    );
+    if (Number.isFinite(v)) boots.push(v);
+  }
   boots.sort((a, b) => a - b);
-  return { k, rho, lo: boots[Math.floor(boots.length * .025)], hi: boots[Math.floor(boots.length * .975)], partial: pearson(resid(rx, rn), resid(rH, rn)) };
-}).sort((a, b) => (Number.isFinite(b.rho) ? Math.abs(b.rho) : -1) - (Number.isFinite(a.rho) ? Math.abs(a.rho) : -1));
+  return {
+    k,
+    rho,
+    lo: boots[Math.floor(boots.length * 0.025)],
+    hi: boots[Math.floor(boots.length * 0.975)],
+    partial: pearson(resid(rx, rn), resid(rH, rn)),
+  };
+}).sort(
+  (a, b) =>
+    (Number.isFinite(b.rho) ? Math.abs(b.rho) : -1) -
+    (Number.isFinite(a.rho) ? Math.abs(a.rho) : -1),
+);
 console.log('\n== Part 1: every metric vs hand rating (Spearman, n=' + n + ') ==');
-console.log('metric'.padEnd(20), 'group'.padEnd(8), '   rho', '   95% CI (bootstrap)', '  rho|size');
-for (const r of rows) console.log(r.k.padEnd(20), GROUP[r.k].padEnd(8), (Number.isFinite(r.rho) ? r.rho.toFixed(2) : '  —').padStart(6), ('[' + r.lo?.toFixed(2) + ', ' + r.hi?.toFixed(2) + ']').padStart(20), (Number.isFinite(r.partial) ? r.partial.toFixed(2) : '—').padStart(9));
+console.log(
+  'metric'.padEnd(20),
+  'group'.padEnd(8),
+  '   rho',
+  '   95% CI (bootstrap)',
+  '  rho|size',
+);
+for (const r of rows)
+  console.log(
+    r.k.padEnd(20),
+    GROUP[r.k].padEnd(8),
+    (Number.isFinite(r.rho) ? r.rho.toFixed(2) : '  —').padStart(6),
+    ('[' + r.lo?.toFixed(2) + ', ' + r.hi?.toFixed(2) + ']').padStart(20),
+    (Number.isFinite(r.partial) ? r.partial.toFixed(2) : '—').padStart(9),
+  );
 
 // ---------- Part 2: models, LOO ----------
-const feat = (k, i) => LOG.has(k) ? Math.log2(1 + F[i][k]) : F[i][k];
+const feat = (k, i) => (LOG.has(k) ? Math.log2(1 + F[i][k]) : F[i][k]);
 function ridgeFit(keys, idx, lam) {
-  const p = keys.length + 1, wt = idx.map(j => WGT[j]), wsum = wt.reduce((a, v) => a + v, 0);
-  const wm = v => v.reduce((a, x, t) => a + x * wt[t], 0) / wsum, mu = keys.map(k => wm(idx.map(j => feat(k, j)))), s = keys.map((k, a) => Math.sqrt(wm(idx.map(j => (feat(k, j) - mu[a]) ** 2))) || 1);
+  const p = keys.length + 1,
+    wt = idx.map(j => WGT[j]),
+    wsum = wt.reduce((a, v) => a + v, 0);
+  const wm = v => v.reduce((a, x, t) => a + x * wt[t], 0) / wsum,
+    mu = keys.map(k => wm(idx.map(j => feat(k, j)))),
+    s = keys.map((k, a) => Math.sqrt(wm(idx.map(j => (feat(k, j) - mu[a]) ** 2))) || 1);
   const row = j => [1, ...keys.map((k, a) => (feat(k, j) - mu[a]) / s[a])];
-  const M = Array.from({ length: p }, (_, i) => [...Array(p).fill(0), ...Array.from({ length: p }, (_, c) => (c === i ? 1 : 0))]), b = Array(p).fill(0), R2 = idx.map(row);
-  R2.forEach((x, t) => { for (let a = 0; a < p; a++) { b[a] += wt[t] * x[a] * H[idx[t]]; for (let c = 0; c < p; c++) M[a][c] += wt[t] * x[a] * x[c]; } });
+  const M = Array.from({ length: p }, (_, i) => [
+      ...Array(p).fill(0),
+      ...Array.from({ length: p }, (_, c) => (c === i ? 1 : 0)),
+    ]),
+    b = Array(p).fill(0),
+    R2 = idx.map(row);
+  R2.forEach((x, t) => {
+    for (let a = 0; a < p; a++) {
+      b[a] += wt[t] * x[a] * H[idx[t]];
+      for (let c = 0; c < p; c++) M[a][c] += wt[t] * x[a] * x[c];
+    }
+  });
   for (let a = 1; a < p; a++) M[a][a] += lam;
-  for (let i = 0; i < p; i++) { let m = i; for (let r = i + 1; r < p; r++) if (Math.abs(M[r][i]) > Math.abs(M[m][i])) m = r; [M[i], M[m]] = [M[m], M[i]]; const dv = M[i][i]; for (let c = 0; c < 2 * p; c++) M[i][c] /= dv; for (let r = 0; r < p; r++) if (r !== i) { const f = M[r][i]; for (let c = 0; c < 2 * p; c++) M[r][c] -= f * M[i][c]; } }
-  const Ainv = M.map(r => r.slice(p)), w = Ainv.map(r => r.reduce((s2, v, c) => s2 + v * b[c], 0));
+  for (let i = 0; i < p; i++) {
+    let m = i;
+    for (let r = i + 1; r < p; r++) if (Math.abs(M[r][i]) > Math.abs(M[m][i])) m = r;
+    [M[i], M[m]] = [M[m], M[i]];
+    const dv = M[i][i];
+    for (let c = 0; c < 2 * p; c++) M[i][c] /= dv;
+    for (let r = 0; r < p; r++)
+      if (r !== i) {
+        const f = M[r][i];
+        for (let c = 0; c < 2 * p; c++) M[r][c] -= f * M[i][c];
+      }
+  }
+  const Ainv = M.map(r => r.slice(p)),
+    w = Ainv.map(r => r.reduce((s2, v, c) => s2 + v * b[c], 0));
   return { w, Ainv, row, R2 };
 }
 const predict = (m, j) => m.row(j).reduce((s, v, c) => s + v * m.w[c], 0);
-function innerLoss(keys, idx, lam) { // closed-form LOO loss (interval distance + small MAE term), used only to choose features inside a fold
-  const m = ridgeFit(keys, idx, lam); let s = 0;
-  m.R2.forEach((x, t) => { const pr = x.reduce((a, v, c) => a + v * m.w[c], 0), h = WGT[idx[t]] * x.reduce((a, v, r) => a + v * m.Ainv[r].reduce((q, e, c) => q + e * x[c], 0), 0), loo = H[idx[t]] - (H[idx[t]] - pr) / (1 - h); s += dist(loo, idx[t]) + 0.01 * Math.abs(loo - H[idx[t]]); });
+function innerLoss(keys, idx, lam) {
+  // closed-form LOO loss (interval distance + small MAE term), used only to choose features inside a fold
+  const m = ridgeFit(keys, idx, lam);
+  let s = 0;
+  m.R2.forEach((x, t) => {
+    const pr = x.reduce((a, v, c) => a + v * m.w[c], 0),
+      h =
+        WGT[idx[t]] *
+        x.reduce((a, v, r) => a + v * m.Ainv[r].reduce((q, e, c) => q + e * x[c], 0), 0),
+      loo = H[idx[t]] - (H[idx[t]] - pr) / (1 - h);
+    s += dist(loo, idx[t]) + 0.01 * Math.abs(loo - H[idx[t]]);
+  });
   return s / idx.length;
 }
-const all = [...Array(n).keys()], LAM = 10;
-const POOL = NAMES.filter(k => !k.startsWith('grade:') && k !== 'trapPredicted' && GROUP[k] !== 'struct' || k === 'n' || k === 'K/T' || k === 'turns/T' || k === 'segLen');
+const all = [...Array(n).keys()],
+  LAM = 10;
+const POOL = NAMES.filter(
+  k =>
+    (!k.startsWith('grade:') && k !== 'trapPredicted' && GROUP[k] !== 'struct') ||
+    k === 'n' ||
+    k === 'K/T' ||
+    k === 'turns/T' ||
+    k === 'segLen',
+);
 function forward(idx, maxK = 4) {
-  let chosen = [], best = mean(idx.map(i => dist(mean(idx.map(j => H[j])), i)));
+  let chosen = [],
+    best = mean(idx.map(i => dist(mean(idx.map(j => H[j])), i)));
   for (let step = 0; step < maxK; step++) {
     let pick = null;
-    for (const k of POOL) { if (chosen.includes(k)) continue; const l = innerLoss([...chosen, k], idx, LAM); if (l < best - 0.005) { best = l; pick = k; } }
-    if (!pick) break; chosen.push(pick);
+    for (const k of POOL) {
+      if (chosen.includes(k)) continue;
+      const l = innerLoss([...chosen, k], idx, LAM);
+      if (l < best - 0.005) {
+        best = l;
+        pick = k;
+      }
+    }
+    if (!pick) break;
+    chosen.push(pick);
   }
   return chosen;
 }
-const looModel = keys => all.map(i => predict(ridgeFit(keys, all.filter(j => j !== i), LAM), i));
+const looModel = keys =>
+  all.map(i =>
+    predict(
+      ridgeFit(
+        keys,
+        all.filter(j => j !== i),
+        LAM,
+      ),
+      i,
+    ),
+  );
 const picks = [];
-const looForward = all.map(i => { const tr = all.filter(j => j !== i), ks = forward(tr); picks.push(ks); return ks.length ? predict(ridgeFit(ks, tr, LAM), i) : mean(tr.map(j => H[j])); });
+const looForward = all.map(i => {
+  const tr = all.filter(j => j !== i),
+    ks = forward(tr);
+  picks.push(ks);
+  return ks.length ? predict(ridgeFit(ks, tr, LAM), i) : mean(tr.map(j => H[j]));
+});
 
 function score(name, pred, integer = false, idx = all) {
-  const g = integer ? pred : pred.map(clampGrade), zero = idx.filter(i => HI[i] === 0), hard = idx.filter(i => H[i] >= 3.5), rho = spearman(idx.map(i => pred[i]), idx.map(i => H[i]));
-  console.log(name.padEnd(46), (Number.isFinite(rho) && Math.abs(rho) < 0.999 ? rho.toFixed(2) : '—').padStart(5), ((100 * mean(idx.map(i => +(dist(g[i], i) === 0)))).toFixed(0) + '%').padStart(9), mean(idx.map(i => Math.abs(g[i] - H[i]))).toFixed(2).padStart(6), mean(idx.map(i => dist(g[i], i))).toFixed(2).padStart(9), (zero.filter(i => g[i] === 0).length + '/' + zero.length).padStart(6), (hard.filter(i => g[i] >= 3).length + '/' + hard.length).padStart(7), '  ' + [0, 1, 2, 3, 4, 5].map(k => idx.filter(i => g[i] === k).length).join(' '));
+  const g = integer ? pred : pred.map(clampGrade),
+    zero = idx.filter(i => HI[i] === 0),
+    hard = idx.filter(i => H[i] >= 3.5),
+    rho = spearman(
+      idx.map(i => pred[i]),
+      idx.map(i => H[i]),
+    );
+  console.log(
+    name.padEnd(46),
+    (Number.isFinite(rho) && Math.abs(rho) < 0.999 ? rho.toFixed(2) : '—').padStart(5),
+    ((100 * mean(idx.map(i => +(dist(g[i], i) === 0)))).toFixed(0) + '%').padStart(9),
+    mean(idx.map(i => Math.abs(g[i] - H[i])))
+      .toFixed(2)
+      .padStart(6),
+    mean(idx.map(i => dist(g[i], i)))
+      .toFixed(2)
+      .padStart(9),
+    (zero.filter(i => g[i] === 0).length + '/' + zero.length).padStart(6),
+    (hard.filter(i => g[i] >= 3).length + '/' + hard.length).padStart(7),
+    '  ' + [0, 1, 2, 3, 4, 5].map(k => idx.filter(i => g[i] === k).length).join(' '),
+  );
 }
-console.log('\n== Part 2: grading models (LOO: a puzzle is never scored by a model that saw it) ==');
-console.log('model'.padEnd(46), '  rho', ' in-range', '   MAE', ' dist-to-range', ' 0->0', ' hard>=3', '  grades 0..5 used');
-score('constant (training mean)', all.map(i => mean(all.filter(j => j !== i).map(j => H[j]))));
+console.log(
+  '\n== Part 2: grading models (LOO: a puzzle is never scored by a model that saw it) ==',
+);
+console.log(
+  'model'.padEnd(46),
+  '  rho',
+  ' in-range',
+  '   MAE',
+  ' dist-to-range',
+  ' 0->0',
+  ' hard>=3',
+  '  grades 0..5 used',
+);
+score(
+  'constant (training mean)',
+  all.map(i => mean(all.filter(j => j !== i).map(j => H[j]))),
+);
 console.log('   (rho of a constant is undefined, shown —)');
 console.log('-- existing grades exactly as shipped (nothing refit; capped puzzles count as 5) --');
-for (const k of ['grade:decisionNodes', 'grade:B', 'grade:cross', 'grade:combined', 'grade:ladder']) score(k.replace('grade:', 'shipped ') + (k === 'grade:ladder' ? ' (fixed formula)' : ''), col(k), true);
-score('shipped trap badge (weights + cuts fit on ALL ' + n + ': optimistic)', col('grade:trap'), true);
-console.log('-- ridge, refit inside every fold (lambda ' + LAM + '; grades here are the rounded score: tools/fit-trap.mjs prints the cut-based badge) --');
+for (const k of [
+  'grade:decisionNodes',
+  'grade:B',
+  'grade:cross',
+  'grade:combined',
+  'grade:ladder',
+])
+  score(
+    k.replace('grade:', 'shipped ') + (k === 'grade:ladder' ? ' (fixed formula)' : ''),
+    col(k),
+    true,
+  );
+score(
+  'shipped trap badge (weights + cuts fit on ALL ' + n + ': optimistic)',
+  col('grade:trap'),
+  true,
+);
+console.log(
+  '-- ridge, refit inside every fold (lambda ' +
+    LAM +
+    '; grades here are the rounded score: tools/fit-trap.mjs prints the cut-based badge) --',
+);
 const SETS = {
   'trap (shipped features)': ['trapMax', 'trapTop3', 'altFrac', 'lTr'],
   'trap without lTr (previous model)': ['trapMax', 'trapTop3', 'altFrac'],
   'trap + wideFrac': ['trapMax', 'trapTop3', 'altFrac', 'wideFrac'],
   'trap + ladTrials': ['trapMax', 'trapTop3', 'altFrac', 'ladTrials'],
   'trap + wideFrac + ladTrials': ['trapMax', 'trapTop3', 'altFrac', 'wideFrac', 'ladTrials'],
-  'trap + wideFrac + ladTrials + n': ['trapMax', 'trapTop3', 'altFrac', 'wideFrac', 'ladTrials', 'n'],
+  'trap + wideFrac + ladTrials + n': [
+    'trapMax',
+    'trapTop3',
+    'altFrac',
+    'wideFrac',
+    'ladTrials',
+    'n',
+  ],
   'wideFrac + ladTrials + altFrac': ['wideFrac', 'ladTrials', 'altFrac'],
   'ladder only (wideFrac, trials, probe2)': ['wideFrac', 'ladTrials', 'ladProbe2'],
   'legacy only (decisionNodes, B/N, cross)': ['decisionNodes/cell', 'B/N', 'crossPerSeg'],
 };
 const results = {};
-for (const [name, keys] of Object.entries(SETS)) { results[name] = looModel(keys); score(name, results[name]); }
+for (const [name, keys] of Object.entries(SETS)) {
+  results[name] = looModel(keys);
+  score(name, results[name]);
+}
 score('forward-select from all metrics (nested)', looForward);
-const cnt = {}; picks.forEach(ks => ks.forEach(k => cnt[k] = (cnt[k] || 0) + 1));
-console.log('   features chosen across the ' + n + ' folds: ' + Object.entries(cnt).sort((a, b) => b[1] - a[1]).map(([k, c]) => `${k} ${c}`).join(', '));
+const cnt = {};
+picks.forEach(ks => ks.forEach(k => (cnt[k] = (cnt[k] || 0) + 1)));
+console.log(
+  '   features chosen across the ' +
+    n +
+    ' folds: ' +
+    Object.entries(cnt)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, c]) => `${k} ${c}`)
+      .join(', '),
+);
 const fin = forward(all);
-console.log('   forward selection on all ' + n + ' puzzles picks: ' + (fin.join(', ') || '(none)'));
-
+console.log(
+  '   forward selection on all ' + n + ' puzzles picks: ' + (fin.join(', ') || '(none)'),
+);
 
 // ---------- Part 3: chronological holdout ----------
 if (SPLIT > 0 && SPLIT < n - 4) {
-  const tr = all.slice(0, SPLIT), te = all.slice(SPLIT);
-  console.log(`\n== Part 3: fit on the first ${SPLIT} puzzles, score the last ${te.length} (ratings were added over time, so this is also a check against drift) ==`);
-  console.log('model'.padEnd(46), '  rho', ' in-range', '   MAE', ' dist-to-range', ' 0->0', ' hard>=3', '  grades 0..5 used');
-  score('constant (mean of first ' + SPLIT + ')', all.map(() => mean(tr.map(j => H[j]))), false, te);
+  const tr = all.slice(0, SPLIT),
+    te = all.slice(SPLIT);
+  console.log(
+    `\n== Part 3: fit on the first ${SPLIT} puzzles, score the last ${te.length} (ratings were added over time, so this is also a check against drift) ==`,
+  );
+  console.log(
+    'model'.padEnd(46),
+    '  rho',
+    ' in-range',
+    '   MAE',
+    ' dist-to-range',
+    ' 0->0',
+    ' hard>=3',
+    '  grades 0..5 used',
+  );
+  score(
+    'constant (mean of first ' + SPLIT + ')',
+    all.map(() => mean(tr.map(j => H[j]))),
+    false,
+    te,
+  );
   score('ladder grade (fixed formula, no fitting)', col('grade:ladder'), true, te);
-  score('shipped trap badge (weights + cuts saw all ' + n + ': optimistic)', col('grade:trap'), true, te);
-  for (const [name, keys] of [['trap ridge', SETS['trap (shipped features)']], ['trap + ladProbe2 ridge', ['trapMax', 'trapTop3', 'altFrac', 'ladProbe2']]]) {
-    const m = ridgeFit(keys, tr, LAM), pr = all.map(i => (te.includes(i) ? predict(m, i) : NaN));
+  score(
+    'shipped trap badge (weights + cuts saw all ' + n + ': optimistic)',
+    col('grade:trap'),
+    true,
+    te,
+  );
+  for (const [name, keys] of [
+    ['trap ridge', SETS['trap (shipped features)']],
+    ['trap + ladProbe2 ridge', ['trapMax', 'trapTop3', 'altFrac', 'ladProbe2']],
+  ]) {
+    const m = ridgeFit(keys, tr, LAM),
+      pr = all.map(i => (te.includes(i) ? predict(m, i) : NaN));
     score(name + ' fit on first ' + SPLIT, pr, false, te);
   }
-  for (const k of ['grade:decisionNodes', 'grade:combined']) score(k.replace('grade:', 'shipped ') + ' (calibrated on generated puzzles)', col(k), true, te);
-  console.log(`   mean rating: first ${SPLIT} = ${mean(tr.map(j => H[j])).toFixed(2)}, last ${te.length} = ${mean(te.map(j => H[j])).toFixed(2)}  (a big gap means a fitted model regresses toward the wrong mean)`);
+  for (const k of ['grade:decisionNodes', 'grade:combined'])
+    score(
+      k.replace('grade:', 'shipped ') + ' (calibrated on generated puzzles)',
+      col(k),
+      true,
+      te,
+    );
+  console.log(
+    `   mean rating: first ${SPLIT} = ${mean(tr.map(j => H[j])).toFixed(2)}, last ${te.length} = ${mean(te.map(j => H[j])).toFixed(2)}  (a big gap means a fitted model regresses toward the wrong mean)`,
+  );
 }
 
 // ---------- Part 4: the ladder grade's own constants ----------
@@ -159,54 +421,158 @@ const ladMirror = (f, c) => {
 const ladCol = c => F.map(f => ladMirror(f, c));
 const drift = all.filter(i => ladCol(SHIPPED)[i] !== F[i]['grade:ladder']).length;
 console.log('\n== Part 4: ladder.js grade() constants ==');
-if (drift) console.log(`   WARNING: my mirror of grade() disagrees with ladder.js on ${drift} puzzles - ladder.js changed, update ladMirror in this file before trusting Part 4.`);
+if (drift)
+  console.log(
+    `   WARNING: my mirror of grade() disagrees with ladder.js on ${drift} puzzles - ladder.js changed, update ladMirror in this file before trusting Part 4.`,
+  );
 const lossOf = (g, idx) => mean(idx.map(i => dist(g[i], i) + 0.01 * Math.abs(g[i] - H[i])));
-const line = (label, g) => console.log('  ' + label.padEnd(30), 'in-range', ((100 * mean(all.map(i => +(dist(g[i], i) === 0)))).toFixed(0) + '%').padStart(4), ' MAE', mean(all.map(i => Math.abs(g[i] - H[i]))).toFixed(2), ' grade-5 count', g.filter(v => v === 5).length);
-console.log('wideFrac threshold (shipped ' + SHIPPED.tWf + '): a plateau, not a peak, is what you want to see');
-for (const t of [0, 0.05, 0.1, 0.15, 0.2, 0.3]) line('tWf = ' + t.toFixed(2), ladCol({ ...SHIPPED, tWf: t }));
+const line = (label, g) =>
+  console.log(
+    '  ' + label.padEnd(30),
+    'in-range',
+    ((100 * mean(all.map(i => +(dist(g[i], i) === 0)))).toFixed(0) + '%').padStart(4),
+    ' MAE',
+    mean(all.map(i => Math.abs(g[i] - H[i]))).toFixed(2),
+    ' grade-5 count',
+    g.filter(v => v === 5).length,
+  );
+console.log(
+  'wideFrac threshold (shipped ' +
+    SHIPPED.tWf +
+    '): a plateau, not a peak, is what you want to see',
+);
+for (const t of [0, 0.05, 0.1, 0.15, 0.2, 0.3])
+  line('tWf = ' + t.toFixed(2), ladCol({ ...SHIPPED, tWf: t }));
 console.log('probe-trials cutoff for grade 5 (shipped ' + SHIPPED.tTrials + ')');
-for (const t of [1000, 2000, 3500, 6000, 1e9]) line('tTrials = ' + (t >= 1e9 ? 'never' : t), ladCol({ ...SHIPPED, tTrials: t }));
+for (const t of [1000, 2000, 3500, 6000, 1e9])
+  line('tTrials = ' + (t >= 1e9 ? 'never' : t), ladCol({ ...SHIPPED, tTrials: t }));
 line('no size floors', ladCol({ ...SHIPPED, floors: false }));
-const G = []; for (const tWf of [0.05, 0.1, 0.15, 0.2, 0.25]) for (const tTrials of [1000, 2000, 3500, 6000]) for (const floors of [true, false]) G.push({ ...SHIPPED, tWf, tTrials, floors });
-const gcols = G.map(ladCol), chosen = [], nestedG = all.map(i => {
-  const trn = all.filter(j => j !== i); let best = 0, bl = Infinity;
-  gcols.forEach((g, gi) => { const l = lossOf(g, trn); if (l < bl - 1e-9) { bl = l; best = gi; } });
-  chosen.push(best); return gcols[best][i];
-});
+const G = [];
+for (const tWf of [0.05, 0.1, 0.15, 0.2, 0.25])
+  for (const tTrials of [1000, 2000, 3500, 6000])
+    for (const floors of [true, false]) G.push({ ...SHIPPED, tWf, tTrials, floors });
+const gcols = G.map(ladCol),
+  chosen = [],
+  nestedG = all.map(i => {
+    const trn = all.filter(j => j !== i);
+    let best = 0,
+      bl = Infinity;
+    gcols.forEach((g, gi) => {
+      const l = lossOf(g, trn);
+      if (l < bl - 1e-9) {
+        bl = l;
+        best = gi;
+      }
+    });
+    chosen.push(best);
+    return gcols[best][i];
+  });
 console.log('nested re-tuning (constants chosen without the scored puzzle):');
-line('shipped constants', ladCol(SHIPPED)); line('re-tuned in every fold', nestedG);
-const cc = {}; chosen.forEach(gi => { const k = `tWf ${G[gi].tWf}, tTrials ${G[gi].tTrials}, floors ${G[gi].floors}`; cc[k] = (cc[k] || 0) + 1; });
-console.log('   chosen: ' + Object.entries(cc).sort((a, b) => b[1] - a[1]).map(([k, c]) => `${k} (${c}/${n} folds)`).join('; '));
+line('shipped constants', ladCol(SHIPPED));
+line('re-tuned in every fold', nestedG);
+const cc = {};
+chosen.forEach(gi => {
+  const k = `tWf ${G[gi].tWf}, tTrials ${G[gi].tTrials}, floors ${G[gi].floors}`;
+  cc[k] = (cc[k] || 0) + 1;
+});
+console.log(
+  '   chosen: ' +
+    Object.entries(cc)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, c]) => `${k} (${c}/${n} folds)`)
+      .join('; '),
+);
 const gate = all.filter(i => F[i].ladHardest >= 5);
-console.log(`probe2 gate: ${gate.length} puzzles need nested guessing; human ratings of those: ${gate.map(i => H[i]).join(', ')}  (mean ${mean(gate.map(i => H[i])).toFixed(2)}; ${gate.filter(i => H[i] <= 2).length} rated <= 2 = gate false positives)`);
-
+console.log(
+  `probe2 gate: ${gate.length} puzzles need nested guessing; human ratings of those: ${gate.map(i => H[i]).join(', ')}  (mean ${mean(gate.map(i => H[i])).toFixed(2)}; ${gate.filter(i => H[i] <= 2).length} rated <= 2 = gate false positives)`,
+);
 
 // ---------- Part 5: ranking accuracy ----------
-console.log('\n== Part 5: ranking accuracy (does the metric order two puzzles the way you did?) ==');
-const idxOfKey = new Map(R.map((r, i) => [r.key, i])), extraF = new Map();
-const featOf = key => idxOfKey.has(key)
-  ? F[idxOfKey.get(key)]
-  : (extraF.has(key) || extraF.set(key, (() => {
-      try { return featuresOf({ key }, CAP); } catch { return null; }
-    })()), extraF.get(key));
-const valueOfMetric = k => key => { const f = featOf(key); return f ? f[k] : undefined; };
+console.log(
+  '\n== Part 5: ranking accuracy (does the metric order two puzzles the way you did?) ==',
+);
+const idxOfKey = new Map(R.map((r, i) => [r.key, i])),
+  extraF = new Map();
+const featOf = key =>
+  idxOfKey.has(key)
+    ? F[idxOfKey.get(key)]
+    : (extraF.has(key) ||
+        extraF.set(
+          key,
+          (() => {
+            try {
+              return featuresOf({ key }, CAP);
+            } catch {
+              return null;
+            }
+          })(),
+        ),
+      extraF.get(key));
+const valueOfMetric = k => key => {
+  const f = featOf(key);
+  return f ? f[k] : undefined;
+};
 const valueOfPred = pred => key => (idxOfKey.has(key) ? pred[idxOfKey.get(key)] : undefined);
 const implied = impliedPairs(R);
 let explicitPairs = [];
-try { const pp = parsePairsJson(fs.readFileSync(PAIRS_FILE, 'utf8')); explicitPairs = pp.pairs; for (const p of pp.problems) console.log('  pairs.json problem: ' + p); } catch { /* no pairs file yet */ }
-const modelRows = [['ridge: trap (LOO)', results['trap (shipped features)']], ['ridge: trap + wideFrac (LOO)', results['trap + wideFrac']], ['ridge: forward-select (LOO)', looForward]];
+try {
+  const pp = parsePairsJson(fs.readFileSync(PAIRS_FILE, 'utf8'));
+  explicitPairs = pp.pairs;
+  for (const p of pp.problems) console.log('  pairs.json problem: ' + p);
+} catch {
+  /* no pairs file yet */
+}
+const modelRows = [
+  ['ridge: trap (LOO)', results['trap (shipped features)']],
+  ['ridge: trap + wideFrac (LOO)', results['trap + wideFrac']],
+  ['ridge: forward-select (LOO)', looForward],
+];
 function rankTable(title, pairs, withModels) {
-  if (!pairs.length) { console.log(`${title}: none yet`); return; }
-  const rowsP = NAMES.map(k => ({ name: k, group: GROUP[k], ...pairAccuracy(pairs, valueOfMetric(k)) }));
-  if (withModels) for (const [name, pred] of modelRows) rowsP.push({ name, group: 'model', ...pairAccuracy(pairs, valueOfPred(pred)) });
+  if (!pairs.length) {
+    console.log(`${title}: none yet`);
+    return;
+  }
+  const rowsP = NAMES.map(k => ({
+    name: k,
+    group: GROUP[k],
+    ...pairAccuracy(pairs, valueOfMetric(k)),
+  }));
+  if (withModels)
+    for (const [name, pred] of modelRows)
+      rowsP.push({ name, group: 'model', ...pairAccuracy(pairs, valueOfPred(pred)) });
   const usable = rowsP.filter(r => r.decided > 0).sort((a, b) => b.accuracy - a.accuracy);
   const same = pairs.filter(p => p.cmp === 'same').length;
-  console.log(`${title}: ${pairs.length} pairs (${pairs.length - same} decided, ${same} "same")   [50% = coin flip; below 50% = the metric runs the other way]`);
-  console.log('metric'.padEnd(24), 'group'.padEnd(8), 'accuracy', ' decided', '  ties', '  "same" pairs given equal value');
-  for (const r of usable) console.log(r.name.padEnd(24), r.group.padEnd(8), ((100 * r.accuracy).toFixed(0) + '%').padStart(8), String(r.decided).padStart(8), String(r.ties).padStart(6), r.sameN ? `${r.sameTied}/${r.sameN}`.padStart(18) : '');
+  console.log(
+    `${title}: ${pairs.length} pairs (${pairs.length - same} decided, ${same} "same")   [50% = coin flip; below 50% = the metric runs the other way]`,
+  );
+  console.log(
+    'metric'.padEnd(24),
+    'group'.padEnd(8),
+    'accuracy',
+    ' decided',
+    '  ties',
+    '  "same" pairs given equal value',
+  );
+  for (const r of usable)
+    console.log(
+      r.name.padEnd(24),
+      r.group.padEnd(8),
+      ((100 * r.accuracy).toFixed(0) + '%').padStart(8),
+      String(r.decided).padStart(8),
+      String(r.ties).padStart(6),
+      r.sameN ? `${r.sameTied}/${r.sameN}`.padStart(18) : '',
+    );
 }
 rankTable('pairs implied by your ratings (non-overlapping ranges)', implied, true);
 console.log('');
-rankTable(`explicit pairs from ${PAIRS_FILE.split('/').slice(-2).join('/')}`, explicitPairs, false);
+rankTable(
+  `explicit pairs from ${PAIRS_FILE.split('/').slice(-2).join('/')}`,
+  explicitPairs,
+  false,
+);
 
-console.log('\nreading guide: in-range and dist-to-range respect the range you gave; MAE compares to the midpoint. A model is only better than another if it wins by more than the noise (~+-0.10 rho, ~+-6% in-range at n=' + n + ').');
+console.log(
+  '\nreading guide: in-range and dist-to-range respect the range you gave; MAE compares to the midpoint. A model is only better than another if it wins by more than the noise (~+-0.10 rho, ~+-6% in-range at n=' +
+    n +
+    ').',
+);

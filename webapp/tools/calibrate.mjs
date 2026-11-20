@@ -22,7 +22,9 @@ import { spatialMetrics } from '../src/core/spatial.js';
 import * as cal from '../src/core/gen/calibration.js';
 
 const args = process.argv.slice(2);
-const nRange = args[0] ? args[0].split(',').map(Number) : PLAY_SIZES.filter(n => n >= 7 && n <= 11);
+const nRange = args[0]
+  ? args[0].split(',').map(Number)
+  : PLAY_SIZES.filter(n => n >= 7 && n <= 11);
 const seed = args[1] ? parseInt(args[1], 10) : 424242;
 const samplesPerN = args[2] ? parseInt(args[2], 10) : 25;
 const r4 = x => +Number(x).toPrecision(4);
@@ -32,19 +34,29 @@ console.log(`Calibrating over N=${nRange.join(',')}, seed=${seed}, samplesPerN=$
 // ---- pass 1: z-scoring constants for the combined grade (same sampling stream calibrateAll uses) ----
 const t0 = Date.now();
 const rnd = makeRng(seed);
-const BperN = [], cross = [];
+const BperN = [],
+  cross = [];
 for (const n of nRange) {
   for (let i = 0; i < samplesPerN; i++) {
     const s = Math.floor(rnd() * 4294967296) >>> 0;
     const p = runSync(generate(n, s));
     const m = metricsFor(p, refNodeCap(n));
     if (m.exceeded) continue;
-    BperN.push(m.B / n); cross.push(spatialMetrics(p).crossPerSeg);
+    BperN.push(m.B / n);
+    cross.push(spatialMetrics(p).crossPerSeg);
   }
 }
-const stat = a => { const mean = a.reduce((x, y) => x + y, 0) / a.length; return { mean: r4(mean), sd: r4(Math.sqrt(a.reduce((x, y) => x + (y - mean) ** 2, 0) / a.length)) }; };
+const stat = a => {
+  const mean = a.reduce((x, y) => x + y, 0) / a.length;
+  return {
+    mean: r4(mean),
+    sd: r4(Math.sqrt(a.reduce((x, y) => x + (y - mean) ** 2, 0) / a.length)),
+  };
+};
 const z = { BperN: stat(BperN), cross: stat(cross) };
-console.log(`pass 1 (${((Date.now() - t0) / 1000).toFixed(0)}s): measured z constants from ${BperN.length} usable puzzles`);
+console.log(
+  `pass 1 (${((Date.now() - t0) / 1000).toFixed(0)}s): measured z constants from ${BperN.length} usable puzzles`,
+);
 
 // Apply the fresh constants in-place so pass 2's combined score uses them (the object is exported
 // mutable on purpose for exactly this; the app never mutates it).
@@ -57,17 +69,27 @@ const res = cal.calibrateAll(nRange, seed, samplesPerN);
 console.log(`pass 2 (${((Date.now() - t1) / 1000).toFixed(0)}s)\n`);
 
 console.log('// ---- paste into src/core/gen/calibration.js ----');
-console.log(`export const COMBINED_ZSCORE = { BperN: { mean: ${z.BperN.mean}, sd: ${z.BperN.sd} }, cross: { mean: ${z.cross.mean}, sd: ${z.cross.sd} } };`);
+console.log(
+  `export const COMBINED_ZSCORE = { BperN: { mean: ${z.BperN.mean}, sd: ${z.BperN.sd} }, cross: { mean: ${z.cross.mean}, sd: ${z.cross.sd} } };`,
+);
 console.log('export const DEFAULT_THRESHOLDS_BY_METRIC = {');
-for (const [id, v] of Object.entries(res)) console.log(`  ${id}: [${v.thresholds.map(r4).join(', ')}],`);
+for (const [id, v] of Object.entries(res))
+  console.log(`  ${id}: [${v.thresholds.map(r4).join(', ')}],`);
 console.log('};\n');
 
 // Sanity: pooled sample size per metric, and a histogram so a skewed/thin sample is visible.
 for (const [id, v] of Object.entries(res)) {
-  const s = v.samples, lo = s[0], hi = s[s.length - 1], buckets = new Array(10).fill(0);
+  const s = v.samples,
+    lo = s[0],
+    hi = s[s.length - 1],
+    buckets = new Array(10).fill(0);
   for (const x of s) buckets[Math.min(9, hi > lo ? Math.floor(((x - lo) / (hi - lo)) * 10) : 0)]++;
-  console.log(`${id.padEnd(14)} n=${String(v.n).padEnd(4)} range ${r4(lo)}..${r4(hi)}  |${buckets.map(c => c === 0 ? '.' : c < 10 ? String(c) : '#').join('')}|  (10 equal-width buckets, low -> high)`);
+  console.log(
+    `${id.padEnd(14)} n=${String(v.n).padEnd(4)} range ${r4(lo)}..${r4(hi)}  |${buckets.map(c => (c === 0 ? '.' : c < 10 ? String(c) : '#')).join('')}|  (10 equal-width buckets, low -> high)`,
+  );
 }
 if (res.crossPerSeg.thresholds[0] === res.crossPerSeg.thresholds[1]) {
-  console.log('\nnote: crossPerSeg cutpoints repeat (most puzzles have no crossing), so two grades are unreachable — expected, see calibration.js.');
+  console.log(
+    '\nnote: crossPerSeg cutpoints repeat (most puzzles have no crossing), so two grades are unreachable — expected, see calibration.js.',
+  );
 }

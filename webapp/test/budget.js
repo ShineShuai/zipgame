@@ -35,12 +35,17 @@ if ((process.env.ZIGZAG_TESTS || 'fast') === 'fast') {
     const used = `${cpu} ms of CPU, ${wall} ms of wall time`;
     if (process.env.ZIGZAG_BUDGET_REPORT) {
       const file = path.relative(process.cwd(), process.argv[1] ?? '');
-      fs.appendFileSync(process.env.ZIGZAG_BUDGET_REPORT, `${JSON.stringify({ file, name, cpu, wall })}\n`);
+      fs.appendFileSync(
+        process.env.ZIGZAG_BUDGET_REPORT,
+        `${JSON.stringify({ file, name, cpu, wall })}\n`,
+      );
     } else {
       console.warn(`warning: ${name}: used ${used}: mark it slow`);
     }
     if (!process.env.CI && (cpu >= FAIL_CPU_MS || wall >= FAIL_WALL_MS)) {
-      throw new Error(`used ${used}: mark it slow; the budget of a fast test is ${FAIL_CPU_MS} ms of CPU time`);
+      throw new Error(
+        `used ${used}: mark it slow; the budget of a fast test is ${FAIL_CPU_MS} ms of CPU time`,
+      );
     }
   });
 }

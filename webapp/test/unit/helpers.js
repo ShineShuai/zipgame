@@ -7,9 +7,16 @@ import { ok } from '../harness.js';
 import { fixture, SAMPLES } from '../fixtures/puzzles.js';
 
 export const randPuzzle = (seed, n, K, wallFrac) => {
-  const rnd = makeRng(seed), p = makePuzzle(n), T = n * n, cells = shuffle([...Array(T).keys()], rnd).slice(0, K);
-  cells.forEach((c, i) => { p.cp[c] = i + 1; });
-  allEdges(n).forEach(e => { if (rnd() < wallFrac) setWallId(p.walls, e, true); });
+  const rnd = makeRng(seed),
+    p = makePuzzle(n),
+    T = n * n,
+    cells = shuffle([...Array(T).keys()], rnd).slice(0, K);
+  cells.forEach((c, i) => {
+    p.cp[c] = i + 1;
+  });
+  allEdges(n).forEach(e => {
+    if (rnd() < wallFrac) setWallId(p.walls, e, true);
+  });
   return p;
 };
 export function sampleUniquePuzzles() {
@@ -18,7 +25,29 @@ export function sampleUniquePuzzles() {
   return out;
 }
 
-let sampleCache = null; export const cachedSamples = () => sampleCache ??= sampleUniquePuzzles(); // generate once, share across tests
+let sampleCache = null;
+export const cachedSamples = () => (sampleCache ??= sampleUniquePuzzles()); // generate once, share across tests
 
-export const fakeStorage = (quota = Infinity) => { const m = new Map(), size = () => [...m].reduce((a, [k, v]) => a + k.length + v.length, 0); return { data: m, async get(k) { return m.has(k) ? { value: m.get(k) } : null; }, async set(k, v) { const old = m.has(k) ? k.length + m.get(k).length : 0; if (size() - old + k.length + v.length > quota) return false; m.set(k, v); return true; }, async remove(k) { m.delete(k); }, async keys(p = '') { return [...m.keys()].filter(k => k.startsWith(p)); } }; };
+export const fakeStorage = (quota = Infinity) => {
+  const m = new Map(),
+    size = () => [...m].reduce((a, [k, v]) => a + k.length + v.length, 0);
+  return {
+    data: m,
+    async get(k) {
+      return m.has(k) ? { value: m.get(k) } : null;
+    },
+    async set(k, v) {
+      const old = m.has(k) ? k.length + m.get(k).length : 0;
+      if (size() - old + k.length + v.length > quota) return false;
+      m.set(k, v);
+      return true;
+    },
+    async remove(k) {
+      m.delete(k);
+    },
+    async keys(p = '') {
+      return [...m.keys()].filter(k => k.startsWith(p));
+    },
+  };
+};
 export const atDay = d => () => new Date(Date.UTC(2026, 8, d, 12));

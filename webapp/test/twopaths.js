@@ -9,7 +9,12 @@ import { serialize, parse } from '../src/core/format.js';
 import { solve } from '../src/core/solver/solve.js';
 import { sampled } from './harness.js';
 import {
-  bridgeCells, splitPath, colourView, colourNumber, colourOfCell, colourCounts,
+  bridgeCells,
+  splitPath,
+  colourView,
+  colourNumber,
+  colourOfCell,
+  colourCounts,
 } from '../src/core/twopaths.js';
 import { allEdges, edgeCells, hasWall, hasWallId } from '../src/core/edges.js';
 import { backbite } from '../src/core/gen/hampath.js';
@@ -17,7 +22,11 @@ import { makeRng, shuffle } from '../src/core/rng.js';
 import { gridDist } from '../src/core/geom.js';
 import { symmetryKey, transformPuzzle } from '../src/core/ratings-io.js';
 import {
-  encodeShare, decodeShare, SHARE_VERSION_SPLIT, TWO_PATHS, SHARE_VERSION_PORTAL,
+  encodeShare,
+  decodeShare,
+  SHARE_VERSION_SPLIT,
+  TWO_PATHS,
+  SHARE_VERSION_PORTAL,
 } from '../src/core/share-code.js';
 
 const threw = f => {
@@ -44,7 +53,13 @@ export function randomTwoPaths(n, seed, wallShare = 0.3) {
   const numbers = (piece, count) => {
     const mid = [];
     for (let i = 1; i < piece.length - 1; i++) mid.push(i);
-    const at = [0, ...shuffle(mid, rnd).slice(0, count - 2).sort((a, b) => a - b), piece.length - 1];
+    const at = [
+      0,
+      ...shuffle(mid, rnd)
+        .slice(0, count - 2)
+        .sort((a, b) => a - b),
+      piece.length - 1,
+    ];
     return at.map(i => piece[i]);
   };
   const redCells = numbers(red, 2 + Math.floor(rnd() * 3));
@@ -57,7 +72,9 @@ export function randomTwoPaths(n, seed, wallShare = 0.3) {
   const planted = new Set();
   for (const piece of [red, blue]) {
     for (let i = 1; i < piece.length; i++) {
-      planted.add(Math.min(piece[i - 1], piece[i]) * 2 + (Math.abs(piece[i] - piece[i - 1]) === 1 ? 0 : 1));
+      planted.add(
+        Math.min(piece[i - 1], piece[i]) * 2 + (Math.abs(piece[i] - piece[i - 1]) === 1 ? 0 : 1),
+      );
     }
   }
   for (const e of allEdges(n)) {
@@ -80,11 +97,19 @@ export function bruteTwoPaths(p) {
     if (v) at[v - 1] = cell;
   });
   const seen = new Uint8Array(T);
-  const open = cell => [[0, 1], [0, -1], [1, 0], [-1, 0]].map(([dr, dc]) => {
-    const r = ((cell / n) | 0) + dr;
-    const c = (cell % n) + dc;
-    return r < 0 || r >= n || c < 0 || c >= n ? -1 : r * n + c;
-  }).filter(v => v >= 0 && !hasWall(p, cell, v));
+  const open = cell =>
+    [
+      [0, 1],
+      [0, -1],
+      [1, 0],
+      [-1, 0],
+    ]
+      .map(([dr, dc]) => {
+        const r = ((cell / n) | 0) + dr;
+        const c = (cell % n) + dc;
+        return r < 0 || r >= n || c < 0 || c >= n ? -1 : r * n + c;
+      })
+      .filter(v => v >= 0 && !hasWall(p, cell, v));
   const found = [];
   // walk one colour: numbers first..last, `trail` = its cells so far
   const walk = (cell, first, last, next, trail, done) => {
@@ -125,30 +150,39 @@ const FLAG_SETS = [
 ];
 
 export function twoPathsTests(t, ok, eq) {
-  t('twopaths: solve finds exactly the two-path covers of a brute-force search (all flag sets)', () => {
-    let compared = 0;
-    let multi = 0;
-    let adjacent = 0;
-    const seeds = sampled(Array.from({ length: 40 }, (_, i) => i + 1));
-    for (const n of [3, 4, 5]) {
-      for (const seed of seeds) {
-        const { p } = randomTwoPaths(n, seed, 0.15 + 0.05 * (seed % 6));
-        const want = bruteTwoPaths(p);
-        if (want.length > 1) multi++;
-        const [a, b] = bridgeCells(p);
-        if (gridDist(n, false, a, b) === 1) adjacent++;
-        for (const flags of FLAG_SETS) {
-          const r = solve(p, { ...flags, limit: 1e9, nodeCap: 1e7, capture: true });
-          ok(!r.exceeded, 'no cap hit');
-          eq(r.paths.map(String).sort(), want, `n=${n} seed=${seed} ${JSON.stringify(flags)}`);
-          compared++;
+  t(
+    'twopaths: solve finds exactly the two-path covers of a brute-force search (all flag sets)',
+    () => {
+      let compared = 0;
+      let multi = 0;
+      let adjacent = 0;
+      const seeds = sampled(Array.from({ length: 40 }, (_, i) => i + 1));
+      for (const n of [3, 4, 5]) {
+        for (const seed of seeds) {
+          const { p } = randomTwoPaths(n, seed, 0.15 + 0.05 * (seed % 6));
+          const want = bruteTwoPaths(p);
+          if (want.length > 1) multi++;
+          const [a, b] = bridgeCells(p);
+          if (gridDist(n, false, a, b) === 1) adjacent++;
+          for (const flags of FLAG_SETS) {
+            const r = solve(p, { ...flags, limit: 1e9, nodeCap: 1e7, capture: true });
+            ok(!r.exceeded, 'no cap hit');
+            eq(r.paths.map(String).sort(), want, `n=${n} seed=${seed} ${JSON.stringify(flags)}`);
+            compared++;
+          }
         }
       }
-    }
-    const share = seeds.length / 40; // the guards below scale with the sample
-    ok(compared > 600 * share && multi > 20 * share, `compared ${compared}, ${multi} puzzles with several solutions`);
-    ok(adjacent > 0, `${adjacent} puzzles whose bridge cells touch (that grid edge is never walked)`);
-  });
+      const share = seeds.length / 40; // the guards below scale with the sample
+      ok(
+        compared > 600 * share && multi > 20 * share,
+        `compared ${compared}, ${multi} puzzles with several solutions`,
+      );
+      ok(
+        adjacent > 0,
+        `${adjacent} puzzles whose bridge cells touch (that grid edge is never walked)`,
+      );
+    },
+  );
 
   t('twopaths: the planted paths are a solution, and isSolved accepts every solution', () => {
     for (let seed = 1; seed <= 30; seed++) {
@@ -173,8 +207,14 @@ export function twoPathsTests(t, ok, eq) {
       const p = makePuzzle(n);
       const path = backbite(n, rnd);
       const count = 3 + (s % 3);
-      const pick = [0, path.length - 1, ...shuffle([...Array(path.length - 2).keys()].map(i => i + 1), rnd)
-        .slice(0, count - 2)].sort((a, b) => a - b);
+      const pick = [
+        0,
+        path.length - 1,
+        ...shuffle(
+          [...Array(path.length - 2).keys()].map(i => i + 1),
+          rnd,
+        ).slice(0, count - 2),
+      ].sort((a, b) => a - b);
       pick.forEach((at, i) => {
         p.cp[path[at]] = i + 1;
       });
@@ -185,12 +225,20 @@ export function twoPathsTests(t, ok, eq) {
       }
       const all = solve(p, { limit: 1e9, nodeCap: 1e7, capture: true });
       ok(!all.exceeded);
-      const open = allEdges(n).filter(e => !hasWallId(p.walls, e)).map(e => edgeCells(n, e));
-      const walks = (w, [a, b]) => w.some((c, i) => i > 0 && ((w[i - 1] === a && c === b) || (w[i - 1] === b && c === a)));
+      const open = allEdges(n)
+        .filter(e => !hasWallId(p.walls, e))
+        .map(e => edgeCells(n, e));
+      const walks = (w, [a, b]) =>
+        w.some((c, i) => i > 0 && ((w[i - 1] === a && c === b) || (w[i - 1] === b && c === a)));
       for (let k = 0; k < 12; k++) {
         const two = shuffle([...open], rnd).slice(0, 2);
         const want = all.paths.filter(w => two.every(edge => walks(w, edge))).map(String);
-        for (const extra of [{}, { prop: true }, { prop: true, pocket: true, parity: true }, { prop: true, incr: false }]) {
+        for (const extra of [
+          {},
+          { prop: true },
+          { prop: true, pocket: true, parity: true },
+          { prop: true, incr: false },
+        ]) {
           const r = solve(p, { ...extra, limit: 1e9, nodeCap: 1e7, capture: true, mustUse: two });
           ok(!r.exceeded);
           eq(r.paths.map(String), want, `case ${s} edges ${two} ${JSON.stringify(extra)}`);
@@ -212,12 +260,22 @@ export function twoPathsTests(t, ok, eq) {
         const [a, b] = edgeCells(5, e);
         const walks = w => {
           const [red, blue] = splitPath(p, w);
-          return [red, blue].some(path => path.some((c, i) => i > 0
-            && ((path[i - 1] === a && c === b) || (path[i - 1] === b && c === a))));
+          return [red, blue].some(path =>
+            path.some(
+              (c, i) =>
+                i > 0 && ((path[i - 1] === a && c === b) || (path[i - 1] === b && c === a)),
+            ),
+          );
         };
         const want = all.paths.filter(walks).map(String);
         for (const extra of [{ prop: true }, { prop: true, pocket: true, parity: true }]) {
-          const r = solve(p, { ...extra, limit: 1e9, nodeCap: 1e7, capture: true, mustUse: [a, b] });
+          const r = solve(p, {
+            ...extra,
+            limit: 1e9,
+            nodeCap: 1e7,
+            capture: true,
+            mustUse: [a, b],
+          });
           eq(r.paths.map(String), want, `seed ${seed} edge ${e} (${a}-${b}, bridge ${a0}-${b0})`);
           cmp++;
         }
@@ -249,7 +307,8 @@ export function twoPathsTests(t, ok, eq) {
     ok(validate(redView).ok && validate(blueView).ok, 'each view is a standard puzzle');
     // playing one colour with step() on its view
     const path = [];
-    for (const cell of red) ok(step(redView, path, cell, { strictOrder: true }) === 'push', `red step to ${cell}`);
+    for (const cell of red)
+      ok(step(redView, path, cell, { strictOrder: true }) === 'push', `red step to ${cell}`);
     eq(path, red);
     const blueTrail = [];
     for (const cell of blue) ok(step(blueView, blueTrail, cell, { strictOrder: true }) === 'push');
@@ -300,12 +359,21 @@ export function twoPathsTests(t, ok, eq) {
     const q = base();
     q.split = 3;
     ok(validate(q).ok, '3 red, 2 blue');
-    for (const extra of [{ wrap: true }, { loop: true }, { exact: true }, { portals: [[1, 14]] },
-      { holes: new Uint8Array(16).fill(0, 0, 16) }, { arrows: new Uint8Array(16) }]) {
+    for (const extra of [
+      { wrap: true },
+      { loop: true },
+      { exact: true },
+      { portals: [[1, 14]] },
+      { holes: new Uint8Array(16).fill(0, 0, 16) },
+      { arrows: new Uint8Array(16) },
+    ]) {
       const w = { ...base(), split: 2, ...extra };
       ok(!validate(w).ok, `refused with ${Object.keys(extra)}`);
     }
-    ok(threw(() => solve({ ...base(), split: 2, wrap: true })), 'the solver refuses a combination');
+    ok(
+      threw(() => solve({ ...base(), split: 2, wrap: true })),
+      'the solver refuses a combination',
+    );
     ok(threw(() => solve({ ...base(), split: 2, portals: [[1, 14]] })));
     eq(clonePuzzle(p).split, 2, 'clonePuzzle keeps split');
     eq(clonePuzzle(base()).split, undefined);
@@ -326,16 +394,34 @@ export function twoPathsTests(t, ok, eq) {
     const withPath = parse(serialize(p, { path: p.path }));
     eq(withPath.path, p.path, 'the path line crosses the bridge');
     ok(isSolved(withPath, withPath.path));
-    for (const bad of ['size 4\nsplit\ncheckpoints 0,0=1', 'size 4\nsplit 0', 'size 4\nsplit x',
-      'size 4\nsplit 2 3', 'size 4\nsplit 2\nwrap', 'size 4\nsplit 2\nloop', 'size 4\nsplit 2\nexact',
-      'size 4\nsplit 2\nportals 0,0~3,3', 'size 4\nsplit 2\nholes 1,1', 'size 4\nsplit 2\narrows']) {
-      ok(threw(() => parse(bad)), `refused: ${bad.replace(/\n/g, ' / ')}`);
+    for (const bad of [
+      'size 4\nsplit\ncheckpoints 0,0=1',
+      'size 4\nsplit 0',
+      'size 4\nsplit x',
+      'size 4\nsplit 2 3',
+      'size 4\nsplit 2\nwrap',
+      'size 4\nsplit 2\nloop',
+      'size 4\nsplit 2\nexact',
+      'size 4\nsplit 2\nportals 0,0~3,3',
+      'size 4\nsplit 2\nholes 1,1',
+      'size 4\nsplit 2\narrows',
+    ]) {
+      ok(
+        threw(() => parse(bad)),
+        `refused: ${bad.replace(/\n/g, ' / ')}`,
+      );
     }
-    ok(!/^split/m.test(serialize(parse('size 4\ncheckpoints 0,0=1 3,3=2\nwalls'))), 'a standard puzzle has none');
+    ok(
+      !/^split/m.test(serialize(parse('size 4\ncheckpoints 0,0=1 3,3=2\nwalls'))),
+      'a standard puzzle has none',
+    );
     // a jump that is not the bridge is still refused: swap two cells of the red path
     const jumpy = p.path.slice();
     [jumpy[1], jumpy[3]] = [jumpy[3], jumpy[1]];
-    ok(threw(() => parse(serialize(p, { path: jumpy }))), 'a path that jumps elsewhere');
+    ok(
+      threw(() => parse(serialize(p, { path: jumpy }))),
+      'a path that jumps elsewhere',
+    );
   });
 
   t('twopaths: share code round trip, canonical, own version, refuses an unsound record', () => {
@@ -344,7 +430,15 @@ export function twoPathsTests(t, ok, eq) {
       for (let seed = 1; seed <= 12; seed++) {
         const { p } = randomTwoPaths(n, seed, 0.3);
         delete p.path;
-        const rec = { kind: 'local', variant: TWO_PATHS, n, grade: null, timeS: 12.3, levels: [], puzzle: p };
+        const rec = {
+          kind: 'local',
+          variant: TWO_PATHS,
+          n,
+          grade: null,
+          timeS: 12.3,
+          levels: [],
+          puzzle: p,
+        };
         const code = encodeShare(rec);
         ok(code, `n=${n} seed=${seed} encodes`);
         const back = decodeShare(code);
@@ -356,19 +450,36 @@ export function twoPathsTests(t, ok, eq) {
         eq(encodeShare(back), code, 'canonical');
         coded++;
         // the version is its own
-        const bits = [...code].map(ch => 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'.indexOf(ch));
+        const bits = [...code].map(ch =>
+          'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'.indexOf(ch),
+        );
         eq(bits[0] >> 3, SHARE_VERSION_SPLIT, 'first 3 bits = the version');
       }
     }
     ok(coded === 60);
     const { p } = randomTwoPaths(5, 2);
     delete p.path;
-    const good = { kind: 'local', variant: TWO_PATHS, n: 5, grade: null, timeS: 3, levels: [], puzzle: p };
+    const good = {
+      kind: 'local',
+      variant: TWO_PATHS,
+      n: 5,
+      grade: null,
+      timeS: 3,
+      levels: [],
+      puzzle: p,
+    };
     ok(encodeShare(good));
     for (const [name, rec] of Object.entries({
       'split 1': { ...good, puzzle: { ...p, split: 1 } },
       'split too big': { ...good, puzzle: { ...p, split: maxNumber(p) - 1 } },
-      'no split': { ...good, puzzle: (() => { const q = clonePuzzle(p); delete q.split; return q; })() },
+      'no split': {
+        ...good,
+        puzzle: (() => {
+          const q = clonePuzzle(p);
+          delete q.split;
+          return q;
+        })(),
+      },
       'wrap too': { ...good, puzzle: { ...p, wrap: true } },
       'a grade': { ...good, grade: 2 },
     })) {
@@ -381,7 +492,8 @@ export function twoPathsTests(t, ok, eq) {
     const a = clonePuzzle(p);
     const b = clonePuzzle(p);
     b.split = p.split === 2 ? 3 : 2;
-    if (maxNumber(p) >= 5) ok(encodeShare({ ...good, puzzle: a }) !== encodeShare({ ...good, puzzle: b }));
+    if (maxNumber(p) >= 5)
+      ok(encodeShare({ ...good, puzzle: a }) !== encodeShare({ ...good, puzzle: b }));
   });
 
   t('twopaths: transformPuzzle keeps the puzzle, reversed numbering swaps the colours', () => {
@@ -393,14 +505,24 @@ export function twoPathsTests(t, ok, eq) {
         for (const reverse of [false, true]) {
           const q = transformPuzzle(p, k, reverse);
           eq(q.split, reverse ? K - p.split : p.split);
-          eq(solve(q, { limit: 1e9, nodeCap: 1e7, prop: true }).count, count, `seed ${seed} k=${k} ${reverse}`);
+          eq(
+            solve(q, { limit: 1e9, nodeCap: 1e7, prop: true }).count,
+            count,
+            `seed ${seed} k=${k} ${reverse}`,
+          );
         }
       }
     }
     const { p } = randomTwoPaths(5, 1, 0.5);
-    ok(symmetryKey(p) === symmetryKey(transformPuzzle(p, 5, true)), 'one key for equivalent puzzles');
+    ok(
+      symmetryKey(p) === symmetryKey(transformPuzzle(p, 5, true)),
+      'one key for equivalent puzzles',
+    );
     const other = clonePuzzle(p);
     other.split = p.split === 2 ? 3 : 2;
-    ok(symmetryKey(other) !== symmetryKey(p) || maxNumber(p) < 5, 'another split is another puzzle');
+    ok(
+      symmetryKey(other) !== symmetryKey(p) || maxNumber(p) < 5,
+      'another split is another puzzle',
+    );
   });
 }

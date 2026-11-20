@@ -3,7 +3,14 @@
 // boards (core/solver/solve.js, checked against a plain brute-force search) and the plain-text
 // format (core/format.js). Registered by unit/wrap.test.js: wrapTests(t, ok, eq).
 import { makePuzzle, validate } from '../src/core/model.js';
-import { edgeId, edgeCells, allEdges, setWallId, wallIds, pathEdgeIds } from '../src/core/edges.js';
+import {
+  edgeId,
+  edgeCells,
+  allEdges,
+  setWallId,
+  wallIds,
+  pathEdgeIds,
+} from '../src/core/edges.js';
 import { canStep, step, isSolved } from '../src/core/rules.js';
 import { serialize, parse } from '../src/core/format.js';
 import { solve } from '../src/core/solver/solve.js';
@@ -13,13 +20,21 @@ import { makeRng, shuffle } from '../src/core/rng.js';
 import { solutionKeys } from './oracle.js';
 
 const torus = n => ({ ...makePuzzle(n), wrap: true });
-const threw = f => { try { f(); return false; } catch { return true; } };
+const threw = f => {
+  try {
+    f();
+    return false;
+  } catch {
+    return true;
+  }
+};
 
 // A random Hamiltonian path of the torus: depth-first search in random order, retried on a budget.
 function torusPath(n, rnd) {
   const T = n * n;
   for (let attempt = 0; attempt < 300; attempt++) {
-    const vis = new Uint8Array(T), path = [];
+    const vis = new Uint8Array(T),
+      path = [];
     let budget = 4000;
     const go = cell => {
       path.push(cell);
@@ -41,7 +56,9 @@ function torusPath(n, rnd) {
 // A torus puzzle that its own path solves: K numbers spread along the path (1 first, K on the last
 // cell), and walls on some of the edges the path does not use.
 function torusPuzzle(n, K, rnd, wallFrac = 0.3) {
-  const path = torusPath(n, rnd), p = torus(n), T = n * n;
+  const path = torusPath(n, rnd),
+    p = torus(n),
+    T = n * n;
   for (let k = 0; k < K; k++) p.cp[path[Math.round((k * (T - 1)) / (K - 1))]] = k + 1;
   const on = new Set(pathEdgeIds(n, path, true));
   for (const e of allEdges(n, null, true)) {
@@ -54,10 +71,17 @@ function torusPuzzle(n, K, rnd, wallFrac = 0.3) {
 const bruteKeys = solutionKeys;
 
 const ALL_PRUNES = {
-  prune2: true, prop: true, seg: true, pocket: true, parity: true, legCollide: true,
+  prune2: true,
+  prop: true,
+  seg: true,
+  pocket: true,
+  parity: true,
+  legCollide: true,
 };
-const solverKeys = (p, opts = {}) => solve(p, { limit: 1e9, nodeCap: 1e9, capture: true, ...opts })
-  .paths.map(q => q.join(',')).sort();
+const solverKeys = (p, opts = {}) =>
+  solve(p, { limit: 1e9, nodeCap: 1e9, capture: true, ...opts })
+    .paths.map(q => q.join(','))
+    .sort();
 
 export { torusPuzzle, bruteKeys, torusPath };
 
@@ -72,7 +96,8 @@ export function wrapTests(t, ok, eq) {
         eq(edgeId(n, a, b, true), e, `n=${n}: edgeId(a, b) round trip`);
         eq(edgeId(n, b, a, true), e, `n=${n}: edgeId(b, a) round trip`);
       }
-      const lastRight = (n - 1) * 2, lastDown = ((n - 1) * n) * 2 + 1;
+      const lastRight = (n - 1) * 2,
+        lastDown = (n - 1) * n * 2 + 1;
       eq(edgeCells(n, lastRight, true)[1], 0, `n=${n}: last column joins column 0`);
       eq(edgeCells(n, lastDown, true)[1], 0, `n=${n}: last row joins row 0`);
     }
@@ -110,8 +135,10 @@ export function wrapTests(t, ok, eq) {
 
   t('wrap: moves cross the seam; a wall on a seam edge blocks it', () => {
     const p = torus(3);
-    ok(canStep(p, 2, 0) && canStep(p, 0, 2) && canStep(p, 0, 6) && canStep(p, 6, 0),
-      'seam moves are legal');
+    ok(
+      canStep(p, 2, 0) && canStep(p, 0, 2) && canStep(p, 0, 6) && canStep(p, 6, 0),
+      'seam moves are legal',
+    );
     setWallId(p.walls, edgeId(3, 2, 0, true), true);
     ok(!canStep(p, 2, 0) && !canStep(p, 0, 2), 'a wall on the seam blocks both ways');
     ok(canStep(p, 1, 2), 'other moves are not affected');
@@ -124,37 +151,61 @@ export function wrapTests(t, ok, eq) {
     ok(isSolved(q, path), 'a route that uses four seam moves solves the puzzle');
   });
 
-  t.slow('wrap: solver = brute force on random torus puzzles (all prunes; lconn: same nodes)', () => {
-    const rnd = makeRng(20261012);
-    const sizes = [[3, 2, 4, 60], [4, 3, 5, 40], [5, 6, 8, 20], [6, 8, 10, 4]];
-    for (const [n, kLo, kHi, count] of sizes) {
-      for (let i = 0; i < count; i++) {
-        const K = kLo + Math.floor(rnd() * (kHi - kLo + 1));
-        const { p, path } = torusPuzzle(n, K, rnd);
-        const brute = bruteKeys(p);
-        ok(brute.includes(path.join(',')), `n=${n} #${i}: the planted path is a solution`);
-        eq(solverKeys(p), brute, `n=${n} #${i} K=${K}: plain search`);
-        eq(solverKeys(p, ALL_PRUNES), brute, `n=${n} #${i} K=${K}: with every prune`);
-        const on = solve(p, { limit: 1e9, nodeCap: 1e9, prop: true, lconn: true });
-        const off = solve(p, { limit: 1e9, nodeCap: 1e9, prop: true, lconn: false });
-        eq(on.nodes, off.nodes, `n=${n} #${i}: lconn visits the same nodes`);
-        eq(on.count, off.count, `n=${n} #${i}: lconn finds the same count`);
+  t.slow(
+    'wrap: solver = brute force on random torus puzzles (all prunes; lconn: same nodes)',
+    () => {
+      const rnd = makeRng(20261012);
+      const sizes = [
+        [3, 2, 4, 60],
+        [4, 3, 5, 40],
+        [5, 6, 8, 20],
+        [6, 8, 10, 4],
+      ];
+      for (const [n, kLo, kHi, count] of sizes) {
+        for (let i = 0; i < count; i++) {
+          const K = kLo + Math.floor(rnd() * (kHi - kLo + 1));
+          const { p, path } = torusPuzzle(n, K, rnd);
+          const brute = bruteKeys(p);
+          ok(brute.includes(path.join(',')), `n=${n} #${i}: the planted path is a solution`);
+          eq(solverKeys(p), brute, `n=${n} #${i} K=${K}: plain search`);
+          eq(solverKeys(p, ALL_PRUNES), brute, `n=${n} #${i} K=${K}: with every prune`);
+          const on = solve(p, { limit: 1e9, nodeCap: 1e9, prop: true, lconn: true });
+          const off = solve(p, { limit: 1e9, nodeCap: 1e9, prop: true, lconn: false });
+          eq(on.nodes, off.nodes, `n=${n} #${i}: lconn visits the same nodes`);
+          eq(on.count, off.count, `n=${n} #${i}: lconn finds the same count`);
+        }
       }
-    }
-  });
+    },
+  );
 
   t('wrap: a grid edge id refuses non-neighbour cells (a forgotten wrap flag)', () => {
-    ok(threw(() => edgeId(3, 0, 2)), 'the seam pair 0, 2 is no grid edge');
-    ok(threw(() => edgeId(3, 2, 3)), 'end of a row and start of the next: no grid edge');
-    ok(threw(() => edgeId(3, 0, 4)), 'diagonal cells');
-    ok(threw(() => pathEdgeIds(3, [0, 2, 1])), 'a seam step without the flag');
+    ok(
+      threw(() => edgeId(3, 0, 2)),
+      'the seam pair 0, 2 is no grid edge',
+    );
+    ok(
+      threw(() => edgeId(3, 2, 3)),
+      'end of a row and start of the next: no grid edge',
+    );
+    ok(
+      threw(() => edgeId(3, 0, 4)),
+      'diagonal cells',
+    );
+    ok(
+      threw(() => pathEdgeIds(3, [0, 2, 1])),
+      'a seam step without the flag',
+    );
     eq(pathEdgeIds(3, [0, 2, 1], true), [4, 2], 'the same steps with the flag');
     eq(edgeId(3, 0, 1), 0, 'right neighbour');
     eq(edgeId(3, 4, 1), 3, 'upper neighbour, either order');
   });
 
   t('wrap: validate needs n >= 3 and no holes, arrows or Exact numbers', () => {
-    const numbered = p => { p.cp[0] = 1; p.cp[1] = 2; return p; };
+    const numbered = p => {
+      p.cp[0] = 1;
+      p.cp[1] = 2;
+      return p;
+    };
     ok(validate(numbered(torus(3))).ok, 'a 3 x 3 torus is valid');
     ok(validate(numbered(torus(5))).ok, 'odd sizes are valid');
     const small = validate(numbered(torus(2)));
@@ -179,12 +230,24 @@ export function wrapTests(t, ok, eq) {
     eq(Array.from(q.cp).join(), Array.from(p.cp).join(), 'numbers round trip');
     eq(wallIds(q).join(), wallIds(p).join(), 'walls round trip, seam walls included');
     ok(!/^wrap$/m.test(serialize(makePuzzle(3))), 'a grid puzzle has no wrap line');
-    ok(threw(() => parse('size 3\nwalls V,0,2')), 'a grid cannot have a seam wall');
+    ok(
+      threw(() => parse('size 3\nwalls V,0,2')),
+      'a grid cannot have a seam wall',
+    );
     eq(parse('size 3\nwrap\nwalls V,0,2').walls[2], 1, 'the seam wall is read on a torus');
     const seam = parse('size 3\nwrap\npath 0,0 0,2 0,1');
     eq(seam.path.join(','), '0,2,1', 'a seam step is a legal path step');
-    ok(threw(() => parse('size 3\npath 0,0 0,2 0,1')), 'the same step is not legal on the grid');
-    ok(threw(() => parse('size 2\nwrap')), 'a 2 x 2 torus is refused');
-    ok(threw(() => parse('size 3\nwrap\narrows 0,0>0,1')), 'a torus cannot have arrows');
+    ok(
+      threw(() => parse('size 3\npath 0,0 0,2 0,1')),
+      'the same step is not legal on the grid',
+    );
+    ok(
+      threw(() => parse('size 2\nwrap')),
+      'a 2 x 2 torus is refused',
+    );
+    ok(
+      threw(() => parse('size 3\nwrap\narrows 0,0>0,1')),
+      'a torus cannot have arrows',
+    );
   });
 }

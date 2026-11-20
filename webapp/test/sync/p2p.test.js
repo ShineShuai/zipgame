@@ -8,7 +8,13 @@ import { test } from 'node:test';
 import { RULES_SEEN_KEY } from '../../src/features/rules-seen.js';
 import { createSync } from '../../src/platform/sync/engine.js';
 import {
-  createP2p, deviceLabel, GAP_MS, GOODBYE_MS, INVITE_MS, linkOf, tokenOfHash,
+  createP2p,
+  deviceLabel,
+  GAP_MS,
+  GOODBYE_MS,
+  INVITE_MS,
+  linkOf,
+  tokenOfHash,
 } from '../../src/platform/sync/p2p.js';
 import { memoryStorage } from './helpers.js';
 
@@ -23,8 +29,8 @@ const coopTest = (name, fn) => test(name, { skip: present ? false : 'src/coop wa
 
 const URLS = ['wss://mq', 'wss://hv', 'wss://em'];
 const brokers = URLS.map((url, i) => ({ id: ['mq', 'hv', 'em'][i], url }));
-const rules = (...ids) => JSON.stringify(
-  { v: 1, seen: Object.fromEntries(ids.map(id => [id, true])) });
+const rules = (...ids) =>
+  JSON.stringify({ v: 1, seen: Object.fromEntries(ids.map(id => [id, true])) });
 
 // What rtc.js does, without WebRTC: a host's offer is looked up by the guest, and the two
 // channels are joined; the host's channel opens only then, as a real one does.
@@ -32,15 +38,27 @@ function fakeRtc() {
   const offers = new Map();
   let count = 0;
   const channel = opened => ({
-    opened, onopen: null, onmessage: null, onclose: null, closed: false, peer: null,
+    opened,
+    onopen: null,
+    onmessage: null,
+    onclose: null,
+    closed: false,
+    peer: null,
     send(text) {
       const peer = this.peer;
-      setTimeout(() => { if (peer && !peer.closed) peer.onmessage?.(text); }, 0);
+      setTimeout(() => {
+        if (peer && !peer.closed) peer.onmessage?.(text);
+      }, 0);
     },
-    close() { this.closed = true; },
+    close() {
+      this.closed = true;
+    },
   });
   const connection = opened => ({
-    channel: channel(opened), close() { this.channel.close(); },
+    channel: channel(opened),
+    close() {
+      this.channel.close();
+    },
   });
   return {
     createInvite: async () => {
@@ -73,26 +91,45 @@ async function node(net, rtc, label, data = {}) {
     hostRoom,
     joinRoom,
     resumeRoom,
-    createHub: options => createHub({
-      ...options, timers, random: () => 1,
-      connect: (url, handlers) => createMqtt({
-        url, clientId: 'c', WebSocketImpl: WebSocket, timers, ...handlers,
+    createHub: options =>
+      createHub({
+        ...options,
+        timers,
+        random: () => 1,
+        connect: (url, handlers) =>
+          createMqtt({
+            url,
+            clientId: 'c',
+            WebSocketImpl: WebSocket,
+            timers,
+            ...handlers,
+          }),
       }),
-    }),
     brokers,
     supported: () => true,
     rtc,
     timers,
   });
   const p2p = createP2p({
-    sync, coop, timers, now: () => clock, name: () => label,
+    sync,
+    coop,
+    timers,
+    now: () => clock,
+    name: () => label,
     pageUrl: () => 'https://zip.test/play',
   });
   const events = [];
   p2p.onEvent(event => events.push(event));
   return {
-    storage, sync, p2p, events, timers,
-    advance: ms => { clock += ms; timers.advance(ms); },
+    storage,
+    sync,
+    p2p,
+    events,
+    timers,
+    advance: ms => {
+      clock += ms;
+      timers.advance(ms);
+    },
     seen: type => events.some(event => event.type === type),
     failed: reason => events.some(e => e.type === 'failed' && (!reason || e.reason === reason)),
   };
@@ -120,47 +157,55 @@ coopTest('a link made on one device and opened on the other links them, both way
   const { a, b, invite } = await linked();
   assert.match(invite.link, /^https:\/\/zip\.test\/play#y=[A-Za-z0-9_-]{44}$/);
   assert.ok(a.seen('waiting'));
-  for (const [x, y] of [[a, b], [b, a]]) {
-    assert.ok(await seenIn(x, 'cutout') && await seenIn(x, 'arrows'), 'both have both');
+  for (const [x, y] of [
+    [a, b],
+    [b, a],
+  ]) {
+    assert.ok((await seenIn(x, 'cutout')) && (await seenIn(x, 'arrows')), 'both have both');
     const [peer] = x.sync.peers();
     assert.equal(peer.dev, y.sync.status().dev);
     assert.ok(peer.secret.length === 22);
   }
   assert.deepEqual([a.sync.peers()[0].pid, b.sync.peers()[0].pid], [0, 1]);
-  assert.equal(a.sync.peers()[0].name, 'Safari · iPhone', 'the host learns the guest\'s name');
-  assert.equal(b.sync.peers()[0].name, 'Chrome · Mac', 'and the guest the host\'s');
+  assert.equal(a.sync.peers()[0].name, 'Safari · iPhone', "the host learns the guest's name");
+  assert.equal(b.sync.peers()[0].name, 'Chrome · Mac', "and the guest the host's");
   assert.deepEqual([a.sync.status().p2p, b.sync.status().p2p], [true, true]);
 });
 
-coopTest('linked devices find each other again, by themselves, and trade what is '
-  + 'new', async () => {
-  const { a, b } = await linked();
-  await a.storage.set(RULES_SEEN_KEY, rules('cutout', 'exact'));
-  await b.storage.set(RULES_SEEN_KEY, rules('arrows', 'wrap'));
-  a.events.length = 0;
-  b.events.length = 0;
-  await Promise.all([a.p2p.resume({ force: true }), b.p2p.resume({ force: true })]);
-  await until(() => a.seen('synced') && b.seen('synced'), 'the two meet again', 8000);
-  for (const d of [a, b]) {
-    for (const id of ['cutout', 'arrows', 'exact', 'wrap']) assert.ok(await seenIn(d, id), id);
-  }
-  assert.ok(a.sync.peers()[0].at > 0);
-});
+coopTest(
+  'linked devices find each other again, by themselves, and trade what is ' + 'new',
+  async () => {
+    const { a, b } = await linked();
+    await a.storage.set(RULES_SEEN_KEY, rules('cutout', 'exact'));
+    await b.storage.set(RULES_SEEN_KEY, rules('arrows', 'wrap'));
+    a.events.length = 0;
+    b.events.length = 0;
+    await Promise.all([a.p2p.resume({ force: true }), b.p2p.resume({ force: true })]);
+    await until(() => a.seen('synced') && b.seen('synced'), 'the two meet again', 8000);
+    for (const d of [a, b]) {
+      for (const id of ['cutout', 'arrows', 'exact', 'wrap']) assert.ok(await seenIn(d, id), id);
+    }
+    assert.ok(a.sync.peers()[0].at > 0);
+  },
+);
 
-coopTest('a device that turns its sync off tells the linked device that is open: it stops '
-  + 'listing it', async () => {
-  const { a, b } = await linked();
-  a.events.length = 0;
-  b.events.length = 0;
-  await b.p2p.resume({ force: true });
-  assert.equal(await a.p2p.goodbye(), 1);
-  await until(() => b.seen('left'), 'the other device is told', 8000);
-  assert.deepEqual(b.sync.peers(), [], 'no longer a linked device');
-  assert.ok(b.sync.enabled(), 'its own sync stays on');
-  assert.equal(b.events.find(e => e.type === 'left').peer.name, 'Chrome · Mac');
-  assert.equal(a.sync.peers().length, 1, 'goodbye only says it: leaving is the engine\'s');
-  b.p2p.stop();
-});
+coopTest(
+  'a device that turns its sync off tells the linked device that is open: it stops ' +
+    'listing it',
+  async () => {
+    const { a, b } = await linked();
+    a.events.length = 0;
+    b.events.length = 0;
+    await b.p2p.resume({ force: true });
+    assert.equal(await a.p2p.goodbye(), 1);
+    await until(() => b.seen('left'), 'the other device is told', 8000);
+    assert.deepEqual(b.sync.peers(), [], 'no longer a linked device');
+    assert.ok(b.sync.enabled(), 'its own sync stays on');
+    assert.equal(b.events.find(e => e.type === 'left').peer.name, 'Chrome · Mac');
+    assert.equal(a.sync.peers().length, 1, "goodbye only says it: leaving is the engine's");
+    b.p2p.stop();
+  },
+);
 
 coopTest('goodbye to a device that is not open waits a little, then gives up', async () => {
   const { a, b } = await linked();
@@ -168,8 +213,11 @@ coopTest('goodbye to a device that is not open waits a little, then gives up', a
   a.advance(GOODBYE_MS);
   assert.equal(await told, 0);
   assert.equal(b.sync.peers().length, 1, 'nobody was told');
-  assert.equal(await (await node(createNetwork(URLS), fakeRtc(), 'x')).p2p.goodbye(), 0,
-    'nobody to tell');
+  assert.equal(
+    await (await node(createNetwork(URLS), fakeRtc(), 'x')).p2p.goodbye(),
+    0,
+    'nobody to tell',
+  );
 });
 
 coopTest('looking again is not done too soon, unless the player asks (force)', async () => {
@@ -192,16 +240,18 @@ coopTest('a device with sync off does not look for anybody', async () => {
   assert.equal(a.sync.status().enabled, false);
 });
 
-coopTest('a link that nobody opens runs out, and sync that it turned on goes off '
-  + 'again', async () => {
-  const net = createNetwork(URLS);
-  const a = await node(net, fakeRtc(), 'x');
-  await a.p2p.invite();
-  assert.equal(a.sync.enabled(), true, 'on while the link is waiting');
-  a.advance(INVITE_MS + 1000);
-  await until(() => a.failed('expired'), 'the link to expire');
-  await until(() => !a.sync.enabled(), 'sync to go off again');
-});
+coopTest(
+  'a link that nobody opens runs out, and sync that it turned on goes off ' + 'again',
+  async () => {
+    const net = createNetwork(URLS);
+    const a = await node(net, fakeRtc(), 'x');
+    await a.p2p.invite();
+    assert.equal(a.sync.enabled(), true, 'on while the link is waiting');
+    a.advance(INVITE_MS + 1000);
+    await until(() => a.failed('expired'), 'the link to expire');
+    await until(() => !a.sync.enabled(), 'sync to go off again');
+  },
+);
 
 coopTest('cancelling a link, on either side, turns off what it had turned on', async () => {
   const net = createNetwork(URLS);
@@ -238,10 +288,15 @@ coopTest('a link is used once: the room is closed, so a second device finds nobo
   await c.p2p.join(token);
   c.advance(4000); // nobody tells it the room is open: it asks anyway
   await until(() => c.events.some(e => e.stage === 'asked'), 'the second to ask');
-  await until(() => { // time passes by hand until its patience is used up
-    c.advance(30000);
-    return c.failed('timeout');
-  }, 'the second to give up', 8000);
+  await until(
+    () => {
+      // time passes by hand until its patience is used up
+      c.advance(30000);
+      return c.failed('timeout');
+    },
+    'the second to give up',
+    8000,
+  );
   await until(() => !c.sync.enabled(), 'sync to stay off on the second');
   assert.equal(a.sync.peers().length, 1);
 });
@@ -251,14 +306,20 @@ coopTest('the way is not offered where src/coop or the browser cannot do it', as
   const rtc = fakeRtc();
   const sync = createSync({ storage: memoryStorage() });
   await sync.init();
-  const gone = createP2p({ sync, coop: async () => { throw new Error('no folder'); } });
+  const gone = createP2p({
+    sync,
+    coop: async () => {
+      throw new Error('no folder');
+    },
+  });
   assert.equal(await gone.supported(), false);
   await assert.rejects(gone.invite(), /no folder/);
   assert.equal(sync.enabled(), false);
   const a = await node(net, rtc, 'x');
   assert.equal(await a.p2p.supported(), true);
   const blind = createP2p({
-    sync, coop: async () => ({ supported: () => false }),
+    sync,
+    coop: async () => ({ supported: () => false }),
   });
   assert.equal(await blind.supported(), false);
 });
@@ -266,8 +327,18 @@ coopTest('the way is not offered where src/coop or the browser cannot do it', as
 test('links: the fragment is read strictly, and made as the page address plus #y=', () => {
   const token = 'a'.repeat(22) + 'B'.repeat(22);
   assert.equal(tokenOfHash(`#y=${token}`), token);
-  for (const bad of ['', '#y=', '#y=short', `#j=${token}`, `#y=${token}x`, `#y=${token}&z=1`,
-    ` #y=${token}`, '#y=' + 'é'.repeat(44), null, undefined]) {
+  for (const bad of [
+    '',
+    '#y=',
+    '#y=short',
+    `#j=${token}`,
+    `#y=${token}x`,
+    `#y=${token}&z=1`,
+    ` #y=${token}`,
+    '#y=' + 'é'.repeat(44),
+    null,
+    undefined,
+  ]) {
     assert.equal(tokenOfHash(bad), null, String(bad));
   }
   assert.equal(linkOf('https://a.b/c', token), `https://a.b/c#y=${token}`);
@@ -277,17 +348,30 @@ test('a device is named from its browser and system, short and printable', () =>
   const moz = 'Mozilla/5.0 ';
   const webkit = 'AppleWebKit/537.36 (KHTML, like Gecko) ';
   const cases = [
-    [`${moz}(iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 `
-      + '(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1', 'Safari · iPhone'],
-    [`${moz}(Macintosh; Intel Mac OS X 10_15_7) ${webkit}Chrome/120.0.0.0 Safari/537.36`,
-      'Chrome · Mac'],
-    [`${moz}(Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0`,
-      'Firefox · Windows'],
-    [`${moz}(Linux; Android 14) ${webkit}Chrome/120.0.0.0 Mobile Safari/537.36`,
-      'Chrome · Android'],
-    [`${moz}(Windows NT 10.0; Win64; x64) ${webkit}Chrome/120.0 Safari/537.36 Edg/120.0`,
-      'Edge · Windows'],
-    ['', ''], [undefined, ''], ['curl/8.0', ''],
+    [
+      `${moz}(iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 ` +
+        '(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      'Safari · iPhone',
+    ],
+    [
+      `${moz}(Macintosh; Intel Mac OS X 10_15_7) ${webkit}Chrome/120.0.0.0 Safari/537.36`,
+      'Chrome · Mac',
+    ],
+    [
+      `${moz}(Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0`,
+      'Firefox · Windows',
+    ],
+    [
+      `${moz}(Linux; Android 14) ${webkit}Chrome/120.0.0.0 Mobile Safari/537.36`,
+      'Chrome · Android',
+    ],
+    [
+      `${moz}(Windows NT 10.0; Win64; x64) ${webkit}Chrome/120.0 Safari/537.36 Edg/120.0`,
+      'Edge · Windows',
+    ],
+    ['', ''],
+    [undefined, ''],
+    ['curl/8.0', ''],
   ];
   for (const [ua, label] of cases) assert.equal(deviceLabel(ua), label, String(ua).slice(0, 40));
 });

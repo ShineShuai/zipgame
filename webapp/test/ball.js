@@ -28,11 +28,7 @@ import {
 } from '../src/core/surface/puzzle.js';
 import { solveSurface, countHamiltonianPaths } from '../src/core/surface/solve.js';
 import { kRange } from '../src/core/gen/pick-k.js';
-import {
-  GEN_CFG,
-  generateSurface,
-  randomHamiltonianPath,
-} from '../src/core/surface/gen.js';
+import { GEN_CFG, generateSurface, randomHamiltonianPath } from '../src/core/surface/gen.js';
 import { makeRng } from '../src/core/rng.js';
 import { congruentByType, kis, meshOf, seeds } from '../tools/polyhedra.mjs';
 
@@ -97,7 +93,11 @@ export function ballTests(t, ok, eq) {
         sides += top.deg[cell];
         for (let k = 0; k < top.deg[cell]; k++) {
           const other = top.nb[cell * SLOTS + k];
-          eq(top.nb[other * SLOTS + top.rev[cell * SLOTS + k]], cell, `${where}: neighbours agree`);
+          eq(
+            top.nb[other * SLOTS + top.rev[cell * SLOTS + k]],
+            cell,
+            `${where}: neighbours agree`,
+          );
         }
         const ring = entry.r[cell].map(i => entry.v[i]);
         let centre = [0, 0, 0];
@@ -119,9 +119,16 @@ export function ballTests(t, ok, eq) {
       for (const ring of entry.r) {
         ring.forEach(v => at[v]++);
       }
-      ok(at.every(n => n >= 3), `${where}: three or more cells at every corner`);
+      ok(
+        at.every(n => n >= 3),
+        `${where}: three or more cells at every corner`,
+      );
       const excess = at.reduce((sum, n) => sum + n - 3, 0);
-      eq(3 * entry.f[0] + 2 * entry.f[1] + entry.f[2], 12 + 2 * excess, `${where}: corner formula`);
+      eq(
+        3 * entry.f[0] + 2 * entry.f[1] + entry.f[2],
+        12 + 2 * excess,
+        `${where}: corner formula`,
+      );
       eq(surfaceTopology(BALL_KIND, entry.id) === top, true, `${where}: built once`);
       eq(surfaceCellCount(BALL_KIND, entry.id), top.T);
     }
@@ -187,7 +194,10 @@ export function ballTests(t, ok, eq) {
     const has = id => list.some(e => e.id === id);
     ok(has('octa') && cells('octa') === PLAY_MIN_CELLS, 'the smallest board is in');
     ok(!has('cube') && cells('cube') < PLAY_MIN_CELLS, 'one below the minimum is out');
-    ok(list.every(e => e.id !== 'cuboct'), 'unplayable boards are left out');
+    ok(
+      list.every(e => e.id !== 'cuboct'),
+      'unplayable boards are left out',
+    );
     eq(playableBalls(0, 1000).length, BALL_CATALOG.filter(e => e.ok).length);
     const rnd = makeRng(7);
     const picked = new Set();
@@ -200,17 +210,26 @@ export function ballTests(t, ok, eq) {
     eq(compositionLabel([0, 0, 12]), '12 pentagons');
     eq(compositionLabel([1, 1, 1]), '1 triangle + 1 square + 1 pentagon');
     const groups = ballsByComposition();
-    eq(groups.reduce((sum, g) => sum + g.balls.length, 0), BALL_CATALOG.length);
+    eq(
+      groups.reduce((sum, g) => sum + g.balls.length, 0),
+      BALL_CATALOG.length,
+    );
     for (let i = 1; i < groups.length; i++) {
       ok(groups[i - 1].balls[0].r.length <= groups[i].balls[0].r.length, 'fewest cells first');
     }
     const eighty = groups.find(g => g.label === '80 triangles + 12 pentagons');
-    eq(eighty.balls.map(e => e.id), ['snub-dodeca']);
+    eq(
+      eighty.balls.map(e => e.id),
+      ['snub-dodeca'],
+    );
   });
 
   t('ball catalog: the cells of a type are congruent; uneven balls are not offered', () => {
     for (const entry of BALL_CATALOG) {
-      ok(congruentByType(entry.v, entry.r), `${entry.id}: congruent triangles, squares, pentagons`);
+      ok(
+        congruentByType(entry.v, entry.r),
+        `${entry.id}: congruent triangles, squares, pentagons`,
+      );
     }
     // a pyramid on every face of a square pyramid has two kinds of triangles
     const pyramid = seeds().find(([id]) => id === 'pyramid4');
@@ -220,13 +239,19 @@ export function ballTests(t, ok, eq) {
     ok(!BALL_CATALOG.some(entry => entry.id === 'kis-pyramid4' || entry.id.startsWith('spread')));
     // the Catalan and Archimedean solids stay
     for (const id of ['snub-dodeca', 'dual-snub-dodeca', 'kis-dodeca', 'antiprism5']) {
-      ok(BALL_CATALOG.some(entry => entry.id === id), id);
+      ok(
+        BALL_CATALOG.some(entry => entry.id === id),
+        id,
+      );
     }
   });
 
   t('ball catalog: the registry is empty until it is given the catalog', () => {
     eq(fresh.ballsLoaded(), false);
-    ok(threw(() => fresh.ballEntry('tetra')), 'not loaded');
+    ok(
+      threw(() => fresh.ballEntry('tetra')),
+      'not loaded',
+    );
     fresh.registerBalls(BALL_CATALOG);
     eq(fresh.ballsLoaded(), true);
     eq(fresh.ballEntry('tetra').id, 'tetra');
@@ -235,8 +260,16 @@ export function ballTests(t, ok, eq) {
   });
 
   t('ball puzzles: generated, unique, solvable, and the text format round-trips', () => {
-    for (const [id, seed] of [['octa', 1], ['dodeca', 2], ['prism5', 3], ['snub-cube', 4],
-      ['dual-snub-cube', 5], ['kis-cube', 6], ['bipyramid6', 7], ['snub-dodeca', 8]]) {
+    for (const [id, seed] of [
+      ['octa', 1],
+      ['dodeca', 2],
+      ['prism5', 3],
+      ['snub-cube', 4],
+      ['dual-snub-cube', 5],
+      ['kis-cube', 6],
+      ['bipyramid6', 7],
+      ['snub-dodeca', 8],
+    ]) {
       const top = surfaceTopology(BALL_KIND, id);
       const made = generateSurface(BALL_KIND, id, seed);
       const p = made.puzzle;
@@ -261,6 +294,9 @@ export function ballTests(t, ok, eq) {
     ok(threw(() => makeSurfacePuzzle(BALL_KIND, 'nope')));
     ok(threw(() => parseSurface('surface ball nope\n')));
     ok(threw(() => parseSurface('surface ball\n')));
-    ok(threw(() => generateSurface(BALL_KIND, 'cuboct', 1)), 'no puzzle on an unplayable board');
+    ok(
+      threw(() => generateSurface(BALL_KIND, 'cuboct', 1)),
+      'no puzzle on an unplayable board',
+    );
   });
 }

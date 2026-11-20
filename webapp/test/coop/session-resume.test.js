@@ -11,9 +11,14 @@ function play(extra = {}) {
   const wire = fakePair();
   const events = { host: [], guest: [] };
   const timers = manualTimers();
-  const make = (role, channel) => createSession({
-    role, channel, timers, onEvent: e => events[role].push(e), ...extra,
-  });
+  const make = (role, channel) =>
+    createSession({
+      role,
+      channel,
+      timers,
+      onEvent: e => events[role].push(e),
+      ...extra,
+    });
   const host = make('host', wire.a);
   const guest = make('guest', wire.b);
   host.hello();
@@ -22,7 +27,14 @@ function play(extra = {}) {
   const mine = host.newGame(puzzle, 5);
   wire.flush();
   return {
-    wire, host, guest, events, timers, puzzle, mine, theirs: guest.replica,
+    wire,
+    host,
+    guest,
+    events,
+    timers,
+    puzzle,
+    mine,
+    theirs: guest.replica,
   };
 }
 const types = list => list.map(event => event.type);
@@ -38,9 +50,7 @@ const wireTypes = (wire, side) => {
 };
 
 test('after a break both devices send what they have: the drawings meet', () => {
-  const {
-    wire, host, guest, events, puzzle, mine, theirs,
-  } = play();
+  const { wire, host, guest, events, puzzle, mine, theirs } = play();
   const solution = solutionOf(puzzle);
   const edge = i => [solution[i], solution[i + 1]];
   mine.add(...edge(0));
@@ -118,10 +128,14 @@ test('a kept game is restored, and the device gets back its own lost lines', asy
   const events = { host: [], guest: [] };
   const timers = manualTimers();
   const host2 = createSession({
-    role: 'host', timers, onEvent: e => events.host.push(e),
+    role: 'host',
+    timers,
+    onEvent: e => events.host.push(e),
   });
   const guest2 = createSession({
-    role: 'guest', timers, onEvent: e => events.guest.push(e),
+    role: 'guest',
+    timers,
+    onEvent: e => events.guest.push(e),
   });
   const mine2 = await host2.restore(kept);
   const theirs2 = await guest2.restore(keptGuest);
@@ -140,7 +154,7 @@ test('a kept game is restored, and the device gets back its own lost lines', asy
   assert.equal(theirs2.count(), 3);
   assert.equal(theirs2.add(solution[3], solution[4]), null);
   wire2.flush();
-  assert.equal(mine2.count(), 4, 'the guest\'s next line has a number of its own');
+  assert.equal(mine2.count(), 4, "the guest's next line has a number of its own");
 });
 
 test('a device without a game has nothing to resume; one without a channel does not fail', () => {
@@ -150,10 +164,8 @@ test('a device without a game has nothing to resume; one without a channel does 
   assert.equal(lone.current, null);
 });
 
-test('the host\'s game wins: a guest that comes back with another game gets it', async () => {
-  const {
-    wire, host, guest, events, theirs,
-  } = play();
+test("the host's game wins: a guest that comes back with another game gets it", async () => {
+  const { wire, host, guest, events, theirs } = play();
   const oldGame = guest.current.seed;
   wire.flush();
   const second = host.newGame(fixture('std', 5, 8), 8); // while the guest was away
@@ -209,24 +221,36 @@ async function shared(ownPid, ownRole = 'host') {
   const events = { host: [], guest: [] };
   const timers = manualTimers();
   const host = createSession({
-    role: ownRole, pid: ownPid, channel: wire.a, timers, info: () => ({ elapsed: 33, hints: 2 }),
+    role: ownRole,
+    pid: ownPid,
+    channel: wire.a,
+    timers,
+    info: () => ({ elapsed: 33, hints: 2 }),
     onEvent: e => events.host.push(e),
   });
   const mine = await host.restore({
-    text: first.current.text, seed: 5, ops: early.ops(),
+    text: first.current.text,
+    seed: 5,
+    ops: early.ops(),
   });
   const guest = createSession({
-    role: 'guest', channel: wire.b, timers, onEvent: e => events.guest.push(e),
+    role: 'guest',
+    channel: wire.b,
+    timers,
+    onEvent: e => events.guest.push(e),
   });
   return {
-    wire, host, guest, events, mine, solution,
+    wire,
+    host,
+    guest,
+    events,
+    mine,
+    solution,
   };
 }
 
 test('a friend joins a game that is on: lines, time, and the other place', async () => {
-  const {
-    wire, host, guest, events, mine, solution,
-  } = await shared(0);
+  const { wire, host, guest, events, mine, solution } = await shared(0);
   mine.add(solution[1], solution[2]);
   assert.equal(host.share(), true);
   wire.flush();
@@ -238,8 +262,10 @@ test('a friend joins a game that is on: lines, time, and the other place', async
   assert.deepEqual(start, { type: 'start', seed: 5, shared: false });
   const hostStart = events.host.find(event => event.type === 'start');
   assert.deepEqual(hostStart, { type: 'start', seed: 5, shared: true });
-  assert.deepEqual(events.guest.find(event => event.type === 'resume'),
-    { type: 'resume', game: 5, elapsed: 33, hints: 2 });
+  assert.deepEqual(
+    events.guest.find(event => event.type === 'resume'),
+    { type: 'resume', game: 5, elapsed: 33, hints: 2 },
+  );
   assert.deepEqual(edgesOf(guest.replica), edgesOf(mine));
   assert.equal(guest.replica.add(solution[2], solution[3]), null);
   wire.flush();
@@ -247,9 +273,7 @@ test('a friend joins a game that is on: lines, time, and the other place', async
 });
 
 test('a guest that takes a game over keeps its number; the friend takes number 0', async () => {
-  const {
-    wire, host, guest, mine, solution,
-  } = await shared(1);
+  const { wire, host, guest, mine, solution } = await shared(1);
   assert.equal(host.pid, 1);
   assert.equal(host.role, 'host');
   assert.equal(mine.count(), 1, 'the line of the player that left is there');
@@ -261,7 +285,10 @@ test('a guest that takes a game over keeps its number; the friend takes number 0
   assert.equal(guest.replica.add(solution[2], solution[3]), null, 'its first line does not clash');
   wire.flush();
   assert.equal(mine.count(), 3);
-  const numbers = guest.replica.ops().filter(op => op.pid === 0).map(op => op.seq);
+  const numbers = guest.replica
+    .ops()
+    .filter(op => op.pid === 0)
+    .map(op => op.seq);
   assert.equal(new Set(numbers).size, numbers.length, 'no two lines of number 0 share a seq');
 });
 
@@ -278,10 +305,14 @@ test('on a connection made by hand the host gives the guest the secret to find i
   host.sendSecret('abcdefghijklmnopqrstuv');
   host.sendSecret('short'); // refused by the receiver
   wire.flush();
-  assert.deepEqual(events.guest.filter(event => event.type === 'secret'), [
-    { type: 'secret', secret: 'abcdefghijklmnopqrstuv' },
-  ]);
+  assert.deepEqual(
+    events.guest.filter(event => event.type === 'secret'),
+    [{ type: 'secret', secret: 'abcdefghijklmnopqrstuv' }],
+  );
   guest.sendSecret('abcdefghijklmnopqrstuv'); // the host does not take one
   wire.flush();
-  assert.equal(events.host.some(event => event.type === 'secret'), false);
+  assert.equal(
+    events.host.some(event => event.type === 'secret'),
+    false,
+  );
 });

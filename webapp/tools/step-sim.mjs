@@ -44,26 +44,35 @@ const normal = rnd => Math.sqrt(-2 * Math.log(1 - rnd())) * Math.cos(2 * Math.PI
 // puzzles: [{ key, P }] (P = stepsOfPuzzle). -> rows in the shape of the behaviour export.
 export function simulateRows(puzzles, truth, opts = {}) {
   const { games = 400, events = 3, sigma = 0.5, seed = 1 } = opts;
-  const rnd = makeRng(seed), rel = TRUTHS[truth];
+  const rnd = makeRng(seed),
+    rel = TRUTHS[truth];
   if (!rel) throw new Error('unknown truth ' + truth);
   const rate = rel.map((v, b) => v / WALK[b]);
   const perGame = puzzles.map(({ P }) =>
-    sum(P.steps.map(st => sum(st.c.map((c, b) => c * rate[b])))));
+    sum(P.steps.map(st => sum(st.c.map((c, b) => c * rate[b])))),
+  );
   const scale = events / (sum(perGame) / puzzles.length);
-  const lambda = rate.map(v => v * scale), order = shuffle(puzzles.map((_, i) => i), rnd);
+  const lambda = rate.map(v => v * scale),
+    order = shuffle(
+      puzzles.map((_, i) => i),
+      rnd,
+    );
   const rows = [];
   for (let g = 0; g < games; g++) {
     const { key, P } = puzzles[order[g % puzzles.length]];
     const known = rnd() > 0.15;
     const skill = known ? Math.min(14, Math.max(0, Math.round(7 + 1.5 * normal(rnd)))) : 15;
     const s = known ? (skill - 7) / 3 : 0;
-    const theta = Math.exp(GAMMA * s + sigma * normal(rnd) - sigma * sigma / 2);
+    const theta = Math.exp(GAMMA * s + sigma * normal(rnd) - (sigma * sigma) / 2);
     const ev = [];
-    let u = 0, deep = 0;
+    let u = 0,
+      deep = 0;
     for (const st of P.steps) {
-      const w = st.c.map((c, b) => c * lambda[b]), total = sum(w);
+      const w = st.c.map((c, b) => c * lambda[b]),
+        total = sum(w);
       for (let m = geom(theta * total, rnd); m > 0; m--) {
-        let x = rnd() * total, b = 0;
+        let x = rnd() * total,
+          b = 0;
         while (b < 3 && x >= w[b]) x -= w[b++];
         const d = Math.min(P.T - st.i - 1, 1 + geom(WALK[b] - 1, rnd));
         u += d;
@@ -73,9 +82,24 @@ export function simulateRows(puzzles, truth, opts = {}) {
     }
     const ms = Math.round(1000 * (0.3 * P.T + u) * Math.exp(0.3 * normal(rnd)));
     rows.push({
-      where: 'sim', id: g + 1, day: 20800 + (g % 30), ms: Math.max(600, ms), u, deep, s: 0,
-      pz: null, ev: null, v: 1, kind: 'local', skill, date: '20261101', key, bad: false,
-      hint: false, abandoned: false, events: ev,
+      where: 'sim',
+      id: g + 1,
+      day: 20800 + (g % 30),
+      ms: Math.max(600, ms),
+      u,
+      deep,
+      s: 0,
+      pz: null,
+      ev: null,
+      v: 1,
+      kind: 'local',
+      skill,
+      date: '20261101',
+      key,
+      bad: false,
+      hint: false,
+      abandoned: false,
+      events: ev,
     });
   }
   return { rows, lambda };
@@ -98,39 +122,89 @@ export function ratedPuzzles(file, count, seed, cap) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { values: o } = cli({
     usage: 'node tools/step-sim.mjs (--out FILE | --power) [options]',
-    summary: 'Simulated players for step-fit.mjs. --out writes simulated rows (the shape of the ' +
+    summary:
+      'Simulated players for step-fit.mjs. --out writes simulated rows (the shape of the ' +
       'behaviour export); --power repeats simulate + fit and prints how often each gate of the ' +
       'acceptance rule passes for several numbers of games.',
     options: {
       out: { type: 'string', arg: 'FILE', help: 'write the simulated rows to this file' },
-      power: { type: 'flag',
-        help: 'run the power study: simulate and fit again and again; with --truth hand the ' +
-          'passes are false alarms, with another truth they are detections' },
-      params: { type: 'flag',
-        help: '(with --power) also print the fitted points of one run with the largest number ' +
-          'of games next to the true ones' },
-      truth: { type: 'string', arg: 'NAME', choices: Object.keys(TRUTHS), default: 'hand',
-        help: 'the cells a wrong move of each bucket wastes, obvious : shallow : deep : ' +
+      power: {
+        type: 'flag',
+        help:
+          'run the power study: simulate and fit again and again; with --truth hand the ' +
+          'passes are false alarms, with another truth they are detections',
+      },
+      params: {
+        type: 'flag',
+        help:
+          '(with --power) also print the fitted points of one run with the largest number ' +
+          'of games next to the true ones',
+      },
+      truth: {
+        type: 'string',
+        arg: 'NAME',
+        choices: Object.keys(TRUTHS),
+        default: 'hand',
+        help:
+          'the cells a wrong move of each bucket wastes, obvious : shallow : deep : ' +
           'capped. hand = 0.25:1.25:3.25:5.25 (the hand-set points 0/1/3/5 plus a floor), flat ' +
-          '= 1:1:1:1, steep = 0.5:1:3:12, obvious = 2:1.5:2:3' },
-      games: { type: 'string', arg: 'N|LIST',
+          '= 1:1:1:1, steep = 0.5:1:3:12, obvious = 2:1.5:2:3',
+      },
+      games: {
+        type: 'string',
+        arg: 'N|LIST',
         defaultText: '400 with --out, 100,200,400,800 with --power',
-        help: 'games to simulate: one number with --out, a comma list of sizes with --power' },
-      puzzles: { type: 'int', arg: 'N', min: 1, default: 60,
-        help: 'how many puzzles of ratings.json (sizes 6-11) the games are played on' },
-      events: { type: 'number', arg: 'X', min: 0.1, default: 3,
-        help: 'mean wrong turns per simulated game (the rates are scaled to it)' },
-      sigma: { type: 'number', arg: 'X', min: 0, default: 0.5,
-        help: 'spread of the players (log-normal); 0 = all players alike' },
-      reps: { type: 'int', arg: 'N', min: 1, default: 20,
-        help: '(with --power) simulations for each number of games' },
-      boot: { type: 'int', arg: 'N', min: 1, default: 100,
-        help: '(with --power) bootstrap resamples per simulation, as step-fit --boot' },
-      seed: { type: 'int', arg: 'N', default: 1,
-        help: 'seed of the simulation and of the choice of puzzles: the same seed gives the ' +
-          'same rows' },
-      ratings: { type: 'string', arg: 'FILE', defaultText: 'tools/ratings.json',
-        help: 'the file whose puzzles are used (a list of { key } with the puzzle text)' },
+        help: 'games to simulate: one number with --out, a comma list of sizes with --power',
+      },
+      puzzles: {
+        type: 'int',
+        arg: 'N',
+        min: 1,
+        default: 60,
+        help: 'how many puzzles of ratings.json (sizes 6-11) the games are played on',
+      },
+      events: {
+        type: 'number',
+        arg: 'X',
+        min: 0.1,
+        default: 3,
+        help: 'mean wrong turns per simulated game (the rates are scaled to it)',
+      },
+      sigma: {
+        type: 'number',
+        arg: 'X',
+        min: 0,
+        default: 0.5,
+        help: 'spread of the players (log-normal); 0 = all players alike',
+      },
+      reps: {
+        type: 'int',
+        arg: 'N',
+        min: 1,
+        default: 20,
+        help: '(with --power) simulations for each number of games',
+      },
+      boot: {
+        type: 'int',
+        arg: 'N',
+        min: 1,
+        default: 100,
+        help: '(with --power) bootstrap resamples per simulation, as step-fit --boot',
+      },
+      seed: {
+        type: 'int',
+        arg: 'N',
+        default: 1,
+        help:
+          'seed of the simulation and of the choice of puzzles: the same seed gives the ' +
+          'same rows',
+      },
+      ratings: {
+        type: 'string',
+        arg: 'FILE',
+        defaultText: 'tools/ratings.json',
+        help: 'the file whose puzzles are used (a list of { key } with the puzzle text)',
+      },
       cap: capOption,
     },
   });
@@ -139,7 +213,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exit(1);
   }
   const out = (...parts) => console.log(parts.join(''));
-  const truth = o.truth, seed = o.seed, cap = o.cap;
+  const truth = o.truth,
+    seed = o.seed,
+    cap = o.cap;
   const ratings = o.ratings ?? new URL('./ratings.json', import.meta.url).pathname;
   const puzzles = ratedPuzzles(ratings, o.puzzles, seed, cap);
   const sim = { events: o.events, sigma: o.sigma };
@@ -155,17 +231,22 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     fs.writeFileSync(o.out, JSON.stringify({ sim: meta, rows }));
     console.error(`wrote ${rows.length} rows to ${o.out}`);
   } else {
-    const reps = o.reps, boot = o.boot, trap = new Map();
+    const reps = o.reps,
+      boot = o.boot,
+      trap = new Map();
     const steps = new Map(puzzles.map(p => [p.key, p.P]));
     const stepsFor = key => steps.get(key);
     const current = key => {
       if (!trap.has(key)) trap.set(key, featuresOf({ key }, cap).trapPredicted);
       return trap.get(key);
     };
-    const rel = TRUTHS[truth], ratio = rel.map(v => v / rel[1]);
+    const rel = TRUTHS[truth],
+      ratio = rel.map(v => v / rel[1]);
     out(`truth ${truth}: points relative to shallow = `, ratio.map(v => v.toFixed(2)).join(' : '));
-    out('games  reps  A pass  B pass  ACCEPT  REJECT  dLL/game (median [95% low])',
-      '  rho new / current');
+    out(
+      'games  reps  A pass  B pass  ACCEPT  REJECT  dLL/game (median [95% low])',
+      '  rho new / current',
+    );
     for (const games of sizes) {
       const r = { A: 0, B: 0, acc: 0, rej: 0, d: [], lo: [], rn: [], rc: [] };
       for (let rep = 0; rep < reps; rep++) {
@@ -180,11 +261,28 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         r.rn.push(res.est.rn);
         r.rc.push(res.est.rc);
       }
-      const p = v => `${Math.round(100 * v / reps)}%`.padStart(6);
-      out(String(games).padStart(5), ' ', String(reps).padStart(5), '  ', p(r.A), '  ', p(r.B),
-        '  ', p(r.acc), '  ', p(r.rej), '  ', median(r.d).toFixed(3),
-        ' [', median(r.lo).toFixed(3), ']  ', median(r.rn).toFixed(2), ' / ',
-        median(r.rc).toFixed(2));
+      const p = v => `${Math.round((100 * v) / reps)}%`.padStart(6);
+      out(
+        String(games).padStart(5),
+        ' ',
+        String(reps).padStart(5),
+        '  ',
+        p(r.A),
+        '  ',
+        p(r.B),
+        '  ',
+        p(r.acc),
+        '  ',
+        p(r.rej),
+        '  ',
+        median(r.d).toFixed(3),
+        ' [',
+        median(r.lo).toFixed(3),
+        ']  ',
+        median(r.rn).toFixed(2),
+        ' / ',
+        median(r.rc).toFixed(2),
+      );
     }
     if (o.params) {
       const { rows } = simulateRows(puzzles, truth, { ...sim, games: sizes.at(-1), seed });

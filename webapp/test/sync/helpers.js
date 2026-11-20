@@ -3,17 +3,29 @@ import { test } from 'node:test';
 
 // node:sqlite (a database in memory, built into Node 22.5 and newer) stands in for Turso in some
 // tests; where it is missing (Node 20) those tests are skipped, and the rest runs as before.
-export const sqliteAvailable = await import('node:sqlite').then(() => true, () => false);
+export const sqliteAvailable = await import('node:sqlite').then(
+  () => true,
+  () => false,
+);
 export const sqliteTest = (name, fn) =>
   test(name, { skip: sqliteAvailable ? false : 'needs node:sqlite (Node 22.5 or newer)' }, fn);
 export function memoryStorage(initial = {}) {
   const map = new Map(Object.entries(initial));
   return {
     raw: map,
-    async get(key) { return map.has(key) ? { value: map.get(key) } : null; },
-    async set(key, value) { map.set(key, value); return true; },
-    async remove(key) { map.delete(key); },
-    async keys(prefix = '') { return [...map.keys()].filter(key => key.startsWith(prefix)); },
+    async get(key) {
+      return map.has(key) ? { value: map.get(key) } : null;
+    },
+    async set(key, value) {
+      map.set(key, value);
+      return true;
+    },
+    async remove(key) {
+      map.delete(key);
+    },
+    async keys(prefix = '') {
+      return [...map.keys()].filter(key => key.startsWith(prefix));
+    },
   };
 }
 
@@ -28,7 +40,9 @@ export function channelPair() {
     send(text) {
       log[side].push(text);
       const peer = side === 'a' ? b : a;
-      setTimeout(() => { if (!peer.closed) peer.onmessage?.(text); }, 0);
+      setTimeout(() => {
+        if (!peer.closed) peer.onmessage?.(text);
+      }, 0);
     },
     close() {
       for (const end of [a, b]) {
@@ -48,10 +62,22 @@ export const manualTimers = () => {
   const pending = new Map();
   let next = 1;
   return {
-    set(fn) { pending.set(next, fn); return next++; },
-    clear(id) { pending.delete(id); },
-    fire() { for (const [id, fn] of [...pending]) { pending.delete(id); fn(); } },
-    get count() { return pending.size; },
+    set(fn) {
+      pending.set(next, fn);
+      return next++;
+    },
+    clear(id) {
+      pending.delete(id);
+    },
+    fire() {
+      for (const [id, fn] of [...pending]) {
+        pending.delete(id);
+        fn();
+      }
+    },
+    get count() {
+      return pending.size;
+    },
   };
 };
 
@@ -64,8 +90,11 @@ export const nextTurn = () => new Promise(resolve => setTimeout(resolve, 0));
 export function fakeSupabase({ maxGroups = 100000, now = () => Date.now() } = {}) {
   // id -> { verifier, touched, slices: Map(dev -> { seq, data, touched }) }
   const groups = new Map();
-  const fail = (status, message) => (
-    { ok: false, status, json: async () => ({ code: 'X', message }) });
+  const fail = (status, message) => ({
+    ok: false,
+    status,
+    json: async () => ({ code: 'X', message }),
+  });
   const good = body => ({ ok: true, status: 200, json: async () => body });
   const ID = /^[0-9a-f]{32}$/;
   const AUTH = /^[A-Za-z0-9_-]{43}$/;
@@ -75,9 +104,17 @@ export function fakeSupabase({ maxGroups = 100000, now = () => Date.now() } = {}
   const calls = [];
   const rpc = {
     sync_put(a) {
-      if (!ID.test(a.p_id ?? '') || !AUTH.test(a.p_auth ?? '') || !DEV.test(a.p_dev ?? '')
-        || !Number.isSafeInteger(a.p_seq) || a.p_seq < 1 || typeof a.p_data !== 'string'
-        || a.p_data.length < 16 || a.p_data.length > 24000 || !DATA.test(a.p_data)) {
+      if (
+        !ID.test(a.p_id ?? '') ||
+        !AUTH.test(a.p_auth ?? '') ||
+        !DEV.test(a.p_dev ?? '') ||
+        !Number.isSafeInteger(a.p_seq) ||
+        a.p_seq < 1 ||
+        typeof a.p_data !== 'string' ||
+        a.p_data.length < 16 ||
+        a.p_data.length > 24000 ||
+        !DATA.test(a.p_data)
+      ) {
         return fail(400, 'invalid');
       }
       let group = groups.get(a.p_id);
@@ -146,7 +183,8 @@ const hranaValue = v => {
   return { type: whole ? 'integer' : 'text', value: String(v) };
 };
 
-export const fakeTurso = (db, { token = 'public-token', down = () => false } = {}) =>
+export const fakeTurso =
+  (db, { token = 'public-token', down = () => false } = {}) =>
   async (url, init) => {
     if (down()) throw new Error('offline');
     if (init.headers.Authorization !== `Bearer ${token}`) {
@@ -160,13 +198,26 @@ export const fakeTurso = (db, { token = 'public-token', down = () => false } = {
         stmt.setReadBigInts(true);
         if (!/^\s*(SELECT|WITH)/i.test(r.stmt.sql)) {
           const changes = Number(stmt.run(...args).changes);
-          return { type: 'ok', response: { type: 'execute',
-            result: { cols: [], rows: [], affected_row_count: changes } } };
+          return {
+            type: 'ok',
+            response: {
+              type: 'execute',
+              result: { cols: [], rows: [], affected_row_count: changes },
+            },
+          };
         }
         const rows = stmt.all(...args);
-        return { type: 'ok', response: { type: 'execute', result: {
-          cols: stmt.columns().map(c => ({ name: c.name })),
-          rows: rows.map(row => Object.values(row).map(hranaValue)), affected_row_count: 0 } } };
+        return {
+          type: 'ok',
+          response: {
+            type: 'execute',
+            result: {
+              cols: stmt.columns().map(c => ({ name: c.name })),
+              rows: rows.map(row => Object.values(row).map(hranaValue)),
+              affected_row_count: 0,
+            },
+          },
+        };
       } catch (e) {
         return { type: 'error', error: { message: `SQLite error: ${e.message}` } };
       }

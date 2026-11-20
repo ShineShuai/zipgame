@@ -11,7 +11,9 @@ import { toRatingsJson } from '../../src/core/ratings-io.js';
 
 const CAP = 100000; // the cap the tests pass to the tools (--cap)
 const QUOTA = { 6: 8, 7: 12, 8: 10, 9: 10, 10: 10, 11: 9 }; // 59 puzzles: the fit rule needs 40 with games, with room to spare
-const rated = JSON.parse(fs.readFileSync(new URL('../../tools/ratings.json', import.meta.url), 'utf8'));
+const rated = JSON.parse(
+  fs.readFileSync(new URL('../../tools/ratings.json', import.meta.url), 'utf8'),
+);
 
 const usable = [];
 for (const row of rated) {
@@ -26,8 +28,9 @@ for (const row of rated) {
 const chosen = [];
 for (const [size, quota] of Object.entries(QUOTA)) {
   const groups = new Map();
-  usable.filter(u => u.n === Number(size))
-    .sort((a, b) => (b.all4 - a.all4) || (a.row.key < b.row.key ? -1 : 1))
+  usable
+    .filter(u => u.n === Number(size))
+    .sort((a, b) => b.all4 - a.all4 || (a.row.key < b.row.key ? -1 : 1))
     .forEach(u => {
       const grade = Math.floor(u.row.human);
       groups.set(grade, [...(groups.get(grade) || []), u]);
@@ -50,7 +53,11 @@ const text = toRatingsJson(chosen);
 const file = new URL('./step-ratings.json', import.meta.url);
 if (process.argv.includes('--check')) {
   const same = fs.existsSync(file) && fs.readFileSync(file, 'utf8') === text;
-  console.log(same ? 'step-ratings.json: this is what the choice gives' : 'step-ratings.json differs from what the choice gives now');
+  console.log(
+    same
+      ? 'step-ratings.json: this is what the choice gives'
+      : 'step-ratings.json differs from what the choice gives now',
+  );
   process.exit(same ? 0 : 1);
 }
 fs.writeFileSync(file, text);

@@ -12,10 +12,11 @@ import { IDENTITY, cellDirection, orbit, overview, turn } from '../src/view/proj
 import { surfaceSvg } from '../src/apps/design/surface-board.js';
 import { makeRng } from '../src/core/rng.js';
 
-const area = poly => poly.reduce((sum, [x, y], i) => {
-  const [nx, ny] = poly[(i + 1) % poly.length];
-  return sum + (x * ny - nx * y) / 2;
-}, 0);
+const area = poly =>
+  poly.reduce((sum, [x, y], i) => {
+    const [nx, ny] = poly[(i + 1) % poly.length];
+    return sum + (x * ny - nx * y) / 2;
+  }, 0);
 
 const inside = ([x, y], poly) => {
   let in_ = false;
@@ -87,7 +88,14 @@ export function ballViewTests(t, ok, eq) {
 
   t('ball view: a point of the picture is in the cell the exact test finds', () => {
     const rnd = makeRng(11);
-    for (const id of ['tetra', 'cube', 'snub-cube', 'snub-dodeca', 'dual-snub-cube', 'bipyramid7']) {
+    for (const id of [
+      'tetra',
+      'cube',
+      'snub-cube',
+      'snub-dodeca',
+      'dual-snub-cube',
+      'bipyramid7',
+    ]) {
       const top = surfaceTopology(BALL_KIND, id);
       for (const R of viewsOf(top).slice(0, 4)) {
         const view = buildBallView(top, R);
@@ -158,9 +166,20 @@ export function ballViewTests(t, ok, eq) {
         }
       }
       // every corner is in front or behind; the front part of a closed outline is one run
-      const ring = [[0, 0, 1], [0.2, 0, 1], [0.2, 0.2, 1]];
+      const ring = [
+        [0, 0, 1],
+        [0.2, 0, 1],
+        [0.2, 0.2, 1],
+      ];
       eq(frontOf(ring).length, 3);
-      eq(frontOf([[0, 0, -1], [1, 0, -1], [0, 1, -1]]).length, 0);
+      eq(
+        frontOf([
+          [0, 0, -1],
+          [1, 0, -1],
+          [0, 1, -1],
+        ]).length,
+        0,
+      );
     }
   });
 

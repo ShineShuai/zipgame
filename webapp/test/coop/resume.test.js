@@ -1,15 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createMqtt } from '../../src/coop/mqtt.js';
-import {
-  ALIVE_MS, ATTEMPT_MS, BEAT_MS, RESUME_MS, resumeRoom,
-} from '../../src/coop/resume.js';
+import { ALIVE_MS, ATTEMPT_MS, BEAT_MS, RESUME_MS, resumeRoom } from '../../src/coop/resume.js';
 import { createHub } from '../../src/coop/signal.js';
 import { deriveResume, newSecret, seal, unseal } from '../../src/coop/secret.js';
 import { fromBase64Url } from '../../src/coop/invite.js';
-import {
-  createNetwork, manualTimers, settle, until,
-} from './fake-broker.js';
+import { createNetwork, manualTimers, settle, until } from './fake-broker.js';
 
 const URLS = ['wss://mq', 'wss://hv', 'wss://em'];
 const brokers = URLS.map((url, i) => ({ id: ['mq', 'hv', 'em'][i], url }));
@@ -22,9 +18,14 @@ function device(net, secret, pid, clock) {
     brokers,
     timers,
     random: () => 1,
-    connect: (url, handlers) => createMqtt({
-      url, clientId: 'c', WebSocketImpl: WebSocket, timers, ...handlers,
-    }),
+    connect: (url, handlers) =>
+      createMqtt({
+        url,
+        clientId: 'c',
+        WebSocketImpl: WebSocket,
+        timers,
+        ...handlers,
+      }),
   });
   const log = [];
   const peers = [];
@@ -50,27 +51,36 @@ function device(net, secret, pid, clock) {
       return { code: `answer-${connection.name}`, connection };
     },
   };
-  const open = async (extra = {}) => resumeRoom({
-    hub,
-    secret,
-    pid,
-    rtc,
-    timers,
-    now: () => clock.t,
-    onConnection: connection => connections.push(connection),
-    onPeer: here => peers.push(here),
-    ...extra,
-  });
+  const open = async (extra = {}) =>
+    resumeRoom({
+      hub,
+      secret,
+      pid,
+      rtc,
+      timers,
+      now: () => clock.t,
+      onConnection: connection => connections.push(connection),
+      onPeer: here => peers.push(here),
+      ...extra,
+    });
   return {
-    hub, timers, gate, log, peers, connections, open,
+    hub,
+    timers,
+    gate,
+    log,
+    peers,
+    connections,
+    open,
   };
 }
 
 const setup = () => ({
-  net: createNetwork(URLS), secret: fromBase64Url(newSecret()), clock: { t: 1000 },
+  net: createNetwork(URLS),
+  secret: fromBase64Url(newSecret()),
+  clock: { t: 1000 },
 });
-const calls = (...devices) => devices
-  .flatMap(d => d.log.filter(line => line.startsWith('createInvite')));
+const calls = (...devices) =>
+  devices.flatMap(d => d.log.filter(line => line.startsWith('createInvite')));
 
 test('two devices that look for each other meet: one offers, the other answers', async () => {
   const { net, secret, clock } = setup();
@@ -111,9 +121,14 @@ test('only holders of the secret take part; an offer for another run is ignored'
   const rogue = device(net, fromBase64Url(newSecret()), 1, clock);
   const to = `zipcoop/1/${room}/offer/1`;
   // an offer sealed with a wrong key, and one that is right but is for another run
-  rogue.hub.publish(to, await seal((await deriveResume(fromBase64Url(newSecret()))).key, to, {
-    from: 'x', to: 'y', offer: 'EVIL',
-  }));
+  rogue.hub.publish(
+    to,
+    await seal((await deriveResume(fromBase64Url(newSecret()))).key, to, {
+      from: 'x',
+      to: 'y',
+      offer: 'EVIL',
+    }),
+  );
   rogue.hub.publish(`${to}b`, 'junk');
   await settle(60);
   const here = `zipcoop/1/${room}/here/1`;
@@ -125,7 +140,7 @@ test('only holders of the secret take part; an offer for another run is ignored'
   assert.deepEqual(a.peers, [true], 'the rogue with the key is seen as the other device');
 });
 
-test('an offer that comes before its maker\'s beat is answered when the beat comes', async () => {
+test("an offer that comes before its maker's beat is answered when the beat comes", async () => {
   const { net, secret, clock } = setup();
   const b = device(net, secret, 1, clock);
   await b.open();

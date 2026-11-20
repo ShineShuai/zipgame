@@ -8,9 +8,7 @@ import { variantIcon } from '../src/apps/play/icons.js';
 import { boardSvg } from '../src/apps/play/board.js';
 import { EN, ZH } from '../src/ui/i18n.js';
 import { encodeShare, decodeShare } from '../src/core/share-code.js';
-import {
-  makeShareRecord, shareStatus, shareText, shareUrl,
-} from '../src/features/share.js';
+import { makeShareRecord, shareStatus, shareText, shareUrl } from '../src/features/share.js';
 
 // A 3x3 puzzle: 1 at the top left, 2 at the bottom right, an arrow 4 -> 5 (right) and an arrow
 // 7 -> 4 (up), so the marks point two ways.
@@ -24,9 +22,16 @@ function hand() {
   return p;
 }
 
-const record = (p, extra = {}) => makeShareRecord({
-  n: p.n, timeS: 83.4, legs: [0, 2, 3], K: maxNumber(p), variant: 'arrows', puzzle: p, ...extra,
-});
+const record = (p, extra = {}) =>
+  makeShareRecord({
+    n: p.n,
+    timeS: 83.4,
+    legs: [0, 2, 3],
+    K: maxNumber(p),
+    variant: 'arrows',
+    puzzle: p,
+    ...extra,
+  });
 
 export function playArrowsTests(t, ok, eq) {
   t('play variants: variantOf, the sizes on offer, the nearest size', () => {
@@ -37,26 +42,40 @@ export function playArrowsTests(t, ok, eq) {
     eq(sizesFor('standard', all), all);
     eq(sizesFor('cutout', all), all);
     eq(sizesFor('arrows', all), ARROW_SIZES);
-    ok(ARROW_SIZES.every(n => all.includes(n)), 'every arrows size is a play size');
+    ok(
+      ARROW_SIZES.every(n => all.includes(n)),
+      'every arrows size is a play size',
+    );
     const near = size => nearestSize(size, ARROW_SIZES);
     eq([near(16), near(7), near(4)], [11, 7, 5]);
     eq(nearestSize(6.5, [5, 6, 7]), 6, 'the smaller one on a tie');
   });
 
-  t('play icons: the arrows variant is in the registry; its icon has 16 tiles and three arrowheads', () => {
-    eq(PLAY_VARIANTS.map(v => v.id).slice(0, 3), ['cutout', 'arrows', 'exact']); // later ones append
-    const icon = variantIcon('arrows');
-    eq((icon.match(/rx="1\.6"/g) || []).length, 16);
-    eq((icon.match(/<polygon class="vi-arrow"/g) || []).length, 3);
-    ok(icon.includes('vi-arrows') && icon !== variantIcon('standard'));
-    ok(!variantIcon('standard').includes('vi-arrow"'));
-    for (const dict of [EN, ZH]) {
-      for (const key of ['mode.arrows', 'mode.arrowsTag', 'gen.subArrows', 'game.arrowsTitle',
-        'game.sharedArrowsTitle', 'share.arrows', 'share.headArrows']) ok(dict[key], key);
-      eq(typeof dict['gen.arrows'], 'function');
-      ok(dict['gen.arrows'](3).includes('3'));
-    }
-  });
+  t(
+    'play icons: the arrows variant is in the registry; its icon has 16 tiles and three arrowheads',
+    () => {
+      eq(PLAY_VARIANTS.map(v => v.id).slice(0, 3), ['cutout', 'arrows', 'exact']); // later ones append
+      const icon = variantIcon('arrows');
+      eq((icon.match(/rx="1\.6"/g) || []).length, 16);
+      eq((icon.match(/<polygon class="vi-arrow"/g) || []).length, 3);
+      ok(icon.includes('vi-arrows') && icon !== variantIcon('standard'));
+      ok(!variantIcon('standard').includes('vi-arrow"'));
+      for (const dict of [EN, ZH]) {
+        for (const key of [
+          'mode.arrows',
+          'mode.arrowsTag',
+          'gen.subArrows',
+          'game.arrowsTitle',
+          'game.sharedArrowsTitle',
+          'share.arrows',
+          'share.headArrows',
+        ])
+          ok(dict[key], key);
+        eq(typeof dict['gen.arrows'], 'function');
+        ok(dict['gen.arrows'](3).includes('3'));
+      }
+    },
+  );
 
   t('play board: one mark per arrow, rotated to its direction; none without arrows', () => {
     const p = hand();
@@ -82,12 +101,49 @@ export function playArrowsTests(t, ok, eq) {
       return encodeShare(record(p, { puzzle: p }));
     };
     ok(refused(() => {}) !== null, 'the sound one is encoded');
-    eq(refused(p => { p.arrows[2] = 1; }), null, 'an arrow leaving the board');
-    eq(refused(p => { p.arrows[0] = 4; }), null, 'a direction bit without an arrow');
-    eq(refused(p => { setWallId(p.walls, edgeId(3, 0, 1), true); }), null, 'a wall');
-    eq(refused(p => { p.cp[4] = 3; p.cp[5] = 5; }), null, 'a gap in the numbers');
-    eq(refused(p => { p.cp[8] = 0; }), null, 'a single checkpoint');
-    eq(refused(p => { p.arrows = p.arrows.slice(0, 8); }), null, 'arrows of the wrong size');
+    eq(
+      refused(p => {
+        p.arrows[2] = 1;
+      }),
+      null,
+      'an arrow leaving the board',
+    );
+    eq(
+      refused(p => {
+        p.arrows[0] = 4;
+      }),
+      null,
+      'a direction bit without an arrow',
+    );
+    eq(
+      refused(p => {
+        setWallId(p.walls, edgeId(3, 0, 1), true);
+      }),
+      null,
+      'a wall',
+    );
+    eq(
+      refused(p => {
+        p.cp[4] = 3;
+        p.cp[5] = 5;
+      }),
+      null,
+      'a gap in the numbers',
+    );
+    eq(
+      refused(p => {
+        p.cp[8] = 0;
+      }),
+      null,
+      'a single checkpoint',
+    );
+    eq(
+      refused(p => {
+        p.arrows = p.arrows.slice(0, 8);
+      }),
+      null,
+      'arrows of the wrong size',
+    );
     eq(encodeShare({ ...record(hand()), variant: 'unknown' }), null);
   });
 

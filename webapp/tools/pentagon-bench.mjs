@@ -38,7 +38,9 @@ for (const n of sizes) {
   const ms = rows.map(r => r.ms);
   const walls = rows.map(r => r.walls);
   const time = `median ${median(ms).toFixed(0)}, worst ${Math.max(...ms).toFixed(0)}`;
-  console.log(`n=${n}  time ms: ${time}`
-    + ` | walls: median ${median(walls)}, worst ${Math.max(...walls)}`
-    + ` | K median ${median(rows.map(r => r.K))}`);
+  console.log(
+    `n=${n}  time ms: ${time}` +
+      ` | walls: median ${median(walls)}, worst ${Math.max(...walls)}` +
+      ` | K median ${median(rows.map(r => r.K))}`,
+  );
 }

@@ -17,47 +17,126 @@
 // harder (+) or easier (-) than their badge says AFTER the trend. Before enough days exist everything stays at the prior of gotd-model.js.
 import fs from 'node:fs';
 import { loadDays, loadPuzzles } from './gotd-data.mjs';
-import { TIME_PRIOR, SIZE_PRIOR, timePoints, playPoints, fitTimeSize, sizeShift, sizeLevel, localDifficulty, globalDifficulty } from '../src/core/gotd-model.js';
+import {
+  TIME_PRIOR,
+  SIZE_PRIOR,
+  timePoints,
+  playPoints,
+  fitTimeSize,
+  sizeShift,
+  sizeLevel,
+  localDifficulty,
+  globalDifficulty,
+} from '../src/core/gotd-model.js';
 
-const args = process.argv.slice(2), here = p => new URL(p, import.meta.url).pathname;
-const opt = (name, dflt) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : dflt; };
+const args = process.argv.slice(2),
+  here = p => new URL(p, import.meta.url).pathname;
+const opt = (name, dflt) => {
+  const i = args.indexOf(name);
+  return i >= 0 ? args[i + 1] : dflt;
+};
 const optAll = name => args.flatMap((a, i) => (a === name ? [args[i + 1]] : []));
-const die = msg => { console.error('ERROR: ' + msg); process.exit(1); };
-const minReal = +opt('--min-players', TIME_PRIOR.minReal), sizeSd = +opt('--size-sd', SIZE_PRIOR.sizeSd), nDays = +opt('--days', 60);
-if (!(minReal >= 1) || !(sizeSd > 0) || !(nDays >= 1)) die('--min-players >= 1, --size-sd > 0, --days >= 1');
+const die = msg => {
+  console.error('ERROR: ' + msg);
+  process.exit(1);
+};
+const minReal = +opt('--min-players', TIME_PRIOR.minReal),
+  sizeSd = +opt('--size-sd', SIZE_PRIOR.sizeSd),
+  nDays = +opt('--days', 60);
+if (!(minReal >= 1) || !(sizeSd > 0) || !(nDays >= 1))
+  die('--min-players >= 1, --size-sd > 0, --days >= 1');
 
 let days, puzzles;
 try {
   puzzles = loadPuzzles(opt('--puzzles', here('../../demo/GameOfDay')));
   days = await loadDays({ statsFiles: optAll('--stats'), days: nDays });
-} catch (e) { die(e.message); }
-const perPlay = args.includes('--per-play'), useAuthor = !args.includes('--no-author');
-const { points, skipped, sigma, sigmaFit } = perPlay ? playPoints(days, puzzles, { useAuthor, sigma: opt('--sigma') === undefined ? null : +opt('--sigma') }) : { ...timePoints(days, puzzles, { minReal, useAuthor }) };
-const players = points.filter(p => p.src === 'players'), authors = points.filter(p => p.src === 'author');
+} catch (e) {
+  die(e.message);
+}
+const perPlay = args.includes('--per-play'),
+  useAuthor = !args.includes('--no-author');
+const { points, skipped, sigma, sigmaFit } = perPlay
+  ? playPoints(days, puzzles, {
+      useAuthor,
+      sigma: opt('--sigma') === undefined ? null : +opt('--sigma'),
+    })
+  : { ...timePoints(days, puzzles, { minReal, useAuthor }) };
+const players = points.filter(p => p.src === 'players'),
+  authors = points.filter(p => p.src === 'author');
 const sum = a => a.reduce((s, v) => s + v, 0);
 console.log(`${puzzles.size} puzzle file(s), ${days.length} backend day(s)`);
-console.log(`valid points: ${players.length} day(s) with ${perPlay ? '>= 1 valid play' : `>= ${minReal} real players`} (${sum(players.map(p => p.count))} players; removed: ${sum(players.map(p => p.seeds))} seed players, ${sum(players.map(p => p.dropped))} plays below the floor) + ${authors.length} author time(s)`);
-if (perPlay) console.log(`per-play: sigma ${sigma.toFixed(2)} (${sigmaFit ? `pooled from ${sigmaFit.days} day(s), ${sigmaFit.df} df` : 'prior: too few days with >= 3 plays'}), day weights 1/(tau^2 + sigma^2/count)`);
+console.log(
+  `valid points: ${players.length} day(s) with ${perPlay ? '>= 1 valid play' : `>= ${minReal} real players`} (${sum(players.map(p => p.count))} players; removed: ${sum(players.map(p => p.seeds))} seed players, ${sum(players.map(p => p.dropped))} plays below the floor) + ${authors.length} author time(s)`,
+);
+if (perPlay)
+  console.log(
+    `per-play: sigma ${sigma.toFixed(2)} (${sigmaFit ? `pooled from ${sigmaFit.days} day(s), ${sigmaFit.df} df` : 'prior: too few days with >= 3 plays'}), day weights 1/(tau^2 + sigma^2/count)`,
+  );
 for (const s of skipped) console.log(`  not used ${s.day}: ${s.why}`);
 
 const model = fitTimeSize(points, TIME_PRIOR, { ...SIZE_PRIOR, sizeSd });
-const [a, g, c] = model.mean, [sa, sg, sc] = model.sd, f = (x, d = 2) => x.toFixed(d);
-console.log(`\ntime model${points.length ? '' : ' (no valid data: the prior)'}: median at ${TIME_PRIOR.refN}x${TIME_PRIOR.refN}, h ${TIME_PRIOR.refH}: ${f(Math.exp(a) / 1000, 1)} s (x${f(Math.exp(sa))})`);
-console.log(`  gamma ${f(g)} +-${f(sg)}  (time ~ cells^gamma)    c ${f(c)} +-${f(sc)}  (time x${f(Math.exp(c))} per grade)${model.author ? `    author offset ${f(model.author.u)} (x${f(Math.exp(model.author.u))})` : ''}`);
+const [a, g, c] = model.mean,
+  [sa, sg, sc] = model.sd,
+  f = (x, d = 2) => x.toFixed(d);
+console.log(
+  `\ntime model${points.length ? '' : ' (no valid data: the prior)'}: median at ${TIME_PRIOR.refN}x${TIME_PRIOR.refN}, h ${TIME_PRIOR.refH}: ${f(Math.exp(a) / 1000, 1)} s (x${f(Math.exp(sa))})`,
+);
+console.log(
+  `  gamma ${f(g)} +-${f(sg)}  (time ~ cells^gamma)    c ${f(c)} +-${f(sc)}  (time x${f(Math.exp(c))} per grade)${model.author ? `    author offset ${f(model.author.u)} (x${f(Math.exp(model.author.u))})` : ''}`,
+);
 
-const sizes = [...new Set([5, 6, 7, 8, 9, 10, 11, 12, ...points.map(p => p.n)])].sort((x, y) => x - y);
+const sizes = [...new Set([5, 6, 7, 8, 9, 10, 11, 12, ...points.map(p => p.n)])].sort(
+  (x, y) => x - y,
+);
 const bySize = Object.fromEntries(sizes.map(n => [n, players.filter(p => p.n === n)]));
-console.log('\nsize  days  players  mean h  median s   shift s(n)  level (+-sd)      global difficulty of local grade 0..5');
+console.log(
+  '\nsize  days  players  mean h  median s   shift s(n)  level (+-sd)      global difficulty of local grade 0..5',
+);
 const rows = {};
 for (const n of sizes) {
-  const ps = bySize[n], shift = sizeShift(n, model.mean), lv = sizeLevel(model, n), lsd = model.size[n] ? model.size[n].sd / c : NaN;
-  const med = ps.length ? Math.exp(sum(ps.map(p => p.y * p.count)) / sum(ps.map(p => p.count))) / 1000 : NaN;
+  const ps = bySize[n],
+    shift = sizeShift(n, model.mean),
+    lv = sizeLevel(model, n),
+    lsd = model.size[n] ? model.size[n].sd / c : NaN;
+  const med = ps.length
+    ? Math.exp(sum(ps.map(p => p.y * p.count)) / sum(ps.map(p => p.count))) / 1000
+    : NaN;
   const G = [0, 1, 2, 3, 4, 5].map(h => globalDifficulty(model, n, h));
-  rows[n] = { days: ps.length, shift, level: lv, levelSd: Number.isFinite(lsd) ? lsd : null, local: [0, 1, 2, 3, 4, 5].map(h => localDifficulty(model, n, h)), global: G };
-  console.log(`${String(n).padStart(4)}  ${String(ps.length).padStart(4)}  ${String(sum(ps.map(p => p.count))).padStart(7)}  ${ps.length ? f(sum(ps.map(p => p.h)) / ps.length).padStart(6) : '     -'}  ${Number.isFinite(med) ? f(med, 0).padStart(8) : '       -'}  ${(shift >= 0 ? '+' : '') + f(shift)}`.padEnd(63) + `${(lv >= 0 ? '+' : '') + f(lv)}${Number.isFinite(lsd) ? ` (+-${f(lsd)})` : ''}`.padEnd(18) + G.map(x => f(x, 1).padStart(5)).join(''));
+  rows[n] = {
+    days: ps.length,
+    shift,
+    level: lv,
+    levelSd: Number.isFinite(lsd) ? lsd : null,
+    local: [0, 1, 2, 3, 4, 5].map(h => localDifficulty(model, n, h)),
+    global: G,
+  };
+  console.log(
+    `${String(n).padStart(4)}  ${String(ps.length).padStart(4)}  ${String(sum(ps.map(p => p.count))).padStart(7)}  ${ps.length ? f(sum(ps.map(p => p.h)) / ps.length).padStart(6) : '     -'}  ${Number.isFinite(med) ? f(med, 0).padStart(8) : '       -'}  ${(shift >= 0 ? '+' : '') + f(shift)}`.padEnd(
+      63,
+    ) +
+      `${(lv >= 0 ? '+' : '') + f(lv)}${Number.isFinite(lsd) ? ` (+-${f(lsd)})` : ''}`.padEnd(18) +
+      G.map(x => f(x, 1).padStart(5)).join(''),
+  );
 }
-console.log('\nglobal = local + shift (comparable across sizes, an open scale); local = global - shift. Level is 0 for a size without valid days.');
+console.log(
+  '\nglobal = local + shift (comparable across sizes, an open scale); local = global - shift. Level is 0 for a size without valid days.',
+);
 if (opt('--out')) {
-  fs.writeFileSync(opt('--out'), JSON.stringify({ ref: { n: TIME_PRIOR.refN, h: TIME_PRIOR.refH }, gamma: g, c, gammaSd: sg, cSd: sc, points: points.length, sizes: rows }, null, 1) + '\n');
+  fs.writeFileSync(
+    opt('--out'),
+    JSON.stringify(
+      {
+        ref: { n: TIME_PRIOR.refN, h: TIME_PRIOR.refH },
+        gamma: g,
+        c,
+        gammaSd: sg,
+        cSd: sc,
+        points: points.length,
+        sizes: rows,
+      },
+      null,
+      1,
+    ) + '\n',
+  );
   console.log(`wrote ${opt('--out')}`);
 }

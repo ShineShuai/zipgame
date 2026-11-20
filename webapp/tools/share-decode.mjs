@@ -16,7 +16,7 @@ function parseJsonArg(arg) {
   try {
     text = readFileSync(arg, 'utf8');
   } catch (e) {
-    if (e.code !== 'ENOENT' && e.code !== 'EISDIR') throw e;   // real IO problem
+    if (e.code !== 'ENOENT' && e.code !== 'EISDIR') throw e; // real IO problem
     // not a path — assume it's inline JSON
   }
   return JSON.parse(text);

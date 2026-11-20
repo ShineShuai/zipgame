@@ -42,42 +42,77 @@ export function loopGenTests(t, ok, eq) {
     ok(threw, 'odd size');
   });
 
-  t('loop-gen: loopCheckpoints — cell 1 first, number K short of the way round, a tail between K and cell 1', () => {
-    for (const n of [4, 6, 8, 10]) {
-      for (let seed = 1; seed <= 6; seed++) {
-        const rnd = makeRng(seed);
-        const ring = ringPath(n, rnd);
-        const K = Math.max(4, n);
-        const placed = loopCheckpoints(n, ring, K, rnd);
-        if (!placed) continue;
-        const { path, positions } = placed;
-        const T = n * n;
-        ok(isRing(n, path) && positions.length === K && positions[0] === 0, `n ${n} seed ${seed}`);
-        ok(positions.every((q, i) => i === 0 || q > positions[i - 1]), 'ascending');
-        const tail = T - 1 - positions[K - 1];
-        ok(tail >= Math.round(T * LOOP_TAIL[0]) - 1 && tail <= Math.round(T * LOOP_TAIL[1]) - 1, `tail ${tail} of ${T}`);
+  t(
+    'loop-gen: loopCheckpoints — cell 1 first, number K short of the way round, a tail between K and cell 1',
+    () => {
+      for (const n of [4, 6, 8, 10]) {
+        for (let seed = 1; seed <= 6; seed++) {
+          const rnd = makeRng(seed);
+          const ring = ringPath(n, rnd);
+          const K = Math.max(4, n);
+          const placed = loopCheckpoints(n, ring, K, rnd);
+          if (!placed) continue;
+          const { path, positions } = placed;
+          const T = n * n;
+          ok(
+            isRing(n, path) && positions.length === K && positions[0] === 0,
+            `n ${n} seed ${seed}`,
+          );
+          ok(
+            positions.every((q, i) => i === 0 || q > positions[i - 1]),
+            'ascending',
+          );
+          const tail = T - 1 - positions[K - 1];
+          ok(
+            tail >= Math.round(T * LOOP_TAIL[0]) - 1 && tail <= Math.round(T * LOOP_TAIL[1]) - 1,
+            `tail ${tail} of ${T}`,
+          );
+        }
       }
-    }
-  });
+    },
+  );
 
-  t('loop-gen: generateLoop gives a valid, unique Loop puzzle with a solving path, K not on the last cell', () => {
-    const cases = [[4, 1], [4, 2], [4, 3], [4, 4], [6, 1], [6, 2], [6, 3], [6, 4], [8, 1], [8, 2]];
-    for (const [n, seed] of sampled(cases)) {
-      const p = runSync(generateLoop(n, seed));
-      const label = `n ${n} seed ${seed}`;
-      ok(p.loop === true && validate(p).ok, label);
-      ok(maxNumber(p) >= 3 && labelCount(p) === maxNumber(p), label);
-      ok(isSolved(p, p.path), `${label}: the stored path solves it`);
-      const K = maxNumber(p);
-      ok(p.path[p.path.length - 1] !== p.cp.indexOf(K), `${label}: K is not the last cell`);
-      const found = solve(p, { limit: 2, nodeCap: 5e6, capture: true, prop: true, parity: true });
-      ok(found.count === 1 && !found.exceeded, `${label}: unique`);
-      eq(found.paths[0], p.path, `${label}: the solver finds the same ring`);
-    }
-  });
+  t(
+    'loop-gen: generateLoop gives a valid, unique Loop puzzle with a solving path, K not on the last cell',
+    () => {
+      const cases = [
+        [4, 1],
+        [4, 2],
+        [4, 3],
+        [4, 4],
+        [6, 1],
+        [6, 2],
+        [6, 3],
+        [6, 4],
+        [8, 1],
+        [8, 2],
+      ];
+      for (const [n, seed] of sampled(cases)) {
+        const p = runSync(generateLoop(n, seed));
+        const label = `n ${n} seed ${seed}`;
+        ok(p.loop === true && validate(p).ok, label);
+        ok(maxNumber(p) >= 3 && labelCount(p) === maxNumber(p), label);
+        ok(isSolved(p, p.path), `${label}: the stored path solves it`);
+        const K = maxNumber(p);
+        ok(p.path[p.path.length - 1] !== p.cp.indexOf(K), `${label}: K is not the last cell`);
+        const found = solve(p, {
+          limit: 2,
+          nodeCap: 5e6,
+          capture: true,
+          prop: true,
+          parity: true,
+        });
+        ok(found.count === 1 && !found.exceeded, `${label}: unique`);
+        eq(found.paths[0], p.path, `${label}: the solver finds the same ring`);
+      }
+    },
+  );
 
   t('loop-gen: generated puzzles are unique by brute force too (4x4 and 6x6)', () => {
-    for (const [n, seeds] of [[4, [11, 12, 13]], [6, [11, 12]]]) {
+    for (const [n, seeds] of [
+      [4, [11, 12, 13]],
+      [6, [11, 12]],
+    ]) {
       for (const seed of seeds) {
         const p = runSync(generateLoop(n, seed));
         const all = bruteLoop(p);
@@ -87,12 +122,15 @@ export function loopGenTests(t, ok, eq) {
     }
   });
 
-  t('loop-gen: same seed, same puzzle; other seeds, other puzzles; a standard puzzle is unchanged by the option', () => {
-    const a = serialize(runSync(generateLoop(6, 5)));
-    eq(serialize(runSync(generateLoop(6, 5))), a);
-    ok(serialize(runSync(generateLoop(6, 6))) !== a);
-    ok(!('loop' in runSync(generate(5, 1))));
-  });
+  t(
+    'loop-gen: same seed, same puzzle; other seeds, other puzzles; a standard puzzle is unchanged by the option',
+    () => {
+      const a = serialize(runSync(generateLoop(6, 5)));
+      eq(serialize(runSync(generateLoop(6, 5))), a);
+      ok(serialize(runSync(generateLoop(6, 6))) !== a);
+      ok(!('loop' in runSync(generate(5, 1))));
+    },
+  );
 
   t('loop-gen: only even sizes; the sizes on offer', () => {
     let threw = false;

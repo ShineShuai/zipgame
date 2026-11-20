@@ -45,5 +45,8 @@
     "themes": "node ../themes/tools/manage.mjs",
     "themes:import": "node ../themes/tools/import-proto.mjs",
     "themes:build": "node ../themes/tools/build-site.mjs"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.8"
   }
 }

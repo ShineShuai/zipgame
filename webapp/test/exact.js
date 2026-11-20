@@ -2,8 +2,15 @@
 // (core/model.js), rules (core/rules.js), plain-text format (core/format.js) and the exact-aware
 // solver (core/solver/solve.js). Registered by unit/exact.test.js: exactTests(t, ok, eq).
 import {
-  makePuzzle, clonePuzzle, validate, cellCount, labelCount, numberedCells,
-  checkpointCells, exactRanks, exactLegProblem,
+  makePuzzle,
+  clonePuzzle,
+  validate,
+  cellCount,
+  labelCount,
+  numberedCells,
+  checkpointCells,
+  exactRanks,
+  exactLegProblem,
 } from '../src/core/model.js';
 import { isSolved, step, canStep } from '../src/core/rules.js';
 import { serialize, parse } from '../src/core/format.js';
@@ -46,7 +53,10 @@ function randomExact(seed, n, extra, wallFrac = 0) {
   const path = backbite(n, rnd);
   const p = makePuzzle(n);
   p.exact = true;
-  const steps = shuffle([...Array(n * n - 2).keys()].map(i => i + 2), rnd).slice(0, extra);
+  const steps = shuffle(
+    [...Array(n * n - 2).keys()].map(i => i + 2),
+    rnd,
+  ).slice(0, extra);
   for (const s of [1, n * n, ...steps]) {
     p.cp[path[s - 1]] = s;
   }
@@ -241,7 +251,10 @@ export function exactTests(t, ok, eq) {
     for (const flags of FLAG_SETS) {
       const r = solve(p, { limit: 1e9, nodeCap: 1e8, capture: true, ...flags });
       eq([r.count, r.exceeded], [want, false], JSON.stringify(flags));
-      ok(r.paths.every(solution => isSolved(p, solution)), 'every captured path solves it');
+      ok(
+        r.paths.every(solution => isSolved(p, solution)),
+        'every captured path solves it',
+      );
     }
     eq(solve(p, { limit: 1, nodeCap: 1e6 }).count, 1, 'limit 1');
     // a forced prefix of a solution leads to a solution
@@ -293,7 +306,10 @@ export function exactTests(t, ok, eq) {
     const flags = { prop: true, parity: true, prune2: true };
     const exact = solve(p, { limit: 1e9, nodeCap: 1e8, capture: true, ...flags });
     ok(!exact.exceeded && exact.count >= 1);
-    ok(exact.paths.every(solution => solution[5] === path[5]), '6 is on step 6 in every solution');
+    ok(
+      exact.paths.every(solution => solution[5] === path[5]),
+      '6 is on step 6 in every solution',
+    );
     eq(exact.count, bruteExact(p).count);
     const standard = makePuzzle(n);
     standard.cp[path[0]] = 1;

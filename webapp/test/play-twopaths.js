@@ -10,14 +10,28 @@ import { boardSvg, badgeColorsTwo, COLORS } from '../src/apps/play/board.js';
 import { variantById } from '../src/apps/play/variants.js';
 import { EN, ZH } from '../src/ui/i18n.js';
 import {
-  RED, BLUE, newPaths, pickColour, walkColour, solvedPaths, reached, legsUndoTwo, hintTwo,
+  RED,
+  BLUE,
+  newPaths,
+  pickColour,
+  walkColour,
+  solvedPaths,
+  reached,
+  legsUndoTwo,
+  hintTwo,
 } from '../src/features/twopaths-play.js';
 import { made } from './fixtures/made.js';
 
 const game = (n, seed) => made('twopaths', n, seed);
 const stateOf = (p, paths, extra = {}) => ({
-  puzzle: p, paths, path: paths[RED], colour: RED, hintCell: null, hintWrongCell: null,
-  finished: false, ...extra,
+  puzzle: p,
+  paths,
+  path: paths[RED],
+  colour: RED,
+  hintCell: null,
+  hintWrongCell: null,
+  finished: false,
+  ...extra,
 });
 // Draws `cells` as one drag of the colour a press on the first one picks, the way the app does.
 const draw = (p, paths, cells, current = RED) => {
@@ -32,7 +46,10 @@ export function twoPathsPlayTests(t, ok, eq) {
   t('twopaths-play: texts — every key in both languages, the hint button too', () => {
     const v = variantById('twopaths');
     const keys = [
-      ...Object.values(v.keys), 'game.twopathsHint', 'game.twopathsRed', 'game.twopathsBlue',
+      ...Object.values(v.keys),
+      'game.twopathsHint',
+      'game.twopathsRed',
+      'game.twopathsBlue',
       'game.hint',
     ];
     for (const key of keys) {
@@ -61,12 +78,26 @@ export function twoPathsPlayTests(t, ok, eq) {
     const squares = (svg.match(/<rect class="num-shape"/g) || []).length;
     eq(squares, K - p.split, 'a square per blue number');
     const blueNumbers = [...svg.matchAll(/data-colour="1">[^]*?<text[^>]*>(\d+)<\/text>/g)]
-      .map(m => +m[1]).sort((a, b) => a - b);
-    eq(blueNumbers, Array.from({ length: K - p.split }, (_, i) => i + 1), 'blue counts from 1');
+      .map(m => +m[1])
+      .sort((a, b) => a - b);
+    eq(
+      blueNumbers,
+      Array.from({ length: K - p.split }, (_, i) => i + 1),
+      'blue counts from 1',
+    );
     const redNumbers = [...svg.matchAll(/data-colour="0">[^]*?<text[^>]*>(\d+)<\/text>/g)]
-      .map(m => +m[1]).sort((a, b) => a - b);
-    eq(redNumbers, Array.from({ length: p.split }, (_, i) => i + 1), 'red counts from 1');
-    eq((svg.match(/data-role="path" data-colour="\d" d=""/g) || []).length, 2, 'nothing drawn yet');
+      .map(m => +m[1])
+      .sort((a, b) => a - b);
+    eq(
+      redNumbers,
+      Array.from({ length: p.split }, (_, i) => i + 1),
+      'red counts from 1',
+    );
+    eq(
+      (svg.match(/data-role="path" data-colour="\d" d=""/g) || []).length,
+      2,
+      'nothing drawn yet',
+    );
     // a drawn red line, a reached red number is filled with red, a blue one stays an idle ring
     const drawn = stateOf(p, [red.slice(0, 3), []]);
     const withLine = boardSvg(drawn);
@@ -76,7 +107,9 @@ export function twoPathsPlayTests(t, ok, eq) {
     const lit = ink => ink.replace(/[()]/g, '\\$&'); // var(--x) in a regular expression
     const start = new RegExp(`${cell0}><circle[^>]*fill="${lit(COLORS.twoPath[RED])}"`);
     ok(start.test(withLine), 'red 1 is filled red');
-    const idle = new RegExp(`data-num-cell="${blue[0]}" data-colour="1"><rect[^>]*fill="${lit(COLORS.numberFill)}"`);
+    const idle = new RegExp(
+      `data-num-cell="${blue[0]}" data-colour="1"><rect[^>]*fill="${lit(COLORS.numberFill)}"`,
+    );
     ok(idle.test(withLine), 'blue 1 is still a white square');
     eq(badgeColorsTwo(BLUE, true).fill, COLORS.twoPath[BLUE]);
     eq(badgeColorsTwo(RED, false).stroke, COLORS.twoPath[RED]);
@@ -106,7 +139,12 @@ export function twoPathsPlayTests(t, ok, eq) {
     const [red, blue] = splitPath(p, p.path);
     const paths = newPaths();
     let colour = RED;
-    const turns = [[RED, 0, 4], [BLUE, 0, 3], [RED, 4, red.length], [BLUE, 3, blue.length]];
+    const turns = [
+      [RED, 0, 4],
+      [BLUE, 0, 3],
+      [RED, 4, red.length],
+      [BLUE, 3, blue.length],
+    ];
     for (const [c, from, to] of turns) {
       const part = (c === RED ? red : blue).slice(from, to);
       // a press on the head cell goes on with that path (pickColour: a path's own cell)
@@ -158,7 +196,7 @@ export function twoPathsPlayTests(t, ok, eq) {
     ok(touching > 5 && numbers > 0, `${touching} touching cells, ${numbers} blue numbers checked`);
   });
 
-  t('twopaths-play: pickColour — a path\'s cell, a number, the head that can step there', () => {
+  t("twopaths-play: pickColour — a path's cell, a number, the head that can step there", () => {
     const p = game(7, 5);
     const [red, blue] = splitPath(p, p.path);
     const none = newPaths();
@@ -226,12 +264,18 @@ export function twoPathsPlayTests(t, ok, eq) {
     eq(hintTwo(p, newPaths(), BLUE), { colour: BLUE, correctCell: blue[0], wrongCell: null });
     eq(hintTwo(p, [red.slice(0, 3), []], RED).correctCell, red[3], 'on track: the next cell');
     // red is finished: the hint is for blue
-    eq(hintTwo(p, [red, blue.slice(0, 2)], RED),
-      { colour: BLUE, correctCell: blue[2], wrongCell: null });
+    eq(hintTwo(p, [red, blue.slice(0, 2)], RED), {
+      colour: BLUE,
+      correctCell: blue[2],
+      wrongCell: null,
+    });
     // red went wrong at its 2nd cell
     const stray = p.cp.findIndex((v, cell) => cell !== red[0] && cell !== red[1]);
-    eq(hintTwo(p, [[red[0], stray], []], RED),
-      { colour: RED, correctCell: red[1], wrongCell: stray });
+    eq(hintTwo(p, [[red[0], stray], []], RED), {
+      colour: RED,
+      correctCell: red[1],
+      wrongCell: stray,
+    });
     eq(hintTwo(p, [red, blue], RED), { colour: RED, correctCell: null, wrongCell: null }, 'done');
     // a solution that is not stored is found by the solver
     const bare = { ...p };

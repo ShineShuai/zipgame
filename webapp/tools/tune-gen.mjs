@@ -11,7 +11,13 @@
 //   --refine-x        multiplies the node budget of the winner's deeper look at undecided walls
 //                     (REFINE_NODES_PER_CELL * n^2; 0 = no deeper look)
 //   --freed-edge      minimize with the solver's mustUse check (default: what generate() does by default)
-import { generate, CANDIDATES, PROP_CAP_X, CHECK_CAP_X, REFINE_NODES_PER_CELL } from '../src/core/gen/generate.js';
+import {
+  generate,
+  CANDIDATES,
+  PROP_CAP_X,
+  CHECK_CAP_X,
+  REFINE_NODES_PER_CELL,
+} from '../src/core/gen/generate.js';
 import { runSync } from '../src/core/run.js';
 
 const args = process.argv.slice(2);
@@ -20,7 +26,7 @@ const opt = (name, fallback) => {
   return i >= 0 && i + 1 < args.length ? args[i + 1] : fallback;
 };
 const list = (name, fallback) => String(opt(name, fallback)).split(',').map(Number);
-const flag = (name) => args.includes('--' + name);
+const flag = name => args.includes('--' + name);
 
 const sizes = list('sizes', '8,10,12');
 const seeds = Number(opt('seeds', 8));
@@ -31,20 +37,39 @@ const candXs = list('candidates-x', 1);
 const refineXs = list('refine-x', 1);
 const freedEdge = flag('no-freed-edge') ? false : flag('freed-edge') ? true : undefined;
 
-const wallCount = (p) => { let w = 0; for (const v of p.walls) w += (v & 1) + ((v >> 1) & 1); return w; };
+const wallCount = p => {
+  let w = 0;
+  for (const v of p.walls) w += (v & 1) + ((v >> 1) & 1);
+  return w;
+};
 
 console.log(`seeds ${first}..${first + seeds - 1}, freedEdge ${freedEdge ?? 'default'}`);
 console.log('size  capX  checkCapX  candX  cands  refineX |  mean walls  mean ms   total ms');
 for (const n of sizes) {
-  for (const capX of capXs) for (const checkCapX of checkXs) for (const candX of candXs) for (const refineX of refineXs) {
-    const candidates = Math.max(1, Math.round((CANDIDATES[n] || 2) * candX));
-    let walls = 0, ms = 0;
-    for (let s = first; s < first + seeds; s++) {
-      const t = performance.now();
-      const p = runSync(generate(n, s, { capX, checkCapX, candidates, refineNodes: Math.round(REFINE_NODES_PER_CELL * n * n * refineX), ...(freedEdge === undefined ? {} : { freedEdge }) }), () => {});
-      ms += performance.now() - t;
-      walls += wallCount(p);
-    }
-    console.log(`${String(n).padStart(4)}  ${String(capX).padStart(4)}  ${String(checkCapX).padStart(9)}  ${String(candX).padStart(5)}  ${String(candidates).padStart(5)}  ${String(refineX).padStart(7)} | ${(walls / seeds).toFixed(2).padStart(11)} ${(ms / seeds).toFixed(0).padStart(9)} ${ms.toFixed(0).padStart(10)}`);
-  }
+  for (const capX of capXs)
+    for (const checkCapX of checkXs)
+      for (const candX of candXs)
+        for (const refineX of refineXs) {
+          const candidates = Math.max(1, Math.round((CANDIDATES[n] || 2) * candX));
+          let walls = 0,
+            ms = 0;
+          for (let s = first; s < first + seeds; s++) {
+            const t = performance.now();
+            const p = runSync(
+              generate(n, s, {
+                capX,
+                checkCapX,
+                candidates,
+                refineNodes: Math.round(REFINE_NODES_PER_CELL * n * n * refineX),
+                ...(freedEdge === undefined ? {} : { freedEdge }),
+              }),
+              () => {},
+            );
+            ms += performance.now() - t;
+            walls += wallCount(p);
+          }
+          console.log(
+            `${String(n).padStart(4)}  ${String(capX).padStart(4)}  ${String(checkCapX).padStart(9)}  ${String(candX).padStart(5)}  ${String(candidates).padStart(5)}  ${String(refineX).padStart(7)} | ${(walls / seeds).toFixed(2).padStart(11)} ${(ms / seeds).toFixed(0).padStart(9)} ${ms.toFixed(0).padStart(10)}`,
+          );
+        }
 }

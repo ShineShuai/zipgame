@@ -2,7 +2,15 @@
 // spread over the month, the offer day of a local date, and what a player can learn from the
 // days. Registered by unit/themes.test.js.
 import {
-  MIN_GAP, candidates, dateValue, daysInMonth, eventAt, monthPlan, nextEvent, ruleExample, validDigits,
+  MIN_GAP,
+  candidates,
+  dateValue,
+  daysInMonth,
+  eventAt,
+  monthPlan,
+  nextEvent,
+  ruleExample,
+  validDigits,
 } from '../src/themes/calendar.js';
 import { EVENT_RE } from '../src/themes/event.js';
 import { offerHtml, ruleHtml } from '../src/themes/offer.js';
@@ -12,18 +20,35 @@ import { THEMES } from '../src/config.js';
 
 const DIGITS = [2, 1, 9, 0];
 const SYMBOL = '<circle cx="12" cy="12" r="5"/>';
-const RULE_KEYS = ['offer.rule', 'rule.open', 'rule.title', 'rule.lead', 'rule.step1',
-  'rule.step2', 'rule.step3', 'rule.step4', 'rule.example', 'rule.last']
-  .map(key => `theme.${key}`);
+const RULE_KEYS = [
+  'offer.rule',
+  'rule.open',
+  'rule.title',
+  'rule.lead',
+  'rule.step1',
+  'rule.step2',
+  'rule.step3',
+  'rule.step4',
+  'rule.example',
+  'rule.last',
+].map(key => `theme.${key}`);
 const keyText = (key, ...args) => (args.length ? `${key}(${args})` : key);
-const fill = dict => (key, ...args) => String(dict[key]).replace(/\{(\d+)\}/g, (_, i) => args[i]);
+const fill =
+  dict =>
+  (key, ...args) =>
+    String(dict[key]).replace(/\{(\d+)\}/g, (_, i) => args[i]);
 const YEARS = Array.from({ length: 100 }, (_, i) => 2026 + i);
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 // every month of 100 years: [{ year, month, plan }]
-const calendar = () => YEARS.flatMap(year => MONTHS.map(month => ({
-  year, month, plan: monthPlan(year, month, DIGITS),
-})));
+const calendar = () =>
+  YEARS.flatMap(year =>
+    MONTHS.map(month => ({
+      year,
+      month,
+      plan: monthPlan(year, month, DIGITS),
+    })),
+  );
 
 // the candidates of every month of 2027, as the rule gives them (a regression table)
 const CANDIDATES_2027 = [
@@ -42,7 +67,7 @@ const CANDIDATES_2027 = [
 ];
 
 export function themeCalendarTests(t, ok, eq) {
-  t('offer days: the value of a date is day ^ month ^ the year\'s last digit, mod 16', () => {
+  t("offer days: the value of a date is day ^ month ^ the year's last digit, mod 16", () => {
     eq(dateValue(2027, 11, 29), 1, '29 ^ 11 ^ 7 = 17, mod 16 = 1');
     eq(dateValue(2027, 3, 6), 2);
     eq(dateValue(2027, 3, 29), 9);
@@ -51,32 +76,61 @@ export function themeCalendarTests(t, ok, eq) {
     eq(dateValue(2027, 11, 29), dateValue(2037, 11, 29), 'the year counts by its last digit');
   });
 
-  t('offer days: the next offer day is the first one on or after a date, as day-by-day eventAt finds it; answered ones are left out', () => {
-    const first = (from, skip = () => false) => {
-      for (let i = 0; i < 400; i++) {
-        const date = new Date(from.getFullYear(), from.getMonth(), from.getDate() + i);
-        const event = eventAt(date, DIGITS);
-        if (event && !skip(event.id)) return { ...event, days: i };
+  t(
+    'offer days: the next offer day is the first one on or after a date, as day-by-day eventAt finds it; answered ones are left out',
+    () => {
+      const first = (from, skip = () => false) => {
+        for (let i = 0; i < 400; i++) {
+          const date = new Date(from.getFullYear(), from.getMonth(), from.getDate() + i);
+          const event = eventAt(date, DIGITS);
+          if (event && !skip(event.id)) return { ...event, days: i };
+        }
+        return null;
+      };
+      for (let i = 0; i < 800; i += 3) {
+        const from = new Date(2026, 10, 12 + i, 15, 30);
+        const got = nextEvent(from, DIGITS);
+        const want = first(from);
+        eq(
+          [got.id, got.date, got.days],
+          [
+            want.id,
+            `${want.year}-${String(want.month).padStart(2, '0')}-${String(want.day).padStart(2, '0')}`,
+            want.days,
+          ],
+          from.toDateString(),
+        );
       }
-      return null;
-    };
-    for (let i = 0; i < 800; i += 3) {
-      const from = new Date(2026, 10, 12 + i, 15, 30);
-      const got = nextEvent(from, DIGITS);
-      const want = first(from);
-      eq([got.id, got.date, got.days], [want.id, `${want.year}-${String(want.month).padStart(2, '0')}-${String(want.day).padStart(2, '0')}`, want.days], from.toDateString());
-    }
-    eq(nextEvent(new Date(2026, 10, 12), DIGITS).date, '2026-11-15', 'the date of the review: the 15th is next');
-    eq([nextEvent(new Date(2026, 10, 15), DIGITS).days, nextEvent(new Date(2026, 10, 15, 23, 59), DIGITS).days], [0, 0], 'on the day itself: today');
-    eq(nextEvent(new Date(2026, 10, 15), DIGITS, id => id === 'd20261115').date, '2026-11-28', 'an answered day is skipped');
-    const skipAll = nextEvent(new Date(2026, 10, 12), DIGITS, () => true);
-    eq(skipAll, null, 'nothing left within the search: null');
-    eq(nextEvent(new Date(2026, 11, 28), DIGITS).date.slice(0, 4), '2027', 'over the year');
-    eq(nextEvent(new Date(2026, 10, 12), [1, 1, 2, 3]), null, 'no valid digits, no day');
-  });
+      eq(
+        nextEvent(new Date(2026, 10, 12), DIGITS).date,
+        '2026-11-15',
+        'the date of the review: the 15th is next',
+      );
+      eq(
+        [
+          nextEvent(new Date(2026, 10, 15), DIGITS).days,
+          nextEvent(new Date(2026, 10, 15, 23, 59), DIGITS).days,
+        ],
+        [0, 0],
+        'on the day itself: today',
+      );
+      eq(
+        nextEvent(new Date(2026, 10, 15), DIGITS, id => id === 'd20261115').date,
+        '2026-11-28',
+        'an answered day is skipped',
+      );
+      const skipAll = nextEvent(new Date(2026, 10, 12), DIGITS, () => true);
+      eq(skipAll, null, 'nothing left within the search: null');
+      eq(nextEvent(new Date(2026, 11, 28), DIGITS).date.slice(0, 4), '2027', 'over the year');
+      eq(nextEvent(new Date(2026, 10, 12), [1, 1, 2, 3]), null, 'no valid digits, no day');
+    },
+  );
 
   t('offer days: the candidates of a month are the days whose value is a secret digit', () => {
-    eq(MONTHS.map(month => candidates(2027, month, DIGITS)), CANDIDATES_2027);
+    eq(
+      MONTHS.map(month => candidates(2027, month, DIGITS)),
+      CANDIDATES_2027,
+    );
     for (const { year, month } of calendar()) {
       const days = candidates(year, month, DIGITS);
       for (let day = 1; day <= daysInMonth(year, month); day++) {
@@ -113,7 +167,10 @@ export function themeCalendarTests(t, ok, eq) {
     for (const { year, month, plan } of calendar()) {
       const days = candidates(year, month, DIGITS);
       ok(plan.length === 1 || plan.length === 2, `${year}-${month}`);
-      ok(plan.every(day => days.includes(day)), `${year}-${month}: only candidates`);
+      ok(
+        plan.every(day => days.includes(day)),
+        `${year}-${month}: only candidates`,
+      );
       if (plan.length === 2) {
         ok(plan[1] - plan[0] >= MIN_GAP, `${year}-${month}: ${plan}`);
         twice++;
@@ -156,13 +213,25 @@ export function themeCalendarTests(t, ok, eq) {
         ids.add(event.id);
       }
     }
-    eq(ids.size, calendar().reduce((sum, c) => sum + c.plan.length, 0), 'one id for each day');
+    eq(
+      ids.size,
+      calendar().reduce((sum, c) => sum + c.plan.length, 0),
+      'one id for each day',
+    );
   });
 
   t('offer days: without four different digits nothing is offered', () => {
     ok(validDigits(DIGITS) && validDigits([0, 1, 2, 9]));
-    for (const bad of [[2, 1, 9], [2, 1, 9, 9], [2, 1, 9, 10], [2, 1, 9, -1], [2, 1, 9, 0.5],
-      null, undefined, 'x']) {
+    for (const bad of [
+      [2, 1, 9],
+      [2, 1, 9, 9],
+      [2, 1, 9, 10],
+      [2, 1, 9, -1],
+      [2, 1, 9, 0.5],
+      null,
+      undefined,
+      'x',
+    ]) {
       ok(!validDigits(bad), `${bad}`);
       eq(eventAt(new Date(2027, 10, 29, 12), bad), null);
     }
@@ -189,7 +258,13 @@ export function themeCalendarTests(t, ok, eq) {
   t('offer days: the rule text has a worked example that is computed, and is no offer day', () => {
     const example = ruleExample();
     eq(example, {
-      date: '2031-06-27', day: 27, month: 6, last: 1, first: 29, xor: 28, value: 12,
+      date: '2031-06-27',
+      day: 27,
+      month: 6,
+      last: 1,
+      first: 29,
+      xor: 28,
+      value: 12,
     });
     eq(example.value, dateValue(2031, 6, 27));
     ok(example.value > 9, 'a value of 10 or more is no digit');

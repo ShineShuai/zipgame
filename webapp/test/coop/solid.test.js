@@ -6,7 +6,15 @@ import { topologyOf } from '../../src/core/surface/puzzle.js';
 import { cellDirection, turn } from '../../src/view/proj.js';
 import { createDrawing } from '../../src/coop/drawing.js';
 import {
-  IDENTITY, isSolid, layoutsFor, netPoint, solidBoard, startRotation, turnBy, turnByKey, turnable,
+  IDENTITY,
+  isSolid,
+  layoutsFor,
+  netPoint,
+  solidBoard,
+  startRotation,
+  turnBy,
+  turnByKey,
+  turnable,
 } from '../../src/coop/solid.js';
 import { COOP_VARIANTS } from '../../src/coop/variants.js';
 import { solutionFor } from '../../src/coop/model.js';

@@ -3,7 +3,10 @@
 import '../setup-balls.js';
 import { PER_PICK } from '../../src/core/champ-seal.js';
 import {
-  BACKFILL_KEY, backfillChamp, backfillOpen, isOldWin,
+  BACKFILL_KEY,
+  backfillChamp,
+  backfillOpen,
+  isOldWin,
 } from '../../src/features/champ-backfill.js';
 import { createChamp } from '../../src/features/champ.js';
 import { dateOfDay, utcDayNumber } from '../../src/features/daily.js';
@@ -46,9 +49,13 @@ const setup = async (records, cfg = CFG, st = fakeStorage()) => {
 
 ta('backfill: old wins count once, replays too; the rest does not', async () => {
   const { st, champ, run } = await setup({
-    [dateAt(0)]: old(), [dateAt(1)]: old(), [dateAt(2)]: old({ stats: stats(99) }),
-    [dateAt(3)]: old({ stats: stats(100, 3) }), [dateAt(4)]: old({ live: false }),
-    [dateAt(5)]: old({ live: true, n: 7 }), [dateAt(6)]: old(),
+    [dateAt(0)]: old(),
+    [dateAt(1)]: old(),
+    [dateAt(2)]: old({ stats: stats(99) }),
+    [dateAt(3)]: old({ stats: stats(100, 3) }),
+    [dateAt(4)]: old({ live: false }),
+    [dateAt(5)]: old({ live: true, n: 7 }),
+    [dateAt(6)]: old(),
   });
   eq(await run(), 3);
   eq(champ.progress(), { wins: 3, done: 3, total: PER_PICK });
@@ -80,7 +87,8 @@ ta('backfill: not after the date, without a date, or before the ledger is loaded
   eq(await late.st.get(BACKFILL_KEY), null, 'no marker: nothing was done');
   const none = await setup(records, { ...CFG, backfillUntil: null });
   eq(await none.run(), 0);
-  const st = fakeStorage(), store = createStore(st, [7]);
+  const st = fakeStorage(),
+    store = createStore(st, [7]);
   await store.saveAttempt(dateAt(0), old());
   const cold = createChamp(st, CFG, atDay(19));
   eq(await backfillChamp(cold, store, st, CFG, () => NOW), 0, 'no init yet');

@@ -16,7 +16,11 @@ const drawn = edges => {
 };
 
 test('a press on a line, between its two cells, points at that line', () => {
-  const drawing = drawn([[5, 6], [6, 7], [10, 14]]);
+  const drawing = drawn([
+    [5, 6],
+    [6, 7],
+    [10, 14],
+  ]);
   assert.deepEqual(edgeAt(drawing, 2.0, 1.5), [5, 6]); // the border of cells 5 and 6
   assert.deepEqual(edgeAt(drawing, 3.0, 1.5), [6, 7]);
   assert.deepEqual(edgeAt(drawing, 2.5, 3.0), [10, 14]); // vertical line, between rows 2 and 3
@@ -37,13 +41,19 @@ test('the line ends at the cell centres: a press beyond them is not on the line'
 });
 
 test('at a cell centre, where two lines meet, the line whose middle is nearer wins', () => {
-  const drawing = drawn([[5, 6], [5, 9]]);
+  const drawing = drawn([
+    [5, 6],
+    [5, 9],
+  ]);
   assert.deepEqual(edgeAt(drawing, 1.5 + 0.2, 1.5 + 0.05), [5, 6]); // right of the centre
   assert.deepEqual(edgeAt(drawing, 1.5 + 0.05, 1.5 + 0.2), [5, 9]); // below it
 });
 
 test('the nearest of several lines wins', () => {
-  const drawing = drawn([[5, 6], [9, 10]]);
+  const drawing = drawn([
+    [5, 6],
+    [9, 10],
+  ]);
   assert.deepEqual(edgeAt(drawing, 2.0, 2.45), [9, 10]);
   assert.deepEqual(edgeAt(drawing, 2.0, 1.55), [5, 6]);
 });
@@ -74,6 +84,9 @@ test('a press on a line of a Pentagon board points at it (units of CELL)', () =>
   const next = topologyOf(puzzle).nb[7 * SLOTS]; // a neighbour of cell 7
   assert.equal(drawing.add(7, next), null);
   const [x, y] = edgeMiddleOf(puzzle, 7, next, CELL);
-  assert.deepEqual(edgeAt(drawing, x, y, 0.3 * CELL, CELL), [Math.min(7, next), Math.max(7, next)]);
+  assert.deepEqual(edgeAt(drawing, x, y, 0.3 * CELL, CELL), [
+    Math.min(7, next),
+    Math.max(7, next),
+  ]);
   assert.equal(edgeAt(drawing, x + 3 * CELL, y, 0.3 * CELL, CELL), null);
 });

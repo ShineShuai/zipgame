@@ -13,7 +13,12 @@ import { pathEdgeIds } from '../src/core/edges.js';
 import { ladder } from '../src/core/ladder.js';
 import { randomPathPuzzle, generateUnique } from '../src/core/gen/generate.js';
 import {
-  bridgeCells, colourNumberOf, colourOfCell, colourProblems, markTwoPaths, setColourNumber,
+  bridgeCells,
+  colourNumberOf,
+  colourOfCell,
+  colourProblems,
+  markTwoPaths,
+  setColourNumber,
   splitPath,
 } from '../src/core/twopaths.js';
 import { newPaths, walkColour } from '../src/features/twopaths-play.js';
@@ -51,8 +56,13 @@ export function designTwoPathsTests(t, ok, eq) {
     setColourNumber(p, 12, RED, 3);
     eq(p.split, 3);
     eq([p.cp[20], p.cp[24]], [4, 5]);
-    eq([colourNumberOf(p, 20), colourNumberOf(p, 24)],
-      [{ colour: BLUE, number: 1 }, { colour: BLUE, number: 2 }]);
+    eq(
+      [colourNumberOf(p, 20), colourNumberOf(p, 24)],
+      [
+        { colour: BLUE, number: 1 },
+        { colour: BLUE, number: 2 },
+      ],
+    );
     eq(colourNumberOf(p, 12), { colour: RED, number: 3 });
     eq(colourNumberOf(p, 1), null);
     // taking it away again
@@ -64,7 +74,11 @@ export function designTwoPathsTests(t, ok, eq) {
     // a cell given the other colour loses its old number
     setColourNumber(p, 6, BLUE, 3);
     eq(colourNumberOf(p, 6), { colour: BLUE, number: 3 });
-    eq(p.split, 2, 'red lost its 1: red has only 2 left, so split stays at the highest red number');
+    eq(
+      p.split,
+      2,
+      'red lost its 1: red has only 2 left, so split stays at the highest red number',
+    );
     ok(colourProblems(p).includes('red 1 is missing'), colourProblems(p));
     setColourNumber(p, 0, RED, 1);
     eq(colourProblems(p), null, 'red 1, red 2, blue 1, 2, 3');
@@ -90,7 +104,7 @@ export function designTwoPathsTests(t, ok, eq) {
     }
   });
 
-  t('design-twopaths: colourProblems — in the board\'s words (red 3 is missing)', () => {
+  t("design-twopaths: colourProblems — in the board's words (red 3 is missing)", () => {
     const p = makePuzzle(4);
     markTwoPaths(p);
     ok(/red path needs at least 2/.test(colourProblems(p)), 'empty');
@@ -155,9 +169,13 @@ export function designTwoPathsTests(t, ok, eq) {
 
   t('design-twopaths: generateUnique with twopaths — one solution, within the walls', () => {
     for (const n of [5, 6, 7]) {
-      const r = runSync(generateUnique(n, n + 1, makeRng(n), {
-        maxWalls: 12, tries: 20, twopaths: true,
-      }));
+      const r = runSync(
+        generateUnique(n, n + 1, makeRng(n), {
+          maxWalls: 12,
+          tries: 20,
+          twopaths: true,
+        }),
+      );
       ok(r.unique, `n=${n}: unique`);
       ok(r.puzzle.split >= 2, 'a Two paths puzzle');
       eq(solve(r.puzzle, { limit: 2, nodeCap: 1e6, prop: true }).count, 1, `n=${n}: one solution`);
@@ -224,8 +242,9 @@ export function designTwoPathsTests(t, ok, eq) {
     for (const cell of red) eq(walkColour(p, paths, RED, cell, opts), 'push', `cell ${cell}`);
     // on its last number a path goes no further (strictOrder)
     const last = red[red.length - 1];
-    const around = [last - 1, last + 1, last - 6, last + 6].filter(c => c >= 0 && c < 36
-      && !paths[RED].includes(c) && colourOfCell(p, c) !== BLUE);
+    const around = [last - 1, last + 1, last - 6, last + 6].filter(
+      c => c >= 0 && c < 36 && !paths[RED].includes(c) && colourOfCell(p, c) !== BLUE,
+    );
     for (const cell of around) {
       eq(walkColour(p, paths, RED, cell, opts), null, `nothing after red's last number (${cell})`);
     }

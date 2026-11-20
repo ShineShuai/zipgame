@@ -24,44 +24,94 @@ import { runSync } from '../src/core/run.js';
 import { serialize } from '../src/core/format.js';
 
 const args = process.argv.slice(2);
-const opt = (name, dflt) => { const i = args.indexOf('--' + name); return i >= 0 ? args[i + 1] : dflt; };
+const opt = (name, dflt) => {
+  const i = args.indexOf('--' + name);
+  return i >= 0 ? args[i + 1] : dflt;
+};
 const flag = name => args.includes('--' + name);
-const die = msg => { console.error('gen-target: ' + msg); process.exit(1); };
+const die = msg => {
+  console.error('gen-target: ' + msg);
+  process.exit(1);
+};
 
-const n = +opt('size'), grade = +opt('grade'), seed0 = +opt('seed', 1), count = +opt('count', 1);
+const n = +opt('size'),
+  grade = +opt('grade'),
+  seed0 = +opt('seed', 1),
+  count = +opt('count', 1);
 const maxWalls = opt('max-walls') === undefined ? undefined : +opt('max-walls');
 const maxCheckpoints = opt('max-checkpoints') === undefined ? undefined : +opt('max-checkpoints');
 const minCheckpoints = opt('min-checkpoints') === undefined ? undefined : +opt('min-checkpoints');
-const retries = opt('retries') === undefined ? Infinity : +opt('retries'), effort = +opt('effort', 1);
-const outDir = opt('out'), minimize = !flag('no-minimize'), allowMiss = flag('allow-miss'), json = flag('json'), withTime = flag('time');
-const atLeast = flag('at-least'), margin = opt('margin') === undefined ? undefined : +opt('margin');
+const retries = opt('retries') === undefined ? Infinity : +opt('retries'),
+  effort = +opt('effort', 1);
+const outDir = opt('out'),
+  minimize = !flag('no-minimize'),
+  allowMiss = flag('allow-miss'),
+  json = flag('json'),
+  withTime = flag('time');
+const atLeast = flag('at-least'),
+  margin = opt('margin') === undefined ? undefined : +opt('margin');
 if (!Number.isInteger(n) || n < 5 || n > 16) die('--size needs an integer 5..16');
 if (!Number.isInteger(grade) || grade < 0 || grade > 5) die('--grade needs an integer 0..5');
-if (!Number.isInteger(seed0) || !Number.isInteger(count) || count < 1) die('--seed / --count need integers (count >= 1)');
+if (!Number.isInteger(seed0) || !Number.isInteger(count) || count < 1)
+  die('--seed / --count need integers (count >= 1)');
 if (maxWalls !== undefined && !(maxWalls >= 0)) die('--max-walls needs a number >= 0');
-if (maxCheckpoints !== undefined && !(maxCheckpoints >= 2)) die('--max-checkpoints needs a number >= 2');
-if (minCheckpoints !== undefined && !(minCheckpoints >= 2)) die('--min-checkpoints needs a number >= 2');
+if (maxCheckpoints !== undefined && !(maxCheckpoints >= 2))
+  die('--max-checkpoints needs a number >= 2');
+if (minCheckpoints !== undefined && !(minCheckpoints >= 2))
+  die('--min-checkpoints needs a number >= 2');
 if (minCheckpoints > maxCheckpoints) die('--min-checkpoints is larger than --max-checkpoints');
-if (!(retries >= 1) || (retries !== Infinity && !Number.isInteger(retries))) die('--retries needs an integer >= 1');
+if (!(retries >= 1) || (retries !== Infinity && !Number.isInteger(retries)))
+  die('--retries needs an integer >= 1');
 if (!(effort > 0)) die('--effort needs a number > 0');
 if (margin !== undefined && !(margin >= 0)) die('--margin needs a number >= 0');
 
 const top = maxTargetGrade(n);
-if (grade > top) console.error(`gen-target: ${n}x${n} cannot show grade ${grade}; aiming at ${top}`);
+if (grade > top)
+  console.error(`gen-target: ${n}x${n} cannot show grade ${grade}; aiming at ${top}`);
 if (outDir) mkdirSync(outDir, { recursive: true });
 
 let missed = 0;
 for (let i = 0; i < count; i++) {
   const seed = seed0 + i;
-  const r = runSync(generateTargeted(n, grade, seed, { retries, effort, maxWalls, minCheckpoints, maxCheckpoints, minimize, atLeast, margin }));
+  const r = runSync(
+    generateTargeted(n, grade, seed, {
+      retries,
+      effort,
+      maxWalls,
+      minCheckpoints,
+      maxCheckpoints,
+      minimize,
+      atLeast,
+      margin,
+    }),
+  );
   const ok = r.puzzle && r.hit;
-  console.error(`seed ${seed}: ${r.puzzle ? `grade ${r.grade} (target ${r.target}${atLeast ? '+' : ''}${r.inside ? ', inside the margin' : ''}), ${r.walls} walls, ${r.K} checkpoints` : 'no puzzle'}, ` +
-    `${(r.elapsedMs / 1000).toFixed(1)} s, ${r.proposals} changes, ${r.tries} tries${ok ? '' : ' -> MISSED'}`);
+  console.error(
+    `seed ${seed}: ${r.puzzle ? `grade ${r.grade} (target ${r.target}${atLeast ? '+' : ''}${r.inside ? ', inside the margin' : ''}), ${r.walls} walls, ${r.K} checkpoints` : 'no puzzle'}, ` +
+      `${(r.elapsedMs / 1000).toFixed(1)} s, ${r.proposals} changes, ${r.tries} tries${ok ? '' : ' -> MISSED'}`,
+  );
   if (!ok) missed++;
   if (!r.puzzle || (!ok && !allowMiss)) continue;
   const text = serialize(r.puzzle, withTime ? { times: { generateMs: r.elapsedMs } } : {});
   if (outDir) writeFileSync(join(outDir, `zip-${n}x${n}-g${r.grade}-s${seed}.txt`), text + '\n');
-  if (json) console.log(JSON.stringify({ seed, size: n, target: r.target, grade: r.grade, pred: r.pred, hit: r.hit, inside: r.inside, walls: r.walls, checkpoints: r.K, tries: r.tries, changes: r.proposals, ms: Math.round(r.elapsedMs), puzzle: text }));
+  if (json)
+    console.log(
+      JSON.stringify({
+        seed,
+        size: n,
+        target: r.target,
+        grade: r.grade,
+        pred: r.pred,
+        hit: r.hit,
+        inside: r.inside,
+        walls: r.walls,
+        checkpoints: r.K,
+        tries: r.tries,
+        changes: r.proposals,
+        ms: Math.round(r.elapsedMs),
+        puzzle: text,
+      }),
+    );
   else if (!outDir) console.log(text + (count > 1 ? '\n' : ''));
 }
 process.exit(missed && !allowMiss ? 2 : 0);

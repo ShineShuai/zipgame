@@ -1,12 +1,18 @@
 // Tests of the "One way arrows" core: arrow edges (core/edges.js), the rules (core/rules.js) and
 // the directed solver (core/solver/solve-dir.js). Registered by unit/arrows.test.js: directedTests(t, ok,
 // eq).
+import { makePuzzle, clonePuzzle, validate, endCell } from '../src/core/model.js';
 import {
-  makePuzzle, clonePuzzle, validate, endCell,
-} from '../src/core/model.js';
-import {
-  edgeId, allEdges, setWallId, setArrowId, arrowDirId, arrowAllows, arrowMove, arrowIds,
-  arrowCount, arrowProblem,
+  edgeId,
+  allEdges,
+  setWallId,
+  setArrowId,
+  arrowDirId,
+  arrowAllows,
+  arrowMove,
+  arrowIds,
+  arrowCount,
+  arrowProblem,
 } from '../src/core/edges.js';
 import { canStep, step } from '../src/core/rules.js';
 import { sampled } from './harness.js';
@@ -30,10 +36,18 @@ function randomArrowPuzzle(seed, n, K, arrowFrac, wallFrac = 0, holeCount = 0) {
   p.arrows = new Uint8Array(n * n);
   if (holeCount) {
     p.holes = new Uint8Array(n * n);
-    shuffle([...Array(n * n).keys()], rnd).slice(0, holeCount).forEach(c => { p.holes[c] = 1; });
+    shuffle([...Array(n * n).keys()], rnd)
+      .slice(0, holeCount)
+      .forEach(c => {
+        p.holes[c] = 1;
+      });
   }
   const cells = [...Array(n * n).keys()].filter(c => !(p.holes && p.holes[c]));
-  shuffle(cells, rnd).slice(0, K).forEach((c, i) => { p.cp[c] = i + 1; });
+  shuffle(cells, rnd)
+    .slice(0, K)
+    .forEach((c, i) => {
+      p.cp[c] = i + 1;
+    });
   for (const e of allEdges(n, p.holes)) {
     const r = rnd();
     if (r < wallFrac) setWallId(p.walls, e, true);
@@ -50,7 +64,9 @@ function plantedArrowPuzzle(seed, n, K, arrowFrac) {
   const path = backbite(n, rnd);
   const p = makePuzzle(n);
   p.arrows = new Uint8Array(n * n);
-  randomCheckpoints(path.length, K, rnd).forEach((at, i) => { p.cp[path[at]] = i + 1; });
+  randomCheckpoints(path.length, K, rnd).forEach((at, i) => {
+    p.cp[path[at]] = i + 1;
+  });
   const along = new Map();
   for (let i = 1; i < path.length; i++) {
     along.set(edgeId(n, path[i - 1], path[i]), path[i - 1] < path[i] ? 1 : -1);
@@ -121,12 +137,43 @@ export function directedTests(t, ok, eq) {
       fn(c);
       return validate(c);
     };
-    ok(!bad(c => { c.arrows = new Uint8Array(8); }).ok, 'wrong size');
-    ok(!bad(c => { c.arrows[2] = 1; }).ok, 'right arrow on the last column');
-    ok(!bad(c => { c.arrows[6] = 2; }).ok, 'down arrow on the last row');
-    ok(!bad(c => { c.arrows[0] = 4; }).ok, 'direction bit without an arrow');
-    ok(!bad(c => { c.holes = new Uint8Array(9); c.holes[5] = 1; }).ok, 'arrow next to a hole');
-    ok(!bad(c => { setWallId(c.walls, edgeId(3, 4, 5), true); }).ok, 'arrow and wall on one edge');
+    ok(
+      !bad(c => {
+        c.arrows = new Uint8Array(8);
+      }).ok,
+      'wrong size',
+    );
+    ok(
+      !bad(c => {
+        c.arrows[2] = 1;
+      }).ok,
+      'right arrow on the last column',
+    );
+    ok(
+      !bad(c => {
+        c.arrows[6] = 2;
+      }).ok,
+      'down arrow on the last row',
+    );
+    ok(
+      !bad(c => {
+        c.arrows[0] = 4;
+      }).ok,
+      'direction bit without an arrow',
+    );
+    ok(
+      !bad(c => {
+        c.holes = new Uint8Array(9);
+        c.holes[5] = 1;
+      }).ok,
+      'arrow next to a hole',
+    );
+    ok(
+      !bad(c => {
+        setWallId(c.walls, edgeId(3, 4, 5), true);
+      }).ok,
+      'arrow and wall on one edge',
+    );
     eq(arrowProblem(p), null);
   });
 
@@ -161,7 +208,7 @@ export function directedTests(t, ok, eq) {
     eq(solve(p, { limit: 1 }).count, 1, 'limit stops the search');
   });
 
-  t('solve: an all-zero arrows array gives the standard solver\'s solutions', () => {
+  t("solve: an all-zero arrows array gives the standard solver's solutions", () => {
     for (let seed = 1; seed <= 24; seed++) {
       const n = 4 + (seed % 2);
       const std = randomArrowPuzzle(seed, n, 3 + (seed % 3), 0, 0.3);
@@ -182,7 +229,10 @@ export function directedTests(t, ok, eq) {
         if (v < 0) continue;
         moves++;
         ok(canStep(p, u, v), `move ${u} -> ${v} is a legal step`);
-        ok([0, 1, 2, 3].some(k => pre[v * 4 + k] === u), `${u} is a predecessor of ${v}`);
+        ok(
+          [0, 1, 2, 3].some(k => pre[v * 4 + k] === u),
+          `${u} is a predecessor of ${v}`,
+        );
       }
     }
     let preds = 0;
@@ -197,44 +247,55 @@ export function directedTests(t, ok, eq) {
   });
 
   // The solver against plain enumeration: same solution set for random arrows, walls and holes.
-  const differential = (name, allCases, make) => t(`solve-dir: ${name} match brute force`, () => {
-    const cases = sampled(allCases);
-    let total = 0;
-    let multi = 0;
-    for (const [seed, n, K, arrowFrac, wallFrac, holes] of cases) {
-      const p = make(seed, n, K, arrowFrac, wallFrac, holes);
-      const want = brute(p);
-      total += want.length;
-      if (want.length > 1) multi++;
-      const cells = want.length ? want[0].split(',').map(Number) : [];
-      const rnd = makeRng(seed * 31 + 5);
-      const picks = [[cells[2], cells[3]], [cells[3], cells[2]]];
-      for (let i = 0; i < 2; i++) {
-        const a = (rnd() * n * n) | 0;
-        const b = canStep(p, a, a + 1) ? a + 1 : a + n;
-        if (b < n * n) picks.push([a, b]);
-      }
-      const prefix = cells.slice(0, 4);
-      const below = want.filter(x => x.startsWith(prefix.join(',') + ','));
-      for (const mode of MODES) {
-        const tag = `seed ${seed} n ${n} K ${K} ${JSON.stringify(mode)}`;
-        const got = solved(p, mode);
-        ok(!got.exceeded, `${tag}: not capped`);
-        eq(joined(got), want, tag);
-        const lim = solve(p, { nodeCap: 5e6, ...mode });
-        eq(lim.count, Math.min(2, want.length), `${tag}: default limit 2`);
-        if (!want.length) continue;
-        for (const [a, b] of picks) {
-          const using = want.filter(x => usesMove(x, a, b));
-          const r = solved(p, { mustUse: [a, b], ...mode });
-          eq(joined(r), using, `${tag}: mustUse ${a}->${b}`);
+  const differential = (name, allCases, make) =>
+    t(`solve-dir: ${name} match brute force`, () => {
+      const cases = sampled(allCases);
+      let total = 0;
+      let multi = 0;
+      for (const [seed, n, K, arrowFrac, wallFrac, holes] of cases) {
+        const p = make(seed, n, K, arrowFrac, wallFrac, holes);
+        const want = brute(p);
+        total += want.length;
+        if (want.length > 1) multi++;
+        const cells = want.length ? want[0].split(',').map(Number) : [];
+        const rnd = makeRng(seed * 31 + 5);
+        const picks = [
+          [cells[2], cells[3]],
+          [cells[3], cells[2]],
+        ];
+        for (let i = 0; i < 2; i++) {
+          const a = (rnd() * n * n) | 0;
+          const b = canStep(p, a, a + 1) ? a + 1 : a + n;
+          if (b < n * n) picks.push([a, b]);
         }
-        eq(solved(p, { forced: prefix, ...mode }).count, below.length, `${tag}: forced ${prefix}`);
+        const prefix = cells.slice(0, 4);
+        const below = want.filter(x => x.startsWith(prefix.join(',') + ','));
+        for (const mode of MODES) {
+          const tag = `seed ${seed} n ${n} K ${K} ${JSON.stringify(mode)}`;
+          const got = solved(p, mode);
+          ok(!got.exceeded, `${tag}: not capped`);
+          eq(joined(got), want, tag);
+          const lim = solve(p, { nodeCap: 5e6, ...mode });
+          eq(lim.count, Math.min(2, want.length), `${tag}: default limit 2`);
+          if (!want.length) continue;
+          for (const [a, b] of picks) {
+            const using = want.filter(x => usesMove(x, a, b));
+            const r = solved(p, { mustUse: [a, b], ...mode });
+            eq(joined(r), using, `${tag}: mustUse ${a}->${b}`);
+          }
+          eq(
+            solved(p, { forced: prefix, ...mode }).count,
+            below.length,
+            `${tag}: forced ${prefix}`,
+          );
+        }
       }
-    }
-    const enough = total >= cases.length / 2 && multi >= cases.length / 10;
-    ok(enough || make === randomArrowPuzzle, `weak coverage: ${total} solutions, ${multi} multi`);
-  });
+      const enough = total >= cases.length / 2 && multi >= cases.length / 10;
+      ok(
+        enough || make === randomArrowPuzzle,
+        `weak coverage: ${total} solutions, ${multi} multi`,
+      );
+    });
   const cases3 = [];
   for (let s = 1; s <= 50; s++) cases3.push([s, 3, 2 + (s % 3), 0.1 + (s % 5) * 0.1]);
   const cases4 = [];
@@ -420,20 +481,23 @@ export function directedTests(t, ok, eq) {
     eq(strangers, 0, 'no position that was never added');
   });
 
-  t.slow('solve-dir: the table of dead positions saves nodes; no search sees an earlier one', () => {
-    let withMemo = 0;
-    let without = 0;
-    for (let seed = 1; seed <= 12; seed++) {
-      const p = plantedArrowPuzzle(1300 + seed, 7, 7, 0.12);
-      const a = solved(p);
-      const b = solved(p, { memo: false });
-      eq(joined(a), joined(b), `seed ${seed}`);
-      eq(a.count, solved(p).count, `seed ${seed}: the same again`);
-      withMemo += a.nodes;
-      without += b.nodes;
-    }
-    ok(withMemo < without, `${withMemo} nodes with the table, ${without} without`);
-  });
+  t.slow(
+    'solve-dir: the table of dead positions saves nodes; no search sees an earlier one',
+    () => {
+      let withMemo = 0;
+      let without = 0;
+      for (let seed = 1; seed <= 12; seed++) {
+        const p = plantedArrowPuzzle(1300 + seed, 7, 7, 0.12);
+        const a = solved(p);
+        const b = solved(p, { memo: false });
+        eq(joined(a), joined(b), `seed ${seed}`);
+        eq(a.count, solved(p).count, `seed ${seed}: the same again`);
+        withMemo += a.nodes;
+        without += b.nodes;
+      }
+      ok(withMemo < without, `${withMemo} nodes with the table, ${without} without`);
+    },
+  );
 
   t('solve-dir: decisions are counted; hopeless puzzles give 0 solutions at once', () => {
     const p = plantedArrowPuzzle(11, 5, 4, 0.1);

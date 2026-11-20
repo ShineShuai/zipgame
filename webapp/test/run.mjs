@@ -20,8 +20,12 @@ if (!['fast', 'slow', 'all'].includes(tier)) {
   process.exit(2);
 }
 
-const inDir = dir => fs.readdirSync(`${root}test/${dir}`)
-  .filter(file => file.endsWith('.test.js')).sort().map(file => `test/${dir}/${file}`);
+const inDir = dir =>
+  fs
+    .readdirSync(`${root}test/${dir}`)
+    .filter(file => file.endsWith('.test.js'))
+    .sort()
+    .map(file => `test/${dir}/${file}`);
 const hasSlow = file => fs.readFileSync(`${root}${file}`, 'utf8').includes('SLOW');
 // The groups of suites. Files of test/unit may hold either kind of test; the co-op and sync files
 // are plain node:test files, and one without a SLOW test has nothing to run in the slow tier.
@@ -48,16 +52,27 @@ const result = spawnSync(process.execPath, ['--import', budget, '--test', ...pas
 });
 
 const over = fs.existsSync(reportFile)
-  ? fs.readFileSync(reportFile, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line))
-    .sort((a, b) => b.cpu - a.cpu)
+  ? fs
+      .readFileSync(reportFile, 'utf8')
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map(line => JSON.parse(line))
+      .sort((a, b) => b.cpu - a.cpu)
   : [];
 fs.rmSync(reportFile, { force: true });
 if (over.length) {
-  const lines = over.map(({ file, name, cpu, wall }) => `${file}: ${name} (${cpu} ms of CPU, ${wall} ms of wall time)`);
-  console.log(`\nFast tests over the budget, mark them slow:\n${lines.map(line => `  ${line}`).join('\n')}`);
+  const lines = over.map(
+    ({ file, name, cpu, wall }) => `${file}: ${name} (${cpu} ms of CPU, ${wall} ms of wall time)`,
+  );
+  console.log(
+    `\nFast tests over the budget, mark them slow:\n${lines.map(line => `  ${line}`).join('\n')}`,
+  );
   if (process.env.GITHUB_STEP_SUMMARY) {
-    fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
-      `### Fast tests over the budget (mark them slow)\n\n${lines.map(line => `- ${line}`).join('\n')}\n`);
+    fs.appendFileSync(
+      process.env.GITHUB_STEP_SUMMARY,
+      `### Fast tests over the budget (mark them slow)\n\n${lines.map(line => `- ${line}`).join('\n')}\n`,
+    );
   }
 }
 process.exit(result.status ?? 1);

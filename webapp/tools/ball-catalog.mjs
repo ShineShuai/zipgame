@@ -76,10 +76,12 @@ const cellsOf = (kind, mesh) => {
 const alike = mesh => mesh.faces.every(ring => ring.length === mesh.faces[0].length);
 
 function usable(mesh) {
-  return isClosed(mesh)
-    && mesh.faces.length >= 4
-    && mesh.faces.every(ring => ring.length >= 3 && ring.length <= 5)
-    && mesh.planes.every(({ d }) => d > 0.05);
+  return (
+    isClosed(mesh) &&
+    mesh.faces.length >= 4 &&
+    mesh.faces.every(ring => ring.length >= 3 && ring.length <= 5) &&
+    mesh.planes.every(({ d }) => d > 0.05)
+  );
 }
 
 function* candidates() {
@@ -223,10 +225,20 @@ function render(entries) {
     }
     lines.push(`    h: ${quote(fnv(JSON.stringify(entry.r)))},`);
     lines.push('    v: [');
-    lines.push(wrapped(entry.v.map(p => `[${p.join(', ')}]`), '      '));
+    lines.push(
+      wrapped(
+        entry.v.map(p => `[${p.join(', ')}]`),
+        '      ',
+      ),
+    );
     lines.push('    ],');
     lines.push('    r: [');
-    lines.push(wrapped(entry.r.map(ring => `[${ring.join(', ')}]`), '      '));
+    lines.push(
+      wrapped(
+        entry.r.map(ring => `[${ring.join(', ')}]`),
+        '      ',
+      ),
+    );
     lines.push('    ],');
     lines.push('  },');
     return lines.join('\n');
