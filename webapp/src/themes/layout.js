@@ -8,5 +8,10 @@ export const LAYOUT = {
 export const DEFAULT_LAYOUT = { menu: 'dashboard', picker: 'tiles', actions: 'side' };
 
 // A layout object with every axis present and known.
-export const cleanLayout = raw => Object.fromEntries(Object.entries(LAYOUT)
-  .map(([axis, keys]) => [axis, keys.includes(raw?.[axis]) ? raw[axis] : DEFAULT_LAYOUT[axis]]));
+export const cleanLayout = raw =>
+  Object.fromEntries(
+    Object.entries(LAYOUT).map(([axis, keys]) => [
+      axis,
+      keys.includes(raw?.[axis]) ? raw[axis] : DEFAULT_LAYOUT[axis],
+    ]),
+  );

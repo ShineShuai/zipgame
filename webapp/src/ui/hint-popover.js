@@ -24,7 +24,12 @@ function attachOne(el) {
   // that node. A data-hint attribute (used for dynamically-created controls) always wins when set,
   // since those are plain strings by convention, not markup.
   const usingMarkup = el.dataset.hint == null && el.children.length > 0;
-  const content = el.dataset.hint != null ? el.dataset.hint : (usingMarkup ? el.innerHTML.trim() : el.textContent.trim());
+  const content =
+    el.dataset.hint != null
+      ? el.dataset.hint
+      : usingMarkup
+        ? el.innerHTML.trim()
+        : el.textContent.trim();
   el.dataset.hint = usingMarkup ? '' : content; // markup form isn't representable as a single data-hint string; leave empty rather than store lossy text
   el.innerHTML = '';
   el.classList.add('hint-icon');
@@ -33,7 +38,8 @@ function attachOne(el) {
   el.setAttribute('aria-label', 'Show hint');
   const pop = document.createElement('div');
   pop.className = POPOVER_CLASS;
-  if (usingMarkup) pop.innerHTML = content; else pop.textContent = content;
+  if (usingMarkup) pop.innerHTML = content;
+  else pop.textContent = content;
   el.appendChild(pop);
 
   const show = () => {
@@ -57,12 +63,16 @@ function attachOne(el) {
 // attaches any element carrying a bare data-hint attribute that isn't a .hint block. Safe to call
 // repeatedly (e.g. after re-rendering a panel's innerHTML) — already-converted elements are skipped.
 export function initHints(root = document) {
-  root.querySelectorAll('.hint:not([data-hint-attached]), [data-hint]:not([data-hint-attached])').forEach(attachOne);
+  root
+    .querySelectorAll('.hint:not([data-hint-attached]), [data-hint]:not([data-hint-attached])')
+    .forEach(attachOne);
 }
 
 // Attach a single dynamically-created element (already has data-hint set) without rescanning the
 // whole root — cheaper when only one new control was just added.
-export function attachHint(el) { attachOne(el); }
+export function attachHint(el) {
+  attachOne(el);
+}
 
 // Updates the text of an already-attached hint (e.g. a status hint whose message changes with
 // app state, like design/main.js's mode-dependent #hint). Setting .textContent directly on an
@@ -71,5 +81,6 @@ export function attachHint(el) { attachOne(el); }
 export function setHintText(el, text) {
   el.dataset.hint = text;
   const pop = el.querySelector(`.${POPOVER_CLASS}`);
-  if (pop) pop.textContent = text; else attachOne(el); // not yet attached — attach now with this text
+  if (pop) pop.textContent = text;
+  else attachOne(el); // not yet attached — attach now with this text
 }

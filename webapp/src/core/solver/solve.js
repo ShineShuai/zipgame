@@ -1,7 +1,19 @@
 import {
-  maxNumber, startCell, endCell, cellCount, exactRanks, exactLegProblem,
+  maxNumber,
+  startCell,
+  endCell,
+  cellCount,
+  exactRanks,
+  exactLegProblem,
 } from '../model.js';
-import { buildNeighbors, makeConnOk, makeNoDeadEnd, makePocketOk, segBlocker, legsCollide } from './prune.js';
+import {
+  buildNeighbors,
+  makeConnOk,
+  makeNoDeadEnd,
+  makePocketOk,
+  segBlocker,
+  legsCollide,
+} from './prune.js';
 import { makePropagator } from './propagate.js';
 import { makeIncremental } from './incremental.js';
 import { solveDirected } from './solve-dir.js';
@@ -91,8 +103,10 @@ export function solve(p, opts = {}) {
     throw new Error('solve: a loop puzzle cannot have arrows, Exact numbers or wrap-around (yet)');
   }
   if (p.portals && (p.arrows || p.exact || p.wrap || p.loop || p.holes)) {
-    throw new Error('solve: a Teleport puzzle cannot have holes, arrows, Exact numbers, '
-      + 'wrap-around or a loop (yet)');
+    throw new Error(
+      'solve: a Teleport puzzle cannot have holes, arrows, Exact numbers, ' +
+        'wrap-around or a loop (yet)',
+    );
   }
   if (p.arrows) return solveDirected(p, opts);
   if (p.split) return solveTwo(p, opts, (q, o) => searchPaths(q, o, null));
@@ -123,7 +137,11 @@ function searchPaths(p, opts, steps) {
   // The edges the path must use: none, or one [a, b], or a list of them (see opts.mustUse above).
   // `used` in dfs() is a bit mask over this list; ALL = every one of them is on the path (0 when
   // there is none, which is dfs()'s `used` from the start).
-  const mustList = !opts.mustUse ? [] : Array.isArray(opts.mustUse[0]) ? opts.mustUse : [opts.mustUse];
+  const mustList = !opts.mustUse
+    ? []
+    : Array.isArray(opts.mustUse[0])
+      ? opts.mustUse
+      : [opts.mustUse];
   const NM = mustList.length;
   const MUST_A = Int32Array.from(mustList, edge => edge[0]);
   const MUST_B = Int32Array.from(mustList, edge => edge[1]);
@@ -176,10 +194,10 @@ function searchPaths(p, opts, steps) {
 
   // ---------- search state ----------
 
-  const vis = new Uint8Array(T);        // 1 = cell is on the current path
-  const cand = new Int32Array(T * W);   // per-depth candidate moves
-  const cdeg = new Int32Array(T * W);   // onward degree of each candidate (for ordering)
-  const pathBuf = new Int32Array(T);    // current path
+  const vis = new Uint8Array(T); // 1 = cell is on the current path
+  const cand = new Int32Array(T * W); // per-depth candidate moves
+  const cdeg = new Int32Array(T * W); // onward degree of each candidate (for ordering)
+  const pathBuf = new Int32Array(T); // current path
   const paths = opts.capture ? [] : null;
   let nodes = 0;
   // forced prefix (opts.forced): the prefix's own nodes do not count against the cap (see header).
@@ -231,7 +249,8 @@ function searchPaths(p, opts, steps) {
   if (PARITY) {
     sufParity = new Int32Array(K + 2);
     for (let k = K - 1; k >= 1; k--) {
-      const a = pos[k], b = pos[k + 1];
+      const a = pos[k],
+        b = pos[k + 1];
       const d = a >= 0 && b >= 0 ? metric(a, b) : 0;
       sufParity[k] = (sufParity[k + 1] + d) & 1;
     }
@@ -261,7 +280,7 @@ function searchPaths(p, opts, steps) {
   const vm = ONESHOT ? new Uint8Array(T) : null;
   const ul = ONESHOT ? new Int32Array(T) : null;
   const up = ONESHOT ? new Int32Array(T) : null;
-  let un = TC;     // number of unvisited cells
+  let un = TC; // number of unvisited cells
   if (ONESHOT) {
     for (let i = 0, k = 0; i < T; i++) {
       if (holes && holes[i]) continue;
@@ -326,9 +345,9 @@ function searchPaths(p, opts, steps) {
   // before, so the verdict is always exactly connOk's.
   // the 8-cell ring knows only the four grid neighbours of a cell, so it is off with a portal
   const LCONN = opts.lconn !== false && !p.portals;
-  let ringCell = null;  // ringCell[c * 8 + r]: the r-th cell around c (NW N NE E SE S SW W), -1 off the grid
-  let ringLink = null;  // 1 when ring slots r and r+1 of c are grid-adjacent with no wall between them
-  let cardOpen = null;  // 1 when ring slot r (a cardinal one: N E S W) is joined to c by an open edge
+  let ringCell = null; // ringCell[c * 8 + r]: the r-th cell around c (NW N NE E SE S SW W), -1 off the grid
+  let ringLink = null; // 1 when ring slots r and r+1 of c are grid-adjacent with no wall between them
+  let cardOpen = null; // 1 when ring slot r (a cardinal one: N E S W) is joined to c by an open edge
   if (LCONN) {
     const RING_DR = [-1, -1, -1, 0, 1, 1, 1, 0];
     const RING_DC = [-1, 0, 1, 1, 1, 0, -1, -1];
@@ -340,7 +359,8 @@ function searchPaths(p, opts, steps) {
       for (let r = 0; r < 8; r++) {
         let rr = row[c] + RING_DR[r];
         let cc = col[c] + RING_DC[r];
-        if (p.wrap) { // the ring goes round through the seams
+        if (p.wrap) {
+          // the ring goes round through the seams
           rr = (rr + n) % n;
           cc = (cc + n) % n;
         }
@@ -372,7 +392,8 @@ function searchPaths(p, opts, steps) {
     // Walk the ring both ways from one free neighbour over free cells joined by open edges.
     let seen = 1 << first;
     let r = first;
-    for (let k = 0; k < 7; k++) { // clockwise
+    for (let k = 0; k < 7; k++) {
+      // clockwise
       if (!ringLink[b8 + r]) break;
       const next = (r + 1) & 7;
       const w = ringCell[b8 + next];
@@ -382,7 +403,8 @@ function searchPaths(p, opts, steps) {
     }
     if ((need & seen) === need) return true;
     r = first;
-    for (let k = 0; k < 7; k++) { // counter-clockwise
+    for (let k = 0; k < 7; k++) {
+      // counter-clockwise
       const prev = (r + 7) & 7;
       if (!ringLink[b8 + prev]) break;
       const w = ringCell[b8 + prev];
@@ -409,7 +431,10 @@ function searchPaths(p, opts, steps) {
       const w = nb[c * W + d];
       if (w < 0 || (vis[w] && w !== v)) continue;
       if (first < 0) first = w;
-      else { bTarget[w] = bStamp; left++; }
+      else {
+        bTarget[w] = bStamp;
+        left++;
+      }
     }
     if (left === 0) return true;
     let sp = 0;
@@ -469,12 +494,18 @@ function searchPaths(p, opts, steps) {
       const from = pathBuf[depth - 1];
       for (let d = 0; d < W; d++) if (nb[cell * W + d] === from) av[cell] &= ~(1 << d);
     }
-    let feasible = noDeadEnd(cell)
-      && (LCONN && depth > 0 ? localConn(prev, cell) || neighboursConnected(prev, cell) : connOk(cell, remaining))
-      && (!PROP || (INC
-        ? (depth === 0 ? inc.init(cell, count, NM ? unusedOf(0) : null) : inc.step(prev, cell, count))
-        : skip || prop.deduce(cell, count, ul, un, vm, used === ALL ? null : unusedOf(used))))
-      && (!POCKET || pocketOk(cell));
+    let feasible =
+      noDeadEnd(cell) &&
+      (LCONN && depth > 0
+        ? localConn(prev, cell) || neighboursConnected(prev, cell)
+        : connOk(cell, remaining)) &&
+      (!PROP ||
+        (INC
+          ? depth === 0
+            ? inc.init(cell, count, NM ? unusedOf(0) : null)
+            : inc.step(prev, cell, count)
+          : skip || prop.deduce(cell, count, ul, un, vm, used === ALL ? null : unusedOf(used)))) &&
+      (!POCKET || pocketOk(cell));
     if (feasible && LEG_COLLIDE && need <= K) {
       const legs = [[cell, pos[need]]];
       for (let k = need; k < K; k++) legs.push([pos[k], pos[k + 1]]);
@@ -494,7 +525,8 @@ function searchPaths(p, opts, steps) {
       forcedUnion = new Set();
       const last = SEG_ALL ? K - 1 : Math.min(need, K - 1);
       for (let j = need; j <= last; j++) {
-        const s = pos[j], t = pos[j + 1];
+        const s = pos[j],
+          t = pos[j + 1];
         if (s < 0 || t < 0) continue;
         const f = segBlocker(nb, T, vis, s, t);
         for (const c of f) if (!forcedUnion.has(c)) forcedUnion.add(c);
@@ -547,7 +579,7 @@ function searchPaths(p, opts, steps) {
           // parity for legs pos[need]->...->pos[K] once per DFS node (not per candidate); adding
           // metric(v,target)'s own parity gives the total. remaining-1 = cells left to spend
           // after this move, all the way to path end — an odd mismatch means no path length fits.
-          if (PARITY && (((remaining - 1 - gap - sufParity[need]) & 1) !== 0)) continue;
+          if (PARITY && ((remaining - 1 - gap - sufParity[need]) & 1) !== 0) continue;
         }
         if (D) {
           const dist = D[need * T + v];
@@ -584,7 +616,10 @@ function searchPaths(p, opts, steps) {
       let nowUsed = used;
       if (used !== ALL) {
         for (let i = 0; i < NM; i++) {
-          if ((cell === MUST_A[i] && next === MUST_B[i]) || (cell === MUST_B[i] && next === MUST_A[i])) {
+          if (
+            (cell === MUST_A[i] && next === MUST_B[i]) ||
+            (cell === MUST_B[i] && next === MUST_A[i])
+          ) {
             nowUsed |= 1 << i;
           }
         }
@@ -600,7 +635,11 @@ function searchPaths(p, opts, steps) {
 
   dfs(start, 1, 1, 0, 0, 0);
   return {
-    count: found, exceeded: nodes - prefix > cap, nodes, subNodes: Math.max(0, nodes - prefix), paths: paths || undefined,
+    count: found,
+    exceeded: nodes - prefix > cap,
+    nodes,
+    subNodes: Math.max(0, nodes - prefix),
+    paths: paths || undefined,
     ...(DECISIONS ? { decisionNodes, maxDecisionDepth } : {}),
   };
 }

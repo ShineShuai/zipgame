@@ -14,7 +14,18 @@
 import { genStamp } from '../../core/gotd-gen.js';
 import { parseIndex, planReview, scanPublished, usable } from '../../core/gotd-queue.js';
 import {
-  APPROVE_MIN, GRADE_NAMES, applyVerdicts, parseVerdicts, formatVerdicts, mergeVerdicts, makeVerdict, nextSelection, nextLean, toggleUnsure, createTakebacks, decide,
+  APPROVE_MIN,
+  GRADE_NAMES,
+  applyVerdicts,
+  parseVerdicts,
+  formatVerdicts,
+  mergeVerdicts,
+  makeVerdict,
+  nextSelection,
+  nextLean,
+  toggleUnsure,
+  createTakebacks,
+  decide,
 } from '../../core/gotd-verdict.js';
 import { ratingFromSelection, describeRating, ratingKey } from '../../core/ratings-io.js';
 import { pickStorage } from '../../platform/storage.js';
@@ -28,14 +39,38 @@ function downloadText(text, name) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
   a.download = name;
-  document.body.appendChild(a); a.click(); a.remove();
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 const isoNow = d => d.toISOString().slice(0, 19) + 'Z';
 
-export function mountGotdReview(root, host, { fetchFn = (...a) => fetch(...a), now = () => new Date(), storage = pickStorage, base = QUEUE_URL, puzzles = PUZZLES_URL, download = downloadText } = {}) {
-  let index = null, repo = [], local = [], published = new Set(), currentKey = null, phase = 'idle', current = null, solved = false, playS = 0, sel = null, loaded = false;
-  const skipped = new Set(), takebacks = createTakebacks();
+export function mountGotdReview(
+  root,
+  host,
+  {
+    fetchFn = (...a) => fetch(...a),
+    now = () => new Date(),
+    storage = pickStorage,
+    base = QUEUE_URL,
+    puzzles = PUZZLES_URL,
+    download = downloadText,
+  } = {},
+) {
+  let index = null,
+    repo = [],
+    local = [],
+    published = new Set(),
+    currentKey = null,
+    phase = 'idle',
+    current = null,
+    solved = false,
+    playS = 0,
+    sel = null,
+    loaded = false;
+  const skipped = new Set(),
+    takebacks = createTakebacks();
   root.innerHTML = `
     <div class="gr-line" data-el="counts">Not loaded.</div>
     <div class="gr-row">
@@ -63,45 +98,106 @@ export function mountGotdReview(root, host, { fetchFn = (...a) => fetch(...a), n
       <input type="file" accept=".json,application/json" data-el="file" style="display:none">
     </div>
     <div class="diff-panel-time" data-el="msg"></div>`;
-  const el = name => root.querySelector(`[data-el="${name}"]`), act = name => root.querySelector(`[data-act="${name}"]`);
-  const say = text => { el('msg').textContent = text || ''; };
+  const el = name => root.querySelector(`[data-el="${name}"]`),
+    act = name => root.querySelector(`[data-act="${name}"]`);
+  const say = text => {
+    el('msg').textContent = text || '';
+  };
 
   const merged = () => mergeVerdicts(repo, local);
-  const unsent = () => { const r = new Map(repo.map(v => [v.id, v])); return local.filter(v => { const o = r.get(v.id); return !o || o.at < v.at; }).length; };
+  const unsent = () => {
+    const r = new Map(repo.map(v => [v.id, v]));
+    return local.filter(v => {
+      const o = r.get(v.id);
+      return !o || o.at < v.at;
+    }).length;
+  };
   const today = () => utcDay(now());
   // the plan of the review: the candidates in the order of the open days they fill, then the extra ones (no open day needs them), the days still without an approved one,
   // and which day an approved one gets; no horizon: the days looked at are as many as the candidates in stock can fill
-  const plan = () => (index ? planReview({ today: today(), published, index, verdicts: merged(), stamp: genStamp(), reserve: true }) : { queue: [], open: [], plan: [], span: 0 });
+  const plan = () =>
+    index
+      ? planReview({
+          today: today(),
+          published,
+          index,
+          verdicts: merged(),
+          stamp: genStamp(),
+          reserve: true,
+        })
+      : { queue: [], open: [], plan: [], span: 0 };
   const queue = () => plan().queue.filter(c => !skipped.has(c.id));
   // pending candidates of another generator stamp (a refit or a code change makes a new one) are not offered: fill makes new ones
-  const stale = () => (index ? applyVerdicts(index, merged()).index.candidates.filter(c => c.status === 'pending' && c.stamp !== genStamp()).length : 0);
+  const stale = () =>
+    index
+      ? applyVerdicts(index, merged()).index.candidates.filter(
+          c => c.status === 'pending' && c.stamp !== genStamp(),
+        ).length
+      : 0;
 
   function paint() {
-    const p = plan(), q = p.queue.filter(c => !skipped.has(c.id)), fit = q.filter(c => c.date).length, old = stale(), approved = merged().filter(v => v.verdict === 'approve').length;
+    const p = plan(),
+      q = p.queue.filter(c => !skipped.has(c.id)),
+      fit = q.filter(c => c.date).length,
+      old = stale(),
+      approved = merged().filter(v => v.verdict === 'approve').length;
     const rated = merged().filter(v => v.human !== undefined).length;
-    el('counts').textContent = !loaded ? 'Not loaded.' : `${q.length} to review (${fit} can fill an open day, ${q.length - fit} extra) · ${p.open.length} open day(s) of the next ${p.span} without an approved one · ${merged().length} verdicts (${approved} approved, ${rated} rated) · ${unsent()} not in the repository's verdicts.json yet${old ? ` · ${old} pending candidate(s) of an older generator stamp are not offered (run fill)` : ''}`;
+    el('counts').textContent = !loaded
+      ? 'Not loaded.'
+      : `${q.length} to review (${fit} can fill an open day, ${q.length - fit} extra) · ${p.open.length} open day(s) of the next ${p.span} without an approved one · ${merged().length} verdicts (${approved} approved, ${rated} rated) · ${unsent()} not in the repository's verdicts.json yet${old ? ` · ${old} pending candidate(s) of an older generator stamp are not offered (run fill)` : ''}`;
     act('next').disabled = !loaded || phase === 'playing' || phase === 'rating';
     el('playBtns').style.display = phase === 'playing' ? '' : 'none';
     el('rate').style.display = phase === 'rating' ? '' : 'none';
-    root.querySelectorAll('.diff-rate-btn').forEach(b => b.classList.toggle('sel', !!sel && +b.dataset.grade >= sel.lo && +b.dataset.grade <= sel.hi));
+    root
+      .querySelectorAll('.diff-rate-btn')
+      .forEach(b =>
+        b.classList.toggle(
+          'sel',
+          !!sel && +b.dataset.grade >= sel.lo && +b.dataset.grade <= sel.hi,
+        ),
+      );
     const pair = !!sel && sel.hi - sel.lo === 1;
     el('lean').style.display = pair ? '' : 'none';
-    if (pair) root.querySelectorAll('.diff-lean-btn').forEach(b => { const d = +b.dataset.lean; b.textContent = d < 0 ? sel.lo : sel.hi; b.classList.toggle('sel', sel.lean === d); });
+    if (pair)
+      root.querySelectorAll('.diff-lean-btn').forEach(b => {
+        const d = +b.dataset.lean;
+        b.textContent = d < 0 ? sel.lo : sel.hi;
+        b.classList.toggle('sel', sel.lean === d);
+      });
     act('unsure').classList.toggle('sel', !!sel && !!sel.unsure);
     const took = `${solved ? 'You solved it' : 'You gave up'} in ${playS.toFixed(1)} s.`;
-    if (sel) { const r = ratingFromSelection(sel); el('rateText').textContent = `Rated ${describeRating(r)}${sel.unsure ? ' · unsure' : ''}: suggests ${decide(r)} (Hard = ${APPROVE_MIN} or more). You decide.`; } else el('rateText').textContent = `${took} Rate how hard it was (optional; a rating, also of a puzzle you reject, becomes a label for the grading fit), then Approve, Reject or Skip.`;
+    if (sel) {
+      const r = ratingFromSelection(sel);
+      el('rateText').textContent =
+        `Rated ${describeRating(r)}${sel.unsure ? ' · unsure' : ''}: suggests ${decide(r)} (Hard = ${APPROVE_MIN} or more). You decide.`;
+    } else
+      el('rateText').textContent =
+        `${took} Rate how hard it was (optional; a rating, also of a puzzle you reject, becomes a label for the grading fit), then Approve, Reject or Skip.`;
   }
 
-  async function saveLocal() { try { const s = await storage(); await s.set(VERDICTS_KEY, formatVerdicts(local)); } catch { /* best effort, like every store here */ } }
+  async function saveLocal() {
+    try {
+      const s = await storage();
+      await s.set(VERDICTS_KEY, formatVerdicts(local));
+    } catch {
+      /* best effort, like every store here */
+    }
+  }
   async function loadLocal() {
     try {
-      const s = await storage(), r = await s.get(VERDICTS_KEY);
+      const s = await storage(),
+        r = await s.get(VERDICTS_KEY);
       local = r ? parseVerdicts(r.value) : [];
-    } catch { local = []; }
+    } catch {
+      local = [];
+    }
   }
   async function getText(name, optional) {
     const r = await fetchFn(base + name, { cache: 'no-store' });
-    if (!r.ok) { if (optional && r.status === 404) return null; throw new Error(`${base}${name}: HTTP ${r.status}`); }
+    if (!r.ok) {
+      if (optional && r.status === 404) return null;
+      throw new Error(`${base}${name}: HTTP ${r.status}`);
+    }
     return r.text();
   }
 
@@ -116,89 +212,192 @@ export function mountGotdReview(root, host, { fetchFn = (...a) => fetch(...a), n
   async function load() {
     say('Loading…');
     try {
-      const it = await getText('index.json'), vt = await getText('verdicts.json', true);
-      index = parseIndex(it); repo = vt ? parseVerdicts(vt) : [];
+      const it = await getText('index.json'),
+        vt = await getText('verdicts.json', true);
+      index = parseIndex(it);
+      repo = vt ? parseVerdicts(vt) : [];
       await loadLocal();
-      published = (await scanPublished({ today: today(), stock: applyVerdicts(index, merged()).index.candidates.filter(c => usable(c, genStamp())).length, has })).published;
+      published = (
+        await scanPublished({
+          today: today(),
+          stock: applyVerdicts(index, merged()).index.candidates.filter(c => usable(c, genStamp()))
+            .length,
+          has,
+        })
+      ).published;
       skipped.clear();
-      loaded = true; phase = 'idle'; current = null;
+      loaded = true;
+      phase = 'idle';
+      current = null;
       say(`Queue loaded (generator stamp ${genStamp()}).`);
     } catch (e) {
-      loaded = false; index = null; published = new Set();
-      say(`No queue found: ${e.message}. Serve the repository root (python3 -m http.server there), open webapp/design.html from it, and run node tools/gotd-gen.mjs fill first.`);
+      loaded = false;
+      index = null;
+      published = new Set();
+      say(
+        `No queue found: ${e.message}. Serve the repository root (python3 -m http.server there), open webapp/design.html from it, and run node tools/gotd-gen.mjs fill first.`,
+      );
     }
     el('now').textContent = '';
     paint();
   }
 
-  async function next(saved = '') { // `saved`: what to say first (the verdict that was just saved)
-    const c = queue()[0], tell = text => say(`${saved} ${text}`.trim());
-    if (!c) { phase = 'idle'; current = null; el('now').textContent = ''; tell(!loaded ? 'Load the queue first.' : `Nothing left to review.${stale() ? ` ${stale()} pending candidate(s) of an older generator stamp are not offered.` : ''} Run node tools/gotd-gen.mjs fill for more.`); paint(); return; }
+  async function next(saved = '') {
+    // `saved`: what to say first (the verdict that was just saved)
+    const c = queue()[0],
+      tell = text => say(`${saved} ${text}`.trim());
+    if (!c) {
+      phase = 'idle';
+      current = null;
+      el('now').textContent = '';
+      tell(
+        !loaded
+          ? 'Load the queue first.'
+          : `Nothing left to review.${stale() ? ` ${stale()} pending candidate(s) of an older generator stamp are not offered.` : ''} Run node tools/gotd-gen.mjs fill for more.`,
+      );
+      paint();
+      return;
+    }
     tell('');
     try {
       const text = await getText(c.file);
       host.show(text);
-      current = c; currentKey = ratingKey(text); solved = false; playS = 0; sel = null; phase = 'playing';
+      current = c;
+      currentKey = ratingKey(text);
+      solved = false;
+      playS = 0;
+      sel = null;
+      phase = 'playing';
       takebacks.reset();
       host.play();
-      el('now').textContent = `Reviewing for day ${c.date || '(extra: no open day needs it)'} · ${c.size}×${c.size} (${queue().length} to review). Solve it, then decide.`;
-    } catch (e) { tell(`Cannot load ${c.file}: ${e.message}`); phase = 'idle'; current = null; }
+      el('now').textContent =
+        `Reviewing for day ${c.date || '(extra: no open day needs it)'} · ${c.size}×${c.size} (${queue().length} to review). Solve it, then decide.`;
+    } catch (e) {
+      tell(`Cannot load ${c.file}: ${e.message}`);
+      phase = 'idle';
+      current = null;
+    }
     paint();
   }
 
   function finish(wasSolved) {
-    solved = wasSolved; playS = host.state().elapsed; sel = null; phase = 'rating'; paint();
+    solved = wasSolved;
+    playS = host.state().elapsed;
+    sel = null;
+    phase = 'rating';
+    paint();
   }
 
   // The reviewer's decision: the rating (if any) is recorded with it, but only the button decides.
   async function decideNow(verdict) {
     if (!current || phase !== 'rating') return;
-    const v = makeVerdict({ candidate: current, sel, verdict, solved, playS, takebacks: takebacks.total, now: isoNow(now()), key: currentKey });
+    const v = makeVerdict({
+      candidate: current,
+      sel,
+      verdict,
+      solved,
+      playS,
+      takebacks: takebacks.total,
+      now: isoNow(now()),
+      key: currentKey,
+    });
     local = mergeVerdicts(local, [v]);
     await saveLocal();
     const day = v.verdict === 'approve' ? plan().plan.find(p => p.id === v.id)?.date : null;
-    sel = null; phase = 'idle'; current = null;
-    await next(`Saved: ${v.verdict}${v.human !== undefined ? ` (rated ${v.human})` : ' (unrated)'}${v.verdict === 'approve' ? ` for day ${day || '(no open day of its size yet)'}` : ''}.`);
+    sel = null;
+    phase = 'idle';
+    current = null;
+    await next(
+      `Saved: ${v.verdict}${v.human !== undefined ? ` (rated ${v.human})` : ' (unrated)'}${v.verdict === 'approve' ? ` for day ${day || '(no open day of its size yet)'}` : ''}.`,
+    );
   }
 
   function skip() {
     if (!current) return Promise.resolve();
-    skipped.add(current.id); host.stopPlay(); phase = 'idle'; current = null; sel = null; el('now').textContent = '';
+    skipped.add(current.id);
+    host.stopPlay();
+    phase = 'idle';
+    current = null;
+    sel = null;
+    el('now').textContent = '';
     return next('Skipped.');
   }
 
   root.addEventListener('click', async e => {
-    const b = e.target.closest('button'); if (!b || !root.contains(b)) return;
-    if (b.dataset.grade !== undefined && phase === 'rating') { sel = nextSelection(sel, +b.dataset.grade); paint(); return; }
-    if (b.dataset.lean !== undefined && phase === 'rating') { sel = nextLean(sel, +b.dataset.lean); paint(); return; }
+    const b = e.target.closest('button');
+    if (!b || !root.contains(b)) return;
+    if (b.dataset.grade !== undefined && phase === 'rating') {
+      sel = nextSelection(sel, +b.dataset.grade);
+      paint();
+      return;
+    }
+    if (b.dataset.lean !== undefined && phase === 'rating') {
+      sel = nextLean(sel, +b.dataset.lean);
+      paint();
+      return;
+    }
     switch (b.dataset.act) {
-      case 'load': await load(); break;
-      case 'next': await next(); break;
-      case 'skip': await skip(); break;
-      case 'giveup': if (phase === 'playing') { const t = host.state().elapsed; host.stopPlay(); finish(false); playS = t; paint(); } break;
-      case 'unsure': if (phase === 'rating') { sel = toggleUnsure(sel); paint(); } break;
-      case 'approve': await decideNow('approve'); break;
-      case 'reject': await decideNow('reject'); break;
+      case 'load':
+        await load();
+        break;
+      case 'next':
+        await next();
+        break;
+      case 'skip':
+        await skip();
+        break;
+      case 'giveup':
+        if (phase === 'playing') {
+          const t = host.state().elapsed;
+          host.stopPlay();
+          finish(false);
+          playS = t;
+          paint();
+        }
+        break;
+      case 'unsure':
+        if (phase === 'rating') {
+          sel = toggleUnsure(sel);
+          paint();
+        }
+        break;
+      case 'approve':
+        await decideNow('approve');
+        break;
+      case 'reject':
+        await decideNow('reject');
+        break;
       case 'export': {
         const all = merged();
-        if (!all.length) { say('No verdicts yet.'); break; }
+        if (!all.length) {
+          say('No verdicts yet.');
+          break;
+        }
         download(formatVerdicts(all), 'verdicts.json');
-        say(`Exported ${all.length} verdicts. Put the file at demo/GameOfDay-queue/verdicts.json, commit it, then run: node tools/gotd-gen.mjs promote`);
+        say(
+          `Exported ${all.length} verdicts. Put the file at demo/GameOfDay-queue/verdicts.json, commit it, then run: node tools/gotd-gen.mjs promote`,
+        );
         break;
       }
-      case 'import': el('file').click(); break;
-      default: break;
+      case 'import':
+        el('file').click();
+        break;
+      default:
+        break;
     }
   });
   el('file').addEventListener('change', async e => {
-    const f = e.target.files && e.target.files[0]; if (!f) return;
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
     try {
       const list = parseVerdicts(await f.text());
       const before = local.length;
       local = mergeVerdicts(local, list);
       await saveLocal();
       say(`Imported ${list.length} verdicts (${local.length - before} new).`);
-    } catch (err) { say(err.message); }
+    } catch (err) {
+      say(err.message);
+    }
     e.target.value = '';
     paint();
   });
@@ -206,13 +405,20 @@ export function mountGotdReview(root, host, { fetchFn = (...a) => fetch(...a), n
   paint();
   return {
     load,
-    onEnter() { takebacks.reset(); },
+    onEnter() {
+      takebacks.reset();
+    },
     // After every change of the play path: count the cells taken back; a solved board ends the play and opens the rating; a rewind off it goes back to playing.
     onPlay({ length, finished }) {
       if (phase === 'playing' || phase === 'rating') takebacks.note(length);
       if (phase === 'playing' && finished) finish(true);
-      else if (phase === 'rating' && solved && !finished) { phase = 'playing'; paint(); }
+      else if (phase === 'rating' && solved && !finished) {
+        phase = 'playing';
+        paint();
+      }
     },
-    get phase() { return phase; },
+    get phase() {
+      return phase;
+    },
   };
 }

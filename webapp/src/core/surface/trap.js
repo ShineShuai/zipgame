@@ -2,7 +2,11 @@ import { solveSurface } from './solve.js';
 import { topologyOf, isSolved } from './puzzle.js';
 import { SLOTS } from './topology.js';
 import {
-  TRAP_CFG, trapPredict, trapGradeOf, capGradeBySize, withoutAltFracLadder,
+  TRAP_CFG,
+  trapPredict,
+  trapGradeOf,
+  capGradeBySize,
+  withoutAltFracLadder,
 } from '../trap.js';
 
 // The trap grade (core/trap.js: what wrong turns a solver faces along the solution, and how long
@@ -69,7 +73,12 @@ const alternativePoints = (w, cfg) => {
 };
 
 // All the metrics of core/trap.js trapMetricsFromProfile that the model and the display use.
-export function surfaceTrapMetricsFromProfile(p, profile, cfg = TRAP_CFG, model = GRAPH_TRAP_MODEL) {
+export function surfaceTrapMetricsFromProfile(
+  p,
+  profile,
+  cfg = TRAP_CFG,
+  model = GRAPH_TRAP_MODEL,
+) {
   const T = topologyOf(p).T;
   const byStep = new Map();
   for (const w of profile) {

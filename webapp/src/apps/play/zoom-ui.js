@@ -14,17 +14,20 @@ export const HINT_KEY = 'zip_zoom_hint';
 
 // hint: the line about the pinch (flat boards); inline: a group in a row of buttons, not a row.
 export function zoomToolsHtml({ hint = true, inline = false } = {}) {
-  const button = (id, icon, key) => `<button type="button" class="btn secondary zoom-btn" `
-    + `id="${id}" title="${t(key)}" aria-label="${t(key)}">${actionIcon(icon)}</button>`;
+  const button = (id, icon, key) =>
+    `<button type="button" class="btn secondary zoom-btn" ` +
+    `id="${id}" title="${t(key)}" aria-label="${t(key)}">${actionIcon(icon)}</button>`;
   const tag = inline ? 'span' : 'div';
   const line = hint ? `<p class="small zoom-hint" id="zoomHint" hidden>${t('zoom.hint')}</p>` : '';
-  return `<${tag} class="zoom-tools${inline ? ' zoom-inline' : ''}" id="zoomTools" hidden>`
-    + line
-    + button('zoomPan', 'pan', 'zoom.pan')
-    + button('zoomOut', 'zoomOut', 'zoom.out')
-    + button('zoomIn', 'zoomIn', 'zoom.in')
-    + button('zoomFit', 'fit', 'zoom.fit')
-    + `</${tag}>`;
+  return (
+    `<${tag} class="zoom-tools${inline ? ' zoom-inline' : ''}" id="zoomTools" hidden>` +
+    line +
+    button('zoomPan', 'pan', 'zoom.pan') +
+    button('zoomOut', 'zoomOut', 'zoom.out') +
+    button('zoomIn', 'zoomIn', 'zoom.in') +
+    button('zoomFit', 'fit', 'zoom.fit') +
+    `</${tag}>`
+  );
 }
 
 // Whether the player has been told once that a pinch zooms: null until the device says.
@@ -37,13 +40,16 @@ function loadHint(store, done) {
     return;
   }
   hintLoading = true;
-  store.read().then(found => {
-    hintSeen = Boolean(found);
-    done();
-  }, () => {
-    hintSeen = false;
-    done();
-  });
+  store.read().then(
+    found => {
+      hintSeen = Boolean(found);
+      done();
+    },
+    () => {
+      hintSeen = false;
+      done();
+    },
+  );
 }
 
 function markHint(store) {
@@ -63,9 +69,11 @@ const defaultById = id => document.getElementById(id);
 // still (the head of the path), or null; always: shown on a touch screen too; byId: how to find an
 // element of the page; hintStore: where the pinch hint is remembered (see loadHint). Returns the
 // function that brings what is shown up to date.
-export function setupZoomTools(zoom, head, {
-  always = false, byId = defaultById, hintStore = null,
-} = {}) {
+export function setupZoomTools(
+  zoom,
+  head,
+  { always = false, byId = defaultById, hintStore = null } = {},
+) {
   const tools = byId('zoomTools');
   if (!tools) {
     return () => {};

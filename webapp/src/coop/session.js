@@ -109,7 +109,10 @@ export function createSession({
     }
     game.tries++;
     send({
-      t: 'puzzle', text: game.text, seed: game.seed, ...(game.shared ? { pid: 1 - pid } : {}),
+      t: 'puzzle',
+      text: game.text,
+      seed: game.seed,
+      ...(game.shared ? { pid: 1 - pid } : {}),
     });
     game.timer = timers.set(offerAgain, resendMs);
   }

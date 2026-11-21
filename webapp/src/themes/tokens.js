@@ -12,21 +12,26 @@ export const TOKENS = {
   '--font-body': { d: BASE_FONT, kind: 'font', group: 'type' },
   '--font-head': { d: 'var(--font-body)', kind: 'font', group: 'type' },
   '--font-num': { d: 'var(--font-body)', kind: 'font', group: 'type' },
-  '--font-zh': { d: 'var(--font-head)', kind: 'font', group: 'type' },   // the Chinese name of the game in the app bar (the brand name, two glyphs)
+  '--font-zh': { d: 'var(--font-head)', kind: 'font', group: 'type' }, // the Chinese name of the game in the app bar (the brand name, two glyphs)
   '--fw-head': { d: '700', kind: 'int', min: 500, max: 900, group: 'type' },
   '--tt-head': { d: 'none', kind: 'enum', values: ['none', 'uppercase'], group: 'type' },
   '--ls-head': { d: '0em', kind: 'len', unit: 'em', min: -0.05, max: 0.15, group: 'type' },
 
-  '--r-1': { d: '12px', kind: 'radius', max: 28, group: 'shape' },   // selects, notes, tips
-  '--r-2': { d: '14px', kind: 'radius', max: 28, group: 'shape' },   // buttons, popovers
+  '--r-1': { d: '12px', kind: 'radius', max: 28, group: 'shape' }, // selects, notes, tips
+  '--r-2': { d: '14px', kind: 'radius', max: 28, group: 'shape' }, // buttons, popovers
   '--r-tile': { d: '16px', kind: 'radius', max: 28, group: 'shape' }, // variant tiles and small cards (follows --r-2 when a theme sets only that)
-  '--r-3': { d: '20px', kind: 'radius', max: 40, group: 'shape' },   // cards, dialogs
-  '--r-4': { d: '24px', kind: 'radius', max: 40, group: 'shape' },   // bottom sheets
+  '--r-3': { d: '20px', kind: 'radius', max: 40, group: 'shape' }, // cards, dialogs
+  '--r-4': { d: '24px', kind: 'radius', max: 40, group: 'shape' }, // bottom sheets
   '--r-chip': { d: '999px', kind: 'radius', max: 28, group: 'shape' }, // badges, tabs, stat pills
   '--r-icon': { d: '999px', kind: 'radius', max: 28, group: 'shape' }, // round icon buttons
-  '--bw': { d: '2px', kind: 'len', min: 0, max: 3, group: 'shape' },       // controls
-  '--bw-card': { d: '1px', kind: 'len', min: 0, max: 8, group: 'shape' },  // cards (inside and above them: at most 3 px, css/play.css --bw-sub)
-  '--bs-card': { d: 'solid', kind: 'enum', values: ['solid', 'dashed', 'double', 'dotted'], group: 'shape' },   // the line of cards, popovers, nested cards
+  '--bw': { d: '2px', kind: 'len', min: 0, max: 3, group: 'shape' }, // controls
+  '--bw-card': { d: '1px', kind: 'len', min: 0, max: 8, group: 'shape' }, // cards (inside and above them: at most 3 px, css/play.css --bw-sub)
+  '--bs-card': {
+    d: 'solid',
+    kind: 'enum',
+    values: ['solid', 'dashed', 'double', 'dotted'],
+    group: 'shape',
+  }, // the line of cards, popovers, nested cards
   '--shadow-btn': { d: 'none', kind: 'shadow', group: 'shape' },
   // elevation tokens that css/theme.css already defines; a theme may restyle them (still plain shadows)
   '--shadow': { d: 'none', kind: 'shadow', group: 'shape', base: true },
@@ -34,7 +39,7 @@ export const TOKENS = {
   '--sheet-shadow': { d: 'none', kind: 'shadow', group: 'shape', base: true },
 
   '--bar-h': { d: '58px', kind: 'len', min: 48, max: 72, group: 'size' },
-  '--bar-bw': { d: '1px', kind: 'len', min: 0, max: 4, group: 'size' },   // the line under the app bar
+  '--bar-bw': { d: '1px', kind: 'len', min: 0, max: 4, group: 'size' }, // the line under the app bar
   '--icon-btn': { d: '40px', kind: 'len', min: 36, max: 48, group: 'size' },
   '--glyph': { d: '20px', kind: 'len', min: 16, max: 26, group: 'size' },
   '--icon-stroke': { d: '2', kind: 'num', min: 1.5, max: 3, group: 'size' },
@@ -74,24 +79,32 @@ export const TOKENS = {
 
   // the variant tiles of a coloured picker cycle through these four: fill, ink on it, and the counter-tone the
   // icon's second colour (--ic-2) takes on that tile
-  ...Object.fromEntries([1, 2, 3, 4].flatMap(k => [
-    [`--vt-${k}`, { d: 'var(--surface-2)', kind: 'colour', group: 'tiles' }],
-    [`--vt-${k}-on`, { d: 'var(--heading)', kind: 'colour', group: 'tiles' }],
-    [`--vt-${k}-counter`, { d: 'var(--surface)', kind: 'colour', group: 'tiles' }],
-  ])),
+  ...Object.fromEntries(
+    [1, 2, 3, 4].flatMap(k => [
+      [`--vt-${k}`, { d: 'var(--surface-2)', kind: 'colour', group: 'tiles' }],
+      [`--vt-${k}-on`, { d: 'var(--heading)', kind: 'colour', group: 'tiles' }],
+      [`--vt-${k}-counter`, { d: 'var(--surface)', kind: 'colour', group: 'tiles' }],
+    ]),
+  ),
 };
 
-const COLOUR = '(?:#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})|rgba?\\([\\d\\s.,%]+\\)|transparent|var\\(--[\\w-]+\\)'
-  + '|color-mix\\(in srgb, (?:var\\(--[\\w-]+\\)|#[0-9a-f]{3,8}) \\d+%, (?:var\\(--[\\w-]+\\)|#[0-9a-f]{3,8}|transparent)\\))';
+const COLOUR =
+  '(?:#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})|rgba?\\([\\d\\s.,%]+\\)|transparent|var\\(--[\\w-]+\\)' +
+  '|color-mix\\(in srgb, (?:var\\(--[\\w-]+\\)|#[0-9a-f]{3,8}) \\d+%, (?:var\\(--[\\w-]+\\)|#[0-9a-f]{3,8}|transparent)\\))';
 const LEN = '-?[\\d.]+(?:px)?';
 const SHADOW_LAYER = new RegExp(`^(?:inset\\s+)?(?:${LEN}\\s+){1,3}${LEN}\\s+${COLOUR}$`, 'i');
 export const COLOUR_RE = new RegExp(`^${COLOUR}$`, 'i');
 const splitTop = s => {
-  const out = []; let depth = 0; let cur = '';
+  const out = [];
+  let depth = 0;
+  let cur = '';
   for (const ch of s) {
     if (ch === '(') depth++;
     if (ch === ')') depth--;
-    if (ch === ',' && depth === 0) { out.push(cur.trim()); cur = ''; } else cur += ch;
+    if (ch === ',' && depth === 0) {
+      out.push(cur.trim());
+      cur = '';
+    } else cur += ch;
   }
   return [...out, cur.trim()];
 };
@@ -102,8 +115,11 @@ export function checkValue(name, value, spec = TOKENS[name], fonts = []) {
   const bad = msg => [`${name}: ${msg} (${value})`];
   const num = v => parseFloat(v);
   switch (spec.kind) {
-    case 'colour': return COLOUR_RE.test(value) ? [] : bad('not a colour');
-    case 'len': case 'num': case 'int': {
+    case 'colour':
+      return COLOUR_RE.test(value) ? [] : bad('not a colour');
+    case 'len':
+    case 'num':
+    case 'int': {
       if (!/^-?[\d.]+(px|em)?$/.test(value)) return bad('not a number or length');
       const n = num(value);
       if (spec.min !== undefined && n < spec.min) return bad(`below ${spec.min}`);
@@ -112,14 +128,24 @@ export function checkValue(name, value, spec = TOKENS[name], fonts = []) {
     }
     case 'radius': {
       if (value === '999px') return [];
-      return /^[\d.]+px$/.test(value) && num(value) <= spec.max ? [] : bad(`0..${spec.max}px or 999px`);
+      return /^[\d.]+px$/.test(value) && num(value) <= spec.max
+        ? []
+        : bad(`0..${spec.max}px or 999px`);
     }
-    case 'enum': return spec.values.includes(value) ? [] : bad(`one of ${spec.values.join(', ')}`);
+    case 'enum':
+      return spec.values.includes(value) ? [] : bad(`one of ${spec.values.join(', ')}`);
     case 'font': {
-      if (!/^[\w\s,"'.()-]+$/.test(value) || /url|expression/i.test(value)) return bad('not a plain font stack');
+      if (!/^[\w\s,"'.()-]+$/.test(value) || /url|expression/i.test(value))
+        return bad('not a plain font stack');
       const families = [...value.matchAll(/"([^"]+)"/g)].map(m => m[1]);
-      const unknown = families.filter(f => !fonts.includes(f) && !SYSTEM_FONTS.includes(f)
-        && !['Segoe UI', 'Trebuchet MS', 'Rockwell', 'Futura', 'Century Gothic', 'Nunito'].includes(f));
+      const unknown = families.filter(
+        f =>
+          !fonts.includes(f) &&
+          !SYSTEM_FONTS.includes(f) &&
+          !['Segoe UI', 'Trebuchet MS', 'Rockwell', 'Futura', 'Century Gothic', 'Nunito'].includes(
+            f,
+          ),
+      );
       return unknown.length ? bad(`family not shipped by the theme: ${unknown.join(', ')}`) : [];
     }
     case 'shadow': {
@@ -129,9 +155,11 @@ export function checkValue(name, value, spec = TOKENS[name], fonts = []) {
     case 'gradient': {
       if (value === 'none') return [];
       return /^(?:repeating-)?(?:linear|radial)-gradient\(/.test(value) && !/url\(/i.test(value)
-        ? [] : bad('none or a CSS gradient (no url())');
+        ? []
+        : bad('none or a CSS gradient (no url())');
     }
-    default: return bad('unknown kind');
+    default:
+      return bad('unknown kind');
   }
 }
 
@@ -150,15 +178,28 @@ export function cleanTokens(raw, { fonts = [], known = () => true } = {}) {
   if (!raw || typeof raw !== 'object') return { tokens, rejected, ignored };
   for (const [name, value] of Object.entries(raw)) {
     const v = typeof value === 'string' ? value.trim() : '';
-    if (!NAME_RE.test(name)) { rejected.push(name); continue; }
-    if (!(name in TOKENS) && !known(name)) { ignored.push(name); continue; }
+    if (!NAME_RE.test(name)) {
+      rejected.push(name);
+      continue;
+    }
+    if (!(name in TOKENS) && !known(name)) {
+      ignored.push(name);
+      continue;
+    }
     const spec = TOKENS[name];
-    const bad = !v || v.length > 300 || UNSAFE.test(v) || (spec ? checkValue(name, v, spec, fonts).length > 0 : !COLOUR_RE.test(v));
-    if (bad) rejected.push(name); else tokens[name] = v;
+    const bad =
+      !v ||
+      v.length > 300 ||
+      UNSAFE.test(v) ||
+      (spec ? checkValue(name, v, spec, fonts).length > 0 : !COLOUR_RE.test(v));
+    if (bad) rejected.push(name);
+    else tokens[name] = v;
   }
   return { tokens, rejected, ignored };
 }
 
 // The one rule that makes a bundle's tokens apply: they win over css/theme.css by their selector (0,2,0 against 0,1,0).
 export const buildCss = (id, mode, tokens) =>
-  `:root[data-theme="${id}"]{color-scheme:${mode};${Object.entries(tokens).map(([n, v]) => `${n}:${v};`).join('')}}`;
+  `:root[data-theme="${id}"]{color-scheme:${mode};${Object.entries(tokens)
+    .map(([n, v]) => `${n}:${v};`)
+    .join('')}}`;

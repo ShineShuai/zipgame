@@ -3,13 +3,17 @@ import { flagsToHex } from '../../core/gen/flags.js';
 import { miniPreviewSvg, SOL_C } from './board.js';
 import { esc } from '../../ui/esc.js';
 
-const row = (label, a, b, indent) => `<tr><th${indent ? ' class="compare-sub"' : ''}>${esc(label)}</th><td>${a}</td><td>${b}</td></tr>`;
+const row = (label, a, b, indent) =>
+  `<tr><th${indent ? ' class="compare-sub"' : ''}>${esc(label)}</th><td>${a}</td><td>${b}</td></tr>`;
 
 // r: runCompare()'s return value. flagsA/flagsB: the raw integers, for the header. tries: for the
 // failure caption. Returns an HTML string for the #compareResult panel.
 export function renderCompareHtml(r, flagsA, flagsB, tries) {
   const { a, b, msA, msB, seed } = r;
-  const outcome = x => x.unique ? `unique, ${x.walls} wall${x.walls === 1 ? '' : 's'}` : `<span class="bad">FAILED</span> (${tries} retries)`;
+  const outcome = x =>
+    x.unique
+      ? `unique, ${x.walls} wall${x.walls === 1 ? '' : 's'}`
+      : `<span class="bad">FAILED</span> (${tries} retries)`;
   const table = `<table class="compare-table">
     <thead><tr><th></th><th>A · ${flagsToHex(flagsA)}</th><th>B · ${flagsToHex(flagsB)}</th></tr></thead>
     <tbody>
@@ -30,4 +34,8 @@ export function renderCompareHtml(r, flagsA, flagsB, tries) {
   </div>`;
   return `<div class="compare-seed">Compared at seed ${seed}</div>${table}${previews}`;
 }
-function maxNumberSafe(p) { let m = 0; for (const v of p.cp) if (v > m) m = v; return m; }
+function maxNumberSafe(p) {
+  let m = 0;
+  for (const v of p.cp) if (v > m) m = v;
+  return m;
+}

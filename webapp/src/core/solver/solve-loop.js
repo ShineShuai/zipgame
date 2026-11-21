@@ -38,7 +38,12 @@ function endingOn(p, c, K) {
   return { ...rest, cp };
 }
 
-const nothing = opts => ({ count: 0, exceeded: false, nodes: 0, paths: opts.capture ? [] : undefined });
+const nothing = opts => ({
+  count: 0,
+  exceeded: false,
+  nodes: 0,
+  paths: opts.capture ? [] : undefined,
+});
 
 export function solveLoop(p, opts, search) {
   const K = maxNumber(p);
@@ -63,7 +68,8 @@ export function solveLoop(p, opts, search) {
       total.exceeded = true;
       break;
     }
-    const closing = must && ((must[0] === start && must[1] === c) || (must[0] === c && must[1] === start));
+    const closing =
+      must && ((must[0] === start && must[1] === c) || (must[0] === c && must[1] === start));
     const sub = { ...opts, limit: limit - total.count, nodeCap: left };
     if (closing) delete sub.mustUse;
     const r = search(number ? p : endingOn(p, c, K), sub);

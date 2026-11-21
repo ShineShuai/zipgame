@@ -8,8 +8,12 @@ import { $, S } from './state.js';
 
 // Players see only the percentage and the bar; the walls count and K appear while V is held.
 function genDevInfo() {
-  const gen = S.gen, genVariant = variantById(S.genMode);
-  const walls = gen.walls == null ? t('gen.searching') : t(genVariant ? genVariant.countKey : 'gen.walls', gen.walls);
+  const gen = S.gen,
+    genVariant = variantById(S.genMode);
+  const walls =
+    gen.walls == null
+      ? t('gen.searching')
+      : t(genVariant ? genVariant.countKey : 'gen.walls', gen.walls);
   return ` — ${walls}${gen.K == null ? '' : ` · K ${gen.K}`}`;
 }
 
@@ -26,7 +30,8 @@ export function paintGenerating() {
 }
 
 // The note under the card head of the menu after a generation that failed or ran too long (a cancel leaves none).
-export const genNoticeHtml = () => (S.genNotice ? `<p class="note error" role="alert">${t(S.genNotice)}</p>` : '');
+export const genNoticeHtml = () =>
+  S.genNotice ? `<p class="note error" role="alert">${t(S.genNotice)}</p>` : '';
 
 export function renderGenerating() {
   const gen = S.gen;

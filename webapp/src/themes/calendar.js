@@ -34,10 +34,11 @@ const pad = n => String(n).padStart(2, '0');
 export const daysInMonth = (year, month) => new Date(Date.UTC(year, month, 0)).getUTCDate();
 
 // four different digits
-export const validDigits = digits => Array.isArray(digits)
-  && digits.length === 4
-  && new Set(digits).size === 4
-  && digits.every(d => Number.isInteger(d) && d >= 0 && d <= 9);
+export const validDigits = digits =>
+  Array.isArray(digits) &&
+  digits.length === 4 &&
+  new Set(digits).size === 4 &&
+  digits.every(d => Number.isInteger(d) && d >= 0 && d <= 9);
 
 // month: 1..12
 export const dateValue = (year, month, day) => (day ^ month ^ (year % 10)) & 15;
@@ -76,7 +77,13 @@ export function ruleExample(year = 2031, month = 6, day = 27) {
   const first = day ^ month;
   const xor = first ^ last;
   return {
-    date: `${year}-${pad(month)}-${pad(day)}`, day, month, last, first, xor, value: xor & 15,
+    date: `${year}-${pad(month)}-${pad(day)}`,
+    day,
+    month,
+    last,
+    first,
+    xor,
+    value: xor & 15,
   };
 }
 
@@ -92,7 +99,12 @@ export function nextEvent(from, digits, skip = () => false) {
       const id = `d${year}${pad(month)}${pad(day)}`;
       if ((step === 0 && day < d0) || skip(id)) continue;
       return {
-        id, year, month, day, date: `${year}-${pad(month)}-${pad(day)}`, days: Math.round((Date.UTC(year, month - 1, day) - Date.UTC(y0, m0 - 1, d0)) / 86400000),
+        id,
+        year,
+        month,
+        day,
+        date: `${year}-${pad(month)}-${pad(day)}`,
+        days: Math.round((Date.UTC(year, month - 1, day) - Date.UTC(y0, m0 - 1, d0)) / 86400000),
       };
     }
   }
@@ -108,6 +120,9 @@ export function eventAt(date, digits) {
   const day = date.getDate();
   if (!monthPlan(year, month, digits).includes(day)) return null;
   return {
-    id: `d${year}${pad(month)}${pad(day)}`, year, month, day,
+    id: `d${year}${pad(month)}${pad(day)}`,
+    year,
+    month,
+    day,
   };
 }

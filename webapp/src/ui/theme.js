@@ -19,14 +19,15 @@ import { initThemeOffer, showSlotToast } from './theme-offer.js';
 import { closeThemePicker, toggleThemePicker } from './theme-picker.js';
 import { showThemeRule } from './theme-rule.js';
 
-export const THEME_KEY = MODE_KEY;   // the key the stats page reads; it mirrors the active theme's mode
+export const THEME_KEY = MODE_KEY; // the key the stats page reads; it mirrors the active theme's mode
 export const parseTheme = parseMode;
 export const resolveTheme = resolveMode;
 
 const DARK_QUERY = '(prefers-color-scheme: dark)';
 const NS = 'http://www.w3.org/2000/svg';
 
-export const currentTheme = () => (document.documentElement.dataset.mode === 'dark' ? 'dark' : 'light');
+export const currentTheme = () =>
+  document.documentElement.dataset.mode === 'dark' ? 'dark' : 'light';
 export const themeName = (entry, lang) => entry.name[lang] ?? entry.name.en;
 
 let controller = null;
@@ -62,16 +63,25 @@ export async function awardSlots(counts, borrow = []) {
   return raised || added.length > 0;
 }
 
-
 // A theme's glyph for the button: the symbol of the catalog entry (already whitelisted by pool.cleanEntry).
 function setSymbol(button, entry) {
   button.querySelector('.theme-symbol')?.remove();
-  if (!entry) { delete button.dataset.custom; return; }
+  if (!entry) {
+    delete button.dataset.custom;
+    return;
+  }
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('class', 'theme-symbol');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('aria-hidden', 'true');
-  for (const [k, v] of Object.entries({ fill: 'none', stroke: 'currentColor', 'stroke-width': 'var(--icon-stroke)', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })) svg.setAttribute(k, v);
+  for (const [k, v] of Object.entries({
+    fill: 'none',
+    stroke: 'currentColor',
+    'stroke-width': 'var(--icon-stroke)',
+    'stroke-linecap': 'round',
+    'stroke-linejoin': 'round',
+  }))
+    svg.setAttribute(k, v);
   svg.innerHTML = entry.symbol;
   button.append(svg);
   button.dataset.custom = '';
@@ -80,29 +90,87 @@ function setSymbol(button, entry) {
 // button: the header button. label(current, next, classic) -> its text for the screen reader and the tooltip.
 // pickLabel() / pickLang(): the heading of the list and the language of the names (the app passes its translations).
 // text(key, ...args): the app's translation; revealed(): whether the dev reveal is on (the app's S.showDev).
-export function initTheme(button, label = (cur, next, classic) => (classic ? (cur.mode === 'dark' ? 'Light mode' : 'Dark mode') : `Switch to ${next.name.en} theme`), pickLabel = () => 'Choose a theme', pickLang = () => 'en', { text = key => key, revealed = () => false, idle = () => true } = {}) {
+export function initTheme(
+  button,
+  label = (cur, next, classic) =>
+    classic
+      ? cur.mode === 'dark'
+        ? 'Light mode'
+        : 'Dark mode'
+      : `Switch to ${next.name.en} theme`,
+  pickLabel = () => 'Choose a theme',
+  pickLang = () => 'en',
+  { text = key => key, revealed = () => false, idle = () => true } = {},
+) {
   ui = { text, lang: pickLang };
   // a custom property this build defines (css/theme.css): a bundle's token the build does not know is ignored
   const known = name => getComputedStyle(document.documentElement).getPropertyValue(name) !== '';
   controller = createThemes({
-    storage: localStorage, media: matchMedia(DARK_QUERY), store: createStore(localStorage), source: browserSource(THEMES), known,
-    trialMs: THEMES.trialMs, idle, focused: document.visibilityState !== 'hidden',
+    storage: localStorage,
+    media: matchMedia(DARK_QUERY),
+    store: createStore(localStorage),
+    source: browserSource(THEMES),
+    known,
+    trialMs: THEMES.trialMs,
+    idle,
+    focused: document.visibilityState !== 'hidden',
   });
-  const picking = () => controller.state().pool.length >= 3 || revealed();   // a pool of three or more (or the dev reveal) is chosen from a list, not stepped through
+  const picking = () => controller.state().pool.length >= 3 || revealed(); // a pool of three or more (or the dev reveal) is chosen from a list, not stepped through
   // The dev reveal's rows are English only and not in the translations: no text a player can read mentions the reveal (see the test in test/unit/ui.test.js).
-  const labels = { all: 'All themes', draft: 'draft', keep: 'Keep this theme', offer: 'Offer a theme now', none: 'No themes found', nothing: 'Nothing to offer', loading: '…', next: 'Next offer day', today: 'today', tomorrow: 'tomorrow', inDays: 'in {n} days' };
+  const labels = {
+    all: 'All themes',
+    draft: 'draft',
+    keep: 'Keep this theme',
+    offer: 'Offer a theme now',
+    none: 'No themes found',
+    nothing: 'Nothing to offer',
+    loading: '…',
+    next: 'Next offer day',
+    today: 'today',
+    tomorrow: 'tomorrow',
+    inDays: 'in {n} days',
+  };
   // the next offer day: today's own is left out once it is answered or on offer (the chip is its reward)
-  const nextDay = () => nextEvent(new Date(), THEMES.digits, id => controller.answered(id) || controller.offerView()?.event === id);
-  const dev = () => (revealed() ? { labels, next: nextDay, offerNow: () => { controller.dropOffer(); return offerTheme({ id: `dev-${Date.now()}` }); } } : null);
+  const nextDay = () =>
+    nextEvent(
+      new Date(),
+      THEMES.digits,
+      id => controller.answered(id) || controller.offerView()?.event === id,
+    );
+  const dev = () =>
+    revealed()
+      ? {
+          labels,
+          next: nextDay,
+          offerNow: () => {
+            controller.dropOffer();
+            return offerTheme({ id: `dev-${Date.now()}` });
+          },
+        }
+      : null;
   const rule = () => ({
-    line: text('theme.offer.rule'), open: text('theme.rule.open'), show: () => showThemeRule(text),
+    line: text('theme.offer.rule'),
+    open: text('theme.rule.open'),
+    show: () => showThemeRule(text),
   });
   const sync = () => {
     if (!button) return;
-    const [cur, next, classic] = [controller.current(), controller.upcoming(), controller.isClassic()];
-    if (classic && !picking()) button.setAttribute('aria-pressed', String(cur.mode === 'dark')); else button.removeAttribute('aria-pressed');
-    setSymbol(button, classic ? null : (picking() ? cur : next));
-    if (picking()) { button.setAttribute('aria-haspopup', 'menu'); if (!button.hasAttribute('aria-expanded')) button.setAttribute('aria-expanded', 'false'); } else { button.removeAttribute('aria-haspopup'); button.removeAttribute('aria-expanded'); closeThemePicker(); }
+    const [cur, next, classic] = [
+      controller.current(),
+      controller.upcoming(),
+      controller.isClassic(),
+    ];
+    if (classic && !picking()) button.setAttribute('aria-pressed', String(cur.mode === 'dark'));
+    else button.removeAttribute('aria-pressed');
+    setSymbol(button, classic ? null : picking() ? cur : next);
+    if (picking()) {
+      button.setAttribute('aria-haspopup', 'menu');
+      if (!button.hasAttribute('aria-expanded')) button.setAttribute('aria-expanded', 'false');
+    } else {
+      button.removeAttribute('aria-haspopup');
+      button.removeAttribute('aria-expanded');
+      closeThemePicker();
+    }
     const text = picking() ? pickLabel() : label(cur, next, classic);
     button.setAttribute('aria-label', text);
     button.title = text;
@@ -111,11 +179,18 @@ export function initTheme(button, label = (cur, next, classic) => (classic ? (cu
   controller.start();
   initThemeOffer({ controller, text, lang: pickLang, idle });
   // only the time the page is seen counts for a trial
-  document.addEventListener('visibilitychange', () => controller.focus(document.visibilityState !== 'hidden'));
+  document.addEventListener('visibilitychange', () =>
+    controller.focus(document.visibilityState !== 'hidden'),
+  );
   addEventListener('pagehide', () => controller.focus(false));
   addEventListener('pageshow', () => controller.focus(document.visibilityState !== 'hidden'));
   sync();
-  document.addEventListener('zip:reveal', sync);   // the dev reveal turns the button into the list, and back
-  if (button) button.addEventListener('click', () => (picking() ? toggleThemePicker(button, controller, pickLang(), pickLabel(), dev(), rule()) : controller.next()));
+  document.addEventListener('zip:reveal', sync); // the dev reveal turns the button into the list, and back
+  if (button)
+    button.addEventListener('click', () =>
+      picking()
+        ? toggleThemePicker(button, controller, pickLang(), pickLabel(), dev(), rule())
+        : controller.next(),
+    );
   return { refresh: sync };
 }

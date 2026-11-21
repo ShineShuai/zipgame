@@ -30,18 +30,23 @@ export async function refreshModules(entry, fetcher = fetch) {
   while (level.length) {
     const urls = level.filter(url => !seen.has(url));
     urls.forEach(url => seen.add(url));
-    const next = await Promise.all(urls.map(async url => {
-      try {
-        const response = await fetcher(url, { cache: 'reload' });
-        return response.ok ? importsOf(await response.text()).map(s => new URL(s, url).href) : [];
-      } catch {
-        return [];
-      }
-    }));
+    const next = await Promise.all(
+      urls.map(async url => {
+        try {
+          const response = await fetcher(url, { cache: 'reload' });
+          return response.ok
+            ? importsOf(await response.text()).map(s => new URL(s, url).href)
+            : [];
+        } catch {
+          return [];
+        }
+      }),
+    );
     level = next.flat();
   }
   return [...seen];
 }
 
 // Was this page loaded by a reload (soft or hard)?
-export const wasReloaded = () => performance.getEntriesByType?.('navigation')[0]?.type === 'reload';
+export const wasReloaded = () =>
+  performance.getEntriesByType?.('navigation')[0]?.type === 'reload';

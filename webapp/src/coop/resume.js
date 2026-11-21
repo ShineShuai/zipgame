@@ -146,8 +146,15 @@ export async function resumeRoom({
   // and that one is the one that may offer (the smaller n).
   async function answer() {
     const body = stash;
-    if (!body || !peer || peer.n > mine || body.to !== mine || body.from !== peer.n
-      || typeof body.offer !== 'string' || body.offer === answering?.offer) {
+    if (
+      !body ||
+      !peer ||
+      peer.n > mine ||
+      body.to !== mine ||
+      body.from !== peer.n ||
+      typeof body.offer !== 'string' ||
+      body.offer === answering?.offer
+    ) {
       return;
     }
     stash = null;
@@ -182,8 +189,16 @@ export async function resumeRoom({
   async function onAnswer(from, message) {
     const body = await unseal(key, from, message);
     const current = attempt;
-    if (!body || closed || !peer || !current?.connection || current.answered
-      || body.to !== mine || body.from !== peer.n || typeof body.answer !== 'string') {
+    if (
+      !body ||
+      closed ||
+      !peer ||
+      !current?.connection ||
+      current.answered ||
+      body.to !== mine ||
+      body.from !== peer.n ||
+      typeof body.answer !== 'string'
+    ) {
       return;
     }
     current.answered = true;

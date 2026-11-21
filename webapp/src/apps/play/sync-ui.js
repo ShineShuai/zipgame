@@ -22,9 +22,20 @@ const PUSH_WAIT_MS = 5000;
 const PUSH_RETRY_MS = 20000;
 const ARMED_MS = 5000; // how long "tap again" waits
 const fresh = () => ({
-  open: false, more: false, // the card is one line until the player opens it
-  phase: 'idle', link: '', status: '', note: null, reason: '', armed: false, copied: false,
-  token: null, phrase: null, phraseInput: '', phraseError: null, phraseCopied: false,
+  open: false,
+  more: false, // the card is one line until the player opens it
+  phase: 'idle',
+  link: '',
+  status: '',
+  note: null,
+  reason: '',
+  armed: false,
+  copied: false,
+  token: null,
+  phrase: null,
+  phraseInput: '',
+  phraseError: null,
+  phraseCopied: false,
   cloudArmed: false,
 });
 
@@ -40,7 +51,9 @@ let pushTimer = null;
 let armedTimer = null;
 let cloudArmedTimer = null;
 
-const redraw = () => { if (S.screen === 'menu') render(); };
+const redraw = () => {
+  if (S.screen === 'menu') render();
+};
 const set = (patch, quiet = false) => {
   ui = { ...ui, ...patch };
   if (!quiet) redraw();
@@ -68,14 +81,18 @@ function model() {
     canShare: typeof navigator.share === 'function',
     copied: ui.copied,
     now: Date.now(),
-    cloud: gateCloud({
-      available: Boolean(cloud && cloud.available()),
-      on: Boolean(cloud && cloud.on()),
-      busy: Boolean(status.busy),
-      error: status.error || null,
-      lastOk: status.lastOk || 0,
-      armed: ui.cloudArmed,
-    }, ui.phase, S.showDev),
+    cloud: gateCloud(
+      {
+        available: Boolean(cloud && cloud.available()),
+        on: Boolean(cloud && cloud.on()),
+        busy: Boolean(status.busy),
+        error: status.error || null,
+        lastOk: status.lastOk || 0,
+        armed: ui.cloudArmed,
+      },
+      ui.phase,
+      S.showDev,
+    ),
     phrase: ui.phrase,
     phraseInput: ui.phraseInput,
     phraseError: ui.phraseError,
@@ -84,7 +101,7 @@ function model() {
 }
 
 export const syncCardHtmlNow = () =>
-  (sync && (p2p || cloud) ? syncCardHtml(model(), t, cardIcon('sync')) : '');
+  sync && (p2p || cloud) ? syncCardHtml(model(), t, cardIcon('sync')) : '';
 
 const STAGE_STATUS = { ready: 'waiting', asked: 'waiting', seen: 'waiting', quiet: 'waiting' };
 
@@ -93,7 +110,10 @@ function startCloud(options, manual = false) {
   // While the cloud is hidden (backend not set up) it does not run: nothing to fail in silence.
   if (cloud && cloud.on() && cloudVisible()) {
     manualCloud ||= manual;
-    cloud.sync(options).then(redraw).catch(() => {});
+    cloud
+      .sync(options)
+      .then(redraw)
+      .catch(() => {});
   }
 }
 
@@ -110,12 +130,18 @@ function onCloudEvent(event) {
 function onEvent(event) {
   const linking = event.kind === 'link' || event.type === 'waiting' || event.type === 'stage';
   switch (event.type) {
-    case 'waiting': set({ phase: 'inviting', link: event.link, status: 'waiting' }); break;
+    case 'waiting':
+      set({ phase: 'inviting', link: event.link, status: 'waiting' });
+      break;
     case 'stage':
       set({ phase: 'working', status: STAGE_STATUS[event.stage] || 'connecting' });
       break;
-    case 'connecting': if (linking) set({ phase: 'working', status: 'connecting' }); break;
-    case 'syncing': if (linking) set({ phase: 'working', status: 'syncing' }); break;
+    case 'connecting':
+      if (linking) set({ phase: 'working', status: 'connecting' });
+      break;
+    case 'syncing':
+      if (linking) set({ phase: 'working', status: 'syncing' });
+      break;
     case 'linked':
       active = null;
       set({ phase: 'done', note: { kind: 'linked', name: event.peer.name }, status: '' });
@@ -141,8 +167,11 @@ function onEvent(event) {
         health.meetFailed({ reason: event.reason });
       }
       break;
-    case 'cancelled': set(fresh()); break;
-    default: redraw();
+    case 'cancelled':
+      set(fresh());
+      break;
+    default:
+      redraw();
   }
 }
 
@@ -190,12 +219,14 @@ async function copy(text, key) {
   try {
     await navigator.clipboard.writeText(text);
   } catch {
-    const field = document.getElementById('syncLinkField')
-      || document.getElementById('syncPhrase');
+    const field =
+      document.getElementById('syncLinkField') || document.getElementById('syncPhrase');
     if (field && field.select) field.select();
     try {
       document.execCommand('copy');
-    } catch { /* it is selected: the player copies it */ }
+    } catch {
+      /* it is selected: the player copies it */
+    }
   }
   set({ [key]: true });
 }
@@ -224,9 +255,11 @@ async function joinPhrase() {
   await sync.enable({ cloud: true, secret });
   manualCloud = true;
   const result = await cloud.sync({ force: true });
-  set(result.ok
-    ? { ...fresh(), open: true, phase: 'done', note: { kind: 'joined' } }
-    : { ...fresh(), open: true, phase: 'idle' });
+  set(
+    result.ok
+      ? { ...fresh(), open: true, phase: 'done', note: { kind: 'joined' } }
+      : { ...fresh(), open: true, phase: 'idle' },
+  );
 }
 
 async function deleteCloud() {
@@ -238,9 +271,11 @@ async function deleteCloud() {
   }
   set({ cloudArmed: false });
   const result = await cloud.erase();
-  set(result.forgotten
-    ? { phase: 'done', note: { kind: 'erased' } }
-    : { phase: 'failed', reason: 'erase' });
+  set(
+    result.forgotten
+      ? { phase: 'done', note: { kind: 'erased' } }
+      : { phase: 'failed', reason: 'erase' },
+  );
 }
 
 let leaving = false; // the others are being told: a second tap does nothing
@@ -294,12 +329,18 @@ export function bindSyncCard(on) {
   on('syncCopyPhrase', () => copy(ui.phrase.join(' '), 'phraseCopied'));
   on('syncPhraseDone', () => set(fresh()));
   on('syncJoin', joinPhrase);
-  on('syncCloudStop', async () => { await sync.disable({ cloud: true }); set(fresh()); });
+  on('syncCloudStop', async () => {
+    await sync.disable({ cloud: true });
+    set(fresh());
+  });
   on('syncCloudDelete', deleteCloud);
   const link = document.getElementById('syncLinkField');
   if (link) link.onfocus = () => link.select();
   const field = document.getElementById('syncPhraseField');
-  if (field) field.oninput = () => { ui.phraseInput = field.value; }; // kept over a redraw
+  if (field)
+    field.oninput = () => {
+      ui.phraseInput = field.value;
+    }; // kept over a redraw
 }
 
 // The dev reveal (hold V) went on or off: the cloud part of the card comes or goes.
@@ -324,14 +365,16 @@ export async function initSyncUi() {
   health = createHealth({ notify: showSyncNotice, online: () => navigator.onLine !== false });
   cloud.onEvent(onCloudEvent);
   sync.onChange(redraw);
-  window.addEventListener('online', () => { // the network is back: look again
+  window.addEventListener('online', () => {
+    // the network is back: look again
     startMeeting();
     startCloud();
   });
   if (linkable) {
     p2p.onEvent(onEvent);
     const token = tokenOfHash(location.hash);
-    if (token) { // the address is cleaned at once; the player decides on the card
+    if (token) {
+      // the address is cleaned at once; the player decides on the card
       history.replaceState(null, '', location.pathname + location.search);
       ui = { ...fresh(), phase: 'confirm', token };
     }
@@ -355,8 +398,10 @@ export async function initSyncUi() {
   startMeeting();
   startCloud();
   redraw();
-  if (ui.phase === 'confirm') { // a link was opened: the question is below the cards
-    requestAnimationFrame(
-      () => document.getElementById('syncCard')?.scrollIntoView({ block: 'center' }));
+  if (ui.phase === 'confirm') {
+    // a link was opened: the question is below the cards
+    requestAnimationFrame(() =>
+      document.getElementById('syncCard')?.scrollIntoView({ block: 'center' }),
+    );
   }
 }

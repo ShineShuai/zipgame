@@ -54,10 +54,13 @@ function calibrationK(n, rnd) {
 // calibration sample. Stored, not recomputed per call, so a puzzle's combined score is a pure
 // function of ITS OWN metrics — grading one puzzle never depends on which other puzzles happen to be
 // in memory. Regenerate with tools/calibrate.mjs whenever the generator or thresholds change.
-export const COMBINED_ZSCORE = { BperN: { mean: 4.071, sd: 3.003 }, cross: { mean: 0.08286, sd: 0.1342 } };
+export const COMBINED_ZSCORE = {
+  BperN: { mean: 4.071, sd: 3.003 },
+  cross: { mean: 0.08286, sd: 0.1342 },
+};
 export const combinedScore = (m, s) =>
-  (m.B / m.n - COMBINED_ZSCORE.BperN.mean) / COMBINED_ZSCORE.BperN.sd
-  + (s.crossPerSeg - COMBINED_ZSCORE.cross.mean) / COMBINED_ZSCORE.cross.sd;
+  (m.B / m.n - COMBINED_ZSCORE.BperN.mean) / COMBINED_ZSCORE.BperN.sd +
+  (s.crossPerSeg - COMBINED_ZSCORE.cross.mean) / COMBINED_ZSCORE.cross.sd;
 
 // decisionNodes and B are graded SIZE-NORMALIZED (decisionNodes per cell, B per row of the grid).
 // Raw decisionNodes/B grow with grid size independent of how hard a puzzle feels: measured on fresh
@@ -66,10 +69,18 @@ export const combinedScore = (m, s) =>
 // with N (r=0.10 / 0.03 on the rated sample), which is what "difficulty orthogonal to size" needs.
 // (`n` is passed in via the metrics object — see metricsFor's caller in sampleAt/gradesFor.)
 export const GRADED_METRICS = {
-  decisionNodes: { fromMetrics: (m) => m.decisionNodes / (m.n * m.n), label: 'decisionNodes / cell', kind: 'solver' },
-  B: { fromMetrics: (m) => m.B / m.n, label: 'B / N (backtrack)', kind: 'solver' },
+  decisionNodes: {
+    fromMetrics: m => m.decisionNodes / (m.n * m.n),
+    label: 'decisionNodes / cell',
+    kind: 'solver',
+  },
+  B: { fromMetrics: m => m.B / m.n, label: 'B / N (backtrack)', kind: 'solver' },
   crossPerSeg: { fromMetrics: (m, s) => s.crossPerSeg, label: 'crossPerSeg', kind: 'spatial' },
-  overlapPerSeg: { fromMetrics: (m, s) => s.overlapPerSeg, label: 'overlapPerSeg', kind: 'spatial' },
+  overlapPerSeg: {
+    fromMetrics: (m, s) => s.overlapPerSeg,
+    label: 'overlapPerSeg',
+    kind: 'spatial',
+  },
   // Sum of z(B/N) and z(crossPerSeg). Chosen because that pair had the best correlation with
   // the 25 hand-rated puzzles (r=0.44) — but it was picked AFTER scanning ~6 pairs on those same 25
   // puzzles, so that r is optimistically biased. Treat as a hypothesis to keep testing, not a fit.
@@ -109,7 +120,9 @@ export function calibrateMetric(metricId, nRange, seed, samplesPerN = 40) {
     }
   }
   samples.sort((a, b) => a - b);
-  const thresholds = QUANTILES.map(q => samples[Math.min(samples.length - 1, Math.floor(q * samples.length))]);
+  const thresholds = QUANTILES.map(
+    q => samples[Math.min(samples.length - 1, Math.floor(q * samples.length))],
+  );
   return { thresholds, samples, n: samples.length };
 }
 
@@ -123,13 +136,20 @@ export function calibrateAll(nRange, seed, samplesPerN = 40) {
     for (let i = 0; i < samplesPerN; i++) {
       const all = sampleAt(n, rnd);
       if (all == null) continue;
-      for (const id of Object.keys(GRADED_METRICS)) if (Number.isFinite(all[id])) samplesById[id].push(all[id]);
+      for (const id of Object.keys(GRADED_METRICS))
+        if (Number.isFinite(all[id])) samplesById[id].push(all[id]);
     }
   }
   const out = {};
   for (const [id, samples] of Object.entries(samplesById)) {
     samples.sort((a, b) => a - b);
-    out[id] = { thresholds: QUANTILES.map(q => samples[Math.min(samples.length - 1, Math.floor(q * samples.length))]), samples, n: samples.length };
+    out[id] = {
+      thresholds: QUANTILES.map(
+        q => samples[Math.min(samples.length - 1, Math.floor(q * samples.length))],
+      ),
+      samples,
+      n: samples.length,
+    };
   }
   return out;
 }

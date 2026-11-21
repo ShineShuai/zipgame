@@ -19,18 +19,29 @@ const SETUP = { o: 'actpass', a: 'active' };
 const V4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 const MDNS = /^([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})\.local$/i;
 const CANDIDATE = new RegExp(
-  '^a=candidate:\\S+ 1 (?:udp|UDP) (\\d+) (\\S+) (\\d+) typ (host|srflx|prflx|relay)'
-  + '(?: raddr \\S+ rport \\d+)?(?: generation \\d+)?(?: ufrag \\S+)?'
-  + '(?: network-id \\d+)?(?: network-cost \\d+)?$',
+  '^a=candidate:\\S+ 1 (?:udp|UDP) (\\d+) (\\S+) (\\d+) typ (host|srflx|prflx|relay)' +
+    '(?: raddr \\S+ rport \\d+)?(?: generation \\d+)?(?: ufrag \\S+)?' +
+    '(?: network-id \\d+)?(?: network-cost \\d+)?$',
 );
 // Lines that carry nothing the other side needs. The port of the m= line and the address of the
 // c= line are only the default candidate (Chrome sets them once gathering is done): the
 // candidate lines hold the same, and `unpackSdp` writes the neutral 9 and 0.0.0.0.
 const BOILERPLATE = [
-  /^v=0$/, /^o=/, /^s=-$/, /^t=0 0$/, /^a=group:BUNDLE 0$/, /^a=extmap-allow-mixed$/,
-  /^a=msid-semantic: ?WMS(?: \*)?$/, /^m=application \d+ UDP\/DTLS\/SCTP webrtc-datachannel$/,
-  /^c=IN IP[46] \S+$/, /^a=ice-options:trickle$/, /^a=mid:0$/, /^a=sctp-port:5000$/,
-  /^a=max-message-size:\d+$/, /^a=end-of-candidates$/, /^a=sendrecv$/,
+  /^v=0$/,
+  /^o=/,
+  /^s=-$/,
+  /^t=0 0$/,
+  /^a=group:BUNDLE 0$/,
+  /^a=extmap-allow-mixed$/,
+  /^a=msid-semantic: ?WMS(?: \*)?$/,
+  /^m=application \d+ UDP\/DTLS\/SCTP webrtc-datachannel$/,
+  /^c=IN IP[46] \S+$/,
+  /^a=ice-options:trickle$/,
+  /^a=mid:0$/,
+  /^a=sctp-port:5000$/,
+  /^a=max-message-size:\d+$/,
+  /^a=end-of-candidates$/,
+  /^a=sendrecv$/,
 ];
 
 const hex = byte => byte.toString(16).padStart(2, '0');
@@ -154,26 +165,43 @@ export function packSdp(kind, sdp) {
       const [, priority, address, port, type] = CANDIDATE.exec(line) ?? [];
       const packed = type && packAddress(address);
       const [kindPriority, local] = [Number(priority) >>> 24, (Number(priority) >>> 8) & 0xffff];
-      if (!packed || Number(port) > 65535 || kindPriority !== TYPE_PREFERENCE[type]
-        || (Number(priority) & 255) !== 255) {
+      if (
+        !packed ||
+        Number(port) > 65535 ||
+        kindPriority !== TYPE_PREFERENCE[type] ||
+        (Number(priority) & 255) !== 255
+      ) {
         return null;
       }
       candidates.push([
-        TYPES.indexOf(type) | (packed.kind << 2), ...packed.bytes,
-        Number(port) >> 8, Number(port) & 255, ...varint(local),
+        TYPES.indexOf(type) | (packed.kind << 2),
+        ...packed.bytes,
+        Number(port) >> 8,
+        Number(port) & 255,
+        ...varint(local),
       ]);
     } else if (!BOILERPLATE.some(pattern => pattern.test(line))) {
       return null;
     }
   }
   const credential = /^[A-Za-z0-9+/]{4,255}$/;
-  if (!credential.test(ufrag ?? '') || !credential.test(pwd ?? '') || !print
-    || setup !== SETUP[kind] || candidates.length > 255) {
+  if (
+    !credential.test(ufrag ?? '') ||
+    !credential.test(pwd ?? '') ||
+    !print ||
+    setup !== SETUP[kind] ||
+    candidates.length > 255
+  ) {
     return null;
   }
   return Uint8Array.from([
-    candidates.length, ufrag.length, pwd.length, ...packChars(ufrag), ...packChars(pwd),
-    ...print.split(':').map(pair => parseInt(pair, 16)), ...candidates.flat(),
+    candidates.length,
+    ufrag.length,
+    pwd.length,
+    ...packChars(ufrag),
+    ...packChars(pwd),
+    ...print.split(':').map(pair => parseInt(pair, 16)),
+    ...candidates.flat(),
   ]);
 }
 
@@ -221,11 +249,25 @@ export function unpackSdp(kind, bytes) {
     throw new Error('long');
   }
   return [
-    'v=0', 'o=- 1 2 IN IP4 127.0.0.1', 's=-', 't=0 0', 'a=group:BUNDLE 0',
-    'a=extmap-allow-mixed', 'a=msid-semantic: WMS',
-    'm=application 9 UDP/DTLS/SCTP webrtc-datachannel', 'c=IN IP4 0.0.0.0', ...candidates,
-    `a=ice-ufrag:${ufrag}`, `a=ice-pwd:${pwd}`, 'a=ice-options:trickle',
-    `a=fingerprint:sha-256 ${print}`, `a=setup:${SETUP[kind]}`, 'a=mid:0', 'a=sctp-port:5000',
-    'a=max-message-size:262144', 'a=end-of-candidates', '',
+    'v=0',
+    'o=- 1 2 IN IP4 127.0.0.1',
+    's=-',
+    't=0 0',
+    'a=group:BUNDLE 0',
+    'a=extmap-allow-mixed',
+    'a=msid-semantic: WMS',
+    'm=application 9 UDP/DTLS/SCTP webrtc-datachannel',
+    'c=IN IP4 0.0.0.0',
+    ...candidates,
+    `a=ice-ufrag:${ufrag}`,
+    `a=ice-pwd:${pwd}`,
+    'a=ice-options:trickle',
+    `a=fingerprint:sha-256 ${print}`,
+    `a=setup:${SETUP[kind]}`,
+    'a=mid:0',
+    'a=sctp-port:5000',
+    'a=max-message-size:262144',
+    'a=end-of-candidates',
+    '',
   ].join('\r\n');
 }

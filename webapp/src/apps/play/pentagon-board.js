@@ -1,7 +1,12 @@
 import { SLOTS } from '../../core/surface/topology.js';
 import { topologyOf } from '../../core/surface/puzzle.js';
 import {
-  COLORS, CELL, badgeColors, singlePathSvg, wrongMoveMarkAt, correctMoveRingAt,
+  COLORS,
+  CELL,
+  badgeColors,
+  singlePathSvg,
+  wrongMoveMarkAt,
+  correctMoveRingAt,
 } from './board.js';
 import { fitCamera, isZoomed, viewBoxAttr, viewOf } from '../../view/camera.js';
 
@@ -103,7 +108,8 @@ export function pentagonPoint(p, rect, clientX, clientY) {
 // The drawn line through the centres of the cells of `line`: svg path data.
 export function pentagonRouteD(p, line) {
   const { centres } = geometry(p);
-  return line.map((cell, k) => `${k ? 'L' : 'M'}${num(centres[cell][0])} ${num(centres[cell][1])}`)
+  return line
+    .map((cell, k) => `${k ? 'L' : 'M'}${num(centres[cell][0])} ${num(centres[cell][1])}`)
     .join(' ');
 }
 
@@ -119,11 +125,11 @@ function badges(p, visited) {
     const colors = badgeColors(visited.has(cell));
     const fontSize = Math.round(CELL * 0.32 * 10) / 10;
     parts.push(
-      `<g data-num-cell="${cell}">`
-      + `<circle cx="${num(x)}" cy="${num(y)}" r="${CELL * 0.32}" fill="${colors.fill}" `
-      + `stroke="${colors.stroke}" stroke-width="3"/>`
-      + `<text x="${num(x)}" y="${num(y)}" dy=".35em" text-anchor="middle" `
-      + `font-size="${fontSize}" font-weight="700" fill="${colors.text}">${number}</text></g>`,
+      `<g data-num-cell="${cell}">` +
+        `<circle cx="${num(x)}" cy="${num(y)}" r="${CELL * 0.32}" fill="${colors.fill}" ` +
+        `stroke="${colors.stroke}" stroke-width="3"/>` +
+        `<text x="${num(x)}" y="${num(y)}" dy=".35em" text-anchor="middle" ` +
+        `font-size="${fontSize}" font-weight="700" fill="${colors.text}">${number}</text></g>`,
     );
   });
   return parts.join('');
@@ -149,12 +155,14 @@ export function pentagonLayers(p) {
       walls.push(lineOf(g.edgeSegment[edge]));
     }
   });
-  return `<g data-role="tiles" fill="${COLORS.tile}" stroke="${COLORS.grid}" stroke-width="1.5" `
-    + `stroke-linejoin="round">${tiles}</g>`
-    + `<g data-role="outline" stroke="${COLORS.outline}" stroke-width="5" `
-    + `stroke-linecap="round">${g.border.map(lineOf).join('')}</g>`
-    + `<g data-role="walls" stroke="${COLORS.wall}" stroke-width="6" `
-    + `stroke-linecap="round">${walls.join('')}</g>`;
+  return (
+    `<g data-role="tiles" fill="${COLORS.tile}" stroke="${COLORS.grid}" stroke-width="1.5" ` +
+    `stroke-linejoin="round">${tiles}</g>` +
+    `<g data-role="outline" stroke="${COLORS.outline}" stroke-width="5" ` +
+    `stroke-linecap="round">${g.border.map(lineOf).join('')}</g>` +
+    `<g data-role="walls" stroke="${COLORS.wall}" stroke-width="6" ` +
+    `stroke-linecap="round">${walls.join('')}</g>`
+  );
 }
 
 // Full svg markup of the play board (S = the play state, as for boardSvg in board.js).
@@ -166,8 +174,9 @@ export function pentagonBoardSvg(S) {
   const route = S.path.length > 1 ? pentagonRouteD(p, S.path) : '';
   const cam = S.cam ?? fitCamera(view); // the zoom of this game (S.cam, view/camera.js)
   const zoomed = isZoomed(cam) ? ' zoomed' : '';
-  let svg = `<svg viewBox="${viewBoxAttr(viewOf(view, cam))}" `
-    + `class="zip-svg pentagon${zoomed}" style="${maxBoardCss(p)}">`;
+  let svg =
+    `<svg viewBox="${viewBoxAttr(viewOf(view, cam))}" ` +
+    `class="zip-svg pentagon${zoomed}" style="${maxBoardCss(p)}">`;
   svg += pentagonLayers(p);
   svg += singlePathSvg(route);
   svg += badges(p, visited);

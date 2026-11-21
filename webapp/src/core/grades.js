@@ -23,7 +23,11 @@ export const GRADE_ORDER = ['decisionNodes', 'B', 'crossPerSeg', 'overlapPerSeg'
 
 // Returns null when the reference solve could not confirm uniqueness within budget (no grades then),
 // otherwise { metrics, spatial, raw: {id: value}, grades: {id: 0..5} }.
-export function gradesFor(puzzle, nodeCap = refNodeCap(puzzle.n), thresholdsById = DEFAULT_THRESHOLDS_BY_METRIC) {
+export function gradesFor(
+  puzzle,
+  nodeCap = refNodeCap(puzzle.n),
+  thresholdsById = DEFAULT_THRESHOLDS_BY_METRIC,
+) {
   const metrics = { ...metricsFor(puzzle, nodeCap), n: puzzle.n };
   if (metrics.exceeded) return null;
   return gradesFromMetrics(metrics, spatialMetrics(puzzle), thresholdsById);
@@ -31,8 +35,13 @@ export function gradesFor(puzzle, nodeCap = refNodeCap(puzzle.n), thresholdsById
 
 // Same, from already-computed metricsFor()/spatialMetrics() results — for callers (the design
 // app's full diagnostics) that already ran the solve and must not pay for it twice.
-export function gradesFromMetrics(metrics, spatial, thresholdsById = DEFAULT_THRESHOLDS_BY_METRIC) {
-  const raw = {}, grades = {};
+export function gradesFromMetrics(
+  metrics,
+  spatial,
+  thresholdsById = DEFAULT_THRESHOLDS_BY_METRIC,
+) {
+  const raw = {},
+    grades = {};
   for (const id of GRADE_ORDER) {
     raw[id] = GRADED_METRICS[id].fromMetrics(metrics, spatial);
     grades[id] = gradeOf(raw[id], thresholdsById[id]);
@@ -52,7 +61,16 @@ export function gradesFromMetrics(metrics, spatial, thresholdsById = DEFAULT_THR
 export function playGradesFor(puzzle) {
   // a Pentagon puzzle: the trap grade on its own board, by the graph solver (surface/trap.js)
   if (isPentagon(puzzle)) return { trap: surfaceTrapMetrics(puzzle), legacy: null };
-  const variant = puzzle.holes || puzzle.arrows || puzzle.exact || puzzle.wrap || puzzle.loop
-    || puzzle.portals || puzzle.split;
-  return { trap: trapMetrics(puzzle, undefined, null, modelFor(puzzle)), legacy: variant ? null : gradesFor(puzzle) };
+  const variant =
+    puzzle.holes ||
+    puzzle.arrows ||
+    puzzle.exact ||
+    puzzle.wrap ||
+    puzzle.loop ||
+    puzzle.portals ||
+    puzzle.split;
+  return {
+    trap: trapMetrics(puzzle, undefined, null, modelFor(puzzle)),
+    legacy: variant ? null : gradesFor(puzzle),
+  };
 }

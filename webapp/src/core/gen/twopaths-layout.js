@@ -11,7 +11,8 @@ export const CUT_SHARE = [0.35, 0.65];
 const LAYOUT_TRIES = 20;
 
 // How many of the K numbers the red path takes: its share of the cells, at least 2 for each colour.
-export const redNumbers = (K, redCells, cells) => Math.max(2, Math.min(K - 2, Math.round((K * redCells) / cells)));
+export const redNumbers = (K, redCells, cells) =>
+  Math.max(2, Math.min(K - 2, Math.round((K * redCells) / cells)));
 
 // The board's cells as { path, positions, split }: path = the red piece followed by the blue one,
 // each turned at random; positions = the K path positions of the numbers 1..K (the red ones first);
@@ -27,7 +28,12 @@ export function twoPathsLayout(n, K, rnd, cps = 'gap') {
     const first = base.slice(0, cut);
     const second = base.slice(cut);
     // the turns that leave the bridge cells apart: [turn red, turn blue]
-    const turns = [[false, false], [true, false], [false, true], [true, true]].filter(([a, b]) => {
+    const turns = [
+      [false, false],
+      [true, false],
+      [false, true],
+      [true, true],
+    ].filter(([a, b]) => {
       const redEnd = a ? first[0] : first[cut - 1];
       const blueStart = b ? second[second.length - 1] : second[0];
       return gridDist(n, false, redEnd, blueStart) > 1;
@@ -37,8 +43,10 @@ export function twoPathsLayout(n, K, rnd, cps = 'gap') {
     const red = turnRed ? first.slice().reverse() : first;
     const blue = turnBlue ? second.slice().reverse() : second;
     const split = redNumbers(K, red.length, cells);
-    const place = (piece, count) => (cps === 'random' ? randomCheckpoints(piece.length, count, rnd)
-      : gapCheckpoints(n, piece, count));
+    const place = (piece, count) =>
+      cps === 'random'
+        ? randomCheckpoints(piece.length, count, rnd)
+        : gapCheckpoints(n, piece, count);
     const redPositions = place(red, split);
     const bluePositions = place(blue, K - split);
     if (!redPositions || !bluePositions) continue;

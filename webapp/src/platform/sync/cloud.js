@@ -12,7 +12,11 @@
 // push() (after a change, not more often than minPushMs) and erase().
 import { toBase64Url } from '../../core/sync/base64.js';
 import {
-  DATA_MAX, deriveCloudKeys, KDF_ITERATIONS, openFromText, sealToText,
+  DATA_MAX,
+  deriveCloudKeys,
+  KDF_ITERATIONS,
+  openFromText,
+  sealToText,
 } from '../../core/sync/cloud-keys.js';
 import { SHRINKS } from '../../core/sync/merge.js';
 import { packSlice, unpackSlice } from '../../core/sync/slice.js';
@@ -20,7 +24,11 @@ import { packSlice, unpackSlice } from '../../core/sync/slice.js';
 export const PUSH_MIN_MS = 60000;
 
 export function createCloud({
-  sync, backends, now = () => Date.now(), iterations = KDF_ITERATIONS, minPushMs = PUSH_MIN_MS,
+  sync,
+  backends,
+  now = () => Date.now(),
+  iterations = KDF_ITERATIONS,
+  minPushMs = PUSH_MIN_MS,
 }) {
   let keys = null; // { text, id, auth, key } of the secret in use
   const seen = new Map(); // backend name -> { dev: seq } of the rows it already gave
@@ -34,7 +42,8 @@ export function createCloud({
   const on = () => available() && sync.enabled() && sync.cloudOn();
   const note = (backend, error) => {
     state.backends[backend.name] = error
-      ? { ok: false, error: error.code || 'network', at: now() } : { ok: true, at: now() };
+      ? { ok: false, error: error.code || 'network', at: now() }
+      : { ok: true, at: now() };
   };
 
   // The keys of the secret in use; PBKDF2 runs once per secret.
@@ -63,7 +72,7 @@ export function createCloud({
         continue;
       }
       const bytes = await openFromText(k.key, k.id, row.dev, row.data);
-      const slice = bytes && await unpackSlice(bytes);
+      const slice = bytes && (await unpackSlice(bytes));
       if (!slice || slice.dev !== row.dev) {
         continue; // not ours: junk, or sealed for another device
       }
@@ -133,7 +142,7 @@ export function createCloud({
 
     // Reads the servers and takes the other devices' slices. -> { accepted, ok, failed }
     async pull() {
-      const k = on() && await keysNow();
+      const k = on() && (await keysNow());
       if (!k) {
         return { accepted: 0, ok: 0, failed: 0 };
       }
@@ -155,7 +164,7 @@ export function createCloud({
     // force: even soon after the last push (not more often than minPushMs otherwise).
     // keepalive: the page is closing; let the request finish. -> { ok, failed, skipped? }
     async push({ force = false, keepalive = false } = {}) {
-      const k = on() && await keysNow();
+      const k = on() && (await keysNow());
       if (!k) {
         return { ok: 0, failed: 0, skipped: 'off' };
       }
@@ -171,15 +180,24 @@ export function createCloud({
         return { ok: 0, failed: 0, skipped: 'current' };
       }
       const bytes = await packSlice(slice, { shrink: SHRINKS });
-      const data = bytes && await sealToText(k.key, k.id, slice.dev, bytes);
+      const data = bytes && (await sealToText(k.key, k.id, slice.dev, bytes));
       if (!data || data.length > DATA_MAX) {
         state.error = 'toobig';
         return { ok: 0, failed: targets.length, skipped: 'toobig' };
       }
       state.lastPush = now();
-      const results = await Promise.allSettled(targets.map(b => b.put({
-        id: k.id, auth: k.auth, dev: slice.dev, seq: slice.seq, data, keepalive,
-      })));
+      const results = await Promise.allSettled(
+        targets.map(b =>
+          b.put({
+            id: k.id,
+            auth: k.auth,
+            dev: slice.dev,
+            seq: slice.seq,
+            data,
+            keepalive,
+          }),
+        ),
+      );
       let ok = 0;
       results.forEach((result, i) => {
         note(targets[i], result.status === 'rejected' ? result.reason : null);
@@ -237,7 +255,8 @@ export function createCloud({
         }
         try {
           servers.push({
-            name: backend.name, removed: await backend.remove({ id: k.id, auth: k.auth }),
+            name: backend.name,
+            removed: await backend.remove({ id: k.id, auth: k.auth }),
           });
         } catch (error) {
           servers.push({ name: backend.name, removed: false, reason: error.code || 'network' });

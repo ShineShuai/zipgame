@@ -28,8 +28,9 @@ const digitSquares = n => {
 export function chain(n) {
   if (!Number.isSafeInteger(n) || n < 1) throw new RangeError(`not a positive integer: ${n}`);
   const seen = new Set([n]);
-  let steps = 0, peak = n;
-  for (let x = n; x !== 1;) {
+  let steps = 0,
+    peak = n;
+  for (let x = n; x !== 1; ) {
     x = digitSquares(x);
     steps++;
     peak = Math.max(peak, x);
@@ -55,9 +56,14 @@ export function monthRows(ref, day) {
   return rows;
 }
 
-const beats = (a, b) => (a.happy !== b.happy ? a.happy
-  : a.steps !== b.steps ? a.steps < b.steps
-    : a.peak !== b.peak ? a.peak > b.peak : a.day < b.day);
+const beats = (a, b) =>
+  a.happy !== b.happy
+    ? a.happy
+    : a.steps !== b.steps
+      ? a.steps < b.steps
+      : a.peak !== b.peak
+        ? a.peak > b.peak
+        : a.day < b.day;
 
 // The happiest day of the month of `day`; null in the month of ref and before it (or when ref is not set).
 export function giftDay(ref, day) {
@@ -77,7 +83,8 @@ export function lastGift(ref, day) {
 // The latest `count` happiest days on or before `day`, oldest first (fewer when there are not that many yet).
 export function recentGifts(ref, day, count) {
   const out = [];
-  for (let g = lastGift(ref, day); g !== null && out.length < count; g = lastGift(ref, g - 1)) out.unshift(g);
+  for (let g = lastGift(ref, day); g !== null && out.length < count; g = lastGift(ref, g - 1))
+    out.unshift(g);
   return out;
 }
 
@@ -86,16 +93,26 @@ export function recentGifts(ref, day, count) {
 // ref is not set.
 export function giftInfo(ref, day, upcoming = 6) {
   if (ref === null || ref === undefined) return null;
-  const n = day - ref + C, ahead = [];
-  for (let g = nextGift(ref, day); g !== null && ahead.length < upcoming; g = nextGift(ref, g)) ahead.push(g);
+  const n = day - ref + C,
+    ahead = [];
+  for (let g = nextGift(ref, day); g !== null && ahead.length < upcoming; g = nextGift(ref, g))
+    ahead.push(g);
   return {
-    ref, n, chain: n >= 1 ? chain(n) : null, first: firstGift(ref), last: lastGift(ref, day), next: nextGift(ref, day),
-    today: isGiftDay(ref, day), count: recentGifts(ref, day, 100000).length, upcoming: ahead,
+    ref,
+    n,
+    chain: n >= 1 ? chain(n) : null,
+    first: firstGift(ref),
+    last: lastGift(ref, day),
+    next: nextGift(ref, day),
+    today: isGiftDay(ref, day),
+    count: recentGifts(ref, day, 100000).length,
+    upcoming: ahead,
   };
 }
 
 // The very first happiest day: in the month after the month of ref; null when ref is not set.
-export const firstGift = ref => (ref === null || ref === undefined ? null : giftDay(ref, firstOfMonth(ref, 1)));
+export const firstGift = ref =>
+  ref === null || ref === undefined ? null : giftDay(ref, firstOfMonth(ref, 1));
 
 // The first happiest day after `day`; null when ref is not set.
 export function nextGift(ref, day) {

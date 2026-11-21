@@ -4,9 +4,10 @@ import { createWorkerRunner } from '../../platform/worker-run.js';
 import { runAsync } from '../../platform/run.js';
 import { generatorFor, prepare } from './gen-job.js';
 
-const spawn = () => (typeof Worker === 'undefined'
-  ? null
-  : new Worker(new URL('./gen-worker.js', import.meta.url), { type: 'module' }));
+const spawn = () =>
+  typeof Worker === 'undefined'
+    ? null
+    : new Worker(new URL('./gen-worker.js', import.meta.url), { type: 'module' });
 
 const onThisThread = async (job, { onEvent, signal }) => {
   await prepare(job);

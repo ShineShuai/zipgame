@@ -16,10 +16,17 @@ export const INDEX_VERSION = 1;
 export const STATUSES = ['pending', 'approved', 'rejected'];
 export const emptyIndex = () => ({ v: INDEX_VERSION, slots: {}, candidates: [] });
 
-const byOrder = (a, b) => (a.slot < b.slot ? -1 : a.slot > b.slot ? 1 : a.attempt - b.attempt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+const byOrder = (a, b) =>
+  a.slot < b.slot
+    ? -1
+    : a.slot > b.slot
+      ? 1
+      : a.attempt - b.attempt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 export function formatIndex(ix) {
-  const slots = Object.keys(ix.slots).sort().map(d => `    ${JSON.stringify(d)}: ${JSON.stringify(ix.slots[d])}`);
+  const slots = Object.keys(ix.slots)
+    .sort()
+    .map(d => `    ${JSON.stringify(d)}: ${JSON.stringify(ix.slots[d])}`);
   const cands = [...ix.candidates].sort(byOrder).map(c => `    ${JSON.stringify(c)}`);
   return `{\n  "v": ${ix.v},\n  "slots": {${slots.length ? '\n' + slots.join(',\n') + '\n  ' : ''}},\n  "candidates": [${cands.length ? '\n' + cands.join(',\n') + '\n  ' : ''}]\n}\n`;
 }
@@ -27,38 +34,63 @@ export function formatIndex(ix) {
 // Throws an Error that names what is wrong. A missing file is the caller's business (emptyIndex()).
 export function parseIndex(text) {
   let ix;
-  try { ix = JSON.parse(text); } catch (e) { throw new Error(`index.json is not valid JSON (${e.message})`); }
-  const bad = msg => { throw new Error(`index.json: ${msg}`); };
+  try {
+    ix = JSON.parse(text);
+  } catch (e) {
+    throw new Error(`index.json is not valid JSON (${e.message})`);
+  }
+  const bad = msg => {
+    throw new Error(`index.json: ${msg}`);
+  };
   if (!ix || ix.v !== INDEX_VERSION) bad(`"v" must be ${INDEX_VERSION}`);
-  if (!ix.slots || typeof ix.slots !== 'object' || Array.isArray(ix.slots)) bad('"slots" must be an object');
+  if (!ix.slots || typeof ix.slots !== 'object' || Array.isArray(ix.slots))
+    bad('"slots" must be an object');
   for (const [d, s] of Object.entries(ix.slots)) {
     if (!/^\d{8}$/.test(d)) bad(`slot key ${JSON.stringify(d)} is not YYYYMMDD`);
-    if (!Number.isInteger(s?.size) || !Number.isInteger(s?.attempts) || s.attempts < 0) bad(`slot ${d} needs integer "size" and "attempts"`);
+    if (!Number.isInteger(s?.size) || !Number.isInteger(s?.attempts) || s.attempts < 0)
+      bad(`slot ${d} needs integer "size" and "attempts"`);
   }
   if (!Array.isArray(ix.candidates)) bad('"candidates" must be an array');
   const ids = new Set();
   ix.candidates.forEach((c, i) => {
     const at = `candidate #${i + 1}`;
-    if (!c || typeof c.id !== 'string' || !/^[0-9a-f]{12}$/.test(c.id)) bad(`${at}: "id" must be 12 hex digits`);
+    if (!c || typeof c.id !== 'string' || !/^[0-9a-f]{12}$/.test(c.id))
+      bad(`${at}: "id" must be 12 hex digits`);
     if (ids.has(c.id)) bad(`${at}: id ${c.id} appears twice`);
     ids.add(c.id);
-    if (!Number.isInteger(c.size) || !/^\d{8}$/.test(c.slot) || !Number.isInteger(c.attempt) || !Number.isInteger(c.seed)) bad(`${at} (${c.id}): size, slot, attempt, seed`);
-    if (typeof c.stamp !== 'string' || !STATUSES.includes(c.status)) bad(`${at} (${c.id}): stamp, status (${STATUSES.join(' | ')})`);
-    if (c.file !== `c-${c.size}-${c.id}.txt`) bad(`${at} (${c.id}): "file" must be c-<size>-<id>.txt`);
+    if (
+      !Number.isInteger(c.size) ||
+      !/^\d{8}$/.test(c.slot) ||
+      !Number.isInteger(c.attempt) ||
+      !Number.isInteger(c.seed)
+    )
+      bad(`${at} (${c.id}): size, slot, attempt, seed`);
+    if (typeof c.stamp !== 'string' || !STATUSES.includes(c.status))
+      bad(`${at} (${c.id}): stamp, status (${STATUSES.join(' | ')})`);
+    if (c.file !== `c-${c.size}-${c.id}.txt`)
+      bad(`${at} (${c.id}): "file" must be c-<size>-<id>.txt`);
   });
   return ix;
 }
 
 // A pending candidate counts only under the generator stamp it was made with: after a refit its grade is a claim of the old model.
 // An approved one always counts (a human judged it); a rejected one never does.
-export const usable = (c, stamp) => c.status === 'approved' || (c.status === 'pending' && c.stamp === stamp);
+export const usable = (c, stamp) =>
+  c.status === 'approved' || (c.status === 'pending' && c.stamp === stamp);
 
 // Which days need how many candidates.
 //   today      UTC day number          horizon  days from today that get candidates      perSlot  candidates wanted per open day
 //   published  Set of 'YYYYMMDD' that already have a Game-of-Day file (those days are closed)
 // -> { slots: [{ day, date, size, have, need, attempts }] (open days, earliest first), adopt: [{ id, slot }] }
 // `adopt`: candidates made for a day that is published or past now move to the earliest open day of their size that still lacks some.
-export function planFill({ today, horizon = GOTD_CFG.horizon, perSlot = GOTD_CFG.perSlot, published, index, stamp }) {
+export function planFill({
+  today,
+  horizon = GOTD_CFG.horizon,
+  perSlot = GOTD_CFG.perSlot,
+  published,
+  index,
+  stamp,
+}) {
   const open = [];
   for (let day = today; day < today + horizon; day++) {
     const date = dateOfDay(day);
@@ -66,8 +98,10 @@ export function planFill({ today, horizon = GOTD_CFG.horizon, perSlot = GOTD_CFG
   }
   const openDates = new Set(open.map(s => s.date));
   const live = index.candidates.filter(c => usable(c, stamp));
-  const stale = c => !openDates.has(c.slot) && (published.has(c.slot) || dayOfDate(c.slot) < today);
-  const orphans = live.filter(stale).sort(byOrder), adopt = [];
+  const stale = c =>
+    !openDates.has(c.slot) && (published.has(c.slot) || dayOfDate(c.slot) < today);
+  const orphans = live.filter(stale).sort(byOrder),
+    adopt = [];
   const slots = open.map(s => {
     let have = live.filter(c => c.slot === s.date).length;
     while (have < perSlot) {
@@ -76,7 +110,12 @@ export function planFill({ today, horizon = GOTD_CFG.horizon, perSlot = GOTD_CFG
       adopt.push({ id: orphans.splice(i, 1)[0].id, slot: s.date });
       have++;
     }
-    return { ...s, have, need: Math.max(0, perSlot - have), attempts: index.slots[s.date]?.attempts ?? 0 };
+    return {
+      ...s,
+      have,
+      need: Math.max(0, perSlot - have),
+      attempts: index.slots[s.date]?.attempts ?? 0,
+    };
   });
   return { slots, adopt };
 }
@@ -86,23 +125,50 @@ export function planFill({ today, horizon = GOTD_CFG.horizon, perSlot = GOTD_CFG
 //   slotAttempts    most runs one day may use in all (counted over all runs: index.slots[date].attempts); a day that used them up is `starved`
 //   make            ({ stamp, day, date, size, attempt, distinct }) -> makeCandidate's answer
 // -> { added: [{ entry, puzzle, symKey, path, origin }], slots: { date: { size, attempts } } (days whose counter moved), fails: { reason: count }, starved: [date], tries }
-export function fillQueue({ plan, distinct, stamp, maxNew = 24, maxAttempts = 120, slotAttempts = GOTD_CFG.maxAttemptsPerSlot, make = makeCandidate, log = () => {} }) {
-  const added = [], slots = {}, fails = {}, starved = [];
+export function fillQueue({
+  plan,
+  distinct,
+  stamp,
+  maxNew = 24,
+  maxAttempts = 120,
+  slotAttempts = GOTD_CFG.maxAttemptsPerSlot,
+  make = makeCandidate,
+  log = () => {},
+}) {
+  const added = [],
+    slots = {},
+    fails = {},
+    starved = [];
   let tries = 0;
   for (const s of plan.slots) {
-    let need = s.need, attempts = s.attempts;
+    let need = s.need,
+      attempts = s.attempts;
     while (need > 0 && added.length < maxNew && tries < maxAttempts && attempts < slotAttempts) {
       const attempt = attempts++;
       tries++;
       const r = make({ stamp, day: s.day, date: s.date, size: s.size, attempt, distinct });
       if (!r.ok) {
         fails[r.reason] = (fails[r.reason] || 0) + 1;
-        log(`${s.date} ${s.size}x${s.size} attempt ${attempt}: ${r.reason}${r.detail ? ` (${r.detail})` : ''}`);
+        log(
+          `${s.date} ${s.size}x${s.size} attempt ${attempt}: ${r.reason}${r.detail ? ` (${r.detail})` : ''}`,
+        );
         continue;
       }
-      distinct.add({ symKey: r.symKey, pathKey: r.entry.pathKey, where: `queue candidate ${r.entry.id}` });
-      added.push({ entry: r.entry, puzzle: r.puzzle, symKey: r.symKey, path: r.path, origin: r.origin });
-      log(`${s.date} ${s.size}x${s.size} attempt ${attempt}: ${r.entry.id} grade ${r.entry.trap.grade} score ${r.entry.trap.pred}`);
+      distinct.add({
+        symKey: r.symKey,
+        pathKey: r.entry.pathKey,
+        where: `queue candidate ${r.entry.id}`,
+      });
+      added.push({
+        entry: r.entry,
+        puzzle: r.puzzle,
+        symKey: r.symKey,
+        path: r.path,
+        origin: r.origin,
+      });
+      log(
+        `${s.date} ${s.size}x${s.size} attempt ${attempt}: ${r.entry.id} grade ${r.entry.trap.grade} score ${r.entry.trap.pred}`,
+      );
       need--;
     }
     if (attempts !== s.attempts) slots[s.date] = { size: s.size, attempts };
@@ -117,7 +183,10 @@ export function applyFill(index, plan, result) {
   return {
     v: INDEX_VERSION,
     slots: { ...index.slots, ...result.slots },
-    candidates: [...index.candidates.map(c => (adopt.has(c.id) ? { ...c, slot: adopt.get(c.id) } : c)), ...result.added.map(a => a.entry)].sort(byOrder),
+    candidates: [
+      ...index.candidates.map(c => (adopt.has(c.id) ? { ...c, slot: adopt.get(c.id) } : c)),
+      ...result.added.map(a => a.entry),
+    ].sort(byOrder),
   };
 }
 
@@ -126,12 +195,21 @@ export function applyFill(index, plan, result) {
 //   horizon   the days from today that are planned. Without it nothing limits how far ahead a candidate may go: the plan runs until every approved candidate has a day (at most
 //             GOTD_CFG.maxDays) and covers at least GOTD_CFG.bufferDays, so a near day without an approved candidate is still listed. The approval is the human's gate.
 export function planPromote({ today, horizon, published, index }) {
-  const approved = index.candidates.filter(c => c.status === 'approved').sort(byOrder), taken = new Set(), plan = [];
+  const approved = index.candidates.filter(c => c.status === 'approved').sort(byOrder),
+    taken = new Set(),
+    plan = [];
   for (let day = today; day < today + (horizon ?? GOTD_CFG.maxDays); day++) {
-    if (horizon === undefined && taken.size === approved.length && day - today >= GOTD_CFG.bufferDays) break;
+    if (
+      horizon === undefined &&
+      taken.size === approved.length &&
+      day - today >= GOTD_CFG.bufferDays
+    )
+      break;
     const date = dateOfDay(day);
     if (published.has(date)) continue;
-    const size = sizeForDay(day), pool = approved.filter(c => c.size === size && !taken.has(c.id)), pick = pool.find(c => c.slot === date) || pool[0] || null;
+    const size = sizeForDay(day),
+      pool = approved.filter(c => c.size === size && !taken.has(c.id)),
+      pick = pool.find(c => c.slot === date) || pool[0] || null;
     if (pick) taken.add(pick.id);
     plan.push({ day, date, size, id: pick ? pick.id : null });
   }
@@ -141,20 +219,34 @@ export function planPromote({ today, horizon, published, index }) {
 // How many days from today a review looks at when nothing limits it: far enough to hold as many days without a file as there are candidates in stock (a candidate fills
 // one day at most), at most maxDays. `published`: the Set of the dates that have a file.
 export function reviewSpan({ today, published, stock, maxDays = GOTD_CFG.maxDays }) {
-  let open = 0, span = 0;
-  while (open < stock && span < maxDays) { if (!published.has(dateOfDay(today + span))) open++; span++; }
+  let open = 0,
+    span = 0;
+  while (open < stock && span < maxDays) {
+    if (!published.has(dateOfDay(today + span))) open++;
+    span++;
+  }
   return span;
 }
 
 // The days from today that have a file, asked with `has(date) -> Promise<boolean>` (the panel's HEAD request) in batches of `batch` days and only as far as reviewSpan needs.
 // -> { published: Set of dates, span } where span is reviewSpan of what was found.
-export async function scanPublished({ today, stock, has, batch = 32, maxDays = GOTD_CFG.maxDays }) {
+export async function scanPublished({
+  today,
+  stock,
+  has,
+  batch = 32,
+  maxDays = GOTD_CFG.maxDays,
+}) {
   const published = new Set();
-  let done = 0, span;
+  let done = 0,
+    span;
   // days not asked yet count as open, so the span is a lower bound until every day in it has been asked
   while ((span = reviewSpan({ today, published, stock, maxDays })) > done) {
-    const upTo = Math.min(span, done + batch), dates = Array.from({ length: upTo - done }, (_, i) => dateOfDay(today + done + i));
-    (await Promise.all(dates.map(has))).forEach((yes, i) => { if (yes) published.add(dates[i]); });
+    const upTo = Math.min(span, done + batch),
+      dates = Array.from({ length: upTo - done }, (_, i) => dateOfDay(today + done + i));
+    (await Promise.all(dates.map(has))).forEach((yes, i) => {
+      if (yes) published.add(dates[i]);
+    });
     done = upTo;
   }
   return { published, span };
@@ -169,16 +261,42 @@ export async function scanPublished({ today, stock, has, batch = 32, maxDays = G
 // the earliest open day that can take it. A published, past or already covered day is never offered, whatever `slot` a candidate carries (`slot` is only a preference).
 // -> { queue: [{ ...candidate, day, date }] (day / date: the open day it fills if approved, null in the reserve), open: [{ day, date, size }], plan } with `plan` = planPromote's answer
 //    for the index with the verdicts applied: `plan.find(p => p.id === id).date` is the day an approved candidate gets; span = the days from today that were looked at.
-export function planReview({ today, horizon, published, index, verdicts, stamp, reserve = false }) {
+export function planReview({
+  today,
+  horizon,
+  published,
+  index,
+  verdicts,
+  stamp,
+  reserve = false,
+}) {
   const judged = applyVerdicts(index, verdicts).index;
-  const span = horizon ?? reviewSpan({ today, published, stock: judged.candidates.filter(c => usable(c, stamp)).length }), plan = planPromote({ today, horizon: span, published, index: judged });
+  const span =
+      horizon ??
+      reviewSpan({
+        today,
+        published,
+        stock: judged.candidates.filter(c => usable(c, stamp)).length,
+      }),
+    plan = planPromote({ today, horizon: span, published, index: judged });
   const open = plan.filter(p => !p.id).map(({ day, date, size }) => ({ day, date, size }));
-  const pending = judged.candidates.filter(c => c.status === 'pending' && c.stamp === stamp).sort(byOrder), listed = new Set(), queue = [];
+  const pending = judged.candidates
+      .filter(c => c.status === 'pending' && c.stamp === stamp)
+      .sort(byOrder),
+    listed = new Set(),
+    queue = [];
   for (const d of open) {
     const fit = pending.filter(c => c.size === d.size && !listed.has(c.id));
-    for (const c of [...fit.filter(x => x.slot === d.date), ...fit.filter(x => x.slot !== d.date)]) { listed.add(c.id); queue.push({ ...c, day: d.day, date: d.date }); }
+    for (const c of [
+      ...fit.filter(x => x.slot === d.date),
+      ...fit.filter(x => x.slot !== d.date),
+    ]) {
+      listed.add(c.id);
+      queue.push({ ...c, day: d.day, date: d.date });
+    }
   }
-  if (reserve) for (const c of pending) if (!listed.has(c.id)) queue.push({ ...c, day: null, date: null });
+  if (reserve)
+    for (const c of pending) if (!listed.has(c.id)) queue.push({ ...c, day: null, date: null });
   return { queue, open, plan, span };
 }
 
@@ -188,7 +306,8 @@ export function planReview({ today, horizon, published, index, verdicts, stamp, 
 //      review: { count, fit (can fill an open day), extra, open (days without an approved candidate), span }, stock: { slot date: usable candidates } }
 export function queueStatus({ today, horizon, published, index, verdicts, stamp, sizes }) {
   const bySize = sizes.map(size => {
-    const mine = index.candidates.filter(c => c.size === size), count = f => mine.filter(f).length;
+    const mine = index.candidates.filter(c => c.size === size),
+      count = f => mine.filter(f).length;
     return {
       size,
       pending: count(c => c.status === 'pending' && c.stamp === stamp),
@@ -197,8 +316,21 @@ export function queueStatus({ today, horizon, published, index, verdicts, stamp,
       rejected: count(c => c.status === 'rejected'),
     };
   });
-  const { queue, open, span } = planReview({ today, horizon, published, index, verdicts, stamp, reserve: true });
-  const fit = queue.filter(c => c.date).length, stock = {};
+  const { queue, open, span } = planReview({
+    today,
+    horizon,
+    published,
+    index,
+    verdicts,
+    stamp,
+    reserve: true,
+  });
+  const fit = queue.filter(c => c.date).length,
+    stock = {};
   for (const c of index.candidates) if (usable(c, stamp)) stock[c.slot] = (stock[c.slot] || 0) + 1;
-  return { bySize, review: { count: queue.length, fit, extra: queue.length - fit, open: open.length, span }, stock };
+  return {
+    bySize,
+    review: { count: queue.length, fit, extra: queue.length - fit, open: open.length, span },
+    stock,
+  };
 }

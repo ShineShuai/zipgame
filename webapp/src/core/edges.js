@@ -10,11 +10,14 @@ export const edgeId = (n, a, b, wrap = false) => {
     if (neighbourCell(n, true, b, 0) === a) return b * 2;
     return (neighbourCell(n, true, a, 2) === b ? a : b) * 2 + 1;
   }
-  const lo = a < b ? a : b, gap = a < b ? b - a : a - b;
+  const lo = a < b ? a : b,
+    gap = a < b ? b - a : a - b;
   // A grid has no edge between these two cells: most likely a wrap-around board and a missing
   // `wrap` argument. Without this check the id would silently belong to another edge.
   if (gap !== n && !(gap === 1 && lo % n !== n - 1)) {
-    throw new Error(`edgeId: cells ${a} and ${b} are not neighbours on a grid (wrap-around: pass wrap)`);
+    throw new Error(
+      `edgeId: cells ${a} and ${b} are not neighbours on a grid (wrap-around: pass wrap)`,
+    );
   }
   return lo * 2 + (gap === 1 ? 0 : 1);
 };
@@ -24,7 +27,10 @@ export const edgeCells = (n, e, wrap = false) => {
   return [a, e & 1 ? a + n : a + 1];
 };
 export const hasWallId = (w, e) => (w[e >> 1] >> (e & 1)) & 1;
-export const setWallId = (w, e, on) => { if (on) w[e >> 1] |= 1 << (e & 1); else w[e >> 1] &= ~(1 << (e & 1)); };
+export const setWallId = (w, e, on) => {
+  if (on) w[e >> 1] |= 1 << (e & 1);
+  else w[e >> 1] &= ~(1 << (e & 1));
+};
 export const hasWall = (p, a, b) => hasWallId(p.walls, edgeId(p.n, a, b, p.wrap));
 // All edges, in the legacy order (row-major; right edge before down edge). `holes` (optional,
 // 1 = hole): edges touching a hole are left out. wrap: a torus, so every cell has a right and a
@@ -33,7 +39,8 @@ export function allEdges(n, holes = null, wrap = false) {
   const out = [];
   for (let i = 0; i < n * n; i++) {
     if (holes && holes[i]) continue;
-    const right = neighbourCell(n, wrap, i, 0), down = neighbourCell(n, wrap, i, 2);
+    const right = neighbourCell(n, wrap, i, 0),
+      down = neighbourCell(n, wrap, i, 2);
     if (right >= 0 && !(holes && holes[right])) out.push(i * 2);
     if (down >= 0 && !(holes && holes[down])) out.push(i * 2 + 1);
   }
@@ -45,15 +52,29 @@ export function clearSeamWalls(p) {
   const { n, walls } = p;
   let removed = 0;
   for (let i = 0; i < n * n; i++) {
-    if (i % n === n - 1 && hasWallId(walls, i * 2)) { setWallId(walls, i * 2, false); removed++; }
-    if (i >= n * (n - 1) && hasWallId(walls, i * 2 + 1)) { setWallId(walls, i * 2 + 1, false); removed++; }
+    if (i % n === n - 1 && hasWallId(walls, i * 2)) {
+      setWallId(walls, i * 2, false);
+      removed++;
+    }
+    if (i >= n * (n - 1) && hasWallId(walls, i * 2 + 1)) {
+      setWallId(walls, i * 2 + 1, false);
+      removed++;
+    }
   }
   return removed;
 }
-export const wallIds = p => { const o = []; for (let i = 0; i < p.n * p.n; i++) for (let t = 0; t < 2; t++) if ((p.walls[i] >> t) & 1) o.push(i * 2 + t); return o; };
+export const wallIds = p => {
+  const o = [];
+  for (let i = 0; i < p.n * p.n; i++)
+    for (let t = 0; t < 2; t++) if ((p.walls[i] >> t) & 1) o.push(i * 2 + t);
+  return o;
+};
 export const wallCount = p => wallIds(p).length;
 export const edgeToKey = (n, e) => `${e & 1 ? 'H' : 'V'},${((e >> 1) / n) | 0},${(e >> 1) % n}`;
-export const keyToEdge = (n, k) => { const [t, r, c] = k.split(','); return (+r * n + +c) * 2 + (t === 'H' ? 1 : 0); };
+export const keyToEdge = (n, k) => {
+  const [t, r, c] = k.split(',');
+  return (+r * n + +c) * 2 + (t === 'H' ? 1 : 0);
+};
 // ring: the path is a ring (a Loop puzzle), so the edge from its last cell back to the first counts.
 // portals: a Teleport puzzle's pairs (puzzle.portals). A step from one cell of a pair to the other
 // has no grid edge; its id is portalEdgeId(n, index of the pair), which lies beyond every grid
@@ -95,7 +116,7 @@ export function setArrowId(a, e, dir) {
 // May the path step from `from` to its grid neighbour `to`, as far as their edge's arrow goes?
 export function arrowAllows(arrows, n, from, to) {
   const dir = arrowDirId(arrows, edgeId(n, from, to));
-  return dir === 0 || (dir > 0) === (from < to);
+  return dir === 0 || dir > 0 === from < to;
 }
 // The move [from, to] that the arrow on edge e allows.
 export function arrowMove(n, e, dir) {
@@ -124,7 +145,7 @@ export function arrowProblem(p) {
     for (let t = 0; t < 2; t++) {
       if (!((bits >> t) & 1)) continue;
       const e = i * 2 + t;
-      const onBoard = t === 0 ? i % n + 1 < n : i + n < n * n;
+      const onBoard = t === 0 ? (i % n) + 1 < n : i + n < n * n;
       if (!onBoard) return `Invalid: an arrow leaves the board at cell ${i}.`;
       const [a, b] = edgeCells(n, e);
       if (holes && (holes[a] || holes[b])) return 'Invalid: an arrow touches a hole.';

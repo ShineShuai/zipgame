@@ -33,7 +33,11 @@ export function pickBall(rnd, min = PLAY_MIN_CELLS, max = PLAY_MAX_CELLS) {
   return list[Math.min(Math.floor(rnd() * list.length), list.length - 1)];
 }
 
-const SHAPES = [['triangle', 'triangles'], ['square', 'squares'], ['pentagon', 'pentagons']];
+const SHAPES = [
+  ['triangle', 'triangles'],
+  ['square', 'squares'],
+  ['pentagon', 'pentagons'],
+];
 
 // '80 triangles + 12 pentagons', from [triangles, squares, pentagons].
 export const compositionLabel = f =>
@@ -54,6 +58,7 @@ export function ballsByComposition() {
     }
     groups.get(key).balls.push(entry);
   }
-  return [...groups.values()].sort((a, b) =>
-    ballCells(a.balls[0]) - ballCells(b.balls[0]) || a.label.localeCompare(b.label));
+  return [...groups.values()].sort(
+    (a, b) => ballCells(a.balls[0]) - ballCells(b.balls[0]) || a.label.localeCompare(b.label),
+  );
 }

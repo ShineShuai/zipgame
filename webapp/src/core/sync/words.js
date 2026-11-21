@@ -38,13 +38,18 @@ export class PhraseError extends Error {
   }
 }
 
-const wordOf = index => CONSONANTS[index >> 8] + VOWELS[(index >> 6) & 3]
-  + CONSONANTS[(index >> 2) & 15] + VOWELS[index & 3];
+const wordOf = index =>
+  CONSONANTS[index >> 8] +
+  VOWELS[(index >> 6) & 3] +
+  CONSONANTS[(index >> 2) & 15] +
+  VOWELS[index & 3];
 
 const indexOf = word =>
   WORD.test(word)
-    ? (CONSONANTS.indexOf(word[0]) << 8) | (VOWELS.indexOf(word[1]) << 6)
-      | (CONSONANTS.indexOf(word[2]) << 2) | VOWELS.indexOf(word[3])
+    ? (CONSONANTS.indexOf(word[0]) << 8) |
+      (VOWELS.indexOf(word[1]) << 6) |
+      (CONSONANTS.indexOf(word[2]) << 2) |
+      VOWELS.indexOf(word[3])
     : -1;
 
 export const newSecret = () => globalThis.crypto.getRandomValues(new Uint8Array(SECRET_BYTES));
@@ -67,7 +72,11 @@ export function toWords(secret) {
 }
 
 // Text as typed or dictated -> words: any case, separated by blanks, commas or hyphens.
-export const normalizePhrase = text => String(text).toLowerCase().split(/[^a-z]+/).filter(Boolean);
+export const normalizePhrase = text =>
+  String(text)
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter(Boolean);
 
 // Eight words (an array, or text as typed) -> the 10 secret bytes. Throws a PhraseError.
 export function fromWords(input) {

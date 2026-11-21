@@ -156,20 +156,24 @@ export function surfaceSvg(net, V) {
     const tint = visited.has(cell) ? palette.visited : faceTint;
     const [turnedAway, facingViewer] = palette.shade;
     const fill = darker(tint, turnedAway + (facingViewer - turnedAway) * facing(cell));
-    parts.push(`<polygon class="${classes.join(' ')}" data-cell="${cell}" fill="${fill}" `
-      + `points="${points(outline(cell))}"/>`);
+    parts.push(
+      `<polygon class="${classes.join(' ')}" data-cell="${cell}" fill="${fill}" ` +
+        `points="${points(outline(cell))}"/>`,
+    );
   }
   if (net.disc) {
     // light from the upper left, dark towards the rim: the cells look round
     const [x, y] = frame.toPixels([0, 0]);
     const id = `sfGloss${V.idSuffix ?? ''}`;
-    parts.push(`<defs><radialGradient id="${id}" cx="36%" cy="30%" r="80%">`
-      + `<stop offset="0" stop-color="#fff" stop-opacity="${palette.gloss.light}"/>`
-      + '<stop offset="0.55" stop-color="#fff" stop-opacity="0"/>'
-      + `<stop offset="1" stop-color="#000" stop-opacity="${palette.gloss.dark}"/>`
-      + '</radialGradient></defs>'
-      + `<circle class="sf-gloss" cx="${x}" cy="${y}" r="${round(frame.scale)}" `
-      + `fill="url(#${id})"/>`);
+    parts.push(
+      `<defs><radialGradient id="${id}" cx="36%" cy="30%" r="80%">` +
+        `<stop offset="0" stop-color="#fff" stop-opacity="${palette.gloss.light}"/>` +
+        '<stop offset="0.55" stop-color="#fff" stop-opacity="0"/>' +
+        `<stop offset="1" stop-color="#000" stop-opacity="${palette.gloss.dark}"/>` +
+        '</radialGradient></defs>' +
+        `<circle class="sf-gloss" cx="${x}" cy="${y}" r="${round(frame.scale)}" ` +
+        `fill="url(#${id})"/>`,
+    );
   }
 
   // the cuts of the net: dashed, with the letter of the cut beside them
@@ -190,8 +194,9 @@ export function surfaceSvg(net, V) {
         if (top.nb[cell * SLOTS + slot] < 0) {
           const poly = net.polys[cell];
           const [a, b] = [poly[slot], poly[(slot + 1) % poly.length]].map(frame.toPixels);
-          parts.push(`<line class="sf-border" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" `
-            + `y2="${b[1]}"/>`);
+          parts.push(
+            `<line class="sf-border" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" ` + `y2="${b[1]}"/>`,
+          );
         }
       }
     }
@@ -207,14 +212,18 @@ export function surfaceSvg(net, V) {
         if (net.arcPieces) {
           // a curved side: the parts of its arc that are in front
           for (const piece of net.arcPieces(cell, slot)) {
-            parts.push(`<polyline class="sf-wall" fill="none" stroke-width="${wallWidth}" `
-              + `points="${piece.map(point => frame.toPixels(point)).join(' ')}"/>`);
+            parts.push(
+              `<polyline class="sf-wall" fill="none" stroke-width="${wallWidth}" ` +
+                `points="${piece.map(point => frame.toPixels(point)).join(' ')}"/>`,
+            );
           }
         } else {
           const poly = net.polys[cell];
           const [a, b] = [poly[slot], poly[(slot + 1) % poly.length]].map(frame.toPixels);
-          parts.push(`<line class="sf-wall" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" `
-            + `stroke-width="${wallWidth}"/>`);
+          parts.push(
+            `<line class="sf-wall" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" ` +
+              `stroke-width="${wallWidth}"/>`,
+          );
         }
       }
     }
@@ -236,14 +245,17 @@ export function surfaceSvg(net, V) {
       round(mid[0] + out[0] * lift * size + along[0] * spread * size),
       round(mid[1] + out[1] * lift * size + along[1] * spread * size),
     ];
-    const [tip, left, right] = mark.kind === 'out'
-      ? [at(0.9, 0), at(-0.4, 0.55), at(-0.4, -0.55)]
-      : [at(-0.5, 0), at(0.9, 0.55), at(0.9, -0.55)];
+    const [tip, left, right] =
+      mark.kind === 'out'
+        ? [at(0.9, 0), at(-0.4, 0.55), at(-0.4, -0.55)]
+        : [at(-0.5, 0), at(0.9, 0.55), at(0.9, -0.55)];
     parts.push(`<polygon class="sf-arrow" points="${tip} ${left} ${right}" fill="${color}"/>`);
     if (mark.letter) {
       const [x, y] = at(1.9, 0);
-      parts.push(`<text class="sf-cross" x="${x}" y="${y}" font-size="${round(px * 0.26)}">`
-        + `${mark.letter}</text>`);
+      parts.push(
+        `<text class="sf-cross" x="${x}" y="${y}" font-size="${round(px * 0.26)}">` +
+          `${mark.letter}</text>`,
+      );
     }
   };
   const route = (cells, color, extra = '', thickness = net.depth ? 0.1 : 0.13) => {
@@ -251,8 +263,10 @@ export function surfaceSvg(net, V) {
     for (const piece of net.routePieces ? net.routePieces(cells) : routePieces(net, cells)) {
       if (piece.length > 1) {
         const line = piece.map(corner => frame.toPixels(corner)).join(' ');
-        parts.push(`<polyline class="sf-path" points="${line}" `
-          + `stroke="${color}" stroke-width="${width}" ${extra}/>`);
+        parts.push(
+          `<polyline class="sf-path" points="${line}" ` +
+            `stroke="${color}" stroke-width="${width}" ${extra}/>`,
+        );
       }
     }
     if (!net.routePieces) {
@@ -276,7 +290,9 @@ export function surfaceSvg(net, V) {
     if (seen(head)) {
       const [x, y] = frame.toPixels(net.centers[head]);
       const [cx, cy, at] = placed(head, x, y);
-      const r = net.markRadius ? round(net.markRadius(head) * frame.scale * 0.5) : round(px * 0.17);
+      const r = net.markRadius
+        ? round(net.markRadius(head) * frame.scale * 0.5)
+        : round(px * 0.17);
       parts.push(`<circle class="sf-head" cx="${cx}" cy="${cy}" r="${r}"${at}/>`);
     }
   }
@@ -314,7 +330,10 @@ export function surfaceSvg(net, V) {
   }
 
   // the hint: the cell to go to (green), the wrong cell of the path (red)
-  for (const [cell, name] of [[V.hintCell, 'sf-hint'], [V.hintWrongCell, 'sf-wrong']]) {
+  for (const [cell, name] of [
+    [V.hintCell, 'sf-hint'],
+    [V.hintWrongCell, 'sf-wrong'],
+  ]) {
     if (cell != null && cell >= 0 && drawn(cell)) {
       parts.push(`<polygon class="${name}" points="${points(outline(cell))}"/>`);
     }
@@ -322,12 +341,14 @@ export function surfaceSvg(net, V) {
 
   // numbers
   const K = maxNumber(P);
-  const radiusOf = cell => (net.markRadius
-    ? round(net.markRadius(cell) * frame.scale)
-    : round(px * (top.deg[cell] === 3 ? 0.25 : 0.36)));
-  const fontFor = (text, radius) => (net.markRadius
-    ? round(radius * (String(text).length > 2 ? 0.72 : 0.95))
-    : round(px * (String(text).length > 2 ? 0.26 : 0.34)));
+  const radiusOf = cell =>
+    net.markRadius
+      ? round(net.markRadius(cell) * frame.scale)
+      : round(px * (top.deg[cell] === 3 ? 0.25 : 0.36));
+  const fontFor = (text, radius) =>
+    net.markRadius
+      ? round(radius * (String(text).length > 2 ? 0.72 : 0.95))
+      : round(px * (String(text).length > 2 ? 0.26 : 0.34));
   for (let cell = 0; cell < top.T; cell++) {
     if (!seen(cell)) {
       continue;
@@ -351,8 +372,10 @@ export function surfaceSvg(net, V) {
     const [x, y] = frame.toPixels(net.centers[cell]);
     const radius = radiusOf(cell);
     const [cx, cy, at] = placed(cell, x, y);
-    parts.push(`<g class="${classes.join(' ')}"${at}><circle cx="${cx}" cy="${cy}" r="${radius}"/>`
-      + `<text x="${cx}" y="${cy}" font-size="${fontFor(number, radius)}">${number}</text></g>`);
+    parts.push(
+      `<g class="${classes.join(' ')}"${at}><circle cx="${cx}" cy="${cy}" r="${radius}"/>` +
+        `<text x="${cx}" y="${cy}" font-size="${fontFor(number, radius)}">${number}</text></g>`,
+    );
   }
 
   if (V.selected >= 0 && !V.playing && drawn(V.selected)) {
@@ -367,12 +390,15 @@ export function surfaceSvg(net, V) {
     const cx = round(x + tag.dx * lift);
     const cy = round(y - tag.dy * lift);
     const font = round(tagRadius * 1.3);
-    parts.push(`<g class="sf-tag"><circle cx="${cx}" cy="${cy}" r="${tagRadius}"/>`
-      + `<text x="${cx}" y="${cy}" font-size="${font}">${tag.letter}</text></g>`);
+    parts.push(
+      `<g class="sf-tag"><circle cx="${cx}" cy="${cy}" r="${tagRadius}"/>` +
+        `<text x="${cx}" y="${cy}" font-size="${font}">${tag.letter}</text></g>`,
+    );
   }
 
-  const markup = `<svg class="sf-svg" xmlns="http://www.w3.org/2000/svg" `
-    + `viewBox="0 0 ${frame.width} ${frame.height}" width="${frame.width}" `
-    + `height="${frame.height}">${parts.join('')}</svg>`;
+  const markup =
+    `<svg class="sf-svg" xmlns="http://www.w3.org/2000/svg" ` +
+    `viewBox="0 0 ${frame.width} ${frame.height}" width="${frame.width}" ` +
+    `height="${frame.height}">${parts.join('')}</svg>`;
   return { markup, frame };
 }

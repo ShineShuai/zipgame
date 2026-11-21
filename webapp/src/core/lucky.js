@@ -45,13 +45,15 @@ export const isLucky = day => luckyDayOf(weekOf(day)) === day;
 
 // The latest lucky day on or before `day`.
 export function lastLucky(day) {
-  const week = weekOf(day), lucky = luckyDayOf(week);
+  const week = weekOf(day),
+    lucky = luckyDayOf(week);
   return lucky <= day ? lucky : luckyDayOf(week - 1);
 }
 
 // The first lucky day after `day`.
 export function nextLucky(day) {
-  const week = weekOf(day), lucky = luckyDayOf(week);
+  const week = weekOf(day),
+    lucky = luckyDayOf(week);
   return lucky > day ? lucky : luckyDayOf(week + 1);
 }
 
@@ -64,6 +66,7 @@ export const offerEnd = lucky => Math.max(nextLucky(lucky), lucky + OFFER_DAYS);
 // days after it.
 export function activeOffers(day) {
   const offers = [];
-  for (let lucky = lastLucky(day); day < offerEnd(lucky); lucky = lastLucky(lucky - 1)) offers.unshift(lucky);
+  for (let lucky = lastLucky(day); day < offerEnd(lucky); lucky = lastLucky(lucky - 1))
+    offers.unshift(lucky);
   return offers;
 }

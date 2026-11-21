@@ -90,7 +90,10 @@ export function* makeUniqueArrows(p, path, rnd, cfg) {
   const n = p.n;
   const { nodeCap, seedFraction, K, pathArrows = true } = cfg;
   const along = pathDirections(n, path);
-  const pool = shuffle(allEdges(n).filter(e => pathArrows || !along[e]), rnd);
+  const pool = shuffle(
+    allEdges(n).filter(e => pathArrows || !along[e]),
+    rnd,
+  );
   const order = [];
   let next = 0;
 
@@ -263,7 +266,10 @@ export function* tryGenerateArrows(n, K, rnd, nodeCap, seedFraction, o = {}) {
   });
   p.arrows = new Uint8Array(n * n);
   const order = yield* makeUniqueArrows(p, path, rnd, {
-    nodeCap, seedFraction, K, pathArrows: o.pathArrows,
+    nodeCap,
+    seedFraction,
+    K,
+    pathArrows: o.pathArrows,
   });
   if (!order) return null;
   p.path = path;
@@ -279,9 +285,8 @@ function* tag(gen, extra) {
   }
 }
 
-const fewest = candidates => (
-  candidates.length ? Math.min(...candidates.map(c => c.order.length)) : null
-);
+const fewest = candidates =>
+  candidates.length ? Math.min(...candidates.map(c => c.order.length)) : null;
 
 // Puzzle with the fewest arrows found for (n, seed): the same seed gives the same puzzle (no clock
 // is involved, only node budgets). Events: { frac|null, arrows, K }; `arrows` never increases.
@@ -305,8 +310,13 @@ export function* generateArrows(n, seed, o = {}) {
   const big = n >= ARROW_BIG_FROM;
   const perCell = big ? ARROW_CAP_PER_CELL_BIG : ARROW_CAP_PER_CELL;
   const nodeCap = Math.round(Math.max(ARROW_MIN_CAP, perCell * cells) * (o.capX ?? 1));
-  const checkX = o.checkCapX ?? (n >= ARROW_HUGE_FROM ? ARROW_CHECK_CAP_X_HUGE
-    : big ? ARROW_CHECK_CAP_X_BIG : ARROW_CHECK_CAP_X);
+  const checkX =
+    o.checkCapX ??
+    (n >= ARROW_HUGE_FROM
+      ? ARROW_CHECK_CAP_X_HUGE
+      : big
+        ? ARROW_CHECK_CAP_X_BIG
+        : ARROW_CHECK_CAP_X);
   const checkCap = Math.max(1000, Math.floor(nodeCap * checkX));
   const [Kmin, Kmax] = kRange(cells);
   const K = o.K || pickK(Kmin, Kmax, rnd);
@@ -341,7 +351,8 @@ export function* generateArrows(n, seed, o = {}) {
   for (let i = 0; i < candidates.length && winnerArrows > minArrows; i++) {
     const candidate = candidates[i];
     const events = minimizeArrows(candidate, candidate.order, rnd, checkCap, K, {
-      freedEdge, bound: winnerArrows,
+      freedEdge,
+      bound: winnerArrows,
     });
     const total = candidate.order.length;
     let tested = 0;
@@ -374,7 +385,10 @@ export function* generateArrows(n, seed, o = {}) {
   if (refining && winnerUncertain.length) {
     const caps = ARROW_REFINE_CAP_X.map(x => x * checkCap);
     const events = refineArrows(winner, winnerUncertain, rnd, {
-      caps, budget, arrows: winnerArrows, K,
+      caps,
+      budget,
+      arrows: winnerArrows,
+      K,
     });
     let step;
     while (!(step = events.next()).done) {

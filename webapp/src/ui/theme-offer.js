@@ -13,9 +13,7 @@ import { showThemeRule } from './theme-rule.js';
 const TOAST_MS = 6000;
 
 // controller: src/themes/index.js; text, lang(): the app's translation and language; idle(): true on a screen where it may show.
-export function initThemeOffer({
-  controller, text, lang, idle = () => true,
-}) {
+export function initThemeOffer({ controller, text, lang, idle = () => true }) {
   const nameOf = e => e.name[lang()] ?? e.name.en;
   const view = e => ({ id: e.id, name: nameOf(e), symbol: e.symbol, swatches: e.swatches ?? [] });
   const root = document.createElement('div');
@@ -37,9 +35,16 @@ export function initThemeOffer({
   let lastPhase = null;
   let lastKey = '';
 
-  const countdown = v => (v.phase === 'trial' ? text('theme.offer.left', formatLeft(v.left)) : null);
-  const leftText = v => (v.phase === 'trial' ? formatLeft(v.left) : (v.phase === 'pending' && v.left < v.trialMs ? formatLeft(v.left) : ''));
-  const sheetLeft = v => text('theme.offer.left', formatLeft(v.phase === 'final' ? v.until - Date.now() : v.left));
+  const countdown = v =>
+    v.phase === 'trial' ? text('theme.offer.left', formatLeft(v.left)) : null;
+  const leftText = v =>
+    v.phase === 'trial'
+      ? formatLeft(v.left)
+      : v.phase === 'pending' && v.left < v.trialMs
+        ? formatLeft(v.left)
+        : '';
+  const sheetLeft = v =>
+    text('theme.offer.left', formatLeft(v.phase === 'final' ? v.until - Date.now() : v.left));
 
   function render() {
     const v = controller.offerView();
@@ -50,7 +55,12 @@ export function initThemeOffer({
       return;
     }
     root.hidden = false;
-    if (v.phase !== lastPhase) { lastPhase = v.phase; expanded = v.phase === 'final'; step = 'offer'; failed = false; }
+    if (v.phase !== lastPhase) {
+      lastPhase = v.phase;
+      expanded = v.phase === 'final';
+      step = 'offer';
+      failed = false;
+    }
     const open = expanded && v.phase !== 'pending';
     const key = JSON.stringify([v.phase, open, step, failed, v.entry.id, lang()]);
     if (key !== lastKey) {
@@ -58,16 +68,34 @@ export function initThemeOffer({
       const theme = view(v.entry);
       chip.className = `theme-chip theme-chip-${v.phase}`;
       chip.hidden = open;
-      chip.innerHTML = chipHtml({ phase: v.phase, theme, left: leftText(v), trialMs: v.trialMs }, text);
-      chip.setAttribute('aria-label', text(v.phase === 'pending' ? 'theme.offer.try' : 'theme.offer.open', Math.round(v.trialMs / 60000)));
+      chip.innerHTML = chipHtml(
+        { phase: v.phase, theme, left: leftText(v), trialMs: v.trialMs },
+        text,
+      );
+      chip.setAttribute(
+        'aria-label',
+        text(
+          v.phase === 'pending' ? 'theme.offer.try' : 'theme.offer.open',
+          Math.round(v.trialMs / 60000),
+        ),
+      );
       sheet.hidden = !open;
       if (open) {
-        sheet.innerHTML = offerHtml({
-          theme, left: sheetLeft(v), failed, phase: v.phase, minimize: true, replace: step === 'replace' ? controller.state().pool.map(view) : null,
-        }, text);
+        sheet.innerHTML = offerHtml(
+          {
+            theme,
+            left: sheetLeft(v),
+            failed,
+            phase: v.phase,
+            minimize: true,
+            replace: step === 'replace' ? controller.state().pool.map(view) : null,
+          },
+          text,
+        );
       }
       controller.holdOffer(open && step === 'replace');
-    } else {   // only the time moves
+    } else {
+      // only the time moves
       const el = (chip.hidden ? sheet : chip).querySelector('[data-left]');
       if (el) el.textContent = chip.hidden ? sheetLeft(v) : formatLeft(v.left);
     }
@@ -85,7 +113,11 @@ export function initThemeOffer({
     const v = controller.offerView();
     if (!v) return;
     if (v.phase === 'pending') controller.startOffer();
-    else { expanded = true; lastKey = ''; render(); }
+    else {
+      expanded = true;
+      lastKey = '';
+      render();
+    }
   });
   sheet.addEventListener('click', e => {
     const button = e.target.closest('[data-offer], [data-replace]');
@@ -94,15 +126,28 @@ export function initThemeOffer({
     if (replace) keep(replace);
     else if (offer === 'leave') controller.leaveOffer();
     else if (offer === 'rule') showRule();
-    else if (offer === 'minimize') { expanded = false; lastKey = ''; render(); }
-    else if (offer === 'back') { step = 'offer'; lastKey = ''; render(); }
-    else if (offer === 'keep') {
+    else if (offer === 'minimize') {
+      expanded = false;
+      lastKey = '';
+      render();
+    } else if (offer === 'back') {
+      step = 'offer';
+      lastKey = '';
+      render();
+    } else if (offer === 'keep') {
       const { pool, cap } = controller.state();
-      if (pool.length >= cap) { step = 'replace'; lastKey = ''; render(); } else keep();
+      if (pool.length >= cap) {
+        step = 'replace';
+        lastKey = '';
+        render();
+      } else keep();
     }
   });
-  controller.onChange(() => { lastKey = ''; render(); });
-  setInterval(render, 1000);   // the countdown, and a screen that came or went (menu / puzzle)
+  controller.onChange(() => {
+    lastKey = '';
+    render();
+  });
+  setInterval(render, 1000); // the countdown, and a screen that came or went (menu / puzzle)
   render();
   return { render };
 }

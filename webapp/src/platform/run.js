@@ -25,15 +25,25 @@ export const GEN_TIMEOUT_MS = 300000;
 // ends after `timeoutMs`. Call end() when the run is over, so the clock does not fire later.
 export function cancellable(timeoutMs = GEN_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new DOMException('The generation took too long.', 'TimeoutError')), timeoutMs);
-  return { signal: controller.signal, cancel: () => controller.abort(), end: () => clearTimeout(timer) };
+  const timer = setTimeout(
+    () => controller.abort(new DOMException('The generation took too long.', 'TimeoutError')),
+    timeoutMs,
+  );
+  return {
+    signal: controller.signal,
+    cancel: () => controller.abort(),
+    end: () => clearTimeout(timer),
+  };
 }
 
 // `signal` (an AbortSignal) stops the run at once: the generator is closed, no further event is sent and the promise rejects with
 // signal.reason (AbortError by default, see isAbort / isTimeout).
 export function runAsync(gen, { onEvent, sliceMs = 30, signal } = {}) {
   return new Promise((resolve, reject) => {
-    let last = null, t0 = performance.now(), timer = null, over = false;
+    let last = null,
+      t0 = performance.now(),
+      timer = null,
+      over = false;
     const end = (settle, value) => {
       over = true;
       clearTimeout(timer);
@@ -42,7 +52,11 @@ export function runAsync(gen, { onEvent, sliceMs = 30, signal } = {}) {
     };
     function onAbort() {
       if (over) return;
-      try { gen.return(); } catch { /* the generator is dropped anyway */ }
+      try {
+        gen.return();
+      } catch {
+        /* the generator is dropped anyway */
+      }
       end(reject, signal.reason ?? abortError());
     }
     if (signal) {
@@ -59,11 +73,16 @@ export function runAsync(gen, { onEvent, sliceMs = 30, signal } = {}) {
             if (onEvent && last) onEvent(last);
             last = null;
             if (over) return; // onEvent cancelled the run
-            timer = setTimeout(() => { t0 = performance.now(); tick(); }, 0);
+            timer = setTimeout(() => {
+              t0 = performance.now();
+              tick();
+            }, 0);
             return;
           }
         }
-      } catch (e) { end(reject, e); }
+      } catch (e) {
+        end(reject, e);
+      }
     };
     tick();
   });

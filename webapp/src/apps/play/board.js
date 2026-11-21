@@ -1,6 +1,4 @@
-import {
-  wallSegments, cellCenter, pathD, seamMarks, WRAP_PAD,
-} from '../../view/geometry.js';
+import { wallSegments, cellCenter, pathD, seamMarks, WRAP_PAD } from '../../view/geometry.js';
 import { arrowIds, arrowDirId, arrowMove } from '../../core/edges.js';
 import { cellCount } from '../../core/model.js';
 import { colourOfCell, colourNumber } from '../../core/twopaths.js';
@@ -26,9 +24,9 @@ export const COLORS = {
   grid: 'var(--b-grid)',
   outline: 'var(--b-outline)', // the edge of a board with holes (Cutout)
   wall: 'var(--b-wall)',
-  arrow: 'var(--b-wall)',      // one-way arrows (same ink as the walls), with a halo
+  arrow: 'var(--b-wall)', // one-way arrows (same ink as the walls), with a halo
   path: 'var(--b-path)',
-  number: 'var(--b-num)',      // idle number: the digit (on --b-num-fill, inside --b-num-ring)
+  number: 'var(--b-num)', // idle number: the digit (on --b-num-fill, inside --b-num-ring)
   numberFill: 'var(--b-num-fill)',
   numberRing: 'var(--b-num-ring)',
   numberVisited: 'var(--b-numv-fill)', // visited: filled, ringed with --b-numv-ring, the digit --b-num-on
@@ -37,10 +35,10 @@ export const COLORS = {
   numberWrong: 'var(--b-wrong)', // an Exact number the path reached on the wrong step
   hintRing: 'var(--b-hint)',
   hintWrong: 'var(--b-wrong)',
-  tile: 'var(--b-bg)',         // a board tile (the cells of Cutout, Wrap-around, Pentagon)
-  depth: 'var(--b-depth)',     // the lower edge of a themed tile
-  stage: 'var(--b-stage)',     // the plate a themed board lies on
-  halo: 'var(--b-halo)',       // separates an arrow or a seam mark from the path under it
+  tile: 'var(--b-bg)', // a board tile (the cells of Cutout, Wrap-around, Pentagon)
+  depth: 'var(--b-depth)', // the lower edge of a themed tile
+  stage: 'var(--b-stage)', // the plate a themed board lies on
+  halo: 'var(--b-halo)', // separates an arrow or a seam mark from the path under it
   // Two paths: the two colours of a path and of its numbers (a ring when idle, filled when visited)
   twoPath: ['var(--b-red)', 'var(--b-blue)'],
 };
@@ -50,8 +48,17 @@ export const COLORS = {
 // (filled red).
 export function badgeColors(visited, wrong = false) {
   if (!visited) return { fill: COLORS.numberFill, stroke: COLORS.numberRing, text: COLORS.number };
-  if (wrong) return { fill: COLORS.numberWrong, stroke: COLORS.numberWrong, text: COLORS.numberVisitedText };
-  return { fill: COLORS.numberVisited, stroke: COLORS.numberVisitedRing, text: COLORS.numberVisitedText };
+  if (wrong)
+    return {
+      fill: COLORS.numberWrong,
+      stroke: COLORS.numberWrong,
+      text: COLORS.numberVisitedText,
+    };
+  return {
+    fill: COLORS.numberVisited,
+    stroke: COLORS.numberVisitedRing,
+    text: COLORS.numberVisitedText,
+  };
 }
 
 // Two paths: the colours of a number badge of `colour` (0 red, 1 blue): idle (white, coloured ring)
@@ -79,7 +86,9 @@ function gridLines(size) {
   const lines = [];
   for (let i = 0; i <= size / CELL; i++) {
     const at = i * CELL;
-    lines.push(`<line x1="0" y1="${at}" x2="${size}" y2="${at}"/><line x1="${at}" y1="0" x2="${at}" y2="${size}"/>`);
+    lines.push(
+      `<line x1="0" y1="${at}" x2="${size}" y2="${at}"/><line x1="${at}" y1="0" x2="${at}" y2="${size}"/>`,
+    );
   }
   return `<g stroke="${COLORS.grid}" stroke-width="${units(skin().tileEdgeW || CLASSIC_BOARD.tileEdgeW)}">${lines.join('')}</g>`;
 }
@@ -96,11 +105,18 @@ function tileLayers(size) {
   for (let row = 0; row < size / CELL; row++) {
     for (let col = 0; col < size / CELL; col++) {
       const [x, y] = [col * CELL + inset, row * CELL + inset];
-      if (s.depth) rects.push(`<rect x="${x}" y="${+(y + units(s.depth)).toFixed(3)}" width="${side}" height="${side}" rx="${rx}" fill="${COLORS.depth}"/>`);
-      rects.push(`<rect x="${x}" y="${y}" width="${side}" height="${side}" rx="${rx}" fill="${COLORS.tile}"${edge}/>`);
+      if (s.depth)
+        rects.push(
+          `<rect x="${x}" y="${+(y + units(s.depth)).toFixed(3)}" width="${side}" height="${side}" rx="${rx}" fill="${COLORS.depth}"/>`,
+        );
+      rects.push(
+        `<rect x="${x}" y="${y}" width="${side}" height="${side}" rx="${rx}" fill="${COLORS.tile}"${edge}/>`,
+      );
     }
   }
-  const plate = s.plateRx ? `<rect width="${size}" height="${size}" rx="${units(s.plateRx)}" fill="${COLORS.stage}"/>` : '';
+  const plate = s.plateRx
+    ? `<rect width="${size}" height="${size}" rx="${units(s.plateRx)}" fill="${COLORS.stage}"/>`
+    : '';
   return `<g data-skin="tiles">${plate}${rects.join('')}</g>`;
 }
 
@@ -109,24 +125,32 @@ function tileLayers(size) {
 // step across a seam are seen.
 export function wrapLayers(size) {
   const square = `x="0" y="0" width="${size}" height="${size}" rx="6"`;
-  return `<rect data-role="tiles" ${square} fill="${COLORS.tile}"/>` +
+  return (
+    `<rect data-role="tiles" ${square} fill="${COLORS.tile}"/>` +
     gridLines(size) +
     `<rect data-role="outline" ${square} fill="none" ` +
-    `stroke="${COLORS.outline}" stroke-width="4" stroke-dasharray="9 7"/>`;
+    `stroke="${COLORS.outline}" stroke-width="4" stroke-dasharray="9 7"/>`
+  );
 }
 
 // The in / out arrowheads of the seam steps of a path (geometry.js seamMarks), as svg. Pure markup;
 // the play input replaces the content of the data-role="seam" group on every move.
 export function seamMarksSvg(n, path) {
-  const len = CELL * 0.32, half = CELL * 0.22, num = v => +v.toFixed(2);
-  return seamMarks(n, path, CELL).map(({ kind, x, y, dx, dy }) => {
-    const tip = [x + (dx * len) / 2, y + (dy * len) / 2];
-    const base = [x - (dx * len) / 2, y - (dy * len) / 2];
-    const wing = sign => [base[0] - sign * dy * half, base[1] + sign * dx * half];
-    const points = [tip, wing(1), wing(-1)].map(([px, py]) => `${num(px)},${num(py)}`).join(' ');
-    return `<polygon data-mark="${kind}" points="${points}" fill="${COLORS.path}" stroke="${COLORS.halo}" ` +
-      'stroke-width="2.5" paint-order="stroke" stroke-linejoin="round"/>';
-  }).join('');
+  const len = CELL * 0.32,
+    half = CELL * 0.22,
+    num = v => +v.toFixed(2);
+  return seamMarks(n, path, CELL)
+    .map(({ kind, x, y, dx, dy }) => {
+      const tip = [x + (dx * len) / 2, y + (dy * len) / 2];
+      const base = [x - (dx * len) / 2, y - (dy * len) / 2];
+      const wing = sign => [base[0] - sign * dy * half, base[1] + sign * dx * half];
+      const points = [tip, wing(1), wing(-1)].map(([px, py]) => `${num(px)},${num(py)}`).join(' ');
+      return (
+        `<polygon data-mark="${kind}" points="${points}" fill="${COLORS.path}" stroke="${COLORS.halo}" ` +
+        'stroke-width="2.5" paint-order="stroke" stroke-linejoin="round"/>'
+      );
+    })
+    .join('');
 }
 
 // Board with holes (Cutout): only the cells that are left are drawn, each a white tile; the grid lines run between two
@@ -134,26 +158,35 @@ export function seamMarksSvg(n, path) {
 export function cutoutLayers(p) {
   const n = p.n;
   const open = (r, c) => r >= 0 && r < n && c >= 0 && c < n && !p.holes[r * n + c];
-  const tiles = [], grid = [], edge = [];
+  const tiles = [],
+    grid = [],
+    edge = [];
   const line = (x1, y1, x2, y2) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
   for (let r = 0; r < n; r++) {
     for (let c = 0; c < n; c++) {
       if (!open(r, c)) continue;
-      const x = c * CELL, y = r * CELL;
+      const x = c * CELL,
+        y = r * CELL;
       tiles.push(`<rect x="${x}" y="${y}" width="${CELL}" height="${CELL}"/>`);
-      if (open(r, c + 1)) grid.push(line(x + CELL, y, x + CELL, y + CELL)); else edge.push(line(x + CELL, y, x + CELL, y + CELL));
-      if (open(r + 1, c)) grid.push(line(x, y + CELL, x + CELL, y + CELL)); else edge.push(line(x, y + CELL, x + CELL, y + CELL));
+      if (open(r, c + 1)) grid.push(line(x + CELL, y, x + CELL, y + CELL));
+      else edge.push(line(x + CELL, y, x + CELL, y + CELL));
+      if (open(r + 1, c)) grid.push(line(x, y + CELL, x + CELL, y + CELL));
+      else edge.push(line(x, y + CELL, x + CELL, y + CELL));
       if (!open(r, c - 1)) edge.push(line(x, y, x, y + CELL));
       if (!open(r - 1, c)) edge.push(line(x, y, x + CELL, y));
     }
   }
-  return `<g data-role="tiles" fill="${COLORS.tile}">${tiles.join('')}</g>` +
+  return (
+    `<g data-role="tiles" fill="${COLORS.tile}">${tiles.join('')}</g>` +
     `<g stroke="${COLORS.grid}" stroke-width="1.5">${grid.join('')}</g>` +
-    `<g data-role="outline" stroke="${COLORS.outline}" stroke-width="5" stroke-linecap="round">${edge.join('')}</g>`;
+    `<g data-role="outline" stroke="${COLORS.outline}" stroke-width="5" stroke-linecap="round">${edge.join('')}</g>`
+  );
 }
 
 function wallLines(puzzle) {
-  const lines = wallSegments(puzzle, CELL).map(([x1, y1, x2, y2]) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`);
+  const lines = wallSegments(puzzle, CELL).map(
+    ([x1, y1, x2, y2]) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`,
+  );
   const s = skin();
   return `<g stroke="${COLORS.wall}" stroke-width="${units(s.wallW)}" stroke-linecap="${s.wallCap}">${lines.join('')}</g>`;
 }
@@ -172,8 +205,10 @@ export function arrowMarks(puzzle) {
     const back = CELL * 0.14;
     const half = CELL * 0.19;
     const points = `${tip},0 ${-back},${-half} ${-back},${half}`;
-    return `<g class="arrow-mark" data-arrow="${edge}" transform="translate(${(x1 + x2) / 2} ${(y1 + y2) / 2}) rotate(${angle})">` +
-      `<polygon points="${points}" fill="${COLORS.arrow}" stroke="${COLORS.halo}" stroke-width="2.5" paint-order="stroke" stroke-linejoin="round"/></g>`;
+    return (
+      `<g class="arrow-mark" data-arrow="${edge}" transform="translate(${(x1 + x2) / 2} ${(y1 + y2) / 2}) rotate(${angle})">` +
+      `<polygon points="${points}" fill="${COLORS.arrow}" stroke="${COLORS.halo}" stroke-width="2.5" paint-order="stroke" stroke-linejoin="round"/></g>`
+    );
   });
   return marks.join('');
 }
@@ -191,14 +226,15 @@ function numberBadges(puzzle, visited, path) {
     const fontSize = Math.round(CELL * (number > 99 ? 0.24 : 0.32) * 10) / 10;
     const s = skin();
     const r = units(s.numR);
-    const shape = s.num === 'square'
-      ? `<rect class="num-shape" x="${+(x - r).toFixed(3)}" y="${+(y - r).toFixed(3)}" width="${2 * r}" height="${2 * r}" rx="${units(0.1)}"`
-      : `<circle cx="${x}" cy="${y}" r="${r}"`;
+    const shape =
+      s.num === 'square'
+        ? `<rect class="num-shape" x="${+(x - r).toFixed(3)}" y="${+(y - r).toFixed(3)}" width="${2 * r}" height="${2 * r}" rx="${units(0.1)}"`
+        : `<circle cx="${x}" cy="${y}" r="${r}"`;
     badges.push(
       `<g data-num-cell="${cell}">` +
-      `${shape} fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="${units(s.numRingW)}"/>` +
-      `<text x="${x}" y="${y}" dy=".35em" text-anchor="middle" font-size="${fontSize}" font-weight="700" ` +
-      `fill="${colors.text}">${number}</text></g>`
+        `${shape} fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="${units(s.numRingW)}"/>` +
+        `<text x="${x}" y="${y}" dy=".35em" text-anchor="middle" font-size="${fontSize}" font-weight="700" ` +
+        `fill="${colors.text}">${number}</text></g>`,
     );
   }
   return badges.join('');
@@ -218,28 +254,34 @@ function twoNumberBadges(p, visited) {
     const number = colourNumber(p, p.cp[cell]);
     const fontSize = Math.round(CELL * 0.32 * 10) / 10;
     const half = CELL * 0.29;
-    const shape = colour === 0
-      ? `<circle class="num-shape" cx="${x}" cy="${y}" r="${CELL * 0.32}" `
-      : `<rect class="num-shape" x="${x - half}" y="${y - half}" width="${2 * half}" ` +
-        `height="${2 * half}" rx="${CELL * 0.1}" `;
+    const shape =
+      colour === 0
+        ? `<circle class="num-shape" cx="${x}" cy="${y}" r="${CELL * 0.32}" `
+        : `<rect class="num-shape" x="${x - half}" y="${y - half}" width="${2 * half}" ` +
+          `height="${2 * half}" rx="${CELL * 0.1}" `;
     badges.push(
       `<g data-num-cell="${cell}" data-colour="${colour}">` +
-      `${shape}fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="3"/>` +
-      `<text x="${x}" y="${y}" dy=".35em" text-anchor="middle" font-size="${fontSize}" ` +
-      `font-weight="700" fill="${colors.text}">${number}</text></g>`
+        `${shape}fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="3"/>` +
+        `<text x="${x}" y="${y}" dy=".35em" text-anchor="middle" font-size="${fontSize}" ` +
+        `font-weight="700" fill="${colors.text}">${number}</text></g>`,
     );
   }
   return badges.join('');
 }
 
 // Two paths: the drawn line of each colour, one path element each (data-colour 0 = red, 1 = blue).
-export const twoPathsSvg = (p, paths) => paths.map((path, colour) => {
-  const d = path.length > 1 ? routeD(p, path) : '';
-  const s = skin();
-  return `<path data-role="path" data-colour="${colour}" d="${d}" ` +
-    `stroke="${COLORS.twoPath[colour]}" stroke-width="${units(s.pathW)}" fill="none" ` +
-    `stroke-linecap="${s.cap}" stroke-linejoin="${s.join}" opacity="0.95"/>`;
-}).join('');
+export const twoPathsSvg = (p, paths) =>
+  paths
+    .map((path, colour) => {
+      const d = path.length > 1 ? routeD(p, path) : '';
+      const s = skin();
+      return (
+        `<path data-role="path" data-colour="${colour}" d="${d}" ` +
+        `stroke="${COLORS.twoPath[colour]}" stroke-width="${units(s.pathW)}" fill="none" ` +
+        `stroke-linecap="${s.cap}" stroke-linejoin="${s.join}" opacity="0.95"/>`
+      );
+    })
+    .join('');
 
 // Red cross on the first wrong move of a hint.
 function wrongMoveMark(n, cell) {
@@ -249,8 +291,10 @@ function wrongMoveMark(n, cell) {
 // The same, centred on [x, y] (the Pentagon board has its own cell centres).
 export function wrongMoveMarkAt([x, y]) {
   const d = CELL * 0.22;
-  return `<g data-role="hint-wrong" stroke="${COLORS.hintWrong}" stroke-width="5" stroke-linecap="round">` +
-    `<line x1="${x - d}" y1="${y - d}" x2="${x + d}" y2="${y + d}"/><line x1="${x - d}" y1="${y + d}" x2="${x + d}" y2="${y - d}"/></g>`;
+  return (
+    `<g data-role="hint-wrong" stroke="${COLORS.hintWrong}" stroke-width="5" stroke-linecap="round">` +
+    `<line x1="${x - d}" y1="${y - d}" x2="${x + d}" y2="${y + d}"/><line x1="${x - d}" y1="${y + d}" x2="${x + d}" y2="${y - d}"/></g>`
+  );
 }
 
 // Pulsing ring on the correct move of a hint.
@@ -262,38 +306,53 @@ function correctMoveRing(n, cell) {
 export function correctMoveRingAt([x, y]) {
   const small = CELL * 0.36;
   const large = CELL * 0.44;
-  return `<circle data-role="hint" cx="${x}" cy="${y}" r="${CELL * 0.4}" fill="none" stroke="${COLORS.hintRing}" stroke-width="4" stroke-dasharray="6 4">` +
-    `<animate attributeName="r" values="${small};${large};${small}" dur="1s" repeatCount="indefinite"/></circle>`;
+  return (
+    `<circle data-role="hint" cx="${x}" cy="${y}" r="${CELL * 0.4}" fill="none" stroke="${COLORS.hintRing}" stroke-width="4" stroke-dasharray="6 4">` +
+    `<animate attributeName="r" values="${small};${large};${small}" dur="1s" repeatCount="indefinite"/></circle>`
+  );
 }
 
 // A Loop puzzle whose path has visited every cell but does not close: its last cell does not touch cell 1
 // through an open edge (a wall, or just not next to it), so the ring is open and the puzzle is not solved.
-export const loopOpen = (p, path) => Boolean(p.loop) && path.length === cellCount(p) && !isSolved(p, path);
+export const loopOpen = (p, path) =>
+  Boolean(p.loop) && path.length === cellCount(p) && !isSolved(p, path);
 
 // What shows that: a pulsing red ring on the last cell and one on cell 1, the two ends that should have met.
 export function loopOpenMarks(p, path) {
   if (!loopOpen(p, path)) return '';
-  const small = CELL * 0.36, large = CELL * 0.44;
-  return [path[path.length - 1], path[0]].map(cell => {
-    const [x, y] = cellCenter(p.n, cell, CELL);
-    return `<circle cx="${x}" cy="${y}" r="${CELL * 0.4}" fill="none" stroke="${COLORS.hintWrong}" stroke-width="4" stroke-dasharray="6 4">` +
-      `<animate attributeName="r" values="${small};${large};${small}" dur="1s" repeatCount="indefinite"/></circle>`;
-  }).join('');
+  const small = CELL * 0.36,
+    large = CELL * 0.44;
+  return [path[path.length - 1], path[0]]
+    .map(cell => {
+      const [x, y] = cellCenter(p.n, cell, CELL);
+      return (
+        `<circle cx="${x}" cy="${y}" r="${CELL * 0.4}" fill="none" stroke="${COLORS.hintWrong}" stroke-width="4" stroke-dasharray="6 4">` +
+        `<animate attributeName="r" values="${small};${large};${small}" dur="1s" repeatCount="indefinite"/></circle>`
+      );
+    })
+    .join('');
 }
 
 // The cells the drawn line runs through: the path, and for a solved Loop puzzle back to cell 1, so
 // the ring is drawn closed.
-export const routeCells = (p, path, finished) => (p.loop && finished && path.length > 2 ? [...path, path[0]] : path);
+export const routeCells = (p, path, finished) =>
+  p.loop && finished && path.length > 2 ? [...path, path[0]] : path;
 
 // Every portal of a Teleport puzzle, both cells of a pair with the same icon (data-portal-cell =
 // the cell).
 export function portalIconsSvg(p) {
   if (!p.portals) return '';
-  return p.portals.map((pair, index) => pair.map(cell => {
-    const [x, y] = cellCenter(p.n, cell, CELL);
-    const icon = portalIcon(portalShape(index), portalColorVar(index), x, y);
-    return `<g class="portal" data-portal-cell="${cell}" data-pair="${index}">${icon}</g>`;
-  }).join('')).join('');
+  return p.portals
+    .map((pair, index) =>
+      pair
+        .map(cell => {
+          const [x, y] = cellCenter(p.n, cell, CELL);
+          const icon = portalIcon(portalShape(index), portalColorVar(index), x, y);
+          return `<g class="portal" data-portal-cell="${cell}" data-pair="${index}">${icon}</g>`;
+        })
+        .join(''),
+    )
+    .join('');
 }
 
 // The drawn line of the path. A jump over a portal pair is not drawn as a line across the board
@@ -303,10 +362,12 @@ export function portalIconsSvg(p) {
 // shown by jumpMarksSvg. Other puzzles: pathD() as before.
 export function routeD(p, line) {
   if (!p.portals) return pathD(p.n, line, CELL, Boolean(p.wrap));
-  return line.map((cell, k) => {
-    const [x, y] = cellCenter(p.n, cell, CELL);
-    return (k && !isPortalPair(p.portals, line[k - 1], cell) ? 'L' : 'M') + x + ' ' + y;
-  }).join(' ');
+  return line
+    .map((cell, k) => {
+      const [x, y] = cellCenter(p.n, cell, CELL);
+      return (k && !isPortalPair(p.portals, line[k - 1], cell) ? 'L' : 'M') + x + ' ' + y;
+    })
+    .join(' ');
 }
 
 // What shows a jump: for every jump the path has made, a dotted arc from the portal it left to the
@@ -345,14 +406,16 @@ export function jumpMarksSvg(p, path, finished = false) {
       [tipX, tipY],
       [tipX - ux * back - uy * half, tipY - uy * back + ux * half],
       [tipX - ux * back + uy * half, tipY - uy * back - ux * half],
-    ].map(([px, py]) => `${num(px)},${num(py)}`).join(' ');
+    ]
+      .map(([px, py]) => `${num(px)},${num(py)}`)
+      .join(' ');
     const curve = `M${num(x1)} ${num(y1)} Q${num(cx)} ${num(cy)} ${num(x2)} ${num(y2)}`;
     marks.push(
       `<path data-mark="jump" d="${curve}" fill="none" stroke="${COLORS.path}" ` +
-      `stroke-width="${CELL * 0.1}" stroke-linecap="round" ` +
-      `stroke-dasharray="1 ${num(CELL * 0.16)}"/>` +
-      `<polygon data-mark="jump-end" points="${pts}" fill="${COLORS.path}" stroke="${COLORS.halo}" ` +
-      'stroke-width="2.5" paint-order="stroke" stroke-linejoin="round"/>'
+        `stroke-width="${CELL * 0.1}" stroke-linecap="round" ` +
+        `stroke-dasharray="1 ${num(CELL * 0.16)}"/>` +
+        `<polygon data-mark="jump-end" points="${pts}" fill="${COLORS.path}" stroke="${COLORS.halo}" ` +
+        'stroke-width="2.5" paint-order="stroke" stroke-linejoin="round"/>',
     );
   }
   if (!finished) {
@@ -365,9 +428,9 @@ export function jumpMarksSvg(p, path, finished = false) {
       const color = portalColorVar(p.portals.findIndex(pair => pair.includes(head)));
       marks.push(
         `<circle data-mark="jump-ready" cx="${num(x)}" cy="${num(y)}" r="${CELL * 0.42}" ` +
-        `fill="none" stroke="${color}" stroke-width="4" stroke-dasharray="6 4">` +
-        `<animate attributeName="r" values="${small};${large};${small}" dur="1s" ` +
-        'repeatCount="indefinite"/></circle>'
+          `fill="none" stroke="${color}" stroke-width="4" stroke-dasharray="6 4">` +
+          `<animate attributeName="r" values="${small};${large};${small}" dur="1s" ` +
+          'repeatCount="indefinite"/></circle>',
       );
     }
   }
@@ -377,11 +440,13 @@ export function jumpMarksSvg(p, path, finished = false) {
 // The drawn line of a puzzle with one path (`route` = its svg path data).
 // `gradient`: the theme's path runs from --b-path-hi at the top of the board to --b-path at the bottom (the defs of the board's own svg,
 // boardSvg; the Pentagon board has none and draws the plain colour).
-export const singlePathSvg = (route, { gradient = false } = {}) => `<path data-role="path" d="${route}" ` +
+export const singlePathSvg = (route, { gradient = false } = {}) =>
+  `<path data-role="path" d="${route}" ` +
   `stroke="${gradient ? 'url(#zip-path)' : COLORS.path}" stroke-width="${units(skin().pathW)}" fill="none" ` +
   `stroke-linecap="${skin().cap}" stroke-linejoin="${skin().join}" opacity="0.95"/>`;
 
-const pathGradient = size => '<defs><linearGradient id="zip-path" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" ' +
+const pathGradient = size =>
+  '<defs><linearGradient id="zip-path" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" ' +
   `y2="${size}"><stop offset="0" stop-color="var(--b-path-hi)"/><stop offset="1" stop-color="var(--b-path)"/></linearGradient></defs>`;
 
 // The whole picture of a square board as a view box, the margin of a wrap-around board included
@@ -411,12 +476,19 @@ export function boardSvg(S) {
 
   const tiled = skin().grid === 'tiles' && !p.holes && !wrap;
   const gradient = skin().gradient && !two;
-  let svg = `<svg viewBox="${view}" class="zip-svg${tiled ? ' skin-tiles' : ''}${p.holes ? ' cutout' : ''}` +
+  let svg =
+    `<svg viewBox="${view}" class="zip-svg${tiled ? ' skin-tiles' : ''}${p.holes ? ' cutout' : ''}` +
     `${p.arrows ? ' arrows' : ''}${wrap ? ' wrap' : ''}${p.portals ? ' teleport' : ''}` +
     `${two ? ' twopaths' : ''}${isZoomed(cam) ? ' zoomed' : ''}" ` +
     `style="${maxBoardCss(n, pad)}">`;
   svg += gradient ? pathGradient(size) : '';
-  svg += p.holes ? cutoutLayers(p) : wrap ? wrapLayers(size) : tiled ? tileLayers(size) : gridLines(size);
+  svg += p.holes
+    ? cutoutLayers(p)
+    : wrap
+      ? wrapLayers(size)
+      : tiled
+        ? tileLayers(size)
+        : gridLines(size);
   svg += wallLines(p);
   svg += portalIconsSvg(p);
   svg += two ? twoPathsSvg(p, S.paths) : singlePathSvg(route, { gradient });

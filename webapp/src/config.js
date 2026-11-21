@@ -18,10 +18,22 @@
 // Never put a token without that permission list here: it would let anyone change or drop the data. Switching `always` to a Turso backend: server/README.md.
 export const LEADERBOARD = {
   backends: {
-    'supabase-asia': { type: 'supabase', url: 'https://tjaidjrjcugkxkluxvrc.supabase.co', key: 'sb_publishable_x3Mq5hbPn9o5Xsg5FDZNSQ_4OWqZ-1N' },
-    'turso-asia': { type: 'turso', url: 'https://zipgame-becu.aws-ap-northeast-1.turso.io', key: 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTE1Nzk5MjUsImlkIjoiMDFhMTA2MmQtYjcwMS03N2JkLWE0MGQtYTA5ODJhNDU4MDNkIiwia2lkIjoiMW1zR05ZbjRmV09xVWoxd1MzRTVkMkpfS0l4azUzdm80SVVjMmJaT21WUSIsInBlcm0iOlt7InQiOm51bGwsImEiOlsiZGF0YV9yZWFkIl19LHsidCI6WyJzdWJtaXQiXSwiYSI6WyJkYXRhX2FkZCJdfSx7InQiOlsicGxheSJdLCJhIjpbImRhdGFfYWRkIl19XSwicmlkIjoiZjA5MWE4ZTUtNDNiZC00OWM1LTljOGQtZmQyNmJjOGEyNDE3In0.tTfjWXKMxJ7J8Kb2yW08dAyevQN5rsNCEeSju8-dRgUgiqJHIBoD6Meh_33d-pAs6A-2jZfHjVxwFmCZv9FHAg' },   // disabled until the key (the insert-only token) is set; see above
-    cloudflare: { type: 'cloudflare', url: 'https://zip-gotd.shineshine.workers.dev' },   // e.g. 'https://zip-gotd.<account>.workers.dev' (see server/README.md)
-    supabase: { type: 'supabase', url: 'https://uxtmfpgxjdabpfzmmqzm.supabase.co', key: 'sb_publishable_fTLmg4p-Z73VYXYblWf0hQ_g8C79jg8' },    // e.g. 'https://<ref>.supabase.co'
+    'supabase-asia': {
+      type: 'supabase',
+      url: 'https://tjaidjrjcugkxkluxvrc.supabase.co',
+      key: 'sb_publishable_x3Mq5hbPn9o5Xsg5FDZNSQ_4OWqZ-1N',
+    },
+    'turso-asia': {
+      type: 'turso',
+      url: 'https://zipgame-becu.aws-ap-northeast-1.turso.io',
+      key: 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTE1Nzk5MjUsImlkIjoiMDFhMTA2MmQtYjcwMS03N2JkLWE0MGQtYTA5ODJhNDU4MDNkIiwia2lkIjoiMW1zR05ZbjRmV09xVWoxd1MzRTVkMkpfS0l4azUzdm80SVVjMmJaT21WUSIsInBlcm0iOlt7InQiOm51bGwsImEiOlsiZGF0YV9yZWFkIl19LHsidCI6WyJzdWJtaXQiXSwiYSI6WyJkYXRhX2FkZCJdfSx7InQiOlsicGxheSJdLCJhIjpbImRhdGFfYWRkIl19XSwicmlkIjoiZjA5MWE4ZTUtNDNiZC00OWM1LTljOGQtZmQyNmJjOGEyNDE3In0.tTfjWXKMxJ7J8Kb2yW08dAyevQN5rsNCEeSju8-dRgUgiqJHIBoD6Meh_33d-pAs6A-2jZfHjVxwFmCZv9FHAg',
+    }, // disabled until the key (the insert-only token) is set; see above
+    cloudflare: { type: 'cloudflare', url: 'https://zip-gotd.shineshine.workers.dev' }, // e.g. 'https://zip-gotd.<account>.workers.dev' (see server/README.md)
+    supabase: {
+      type: 'supabase',
+      url: 'https://uxtmfpgxjdabpfzmmqzm.supabase.co',
+      key: 'sb_publishable_fTLmg4p-Z73VYXYblWf0hQ_g8C79jg8',
+    }, // e.g. 'https://<ref>.supabase.co'
   },
   always: 'turso-asia',
   order: ['supabase-asia', 'cloudflare', 'supabase'],
@@ -46,8 +58,12 @@ export const SYNC = {
   maxDevices: 4,
   cloud: {
     backends: {
-      'sync-supabase': { type: 'supabase', url: 'https://tjaidjrjcugkxkluxvrc.supabase.co', key: 'sb_publishable_x3Mq5hbPn9o5Xsg5FDZNSQ_4OWqZ-1N' },
-      'sync-turso': { type: 'turso', url: '', key: '' },   // e.g. 'https://<db>-<org>.<region>.turso.io' and its token
+      'sync-supabase': {
+        type: 'supabase',
+        url: 'https://tjaidjrjcugkxkluxvrc.supabase.co',
+        key: 'sb_publishable_x3Mq5hbPn9o5Xsg5FDZNSQ_4OWqZ-1N',
+      },
+      'sync-turso': { type: 'turso', url: '', key: '' }, // e.g. 'https://<db>-<org>.<region>.turso.io' and its token
     },
     primary: 'sync-supabase',
     second: 'sync-turso',

@@ -1,7 +1,14 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "includes": ["test/**/*.js", "test/**/*.mjs", "tools/**/*.js", "tools/**/*.mjs"]
+    "includes": [
+      "test/**/*.js",
+      "test/**/*.mjs",
+      "tools/**/*.js",
+      "tools/**/*.mjs",
+      "src/**/*.js",
+      "!src/core/solid/ball-catalog.js"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -20,6 +27,7 @@
   },
   "linter": {
     "enabled": true,
+    "includes": ["**", "!src/**"],
     "rules": {
       "preset": "recommended",
       "correctness": {

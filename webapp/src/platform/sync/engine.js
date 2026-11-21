@@ -49,21 +49,36 @@ function validSecret(text) {
 const PEER_LABEL_MAX = 40; // characters of a device's name
 const CONTROL = /[\u0000-\u001f\u007f]/g;
 export const cleanLabel = text =>
-  [...String(text ?? '').replace(CONTROL, ' ').trim()].slice(0, PEER_LABEL_MAX).join('');
+  [
+    ...String(text ?? '')
+      .replace(CONTROL, ' ')
+      .trim(),
+  ]
+    .slice(0, PEER_LABEL_MAX)
+    .join('');
 
 // A device this one was linked with: who it is, the secret the two share (coop/secret.js, 22
 // characters) to find each other again, which side of the pair this device is (0 = it made the
 // link), its name and when they last traded slices (ms since 1970, 0 = never).
-const validPeer = peer => isObject(peer) && isDev(peer.dev)
-  && /^[A-Za-z0-9_-]{22}$/.test(String(peer.secret)) && (peer.pid === 0 || peer.pid === 1)
-  && typeof peer.name === 'string' && natural(peer.at);
+const validPeer = peer =>
+  isObject(peer) &&
+  isDev(peer.dev) &&
+  /^[A-Za-z0-9_-]{22}$/.test(String(peer.secret)) &&
+  (peer.pid === 0 || peer.pid === 1) &&
+  typeof peer.name === 'string' &&
+  natural(peer.at);
 
-const validIdentity = value => isObject(value) && value.v === 1 && isDev(value.dev)
-  && natural(value.seq) && typeof value.digest === 'string'
-  && typeof value.p2p === 'boolean' && typeof value.cloud === 'boolean'
-  && (value.secret === null || validSecret(value.secret))
-  && (value.label === undefined || value.label === null || typeof value.label === 'string')
-  && (value.peers === undefined || (Array.isArray(value.peers) && value.peers.every(validPeer)));
+const validIdentity = value =>
+  isObject(value) &&
+  value.v === 1 &&
+  isDev(value.dev) &&
+  natural(value.seq) &&
+  typeof value.digest === 'string' &&
+  typeof value.p2p === 'boolean' &&
+  typeof value.cloud === 'boolean' &&
+  (value.secret === null || validSecret(value.secret)) &&
+  (value.label === undefined || value.label === null || typeof value.label === 'string') &&
+  (value.peers === undefined || (Array.isArray(value.peers) && value.peers.every(validPeer)));
 
 // The synced keys of a slice, each cleaned by its rule; what is not one of ours is dropped.
 function cleanKeys(keys) {
@@ -115,8 +130,8 @@ export function createSync({ storage, maxDevices = MAX_DEVICES }) {
       await write(FOREIGN_KEY, value);
     }
   };
-  const ownSlice = () => (id && own.seq > 0
-    ? { v: 1, dev: id.dev, seq: own.seq, keys: own.keys } : null);
+  const ownSlice = () =>
+    id && own.seq > 0 ? { v: 1, dev: id.dev, seq: own.seq, keys: own.keys } : null;
 
   return {
     // Loads the identity and the slices kept for the others (nothing for a device that never
@@ -135,8 +150,13 @@ export function createSync({ storage, maxDevices = MAX_DEVICES }) {
         return;
       }
       for (const [dev, slice] of Object.entries(kept.slices)) {
-        if (isDev(dev) && dev !== id.dev && isObject(slice) && natural(slice.seq)
-          && foreign.size + 1 < maxDevices) {
+        if (
+          isDev(dev) &&
+          dev !== id.dev &&
+          isObject(slice) &&
+          natural(slice.seq) &&
+          foreign.size + 1 < maxDevices
+        ) {
           foreign.set(dev, { seq: slice.seq, keys: cleanKeys(slice.keys) });
         }
       }
@@ -154,131 +174,152 @@ export function createSync({ storage, maxDevices = MAX_DEVICES }) {
     // The player's choice. mode = { p2p?: true, cloud?: true, secret?: Uint8Array }: turns that
     // way on (the first call makes the device id; cloud also makes the group's secret when there
     // is none, or takes the one given: a phrase typed in. Another group's slices are dropped).
-    enable: mode => queued(async () => {
-      id ??= {
-        v: 1, dev: newDevId(), seq: 0, digest: '', p2p: false, cloud: false, secret: null,
-        label: null, peers: [],
-      };
-      id.p2p ||= Boolean(mode && mode.p2p);
-      if (mode && mode.cloud) {
-        id.cloud = true;
-        const given = mode.secret instanceof Uint8Array && mode.secret.length === SECRET_BYTES
-          ? toBase64Url(mode.secret) : null;
-        if (given && id.secret && id.secret !== given) {
-          foreign.clear();
-          await saveForeign();
+    enable: mode =>
+      queued(async () => {
+        id ??= {
+          v: 1,
+          dev: newDevId(),
+          seq: 0,
+          digest: '',
+          p2p: false,
+          cloud: false,
+          secret: null,
+          label: null,
+          peers: [],
+        };
+        id.p2p ||= Boolean(mode && mode.p2p);
+        if (mode && mode.cloud) {
+          id.cloud = true;
+          const given =
+            mode.secret instanceof Uint8Array && mode.secret.length === SECRET_BYTES
+              ? toBase64Url(mode.secret)
+              : null;
+          if (given && id.secret && id.secret !== given) {
+            foreign.clear();
+            await saveForeign();
+          }
+          id.secret = given ?? id.secret ?? toBase64Url(newSecret());
         }
-        id.secret = given ?? id.secret ?? toBase64Url(newSecret());
-      }
-      await saveId();
-      emit();
-    }),
+        await saveId();
+        emit();
+      }),
     // Turns ways off (no argument: all of them). The others' slices stay on the device but
     // stop counting while sync is off; leave() removes them.
-    disable: mode => queued(async () => {
-      if (!id) {
-        return;
-      }
-      id.p2p = mode ? id.p2p && !mode.p2p : false;
-      id.cloud = mode ? id.cloud && !mode.cloud : false;
-      await saveId();
-      emit();
-    }),
+    disable: mode =>
+      queued(async () => {
+        if (!id) {
+          return;
+        }
+        id.p2p = mode ? id.p2p && !mode.p2p : false;
+        id.cloud = mode ? id.cloud && !mode.cloud : false;
+        await saveId();
+        emit();
+      }),
     // Back to never having enabled sync: identity and the others' slices are gone.
-    leave: () => queued(async () => {
-      id = null;
-      own = { seq: 0, keys: {} };
-      foreign.clear();
-      try {
-        await storage.remove(IDENTITY_KEY);
-        await storage.remove(FOREIGN_KEY);
-      } catch { /* nothing kept, nothing to remove */ }
-      emit();
-    }),
+    leave: () =>
+      queued(async () => {
+        id = null;
+        own = { seq: 0, keys: {} };
+        foreign.clear();
+        try {
+          await storage.remove(IDENTITY_KEY);
+          await storage.remove(FOREIGN_KEY);
+        } catch {
+          /* nothing kept, nothing to remove */
+        }
+        emit();
+      }),
 
     // How this device is called to the others (at most 40 characters), or null.
     label: () => (id && id.label) || null,
-    setLabel: text => queued(async () => {
-      if (id) {
-        id.label = cleanLabel(text) || null;
-        await saveId();
-      }
-    }),
+    setLabel: text =>
+      queued(async () => {
+        if (id) {
+          id.label = cleanLabel(text) || null;
+          await saveId();
+        }
+      }),
     // The devices this one was linked with (p2p.js finds them again by their shared secret).
     peers: () => (id && id.peers ? id.peers.map(peer => ({ ...peer })) : []),
     // A linked device turned its sync off: it is no longer one of the linked devices (the data it
     // gave stays). -> whether it was one.
-    removePeer: dev => queued(async () => {
-      const known = id && (id.peers || []).some(peer => peer.dev === dev);
-      if (!known) {
-        return false;
-      }
-      id.peers = id.peers.filter(peer => peer.dev !== dev);
-      await saveId();
-      emit();
-      return true;
-    }),
-    // Remembers a linked device (a known one is replaced); at most maxDevices - 1 of them.
-    addPeer: peer => queued(async () => {
-      if (!id || !validPeer(peer)) {
-        return false;
-      }
-      const others = (id.peers || []).filter(known => known.dev !== peer.dev);
-      if (others.length + 2 > maxDevices) {
-        return false;
-      }
-      id.peers = [...others, { ...peer, name: cleanLabel(peer.name) }];
-      await saveId();
-      return true;
-    }),
-    removePeer: dev => queued(async () => {
-      if (id && (id.peers || []).some(peer => peer.dev === dev)) {
+    removePeer: dev =>
+      queued(async () => {
+        const known = id && (id.peers || []).some(peer => peer.dev === dev);
+        if (!known) {
+          return false;
+        }
         id.peers = id.peers.filter(peer => peer.dev !== dev);
         await saveId();
         emit();
-      }
-    }),
-    // They traded slices just now (`at`, ms since 1970).
-    touchPeer: (dev, at) => queued(async () => {
-      const peer = id && (id.peers || []).find(known => known.dev === dev);
-      if (peer && natural(at)) {
-        peer.at = at;
+        return true;
+      }),
+    // Remembers a linked device (a known one is replaced); at most maxDevices - 1 of them.
+    addPeer: peer =>
+      queued(async () => {
+        if (!id || !validPeer(peer)) {
+          return false;
+        }
+        const others = (id.peers || []).filter(known => known.dev !== peer.dev);
+        if (others.length + 2 > maxDevices) {
+          return false;
+        }
+        id.peers = [...others, { ...peer, name: cleanLabel(peer.name) }];
         await saveId();
-      }
-    }),
+        return true;
+      }),
+    removePeer: dev =>
+      queued(async () => {
+        if (id && (id.peers || []).some(peer => peer.dev === dev)) {
+          id.peers = id.peers.filter(peer => peer.dev !== dev);
+          await saveId();
+          emit();
+        }
+      }),
+    // They traded slices just now (`at`, ms since 1970).
+    touchPeer: (dev, at) =>
+      queued(async () => {
+        const peer = id && (id.peers || []).find(known => known.dev === dev);
+        if (peer && natural(at)) {
+          peer.at = at;
+          await saveId();
+        }
+      }),
 
     // The group's secret (10 bytes) for the cloud, or null.
     secret: () => (id && id.secret ? fromBase64Url(id.secret) : null),
     // Joins the group of this secret (a device that was linked brought it). Without `keep` the
     // slices of another group are dropped (this device's own data stays and is offered to the new
     // group); with it they stay: they are devices of the same player.
-    adoptSecret: (bytes, { keep = false } = {}) => queued(async () => {
-      if (!id || !(bytes instanceof Uint8Array) || bytes.length !== SECRET_BYTES) {
-        return false;
-      }
-      id.secret = toBase64Url(bytes);
-      id.cloud = true;
-      if (!keep) {
-        foreign.clear();
-      }
-      await saveId();
-      await saveForeign();
-      emit();
-      return true;
-    }),
+    adoptSecret: (bytes, { keep = false } = {}) =>
+      queued(async () => {
+        if (!id || !(bytes instanceof Uint8Array) || bytes.length !== SECRET_BYTES) {
+          return false;
+        }
+        id.secret = toBase64Url(bytes);
+        id.cloud = true;
+        if (!keep) {
+          foreign.clear();
+        }
+        await saveId();
+        await saveForeign();
+        emit();
+        return true;
+      }),
     // The cloud way is on and there is a secret to use it with.
     cloudOn: () => Boolean(id && id.cloud && id.secret),
     // A short name of the secret (core/sync/cloud-keys.js), or null: two devices compare it.
     secretId: () => (id && id.secret ? secretId(fromBase64Url(id.secret)) : Promise.resolve(null)),
     // Cloud off and the secret forgotten (after the cloud copy was deleted).
-    forgetSecret: () => queued(async () => {
-      if (id) {
-        id.secret = null;
-        id.cloud = false;
-        await saveId();
-        emit();
-      }
-    }),
+    forgetSecret: () =>
+      queued(async () => {
+        if (id) {
+          id.secret = null;
+          id.cloud = false;
+          await saveId();
+          emit();
+        }
+      }),
 
     // What the group says for `key`, given this device's own parsed copy (null = none). Without
     // sync, or without slices of other devices, `local` comes back as it is.
@@ -315,40 +356,43 @@ export function createSync({ storage, maxDevices = MAX_DEVICES }) {
         return stored;
       },
     }),
-    onChange(fn) { // the group's view may have changed: slices came, or sync was turned on or off
+    onChange(fn) {
+      // the group's view may have changed: slices came, or sync was turned on or off
       changeListeners.add(fn);
       return () => changeListeners.delete(fn);
     },
-    onLocalChange(fn) { // a synced key of this device was written (after wrap())
+    onLocalChange(fn) {
+      // a synced key of this device was written (after wrap())
       localListeners.add(fn);
       return () => localListeners.delete(fn);
     },
 
     // Reads this device's own copy; a change since the last time makes `seq` one higher.
     // -> the slice to offer, or null while there is nothing yet.
-    refresh: () => queued(async () => {
-      if (!id) {
-        return null;
-      }
-      const keys = {};
-      for (const key of SYNCED_KEYS) {
-        const raw = await read(key);
-        const value = raw === null ? null : MERGES[key].clean(raw);
-        if (value) {
-          keys[key] = value;
+    refresh: () =>
+      queued(async () => {
+        if (!id) {
+          return null;
         }
-      }
-      const digest = digestOf(keys);
-      if (digest !== id.digest) {
-        if (id.seq > 0 || Object.keys(keys).length) {
-          id.seq += 1; // an empty copy is not worth a slice until there is something in it
+        const keys = {};
+        for (const key of SYNCED_KEYS) {
+          const raw = await read(key);
+          const value = raw === null ? null : MERGES[key].clean(raw);
+          if (value) {
+            keys[key] = value;
+          }
         }
-        id.digest = digest;
-        await saveId();
-      }
-      own = { seq: id.seq, keys };
-      return ownSlice();
-    }),
+        const digest = digestOf(keys);
+        if (digest !== id.digest) {
+          if (id.seq > 0 || Object.keys(keys).length) {
+            id.seq += 1; // an empty copy is not worth a slice until there is something in it
+          }
+          id.digest = digest;
+          await saveId();
+        }
+        own = { seq: id.seq, keys };
+        return ownSlice();
+      }),
 
     // The newest slice of every device this one knows: { dev: seq }.
     have() {
@@ -372,25 +416,26 @@ export function createSync({ storage, maxDevices = MAX_DEVICES }) {
     },
     // Takes slices that came from another device: only newer ones, only while the group has room.
     // -> { accepted, ignored }
-    receive: slices => queued(async () => {
-      const list = Array.isArray(slices) ? slices : [];
-      let accepted = 0;
-      if (enabled()) {
-        for (const slice of list) {
-          const known = isSlice(slice) ? foreign.get(slice.dev) : null;
-          const fits = known || foreign.size + 1 < maxDevices;
-          const newer = !known || known.seq < slice.seq;
-          if (isSlice(slice) && slice.dev !== id.dev && fits && newer) {
-            foreign.set(slice.dev, { seq: slice.seq, keys: cleanKeys(slice.keys) });
-            accepted++;
+    receive: slices =>
+      queued(async () => {
+        const list = Array.isArray(slices) ? slices : [];
+        let accepted = 0;
+        if (enabled()) {
+          for (const slice of list) {
+            const known = isSlice(slice) ? foreign.get(slice.dev) : null;
+            const fits = known || foreign.size + 1 < maxDevices;
+            const newer = !known || known.seq < slice.seq;
+            if (isSlice(slice) && slice.dev !== id.dev && fits && newer) {
+              foreign.set(slice.dev, { seq: slice.seq, keys: cleanKeys(slice.keys) });
+              accepted++;
+            }
           }
         }
-      }
-      if (accepted) {
-        await saveForeign();
-        emit();
-      }
-      return { accepted, ignored: list.length - accepted };
-    }),
+        if (accepted) {
+          await saveForeign();
+          emit();
+        }
+        return { accepted, ignored: list.length - accepted };
+      }),
   };
 }

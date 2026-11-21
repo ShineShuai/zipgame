@@ -2,8 +2,15 @@
 import { dateOfDay, fetchGameOfDayFor } from '../../features/daily.js';
 import { labelCount } from '../../core/model.js';
 import {
-  shareStatus, isPlayable, isSpent, dateLabel, stripText, parseShareLink, makeShareRecord,
-  shareUrl, shareText,
+  shareStatus,
+  isPlayable,
+  isSpent,
+  dateLabel,
+  stripText,
+  parseShareLink,
+  makeShareRecord,
+  shareUrl,
+  shareText,
 } from '../../features/share.js';
 import { variantIcon } from './icons.js';
 import { sizesFor } from './variants.js';
@@ -18,22 +25,31 @@ import { beginGame } from './game-flow.js';
 // once it is played or out of the replay window: it follows the replay scheme from then on.
 const SHARED_ROWS = 3; // rows of the card before "Show all"
 const SHARED_BAD = ['old', 'future', 'invalid'];
-const sharedStatus = rec => shareStatus(rec, {
-  today: dayNo(),
-  replayDates: replay.dates(),
-  attempt: rec.kind === 'gotd' ? store.attemptOn(dateOfDay(rec.day)) : null,
-  sizes: SIZES,
-  sizesOf: id => sizesFor(id, SIZES), // a variant may offer a size the app does not play otherwise
-});
+const sharedStatus = rec =>
+  shareStatus(rec, {
+    today: dayNo(),
+    replayDates: replay.dates(),
+    attempt: rec.kind === 'gotd' ? store.attemptOn(dateOfDay(rec.day)) : null,
+    sizes: SIZES,
+    sizesOf: id => sizesFor(id, SIZES), // a variant may offer a size the app does not play otherwise
+  });
 
 function sharedStateText(state) {
   switch (state.status) {
-    case 'replay': return t('share.freeReplay');
-    case 'played': return state.attempt.solved ? t('share.st.played', sec(state.attempt.time)) : t('share.st.attempted');
-    case 'old': return t('replay.unavailable');
-    case 'future': return t('share.st.future');
-    case 'invalid': return t('share.invalid');
-    default: return '';
+    case 'replay':
+      return t('share.freeReplay');
+    case 'played':
+      return state.attempt.solved
+        ? t('share.st.played', sec(state.attempt.time))
+        : t('share.st.attempted');
+    case 'old':
+      return t('replay.unavailable');
+    case 'future':
+      return t('share.st.future');
+    case 'invalid':
+      return t('share.invalid');
+    default:
+      return '';
   }
 }
 
@@ -53,14 +69,24 @@ export function pruneShared() {
     return;
   }
   pruning = true;
-  shared.prune(e => !isSpent(e.rec, sharedStatus(e.rec)))
-    .then(() => { S.sharedGames = shared.list(); })
-    .finally(() => { pruning = false; });
+  shared
+    .prune(e => !isSpent(e.rec, sharedStatus(e.rec)))
+    .then(() => {
+      S.sharedGames = shared.list();
+    })
+    .finally(() => {
+      pruning = false;
+    });
 }
 
 function sharedItemHtml({ key, rec, state }) {
   const shape = rec.puzzle && rec.puzzle.shape ? ' · ' + t('shape.' + rec.puzzle.shape) : '';
-  const head = rec.kind === 'gotd' ? t('share.gotd', dateLabel(dateOfDay(rec.day))) : rec.variant ? t('share.' + rec.variant) + shape : t('share.local');
+  const head =
+    rec.kind === 'gotd'
+      ? t('share.gotd', dateLabel(dateOfDay(rec.day)))
+      : rec.variant
+        ? t('share.' + rec.variant) + shape
+        : t('share.local');
   const grade = rec.grade == null ? '' : ` · ${t('grade.' + rec.grade)} ${rec.grade}/5`;
   const row = [`<span>⏱ ${sec(rec.timeS)}</span>`];
   if (rec.pct != null) {
@@ -70,7 +96,12 @@ function sharedItemHtml({ key, rec, state }) {
     row.push(`<span class="shared-strip">${stripText(rec.levels)}</span>`);
   }
   const quiet = !(S.sharedMsg && S.sharedMsg.key === key) && state.status === 'replay'; // told once, in the card's (i)
-  const note = S.sharedMsg && S.sharedMsg.key === key ? t(S.sharedMsg.msg) : quiet ? '' : sharedStateText(state);
+  const note =
+    S.sharedMsg && S.sharedMsg.key === key
+      ? t(S.sharedMsg.msg)
+      : quiet
+        ? ''
+        : sharedStateText(state);
   const bad = Boolean(S.sharedMsg && S.sharedMsg.key === key) || SHARED_BAD.includes(state.status);
   const armed = S.sharedArmed === key;
   return `<li class="shared-item${key === S.sharedFocus ? ' is-new' : ''}">
@@ -93,18 +124,31 @@ function sharedItemHtml({ key, rec, state }) {
 //   eyebrow + count + color-strip tip / notice / one item per game (what was shared, time, percent beaten, strip, reason | Play, remove)
 export function sharedCardHtml() {
   const entries = visibleShared();
-  const notice = S.sharedNotice ? (S.sharedNotice.bad ? t('share.invalid') : sharedStateText(S.sharedNotice.state)) : '';
+  const notice = S.sharedNotice
+    ? S.sharedNotice.bad
+      ? t('share.invalid')
+      : sharedStateText(S.sharedNotice.state)
+    : '';
   if (!entries.length && !notice) {
     return '';
   }
   // the (i): what the colours mean, and that a replay of a shared Game of Day costs no replay chance (said once, not on every game)
-  const tipText = [entries.some(e => e.rec.levels.length) ? t('share.tip') : '', entries.some(e => e.state.status === 'replay') ? t('share.freeReplay') : ''].filter(Boolean).join('<br>');
+  const tipText = [
+    entries.some(e => e.rec.levels.length) ? t('share.tip') : '',
+    entries.some(e => e.state.status === 'replay') ? t('share.freeReplay') : '',
+  ]
+    .filter(Boolean)
+    .join('<br>');
   const tip = tipText
     ? `<button type="button" class="tip-btn" id="shareTip" aria-expanded="false" aria-label="${t('share.tipLabel')}">i</button>
-      <span class="tip-pop" id="shareTipPop" role="tooltip">${tipText}</span>` : '';
-  const more = entries.length > SHARED_ROWS
-    ? `<button type="button" class="btn secondary shared-more" id="sharedMore">${S.sharedAll ? t('share.showLess') : t('share.showAll', entries.length)}</button>` : '';
-  const warn = S.sharedNotice && (S.sharedNotice.bad || SHARED_BAD.includes(S.sharedNotice.state.status));
+      <span class="tip-pop" id="shareTipPop" role="tooltip">${tipText}</span>`
+    : '';
+  const more =
+    entries.length > SHARED_ROWS
+      ? `<button type="button" class="btn secondary shared-more" id="sharedMore">${S.sharedAll ? t('share.showLess') : t('share.showAll', entries.length)}</button>`
+      : '';
+  const warn =
+    S.sharedNotice && (S.sharedNotice.bad || SHARED_BAD.includes(S.sharedNotice.state.status));
   const open = S.sharedOpen || S.sharedFocus || S.sharedNotice; // on a phone the card is a one-line banner until it is opened
   return `<section class="card shared-card${open ? ' open' : ''}" id="sharedCard">
     <div class="shared-head" id="sharedHead">
@@ -123,7 +167,9 @@ export function stripShareParam() {
     params.delete('s');
     const query = params.toString();
     history.replaceState(null, '', location.pathname + (query ? '?' + query : '') + location.hash);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 // At start: loads the saved games, then saves the game of the link the page was opened with. A Game of Day that is already
@@ -132,7 +178,11 @@ export async function initShared() {
   await shared.init();
   const { rec, bad } = parseShareLink(location.search);
   const gotdDates = list => list.filter(r => r.kind === 'gotd').map(r => dateOfDay(r.day));
-  await Promise.all(gotdDates([...shared.list().map(e => e.rec), ...(rec ? [rec] : [])]).map(date => store.loadAttempt(date))); // so the menu can tell "already played" without waiting
+  await Promise.all(
+    gotdDates([...shared.list().map(e => e.rec), ...(rec ? [rec] : [])]).map(date =>
+      store.loadAttempt(date),
+    ),
+  ); // so the menu can tell "already played" without waiting
   if (bad) {
     S.sharedNotice = { bad: true };
   }
@@ -199,7 +249,7 @@ export async function startShared(key) {
     await startGameOfDay();
   } else {
     const date = dateOfDay(rec.day);
-    const puzzle = replayPuzzles.get(date) || await fetchGameOfDayFor(date);
+    const puzzle = replayPuzzles.get(date) || (await fetchGameOfDayFor(date));
     if (puzzle) {
       replayPuzzles.set(date, puzzle);
     }

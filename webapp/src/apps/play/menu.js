@@ -8,7 +8,18 @@ import { SOLID_KINDS } from '../../features/solid-release.js';
 import { BEHAVIOUR } from '../../config.js';
 import { t } from '../../ui/i18n.js';
 import {
-  S, SIZES, champ, replay, sec, solid, statsLineT, storage, storageUsed, store, streak, today,
+  S,
+  SIZES,
+  champ,
+  replay,
+  sec,
+  solid,
+  statsLineT,
+  storage,
+  storageUsed,
+  store,
+  streak,
+  today,
   unlock,
 } from './state.js';
 import { ICON, weekday } from './menu-kit.js';
@@ -62,7 +73,8 @@ export const coopShown = () => coopMode() === 'open' || (coopMode() === 'hidden'
 // Patchwork has its own reveal.
 export function coopAccess() {
   const access = {};
-  for (const mode of ['standard', ...PLAY_VARIANTS.map(v => v.id)]) access[mode] = isUnlocked(mode) ? 'all' : 'none';
+  for (const mode of ['standard', ...PLAY_VARIANTS.map(v => v.id)])
+    access[mode] = isUnlocked(mode) ? 'all' : 'none';
   const sizes = {};
   for (const kind of SOLID_KINDS) {
     access[kind] = solid.access(kind);
@@ -95,18 +107,23 @@ function gotdCardHtml() {
   const playButton = attempt
     ? `<button class="btn" disabled>${t('gotd.play')}</button>`
     : `<button class="btn" id="playGotd">${t('gotd.play')}</button>`;
-  const replayButton = chances > 0
-    ? `<button class="btn secondary" id="openReplay">${t('menu.replay', chances)}</button>`
-    : `<button class="btn secondary" disabled>${t('menu.replay', 0)}</button>`;
+  const replayButton =
+    chances > 0
+      ? `<button class="btn secondary" id="openReplay">${t('menu.replay', chances)}</button>`
+      : `<button class="btn secondary" disabled>${t('menu.replay', 0)}</button>`;
   // why a button is off is written under the buttons: a title attribute is not shown on a touch screen
-  const offReason = attempt ? t('menu.gotdOnce') : chances > 0 ? '' : t('replay.locked', replay.toNext());
+  const offReason = attempt
+    ? t('menu.gotdOnce')
+    : chances > 0
+      ? ''
+      : t('replay.locked', replay.toNext());
   const offHint = offReason ? `<p class="btn-hint">${offReason}</p>` : '';
-  const attemptText = attempt && attempt.solved
-    ? t('menu.attemptSolved', sec(attempt.time))
-    : t('menu.attemptDone');
-  const stats = attempt && attempt.stats
-    ? `<br><span class="gotd-stats">${statsLineT(attempt.stats, S.showDev)}</span>`
-    : '';
+  const attemptText =
+    attempt && attempt.solved ? t('menu.attemptSolved', sec(attempt.time)) : t('menu.attemptDone');
+  const stats =
+    attempt && attempt.stats
+      ? `<br><span class="gotd-stats">${statsLineT(attempt.stats, S.showDev)}</span>`
+      : '';
   const attemptNote = attempt ? `<p class="note">${attemptText}${stats}</p>` : '';
   const hintNote = S.gotdHint ? `<p class="note error">${t(...S.gotdHint)}</p>` : '';
   return `
@@ -136,13 +153,23 @@ function gotdCardHtml() {
 export function sizeOptionsHtml() {
   const sizes = sizesFor(S.mode, SIZES);
   if (!sizes.includes(S.size)) S.size = nearestSize(S.size, sizes);
-  return sizes.map(n => `<option value="${n}"${n === S.size ? ' selected' : ''}>${sizeLabel(S.mode, n)}</option>`).join('');
+  return sizes
+    .map(
+      n =>
+        `<option value="${n}"${n === S.size ? ' selected' : ''}>${sizeLabel(S.mode, n)}</option>`,
+    )
+    .join('');
 }
 
 export function storageNoteText() {
   const uv = unlockView();
-  const unlockDev = uv ? ` · unlock: ${uv.tokens} chance(s), lucky game ${uv.open ? 'open' : 'played'}, next lucky day in ${uv.daysToNext}` : '';
-  const refused = storage.refused && storage.refused.size ? ` · writes refused: ${[...storage.refused].join(', ')}` : '';
+  const unlockDev = uv
+    ? ` · unlock: ${uv.tokens} chance(s), lucky game ${uv.open ? 'open' : 'played'}, next lucky day in ${uv.daysToNext}`
+    : '';
+  const refused =
+    storage.refused && storage.refused.size
+      ? ` · writes refused: ${[...storage.refused].join(', ')}`
+      : '';
   return `Storage: ${storage.name}${storage.shared ? '' : ' (local only)'}${storageUsed}${refused} · generation: ${generationWhere()}${unlockDev}`;
 }
 function freePlayCardHtml() {
@@ -177,16 +204,19 @@ function freePlayCardHtml() {
 
 // The line under the type tiles: the type picked, its tagline, and the link to its rules (shown on touch screens; a pointer has the
 // popover). `mode` is a flat type or, in the 3D card, a kind (solid.js has the same line).
-export const typeCaptionHtml = mode => `<b>${t('mode.' + mode)}</b> — ${t('mode.' + mode + 'Tag')}`
-  + ` <button type="button" class="link-btn rules-link" data-rules="variantRules-${mode}">${t('menu.rulesLink')}</button>`;
+export const typeCaptionHtml = mode =>
+  `<b>${t('mode.' + mode)}</b> — ${t('mode.' + mode + 'Tag')}` +
+  ` <button type="button" class="link-btn rules-link" data-rules="variantRules-${mode}">${t('menu.rulesLink')}</button>`;
 
 // Flat | 3D: the menu offers the 3D puzzles only once a kind is unlocked or released (solid.available(), or V held).
 // Free play and the 3D card are two panes of one column; the tabs sit over the right end of the card head.
 function playColumnHtml() {
   const solidOn = solid.available();
-  if (!solidOn) return `<div class="play-col"><div class="tab-pane">${freePlayCardHtml()}</div></div>`;
+  if (!solidOn)
+    return `<div class="play-col"><div class="tab-pane">${freePlayCardHtml()}</div></div>`;
   const flat = S.menuTab !== '3d';
-  const tab = (id, key, on) => `<button type="button" role="tab" id="tab-${id}" aria-selected="${on}" aria-controls="pane-${id}" data-tab="${id}">${t(key)}</button>`;
+  const tab = (id, key, on) =>
+    `<button type="button" role="tab" id="tab-${id}" aria-selected="${on}" aria-controls="pane-${id}" data-tab="${id}">${t(key)}</button>`;
   return `
       <div class="play-col has-tabs">
         <div class="play-tabs" role="tablist" aria-label="${t('menu.tabs')}">${tab('flat', 'menu.tabFlat', flat)}${tab('3d', 'menu.tabSolid', !flat)}</div>
@@ -218,39 +248,65 @@ export function renderMenu() {
 
 // Status panel under the menu buttons: two cards, each with a tooltip (hover on a desktop, tap on a phone; Esc or a tap elsewhere closes it).
 //   replay card: chances left + dots for the solves made in the current price step; streak card: flame + days, 7 dots to the next reward, freeze slots.
-function statusPanelHtml(chances, sv) { // sv: streak.view(), null before the streak is loaded
-  const pips = (on, total, cls = '') => `<span class="pips ${cls}">${Array.from({ length: total }, (_, i) => `<i class="pip${i < on ? ' on' : ''}"></i>`).join('')}</span>`;
+function statusPanelHtml(chances, sv) {
+  // sv: streak.view(), null before the streak is loaded
+  const pips = (on, total, cls = '') =>
+    `<span class="pips ${cls}">${Array.from({ length: total }, (_, i) => `<i class="pip${i < on ? ' on' : ''}"></i>`).join('')}</span>`;
   const card = (cls, lines, body) => `
     <button type="button" class="stat-item ${cls}" aria-label="${lines.join(' ')}">
       ${body}
       <span class="stat-tip" role="tooltip">${lines.join('<br>')}</span>
     </button>`;
-  const step = replay.step(), toNext = replay.toNext();
-  const replayCard = card('stat-replay' + (chances > 0 ? ' ready' : ''), [t(chances > 0 ? 'replay.progress' : 'replay.locked', toNext)], `
+  const step = replay.step(),
+    toNext = replay.toNext();
+  const replayCard = card(
+    'stat-replay' + (chances > 0 ? ' ready' : ''),
+    [t(chances > 0 ? 'replay.progress' : 'replay.locked', toNext)],
+    `
       ${ICON.replay}
       <span class="stat-main">
         <span class="stat-top"><b>${chances}</b><small>${t('status.replays')}</small></span>
         ${pips(step.done, step.total)}
         <small class="stat-sub">${t('status.toGo', toNext)}</small>
-      </span>`);
-  const heals = streak ? streak.healable().length : 0, pg = sv && streak.progress();
-  const lines = sv && [sv.streak > 0 ? t('streak.line', sv.streak, sv.freezes) + (sv.today ? '' : ' ' + t('streak.keep')) : t('streak.none'),
-    t('streak.next', pg.left), ...(heals ? [t('streak.repair', heals)] : []), t('streak.help', RAMP.join(','), FREEZE_EVERY, FREEZE_MAX, HEAL_DAYS)];
-  const streakCard = sv ? card('stat-streak' + (sv.streak > 0 ? (sv.today ? ' lit' : ' lit risk') : ''), lines, `
+      </span>`,
+  );
+  const heals = streak ? streak.healable().length : 0,
+    pg = sv && streak.progress();
+  const lines = sv && [
+    sv.streak > 0
+      ? t('streak.line', sv.streak, sv.freezes) + (sv.today ? '' : ' ' + t('streak.keep'))
+      : t('streak.none'),
+    t('streak.next', pg.left),
+    ...(heals ? [t('streak.repair', heals)] : []),
+    t('streak.help', RAMP.join(','), FREEZE_EVERY, FREEZE_MAX, HEAL_DAYS),
+  ];
+  const streakCard = sv
+    ? card(
+        'stat-streak' + (sv.streak > 0 ? (sv.today ? ' lit' : ' lit risk') : ''),
+        lines,
+        `
       ${ICON.flame}
       <span class="stat-main">
         <span class="stat-top"><b>${sv.streak}</b><small>${t('status.streak')}</small></span>
         ${pips(pg.on, pg.total, 'week')}
         <span class="freezes">${Array.from({ length: FREEZE_MAX }, (_, i) => `<span class="freeze${i < sv.freezes ? ' on' : ''}">${ICON.snow}</span>`).join('')}</span>
-      </span>`) : '';
+      </span>`,
+      )
+    : '';
   const cp = champ && champ.progress(); // wins towards a reward pick (features/champ.js)
   const champLines = cp && [t('champ.next', cp.total - cp.done), t('champ.help', cp.total)];
-  const champCard = cp ? card('stat-champ' + (cp.wins > 0 ? ' lit' : ''), champLines, `
+  const champCard = cp
+    ? card(
+        'stat-champ' + (cp.wins > 0 ? ' lit' : ''),
+        champLines,
+        `
       <span class="stat-icon" aria-hidden="true">★</span>
       <span class="stat-main">
         <span class="stat-top"><b>${cp.done}/${cp.total}</b>
           <small>${t('champ.label')}</small></span>
         ${pips(cp.done, cp.total)}
-      </span>`) : '';
+      </span>`,
+      )
+    : '';
   return `<div class="status-panel">${replayCard}${streakCard}${champCard}</div>`;
 }

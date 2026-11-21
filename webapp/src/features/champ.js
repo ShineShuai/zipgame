@@ -6,7 +6,17 @@
 // between, or the record came from another device) is judged at the next start (catchUp).
 // With device sync (platform/sync/engine.js) the picks are counted over the group's wins.
 import {
-  clean, daysOf, fresh, handedOut, isLive, judged, owedOf, progressOf, qualifies, rise, win,
+  clean,
+  daysOf,
+  fresh,
+  handedOut,
+  isLive,
+  judged,
+  owedOf,
+  progressOf,
+  qualifies,
+  rise,
+  win,
 } from '../core/champ-seal.js';
 import { dateOfDay, utcDayNumber } from './daily.js';
 import { dayOfDate } from './share.js';
@@ -44,7 +54,9 @@ export function createChamp(storage, cfg, now = () => new Date(), sync = null) {
       try {
         const r = await storage.get(CHAMP_KEY);
         copy = r && clean(JSON.parse(r.value));
-      } catch { /* a copy that cannot be read counts as none */ }
+      } catch {
+        /* a copy that cannot be read counts as none */
+      }
       s = copy ? rise(copy, today()) : fresh(today());
       if (!copy || s.z !== copy.z) {
         await save();
@@ -79,7 +91,8 @@ export function createChamp(storage, cfg, now = () => new Date(), sync = null) {
     // not judged yet. store = features/stats-store.js
     async catchUp(store) {
       for (let k = 0; s && k < CATCH_UP_DAYS; k++) {
-        const date = dateOfDay(today() - k), rec = await store.loadAttempt(date);
+        const date = dateOfDay(today() - k),
+          rec = await store.loadAttempt(date);
         await this.judge(date, rec);
       }
     },

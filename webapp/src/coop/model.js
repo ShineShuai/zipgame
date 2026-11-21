@@ -7,8 +7,15 @@ import { splitPath } from '../core/twopaths.js';
 import { edgeBetween } from '../core/surface/topology.js';
 import { solutionOf } from '../features/hints.js';
 import {
-  canStep as surfaceCanStep, endCell as surfaceEnd, isSolved as surfaceSolved, isSurfacePuzzle,
-  looksLikeSurface, parseSurface, serializeSurface, startCell as surfaceStart, topologyOf,
+  canStep as surfaceCanStep,
+  endCell as surfaceEnd,
+  isSolved as surfaceSolved,
+  isSurfacePuzzle,
+  looksLikeSurface,
+  parseSurface,
+  serializeSurface,
+  startCell as surfaceStart,
+  topologyOf,
 } from '../core/surface/puzzle.js';
 
 // What Patchwork asks of a board, whatever its geometry (pure). Two kinds of puzzle exist:
@@ -51,8 +58,8 @@ function flatModel(puzzle) {
     start: startCell(puzzle),
     end: endCell(puzzle),
     canStep: (a, b) => canStep(puzzle, a, b),
-    linked: (a, b) => a !== b
-      && (adjacent(puzzle.n, puzzle.wrap, a, b) || isPortalPair(puzzle.portals, a, b)),
+    linked: (a, b) =>
+      a !== b && (adjacent(puzzle.n, puzzle.wrap, a, b) || isPortalPair(puzzle.portals, a, b)),
     solved: path => isSolved(puzzle, path),
   };
 }
@@ -81,8 +88,8 @@ export function modelOf(puzzle) {
 }
 
 // The puzzle as text, for the other device and for the export, and back. `path` is the solution.
-export const serializePuzzle = (puzzle, opts) => (isSurfacePuzzle(puzzle)
-  ? serializeSurface(puzzle, opts) : serialize(puzzle, opts));
+export const serializePuzzle = (puzzle, opts) =>
+  isSurfacePuzzle(puzzle) ? serializeSurface(puzzle, opts) : serialize(puzzle, opts);
 
 export const parsePuzzle = text => (looksLikeSurface(text) ? parseSurface(text) : parse(text));
 

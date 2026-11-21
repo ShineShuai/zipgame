@@ -18,8 +18,8 @@ const text = new TextEncoder();
 const subtle = () => globalThis.crypto.subtle;
 const random = length => globalThis.crypto.getRandomValues(new Uint8Array(length));
 
-export const signalSupported = () => typeof WebSocket === 'function'
-  && typeof globalThis.crypto?.subtle?.deriveKey === 'function';
+export const signalSupported = () =>
+  typeof WebSocket === 'function' && typeof globalThis.crypto?.subtle?.deriveKey === 'function';
 
 export const isPublicKey = value => typeof value === 'string' && PUBLIC_KEY.test(value);
 
@@ -33,7 +33,7 @@ export async function fingerprint(pub) {
 }
 
 // The link's token: the secret, then the fingerprint of the host's public key.
-export const makeToken = async (secret, pub) => secret + await fingerprint(pub);
+export const makeToken = async (secret, pub) => secret + (await fingerprint(pub));
 
 // -> { secret, fingerprint }; throws Error('bad code') for anything else than makeToken's output.
 export function splitToken(token) {
@@ -47,16 +47,22 @@ export function splitToken(token) {
 export const newId = () => toBase64Url(random(8));
 
 async function hkdf(material, salt, info, usage) {
-  const base = await subtle()
-    .importKey('raw', material, 'HKDF', false, ['deriveBits', 'deriveKey']);
+  const base = await subtle().importKey('raw', material, 'HKDF', false, [
+    'deriveBits',
+    'deriveKey',
+  ]);
   const params = {
-    name: 'HKDF', hash: 'SHA-256', salt: text.encode(salt), info: text.encode(info),
+    name: 'HKDF',
+    hash: 'SHA-256',
+    salt: text.encode(salt),
+    info: text.encode(info),
   };
   return usage === 'bits'
     ? new Uint8Array(await subtle().deriveBits(params, base, 128))
-    : subtle().deriveKey(
-      params, base, { name: 'AES-GCM', length: 128 }, false, ['encrypt', 'decrypt'],
-    );
+    : subtle().deriveKey(params, base, { name: 'AES-GCM', length: 128 }, false, [
+        'encrypt',
+        'decrypt',
+      ]);
 }
 
 // -> { room, key }; throws Error('bad code') when `secret` is not one made by newSecret().
@@ -102,8 +108,9 @@ export async function unseal(key, aad, message) {
 
 // -> { priv, pub }: a key pair for one guest; pub is sent (base64url), priv stays here.
 export async function newPair() {
-  const pair = await subtle()
-    .generateKey({ name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']);
+  const pair = await subtle().generateKey({ name: 'ECDH', namedCurve: 'P-256' }, false, [
+    'deriveBits',
+  ]);
   const raw = new Uint8Array(await subtle().exportKey('raw', pair.publicKey));
   return { priv: pair.privateKey, pub: toBase64Url(raw) };
 }
@@ -115,7 +122,11 @@ export async function pairSecret(priv, theirPub, room) {
     throw new Error('bad key');
   }
   const other = await subtle().importKey(
-    'raw', fromBase64Url(theirPub), { name: 'ECDH', namedCurve: 'P-256' }, false, [],
+    'raw',
+    fromBase64Url(theirPub),
+    { name: 'ECDH', namedCurve: 'P-256' },
+    false,
+    [],
   );
   const params = { name: 'ECDH', public: other };
   const bits = new Uint8Array(await subtle().deriveBits(params, priv, 256));

@@ -5,8 +5,9 @@ import { ruleExample } from '../themes/calendar.js';
 import { ruleHtml } from '../themes/offer.js';
 import { openSheet } from './info.js';
 
-export const showThemeRule = text => openSheet({
-  title: text('theme.rule.title'),
-  html: ruleHtml(text, ruleExample()),
-  closeText: text('sheet.close'),
-});
+export const showThemeRule = text =>
+  openSheet({
+    title: text('theme.rule.title'),
+    html: ruleHtml(text, ruleExample()),
+    closeText: text('sheet.close'),
+  });

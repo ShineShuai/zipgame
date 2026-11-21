@@ -37,10 +37,10 @@ const BIT_DIR = [0, 0, 1, 0, 2, 0, 0, 0, 3];
 export function makeDirPropagator(moves, end, vis, holes = null) {
   const { out, gnb, pre, preDir, T } = moves;
   const av = new Uint8Array(T);
-  const used = new Uint8Array(T);    // bit d: the edge to gnb[u * 4 + d] is on the path (some way)
-  const inDeg = new Uint8Array(T);   // possible moves into the cell
-  const nxt = new Int32Array(T);     // forced move out of the cell (its target), -1 = none yet
-  const prv = new Int32Array(T);     // forced move into the cell (its source), -1 = none yet
+  const used = new Uint8Array(T); // bit d: the edge to gnb[u * 4 + d] is on the path (some way)
+  const inDeg = new Uint8Array(T); // possible moves into the cell
+  const nxt = new Int32Array(T); // forced move out of the cell (its target), -1 = none yet
+  const prv = new Int32Array(T); // forced move into the cell (its source), -1 = none yet
   // Forced moves form chains. For a chain's first cell s: tail[s] = its last cell, size[s] = its
   // cells; for its last cell e: first[e] = s. A lone cell is a chain of its own.
   const tail = new Int32Array(T);
@@ -49,7 +49,7 @@ export function makeDirPropagator(moves, end, vis, holes = null) {
   const work = new Int32Array(24 * T); // cells whose edges changed
   let top = 0;
   let head = -1;
-  let total = 0;     // cells a head -> end chain has to hold
+  let total = 0; // cells a head -> end chain has to hold
   let failed = false;
 
   // The move out of u in direction d can't be made.
@@ -64,7 +64,8 @@ export function makeDirPropagator(moves, end, vis, holes = null) {
     inDeg[v]--;
     work[top++] = u;
     work[top++] = v;
-    if ((used[u] >> d) & 1) { // the edge is on the path: the other direction has to carry it
+    if ((used[u] >> d) & 1) {
+      // the edge is on the path: the other direction has to carry it
       if ((av[v] >> (d ^ 1)) & 1) force(v, d ^ 1);
       else failed = true;
     }
@@ -172,7 +173,7 @@ export function makeDirPropagator(moves, end, vis, holes = null) {
     let open = 0;
     for (let d = 0; d < 4; d++) {
       const w = gnb[u * 4 + d];
-      if (w >= 0 && (((av[u] >> d) & 1) || ((av[w] >> (d ^ 1)) & 1))) open |= 1 << d;
+      if (w >= 0 && ((av[u] >> d) & 1 || (av[w] >> (d ^ 1)) & 1)) open |= 1 << d;
     }
     if (POP[open] < need) {
       failed = true;

@@ -73,25 +73,28 @@ const FIRST_SHARE = 0.7; // share of the progress bar for the first pass over th
 // One start puzzle on a board: checkpoints along the board's path (placed for detour and region changes, see layout.js; `layout`
 // null = evenly spaced as in the standard game), then walls until unique. A generator function (rnd, K, cap) -> { unique, puzzle }
 // for generateTargeted's o.start.
-const startOn = (n, board, cells, layout) => function* start(rnd, K) {
-  const positions = (layout && placeCheckpoints(layout, Math.min(K, cells), { rnd })) || gapCheckpoints(n, board.path, Math.min(K, cells));
-  if (!positions) {
-    return { unique: false };
-  }
-  const p = makePuzzle(n);
-  p.holes = board.holes.slice();
-  positions.forEach((q, i) => {
-    p.cp[board.path[q]] = i + 1;
-  });
-  const nodeCap = Math.round(Math.max(30000, 200 * cells) * PROP_CAP_X);
-  const options = { nodeCap, wallBudget: cells, seedFraction: SEED_FRACTION, K, prop: true };
-  const order = yield* makeUnique(p, board.path, rnd, options);
-  if (!order) {
-    return { unique: false };
-  }
-  p.path = board.path;
-  return { unique: true, puzzle: p };
-};
+const startOn = (n, board, cells, layout) =>
+  function* start(rnd, K) {
+    const positions =
+      (layout && placeCheckpoints(layout, Math.min(K, cells), { rnd })) ||
+      gapCheckpoints(n, board.path, Math.min(K, cells));
+    if (!positions) {
+      return { unique: false };
+    }
+    const p = makePuzzle(n);
+    p.holes = board.holes.slice();
+    positions.forEach((q, i) => {
+      p.cp[board.path[q]] = i + 1;
+    });
+    const nodeCap = Math.round(Math.max(30000, 200 * cells) * PROP_CAP_X);
+    const options = { nodeCap, wallBudget: cells, seedFraction: SEED_FRACTION, K, prop: true };
+    const order = yield* makeUnique(p, board.path, rnd, options);
+    if (!order) {
+      return { unique: false };
+    }
+    p.path = board.path;
+    return { unique: true, puzzle: p };
+  };
 
 // The climb may move and add checkpoints; it may not give up the layout the start was placed with: the share of legs that end in
 // another quadrant, and the legs that overlap, stay above LAYOUT.keepSwitches / keepOverlap of what the placement itself reaches with that
@@ -106,12 +109,16 @@ function keepLayout(layout) {
     return best.get(K);
   };
   return q => {
-    const positions = layout.positionsOf(q.cp), base = bestAt(positions.length);
+    const positions = layout.positionsOf(q.cp),
+      base = bestAt(positions.length);
     if (!base) {
       return true;
     }
     const s = layout.stats(positions);
-    return s.switches >= LAYOUT.keepSwitches * base.switches - 1e-9 && s.overlap >= LAYOUT.keepOverlap * base.overlap - 1e-9;
+    return (
+      s.switches >= LAYOUT.keepSwitches * base.switches - 1e-9 &&
+      s.overlap >= LAYOUT.keepOverlap * base.overlap - 1e-9
+    );
   };
 }
 
@@ -166,11 +173,19 @@ export function* generateCutout(n, seed, o = {}) {
   function* climb(board, entry, how, share, from) {
     const cells = cellCount({ n, holes: board.holes });
     const subSeed = Math.floor(rnd() * 2 ** 32);
-    const layout = o.layout === false || o.place === false ? null : layoutFor(n, adjacency(n, board.holes), board.path);
+    const layout =
+      o.layout === false || o.place === false
+        ? null
+        : layoutFor(n, adjacency(n, board.holes), board.path);
     const search = generateTargeted(n, target, subSeed, {
-      model: CUTOUT_MODEL, atLeast: true, cells, start: startOn(n, board, cells, layout), stop,
+      model: CUTOUT_MODEL,
+      atLeast: true,
+      cells,
+      start: startOn(n, board, cells, layout),
+      stop,
       valid: layout && keepLayout(layout),
-      retries: how.retries, effort: how.effort,
+      retries: how.retries,
+      effort: how.effort,
     });
     let step;
     while (!(step = search.next()).done) {
@@ -185,14 +200,33 @@ export function* generateCutout(n, seed, o = {}) {
     const interior = board.interior;
     const walls = r.walls;
     const record = {
-      board, cells, puzzle: r.puzzle, pred: r.pred, grade: r.grade, hit: r.hit, walls, interior,
-      cost: costOf(walls, interior), miss: missOf(r.pred, band), K: r.K, entry,
+      board,
+      cells,
+      puzzle: r.puzzle,
+      pred: r.pred,
+      grade: r.grade,
+      hit: r.hit,
+      walls,
+      interior,
+      cost: costOf(walls, interior),
+      miss: missOf(r.pred, band),
+      K: r.K,
+      entry,
     };
     if (o.onCandidate) {
       const { silhouette, label } = board;
       o.onCandidate({
-        silhouette, label, K: r.K, cells, difficulty: r.pred, grade: r.grade, hit: r.hit,
-        walls, interior, cost: record.cost, miss: record.miss,
+        silhouette,
+        label,
+        K: r.K,
+        cells,
+        difficulty: r.pred,
+        grade: r.grade,
+        hit: r.hit,
+        walls,
+        interior,
+        cost: record.cost,
+        miss: record.miss,
       });
     }
     return record;
@@ -201,7 +235,11 @@ export function* generateCutout(n, seed, o = {}) {
   // 1. A climb on each of several boards, until enough of them reach the target.
   const first = { retries: o.retries ?? 1, effort: o.effort ?? 1 };
   let tried = 0;
-  for (let attempt = 0; attempt < wanted * BOARD_ATTEMPTS && tried < wanted && hits < hitsWanted; attempt++) {
+  for (
+    let attempt = 0;
+    attempt < wanted * BOARD_ATTEMPTS && tried < wanted && hits < hitsWanted;
+    attempt++
+  ) {
     if (results.length && stop()) {
       break;
     }
@@ -234,7 +272,13 @@ export function* generateCutout(n, seed, o = {}) {
     const deep = { retries: DEEP.retries, effort: DEEP.effort * (o.effort ?? 1) };
     for (let i = 0; i < closest.length && !stop(); i++) {
       const from = FIRST_SHARE + ((1 - FIRST_SHARE) * i) / closest.length;
-      const record = yield* climb(closest[i].board, closest[i].entry, deep, (1 - FIRST_SHARE) / closest.length, from);
+      const record = yield* climb(
+        closest[i].board,
+        closest[i].entry,
+        deep,
+        (1 - FIRST_SHARE) / closest.length,
+        from,
+      );
       if (record) {
         results.push(record);
       }
@@ -247,8 +291,14 @@ export function* generateCutout(n, seed, o = {}) {
   puzzle.seed = seed;
   puzzle.shape = winner.board.label;
   puzzle.score = {
-    difficulty: winner.pred, grade: winner.grade, target, hit: winner.hit, walls: winner.walls,
-    interior: winner.interior, cost: winner.cost, miss: winner.miss,
+    difficulty: winner.pred,
+    grade: winner.grade,
+    target,
+    hit: winner.hit,
+    walls: winner.walls,
+    interior: winner.interior,
+    cost: winner.cost,
+    miss: winner.miss,
   };
   return puzzle;
 }

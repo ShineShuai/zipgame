@@ -3,7 +3,11 @@ import { allEdges } from '../edges.js';
 import { makeRng, shuffle } from '../rng.js';
 import { warnsdorff, backbite, ringPath } from './hampath.js';
 import {
-  pairCount, pickPortals, teleportPath, teleportCheckpointRules, maxPortalPairs,
+  pairCount,
+  pickPortals,
+  teleportPath,
+  teleportCheckpointRules,
+  maxPortalPairs,
 } from './portals.js';
 import { gapCheckpoints, randomCheckpoints, loopCheckpoints, LOOP_TAIL } from './checkpoints.js';
 import { twoPathsLayout } from './twopaths-layout.js';
@@ -37,7 +41,15 @@ export const LOOP_CANDIDATES = { 4: 64, 6: 32, 8: 16, 10: 8, 12: 4 };
 // keep the
 // generating time of the standard sizes. Set by measuring, see test/teleport-gen.js.
 export const TELEPORT_CANDIDATES = {
-  4: 32, 5: 64, 6: 64, 7: 48, 8: 32, 9: 32, 10: 16, 11: 16, 12: 8,
+  4: 32,
+  5: 64,
+  6: 64,
+  7: 48,
+  8: 32,
+  9: 32,
+  10: 16,
+  11: 16,
+  12: 8,
 };
 // Humans find the seams hard to hold in mind, so the play app offers the smaller boards only.
 // 7 and 8 take about 0.3 and 0.5 s to generate (8 to 12 walls); the wall count hardly depends on
@@ -104,7 +116,13 @@ export function* tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, o = {
     if (o.cps === 'random') {
       const open = [];
       for (let i = 1; i < path.length - 1; i++) if (!rules.skip.has(path[i])) open.push(i);
-      positions = [0, ...shuffle(open, rnd).slice(0, K - 2).sort((a, b) => a - b), path.length - 1];
+      positions = [
+        0,
+        ...shuffle(open, rnd)
+          .slice(0, K - 2)
+          .sort((a, b) => a - b),
+        path.length - 1,
+      ];
     } else {
       positions = gapCheckpoints(n, path, K, false, rules);
     }
@@ -123,17 +141,17 @@ export function* tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, o = {
     // A Cutout board: a path over the cells that are left, the numbers along it.
     path = pathOnBoard(n, holes, rnd);
     if (!path) return null;
-    positions = o.cps === 'random'
-      ? randomCheckpoints(path.length, K, rnd)
-      : gapCheckpoints(n, path, K);
+    positions =
+      o.cps === 'random' ? randomCheckpoints(path.length, K, rnd) : gapCheckpoints(n, path, K);
     if (!positions) return null;
   } else {
     const findPath = o.path === 'backbite' ? backbite : warnsdorff;
     path = findPath(n, rnd, wrap);
     if (!path) return null;
-    positions = o.cps === 'random'
-      ? randomCheckpoints(path.length, K, rnd)
-      : gapCheckpoints(n, path, K, wrap);
+    positions =
+      o.cps === 'random'
+        ? randomCheckpoints(path.length, K, rnd)
+        : gapCheckpoints(n, path, K, wrap);
     if (!positions) return null;
   }
 
@@ -147,7 +165,16 @@ export function* tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, o = {
     p.cp[path[q]] = i + 1;
   });
 
-  const order = yield* makeUnique(p, path, rnd, { nodeCap, wallBudget, seedFraction, K, prop: o.prop, legCollide: o.legCollide, flags: o.flags, counts: o.counts });
+  const order = yield* makeUnique(p, path, rnd, {
+    nodeCap,
+    wallBudget,
+    seedFraction,
+    K,
+    prop: o.prop,
+    legCollide: o.legCollide,
+    flags: o.flags,
+    counts: o.counts,
+  });
   if (!order) return null;
   p.path = path;
   p.order = order;
@@ -167,9 +194,8 @@ function numberEveryCell(n, path, seed, wrap = false, loop = false) {
   return p;
 }
 
-const fewestWalls = candidates => (
-  candidates.length ? Math.min(...candidates.map(c => c.order.length)) : null
-);
+const fewestWalls = candidates =>
+  candidates.length ? Math.min(...candidates.map(c => c.order.length)) : null;
 
 // Deterministic puzzle for (n, seed): same seed => same puzzle (ALGO_VERSION 6: solver propagation on,
 // candidates seeded with SEED_FRACTION random walls, best of several minimized candidates, wall removals
@@ -206,8 +232,16 @@ export function* generate(n, seed, o = {}) {
   }
   const prop = o.prop !== false;
   const freedEdge = o.freedEdge !== false;
-  const candidatesOf = () => (teleport ? TELEPORT_CANDIDATES[n] : twopaths ? TWOPATHS_CANDIDATES[n]
-    : wrap ? WRAP_CANDIDATES[n] : loop ? LOOP_CANDIDATES[n] : candidatesFor(n));
+  const candidatesOf = () =>
+    teleport
+      ? TELEPORT_CANDIDATES[n]
+      : twopaths
+        ? TWOPATHS_CANDIDATES[n]
+        : wrap
+          ? WRAP_CANDIDATES[n]
+          : loop
+            ? LOOP_CANDIDATES[n]
+            : candidatesFor(n);
   const wanted = o.candidates || candidatesOf() || 2;
   const rnd = makeRng(seed);
   const nodeCap = Math.round(Math.max(30000, 200 * cells) * (o.capX ?? (prop ? PROP_CAP_X : 1)));
@@ -225,17 +259,25 @@ export function* generate(n, seed, o = {}) {
   const maxAttempts = wanted * ATTEMPTS_PER_CANDIDATE;
   for (let attempt = 0; attempt < maxAttempts && candidates.length < wanted; attempt++) {
     // The attempt's own wall counts jump around, so report the fewest found so far instead.
-    const attemptEvents = tryGenerate(
-      n, K, rnd, nodeCap, cells, SEED_FRACTION, { prop, wrap, loop, pairs, twopaths },
-    );
+    const attemptEvents = tryGenerate(n, K, rnd, nodeCap, cells, SEED_FRACTION, {
+      prop,
+      wrap,
+      loop,
+      pairs,
+      twopaths,
+    });
     const found = yield* tag(attemptEvents, { walls: fewestWalls(candidates) });
     if (found) candidates.push(found);
     yield { frac: (BUILD_SHARE * candidates.length) / wanted, walls: fewestWalls(candidates), K };
   }
   for (let fallback = 0; fallback < 4 && candidates.length === 0; fallback++) {
-    const attemptEvents = tryGenerate(
-      n, K, rnd, fallbackCap, cells, SEED_FRACTION, { prop, wrap, loop, pairs, twopaths },
-    );
+    const attemptEvents = tryGenerate(n, K, rnd, fallbackCap, cells, SEED_FRACTION, {
+      prop,
+      wrap,
+      loop,
+      pairs,
+      twopaths,
+    });
     const found = yield* tag(attemptEvents, { walls: fewestWalls(candidates) });
     if (found) candidates.push(found);
     yield { frac: BUILD_SHARE, walls: fewestWalls(candidates), K };
@@ -247,15 +289,23 @@ export function* generate(n, seed, o = {}) {
     }
     // Last resorts, bounded (no unbounded recursion): densest K, then "number every cell".
     const denseCap = Math.max(300000, 20 * nodeCap);
-    const dense = yield* tryGenerate(n, Kmax, rnd, denseCap, cells, 0, { prop, wrap, loop, pairs, twopaths });
+    const dense = yield* tryGenerate(n, Kmax, rnd, denseCap, cells, 0, {
+      prop,
+      wrap,
+      loop,
+      pairs,
+      twopaths,
+    });
     if (dense) {
-      if (dense.order.length) yield* minimizeWalls(dense, dense.order, rnd, nodeCap, Kmax, { prop, freedEdge });
+      if (dense.order.length)
+        yield* minimizeWalls(dense, dense.order, rnd, nodeCap, Kmax, { prop, freedEdge });
       delete dense.order;
       dense.seed = seed;
       return dense;
     }
     if (teleport) throw new Error('Puzzle generation failed: no Teleport puzzle found for N=' + n);
-    if (twopaths) throw new Error('Puzzle generation failed: no Two paths puzzle found for N=' + n);
+    if (twopaths)
+      throw new Error('Puzzle generation failed: no Two paths puzzle found for N=' + n);
     if (loop) return numberEveryCell(n, ringPath(n, rnd), seed, false, true);
     for (let x = 0; x < 11; x++) {
       const path = warnsdorff(n, rnd, wrap);
@@ -272,12 +322,21 @@ export function* generate(n, seed, o = {}) {
 
   function* minimizeCandidate(candidate, index) {
     const total = candidate.order.length;
-    const events = minimizeWalls(candidate, candidate.order, rnd, checkCap, K, { prop, freedEdge, bound: winnerWalls });
+    const events = minimizeWalls(candidate, candidate.order, rnd, checkCap, K, {
+      prop,
+      freedEdge,
+      bound: winnerWalls,
+    });
     let tested = 0;
     for (let step = events.next(); ; step = events.next()) {
       if (step.done) {
         // dropped early: it cannot beat the best candidate, so jump the bar to the end of its share
-        if (step.value.aborted) yield { frac: BUILD_SHARE + minShare * ((index + 1) / candidates.length), walls: shown, K };
+        if (step.value.aborted)
+          yield {
+            frac: BUILD_SHARE + minShare * ((index + 1) / candidates.length),
+            walls: shown,
+            K,
+          };
         return step.value;
       }
       tested++;
@@ -307,10 +366,19 @@ export function* generate(n, seed, o = {}) {
   }
   // 3. Only the winner: take a second, deeper look at the walls kept because a check hit its node cap.
   if (refining && winnerUncertain.length) {
-    const events = refineWalls(winner, winnerUncertain, rnd, { prop, caps: REFINE_CAP_X.map(x => x * checkCap), budget, walls: winnerWalls, K });
+    const events = refineWalls(winner, winnerUncertain, rnd, {
+      prop,
+      caps: REFINE_CAP_X.map(x => x * checkCap),
+      budget,
+      walls: winnerWalls,
+      K,
+    });
     let step;
     while (!(step = events.next()).done) {
-      yield { ...step.value, frac: BUILD_SHARE + minShare + (REFINE_SHARE * step.value.nodes) / budget };
+      yield {
+        ...step.value,
+        frac: BUILD_SHARE + minShare + (REFINE_SHARE * step.value.nodes) / budget,
+      };
     }
     winnerWalls = step.value.kept;
   }
@@ -332,7 +400,14 @@ export function* generate(n, seed, o = {}) {
 // holes: a Cutout board (Uint8Array, 1 = hole): the path covers the cells that are left and the puzzle keeps
 // the holes; throws the reason (gen/shapes.js shapeProblem) when the board has no path.
 export function randomPathPuzzle(
-  n, K, rnd, wrap = false, loop = false, pairs = 0, twopaths = false, holes = null,
+  n,
+  K,
+  rnd,
+  wrap = false,
+  loop = false,
+  pairs = 0,
+  twopaths = false,
+  holes = null,
 ) {
   K = Math.max(loop ? 3 : twopaths ? 4 : 2, Math.min(K, holes ? cellCount({ n, holes }) : n * n));
   const p = makePuzzle(n);
@@ -351,7 +426,13 @@ export function randomPathPuzzle(
     const rules = teleportCheckpointRules(n, portals);
     const open = [];
     for (let i = 1; i < path.length - 1; i++) if (!rules.skip.has(path[i])) open.push(i);
-    positions = [0, ...shuffle(open, rnd).slice(0, K - 2).sort((a, b) => a - b), path.length - 1];
+    positions = [
+      0,
+      ...shuffle(open, rnd)
+        .slice(0, K - 2)
+        .sort((a, b) => a - b),
+      path.length - 1,
+    ];
     p.portals = portals;
   } else if (loop) {
     const ring = ringPath(n, rnd);
@@ -368,7 +449,8 @@ export function randomPathPuzzle(
     p.split = layout.split;
   } else if (holes) {
     path = shapeProblem(n, holes) ? null : pathOnBoard(n, holes, rnd);
-    if (!path) throw new Error(shapeProblem(n, holes) || 'No path found on this board: try again.');
+    if (!path)
+      throw new Error(shapeProblem(n, holes) || 'No path found on this board: try again.');
     positions = randomCheckpoints(path.length, K, rnd);
     p.holes = holes.slice();
   } else {
@@ -484,27 +566,52 @@ export function* generateUnique(n, K, rnd, o = {}) {
   const seedFraction = designSeedFraction(n, maxWalls, wrap, loop, holes);
   const refineBudget = o.refineNodes ?? GENERATE_UNIQUE_REFINE_X * nodeCap * 2;
   const counts = { makeUnique: 0, minimizeWalls: 0, other: 0 };
-  const withTotal = () => ({ ...counts, total: counts.makeUnique + counts.minimizeWalls + counts.other });
+  const withTotal = () => ({
+    ...counts,
+    total: counts.makeUnique + counts.minimizeWalls + counts.other,
+  });
 
   let best = null;
   let found = 0;
   for (let attempt = 0; attempt < tries; attempt++) {
     const extra = { attempt: attempt + 1, of: tries };
     const gen = tryGenerate(n, K, rnd, nodeCap, wallBudget, seedFraction, {
-      path: pathAlgo, cps: cpsAlgo, flags: buildFlags, counts, wrap, loop, pairs, twopaths, holes,
+      path: pathAlgo,
+      cps: cpsAlgo,
+      flags: buildFlags,
+      counts,
+      wrap,
+      loop,
+      pairs,
+      twopaths,
+      holes,
     });
     const p = yield* tag(gen, extra);
     if (p) {
       const before = p.order.length;
       let removed = 0;
       if (before) {
-        const minimized = yield* tag(minimizeFully(p, p.order, rnd, nodeCap * 2, K, { flags: minimizeFlags, counts, refineBudget, maxKept: unbounded ? null : maxWalls }), extra);
+        const minimized = yield* tag(
+          minimizeFully(p, p.order, rnd, nodeCap * 2, K, {
+            flags: minimizeFlags,
+            counts,
+            refineBudget,
+            maxKept: unbounded ? null : maxWalls,
+          }),
+          extra,
+        );
         removed = minimized.removed;
       }
       if (unbounded || before - removed <= maxWalls) {
         delete p.order;
         found++;
-        const candidate = { puzzle: p, unique: true, walls: before - removed, removed, attempts: attempt + 1 };
+        const candidate = {
+          puzzle: p,
+          unique: true,
+          walls: before - removed,
+          removed,
+          attempts: attempt + 1,
+        };
         if (!o.hardest) return { ...candidate, found, counts: withTotal() };
         // Difficulty metric: solver nodes for the uniqueness proof.
         counts.other++;
@@ -517,5 +624,13 @@ export function* generateUnique(n, K, rnd, o = {}) {
   if (best) return { ...best, found, counts: withTotal() };
   // the wall-free fallback is a puzzle of the same type (a Two paths one keeps its split)
   const puzzle = randomPathPuzzle(n, K, rnd, wrap, loop, pairs, twopaths, holes);
-  return { puzzle, unique: false, walls: 0, removed: 0, attempts: tries, found: 0, counts: withTotal() };
+  return {
+    puzzle,
+    unique: false,
+    walls: 0,
+    removed: 0,
+    attempts: tries,
+    found: 0,
+    counts: withTotal(),
+  };
 }

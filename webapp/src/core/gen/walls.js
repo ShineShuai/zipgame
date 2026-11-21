@@ -38,9 +38,12 @@ export function* makeUnique(p, path, rnd, cfg) {
   // a Two paths path crosses its bridge like a jump over a portal pair: an edge id no wall has
   const portals = p.portals || (p.split ? [bridgeCells(p)] : null);
   const anchor = edgeMarks(n, path, wrap, ring, portals);
-  const pool = shuffle(all.filter(e => !anchor[e]), rnd); // walls we may still place, in random order
-  const order = [];                                       // walls placed so far
-  let next = 0;                                           // first pool index not handed out yet
+  const pool = shuffle(
+    all.filter(e => !anchor[e]),
+    rnd,
+  ); // walls we may still place, in random order
+  const order = []; // walls placed so far
+  let next = 0; // first pool index not handed out yet
 
   const addWall = e => {
     setWallId(p.walls, e, true);
@@ -75,9 +78,8 @@ export function* makeUnique(p, path, rnd, cfg) {
   }
 
   // Pre-wall a share of the free edges at random, so the searches below start from a tighter puzzle.
-  const seedCount = seedFraction > 0
-    ? Math.min(Math.floor(pool.length * seedFraction), pool.length, maxWalls)
-    : 0;
+  const seedCount =
+    seedFraction > 0 ? Math.min(Math.floor(pool.length * seedFraction), pool.length, maxWalls) : 0;
   for (let i = 0; i < seedCount; i++) addWall(pool[i]);
   next = seedCount;
   if (seedCount > 0) yield progress();
@@ -94,7 +96,9 @@ export function* makeUnique(p, path, rnd, cfg) {
   let result = search(nodeCap, true);
   while ((result.count > 1 || result.exceeded) && order.length < maxWalls) {
     if (result.count === 0) return null;
-    const wall = result.exceeded ? nextPoolWall() : distinguishingWall(result.paths[0], result.paths[1]);
+    const wall = result.exceeded
+      ? nextPoolWall()
+      : distinguishingWall(result.paths[0], result.paths[1]);
     if (wall === null) return null;
     addWall(wall);
     result = search(nodeCap, true);
@@ -195,7 +199,8 @@ export function* minimizeWalls(p, order, rnd, checkCap, K, opts = {}) {
 export function* refineWalls(p, uncertain, rnd, opts = {}) {
   const { counts, caps = [], budget = Infinity, K } = opts;
   const { solveOpts, freedEdge } = checkOptions(opts, true);
-  let current = opts.walls ?? allEdges(p.n, null, p.wrap).filter(e => hasWallId(p.walls, e)).length;
+  let current =
+    opts.walls ?? allEdges(p.n, null, p.wrap).filter(e => hasWallId(p.walls, e)).length;
   let todo = shuffle([...uncertain], rnd);
   let nodes = 0;
   let removed = 0;
@@ -240,6 +245,12 @@ export function* minimizeFully(p, order, rnd, checkCap, K, opts = {}) {
   if (first.aborted || budget <= 0 || !first.uncertain.length) return first;
   if (opts.maxKept != null && first.kept - first.uncertain.length > opts.maxKept) return first;
   const caps = (opts.refineCapX ?? REFINE_CAP_X).map(x => x * checkCap);
-  const r = yield* refineWalls(p, first.uncertain, rnd, { ...opts, caps, budget, walls: first.kept, K });
+  const r = yield* refineWalls(p, first.uncertain, rnd, {
+    ...opts,
+    caps,
+    budget,
+    walls: first.kept,
+    K,
+  });
   return { removed: first.removed + r.removed, kept: r.kept, uncertain: r.left };
 }

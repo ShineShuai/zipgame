@@ -31,9 +31,8 @@ export function multiply(b, a) {
   const out = new Array(9);
   for (let row = 0; row < 3; row++) {
     for (let col = 0; col < 3; col++) {
-      out[row * 3 + col] = b[row * 3] * a[col]
-        + b[row * 3 + 1] * a[3 + col]
-        + b[row * 3 + 2] * a[6 + col];
+      out[row * 3 + col] =
+        b[row * 3] * a[col] + b[row * 3 + 1] * a[3 + col] + b[row * 3 + 2] * a[6 + col];
     }
   }
   return out;
@@ -46,9 +45,15 @@ export function axisAngle(axis, angle) {
   const s = Math.sin(angle);
   const t = 1 - c;
   return [
-    t * x * x + c, t * x * y - s * z, t * x * z + s * y,
-    t * x * y + s * z, t * y * y + c, t * y * z - s * x,
-    t * x * z - s * y, t * y * z + s * x, t * z * z + c,
+    t * x * x + c,
+    t * x * y - s * z,
+    t * x * z + s * y,
+    t * x * y + s * z,
+    t * y * y + c,
+    t * y * z - s * x,
+    t * x * z - s * y,
+    t * y * z + s * x,
+    t * z * z + c,
   ];
 }
 

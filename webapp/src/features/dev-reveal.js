@@ -11,7 +11,13 @@ export const DEV_KEY = 'zip_ui';
 export const DEV_TAP_MS = 15000; // a reveal made by taps falls back after this long
 
 const devRec = levels => ({
-  kind: 'gotd', n: 2, grade: null, timeS: 1234.5, day: 0, pct: null, levels,
+  kind: 'gotd',
+  n: 2,
+  grade: null,
+  timeS: 1234.5,
+  day: 0,
+  pct: null,
+  levels,
 });
 const ON = encodeShare(devRec([0, 1, 0, 0, 2, 0, 1]));
 const OFF = encodeShare(devRec([0, 2, 0, 1, 0, 0, 1]));
@@ -52,5 +58,7 @@ export async function loadPin(storage) {
 export async function savePin(storage, on) {
   try {
     await (on ? storage.set(DEV_KEY, '1') : storage.remove(DEV_KEY));
-  } catch { /* best effort, like every write */ }
+  } catch {
+    /* best effort, like every write */
+  }
 }

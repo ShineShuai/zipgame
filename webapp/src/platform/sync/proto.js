@@ -19,7 +19,11 @@ import { secretId } from '../../core/sync/cloud-keys.js';
 import { SHRINKS } from '../../core/sync/merge.js';
 import { cleanLabel } from './engine.js';
 import {
-  isDev, packSlice, sliceFromText, sliceToText, unpackSlice,
+  isDev,
+  packSlice,
+  sliceFromText,
+  sliceToText,
+  unpackSlice,
 } from '../../core/sync/slice.js';
 
 export const PROTO_VERSION = 1;
@@ -39,9 +43,15 @@ export function toFrames(message, partId = randomId()) {
   }
   for (let size = 12000; size >= 1000; size = Math.floor(size / 2)) {
     const count = Math.ceil(text.length / size);
-    const frames = Array.from({ length: count }, (_, i) => JSON.stringify(
-      { t: 'part', id: partId, i, n: count, d: text.slice(i * size, (i + 1) * size) },
-    ));
+    const frames = Array.from({ length: count }, (_, i) =>
+      JSON.stringify({
+        t: 'part',
+        id: partId,
+        i,
+        n: count,
+        d: text.slice(i * size, (i + 1) * size),
+      }),
+    );
     if (count <= PARTS_MAX && frames.every(frame => frame.length <= FRAME_MAX)) {
       return frames;
     }
@@ -83,8 +93,14 @@ export function createReassembler() {
         return message;
       }
       const { id, i, n, d } = message;
-      const sound = typeof id === 'string' && id.length <= 24 && typeof d === 'string'
-        && Number.isInteger(n) && n >= 2 && n <= PARTS_MAX && Number.isInteger(i);
+      const sound =
+        typeof id === 'string' &&
+        id.length <= 24 &&
+        typeof d === 'string' &&
+        Number.isInteger(n) &&
+        n >= 2 &&
+        n <= PARTS_MAX &&
+        Number.isInteger(i);
       if (!sound) {
         throw new Error('bad frame');
       }
@@ -116,7 +132,12 @@ export function createReassembler() {
 // is turning its sync off. Rejects with Error('off' | 'timeout' | 'closed' |
 // 'version' | 'self' | 'bad') and leaves the channel open: the caller closes it.
 export function exchange({
-  channel, sync, timers = realTimers, timeoutMs = 60000, early = [], bye = false,
+  channel,
+  sync,
+  timers = realTimers,
+  timeoutMs = 60000,
+  early = [],
+  bye = false,
 }) {
   return new Promise((resolve, reject) => {
     if (!sync.status().enabled) {
@@ -176,7 +197,8 @@ export function exchange({
       peer = message.dev;
       peerName = cleanLabel(message.name);
       peerSid = /^[A-Za-z0-9_-]{8}$/.test(String(message.sid)) ? message.sid : null;
-      if (bye) { // this device is turning its sync off: nothing is sent but the news
+      if (bye) {
+        // this device is turning its sync off: nothing is sent but the news
         send({ t: 'bye' });
         send({ t: 'done' });
         sentDone = true;
@@ -189,7 +211,8 @@ export function exchange({
           sent += 1;
         }
       }
-      if (mySid && (!peerSid || mySid < peerSid)) { // my secret is the one both will use
+      if (mySid && (!peerSid || mySid < peerSid)) {
+        // my secret is the one both will use
         send({ t: 'secret', s: toBase64Url(sync.secret()) });
         secretSent = true;
       }
@@ -201,7 +224,9 @@ export function exchange({
       let bytes = null;
       try {
         bytes = fromBase64Url(message.s);
-      } catch { /* not base64url */ }
+      } catch {
+        /* not base64url */
+      }
       const named = bytes && bytes.length > 0 ? await secretId(bytes) : null;
       const mine = !mySid || (peerSid !== null && peerSid < mySid);
       if (!named || named !== peerSid || !mine) {
@@ -213,7 +238,7 @@ export function exchange({
 
     async function onSlice(message) {
       const bytes = typeof message.d === 'string' ? sliceFromText(message.d) : null;
-      const slice = bytes && await unpackSlice(bytes);
+      const slice = bytes && (await unpackSlice(bytes));
       if (!slice) {
         tooBad();
         return;
@@ -255,7 +280,12 @@ export function exchange({
       const name = typeof sync.label === 'function' ? sync.label() || '' : '';
       mySid = typeof sync.secretId === 'function' ? await sync.secretId() : null;
       send({
-        t: 'hello', v: PROTO_VERSION, dev: sync.status().dev, have: sync.have(), name, sid: mySid,
+        t: 'hello',
+        v: PROTO_VERSION,
+        dev: sync.status().dev,
+        have: sync.have(),
+        name,
+        sid: mySid,
       });
     })();
     channel.onmessage = text => {

@@ -8,7 +8,9 @@
 import { abortError } from './run.js';
 
 export function createWorkerRunner({ spawn, fallback }) {
-  let worker = null, unusable = false, seq = 0;
+  let worker = null,
+    unusable = false,
+    seq = 0;
   const drop = () => {
     if (worker) worker.terminate();
     worker = null;
@@ -76,5 +78,10 @@ export function createWorkerRunner({ spawn, fallback }) {
   }
 
   // 'unused' (no job yet), 'worker' or 'thread' (the fallback): shown in the dev note
-  return { run, get where() { return unusable ? 'thread' : worker ? 'worker' : 'unused'; } };
+  return {
+    run,
+    get where() {
+      return unusable ? 'thread' : worker ? 'worker' : 'unused';
+    },
+  };
 }

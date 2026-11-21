@@ -33,7 +33,9 @@ export function createSource({ base, pool, fetchText }) {
     try {
       const text = await fetchText(`${base}${name}`, kind);
       return typeof text === 'string' && text.length <= limit ? JSON.parse(text) : null;
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   };
   return {
     pool: async () => cleanPool(await get(pool, 'pool', MAX_POOL)),
@@ -42,12 +44,20 @@ export function createSource({ base, pool, fetchText }) {
 }
 
 // The page's own fetch. The manifest is revalidated on every read (a new deployment shows at once); a bundle never changes under its name.
-export const browserSource = ({ base, pool }, fetchFn = (...a) => fetch(...a)) => createSource({
-  base,
-  pool,
-  fetchText: async (url, kind) => {
-    const response = await fetchFn(url, { cache: kind === 'pool' ? 'no-cache' : 'default', credentials: 'omit' });
-    if (!response.ok || Number(response.headers?.get?.('content-length')) > (kind === 'pool' ? MAX_POOL : MAX_FILE)) throw new Error(`themes: ${response.status}`);
-    return response.text();
-  },
-});
+export const browserSource = ({ base, pool }, fetchFn = (...a) => fetch(...a)) =>
+  createSource({
+    base,
+    pool,
+    fetchText: async (url, kind) => {
+      const response = await fetchFn(url, {
+        cache: kind === 'pool' ? 'no-cache' : 'default',
+        credentials: 'omit',
+      });
+      if (
+        !response.ok ||
+        Number(response.headers?.get?.('content-length')) > (kind === 'pool' ? MAX_POOL : MAX_FILE)
+      )
+        throw new Error(`themes: ${response.status}`);
+      return response.text();
+    },
+  });

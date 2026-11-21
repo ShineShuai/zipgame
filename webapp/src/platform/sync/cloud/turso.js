@@ -23,8 +23,8 @@ const MAX_DEVICES = 8;
 const text = value => ({ type: 'text', value });
 const DATA = /^[A-Za-z0-9_-]+$/;
 
-const valueOf = cell => (cell.type === 'integer' ? Number(cell.value)
-  : cell.type === 'null' ? null : cell.value);
+const valueOf = cell =>
+  cell.type === 'integer' ? Number(cell.value) : cell.type === 'null' ? null : cell.value;
 
 // the rows of one pipeline result as [{ column: value }], or throws on an error result
 function rowsOf(result) {
@@ -46,19 +46,27 @@ function failure(error) {
 }
 
 export function tursoCloud(
-  { url, key }, name,
+  { url, key },
+  name,
   { fetchFn = (...a) => fetch(...a), timeoutMs = 5000, now = () => Date.now() } = {},
 ) {
   const send = async (statements, keepalive = false) => {
-    const reply = await fetchJson(fetchFn, `${trim(url)}/v2/pipeline`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-      body: pipeline(statements),
-      ...(keepalive ? { keepalive: true } : {}),
-    }, timeoutMs);
+    const reply = await fetchJson(
+      fetchFn,
+      `${trim(url)}/v2/pipeline`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+        body: pipeline(statements),
+        ...(keepalive ? { keepalive: true } : {}),
+      },
+      timeoutMs,
+    );
     if (!reply.ok) {
-      throw new CloudError(reply.status === 401 || reply.status === 403 ? 'denied' : 'network',
-        `HTTP ${reply.status}`);
+      throw new CloudError(
+        reply.status === 401 || reply.status === 403 ? 'denied' : 'network',
+        `HTTP ${reply.status}`,
+      );
     }
     const results = reply.body && reply.body.results;
     if (!Array.isArray(results) || results.length < statements.length) {
@@ -90,8 +98,13 @@ export function tursoCloud(
       } catch (error) {
         throw error instanceof CloudError ? error : failure(error);
       }
-      const news = heads.filter(head => isDev(head.dev) && Number.isSafeInteger(head.seq)
-        && head.seq > (Number.isSafeInteger(have[head.dev]) ? have[head.dev] : 0))
+      const news = heads
+        .filter(
+          head =>
+            isDev(head.dev) &&
+            Number.isSafeInteger(head.seq) &&
+            head.seq > (Number.isSafeInteger(have[head.dev]) ? have[head.dev] : 0),
+        )
         .slice(0, MAX_DEVICES);
       if (!news.length) return [];
       const results = await send(news.map(head => [SYNC_SQL.rows, [text(id), text(head.dev)]]));
@@ -99,8 +112,12 @@ export function tursoCloud(
       results.forEach((result, i) => {
         if (!result || result.type !== 'ok') return;
         for (const row of rowsOf(result)) {
-          if (Number.isSafeInteger(row.seq) && typeof row.data === 'string'
-            && row.data.length <= DATA_MAX && DATA.test(row.data)) {
+          if (
+            Number.isSafeInteger(row.seq) &&
+            typeof row.data === 'string' &&
+            row.data.length <= DATA_MAX &&
+            DATA.test(row.data)
+          ) {
             rows.push({ dev: news[i].dev, seq: row.seq, data: row.data });
           }
         }

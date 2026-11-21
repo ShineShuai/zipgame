@@ -52,7 +52,8 @@ export function startMemo() {
     };
   }
   epoch++;
-  if (epoch > 0x7ffffff0) { // (never in practice) wrap around cleanly
+  if (epoch > 0x7ffffff0) {
+    // (never in practice) wrap around cleanly
     table.epoch.fill(0);
     epoch = 1;
   }

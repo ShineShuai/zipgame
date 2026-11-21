@@ -55,9 +55,8 @@ export function viewOf(full, cam) {
 const round = value => Math.round(value * 1000) / 1000;
 
 // The viewBox attribute of a view.
-export const viewBoxAttr = view => (
-  `${round(view.x)} ${round(view.y)} ${round(view.w)} ${round(view.h)}`
-);
+export const viewBoxAttr = view =>
+  `${round(view.x)} ${round(view.y)} ${round(view.w)} ${round(view.h)}`;
 
 // Where the whole picture is on the page, given the box of the svg that shows `cam` of it.
 export function boardRect(box, full, cam) {
@@ -95,11 +94,15 @@ export function zoomAt(full, cam, factor, smax, fx = 0.5, fy = 0.5) {
 // The picture dragged by (dx, dy) pixels.
 export function panBy(full, cam, smax, box, dx, dy) {
   const view = viewOf(full, cam);
-  return clampCamera(full, {
-    s: cam.s,
-    cx: cam.cx - (dx / box.width) * view.w,
-    cy: cam.cy - (dy / box.height) * view.h,
-  }, smax);
+  return clampCamera(
+    full,
+    {
+      s: cam.s,
+      cx: cam.cx - (dx / box.width) * view.w,
+      cy: cam.cy - (dy / box.height) * view.h,
+    },
+    smax,
+  );
 }
 
 const middle = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
@@ -167,11 +170,15 @@ export function edgeVelocity(x, y, box, band = EDGE_BAND, speed = EDGE_SPEED) {
 // The camera moved by `v` views per second for `seconds`.
 export function drift(full, cam, smax, [vx, vy], seconds) {
   const view = viewOf(full, cam);
-  return clampCamera(full, {
-    s: cam.s,
-    cx: cam.cx + vx * seconds * view.w,
-    cy: cam.cy + vy * seconds * view.h,
-  }, smax);
+  return clampCamera(
+    full,
+    {
+      s: cam.s,
+      cx: cam.cx + vx * seconds * view.w,
+      cy: cam.cy + vy * seconds * view.h,
+    },
+    smax,
+  );
 }
 
 export const sameCamera = (a, b) => a.s === b.s && a.cx === b.cx && a.cy === b.cy;

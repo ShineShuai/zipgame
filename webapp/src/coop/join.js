@@ -1,7 +1,17 @@
 import { acceptReply, createInvite, joinInvite } from './rtc.js';
 import {
-  deriveRoom, fingerprint, isPublicKey, keyOfSecret, makeToken, newId, newPair, newSecret,
-  pairSecret, seal, splitToken, unseal,
+  deriveRoom,
+  fingerprint,
+  isPublicKey,
+  keyOfSecret,
+  makeToken,
+  newId,
+  newPair,
+  newSecret,
+  pairSecret,
+  seal,
+  splitToken,
+  unseal,
 } from './secret.js';
 
 // Joining by link: the host opens a room on the brokers (signal.js), the guest finds it from the
@@ -22,8 +32,17 @@ import {
 // The offer and the answer are the codes of rtc.js, the same as when people carry them. Once
 // the channel is open the room is no longer needed: the host removes the messages.
 export const STAGES = [
-  'looking', 'ready', 'asked', 'seen', 'quiet', 'connecting', 'declined', 'taken', 'timeout',
-  'down', 'failed',
+  'looking',
+  'ready',
+  'asked',
+  'seen',
+  'quiet',
+  'connecting',
+  'declined',
+  'taken',
+  'timeout',
+  'down',
+  'failed',
 ]; // what joinRoom reports (onState)
 export const GREETING_MAX = 80; // characters
 export const PENDING_MAX = 3; // requests the host shows at once
@@ -59,8 +78,14 @@ const idOf = topic => {
 
 // A greeting as shown: no control characters, trimmed, at most GREETING_MAX characters.
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
-export const cleanGreeting = text => [...String(text ?? '').replace(CONTROL, ' ').trim()]
-  .slice(0, GREETING_MAX).join('');
+export const cleanGreeting = text =>
+  [
+    ...String(text ?? '')
+      .replace(CONTROL, ' ')
+      .trim(),
+  ]
+    .slice(0, GREETING_MAX)
+    .join('');
 
 // Host. -> { token, accept(id), decline(id), setNeedGreeting(on), close(), pending() }; the token
 // goes into the link (#j=<token>).
@@ -92,8 +117,10 @@ export async function hostRoom({
   let required = needGreeting;
   let closed = false;
 
-  const pending = () => [...guests].filter(([, guest]) => guest.state === 'pending')
-    .map(([id, guest]) => ({ id, greeting: guest.greeting }));
+  const pending = () =>
+    [...guests]
+      .filter(([, guest]) => guest.state === 'pending')
+      .map(([id, guest]) => ({ id, greeting: guest.greeting }));
   const report = () => onRequest?.(pending());
 
   async function publishOpen() {
@@ -207,7 +234,9 @@ export async function hostRoom({
     timers.clear(downCheck);
     hub.clear(topic.open);
     guests.forEach((guest, id) => {
-      [topic.req(id), topic.seen(id), topic.ok(id), topic.ans(id)].forEach(name => hub.clear(name));
+      [topic.req(id), topic.seen(id), topic.ok(id), topic.ans(id)].forEach(name =>
+        hub.clear(name),
+      );
     });
     hub.close();
   }
@@ -282,7 +311,7 @@ export async function joinRoom({
   }
 
   async function onSeen(from, message) {
-    if (await unseal(key, from, message) && (stage === 'asked' || stage === 'quiet')) {
+    if ((await unseal(key, from, message)) && (stage === 'asked' || stage === 'quiet')) {
       set('seen');
     }
   }
@@ -313,7 +342,7 @@ export async function joinRoom({
     request.opening = true;
     try {
       const hostKey = message.slice(1, dot);
-      if (!isPublicKey(hostKey) || await fingerprint(hostKey) !== hostFingerprint) {
+      if (!isPublicKey(hostKey) || (await fingerprint(hostKey)) !== hostFingerprint) {
         return; // not the host of this link
       }
       const secret = await pairSecret(request.pair.priv, hostKey, room);
@@ -355,16 +384,20 @@ export async function joinRoom({
     const to = topic.req(request.id);
     const body = { pub: request.pair.pub, greeting: text };
     hub.publish(to, await seal(key, to, body), { repeat: REPEAT });
-    waiting.push(timers.set(() => {
-      if (stage === 'asked') {
-        set('quiet');
-      }
-    }, SEEN_WAIT_MS));
-    waiting.push(timers.set(() => {
-      if (['asked', 'quiet', 'seen'].includes(stage)) {
-        set('timeout');
-      }
-    }, askMs));
+    waiting.push(
+      timers.set(() => {
+        if (stage === 'asked') {
+          set('quiet');
+        }
+      }, SEEN_WAIT_MS),
+    );
+    waiting.push(
+      timers.set(() => {
+        if (['asked', 'quiet', 'seen'].includes(stage)) {
+          set('timeout');
+        }
+      }, askMs),
+    );
     return true;
   }
 
@@ -382,16 +415,20 @@ export async function joinRoom({
   }
 
   hub.subscribe(topic.open, onOpen);
-  waiting.push(timers.set(() => {
-    if (stage === 'looking') {
-      set('ready');
-    }
-  }, OPEN_WAIT_MS));
-  waiting.push(timers.set(() => {
-    if (!closed && !hub.anyUp()) {
-      set('down');
-    }
-  }, HUB_WAIT_MS));
+  waiting.push(
+    timers.set(() => {
+      if (stage === 'looking') {
+        set('ready');
+      }
+    }, OPEN_WAIT_MS),
+  );
+  waiting.push(
+    timers.set(() => {
+      if (!closed && !hub.anyUp()) {
+        set('down');
+      }
+    }, HUB_WAIT_MS),
+  );
 
   return { room, ask, close };
 }

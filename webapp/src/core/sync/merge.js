@@ -42,9 +42,15 @@ const keysOf = (entries, field) => [...new Set(entries.flatMap(e => Object.keys(
 // t: per scope [n, mean, M2, recent], all-time. d: per scope [day, n, mean, M2, recent],
 // today's. b: per size [date, time], the Game-of-Day time.
 
-const statOf = a => (Array.isArray(a) && a.length === 4 && a.slice(0, 3).every(finite)
-  && a[0] > 0 && Array.isArray(a[3]) && a[3].every(finite)
-  ? { n: a[0], mean: a[1], M2: a[2], recent: a[3].slice() } : null);
+const statOf = a =>
+  Array.isArray(a) &&
+  a.length === 4 &&
+  a.slice(0, 3).every(finite) &&
+  a[0] > 0 &&
+  Array.isArray(a[3]) &&
+  a[3].every(finite)
+    ? { n: a[0], mean: a[1], M2: a[2], recent: a[3].slice() }
+    : null;
 const packStat = st => [st.n, st.mean, st.M2, st.recent];
 const todayOf = a => {
   const stat = Array.isArray(a) && finite(a[0]) ? statOf(a.slice(1)) : null;
@@ -68,8 +74,7 @@ function combine(a, b) {
 
 const stats = {
   clean(value) {
-    const shaped = value && value.v === 2
-      && [value.t, value.d, value.b].every(isObject);
+    const shaped = value && value.v === 2 && [value.t, value.d, value.b].every(isObject);
     if (!shaped) {
       return null;
     }
@@ -108,19 +113,27 @@ const stats = {
         t[key] = packStat(total);
       }
     }
-    for (const key of keysOf(entries, 'd')) { // only the newest day: older ones are never shown
+    for (const key of keysOf(entries, 'd')) {
+      // only the newest day: older ones are never shown
       const days = entries.map(e => todayOf(e.value.d[key])).filter(Boolean);
       const newest = Math.max(...days.map(x => x.day));
-      const total = days.filter(x => x.day === newest)
+      const total = days
+        .filter(x => x.day === newest)
         .reduce((acc, x) => combine(acc, x.stat), null);
       if (total) {
         d[key] = [newest, ...packStat(total)];
       }
     }
-    for (const key of keysOf(entries, 'b')) { // the newest date; on the same date the best time
-      const [date, time] = entries.map(e => e.value.b[key]).filter(Boolean)
-        .reduce((best, x) => (String(x[0]) > String(best[0])
-          || (String(x[0]) === String(best[0]) && x[1] < best[1]) ? x : best));
+    for (const key of keysOf(entries, 'b')) {
+      // the newest date; on the same date the best time
+      const [date, time] = entries
+        .map(e => e.value.b[key])
+        .filter(Boolean)
+        .reduce((best, x) =>
+          String(x[0]) > String(best[0]) || (String(x[0]) === String(best[0]) && x[1] < best[1])
+            ? x
+            : best,
+        );
       b[key] = [date, time];
     }
     return { v: 2, t, d, b };
@@ -141,7 +154,7 @@ const stats = {
 // total, only grows: the largest n, or the dates the records show, if more.
 
 const isRecord = r => isObject(r) && typeof r.solved === 'boolean';
-const byTime = (x, y) => (x.rec.time - y.rec.time) || (x.dev < y.dev ? -1 : 1);
+const byTime = (x, y) => x.rec.time - y.rec.time || (x.dev < y.dev ? -1 : 1);
 
 const gotd = {
   clean(value) {
@@ -159,7 +172,8 @@ const gotd = {
   view(entries, self) {
     const a = {};
     for (const date of keysOf(entries, 'a')) {
-      const recs = entries.filter(e => e.value.a[date])
+      const recs = entries
+        .filter(e => e.value.a[date])
         .map(e => ({ dev: e.dev, rec: e.value.a[date] }));
       const mine = recs.find(r => r.dev === self);
       const others = recs.filter(r => r.dev !== self && r.rec.solved && finite(r.rec.time));
@@ -183,17 +197,27 @@ const gotd = {
 // solve day, then the longer streak, then more rewards), and the best streak is the best of all.
 
 const needFor = earned => RAMP[earned] ?? FREEZE_EVERY;
-const validGap = b => isObject(b) && [b.from, b.to, b.a, b.e, b.p].every(natural)
-  && b.to > b.from + 1 && typeof b.frozen === 'boolean' && Array.isArray(b.healed)
-  && b.healed.every(Number.isInteger) && (b.x === undefined || natural(b.x));
-const farther = (x, y) => (y.value.last ?? -1) - (x.value.last ?? -1)
-  || y.value.streak - x.value.streak || y.value.earned - x.value.earned
-  || (x.dev < y.dev ? -1 : 1);
+const validGap = b =>
+  isObject(b) &&
+  [b.from, b.to, b.a, b.e, b.p].every(natural) &&
+  b.to > b.from + 1 &&
+  typeof b.frozen === 'boolean' &&
+  Array.isArray(b.healed) &&
+  b.healed.every(Number.isInteger) &&
+  (b.x === undefined || natural(b.x));
+const farther = (x, y) =>
+  (y.value.last ?? -1) - (x.value.last ?? -1) ||
+  y.value.streak - x.value.streak ||
+  y.value.earned - x.value.earned ||
+  (x.dev < y.dev ? -1 : 1);
 
 const streak = {
   clean(value) {
-    if (!isObject(value) || ![value.streak, value.best, value.freezes].every(natural)
-      || !(value.last === null || Number.isInteger(value.last))) {
+    if (
+      !isObject(value) ||
+      ![value.streak, value.best, value.freezes].every(natural) ||
+      !(value.last === null || Number.isInteger(value.last))
+    ) {
       return null;
     }
     const old = value.earned === undefined; // a state saved before rewards were counted
@@ -223,8 +247,12 @@ const unlock = {
     }
     const tokens = Array.isArray(value.tokens) ? value.tokens.length : value.tokens;
     const played = value.played === undefined ? [] : value.played;
-    if (!Number.isInteger(tokens) || !Number.isInteger(value.choices)
-      || !Array.isArray(played) || !played.every(natural)) {
+    if (
+      !Number.isInteger(tokens) ||
+      !Number.isInteger(value.choices) ||
+      !Array.isArray(played) ||
+      !played.every(natural)
+    ) {
       return null;
     }
     const unlocked = {};
@@ -234,7 +262,12 @@ const unlock = {
       }
     }
     return {
-      v: 1, unlocked, tokens, choices: value.choices, played: played.slice(), active: null,
+      v: 1,
+      unlocked,
+      tokens,
+      choices: value.choices,
+      played: played.slice(),
+      active: null,
     };
   },
   view(entries) {
@@ -259,14 +292,20 @@ const unlock = {
 
 const credit = {
   clean(value) {
-    if (!isObject(value) || !natural(value.solved) || !natural(value.used)
-      || !(value.bonus === undefined || natural(value.bonus))) {
+    if (
+      !isObject(value) ||
+      !natural(value.solved) ||
+      !natural(value.used) ||
+      !(value.bonus === undefined || natural(value.bonus))
+    ) {
       return null;
     }
     return { solved: value.solved, used: value.used, bonus: value.bonus ?? 0 };
   },
   view: entries => ({
-    solved: sum(entries, 'solved'), used: sum(entries, 'used'), bonus: sum(entries, 'bonus'),
+    solved: sum(entries, 'solved'),
+    used: sum(entries, 'used'),
+    bonus: sum(entries, 'bonus'),
   }),
 };
 
@@ -282,11 +321,13 @@ const gift = {
       return { v: 1, day: null, kind: null };
     }
     return natural(value.day) && KINDS.includes(value.kind)
-      ? { v: 1, day: value.day, kind: value.kind } : null;
+      ? { v: 1, day: value.day, kind: value.kind }
+      : null;
   },
-  view: entries => [...entries].sort(
-    (x, y) => (y.value.day ?? -1) - (x.value.day ?? -1) || (x.dev < y.dev ? -1 : 1),
-  )[0].value,
+  view: entries =>
+    [...entries].sort(
+      (x, y) => (y.value.day ?? -1) - (x.value.day ?? -1) || (x.dev < y.dev ? -1 : 1),
+    )[0].value,
 };
 
 // ---- rules shown: zip_rules_seen { v, seen: { id: true } } ---------------------------------
@@ -339,8 +380,10 @@ export const MERGES = Object.freeze({
 });
 
 export const SYNCED_KEYS = Object.freeze(Object.keys(MERGES));
-export const SHRINKS = Object.freeze(Object.fromEntries(
-  Object.entries(MERGES)
-    .filter(([, rule]) => rule.shrink)
-    .map(([key, rule]) => [key, rule.shrink]),
-));
+export const SHRINKS = Object.freeze(
+  Object.fromEntries(
+    Object.entries(MERGES)
+      .filter(([, rule]) => rule.shrink)
+      .map(([key, rule]) => [key, rule.shrink]),
+  ),
+);

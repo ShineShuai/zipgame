@@ -39,19 +39,33 @@ export const linkOf = (pageUrl, token) => `${pageUrl}#y=${token}`;
 // A short name for a device out of its user-agent text: "Safari · iPhone".
 export function deviceLabel(userAgent) {
   const ua = String(userAgent ?? '');
-  const browser = [[/Edg\//, 'Edge'], [/OPR\/|Opera/, 'Opera'], [/Firefox\/|FxiOS/, 'Firefox'],
-    [/Chrome\/|CriOS/, 'Chrome'], [/Safari\//, 'Safari']].find(([re]) => re.test(ua));
-  const system = [[/iPhone/, 'iPhone'], [/iPad/, 'iPad'], [/Android/, 'Android'],
-    [/Windows/, 'Windows'], [/Macintosh|Mac OS X/, 'Mac'], [/CrOS/, 'Chromebook'],
-    [/Linux/, 'Linux']].find(([re]) => re.test(ua));
+  const browser = [
+    [/Edg\//, 'Edge'],
+    [/OPR\/|Opera/, 'Opera'],
+    [/Firefox\/|FxiOS/, 'Firefox'],
+    [/Chrome\/|CriOS/, 'Chrome'],
+    [/Safari\//, 'Safari'],
+  ].find(([re]) => re.test(ua));
+  const system = [
+    [/iPhone/, 'iPhone'],
+    [/iPad/, 'iPad'],
+    [/Android/, 'Android'],
+    [/Windows/, 'Windows'],
+    [/Macintosh|Mac OS X/, 'Mac'],
+    [/CrOS/, 'Chromebook'],
+    [/Linux/, 'Linux'],
+  ].find(([re]) => re.test(ua));
   return cleanLabel([browser && browser[1], system && system[1]].filter(Boolean).join(' · '));
 }
 
 // The parts of src/coop this needs, loaded on the first use.
 async function loadCoop() {
   const [join, resume, rtc, signal, config, secret] = await Promise.all([
-    import('../../coop/join.js'), import('../../coop/resume.js'), import('../../coop/rtc.js'),
-    import('../../coop/signal.js'), import('../../coop/config.js'),
+    import('../../coop/join.js'),
+    import('../../coop/resume.js'),
+    import('../../coop/rtc.js'),
+    import('../../coop/signal.js'),
+    import('../../coop/config.js'),
     import('../../coop/secret.js'),
   ]);
   return {
@@ -65,7 +79,11 @@ async function loadCoop() {
 }
 
 const REASONS = {
-  timeout: 'connect', closed: 'closed', version: 'version', self: 'self', bad: 'bad',
+  timeout: 'connect',
+  closed: 'closed',
+  version: 'version',
+  self: 'self',
+  bad: 'bad',
 };
 
 // Why a link failed, as one word: 'down' (no broker), 'expired', 'declined', 'taken',
@@ -98,21 +116,22 @@ export function createP2p({
     ...(lib.rtc ? { rtc: lib.rtc } : {}),
     ...(lib.timers ? { timers: lib.timers } : {}),
   });
-  const waitOpen = channel => new Promise((resolve, reject) => {
-    if (channel.opened) {
-      resolve();
-      return;
-    }
-    const timer = timers.set(() => reject(new Error('timeout')), CONNECT_MS);
-    channel.onopen = () => {
-      timers.clear(timer);
-      resolve();
-    };
-    channel.onclose = () => {
-      timers.clear(timer);
-      reject(new Error('closed'));
-    };
-  });
+  const waitOpen = channel =>
+    new Promise((resolve, reject) => {
+      if (channel.opened) {
+        resolve();
+        return;
+      }
+      const timer = timers.set(() => reject(new Error('timeout')), CONNECT_MS);
+      channel.onopen = () => {
+        timers.clear(timer);
+        resolve();
+      };
+      channel.onclose = () => {
+        timers.clear(timer);
+        reject(new Error('closed'));
+      };
+    });
 
   // A connection was made (by a link or a meeting): trade slices, remember the device.
   // secret: what the two share, as base64url text.
@@ -126,12 +145,18 @@ export function createP2p({
       emit({ type: 'syncing', kind });
       const result = await exchange({ channel, sync, timers, early, bye });
       const peer = {
-        dev: result.peer, secret, pid, name: result.name || cleanLabel(hint), at: now(),
+        dev: result.peer,
+        secret,
+        pid,
+        name: result.name || cleanLabel(hint),
+        at: now(),
       };
-      if (bye) { // this device is leaving: nothing to remember
+      if (bye) {
+        // this device is leaving: nothing to remember
         return true;
       }
-      if (result.left) { // the other one turned its sync off: it is not a linked device any more
+      if (result.left) {
+        // the other one turned its sync off: it is not a linked device any more
         await sync.removePeer(peer.dev);
         emit({ type: 'left', peer: { dev: peer.dev, name: peer.name } });
         return true;
@@ -172,7 +197,12 @@ export function createP2p({
 
   function begin(close, turnedOn) {
     activity?.close();
-    const mine = { close: () => { close(); }, turnedOn };
+    const mine = {
+      close: () => {
+        close();
+      },
+      turnedOn,
+    };
     activity = mine;
     return mine;
   }
@@ -353,7 +383,10 @@ export function createP2p({
               }
               entry.busy = true;
               const ok = await adopt({
-                connection, secret: peer.secret, pid: peer.pid, kind: 'meet',
+                connection,
+                secret: peer.secret,
+                pid: peer.pid,
+                kind: 'meet',
               });
               entry.busy = false;
               if (ok) {
@@ -382,42 +415,56 @@ export function createP2p({
         return 0;
       }
       api.stop();
-      const told = await Promise.all(peers.map(peer => new Promise(resolve => {
-        let room = null;
-        let timer = null;
-        let over = false;
-        const finish = ok => {
-          if (over) {
-            return;
-          }
-          over = true;
-          timers.clear(timer);
-          room?.close();
-          resolve(ok);
-        };
-        timer = timers.set(() => finish(false), GOODBYE_MS);
-        library().then(async () => {
-          const hub = lib.createHub({ brokers: lib.brokers });
-          room = await lib.resumeRoom({
-            hub,
-            secret: fromBase64Url(peer.secret),
-            pid: peer.pid,
-            now,
-            roomMs: GOODBYE_MS,
-            ...options(),
-            onConnection: async connection => {
-              finish(await adopt({
-                connection, secret: peer.secret, pid: peer.pid, kind: 'bye', bye: true,
-              }));
-            },
-            onExpired: () => finish(false),
-            onError: () => {},
-          });
-          if (over) { // the wait was over before the room was made
-            room.close();
-          }
-        }).catch(() => finish(false));
-      })));
+      const told = await Promise.all(
+        peers.map(
+          peer =>
+            new Promise(resolve => {
+              let room = null;
+              let timer = null;
+              let over = false;
+              const finish = ok => {
+                if (over) {
+                  return;
+                }
+                over = true;
+                timers.clear(timer);
+                room?.close();
+                resolve(ok);
+              };
+              timer = timers.set(() => finish(false), GOODBYE_MS);
+              library()
+                .then(async () => {
+                  const hub = lib.createHub({ brokers: lib.brokers });
+                  room = await lib.resumeRoom({
+                    hub,
+                    secret: fromBase64Url(peer.secret),
+                    pid: peer.pid,
+                    now,
+                    roomMs: GOODBYE_MS,
+                    ...options(),
+                    onConnection: async connection => {
+                      finish(
+                        await adopt({
+                          connection,
+                          secret: peer.secret,
+                          pid: peer.pid,
+                          kind: 'bye',
+                          bye: true,
+                        }),
+                      );
+                    },
+                    onExpired: () => finish(false),
+                    onError: () => {},
+                  });
+                  if (over) {
+                    // the wait was over before the room was made
+                    room.close();
+                  }
+                })
+                .catch(() => finish(false));
+            }),
+        ),
+      );
       return told.filter(Boolean).length;
     },
 

@@ -27,9 +27,8 @@ export const FOLLOW_EDGE = 0.25;
 // the solid): out of sight on a tetrahedron or cube, near the rim on a ball. `outside(cell)`: a
 // cell that is out of the part of the picture the zoom shows counts as turned away too.
 export function headTurnedAway(top, layout, path, ball, outside = () => false) {
-  const away = cell => (
-    (ball ? layout.depth[cell] < FOLLOW_EDGE : Boolean(layout.hidden[cell])) || outside(cell)
-  );
+  const away = cell =>
+    (ball ? layout.depth[cell] < FOLLOW_EDGE : Boolean(layout.hidden[cell])) || outside(cell);
   const head = path[path.length - 1];
   let turnedAway = away(head);
   for (let k = 0; k < top.deg[head]; k++) {
@@ -72,7 +71,9 @@ const turnOf = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0
 
 // Whether the segments p1-p2 and q1-q2 cross.
 function crosses(p1, p2, q1, q2) {
-  return turnOf(p1, p2, q1) * turnOf(p1, p2, q2) < 0 && turnOf(q1, q2, p1) * turnOf(q1, q2, p2) < 0;
+  return (
+    turnOf(p1, p2, q1) * turnOf(p1, p2, q2) < 0 && turnOf(q1, q2, p1) * turnOf(q1, q2, p2) < 0
+  );
 }
 
 // The cell a drag enters by leaving the head over a cut of a net (surface-net.js buildNet): the

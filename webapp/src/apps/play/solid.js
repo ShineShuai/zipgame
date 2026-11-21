@@ -12,18 +12,8 @@
 // it is played for fun. main.js owns the page (render, timer, dev reveal, export window); it hands
 // what this module needs in `app`:
 //   S, $, t, render, startTimer, stopTimer, randomSeed, openExport
-import {
-  BALL_KIND,
-  SLOTS,
-  ballEntry,
-  surfaceTopology,
-} from '../../core/surface/topology.js';
-import {
-  ballsByComposition,
-  ballsLoaded,
-  loadBalls,
-  pickBall,
-} from '../../core/solid/balls.js';
+import { BALL_KIND, SLOTS, ballEntry, surfaceTopology } from '../../core/surface/topology.js';
+import { ballsByComposition, ballsLoaded, loadBalls, pickBall } from '../../core/solid/balls.js';
 import { canPush, isSolved, serializeSurface, step } from '../../core/surface/puzzle.js';
 import { solidIsDark } from '../../themes/art-state.js';
 import { HINT_PENALTY_S, computeHint, penalizedTime } from '../../features/hints.js';
@@ -52,9 +42,7 @@ import {
 } from '../../platform/sound.js';
 import { SOLID_KINDS, SOLID_SIZES, openSizes, stageOf } from '../../features/solid-release.js';
 import { actionIcon, cardIcon, variantIcon } from './icons.js';
-import {
-  edgeVelocity, fitCamera, isZoomed, viewBoxAttr, viewOf,
-} from '../../view/camera.js';
+import { edgeVelocity, fitCamera, isZoomed, viewBoxAttr, viewOf } from '../../view/camera.js';
 import { classifyPair, createRouter } from './gesture.js';
 import { createZoom } from './zoom.js';
 import { setupZoomTools, zoomToolsHtml } from './zoom-ui.js';
@@ -84,8 +72,8 @@ const sec = seconds => `${seconds.toFixed(1)}s`;
 //   luckySolved, luckyFailed, leaveLucky: the lucky game was solved, could not start
 //             (the chance comes back), was left
 // The cell tints of the play app's 3D views follow the theme (css/theme.css); a theme switch redraws the screen.
-const playPalette = () => (typeof document !== 'undefined' && solidIsDark(document)
-  ? PLAY_DARK_PALETTE : LIGHT_PALETTE);
+const playPalette = () =>
+  typeof document !== 'undefined' && solidIsDark(document) ? PLAY_DARK_PALETTE : LIGHT_PALETTE;
 
 export function createSolidPlay(app) {
   const { S, $, t } = app;
@@ -130,16 +118,14 @@ export function createSolidPlay(app) {
   // Holding V shows everything.
   const realAccess = kind => (isUnlocked(kind) ? 'all' : stageOf(kind, today(), release));
   const accessOf = kind => (S.showDev ? 'all' : realAccess(kind));
-  const sizesOf = kind => (
-    accessOf(kind) === 'part' ? openSizes(kind, today(), release) : SOLID_SIZES[kind]
-  );
+  const sizesOf = kind =>
+    accessOf(kind) === 'part' ? openSizes(kind, today(), release) : SOLID_SIZES[kind];
   // A tile the player picked (while V was held) stays until the page is reloaded, like
   // the flat variants.
   const kept = new Set();
   const tileShown = kind => S.showDev || realAccess(kind) !== 'none' || kept.has(kind);
-  const cardShown = () => (
-    S.showDev || picked || SOLID_KINDS.some(kind => realAccess(kind) !== 'none')
-  );
+  const cardShown = () =>
+    S.showDev || picked || SOLID_KINDS.some(kind => realAccess(kind) !== 'none');
 
   // The choice must be something on offer: a shown kind, one of its sizes.
   function fitChoice() {
@@ -201,8 +187,9 @@ export function createSolidPlay(app) {
   }
 
   // The line under the tiles: the type picked, its tagline and (on a touch screen) the link to its rules sheet.
-  const captionHtml = kind => `<b>${t(`mode.${kind}`)}</b> — ${t(`mode.${kind}Tag`)}`
-    + ` <button type="button" class="link-btn rules-link" data-rules="solidRules-${kind}">${t('menu.rulesLink')}</button>`;
+  const captionHtml = kind =>
+    `<b>${t(`mode.${kind}`)}</b> — ${t(`mode.${kind}Tag`)}` +
+    ` <button type="button" class="link-btn rules-link" data-rules="solidRules-${kind}">${t('menu.rulesLink')}</button>`;
 
   function cardHtml() {
     fitChoice();
@@ -327,7 +314,7 @@ export function createSolidPlay(app) {
     S.gen = { frac: 0, walls: null, K: null };
     S.genNotice = null;
     app.render();
-    const job = S.genJob = cancellable();
+    const job = (S.genJob = cancellable());
     try {
       if (kind === BALL_KIND) {
         await loadBalls();
@@ -341,16 +328,20 @@ export function createSolidPlay(app) {
         n = entry.id;
       }
       const seed = app.randomSeed();
-      const made = await runGeneration({ task: 'solid', kind, n, seed }, {
-        signal: job.signal,
-        onEvent: event => {
-          const frac = event.phase === 'walls' ? 0.05 + (0.95 * event.done) / event.total : 0.05;
-          S.gen = { frac, walls: null, K: null };
-          app.paintGenerating();
+      const made = await runGeneration(
+        { task: 'solid', kind, n, seed },
+        {
+          signal: job.signal,
+          onEvent: event => {
+            const frac = event.phase === 'walls' ? 0.05 + (0.95 * event.done) / event.total : 0.05;
+            S.gen = { frac, walls: null, K: null };
+            app.paintGenerating();
+          },
         },
-      });
+      );
       begin(kind, n, made.puzzle, seed, made.path, lucky);
-    } catch (error) { // cancelled by the player (silent), too slow, or failed: the menu comes back, the chance of a lucky game with it
+    } catch (error) {
+      // cancelled by the player (silent), too slow, or failed: the menu comes back, the chance of a lucky game with it
       if (!isAbort(error)) {
         console.error('Solid puzzle failed:', error);
         S.genNotice = isTimeout(error) ? 'err.generateSlow' : 'err.generate';
@@ -420,9 +411,8 @@ export function createSolidPlay(app) {
 
   // ---------- the game screen ----------
 
-  const titleOf = () => (isBall()
-    ? t('game.ballTitle', ballEntry(game.n).name)
-    : t(`game.${game.kind}Title`, game.n));
+  const titleOf = () =>
+    isBall() ? t('game.ballTitle', ballEntry(game.n).name) : t(`game.${game.kind}Title`, game.n);
 
   function viewLabel() {
     const net = game.view === 'net';
@@ -459,17 +449,22 @@ export function createSolidPlay(app) {
     const hintOff = game.finished || game.hints >= hintCap() ? ' disabled' : '';
     const exportShown = S.showDev ? '' : 'display:none';
     const dev = S.showDev ? 'inline' : 'none';
-    const tag = `<span id="seedTag" class="seed-tag" style="display:${dev}">`
-      + `${game.kind} · ${game.n} · seed ${game.seed}</span>`;
+    const tag =
+      `<span id="seedTag" class="seed-tag" style="display:${dev}">` +
+      `${game.kind} · ${game.n} · seed ${game.seed}</span>`;
     const follow = game.follow ? ' active' : '';
     const hintStyle = hintShown() ? '' : 'display:none';
     const newStyle = game.lucky ? 'display:none' : '';
     const luckyChip = game.lucky ? `<span class="lucky-chip">${t('lucky.tag')}</span>` : '';
-    const luckyOnce = game.lucky && !game.finished
-      ? `<p class="note lucky-once">${t(S.luckyHolder ? 'lucky.onceChance' : 'lucky.onceFun')}</p>`
-      : '';
+    const luckyOnce =
+      game.lucky && !game.finished
+        ? `<p class="note lucky-once">${t(S.luckyHolder ? 'lucky.onceChance' : 'lucky.onceFun')}</p>`
+        : '';
     const luckyResult = app.luckyHtml ? app.luckyHtml(game.finished) : '';
-    const results = solved || luckyResult ? `<section class="card result-card">${solved}${luckyResult}</section>` : '';
+    const results =
+      solved || luckyResult
+        ? `<section class="card result-card">${solved}${luckyResult}</section>`
+        : '';
     return `
     <div class="game-layout">
       <section class="card board-card">
@@ -553,11 +548,10 @@ export function createSolidPlay(app) {
     const views = pictures
       .map((picture, i) => `<div class="sf-view" data-view="${i}">${picture.markup}</div>`)
       .join('');
-    const small = inset
-      ? surfaceSvg(inset, { ...state, idSuffix: 'm' }).markup
-      : '';
-    wrap.innerHTML = (pictures.length > 1 ? `<div class="sf-pair">${views}</div>` : views)
-      + (inset ? `<div class="sf-mini">${small}</div>` : '');
+    const small = inset ? surfaceSvg(inset, { ...state, idSuffix: 'm' }).markup : '';
+    wrap.innerHTML =
+      (pictures.length > 1 ? `<div class="sf-pair">${views}</div>` : views) +
+      (inset ? `<div class="sf-mini">${small}</div>` : '');
     wrap.classList.toggle('ball', isBall());
     wrap.classList.toggle('turnable', turnable());
     showZoom();
@@ -599,10 +593,12 @@ export function createSolidPlay(app) {
     }
     const [x, y] = pixelOf(cell);
     const view = viewOf(fullOf(0), cameraOf(0));
-    return x < view.x + VIEW_MARGIN * view.w
-      || x > view.x + (1 - VIEW_MARGIN) * view.w
-      || y < view.y + VIEW_MARGIN * view.h
-      || y > view.y + (1 - VIEW_MARGIN) * view.h;
+    return (
+      x < view.x + VIEW_MARGIN * view.w ||
+      x > view.x + (1 - VIEW_MARGIN) * view.w ||
+      y < view.y + VIEW_MARGIN * view.h ||
+      y > view.y + (1 - VIEW_MARGIN) * view.h
+    );
   }
 
   // The head of the path in the first view (frame pixels), or null.
@@ -745,7 +741,9 @@ export function createSolidPlay(app) {
       }
       return;
     }
-    const away = isBall() ? layouts[0].depth[cell] < FOLLOW_EDGE : Boolean(layouts[0].hidden[cell]);
+    const away = isBall()
+      ? layouts[0].depth[cell] < FOLLOW_EDGE
+      : Boolean(layouts[0].hidden[cell]);
     if (away || outsideView(cell)) {
       turner.toward(top, cell);
     }
@@ -1132,7 +1130,8 @@ export function createSolidPlay(app) {
     // what a player may play of a kind, V not counted: 'all' | 'part' | 'none', and the sizes of it (Patchwork, src/coop, has the
     // same locks as this card)
     access: realAccess,
-    openSizes: kind => (realAccess(kind) === 'part' ? openSizes(kind, today(), release) : SOLID_SIZES[kind]),
+    openSizes: kind =>
+      realAccess(kind) === 'part' ? openSizes(kind, today(), release) : SOLID_SIZES[kind],
     screenHtml: () => screenHtml(),
     // wires the page after every render: the card in the menu, the board in a game
     attach: () => (S.screen === 'solid' && game ? attachGame() : attachCard()),
