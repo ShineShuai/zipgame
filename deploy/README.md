@@ -62,6 +62,21 @@ day's puzzle must exist at midnight); K=2 survives one failed daily release. If 
 alarm. Unset = off, nothing changes. Delete the variable to roll back; the next release ships the
 whole queue again. `MIN_PUZZLE_DAYS` still counts the puzzles of `main`, not the ones that ship.
 
+## Visit counting (optional, `deploy/cloudflare/analytics.json`)
+Cloudflare Web Analytics, a cookieless visit counter, installed by hand: `stage-prod.sh` runs
+`add-beacon.mjs`, so only the two public pages (`/zigzag/` and `/zigzag/webapp/`) of a production
+deploy carry it; the source pages, the GitHub Pages site and local runs never do. `token`:
+- empty: off, nothing changes.
+- the token of the snippet: the tag goes before `</body>`; the CSP meta of the app page gets the
+  beacon script in `script-src` and `https://cloudflareinsights.com` in `connect-src`.
+
+Get the token: dashboard -> Analytics & Logs -> Web Analytics -> the site `vintoshine.com` ->
+"Enable with JS Snippet installation"; copy the value of `"token"` from the snippet. It is public
+(it ships in every page), so it lives in git; the portal repo uses the same one. It takes effect
+with the next deploy (Actions -> Production deploy -> Run workflow, `ref` main, applies it at once).
+Keep the dashboard on "JS Snippet installation": with automatic injection on, a page would count
+twice (the smoke test wants exactly one tag per page).
+
 ## Manual
 Actions -> Production deploy -> Run workflow (`ref`, `reason`). The `ref` must be on `main` or on
 a `hotfix/*` branch. `dry_run` checks and stages only. Every deploy moves the tag `prod` and adds
