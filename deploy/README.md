@@ -15,12 +15,16 @@ build.json records both: `sha` is the code, `puzzles` the git tree id of `demo/G
 
 ## Automatic (`prod.yml`, every day 04:17 UTC)
 Promotes the newest commit of `main` that has been there for `SOAK_DAYS`, every day. It skips when: `PROD_FREEZE` is true; that commit is
-already live, or live is ahead of it; a change in it was reverted on `main` since. It fails
-(red run, e-mail) when live is not in `main`'s history (a hotfix not merged yet), when the
+already live, or live is ahead of it; a change in it was reverted on `main` since, or a newer
+commit carries a `Fixes: <sha>` line for it (the revert or the fix ships with it, after its own
+soak); live is a hotfix that is merged into `main` but not in that commit yet. It fails
+(red run, e-mail) when live is not in `main`'s history at all (a hotfix not merged yet), when the
 puzzles of `main` do not pass `check-puzzles.mjs` with that code, or when build.json cannot be read.
 It does not care how many puzzles are ahead: that is the business of `gotd.yml`. On that commit it
-first runs `npm run check`, `npm run test:all` (every tier, so also a hotfix or a rollback is
-tested) and `npm run test:themes`. After the deploy it runs the smoke test; if that fails, the
+first runs `npm run release:gate` (`check`, `test:all`, `test:themes`: every tier, so also a hotfix
+or a rollback is tested). The gate belongs to the commit, so renaming its scripts never breaks a
+deploy; a commit from before the entry gets `check`, `test:all` (else `npm test`) and `test:themes`,
+as far as it has them. After the deploy it runs the smoke test; if that fails, the
 previous code is deployed again (with the puzzles of `main`) and the run stays red.
 
 Repository variables (Settings -> Secrets and variables -> Actions -> Variables):
@@ -68,9 +72,13 @@ a `hotfix/*` branch. `dry_run` checks and stages only. Every deploy moves the ta
 `deploy/<UTC time>`; `git log prod..main` is what is not live yet.
 
 Rollback: run it again with `ref` = the previous `deploy/...` tag.
-Hotfix: branch `hotfix/x` from `prod`, fix, CI, run with `ref=hotfix/x` (choose `main` under "Use
-workflow from": the `production` environment only accepts runs from `main`), then merge it into main
-with a merge commit (the automatic run refuses to go on while live is not in main's history).
+Hotfix (the bug is live): branch `hotfix/x` from `prod`, fix, CI, run with `ref=hotfix/x` (choose
+`main` under "Use workflow from": the `production` environment only accepts runs from `main`), then
+merge it into main with `git merge --no-ff` (the automatic run refuses to go on while live is not in
+main's history, and waits while the merge is still soaking).
+Fix of a bug that is not live yet: commit the fix to `main` with a line `Fixes: <sha of the bug
+commit>` (a revert is held the same way). The promote holds until the fix has soaked, so the bug
+never ships alone; without the line, set `PROD_FREEZE` until then.
 
 ## One-time setup (not in git)
 The GitHub environment `production` (deployment branch `main`, no required reviewers) with the

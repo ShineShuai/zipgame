@@ -89,6 +89,43 @@ git fetch -q origin
 live "$A"; pick "${sched[@]}"
 check "a change reverted during the soak period is not shipped" false "$(got run)"
 
+# "Fixes:" lines. live is B, so only C is pending (the revert above concerns B, which is live)
+live "$B"; pick "${sched[@]}"
+check "nothing held: the soaked commit is promoted" "run=true sha=$C" "run=$(got run) sha=$(got sha)"
+commit 0 "Fix of B
+
+Fixes: $B" > /dev/null
+git push -q origin main
+git fetch -q origin
+live "$B"; pick "${sched[@]}"
+check "Fixes: a commit that is live already holds nothing" true "$(got run)"
+commit 0 "Fix of C
+
+Fixes: ${C:0:7} (short sha, trailing text)" > /dev/null
+commit 0 "Fixes: 1234567 does not exist" > /dev/null
+git push -q origin main
+git fetch -q origin
+live "$B"; pick "${sched[@]}"
+check "Fixes: a change that a newer commit fixes is held (an unknown sha is ignored)" false \
+  "$(got run)"
+live "$B"; pick "${sched[@]}" SOAK_DAYS=0
+check "Fixes: the hold ends once the fix has soaked" \
+  "run=true sha=$(git rev-parse origin/main)" "run=$(got run) sha=$(got sha)"
+
+# the hotfix is merged into main with a merge commit
+git merge -q --no-ff -m "Merge hotfix/x" origin/hotfix/x
+git push -q origin main
+git fetch -q origin
+live "$H"
+if pick "${sched[@]}"; then
+  check "a hotfix merged into main waits for the merge to soak" false "$(got run)"
+else
+  check "a hotfix merged into main waits for the merge to soak" skipped died
+fi
+live "$H"; pick "${sched[@]}" SOAK_DAYS=0
+check "main goes on from the hotfix once the merge has soaked" \
+  "run=true sha=$(git rev-parse origin/main)" "run=$(got run) sha=$(got sha)"
+
 live "$A"
 pick EVENT=workflow_dispatch REF=main REASON=x
 check "manual: main" "run=true sha=$(git rev-parse origin/main)" "run=$(got run) sha=$(got sha)"
