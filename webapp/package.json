@@ -40,6 +40,7 @@
     "step:sim": "node tools/step-sim.mjs",
     "points:apply": "node tools/apply-points.mjs",
     "test:themes": "node ../themes/tools/test.mjs",
+    "release:gate": "npm run check && npm run test:all && npm run test:themes",
     "themes:pack": "node ../themes/tools/pack.mjs",
     "themes:preview": "node ../themes/tools/serve.mjs",
     "themes": "node ../themes/tools/manage.mjs",

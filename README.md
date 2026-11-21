@@ -70,7 +70,8 @@ over that (`webapp/test/budget.js`; on CI also in the job summary) and, off CI, 
 wall time. A test that compares two implementations over a long list of cases takes every third case in the fast tier
 (`sampled` in `harness.js`); `npm run test:all` takes them all. One test: `node test/run.mjs fast --test-name-pattern=wrap`.
 
-`npm run test:themes` tests the theme tooling, `npm run test:server` the backend code in
+`npm run release:gate` (check, every tier, themes) is what the production deploy runs on the commit it ships; the workflow
+knows only that name. `npm run test:themes` tests the theme tooling, `npm run test:server` the backend code in
 `webapp/server/` and `npm run test:tools` the research tools (fits, simulations, evaluations; about
 40 s, not part of `npm test`, run it after changing them). `node test/run.mjs all coop` (or `sync`,
 `unit`, `cli`) runs one group of the unit tests; `npm run test:coop`, `test:sync` and `test:gotd` do. More tools (rating fits, Game of the Day

@@ -7,7 +7,9 @@ name: Production deploy
 #  - Manual: Actions -> Production deploy -> Run workflow (any commit of main or of a
 #    hotfix/* branch, no waiting, e.g. a hotfix or a rollback).
 # The code comes from the chosen commit; the deploy config and the scripts come from the commit
-# this workflow runs on, so an old commit (rollback) deploys the same way. See deploy/README.md.
+# this workflow runs on, so an old commit (rollback) deploys the same way. The test gate is the
+# chosen commit's own (npm run release:gate), so a rename of its scripts never breaks a deploy.
+# See deploy/README.md.
 # The Game of Day puzzles are not part of the soaked commit: they are released on their own
 # (gotd.yml), and every deploy here carries the puzzles of main as they are now.
 
@@ -115,13 +117,19 @@ jobs:
 
       # Every tier, not only the fast one: the slow tier holds the golden puzzles (a changed hash
       # means ALGO_VERSION has to be bumped). A hotfix branch or a rollback commit may never have
-      # had a green webapp-ci run.
+      # had a green webapp-ci run. The commit defines its gate (release:gate); the workflow only
+      # knows that one name. Commits older than the entry get the gate as far as they have it.
       - name: Checks
         working-directory: webapp
         run: |
-          npm run check
-          npm run test:all
-          npm run test:themes
+          has() { node -e 'process.exit(require("./package.json").scripts[process.argv[1]] ? 0 : 1)' "$1"; }
+          if has release:gate; then
+            npm run release:gate
+          else   # delete this branch once release:gate is 7 days (SOAK_DAYS) old on main
+            npm run check
+            if has test:all; then npm run test:all; else npm test; fi
+            if has test:themes; then npm run test:themes; fi
+          fi
 
       # The puzzles are data that gotd.yml releases without a soak: the tree id of demo/GameOfDay
       # on main, whatever commit the code comes from.

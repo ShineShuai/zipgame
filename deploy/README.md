@@ -15,12 +15,16 @@ build.json records both: `sha` is the code, `puzzles` the git tree id of `demo/G
 
 ## Automatic (`prod.yml`, every day 04:17 UTC)
 Promotes the newest commit of `main` that has been there for `SOAK_DAYS`, every day. It skips when: `PROD_FREEZE` is true; that commit is
-already live, or live is ahead of it; a change in it was reverted on `main` since. It fails
-(red run, e-mail) when live is not in `main`'s history (a hotfix not merged yet), when the
+already live, or live is ahead of it; a change in it was reverted on `main` since, or a newer
+commit carries a `Fixes: <sha>` line for it (the revert or the fix ships with it, after its own
+soak); live is a hotfix that is merged into `main` but not in that commit yet. It fails
+(red run, e-mail) when live is not in `main`'s history at all (a hotfix not merged yet), when the
 puzzles of `main` do not pass `check-puzzles.mjs` with that code, or when build.json cannot be read.
 It does not care how many puzzles are ahead: that is the business of `gotd.yml`. On that commit it
-first runs `npm run check`, `npm run test:all` (every tier, so also a hotfix or a rollback is
-tested) and `npm run test:themes`. After the deploy it runs the smoke test; if that fails, the
+first runs `npm run release:gate` (`check`, `test:all`, `test:themes`: every tier, so also a hotfix
+or a rollback is tested). The gate belongs to the commit, so renaming its scripts never breaks a
+deploy; a commit from before the entry gets `check`, `test:all` (else `npm test`) and `test:themes`,
+as far as it has them. After the deploy it runs the smoke test; if that fails, the
 previous code is deployed again (with the puzzles of `main`) and the run stays red.
 
 Repository variables (Settings -> Secrets and variables -> Actions -> Variables):
@@ -67,10 +71,129 @@ Actions -> Production deploy -> Run workflow (`ref`, `reason`). The `ref` must b
 a `hotfix/*` branch. `dry_run` checks and stages only. Every deploy moves the tag `prod` and adds
 `deploy/<UTC time>`; `git log prod..main` is what is not live yet.
 
-Rollback: run it again with `ref` = the previous `deploy/...` tag.
-Hotfix: branch `hotfix/x` from `prod`, fix, CI, run with `ref=hotfix/x` (choose `main` under "Use
-workflow from": the `production` environment only accepts runs from `main`), then merge it into main
-with a merge commit (the automatic run refuses to go on while live is not in main's history).
+The `production` environment only accepts runs from `main`: always choose `main` under "Use
+workflow from". Hotfixes, rollbacks and a fix for a bug that is still soaking: see the runbook.
+
+## Hotfix runbook
+X is the commit with the bug, F the fix. The commands use `gh` (logged in to this repository). In
+the UI: Actions -> Production deploy -> Run workflow ("Use workflow from" = `main`), and
+Settings -> Secrets and variables -> Actions -> Variables. Once per shell:
+
+```bash
+prod() { # REF REASON [true = dry run]: dispatch prod.yml, wait for its run
+  local q=(--workflow=prod.yml --event=workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId') prev id
+  prev=$(gh run list "${q[@]}")
+  gh workflow run prod.yml --ref main -f ref="$1" -f reason="$2" -f dry_run="${3:-false}" || return
+  while id=$(gh run list "${q[@]}"); [ "$id" = "$prev" ]; do sleep 3; done
+  gh run watch "$id" --exit-status
+}
+```
+
+### 0. Triage
+```bash
+git fetch --tags --force origin
+curl -s https://play.vintoshine.com/zigzag/build.json   # live sha, the same as: git rev-parse prod
+git log --oneline prod..origin/main                      # not live yet
+git merge-base --is-ancestor <X> prod && echo live || echo "not live"
+```
+X not live: A. X live: B. A wrong puzzle: C. The workflow or a script is broken: D.
+
+### Holding the promote
+Two levers. `SOAK_DAYS` = 3650: no commit is old enough, so only the code promote stops
+(`gotd.yml` goes on). `PROD_FREEZE` = true: `prod.yml` and `gotd.yml` both stop and no puzzles are
+released meanwhile; use it only when that is wanted, and keep it short.
+```bash
+gh variable set SOAK_DAYS --body 3650    # hold the code promote
+gh variable set SOAK_DAYS --body 7       # resume (your normal value)
+gh variable set PROD_FREEZE --body true  # stop everything
+gh variable delete PROD_FREEZE           # resume
+```
+What tonight's promote will do (full clone, Linux; not run on macOS). A held release prints
+`Skipped: ...`:
+```bash
+EVENT=schedule SOAK_DAYS=7 GITHUB_OUTPUT=/dev/stdout bash .github/scripts/select-release.sh
+```
+
+### A. X is not live yet (goal: X never ships without F)
+**A1. The fix is a new commit on `main`.**
+```bash
+git switch main && git pull --ff-only
+# fix
+git commit -am "fix(play): <what>
+
+Fixes: <sha of X>"          # 7 to 40 hex digits; one line per bug commit
+git push origin main
+```
+Run the check above: it must skip with "...reverted or is fixed on main since". X lands on day 0
+and F on day k: the runs skip from day 7 and on day 7+k X, the commits between and F ship
+together. The commits between are delayed by k days.
+
+**A2. F landed without the `Fixes:` line.** A commit message cannot change on `main`: hold the
+code promote until F has soaked.
+```bash
+git log -1 --format=%cI <F>             # F's date + SOAK_DAYS = the day to resume
+gh variable set SOAK_DAYS --body 3650
+gh variable set SOAK_DAYS --body 7      # on that day
+```
+
+**A3. X would be promoted tonight.** Hold first (`SOAK_DAYS` = 3650), then A1. When the `Fixes:`
+commit is on `main`, resume (`SOAK_DAYS` = 7) and run the check: the hold now covers it.
+
+**A4. Drop X instead.** `git revert <X>` (a merge: `-m 1`) writes "This reverts commit ...", which is
+held the same way; `git push origin main`.
+
+### B. X is live
+**B1. Ship F alone on top of `prod` (preferred).**
+```bash
+git switch -c hotfix/menu prod                 # the name must match hotfix/*
+# fix, minimal
+git commit -am "fix(play): <what>"
+git push -u origin hotfix/menu
+(cd webapp && npm ci && npm run release:gate)  # the gate the deploy runs
+prod hotfix/menu "menu overlap" true           # dry run: checks and stages
+prod hotfix/menu "menu overlap"                # deploy and smoke test
+curl -s https://play.vintoshine.com/zigzag/build.json   # sha = git rev-parse origin/hotfix/menu
+git switch main && git pull --ff-only
+git merge --no-ff origin/hotfix/menu -m "Merge hotfix/menu" && git push origin main
+```
+Merge the same day. In a PR choose "Create a merge commit": a squash or rebase merge makes a new
+commit, live is then not in `main`'s history and the daily run fails; repair it with
+`git merge --no-ff -s ours origin/hotfix/menu && git push origin main`. Until the merge commit is
+`SOAK_DAYS` old the daily run skips ("live ... is a hotfix merged into main that ... does not
+contain yet"): regular promotes pause meanwhile, then everything that soaked ships at once.
+
+**B2. F is already on `main`, on top of newer commits.** On the branch use
+`git cherry-pick -x <F>` instead of the fix and commit; the merge back is normally clean. A conflict
+means F depends on the newer commits: write an independent fix (B1) or ship `main` (B3).
+
+**B3. Ship all of `main` now, unsoaked commits included.**
+```bash
+git log --oneline prod..origin/main     # what ships
+prod main "<why>"
+```
+No merge back is needed: live is then ahead of every candidate and the daily run skips.
+
+**B4. Roll back (F is not ready).**
+```bash
+git tag -l 'deploy/*' --sort=-creatordate | head -3
+gh variable set SOAK_DAYS --body 3650   # first, or tonight's run ships X again
+prod deploy/<previous> "rollback: <why>"
+```
+Then A1 (F with `Fixes: <X>`), resume `SOAK_DAYS`, and run the check.
+
+### C. A wrong puzzle
+```bash
+git commit -am "fix(gotd): <puzzle>" && git push origin main
+```
+The push starts `gotd.yml`: no soak, against the live code. A fix that needs newer code than what
+is live: ship the code first (B1 or B3).
+
+### D. The workflow or a script is broken
+```bash
+git commit -am "ci(prod): <what>" && git push origin main
+```
+Workflows and scripts always run from `main`, so the fix counts from the next run. Test it with
+`prod main "<why>" true`.
 
 ## One-time setup (not in git)
 The GitHub environment `production` (deployment branch `main`, no required reviewers) with the

@@ -55,17 +55,27 @@ git cat-file -e "$live^{commit}" 2>/dev/null ||
 if git merge-base --is-ancestor "$cand" "$live"; then
   skip "live ${live:0:7} is ahead of the soaked main@${cand:0:7}"
 fi
-git merge-base --is-ancestor "$live" "$cand" ||
-  die "live ${live:0:7} is not in the history of main@${cand:0:7}: a hotfix not merged" \
-      "into main? Merge it with a merge commit, or deploy main by hand."
+if ! git merge-base --is-ancestor "$live" "$cand"; then
+  # A hotfix that went live from its own branch. Once it is merged into main (with a merge
+  # commit), the candidates that are older than that merge cannot contain it: wait for them.
+  git merge-base --is-ancestor "$live" origin/main ||
+    die "live ${live:0:7} is not in the history of main: a hotfix not merged into main?" \
+        "Merge it with a merge commit, or deploy main by hand."
+  skip "live ${live:0:7} is a hotfix merged into main that main@${cand:0:7} does not contain yet"
+fi
 
-# A change that was reverted on main during the soak period is not shipped.
-reverted=$(git log --format=%B "$cand..origin/main" |
-  grep -oE 'This reverts commit [0-9a-f]{40}' | awk '{print $4}' || true)
+# A change that was reverted on main during the soak period, or that a newer commit of main
+# fixes ("Fixes: <sha>" line, 7 to 40 hex digits), is not shipped without the revert or the
+# fix: hold the release until that commit has soaked as well.
+msgs=$(git log --format=%B "$cand..origin/main")
+held=$( {
+  grep -oE 'This reverts commit [0-9a-f]{40}' <<< "$msgs" | awk '{print $4}' || true
+  sed -nE 's/^Fixes: *([0-9a-f]{7,40})([^0-9a-f].*)?$/\1/p' <<< "$msgs"
+} | while read -r h; do git rev-parse --verify --quiet "$h^{commit}" || true; done )
 pending=$(git rev-list "$live..$cand")
-for r in $reverted; do
-  if grep -qx "$r" <<< "$pending"; then
-    skip "main@${cand:0:7} contains ${r:0:7}, which was reverted on main since"
+for h in $held; do
+  if grep -qx "$h" <<< "$pending"; then
+    skip "main@${cand:0:7} contains ${h:0:7}, which was reverted or is fixed on main since"
   fi
 done
 
