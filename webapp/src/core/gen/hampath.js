@@ -151,7 +151,7 @@ export function backbitePortals(n, rnd, portals) {
   };
   // the cell to join: the end's portal partner when allowed (half the time), else a random one of
   // `c`
-  const pick = (end, c, partner) => {
+  const pick = (_end, c, partner) => {
     if (partner >= 0 && c.includes(partner) && rnd() < PORTAL_TAKE) return partner;
     return c[(rnd() * c.length) | 0];
   };

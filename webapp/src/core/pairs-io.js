@@ -91,11 +91,11 @@ export function mergePairs(log, incoming) {
   return { pairs: out, added, updated, changed };
 }
 
-// Ranking accuracy of any per-puzzle number f (a grade, a metric). valueOf(key) -> number | undefined (pairs with a missing value
+// Ranking accuracy of any per-puzzle number f (a grade, a metric). valueFn(key) -> number | undefined (pairs with a missing value
 // are skipped and counted). For every decided pair (harder/easier) f must order the two puzzles the same way; a tie in f scores 0.5.
 // "same" pairs are scored separately: how often f gives both puzzles the same value.
 // -> { decided, correct (0.5 per tie), accuracy, ties, sameN, sameTied, skipped }
-export function pairAccuracy(pairs, valueOf) {
+export function pairAccuracy(pairs, valueFn) {
   let decided = 0,
     correct = 0,
     ties = 0,
@@ -103,8 +103,8 @@ export function pairAccuracy(pairs, valueOf) {
     sameTied = 0,
     skipped = 0;
   for (const p of pairs) {
-    const fa = valueOf(p.a),
-      fb = valueOf(p.b);
+    const fa = valueFn(p.a),
+      fb = valueFn(p.b);
     if (!Number.isFinite(fa) || !Number.isFinite(fb)) {
       skipped++;
       continue;

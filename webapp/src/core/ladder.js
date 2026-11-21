@@ -319,7 +319,7 @@ export function ladder(p, o = {}) {
     segLo.fill(0);
     segHi.fill(0);
     for (let x = 0; x < T; x++) {
-      if (holes && holes[x]) continue;
+      if (holes?.[x]) continue;
       const k = cp[x];
       if (k) {
         segLo[x] = Math.max(1, k - 1);
@@ -456,7 +456,8 @@ export function ladder(p, o = {}) {
       }
       let progressed = false;
       for (let d = 1; d <= pd && !progressed; d++) {
-        const L = (lvl = 3 + d);
+        lvl = 3 + d;
+        const L = lvl;
         r = probePass(d);
         if (r < 0) return 0;
         if (r > 0) {

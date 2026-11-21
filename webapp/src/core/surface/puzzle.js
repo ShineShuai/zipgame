@@ -9,7 +9,7 @@
 import { surfaceTopology, edgeBetween, BALL_KIND } from './topology.js';
 import { timeComments } from '../format.js';
 
-export const isSurfacePuzzle = p => Boolean(p && p.kind);
+export const isSurfacePuzzle = p => Boolean(p?.kind);
 export const topologyOf = p => surfaceTopology(p.kind, p.n);
 
 export function makeSurfacePuzzle(kind, n) {
@@ -214,7 +214,7 @@ export function serializeSurface(p, opts = {}) {
   if (walls.length) {
     lines.push(`walls ${walls.join(',')}`);
   }
-  if (opts.path && opts.path.length) {
+  if (opts.path?.length) {
     lines.push(`path ${opts.path.join(' ')}`);
   }
   lines.push(...timeComments(opts.times));

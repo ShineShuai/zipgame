@@ -69,7 +69,7 @@ export function openRulesSheet(popId) {
   const name = title ? title.textContent : '';
   if (title) title.remove();
   const host = pop.closest('.variant-opt, .rules-host');
-  const icon = host && host.querySelector('.variant-icon');
+  const icon = host?.querySelector('.variant-icon');
   openSheet({
     icon: icon ? icon.outerHTML : '',
     title: name,

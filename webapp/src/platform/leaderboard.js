@@ -76,11 +76,8 @@ export const pipeline = stmts =>
   });
 // the first row of one pipeline result as { column: value } (integers as numbers), or throws on an error result
 function tursoRow(result) {
-  if (!result || result.type !== 'ok')
-    throw Object.assign(
-      new Error((result && result.error && result.error.message) || 'no result'),
-      { sqlError: true },
-    );
+  if (result?.type !== 'ok')
+    throw Object.assign(new Error(result?.error?.message || 'no result'), { sqlError: true });
   const { cols, rows } = result.response.result;
   if (!rows.length) return null;
   return Object.fromEntries(
@@ -116,7 +113,7 @@ export const tursoBackend = ({ url, key }, id = 'turso') => ({
     },
   }),
   decode(kind, body) {
-    const results = body && body.results;
+    const results = body?.results;
     if (!Array.isArray(results)) throw new Error('not a pipeline reply');
     if (kind === 'read') {
       const reply = JSON.parse(tursoRow(results[0]).reply);
@@ -188,7 +185,7 @@ export function createLeaderboard(
       if (!res.ok) return { be, kind: 'failed' };
       const body = await res.json();
       const reply = be.decode ? be.decode('submit', body) : body;
-      if (reply && reply.rejected) return { be, kind: 'rejected' };
+      if (reply?.rejected) return { be, kind: 'rejected' };
       const summary = summarize(reply);
       return summary ? { be, kind: 'ok', summary } : { be, kind: 'failed' };
     } catch {
@@ -279,7 +276,7 @@ export function afterSubmit(prev, r, order) {
 // that do not hold it yet, saves the new record in `store`. Returns that record, or null when there was nothing to do or nothing was stored.
 export async function submitAttempt(lb, store, date) {
   const prev = store.attemptOn(date);
-  if (!prev || !prev.solved) return null;
+  if (!prev?.solved) return null;
   const result = await lb.submit(date, prev.time, prev.done || []);
   const next = afterSubmit(prev, result, lb.readOrder);
   if (next === prev) return null;

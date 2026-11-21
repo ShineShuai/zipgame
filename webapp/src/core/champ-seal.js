@@ -121,8 +121,8 @@ export const rise = (v, today) =>
 // Is the answer stored with a played Game of Day a win? rec = { time (s), live, n (the board
 // size), stats: { n (players), pct } }, minPlayers = config.js CHAMP.minPlayers.
 export function qualifies(rec, minPlayers) {
-  const stats = rec && rec.stats;
-  if (!rec || rec.live !== true || !stats || stats.pct !== 100) return false;
+  const stats = rec?.stats;
+  if (rec?.live !== true || !stats || stats.pct !== 100) return false;
   if (!(stats.n >= minPlayers) || !Number.isInteger(rec.n)) return false;
   return rec.n < FLOOR_FROM || rec.time * 1000 >= floorMs(rec.n);
 }

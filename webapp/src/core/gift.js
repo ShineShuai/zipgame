@@ -69,6 +69,7 @@ const beats = (a, b) =>
 export function giftDay(ref, day) {
   if (ref === null || ref === undefined) return null;
   const best = monthRows(ref, day).reduce((a, r) => (!a || beats(r, a) ? r : a), null);
+  // biome-ignore lint/complexity/useOptionalChain: the documented result is null, not undefined
   return best && best.day;
 }
 

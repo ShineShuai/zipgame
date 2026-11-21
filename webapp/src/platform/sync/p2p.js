@@ -55,7 +55,7 @@ export function deviceLabel(userAgent) {
     [/CrOS/, 'Chromebook'],
     [/Linux/, 'Linux'],
   ].find(([re]) => re.test(ua));
-  return cleanLabel([browser && browser[1], system && system[1]].filter(Boolean).join(' · '));
+  return cleanLabel([browser?.[1], system?.[1]].filter(Boolean).join(' · '));
 }
 
 // The parts of src/coop this needs, loaded on the first use.
@@ -89,7 +89,7 @@ const REASONS = {
 // Why a link failed, as one word: 'down' (no broker), 'expired', 'declined', 'taken',
 // 'timeout' (nobody answered), 'connect' (no connection could be made), 'closed', 'version',
 // 'self' (a link of this very device), 'bad' (the other side sent nonsense), 'off'.
-const reasonOf = error => REASONS[error && error.message] || (error && error.message) || 'connect';
+const reasonOf = error => REASONS[error?.message] || error?.message || 'connect';
 
 // sync: the engine (engine.js). coop: () -> Promise of the parts of src/coop (tests pass fakes;
 // the fake may carry `rtc` and `timers` for the rooms). name: () -> what this device is called.
@@ -355,7 +355,7 @@ export function createP2p({
       for (const peer of sync.peers()) {
         const known = windows.get(peer.dev);
         const resting = known && !known.room && now() - known.endedAt < GAP_MS;
-        if ((known && known.room) || (resting && !force)) {
+        if (known?.room || (resting && !force)) {
           continue;
         }
         const entry = { room: null, endedAt: 0, busy: false };

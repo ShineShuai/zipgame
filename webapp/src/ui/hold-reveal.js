@@ -2,8 +2,7 @@
 
 const isTextField = target =>
   Boolean(
-    target &&
-      target.tagName &&
+    target?.tagName &&
       (/^(input|textarea|select)$/i.test(target.tagName) || target.isContentEditable),
   );
 

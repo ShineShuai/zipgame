@@ -18,7 +18,7 @@ export function closeSheet() {
   sheet = null;
   document.body.classList.remove('sheet-open');
   document.removeEventListener('keydown', onSheetKey, true);
-  if (opener && opener.isConnected) opener.focus({ preventScroll: true });
+  if (opener?.isConnected) opener.focus({ preventScroll: true });
   opener = null;
 }
 

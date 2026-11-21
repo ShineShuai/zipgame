@@ -35,8 +35,6 @@ export function initThemeOffer({ controller, text, lang, idle = () => true }) {
   let lastPhase = null;
   let lastKey = '';
 
-  const countdown = v =>
-    v.phase === 'trial' ? text('theme.offer.left', formatLeft(v.left)) : null;
   const leftText = v =>
     v.phase === 'trial'
       ? formatLeft(v.left)

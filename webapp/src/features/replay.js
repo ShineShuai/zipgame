@@ -14,7 +14,11 @@ export const CHANCE_STEPS = [1, 2, 3],
   CHANCE_STEP = 5,
   REPLAY_SHOW = 8,
   REPEAT_MIN_AGE = 30;
-const CUM = CHANCE_STEPS.reduce((a, x) => [...a, (a.at(-1) || 0) + x], []); // solves at which the first chances are earned: [1, 3, 6]
+// solves at which the first chances are earned: [1, 3, 6]
+const CUM = CHANCE_STEPS.reduce((a, x) => {
+  a.push((a.at(-1) || 0) + x);
+  return a;
+}, []);
 export const earned = solved => {
   const head = CUM.filter(c => c <= solved).length;
   return head < CUM.length ? head : CUM.length + Math.floor((solved - CUM.at(-1)) / CHANCE_STEP);
@@ -52,7 +56,7 @@ export function createReplay(storage, store, now = () => new Date(), sync = null
   const today = () => utcDayNumber(now());
   const repeatsOf = days =>
     days
-      .filter(x => x.attempt && x.attempt.solved && today() - dayOfDate(x.date) > REPEAT_MIN_AGE)
+      .filter(x => x.attempt?.solved && today() - dayOfDate(x.date) > REPEAT_MIN_AGE)
       .sort((a, b) => b.attempt.time - a.attempt.time || (a.date < b.date ? -1 : 1)); // longest time first, the older date first on a tie
   const replay = {
     // Loads the counters; the very first time (nothing stored) it counts the solves recorded before this feature existed.
@@ -71,7 +75,7 @@ export function createReplay(storage, store, now = () => new Date(), sync = null
       let solved = 0;
       for (let k = 0; k <= BACKFILL_DAYS; k++) {
         const a = await store.loadAttempt(dateOfDay(today() - k), true);
-        if (a && a.solved) solved++;
+        if (a?.solved) solved++;
       } // this device's records only: the others count their own
       credit = { solved, used: 0, bonus: 0 };
       await save();
@@ -117,7 +121,7 @@ export function createReplay(storage, store, now = () => new Date(), sync = null
         return out;
       };
       const pinned = await take(
-        days.filter(d => pin.includes(d.date) && !(d.attempt && d.attempt.solved)),
+        days.filter(d => pin.includes(d.date) && !d.attempt?.solved),
         REPLAY_SHOW,
       );
       const rest = days.filter(d => !pinned.includes(d));
@@ -145,7 +149,7 @@ export function createReplay(storage, store, now = () => new Date(), sync = null
       const out = [];
       for (const d of [dateOfDay(today()), ...replay.dates()]) {
         const a = await store.loadAttempt(d);
-        if (a && a.solved && a.sent === false) out.push({ date: d, time: a.time });
+        if (a?.solved && a.sent === false) out.push({ date: d, time: a.time });
       }
       return out;
     },

@@ -132,7 +132,7 @@ export function surfaceSvg(net, V) {
     return [0, 0, ` transform="matrix(${a} ${b} ${c} ${d} ${x} ${y})"`];
   };
 
-  const seen = cell => !net.hidden || !net.hidden[cell];
+  const seen = cell => !net.hidden?.[cell];
   const drawn = cell => (net.drawn ? Boolean(net.drawn[cell]) : seen(cell));
   const outline = cell => (net.outlines ? net.outlines[cell] : net.polys[cell]);
   if (net.disc) {
@@ -305,7 +305,7 @@ export function surfaceSvg(net, V) {
   // that is cut and the cell on the other side an arrow in and a pulse, with the letter of the cut;
   // the cell the path has just come in by pulses too. So the player sees where the path comes
   // back in, wherever it is on the net.
-  if (V.playing && V.path.length && net.cuts && net.cuts.length) {
+  if (V.playing && V.path.length && net.cuts?.length) {
     const head = V.path[V.path.length - 1];
     const pulse = cell => {
       if (drawn(cell)) {

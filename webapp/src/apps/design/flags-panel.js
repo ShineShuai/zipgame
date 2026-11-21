@@ -85,7 +85,7 @@ export function mountFlagsPanel(el, side, initial = DEFAULT_FLAGS_INT) {
     details.style.display = open ? 'none' : '';
     expandBtn.textContent = open ? '▸ Details' : '▾ Details';
   };
-  let listeners = [];
+  const listeners = [];
 
   function read() {
     const byPhase = {};

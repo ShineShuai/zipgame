@@ -193,7 +193,7 @@ const SOLVER_FREE = new Set([
 // without them must not take the whole diagnostics panel down, so every use goes through these two strings.
 const fitN = () => (TRAP_MODEL.fit ? `${TRAP_MODEL.fit.n} ` : '');
 const anchorStats = () => {
-  const a = TRAP_MODEL.fit && TRAP_MODEL.fit.looAnchors;
+  const a = TRAP_MODEL.fit?.looAnchors;
   return a
     ? `; leave-one-out it gave badge 0 to ${a.easy[0]} of ${a.easy[1]} puzzles you rated <= 0.5, and badge >= 3 / >= 4 to ${a.hard3[0]} / ${a.hard4[0]} of ${a.hard3[1]} rated >= 3.5`
     : '';
@@ -648,11 +648,11 @@ export function mountDifficultyPanel(resultEl, getPuzzle, getNodeCap, onShowPath
         `Exported ${all.length} ratings to ratings.json (put it at tools/ratings.json to use it in the repo).`,
       );
     });
-    on('#diffLogImport', () => $('#diffLogFile') && $('#diffLogFile').click());
+    on('#diffLogImport', () => $('#diffLogFile')?.click());
     const fi = $('#diffLogFile');
     if (fi)
       fi.onchange = async () => {
-        const f = fi.files && fi.files[0];
+        const f = fi.files?.[0];
         fi.value = '';
         if (f) await importFile(f);
       };
@@ -676,11 +676,11 @@ export function mountDifficultyPanel(resultEl, getPuzzle, getNodeCap, onShowPath
         `Exported ${all.length} pairs to pairs.json (put it at tools/pairs.json to use it in the repo).`,
       );
     });
-    on('#diffPairImport', () => $('#diffPairFile') && $('#diffPairFile').click());
+    on('#diffPairImport', () => $('#diffPairFile')?.click());
     const pf = $('#diffPairFile');
     if (pf)
       pf.onchange = async () => {
-        const f = pf.files && pf.files[0];
+        const f = pf.files?.[0];
         pf.value = '';
         if (f) await importPairsFile(f);
       };
@@ -867,7 +867,7 @@ export function mountDifficultyPanel(resultEl, getPuzzle, getNodeCap, onShowPath
 
   function onGrade(g) {
     if (!lastMetrics) return;
-    const keep = { unsure: !!(sel && sel.unsure) }; // changing the grade does not change how sure you are
+    const keep = { unsure: !!sel?.unsure }; // changing the grade does not change how sure you are
     if (sel && sel.lo === sel.hi && sel.lo === g)
       sel = null; // same single grade again: remove
     else if (sel && sel.lo === sel.hi && Math.abs(g - sel.lo) === 1)
@@ -1027,7 +1027,7 @@ export function mountDifficultyPanel(resultEl, getPuzzle, getNodeCap, onShowPath
     if (ub) ub.onclick = () => onUnsure();
     resultEl
       .querySelectorAll('.diff-trap-show')
-      .forEach(b => (b.onclick = () => onShowPath && onShowPath(lastRoutes[+b.dataset.k])));
+      .forEach(b => (b.onclick = () => onShowPath?.(lastRoutes[+b.dataset.k])));
     applyCollapsed();
     renderLog();
     syncRating();

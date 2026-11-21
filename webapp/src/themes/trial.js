@@ -26,7 +26,7 @@ export function parseOffer(text, trialMs = TRIAL_MS) {
   } catch {
     return null;
   }
-  if (!r || r.v !== 1 || !PHASES.includes(r.phase) || !EVENT_RE.test(r.event ?? '')) return null;
+  if (r?.v !== 1 || !PHASES.includes(r.phase) || !EVENT_RE.test(r.event ?? '')) return null;
   if (!Number.isFinite(r.until) || !Number.isFinite(r.left) || r.left < 0) return null;
   const entry = cleanEntry(r.theme?.entry);
   if (!entry) return null;

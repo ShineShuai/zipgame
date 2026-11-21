@@ -171,7 +171,7 @@ export function renderBoard(board, stage, V) {
   const cellEls = new Array(n * n);
   for (let i = 0; i < n * n; i++) {
     const d = box(
-      (holes && holes[i] ? 'cell hole' : 'cell editable') +
+      (holes?.[i] ? 'cell hole' : 'cell editable') +
         (P.cp[i] ? ' has-number' : '') +
         (i === V.selected && !V.playMode ? ' selected' : ''),
       pm + (i % n) * cs,
@@ -358,7 +358,7 @@ export function renderBoard(board, stage, V) {
       (pending ? ' pending' : '') +
       (first ? ' start' : '') +
       (last ? ' end' : '') +
-      (visited && visited.has(i) ? ' visited' : '') +
+      (visited?.has(i) ? ' visited' : '') +
       (i === V.dragSrc ? ' dragging' : '') +
       (two ? (two.colour === 0 ? ' red' : ' blue') : '');
     inner.style.fontSize = Math.max(11, Math.round(cs * (v > 99 ? 0.24 : 0.3))) + 'px';

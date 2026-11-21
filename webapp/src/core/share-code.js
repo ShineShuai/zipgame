@@ -293,7 +293,7 @@ function isEncodablePuzzleRecord(rec) {
 
 // record: { kind: 'gotd', n, grade: 0..5 | null, timeS, day, pct: 0..100 | null, levels: [0..3] }
 function isEncodableGotd(rec) {
-  if (!rec || rec.kind !== 'gotd' || !isInt(rec.n, 2, 31) || !isInt(rec.day, 0, 65535)) {
+  if (rec?.kind !== 'gotd' || !isInt(rec.n, 2, 31) || !isInt(rec.day, 0, 65535)) {
     return false;
   }
   if (rec.grade != null && !isInt(rec.grade, 0, 5)) {
@@ -336,7 +336,7 @@ const puzzleCodeLength = capacity =>
 const openCells = p => {
   const open = [];
   for (let i = 0; i < p.n * p.n; i++) {
-    if (!(p.holes && p.holes[i])) {
+    if (!p.holes?.[i]) {
       open.push(i);
     }
   }

@@ -410,8 +410,9 @@ test(
     assert.deepEqual(again.peers(), sync.peers(), 'kept over a reload');
     sync.peers()[0].name = 'changed outside';
     assert.equal(sync.peers()[0].name, 'Renamed', 'a copy comes back');
-    await sync.removePeer(b2);
+    assert.equal(await sync.removePeer(b2), true, 'a linked device is removed');
     assert.deepEqual(sync.peers(), []);
+    assert.equal(await sync.removePeer(b2), false, 'and it is not one any more');
   },
 );
 

@@ -7,6 +7,6 @@ self.onmessage = async ({ data: { id, job } }) => {
     const result = await runJob(job, event => self.postMessage({ id, type: 'event', event }));
     self.postMessage({ id, type: 'done', result });
   } catch (e) {
-    self.postMessage({ id, type: 'error', message: String(e && e.message ? e.message : e) });
+    self.postMessage({ id, type: 'error', message: String(e?.message ? e.message : e) });
   }
 };

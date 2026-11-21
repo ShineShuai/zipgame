@@ -88,7 +88,7 @@ export function luckyGameHtml(done = S.finished) {
   const parts = [],
     r = S.luckyResult,
     v = unlockView();
-  if (r && r.solved) {
+  if (r?.solved) {
     const newKey = solid.isKind(r.id) ? 'lucky.unlockedSolid' : 'lucky.unlocked';
     const key = r.newly ? newKey : unlock.unlocked(r.id) ? 'lucky.already' : 'lucky.noChance';
     parts.push(

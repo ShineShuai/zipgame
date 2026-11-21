@@ -98,7 +98,7 @@ function renderStatus() {
 // Days before the first one it has data for are not its gaps (it was added later: the switch to another always-written backend).
 // null when there is no always-written backend or it failed on this load.
 function daysPrimaryLags() {
-  const primary = okResults().find(r => r.name === (setup.always && setup.always.name));
+  const primary = okResults().find(r => r.name === setup.always?.name);
   if (!primary) return null;
   const own = new Map(primary.days.map(day => [day.d, day.n]));
   const firstOwn = Math.min(...own.keys());
@@ -309,7 +309,7 @@ async function gradePuzzles(run) {
       const res = await fetch(PUZZLE_URL(d));
       const p = res.ok && parse(await res.text());
       const m = p && validate(p).ok && trapMetrics(p);
-      if (m && m.ok) entry = { size: p.n, predicted: m.predicted, grade: m.grade };
+      if (m?.ok) entry = { size: p.n, predicted: m.predicted, grade: m.grade };
     } catch {
       /* missing or unparsable puzzle file: day is left out of the scatter */
     }

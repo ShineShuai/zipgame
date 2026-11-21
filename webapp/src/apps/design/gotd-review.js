@@ -387,7 +387,7 @@ export function mountGotdReview(
     }
   });
   el('file').addEventListener('change', async e => {
-    const f = e.target.files && e.target.files[0];
+    const f = e.target.files?.[0];
     if (!f) return;
     try {
       const list = parseVerdicts(await f.text());

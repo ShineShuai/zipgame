@@ -75,9 +75,9 @@ export const GRADED_METRICS = {
     kind: 'solver',
   },
   B: { fromMetrics: m => m.B / m.n, label: 'B / N (backtrack)', kind: 'solver' },
-  crossPerSeg: { fromMetrics: (m, s) => s.crossPerSeg, label: 'crossPerSeg', kind: 'spatial' },
+  crossPerSeg: { fromMetrics: (_m, s) => s.crossPerSeg, label: 'crossPerSeg', kind: 'spatial' },
   overlapPerSeg: {
-    fromMetrics: (m, s) => s.overlapPerSeg,
+    fromMetrics: (_m, s) => s.overlapPerSeg,
     label: 'overlapPerSeg',
     kind: 'spatial',
   },

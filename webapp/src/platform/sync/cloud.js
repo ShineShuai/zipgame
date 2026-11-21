@@ -94,7 +94,7 @@ export function createCloud({
     // a slice that does not fit is a failure of the round even when a server answered:
     // this device's data is not getting to the others
     const tooBig = pushed.skipped === 'toobig';
-    const noAnswer = (Object.values(state.backends)[0] || {}).error || 'network';
+    const noAnswer = Object.values(state.backends)[0]?.error || 'network';
     state.error = tooBig ? 'toobig' : ok ? null : noAnswer;
     if (ok) {
       state.lastOk = now();
@@ -115,7 +115,7 @@ export function createCloud({
         }
         return result;
       } catch (error) {
-        state.error = (error && error.code) || 'network';
+        state.error = error?.code || 'network';
         emit({ type: 'cloud', state: 'failed', error: state.error });
         return { accepted: 0, pushed: 0, ok: false, error: state.error };
       } finally {

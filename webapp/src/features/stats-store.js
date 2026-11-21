@@ -176,9 +176,8 @@ export function createStore(storage, sizes, scopes = {}, sync = null) {
   // reads then fall back to the old keys, so a played date never looks missed, and the next page load tries again.
   let converting = null,
     converted = false;
-  const convertAttempts = () =>
-    converting ||
-    (converting = (async () => {
+  const convertAttempts = () => {
+    converting ||= (async () => {
       try {
         if (!storage.keys) return;
         const names = await storage.keys('zip_gotd_attempt_');
@@ -209,7 +208,9 @@ export function createStore(storage, sizes, scopes = {}, sync = null) {
       } catch {
         /* the old keys stay and are read as before */
       }
-    })());
+    })();
+    return converting;
+  };
   // The statistics as shown (the group's) from the blob in storage.
   async function derive() {
     const r = await storage.get(STATS_KEY),

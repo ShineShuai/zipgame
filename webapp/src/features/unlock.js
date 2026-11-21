@@ -92,7 +92,7 @@ export function createUnlock(storage, defs, now = () => new Date(), sync = null)
   const isUnlocked = id => {
     if (!s) return false;
     const def = defs.find(d => d.id === id);
-    return group().unlocked[id] !== undefined || Boolean(def && def.open && def.open(today()));
+    return group().unlocked[id] !== undefined || Boolean(def?.open?.(today()));
   };
   // The variants the lucky game draws from and "all unlocked" looks at.
   const live = () => {
@@ -171,7 +171,7 @@ export function createUnlock(storage, defs, now = () => new Date(), sync = null)
     async begin(rand) {
       const v = view(),
         list = live();
-      if (!v || !v.open || !list.length) return null;
+      if (!v?.open || !list.length) return null;
       const def = list[rand(list.length)],
         isNew = !isUnlocked(def.id);
       const sizes = isNew ? def.locked : def.pool,
@@ -190,7 +190,7 @@ export function createUnlock(storage, defs, now = () => new Date(), sync = null)
     },
     // The game could not start (the generator failed): the chance and the offer come back.
     async refund() {
-      if (!s || !s.active) return;
+      if (!s?.active) return;
       const { offer, holder } = s.active;
       if (holder) s.tokens++;
       s.played = s.played.filter(o => o !== offer);
@@ -200,7 +200,7 @@ export function createUnlock(storage, defs, now = () => new Date(), sync = null)
     // The game ended: solved (a holder unlocks the variant, once) or not (leaving, a page reload).
     // null when no game was in progress, so calling it twice is harmless.
     async finish(solved) {
-      if (!s || !s.active) return null;
+      if (!s?.active) return null;
       const { id, holder } = s.active,
         newly = solved && holder && !isUnlocked(id);
       s.active = null;

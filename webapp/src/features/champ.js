@@ -70,7 +70,7 @@ export function createChamp(storage, cfg, now = () => new Date(), sync = null) {
     // Judges the stored answer `rec` of `date` (a live game only): once per day, at its first
     // answer. True = a win.
     async judge(date, rec) {
-      if (!s || !rec || !rec.live || !rec.stats) {
+      if (!s || !rec?.live || !rec.stats) {
         return false;
       }
       return this.settle(date, qualifies(rec, cfg.minPlayers), rec.time);

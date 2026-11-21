@@ -23,17 +23,17 @@ const MAX_DEVICES = 8;
 const text = value => ({ type: 'text', value });
 const DATA = /^[A-Za-z0-9_-]+$/;
 
-const valueOf = cell =>
+const cellValue = cell =>
   cell.type === 'integer' ? Number(cell.value) : cell.type === 'null' ? null : cell.value;
 
 // the rows of one pipeline result as [{ column: value }], or throws on an error result
 function rowsOf(result) {
-  if (!result || result.type !== 'ok') {
-    const message = (result && result.error && result.error.message) || 'no result';
+  if (result?.type !== 'ok') {
+    const message = result?.error?.message || 'no result';
     throw Object.assign(new Error(message), { sqlError: true });
   }
   const { cols, rows } = result.response.result;
-  return rows.map(row => Object.fromEntries(cols.map((col, i) => [col.name, valueOf(row[i])])));
+  return rows.map(row => Object.fromEntries(cols.map((col, i) => [col.name, cellValue(row[i])])));
 }
 
 function failure(error) {
@@ -68,7 +68,7 @@ export function tursoCloud(
         `HTTP ${reply.status}`,
       );
     }
-    const results = reply.body && reply.body.results;
+    const results = reply.body?.results;
     if (!Array.isArray(results) || results.length < statements.length) {
       throw new CloudError('network', 'not a pipeline reply');
     }
@@ -110,7 +110,7 @@ export function tursoCloud(
       const results = await send(news.map(head => [SYNC_SQL.rows, [text(id), text(head.dev)]]));
       const rows = [];
       results.forEach((result, i) => {
-        if (!result || result.type !== 'ok') return;
+        if (result?.type !== 'ok') return;
         for (const row of rowsOf(result)) {
           if (
             Number.isSafeInteger(row.seq) &&

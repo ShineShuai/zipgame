@@ -206,7 +206,6 @@ export function publishedText(puzzle, entry, verdict = null, origin = []) {
     comments.push(
       `review ${verdict.human !== undefined ? `human ${verdict.human}` : 'unrated'}${verdict.unsure ? ' unsure' : ''} solved ${verdict.solved ? 'yes' : 'no'} takebacks ${verdict.takebacks}`,
     );
-  const times =
-    verdict && verdict.solved && verdict.playS != null ? { playS: verdict.playS } : undefined;
+  const times = verdict?.solved && verdict.playS != null ? { playS: verdict.playS } : undefined;
   return serialize(puzzle, { comments, times }) + '\n';
 }

@@ -251,13 +251,13 @@ const view = () => ({
   previewVisible,
   solutions,
   solVisible,
-  dragSrc: numDrag && numDrag.dragging ? numDrag.src : -1,
+  dragSrc: numDrag?.dragging ? numDrag.src : -1,
 });
 function draw() {
   refs = renderBoard(boardEl, stageEl, view());
   $('wallModeTag').textContent = countWalls(P) ? `(${countWalls(P)})` : '';
   $('arrowModeTag').textContent = P.arrows && arrowCount(P) ? `(${arrowCount(P)})` : '';
-  $('portalModeTag').textContent = P.portals && P.portals.length ? `(${P.portals.length})` : '';
+  $('portalModeTag').textContent = P.portals?.length ? `(${P.portals.length})` : '';
   $('holeModeTag').textContent = holeCount(P) ? `(${holeCount(P)})` : '';
   syncVariantUi();
   if (playMode) paintPlayNow();
@@ -732,7 +732,7 @@ boardEl.addEventListener('click', e => {
   }
   if (c && mode === 'portal' && P.portals) placePortal(+c.dataset.idx);
 });
-const isHole = idx => !!(P.holes && P.holes[idx]);
+const isHole = idx => !!P.holes?.[idx];
 // The Holes tool (Cutout): cut a hole or fill it again; the status says what went with it and, when the
 // board as drawn has no path, why (the checkerboard rule and the like).
 function editHole(idx) {
@@ -809,7 +809,7 @@ function placePortal(idx) {
 }
 document.addEventListener('keydown', e => {
   if (modal.isOpen() || playMode || busy || mode !== 'number' || selected < 0) return;
-  if (/^(INPUT|SELECT|TEXTAREA)$/.test((e.target && e.target.tagName) || '')) return;
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target?.tagName || '')) return;
   if (/^[0-9]$/.test(e.key)) {
     e.preventDefault();
     buffer = (buffer + e.key).slice(0, 3);

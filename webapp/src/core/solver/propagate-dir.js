@@ -208,7 +208,7 @@ export function makeDirPropagator(moves, end, vis, holes = null) {
       av[u] = 0;
     }
     for (let u = 0; u < T; u++) {
-      if ((holes && holes[u]) || (vis[u] && u !== h) || u === end) continue;
+      if (holes?.[u] || (vis[u] && u !== h) || u === end) continue;
       let mask = 0;
       for (let d = 0; d < 4; d++) {
         const v = out[u * 4 + d];
@@ -227,7 +227,7 @@ export function makeDirPropagator(moves, end, vis, holes = null) {
       force(mustA, d);
     }
     for (let u = 0; u < T; u++) {
-      if ((holes && holes[u]) || (vis[u] && u !== h)) continue;
+      if (holes?.[u] || (vis[u] && u !== h)) continue;
       work[top++] = u;
     }
     while (top > 0 && !failed) check(work[--top]);

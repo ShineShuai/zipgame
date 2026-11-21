@@ -258,7 +258,7 @@ export function makeDirIncremental(moves, start, end, total, holes = null) {
       av[u] = 0;
     }
     for (let u = 0; u < T; u++) {
-      if ((holes && holes[u]) || u === end) continue;
+      if (holes?.[u] || u === end) continue;
       let mask = 0;
       for (let d = 0; d < 4; d++) {
         const v = out[u * 4 + d];
@@ -277,7 +277,7 @@ export function makeDirIncremental(moves, start, end, total, holes = null) {
       force(mustA, d);
     }
     for (let u = 0; u < T; u++) {
-      if (!(holes && holes[u])) enqueue(u);
+      if (!holes?.[u]) enqueue(u);
     }
     return drain();
   }
