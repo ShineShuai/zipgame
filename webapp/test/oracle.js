@@ -131,3 +131,9 @@ export const closes = p => path => canStep(p, path[path.length - 1], path[0]);
 
 // Every solution under the rules of core/rules.js, as sorted "a,b,c" strings.
 export const solutionKeys = p => keysOf(oracle(p, { moves: ruleMoves(p) }));
+
+// Every path of a Loop puzzle that covers all cells, follows canStep, starts on number 1, meets
+// the numbers in order and ends on a cell that canStep to cell 1. The plain definition of the
+// rule, with none of the solver's pruning. -> every such path.
+export const bruteLoop = p =>
+  oracle(p, { moves: ruleMoves(p), endOnLast: false, accept: closes(p) }).paths;
