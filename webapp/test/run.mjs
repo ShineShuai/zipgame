@@ -26,9 +26,14 @@ const inDir = dir =>
     .filter(file => file.endsWith('.test.js'))
     .sort()
     .map(file => `test/${dir}/${file}`);
-const hasSlow = file => fs.readFileSync(`${root}${file}`, 'utf8').includes('SLOW');
-// The groups of suites. Files of test/unit may hold either kind of test; the co-op and sync files
-// are plain node:test files, and one without a SLOW test has nothing to run in the slow tier.
+const text = file => fs.readFileSync(`${root}${file}`, 'utf8');
+const hasSlow = file => text(file).includes('SLOW');
+// A plain node:test file marks its slow tests SLOW (and, in a file with both kinds, its fast tests
+// FAST); one without SLOW has nothing to run in the slow tier. A file of the t / ta kind
+// (harness.js) leaves its fast tests out of the slow tier itself, so it is always loaded.
+const plain = file => text(file).includes("from 'node:test'");
+// The groups of suites. Files of test/unit are plain node:test files or still of the t / ta kind;
+// the co-op and sync files are plain node:test files.
 const groups = {
   unit: () => inDir('unit'),
   cli: () => ['test/gotd-gen-cli.test.js'],
@@ -39,7 +44,7 @@ const named = args.filter(arg => arg in groups);
 const passed = args.filter(arg => !(arg in groups));
 const suites = (named.length ? named : Object.keys(groups))
   .flatMap(name => groups[name]())
-  .filter(file => tier !== 'slow' || !/^test\/(coop|sync)\//.test(file) || hasSlow(file));
+  .filter(file => tier !== 'slow' || !plain(file) || hasSlow(file));
 
 // Every file loads test/budget.js, which reports the fast tests that use too much time into this file; it is shown at the end.
 const reportFile = path.join(os.tmpdir(), `zigzag-budget-${process.pid}.jsonl`);
