@@ -54,7 +54,8 @@ export function fitCandidate(xs, ys, ws, { bucket = false } = {}) {
       };
     const t = {};
     for (const i of rows) {
-      const e = t[xs[i]] || (t[xs[i]] = [0, 0]);
+      t[xs[i]] ||= [0, 0];
+      const e = t[xs[i]];
       e[0] += ws[i] * ys[i];
       e[1] += ws[i];
     }
@@ -461,8 +462,7 @@ export function fitTimeSize(points, P = TIME_PRIOR, S = SIZE_PRIOR) {
 // `model` is a fitTimeSize result; with a plain fitTime result or the prior (no `size`), the level is 0.
 export const sizeShift = (n, mean = TIME_PRIOR.mean, P = TIME_PRIOR) =>
   (mean[1] / mean[2]) * Math.log((n * n) / (P.refN * P.refN));
-export const sizeLevel = (model, n) =>
-  (model.size && model.size[n] ? model.size[n].u : 0) / model.mean[2];
+export const sizeLevel = (model, n) => (model.size?.[n] ? model.size[n].u : 0) / model.mean[2];
 export const localDifficulty = (model, n, h) => h + sizeLevel(model, n);
 export const globalDifficulty = (model, n, h) =>
   localDifficulty(model, n, h) + sizeShift(n, model.mean);

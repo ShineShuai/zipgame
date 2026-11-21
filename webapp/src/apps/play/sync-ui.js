@@ -58,9 +58,9 @@ const set = (patch, quiet = false) => {
   ui = { ...ui, ...patch };
   if (!quiet) redraw();
 };
-const capable = () => linkable || Boolean(cloud && cloud.available());
+const capable = () => linkable || Boolean(cloud?.available());
 // The cloud part is hidden until the dev reveal (hold V); see gateCloud in sync-card.js.
-const cloudVisible = () => Boolean(cloud && cloud.available()) && cloudShown(ui.phase, S.showDev);
+const cloudVisible = () => Boolean(cloud?.available()) && cloudShown(ui.phase, S.showDev);
 const shown = () => linkable || cloudVisible();
 
 function model() {
@@ -83,8 +83,8 @@ function model() {
     now: Date.now(),
     cloud: gateCloud(
       {
-        available: Boolean(cloud && cloud.available()),
-        on: Boolean(cloud && cloud.on()),
+        available: Boolean(cloud?.available()),
+        on: Boolean(cloud?.on()),
         busy: Boolean(status.busy),
         error: status.error || null,
         lastOk: status.lastOk || 0,
@@ -108,7 +108,7 @@ const STAGE_STATUS = { ready: 'waiting', asked: 'waiting', seen: 'waiting', quie
 // manual: the player asked for this round, so a failure is told at once.
 function startCloud(options, manual = false) {
   // While the cloud is hidden (backend not set up) it does not run: nothing to fail in silence.
-  if (cloud && cloud.on() && cloudVisible()) {
+  if (cloud?.on() && cloudVisible()) {
     manualCloud ||= manual;
     cloud
       .sync(options)
@@ -221,7 +221,7 @@ async function copy(text, key) {
   } catch {
     const field =
       document.getElementById('syncLinkField') || document.getElementById('syncPhrase');
-    if (field && field.select) field.select();
+    if (field?.select) field.select();
     try {
       document.execCommand('copy');
     } catch {
@@ -294,7 +294,7 @@ async function turnOff() {
       set({ armed: false, status: 'bye' }); // the card says the others are being told
       await p2p.goodbye().catch(() => 0); // the linked devices that are open stop listing this one
     }
-    if (cloud && cloud.on()) await cloud.erase().catch(() => {}); // as far as the servers let it
+    if (cloud?.on()) await cloud.erase().catch(() => {}); // as far as the servers let it
     await sync.leave();
   } finally {
     leaving = false;
@@ -345,7 +345,7 @@ export function bindSyncCard(on) {
 
 // The dev reveal (hold V) went on or off: the cloud part of the card comes or goes.
 export function syncReveal() {
-  if (cloud && cloud.available()) {
+  if (cloud?.available()) {
     redraw();
   }
 }

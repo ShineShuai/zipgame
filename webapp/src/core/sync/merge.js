@@ -158,7 +158,7 @@ const byTime = (x, y) => x.rec.time - y.rec.time || (x.dev < y.dev ? -1 : 1);
 
 const gotd = {
   clean(value) {
-    if (!value || value.v !== 2 || !isObject(value.a)) {
+    if (value?.v !== 2 || !isObject(value.a)) {
       return null;
     }
     const a = {};
@@ -177,7 +177,7 @@ const gotd = {
         .map(e => ({ dev: e.dev, rec: e.value.a[date] }));
       const mine = recs.find(r => r.dev === self);
       const others = recs.filter(r => r.dev !== self && r.rec.solved && finite(r.rec.time));
-      if (mine && mine.rec.solved) {
+      if (mine?.rec.solved) {
         a[date] = mine.rec;
       } else if (others.length) {
         const rec = { ...others.sort(byTime)[0].rec };

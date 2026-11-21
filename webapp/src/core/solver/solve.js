@@ -283,7 +283,7 @@ function searchPaths(p, opts, steps) {
   let un = TC; // number of unvisited cells
   if (ONESHOT) {
     for (let i = 0, k = 0; i < T; i++) {
-      if (holes && holes[i]) continue;
+      if (holes?.[i]) continue;
       ul[k] = i;
       up[i] = k++;
     }
@@ -560,7 +560,7 @@ function searchPaths(p, opts, steps) {
       if (steps && need <= K && (marker2 !== 0) !== (steps[need] === depth + 2)) continue;
       // v is reserved for a later segment's own path — taking it now (as part of *this*
       // segment, since v isn't this segment's own target) would strand that segment.
-      if (forcedUnion && forcedUnion.size && v !== pos[need] && forcedUnion.has(v)) continue;
+      if (forcedUnion?.size && v !== pos[need] && forcedUnion.has(v)) continue;
 
       if (need <= K) {
         const target = pos[need];

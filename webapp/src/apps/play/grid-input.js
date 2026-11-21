@@ -202,7 +202,7 @@ export function setupGridInput(svg) {
     mark.addEventListener('animationend', () => mark.classList.remove('blocked'), { once: true });
   }
   function walkTo(cell) {
-    if (cell < 0 || S.finished || (p.holes && p.holes[cell])) return; // a hole is not part of the board
+    if (cell < 0 || S.finished || p.holes?.[cell]) return; // a hole is not part of the board
     const prev = S.path[S.path.length - 1],
       before = S.path.length,
       prevPath = S.path.slice();

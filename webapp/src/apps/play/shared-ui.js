@@ -80,7 +80,7 @@ export function pruneShared() {
 }
 
 function sharedItemHtml({ key, rec, state }) {
-  const shape = rec.puzzle && rec.puzzle.shape ? ' · ' + t('shape.' + rec.puzzle.shape) : '';
+  const shape = rec.puzzle?.shape ? ' · ' + t('shape.' + rec.puzzle.shape) : '';
   const head =
     rec.kind === 'gotd'
       ? t('share.gotd', dateLabel(dateOfDay(rec.day)))
@@ -271,14 +271,14 @@ function startSharedLocal(rec) {
 }
 
 function currentShareRecord() {
-  const trap = S.difficulty && S.difficulty.ok ? S.difficulty.trap : null;
+  const trap = S.difficulty?.ok ? S.difficulty.trap : null;
   const attempt = S.isGotd ? store.attemptOn(S.gotdDate) : null;
   return makeShareRecord({
     gotdDate: S.isGotd ? S.gotdDate : null,
     n: S.puzzle.n,
     grade: trap ? trap.grade : null,
     timeS: S.elapsed,
-    pct: attempt && attempt.stats ? attempt.stats.pct : null,
+    pct: attempt?.stats ? attempt.stats.pct : null,
     variant: S.variant,
     puzzle: S.puzzle,
     legs: S.legs,

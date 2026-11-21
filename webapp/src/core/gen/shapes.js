@@ -47,7 +47,7 @@ export const colourOf = (n, i) => (((i / n) | 0) + (i % n)) & 1;
 export function colourCounts(n, holes) {
   const count = [0, 0];
   for (let i = 0; i < n * n; i++) {
-    if (!(holes && holes[i])) {
+    if (!holes?.[i]) {
       count[colourOf(n, i)]++;
     }
   }

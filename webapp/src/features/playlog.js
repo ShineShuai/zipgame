@@ -154,9 +154,8 @@ export function createPlayLog(storage, max = PLAYLOG_MAX) {
     chain = run.catch(() => {});
     return run;
   }; // one read-modify-write at a time
-  const load = () =>
-    loading ||
-    (loading = (async () => {
+  const load = () => {
+    loading ||= (async () => {
       try {
         const status = await migrateKey(storage, PLAYLOG_LEGACY_KEY, PLAYLOG_KEY, convertLegacy);
         if (status === 'failed')
@@ -166,7 +165,9 @@ export function createPlayLog(storage, max = PLAYLOG_MAX) {
       } catch {
         base = [];
       }
-    })());
+    })();
+    return loading;
+  };
   const current = async () => {
     await load();
     try {

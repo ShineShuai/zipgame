@@ -1,6 +1,5 @@
 // Small pieces the menu, lucky, gift and replay screens share: the weekday label and the icons of the status panel.
 import { getLang } from '../../ui/i18n.js';
-import { gift, replay, unlock } from './state.js';
 
 export const weekday = d =>
   new Date(Date.UTC(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6))).toLocaleDateString(

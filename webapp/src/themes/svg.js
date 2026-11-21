@@ -160,7 +160,10 @@ export const scopeIds = (markup, scope) =>
 
 let scopes = 0;
 // A new scope word for scopeIds, different on every call.
-export const freshScope = () => (scopes += 1).toString(36);
+export const freshScope = () => {
+  scopes += 1;
+  return scopes.toString(36);
+};
 
 // The inside of an svg (a symbol, an icon): the same rules.
 export const cleanInner = (markup, maxLength = 6000) => cleanSvg(markup, maxLength);

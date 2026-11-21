@@ -22,7 +22,7 @@ export function gapCheckpoints(n, path, K, wrap = false, teleport = null) {
       bestS = Infinity,
       bestAt = -1;
     for (let p = 0; p < path.length; p++) {
-      if (chosen.has(p) || (skip && skip.has(path[p]))) continue;
+      if (chosen.has(p) || skip?.has(path[p])) continue;
       let lo = 0;
       while (lo < idx.length && idx[lo] < p) lo++;
       const pr = idx[lo - 1],
@@ -65,7 +65,7 @@ export function scatter(p, K, rnd) {
     T = n * n,
     holes = p.holes || null;
   const open = [];
-  for (let i = 0; i < T; i++) if (!(holes && holes[i])) open.push(i);
+  for (let i = 0; i < T; i++) if (!holes?.[i]) open.push(i);
   K = Math.max(2, Math.min(K, open.length));
   const bfs = (src, dst) => {
     if (src === dst) return 0;
@@ -79,7 +79,7 @@ export function scatter(p, K, rnd) {
       for (const u of fr)
         for (const dir of [3, 2, 1, 0]) {
           const v = neighbourCell(n, !!p.wrap, u, dir); // -1 = off the board (a torus has no such)
-          if (v < 0 || seen[v] || hasWall(p, u, v) || (holes && holes[v])) continue;
+          if (v < 0 || seen[v] || hasWall(p, u, v) || holes?.[v]) continue;
           if (v === dst) return d;
           seen[v] = 1;
           nx.push(v);

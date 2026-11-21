@@ -71,9 +71,9 @@ export async function claimGift() {
   if (!gift || !unlock) return null;
   const g = giftOf(),
     v = unlockView(),
-    onlyReplay = Boolean(v && v.allUnlocked);
+    onlyReplay = Boolean(v?.allUnlocked);
   let kind;
-  if (g && g.test) {
+  if (g?.test) {
     // the test gift (hold V): only the draw, nothing is granted or stored
     kind = g.opened ? null : drawKind(randomInt, onlyReplay);
     if (kind) S.giftTest = kind;

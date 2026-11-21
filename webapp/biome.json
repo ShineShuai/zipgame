@@ -27,7 +27,6 @@
   },
   "linter": {
     "enabled": true,
-    "includes": ["**", "!src/**"],
     "rules": {
       "preset": "recommended",
       "correctness": {

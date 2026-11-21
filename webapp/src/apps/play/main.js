@@ -153,10 +153,10 @@ const solid = createSolidPlay({
   openExport,
   release: solidRelease,
   today: dayNo,
-  unlocked: kind => Boolean(unlock && unlock.unlocked(kind)),
+  unlocked: kind => Boolean(unlock?.unlocked(kind)),
   luckyHtml: luckyGameHtml,
   luckySolved: finishLucky,
-  luckyFailed: () => unlock && unlock.refund(),
+  luckyFailed: () => unlock?.refund(),
   leaveLucky,
   paintGenerating,
   genNoticeHtml,
@@ -396,7 +396,7 @@ function setDevReveal(on) {
     if (tile) tile.style.display = typeShown(id) ? '' : 'none';
   }
   const shown = S.screen === 'game' && S.isGotd ? store.attemptOn(S.gotdDate) : store.attempt(),
-    st = shown && shown.stats;
+    st = shown?.stats;
   if (st)
     document.querySelectorAll('.gotd-stats').forEach(e => {
       e.textContent = statsLineT(st, on);
@@ -427,7 +427,7 @@ function trackHidden() {
 }
 function installDevReveal() {
   const typing = t =>
-    t && t.tagName && (/^(input|textarea|select)$/i.test(t.tagName) || t.isContentEditable);
+    t?.tagName && (/^(input|textarea|select)$/i.test(t.tagName) || t.isContentEditable);
   addEventListener('keydown', e => {
     if (
       (e.key === 'v' || e.key === 'V') &&

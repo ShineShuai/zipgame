@@ -238,16 +238,18 @@ export async function scanPublished({
   maxDays = GOTD_CFG.maxDays,
 }) {
   const published = new Set();
-  let done = 0,
-    span;
+  const spanNow = () => reviewSpan({ today, published, stock, maxDays });
+  let done = 0;
+  let span = spanNow();
   // days not asked yet count as open, so the span is a lower bound until every day in it has been asked
-  while ((span = reviewSpan({ today, published, stock, maxDays })) > done) {
+  while (span > done) {
     const upTo = Math.min(span, done + batch),
       dates = Array.from({ length: upTo - done }, (_, i) => dateOfDay(today + done + i));
     (await Promise.all(dates.map(has))).forEach((yes, i) => {
       if (yes) published.add(dates[i]);
     });
     done = upTo;
+    span = spanNow();
   }
   return { published, span };
 }

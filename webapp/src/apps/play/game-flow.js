@@ -81,7 +81,7 @@ function uploadBehaviour(history, ms, mode, abandoned = false) {
     day: S.isGotd ? dayOfDate(S.gotdDate) : (S.gameDay ?? dayNo()),
     variant: S.variant,
     shared: S.isShared,
-    known: Boolean(attempt && attempt.solved),
+    known: Boolean(attempt?.solved),
   };
   history
     .then(h => {
@@ -111,7 +111,7 @@ export function onSolved() {
   } // once, even if the path is reset and re-solved
   if (S.isGotd) {
     const a = store.attemptOn(S.gotdDate);
-    if (!(a && a.solved)) finishGotd(S.puzzle.n, S.gotdDate, S.elapsed, S.isReplay);
+    if (!a?.solved) finishGotd(S.puzzle.n, S.gotdDate, S.elapsed, S.isReplay);
   } // a Game of Day (live or replay) counts once
   else {
     // stats and daily counter of the puzzle type (a variant has its own)
@@ -313,7 +313,8 @@ export async function startLocal(how, mode = 'standard', lucky = false) {
   S.gen = { frac: 0, walls: null, K: null };
   S.genNotice = null;
   render();
-  const job = (S.genJob = cancellable());
+  const job = cancellable();
+  S.genJob = job;
   try {
     const scope = mode === 'standard' ? '' : mode,
       game = how === 'skip' ? await daily.skip(S.size, scope) : await daily.open(S.size, scope);
@@ -392,7 +393,7 @@ export async function finishLucky() {
 export function leaveLucky() {
   if (!S.lucky) return;
   S.lucky = false;
-  const active = unlock && unlock.view().active;
+  const active = unlock?.view().active;
   if (active) {
     unlock.finish(false);
     if (active.holder) S.luckyNote = 'lucky.lostNote';

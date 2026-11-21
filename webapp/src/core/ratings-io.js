@@ -12,7 +12,7 @@ import { makePuzzle } from './model.js';
 import { edgeCells, edgeId, wallIds, setWallId } from './edges.js';
 
 export const UNSURE_WEIGHT = 0.5;
-export const ratingWeight = r => (r && r.unsure ? UNSURE_WEIGHT : 1);
+export const ratingWeight = r => (r?.unsure ? UNSURE_WEIGHT : 1);
 
 export const LEAN_STEP = 0.25;
 const round2 = x => Math.round(x * 100) / 100;
@@ -222,18 +222,19 @@ export function parseRatingComment(text) {
       unsure = false,
       seen = new Set();
     for (const part of s.split(/\s*[;,]\s*/).filter(Boolean)) {
-      let m;
-      if ((m = part.match(new RegExp(`^human\\s+(${NUM})$`)))) {
+      const humanPart = part.match(new RegExp(`^human\\s+(${NUM})$`));
+      const rangePart = humanPart
+        ? null
+        : part.match(new RegExp(`^range\\s+(${NUM})(?:\\s*(?:-|–|—|to)\\s*(${NUM}))?$`));
+      if (humanPart) {
         if (seen.has('human')) return bad('"human" given twice');
         seen.add('human');
-        human = +m[1];
-      } else if (
-        (m = part.match(new RegExp(`^range\\s+(${NUM})(?:\\s*(?:-|–|—|to)\\s*(${NUM}))?$`)))
-      ) {
+        human = +humanPart[1];
+      } else if (rangePart) {
         if (seen.has('range')) return bad('"range" given twice');
         seen.add('range');
-        lo = +m[1];
-        hi = m[2] == null ? lo : +m[2];
+        lo = +rangePart[1];
+        hi = rangePart[2] == null ? lo : +rangePart[2];
       } else if (part === 'unsure') unsure = true;
       else if (part === 'sure') unsure = false;
       else return bad(`cannot read "${part}" (expected human N, range A-B, unsure)`);

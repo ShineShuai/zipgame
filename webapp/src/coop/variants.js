@@ -4,7 +4,7 @@ import { generateExact, EXACT_SIZES } from '../core/gen/exact.js';
 import { generateLoop, LOOP_SIZES } from '../core/gen/loop.js';
 import { generatePentagon } from '../core/gen/pentagon.js';
 import { generateTwoPaths, TWOPATHS_SIZES } from '../core/gen/twopaths.js';
-import { PENTAGON_SIZES, isPentagon } from '../core/pentagon.js';
+import { PENTAGON_SIZES } from '../core/pentagon.js';
 import { loadBalls, pickBall } from '../core/solid/balls.js';
 import { generateSurfaceSteps } from '../core/surface/gen.js';
 import { isSurfacePuzzle } from '../core/surface/puzzle.js';
@@ -91,7 +91,7 @@ export const COOP_VARIANTS = [
   {
     id: 'ball',
     sizes: () => [0],
-    generate: (n, seed) => generateBall(seed),
+    generate: (_n, seed) => generateBall(seed),
     ready: loadBalls,
   },
 ];

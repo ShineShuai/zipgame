@@ -27,7 +27,7 @@ export async function runCompare(o) {
       }),
       clockA,
     ),
-    { onEvent: e => o.onEvent && o.onEvent('A', e) },
+    { onEvent: e => o.onEvent?.('A', e) },
   );
   const clockB = { ms: 0 };
   const b = await runAsync(
@@ -42,7 +42,7 @@ export async function runCompare(o) {
       }),
       clockB,
     ),
-    { onEvent: e => o.onEvent && o.onEvent('B', e) },
+    { onEvent: e => o.onEvent?.('B', e) },
   );
   return { seed, msA: clockA.ms, msB: clockB.ms, a, b };
 }

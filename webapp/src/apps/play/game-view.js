@@ -20,7 +20,7 @@ import { zoomMapHtml } from './zoom-map.js';
 // rendered when the puzzle couldn't be graded, rather than a misleading placeholder number.
 function difficultyBadgeHtml() {
   const d = S.difficulty;
-  if (!d || !d.ok || S.calib) return ''; // a calibration game is played blind (features/calib.js)
+  if (!d?.ok || S.calib) return ''; // a calibration game is played blind (features/calib.js)
   const g = d.trap.grade;
   return `<span class="difficulty-badge">${t('grade.' + g)} · ${g}/5</span>`;
 }
@@ -29,8 +29,8 @@ function difficultyBadgeHtml() {
 // Hidden by default; same hold-to-reveal pattern as seedTag.
 export function difficultyDevHtml() {
   const d = S.difficulty,
-    tm = d && d.trap,
-    g = d && d.legacy;
+    tm = d?.trap,
+    g = d?.legacy;
   const reduced = ['arrows', 'exact', 'wrap', 'loop', 'teleport', 'twopaths', 'pentagon'].includes(
     S.variant,
   );
@@ -139,12 +139,12 @@ export function renderGame() {
   const hintDisabled = S.finished || S.hintsUsed >= cap ? 'disabled' : '';
   const gotdAttempt = S.isGotd ? store.attemptOn(S.gotdDate) : null; // today's record, or the replayed day's
   const gotdStats =
-    S.finished && gotdAttempt && gotdAttempt.stats
+    S.finished && gotdAttempt?.stats
       ? `<p class="note gotd-stats">${statsLineT(gotdAttempt.stats, S.showDev)}</p>`
       : '';
   // a win on the live Game of Day (features/champ.js)
   const cp = S.finished && S.champWon && champ ? champ.progress() : null;
-  const champKey = S.champWon && S.champWon.pick ? 'champ.pick' : 'champ.won';
+  const champKey = S.champWon?.pick ? 'champ.pick' : 'champ.won';
   const champNote = cp ? `<p class="note champ-won">${t(champKey, cp.total - cp.done)}</p>` : '';
   const penalty = S.hintsUsed
     ? t('game.penalty', sec(HINT_PENALTY_S * S.hintsUsed), S.hintsUsed)

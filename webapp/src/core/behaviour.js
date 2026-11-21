@@ -119,7 +119,7 @@ export function fromWire(obj) {
   const row = {};
   for (const [k, v] of Object.entries(obj)) {
     const col = COLUMNS.find(c => c.name === k);
-    if (col && col.sql.startsWith('BLOB') && typeof v === 'string') {
+    if (col?.sql.startsWith('BLOB') && typeof v === 'string') {
       const b = fromB64u(v);
       if (!b) return null;
       row[k] = b;
@@ -226,7 +226,7 @@ const kindClass = mode => (!mode || mode === 'local' ? 'local' : 'daily');
 export function skillBucket(records, mode) {
   const same = r => mode === undefined || kindClass(r.mode) === kindClass(mode);
   const xs = (records || [])
-    .filter(r => r && r.solved && !r.hints && r.ms > 0 && r.n > 0 && same(r))
+    .filter(r => r?.solved && !r.hints && r.ms > 0 && r.n > 0 && same(r))
     .slice(-SKILL_WINDOW)
     .map(r => r.ms / (r.n * r.n))
     .sort((a, b) => a - b);
@@ -268,13 +268,14 @@ export function unpackEv(bytes) {
 // the tab hidden (the timer keeps running
 // in the background), no repeat of a known puzzle, and a local game only within localSizes and when its puzzle packs.
 export function rowFromGame(g, cfg, now = Date.now()) {
-  if (!g || !g.puzzle || g.variant || g.puzzle.holes || !KINDS.includes(g.mode)) return null;
+  if (!g?.puzzle || g.variant || g.puzzle.holes || !KINDS.includes(g.mode)) return null;
   if (g.hiddenMs > cfg.hiddenMaxMs || g.known || !(g.ms >= MIN_MS && g.ms <= MAX_MS)) return null;
   let pz = null;
   if (g.mode === 'local') {
     const [lo, hi] = cfg.localSizes;
-    if (g.shared || g.puzzle.n < lo || g.puzzle.n > hi || !(pz = packPuzzle(g.puzzle)))
-      return null;
+    if (g.shared || g.puzzle.n < lo || g.puzzle.n > hi) return null;
+    pz = packPuzzle(g.puzzle);
+    if (!pz) return null;
   }
   const cap = v => Math.min(65535, Math.max(0, Math.round(v || 0)));
   const flags = { hint: g.hints > 0, abandoned: Boolean(g.abandoned) };

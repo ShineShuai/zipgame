@@ -84,7 +84,10 @@ const orders = new Map();
 export function sizeForDay(day) {
   const cycle = Math.floor(day / CYCLE_DAYS);
   let order = orders.get(cycle);
-  if (!order) orders.set(cycle, (order = cycleOrder(cycle)));
+  if (!order) {
+    order = cycleOrder(cycle);
+    orders.set(cycle, order);
+  }
   return order[day - cycle * CYCLE_DAYS];
 }
 

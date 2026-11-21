@@ -39,7 +39,7 @@ export function openSlots(top, walls) {
   for (let cell = 0; cell < top.T; cell++) {
     for (let k = 0; k < top.deg[cell]; k++) {
       const edge = top.edgeAt[cell * SLOTS + k];
-      open[cell * SLOTS + k] = edge >= 0 && !(walls && walls[edge]) ? 1 : 0;
+      open[cell * SLOTS + k] = edge >= 0 && !walls?.[edge] ? 1 : 0;
     }
   }
   return open;
@@ -414,15 +414,15 @@ export function solveSurface(p, opts = {}) {
       path[depth] = cell;
       if (remaining === 1) {
         search(cell, depth + 1, wanted);
-      } else if (
-        (rowDone[wanted] || (fillRow(wanted), true)) &&
-        toNumber[wanted * T + cell] + tail[wanted] <= remaining - 1
-      ) {
-        const alive = takeAway(head);
-        if (alive && linked(head, cell)) {
-          search(cell, depth + 1, wanted);
+      } else {
+        if (!rowDone[wanted]) fillRow(wanted);
+        if (toNumber[wanted * T + cell] + tail[wanted] <= remaining - 1) {
+          const alive = takeAway(head);
+          if (alive && linked(head, cell)) {
+            search(cell, depth + 1, wanted);
+          }
+          giveBack(head);
         }
-        giveBack(head);
       }
       vis[cell] = 0;
       if (count >= limit || capped) {

@@ -251,7 +251,7 @@ export function createDrawing(puzzle) {
   }
 
   function clear() {
-    links.forEach((list, cell) => {
+    links.forEach((_list, cell) => {
       links[cell] = [];
     });
     stamps.clear();

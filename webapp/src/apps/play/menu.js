@@ -35,7 +35,7 @@ import { giftBoxHtml, giftOf, noteGiftShown } from './gift-ui.js';
 // Native radios: keyboard (arrows), screen readers and touch work without extra code; css/play.css draws the state.
 // A locked variant is in the markup from the start (setDevReveal shows it while V is held, dashed and marked with a
 // lock); once it has been picked it stays until the page is reloaded.
-const isUnlocked = mode => mode === 'standard' || Boolean(unlock && unlock.unlocked(mode));
+const isUnlocked = mode => mode === 'standard' || Boolean(unlock?.unlocked(mode));
 export const typeShown = mode => isUnlocked(mode) || S.showDev || S.mode === mode;
 
 function variantPickerHtml() {
@@ -118,12 +118,12 @@ function gotdCardHtml() {
       ? ''
       : t('replay.locked', replay.toNext());
   const offHint = offReason ? `<p class="btn-hint">${offReason}</p>` : '';
-  const attemptText =
-    attempt && attempt.solved ? t('menu.attemptSolved', sec(attempt.time)) : t('menu.attemptDone');
-  const stats =
-    attempt && attempt.stats
-      ? `<br><span class="gotd-stats">${statsLineT(attempt.stats, S.showDev)}</span>`
-      : '';
+  const attemptText = attempt?.solved
+    ? t('menu.attemptSolved', sec(attempt.time))
+    : t('menu.attemptDone');
+  const stats = attempt?.stats
+    ? `<br><span class="gotd-stats">${statsLineT(attempt.stats, S.showDev)}</span>`
+    : '';
   const attemptNote = attempt ? `<p class="note">${attemptText}${stats}</p>` : '';
   const hintNote = S.gotdHint ? `<p class="note error">${t(...S.gotdHint)}</p>` : '';
   return `
@@ -143,7 +143,7 @@ function gotdCardHtml() {
         ${offHint}
         ${attemptNote}
         ${hintNote}
-        ${statusPanelHtml(chances, streak && streak.view())}
+        ${statusPanelHtml(chances, streak?.view())}
         ${BEHAVIOUR.enabled ? `<p class="small storage-note" id="behaviourNote" style="${S.showDev ? '' : 'display:none'}" title="For each solved game: the puzzle, your time and how many cells you took back. No name, no identifier. Games with a hint or a long time in a hidden tab are not sent.">Anonymous play stats: <a href="#" id="behaviourToggle">${S.behaviourOn ? 'on' : 'off'}</a></p>` : ''}
       </section>`;
 }
@@ -166,10 +166,9 @@ export function storageNoteText() {
   const unlockDev = uv
     ? ` · unlock: ${uv.tokens} chance(s), lucky game ${uv.open ? 'open' : 'played'}, next lucky day in ${uv.daysToNext}`
     : '';
-  const refused =
-    storage.refused && storage.refused.size
-      ? ` · writes refused: ${[...storage.refused].join(', ')}`
-      : '';
+  const refused = storage.refused?.size
+    ? ` · writes refused: ${[...storage.refused].join(', ')}`
+    : '';
   return `Storage: ${storage.name}${storage.shared ? '' : ' (local only)'}${storageUsed}${refused} · generation: ${generationWhere()}${unlockDev}`;
 }
 function freePlayCardHtml() {
@@ -293,7 +292,7 @@ function statusPanelHtml(chances, sv) {
       </span>`,
       )
     : '';
-  const cp = champ && champ.progress(); // wins towards a reward pick (features/champ.js)
+  const cp = champ?.progress(); // wins towards a reward pick (features/champ.js)
   const champLines = cp && [t('champ.next', cp.total - cp.done), t('champ.help', cp.total)];
   const champCard = cp
     ? card(

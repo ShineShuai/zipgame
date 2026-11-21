@@ -10,7 +10,7 @@ export const edgeId = (n, a, b, wrap = false) => {
     if (neighbourCell(n, true, b, 0) === a) return b * 2;
     return (neighbourCell(n, true, a, 2) === b ? a : b) * 2 + 1;
   }
-  const lo = a < b ? a : b,
+  const lo = Math.min(a, b),
     gap = a < b ? b - a : a - b;
   // A grid has no edge between these two cells: most likely a wrap-around board and a missing
   // `wrap` argument. Without this check the id would silently belong to another edge.
@@ -38,11 +38,11 @@ export const hasWall = (p, a, b) => hasWallId(p.walls, edgeId(p.n, a, b, p.wrap)
 export function allEdges(n, holes = null, wrap = false) {
   const out = [];
   for (let i = 0; i < n * n; i++) {
-    if (holes && holes[i]) continue;
+    if (holes?.[i]) continue;
     const right = neighbourCell(n, wrap, i, 0),
       down = neighbourCell(n, wrap, i, 2);
-    if (right >= 0 && !(holes && holes[right])) out.push(i * 2);
-    if (down >= 0 && !(holes && holes[down])) out.push(i * 2 + 1);
+    if (right >= 0 && !holes?.[right]) out.push(i * 2);
+    if (down >= 0 && !holes?.[down]) out.push(i * 2 + 1);
   }
   return out;
 }

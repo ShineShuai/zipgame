@@ -168,7 +168,7 @@ export function makeIncremental(nb, T, end, vis, holes = null, cells = T) {
     for (let u = 0; u < T; u++) {
       S[OE + u] = u;
       S[CN + u] = 1;
-      if (holes && holes[u]) continue;
+      if (holes?.[u]) continue;
       S[AV + u] = nbm[u]; // only `cur` is on the path, and the head counts as an open neighbour
       const degree = POP[nbm[u]];
       S[DG + u] = degree;

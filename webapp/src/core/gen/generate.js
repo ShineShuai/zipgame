@@ -374,7 +374,7 @@ export function* generate(n, seed, o = {}) {
       K,
     });
     let step;
-    while (!(step = events.next()).done) {
+    for (step = events.next(); !step.done; step = events.next()) {
       yield {
         ...step.value,
         frac: BUILD_SHARE + minShare + (REFINE_SHARE * step.value.nodes) / budget,

@@ -188,7 +188,7 @@ export function* generateCutout(n, seed, o = {}) {
       effort: how.effort,
     });
     let step;
-    while (!(step = search.next()).done) {
+    for (step = search.next(); !step.done; step = search.next()) {
       const { K: k } = step.value;
       K = k ?? K;
       yield { frac: from + share * (step.value.frac ?? 0), walls: shown, K };

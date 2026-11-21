@@ -21,7 +21,7 @@ export function createWorkerRunner({ spawn, fallback }) {
       try {
         worker = spawn();
       } catch (e) {
-        console.warn('generation worker: could not start, using this thread:', e && e.message);
+        console.warn('generation worker: could not start, using this thread:', e?.message);
       }
       if (!worker) unusable = true;
     }
@@ -31,7 +31,7 @@ export function createWorkerRunner({ spawn, fallback }) {
   // Resolves with the result; rejects with signal.reason (AbortError by default) when the signal fires, and with an Error when
   // the job itself failed. A cancelled or timed-out job ends its worker; the next job starts a fresh one.
   function run(job, { onEvent, signal } = {}) {
-    if (signal && signal.aborted) return Promise.reject(signal.reason ?? abortError());
+    if (signal?.aborted) return Promise.reject(signal.reason ?? abortError());
     const w = get();
     if (!w) return fallback(job, { onEvent, signal });
     return new Promise((resolve, reject) => {

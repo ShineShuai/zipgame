@@ -60,7 +60,7 @@ export function* generatePentagon(n, seed, o = {}) {
     const candidateSeed = Math.floor(rnd() * 4294967296);
     const events = generateSurfaceSteps(PENTAGON_KIND, n, candidateSeed, { K, attempt: i + 1 });
     let step;
-    while (!(step = events.next()).done) {
+    for (step = events.next(); !step.done; step = events.next()) {
       const { phase, done, total } = step.value;
       const share = phase === 'walls' && total ? done / total : 0;
       yield { frac: (i + share) / wanted, walls: best ? best.walls : null, K };

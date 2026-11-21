@@ -77,6 +77,7 @@ const idOf = topic => {
 };
 
 // A greeting as shown: no control characters, trimmed, at most GREETING_MAX characters.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it removes
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
 export const cleanGreeting = text =>
   [
@@ -233,7 +234,7 @@ export async function hostRoom({
     timers.clear(expiry);
     timers.clear(downCheck);
     hub.clear(topic.open);
-    guests.forEach((guest, id) => {
+    guests.forEach((_guest, id) => {
       [topic.req(id), topic.seen(id), topic.ok(id), topic.ans(id)].forEach(name =>
         hub.clear(name),
       );

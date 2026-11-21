@@ -314,7 +314,8 @@ export function createSolidPlay(app) {
     S.gen = { frac: 0, walls: null, K: null };
     S.genNotice = null;
     app.render();
-    const job = (S.genJob = cancellable());
+    const job = cancellable();
+    S.genJob = job;
     try {
       if (kind === BALL_KIND) {
         await loadBalls();
@@ -539,7 +540,7 @@ export function createSolidPlay(app) {
       solutions: [],
       visible: [],
       palette: playPalette(),
-      continues: (from, to) => canPush(game.P, game.path, to, PLAY_STEP),
+      continues: (_from, to) => canPush(game.P, game.path, to, PLAY_STEP),
       hintCell: game.hintCell,
       hintWrongCell: game.hintWrongCell,
     };
@@ -611,7 +612,7 @@ export function createSolidPlay(app) {
 
   const cellUnder = event => {
     const hit = document.elementFromPoint(event.clientX, event.clientY);
-    const polygon = hit && hit.closest ? hit.closest('[data-cell]') : null;
+    const polygon = hit?.closest ? hit.closest('[data-cell]') : null;
     return polygon && $('solidWrap').contains(polygon) ? Number(polygon.dataset.cell) : -1;
   };
 
@@ -1110,7 +1111,7 @@ export function createSolidPlay(app) {
     if (S.screen !== 'solid' || !game || typing) {
       return;
     }
-    if (zoom && zoom.target.isConnected && zoom.onKey(event, headPixel())) {
+    if (zoom?.target.isConnected && zoom.onKey(event, headPixel())) {
       event.preventDefault();
       return;
     }

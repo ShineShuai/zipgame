@@ -147,7 +147,8 @@ function pickMove(up, rnd, minimal) {
     : up
       ? MOVES_UP
       : MOVES_DOWN) {
-    if ((r -= w) < 0) return name;
+    r -= w;
+    if (r < 0) return name;
   }
   return 'move';
 }
@@ -361,7 +362,7 @@ export function* generateTargeted(n, grade, seed, o = {}) {
           }
         : (q_, w) => {
             setWallId(q_.walls, w, false);
-            const old = parentWit && parentWit.get(w);
+            const old = parentWit?.get(w);
             if (old && validPath(q_, old)) {
               stats.witnessSkips++;
               setWallId(q_.walls, w, true);

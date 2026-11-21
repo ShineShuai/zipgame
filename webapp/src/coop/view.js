@@ -110,7 +110,7 @@ function badgesMarkup(puzzle, drawing) {
 
 // hint: { kind: 'wrong' | 'next', edge: [a, b] } or null.
 function hintMarkup(puzzle, hint) {
-  if (!hint || !hint.edge) {
+  if (!hint?.edge) {
     return '';
   }
   const middle = edgeMiddleOf(puzzle, ...hint.edge, CELL);

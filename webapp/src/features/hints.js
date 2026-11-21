@@ -14,7 +14,7 @@ export function solutionOf(p) {
     p.path = solveSurface(p, { limit: 1, nodeCap: 2000000 }).path;
   } else if (!p.path) {
     const r = solve(p, { limit: 1, nodeCap: 2000000, capture: true, prop: true });
-    p.path = (r.paths && r.paths[0]) || null;
+    p.path = r.paths?.[0] || null;
   }
   return p.path;
 }

@@ -48,8 +48,8 @@ const local = {
   },
   async keys(prefix = '') {
     try {
-      return Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)).filter(
-        k => k && k.startsWith(prefix),
+      return Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)).filter(k =>
+        k?.startsWith(prefix),
       );
     } catch {
       return [];

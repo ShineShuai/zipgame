@@ -27,7 +27,7 @@ export async function fetchJson(fetchFn, url, init, timeoutMs) {
     }
     return { ok: response.ok, status: response.status, body };
   } catch (error) {
-    throw new CloudError('network', error && error.message);
+    throw new CloudError('network', error?.message);
   } finally {
     clearTimeout(timer);
   }

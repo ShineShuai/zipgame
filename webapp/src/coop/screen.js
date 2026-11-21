@@ -372,7 +372,6 @@ export function openScreen(env) {
   let zoom = null;
   const panRouter = createRouter({ pan: () => true }); // pan mode only: pans and pinches
   let pair = null; // two fingers on a turnable solid: { start, mode: null | 'zoom' | 'turn' }
-  const zoomOn = () => Boolean(zoom) && isZoomed(state.cam);
   const turnsHere = () => solid() && turnable(state.puzzle, state.view);
 
   // The whole picture of view `i` as a view box.

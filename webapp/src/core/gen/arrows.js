@@ -357,7 +357,7 @@ export function* generateArrows(n, seed, o = {}) {
     const total = candidate.order.length;
     let tested = 0;
     let step;
-    while (!(step = events.next()).done) {
+    for (step = events.next(); !step.done; step = events.next()) {
       tested++;
       shown = Math.min(shown, step.value.arrows);
       const progress = (i + tested / total) / candidates.length;
@@ -391,7 +391,7 @@ export function* generateArrows(n, seed, o = {}) {
       K,
     });
     let step;
-    while (!(step = events.next()).done) {
+    for (step = events.next(); !step.done; step = events.next()) {
       yield {
         frac: BUILD_SHARE + minShare + (REFINE_SHARE * step.value.nodes) / budget,
         arrows: step.value.arrows,

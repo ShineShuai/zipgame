@@ -47,6 +47,7 @@ function validSecret(text) {
 }
 
 const PEER_LABEL_MAX = 40; // characters of a device's name
+// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it removes
 const CONTROL = /[\u0000-\u001f\u007f]/g;
 export const cleanLabel = text =>
   [
@@ -165,8 +166,8 @@ export function createSync({ storage, maxDevices = MAX_DEVICES }) {
     enabled,
     status: () => ({
       enabled: enabled(),
-      p2p: Boolean(id && id.p2p),
-      cloud: Boolean(id && id.cloud),
+      p2p: Boolean(id?.p2p),
+      cloud: Boolean(id?.cloud),
       dev: id ? id.dev : null,
       devices: id ? foreign.size + 1 : 0,
     }),
@@ -187,8 +188,8 @@ export function createSync({ storage, maxDevices = MAX_DEVICES }) {
           label: null,
           peers: [],
         };
-        id.p2p ||= Boolean(mode && mode.p2p);
-        if (mode && mode.cloud) {
+        id.p2p ||= Boolean(mode?.p2p);
+        if (mode?.cloud) {
           id.cloud = true;
           const given =
             mode.secret instanceof Uint8Array && mode.secret.length === SECRET_BYTES
@@ -231,7 +232,7 @@ export function createSync({ storage, maxDevices = MAX_DEVICES }) {
       }),
 
     // How this device is called to the others (at most 40 characters), or null.
-    label: () => (id && id.label) || null,
+    label: () => id?.label || null,
     setLabel: text =>
       queued(async () => {
         if (id) {
@@ -240,7 +241,7 @@ export function createSync({ storage, maxDevices = MAX_DEVICES }) {
         }
       }),
     // The devices this one was linked with (p2p.js finds them again by their shared secret).
-    peers: () => (id && id.peers ? id.peers.map(peer => ({ ...peer })) : []),
+    peers: () => (id?.peers ? id.peers.map(peer => ({ ...peer })) : []),
     // A linked device turned its sync off: it is no longer one of the linked devices (the data it
     // gave stays). -> whether it was one.
     removePeer: dev =>
@@ -268,14 +269,6 @@ export function createSync({ storage, maxDevices = MAX_DEVICES }) {
         await saveId();
         return true;
       }),
-    removePeer: dev =>
-      queued(async () => {
-        if (id && (id.peers || []).some(peer => peer.dev === dev)) {
-          id.peers = id.peers.filter(peer => peer.dev !== dev);
-          await saveId();
-          emit();
-        }
-      }),
     // They traded slices just now (`at`, ms since 1970).
     touchPeer: (dev, at) =>
       queued(async () => {
@@ -287,7 +280,7 @@ export function createSync({ storage, maxDevices = MAX_DEVICES }) {
       }),
 
     // The group's secret (10 bytes) for the cloud, or null.
-    secret: () => (id && id.secret ? fromBase64Url(id.secret) : null),
+    secret: () => (id?.secret ? fromBase64Url(id.secret) : null),
     // Joins the group of this secret (a device that was linked brought it). Without `keep` the
     // slices of another group are dropped (this device's own data stays and is offered to the new
     // group); with it they stay: they are devices of the same player.
@@ -307,9 +300,9 @@ export function createSync({ storage, maxDevices = MAX_DEVICES }) {
         return true;
       }),
     // The cloud way is on and there is a secret to use it with.
-    cloudOn: () => Boolean(id && id.cloud && id.secret),
+    cloudOn: () => Boolean(id?.cloud && id.secret),
     // A short name of the secret (core/sync/cloud-keys.js), or null: two devices compare it.
-    secretId: () => (id && id.secret ? secretId(fromBase64Url(id.secret)) : Promise.resolve(null)),
+    secretId: () => (id?.secret ? secretId(fromBase64Url(id.secret)) : Promise.resolve(null)),
     // Cloud off and the secret forgotten (after the cloud copy was deleted).
     forgetSecret: () =>
       queued(async () => {

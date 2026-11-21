@@ -10,10 +10,10 @@ import { tursoCloud } from './turso.js';
 const FACTORIES = { supabase: supabaseCloud, turso: tursoCloud };
 
 export function cloudBackends(cloud, entries, options = {}) {
-  const ids = [cloud && cloud.primary, cloud && cloud.second].filter(Boolean);
+  const ids = [cloud?.primary, cloud?.second].filter(Boolean);
   const backends = [];
   for (const id of new Set(ids)) {
-    const entry = entries && entries[id];
+    const entry = entries?.[id];
     const make = entry && FACTORIES[entry.type];
     if (make && entry.url && entry.key) {
       backends.push(make(entry, id, options));

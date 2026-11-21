@@ -204,7 +204,7 @@ const alternativePoints = (w, cfg) =>
 // edges).
 export function trapMetricsFromProfile(
   p,
-  path,
+  _path,
   profile,
   cfg = TRAP_CFG,
   ladTrials = undefined,

@@ -279,7 +279,7 @@ export function createSurfaceController(ctx) {
       template: templateVisible ? template : null,
       solutions,
       visible,
-      continues: (from, to) => canPush(P, path, to, PLAY_STEP),
+      continues: (_from, to) => canPush(P, path, to, PLAY_STEP),
     };
     const pictures = main.map((net, i) => surfaceSvg(net, { ...state, idSuffix: String(i) }));
     frames = pictures.map(picture => picture.frame);

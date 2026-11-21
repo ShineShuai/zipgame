@@ -108,7 +108,7 @@ export function serialize(p, opts = {}) {
   if (p.portals) {
     lines.push('# portals r,c~r,c ...     (pairs of linked cells; a step between them is a move)');
   }
-  if (opts.path && opts.path.length)
+  if (opts.path?.length)
     lines.push('# path r,c ...           (current play-mode line, in order, optional)');
   lines.push(...timeComments(opts.times), ...(opts.comments || []).map(c => `# ${c}`));
   lines.push(`size ${p.n}`);
@@ -126,7 +126,7 @@ export function serialize(p, opts = {}) {
     const pairs = portals.map(pair => pair.map(cell => cellKey(p.n, cell)).join('~'));
     lines.push(('portals ' + pairs.join(' ')).trim());
   }
-  if (opts.path && opts.path.length)
+  if (opts.path?.length)
     lines.push('path ' + opts.path.map(cell => `${(cell / p.n) | 0},${cell % p.n}`).join(' '));
   return lines.join('\n');
 }
@@ -165,7 +165,7 @@ export function parse(text) {
       kw = parts[0].toLowerCase();
     if (kw === 'size') {
       n = parseInt(parts[1], 10);
-      if (isNaN(n) || n < 2 || n > MAX_N) throw new Error(`Invalid size: "${parts[1]}"`);
+      if (Number.isNaN(n) || n < 2 || n > MAX_N) throw new Error(`Invalid size: "${parts[1]}"`);
     } else if (kw === 'checkpoints' || kw === 'cp') {
       for (const t of parts.slice(1)) {
         const m = t.match(/^(\d+),(\d+)=(\d+)$/);
@@ -208,7 +208,7 @@ export function parse(text) {
       isPortals = true;
       for (const t of parts.slice(1)) {
         const m = t.match(/^(\d+),(\d+)~(\d+),(\d+)$/);
-        if (!m) throw new Error(`Invalid portal pair: \"${t}\" (expected r,c~r,c)`);
+        if (!m) throw new Error(`Invalid portal pair: "${t}" (expected r,c~r,c)`);
         ps.push([+m[1], +m[2], +m[3], +m[4], t]);
       }
     } else if (kw === 'path') {
@@ -246,7 +246,7 @@ export function parse(text) {
   }
   for (const [r, c, v] of cps) {
     if (r >= n || c >= n) throw new Error(`Checkpoint out of range: ${r},${c}`);
-    if (p.holes && p.holes[r * n + c]) throw new Error(`Checkpoint on a hole: ${r},${c}`);
+    if (p.holes?.[r * n + c]) throw new Error(`Checkpoint on a hole: ${r},${c}`);
     if (v < 1 || v > n * n) throw new Error(`Checkpoint number out of range: ${v}`);
     p.cp[r * n + c] = v;
   }

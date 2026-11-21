@@ -37,8 +37,8 @@ export const SINKS = {
       const first = body && Array.isArray(body.results) && body.results[0];
       if (!first) throw new Error('not a pipeline reply');
       if (first.type === 'error') {
-        if (/\binvalid\b/.test(first.error && first.error.message)) return 'rejected';
-        throw new Error(first.error && first.error.message);
+        if (/\binvalid\b/.test(first.error?.message)) return 'rejected';
+        throw new Error(first.error?.message);
       }
       return 'ok';
     },

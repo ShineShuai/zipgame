@@ -51,7 +51,7 @@ export function supabaseCloud(
         { p_id: id, p_auth: auth, p_dev: dev, p_seq: seq, p_data: data },
         keepalive,
       );
-      if (!body || body.ok !== true) throw new CloudError('network', 'not a reply');
+      if (body?.ok !== true) throw new CloudError('network', 'not a reply');
       return body.stored ? 'stored' : 'stale';
     },
     // have: { dev: seq } -> [{ dev, seq, data }] newer than that
@@ -71,7 +71,7 @@ export function supabaseCloud(
     // -> true when a group was deleted, false when there was none
     async remove({ id, auth }) {
       const body = await rpc('sync_delete', { p_id: id, p_auth: auth });
-      return Boolean(body && body.deleted);
+      return Boolean(body?.deleted);
     },
   };
 }

@@ -176,7 +176,7 @@ export function pentagonMesh(n) {
     cells.push(ring);
     centres.push([vx, vy]);
   }
-  return { positions, cells, faces: inside.map((id, i) => i), centres };
+  return { positions, cells, faces: inside.map((_id, i) => i), centres };
 }
 
 // The cells of a board with only 2 neighbours and what they fix: such a cell uses both its sides

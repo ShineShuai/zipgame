@@ -51,7 +51,7 @@ export function packRatings(entries) {
 }
 export function unpackRatings(raw) {
   if (Array.isArray(raw)) return raw; // a v1 value is the list itself
-  if (!raw || raw.v !== 2 || !Array.isArray(raw.m) || !Array.isArray(raw.e)) return [];
+  if (raw?.v !== 2 || !Array.isArray(raw.m) || !Array.isArray(raw.e)) return [];
   return raw.e
     .filter(t => Array.isArray(t) && typeof t[0] === 'string')
     .map(t => {
@@ -86,13 +86,7 @@ export function packPairs(pairs) {
 }
 export function unpackPairs(raw) {
   if (Array.isArray(raw)) return raw;
-  if (
-    !raw ||
-    raw.v !== 2 ||
-    !Array.isArray(raw.m) ||
-    !Array.isArray(raw.p) ||
-    !Array.isArray(raw.q)
-  )
+  if (raw?.v !== 2 || !Array.isArray(raw.m) || !Array.isArray(raw.p) || !Array.isArray(raw.q))
     return [];
   const metrics = raw.p.map(t => rowBack(t[1], raw.m));
   return raw.q

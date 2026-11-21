@@ -21,9 +21,10 @@ export function createCalib(storage, { fetchFn = (...a) => fetch(...a), rnd = Ma
     if (!res.ok) throw new Error('calibration index: HTTP ' + res.status);
     const v = await res.json();
     const lists = v && v.v === 1 && v.sizes && Object.values(v.sizes);
-    const ok = lists && lists.every(l => Array.isArray(l) && l.length);
+    const ok = lists?.every(l => Array.isArray(l) && l.length);
     if (!ok) throw new Error('calibration index: bad format');
-    return (index = v);
+    index = v;
+    return index;
   }
   async function read(n, list) {
     try {
@@ -33,7 +34,7 @@ export function createCalib(storage, { fetchFn = (...a) => fetch(...a), rnd = Ma
     } catch {
       /* fall through: a new start */
     }
-    const block = Math.max(1, (index.block && index.block[n]) | 0);
+    const block = Math.max(1, index.block?.[n] | 0);
     return { pos: Math.floor(rnd() * Math.floor(list.length / block)) * block, solved: false };
   }
   const write = async (n, rec) => {

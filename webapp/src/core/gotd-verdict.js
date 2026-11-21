@@ -23,7 +23,7 @@ export const VERDICTS = ['approve', 'reject'];
 // ---- the rating widget: the same rules as the difficulty panel's (click a grade; a neighbour makes "2 or 3"; then which one it is closer to) ----
 // sel = { lo, hi, lean, unsure } or null. Clicking the single selected grade again removes the rating.
 export function nextSelection(sel, g) {
-  const keep = { unsure: !!(sel && sel.unsure) };
+  const keep = { unsure: !!sel?.unsure };
   if (sel && sel.lo === sel.hi && sel.lo === g) return null;
   if (sel && sel.lo === sel.hi && Math.abs(g - sel.lo) === 1)
     return { lo: Math.min(g, sel.lo), hi: Math.max(g, sel.lo), lean: 0, ...keep };
@@ -141,7 +141,7 @@ export function parseVerdicts(text) {
   const seen = new Set();
   data.verdicts.forEach((v, i) => {
     const problem = verdictProblem(v);
-    if (problem) bad(`verdict #${i + 1}${v && v.id ? ` (${v.id})` : ''}: ${problem}`);
+    if (problem) bad(`verdict #${i + 1}${v?.id ? ` (${v.id})` : ''}: ${problem}`);
     if (seen.has(v.id)) bad(`verdict #${i + 1}: id ${v.id} appears twice`);
     seen.add(v.id);
   });
@@ -182,13 +182,9 @@ export function applyVerdicts(index, verdicts) {
 export function reviewStats(verdicts) {
   const by = {};
   for (const v of verdicts) {
-    const s = (by[v.stamp || '?'] ||= {
-      reviewed: 0,
-      approved: 0,
-      rejected: 0,
-      sumErr: 0,
-      worst: 0,
-    });
+    const stamp = v.stamp || '?';
+    by[stamp] ||= { reviewed: 0, approved: 0, rejected: 0, sumErr: 0, worst: 0 };
+    const s = by[stamp];
     s.reviewed++;
     s[v.verdict === 'approve' ? 'approved' : 'rejected']++;
     if (v.model && typeof v.human === 'number') {

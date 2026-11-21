@@ -460,10 +460,13 @@ Lines have fewer than 100 columns. [Biome](https://biomejs.dev) formats (`webapp
 single quotes, semicolons, trailing commas, line width 99) and lints (its recommended rules, with two
 changes: `useTemplate` is off, and `useIterableCallbackReturn` skips `forEach`, so the short
 `list.forEach(x => set.add(x))` stays). It is a development tool only; the app has no build step. It is
-pinned in `webapp/package.json` and `webapp/package-lock.json` (`npm run check` fails if the lockfile is
-missing, not committed or out of date): run `npm ci` once in `webapp/`, then `npm run format` before a
-commit; `npm run format:check` and `npm run lint` (warnings fail it too) are what CI runs. They cover
-`webapp/test` and `webapp/tools` for now, and `webapp/src` follows. A
+pinned in `webapp/package.json` and `webapp/package-lock.json`: run `npm ci` once in `webapp/`, then
+`npm run format` before a commit; `npm run format:check` and `npm run lint` (warnings fail it too) are
+what CI runs. They cover `webapp/src`, `webapp/test` and `webapp/tools`, except the generated
+`src/core/solid/ball-catalog.js` (`tools/ball-catalog.mjs` writes it). A tool that writes into another
+source file (`fit-trap --write`, `apply-points --write`) leaves it unformatted: run `npm run format`
+after it. A lint rule that is wrong for one line is switched off there with
+`// biome-ignore lint/<group>/<rule>: <reason>`. A
 formatter cannot rewrap comments or split strings, so `npm run check` also runs `test/check-width.js`: no
 file may have more lines of 100 columns or more than in `test/long-lines.json` (the number only goes
 down; `npm run width:update` lowers it after a clean-up). Write `// biome-ignore format: <reason>` above a
