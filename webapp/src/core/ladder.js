@@ -20,7 +20,26 @@ import { maxNumber, startCell, endCell } from './model.js';
 import { buildNeighbors } from './solver/prune.js';
 
 export const LEVELS = ['', 'local', 'chain', 'territory', 'probe1', 'probe2', 'search'];
-const FIELDS = ['es', 'din', 'dopen', 'other', 'sz', 'cnt', 'lo', 'hi', 'near', 'dflag', 'meta', 'dS', 'dE', 'Dseg', 'segLo', 'segHi', 'esAt', 'tm'];
+const FIELDS = [
+  'es',
+  'din',
+  'dopen',
+  'other',
+  'sz',
+  'cnt',
+  'lo',
+  'hi',
+  'near',
+  'dflag',
+  'meta',
+  'dS',
+  'dE',
+  'Dseg',
+  'segLo',
+  'segHi',
+  'esAt',
+  'tm',
+];
 const CAP = { cap: true };
 
 export function ladder(p, o = {}) {
@@ -37,15 +56,20 @@ export function ladder(p, o = {}) {
   const t0 = performance.now();
   const pdMax = o.probeDepth ?? 2;
   const workCap = o.workCap ?? 3e6;
-  const incr = o.incrTerritory !== false, st = o.stats; // incrTerritory:false = the reference: recompute the territory from scratch every time (same results, slower); stats: optional counters
+  const incr = o.incrTerritory !== false,
+    st = o.stats; // incrTerritory:false = the reference: recompute the territory from scratch every time (same results, slower); stats: optional counters
   const trialCap = o.trialCap ?? Infinity; // stop (like workCap) once more than this many what-if trials were made: probeTrials is then trialCap + 1, a lower bound
   const { nb, T } = buildNeighbors(p);
-  const K = maxNumber(p), cp = p.cp, start = startCell(p), end = endCell(p);
+  const K = maxNumber(p),
+    cp = p.cp,
+    start = startCell(p),
+    end = endCell(p);
   if (K < 2) return { error: 'K<2' };
   const pos = new Int32Array(K + 2).fill(-1);
   for (let i = 0; i < T; i++) if (cp[i]) pos[cp[i]] = i;
   const need = new Uint8Array(T).fill(2);
-  need[start] = 1; need[end] = 1;
+  need[start] = 1;
+  need[end] = 1;
   // Holes (puzzle.holes, see model.js) are not part of the board: no edges, nothing to cover.
   // A hole needs 0 edges, so its degree constraint is satisfied from the start, and the path
   // covers TC cells instead of T.
@@ -66,27 +90,45 @@ export function ladder(p, o = {}) {
   // near (nearest checkpoint walking inward, 0 = none). dflag = end cell whose chain changed (L2 recheck).
   // meta[0]: count of cells whose degree constraint is already satisfied (din === need).
   const mk = () => ({
-    es: new Uint8Array(T * 4), din: new Uint8Array(T), dopen: new Uint8Array(T),
-    other: new Int16Array(T), sz: new Int16Array(T), cnt: new Int16Array(T),
-    lo: new Int16Array(T), hi: new Int16Array(T), near: new Int16Array(T),
-    dflag: new Uint8Array(T), meta: new Int32Array(3),
+    es: new Uint8Array(T * 4),
+    din: new Uint8Array(T),
+    dopen: new Uint8Array(T),
+    other: new Int16Array(T),
+    sz: new Int16Array(T),
+    cnt: new Int16Array(T),
+    lo: new Int16Array(T),
+    hi: new Int16Array(T),
+    near: new Int16Array(T),
+    dflag: new Uint8Array(T),
+    meta: new Int32Array(3),
     // L3 territory (see refreshTerritory): kept per state, so a what-if starts from its parent's distances instead of from scratch.
-    dS: new Int16Array(K * T), dE: new Int16Array(K * T), Dseg: new Int32Array(K + 1),
-    segLo: new Int16Array(T), segHi: new Int16Array(T),
+    dS: new Int16Array(K * T),
+    dE: new Int16Array(K * T),
+    Dseg: new Int32Array(K + 1),
+    segLo: new Int16Array(T),
+    segHi: new Int16Array(T),
     esAt: new Uint8Array(T * 4), // es as it was when dS/dE were last brought up to date
-    tm: new Int32Array(3),       // [0] dS/dE valid, [1] global slack, [2] the exact edge test (territory) has run on exactly this data
+    tm: new Int32Array(3), // [0] dS/dE valid, [1] global slack, [2] the exact edge test (territory) has run on exactly this data
   });
-  const copy = (dst, src) => { for (const f of FIELDS) dst[f].set(src[f]); };
+  const copy = (dst, src) => {
+    for (const f of FIELDS) dst[f].set(src[f]);
+  };
   const real = mk();
   let S = real;
   let initBad = false;
   for (let u = 0; u < T; u++) {
     let open = 0;
-    for (let d = 0; d < 4; d++) { if (nb[u * 4 + d] >= 0) open++; else real.es[u * 4 + d] = 2; }
+    for (let d = 0; d < 4; d++) {
+      if (nb[u * 4 + d] >= 0) open++;
+      else real.es[u * 4 + d] = 2;
+    }
     real.dopen[u] = open;
     if (open < need[u]) initBad = true;
-    real.other[u] = u; real.sz[u] = 1; real.cnt[u] = cp[u] ? 1 : 0;
-    real.lo[u] = real.hi[u] = real.near[u] = cp[u]; real.dflag[u] = 1;
+    real.other[u] = u;
+    real.sz[u] = 1;
+    real.cnt[u] = cp[u] ? 1 : 0;
+    real.lo[u] = real.hi[u] = real.near[u] = cp[u];
+    real.dflag[u] = 1;
     if (need[u] === 0) real.meta[0]++;
   }
   if (initBad) return { error: 'cell with too few open edges' };
@@ -94,38 +136,53 @@ export function ladder(p, o = {}) {
   // ---- bookkeeping ----
   const q = [];
   for (let u = 0; u < T; u++) q.push(u);
-  let rec = true, lvl = 1, work = 0;
-  const edgesBy = new Array(7).fill(0), passesBy = new Array(7).fill(0);
+  let rec = true,
+    lvl = 1,
+    work = 0;
+  const edgesBy = new Array(7).fill(0),
+    passesBy = new Array(7).fill(0);
   let probeTrials = 0;
 
   const min0 = (a, b) => (!a ? b : !b ? a : Math.min(a, b));
 
   // Join the chains of u and v (edge u-v just went `in`, din already bumped). false = contradiction.
   function merge(u, v) {
-    const a = S.other[u], b = S.other[v];
-    if (a === v) return false;                                 // closes a cycle
-    const pu = S.near[u], pv = S.near[v];
+    const a = S.other[u],
+      b = S.other[v];
+    if (a === v) return false; // closes a cycle
+    const pu = S.near[u],
+      pv = S.near[v];
     if (pu && pv && pu - pv !== 1 && pv - pu !== 1) return false; // checkpoints at the junction not consecutive
     const size = S.sz[u] + S.sz[v];
-    const lo = min0(S.lo[u], S.lo[v]), hi = Math.max(S.hi[u], S.hi[v]);
+    const lo = min0(S.lo[u], S.lo[v]),
+      hi = Math.max(S.hi[u], S.hi[v]);
     // a full-length chain must cover everything
     if (lo === 1 && hi === K && size !== TC) return false;
     const c = S.cnt[u] + S.cnt[v];
-    const nearA = S.near[a] || pv, nearB = S.near[b] || pu;
-    S.other[a] = b; S.other[b] = a;
-    S.sz[a] = S.sz[b] = size; S.cnt[a] = S.cnt[b] = c; S.lo[a] = S.lo[b] = lo; S.hi[a] = S.hi[b] = hi;
-    S.near[a] = nearA; S.near[b] = nearB;
-    S.dflag[a] = 1; S.dflag[b] = 1;
+    const nearA = S.near[a] || pv,
+      nearB = S.near[b] || pu;
+    S.other[a] = b;
+    S.other[b] = a;
+    S.sz[a] = S.sz[b] = size;
+    S.cnt[a] = S.cnt[b] = c;
+    S.lo[a] = S.lo[b] = lo;
+    S.hi[a] = S.hi[b] = hi;
+    S.near[a] = nearA;
+    S.near[b] = nearB;
+    S.dflag[a] = 1;
+    S.dflag[b] = 1;
     return true;
   }
 
   function setEdge(u, d, val) {
-    const i = u * 4 + d, cur = S.es[i];
+    const i = u * 4 + d,
+      cur = S.es[i];
     if (cur === val) return true;
     if (cur !== 0) return false;
     if (++work > workCap) throw CAP;
     const v = nb[i];
-    S.es[i] = val; S.es[v * 4 + (d ^ 1)] = val;
+    S.es[i] = val;
+    S.es[v * 4 + (d ^ 1)] = val;
     if (rec) edgesBy[lvl]++;
     if (val === 1) {
       if (++S.din[u] > need[u]) return false;
@@ -143,7 +200,9 @@ export function ladder(p, o = {}) {
 
   // L1 for one cell.
   function settle(u) {
-    const nd = S.din[u], no = S.dopen[u], nu = need[u];
+    const nd = S.din[u],
+      no = S.dopen[u],
+      nu = need[u];
     if (nd === nu && no > nu) {
       for (let d = 0; d < 4; d++) if (S.es[u * 4 + d] === 0 && !setEdge(u, d, 2)) return false;
     } else if (no === nu && nd < nu) {
@@ -152,7 +211,11 @@ export function ladder(p, o = {}) {
     return true;
   }
   function l1() {
-    while (q.length) if (!settle(q.pop())) { q.length = 0; return false; }
+    while (q.length)
+      if (!settle(q.pop())) {
+        q.length = 0;
+        return false;
+      }
     return true;
   }
 
@@ -163,16 +226,19 @@ export function ladder(p, o = {}) {
   let terrStale = true;
   function bfs(src, out, off, s) {
     out.fill(-1, off, off + T);
-    out[off + src] = 0; bq[0] = src;
-    for (let h = 0, t = 1; h < t;) {
-      const x = bq[h++], dx = out[off + x];
+    out[off + src] = 0;
+    bq[0] = src;
+    for (let h = 0, t = 1; h < t; ) {
+      const x = bq[h++],
+        dx = out[off + x];
       for (let d = 0; d < 4; d++) {
         if (S.es[x * 4 + d] === 2) continue;
         const y = nb[x * 4 + d];
         if (y < 0 || out[off + y] >= 0) continue;
         const c = cp[y];
         if (c && c !== s && c !== s + 1) continue; // other checkpoints belong to other segments
-        out[off + y] = dx + 1; bq[t++] = y;
+        out[off + y] = dx + 1;
+        bq[t++] = y;
       }
     }
   }
@@ -185,9 +251,12 @@ export function ladder(p, o = {}) {
   // of re-running them was tried: no faster, the fields are small.)
   const aff = new Uint8Array(2 * K);
   function cutsPath(F, off, x, y) {
-    const dx = F[off + x], dy = F[off + y];
+    const dx = F[off + x],
+      dy = F[off + y];
     let w;
-    if (dx >= 0 && dy === dx + 1) w = y; else if (dy >= 0 && dx === dy + 1) w = x; else return false;
+    if (dx >= 0 && dy === dx + 1) w = y;
+    else if (dy >= 0 && dx === dy + 1) w = x;
+    else return false;
     const dw = F[off + w];
     for (let d = 0; d < 4; d++) {
       const i = w * 4 + d;
@@ -205,43 +274,78 @@ export function ladder(p, o = {}) {
       let any = false;
       for (let i = 0; i < T * 4; i++) {
         if (es[i] !== 2 || esAt[i] === 2) continue; // an edge that went out since
-        const x = i >> 2, y = nb[i];
-        if (y < x) continue;                         // each edge once
+        const x = i >> 2,
+          y = nb[i];
+        if (y < x) continue; // each edge once
         for (let s = 1; s < K; s++) {
           for (let f = 0; f < 2; f++) {
             const a = 2 * (s - 1) + f;
-            if (!aff[a] && cutsPath(f ? dE : dS, (s - 1) * T, x, y)) { aff[a] = 1; any = true; }
+            if (!aff[a] && cutsPath(f ? dE : dS, (s - 1) * T, x, y)) {
+              aff[a] = 1;
+              any = true;
+            }
           }
         }
       }
-      if (!any) { esAt.set(es); terrStale = false; if (st) st.same = (st.same || 0) + 1; return 0; }
+      if (!any) {
+        esAt.set(es);
+        terrStale = false;
+        if (st) st.same = (st.same || 0) + 1;
+        return 0;
+      }
     }
-    if (st) { const k = all ? 'full' : 'partial'; st[k] = (st[k] || 0) + 1; }
+    if (st) {
+      const k = all ? 'full' : 'partial';
+      st[k] = (st[k] || 0) + 1;
+    }
     let sum = 0;
     for (let s = 1; s < K; s++) {
       if (all || aff[2 * (s - 1)]) bfs(pos[s], dS, (s - 1) * T, s);
       if (all || aff[2 * (s - 1) + 1]) bfs(pos[s + 1], dE, (s - 1) * T, s);
       const D = dS[(s - 1) * T + pos[s + 1]];
-      if (D < 0) { tm[0] = 0; return -1; }
-      Dseg[s] = D; sum += D;
+      if (D < 0) {
+        tm[0] = 0;
+        return -1;
+      }
+      Dseg[s] = D;
+      sum += D;
     }
     const slack = T - 1 - sum;
-    if (slack < 0) { tm[0] = 0; return -1; }
+    if (slack < 0) {
+      tm[0] = 0;
+      return -1;
+    }
     tm[1] = slack;
-    segLo.fill(0); segHi.fill(0);
+    segLo.fill(0);
+    segHi.fill(0);
     for (let x = 0; x < T; x++) {
       if (holes && holes[x]) continue;
       const k = cp[x];
-      if (k) { segLo[x] = Math.max(1, k - 1); segHi[x] = Math.min(K - 1, k); continue; }
-      let lo = 0, hi = 0;
-      for (let s = 1; s < K; s++) {
-        const a = dS[(s - 1) * T + x], b = dE[(s - 1) * T + x];
-        if (a >= 0 && b >= 0 && a + b <= Dseg[s] + slack) { if (!lo) lo = s; hi = s; }
+      if (k) {
+        segLo[x] = Math.max(1, k - 1);
+        segHi[x] = Math.min(K - 1, k);
+        continue;
       }
-      if (!lo) { tm[0] = 0; return -1; }
-      segLo[x] = lo; segHi[x] = hi;
+      let lo = 0,
+        hi = 0;
+      for (let s = 1; s < K; s++) {
+        const a = dS[(s - 1) * T + x],
+          b = dE[(s - 1) * T + x];
+        if (a >= 0 && b >= 0 && a + b <= Dseg[s] + slack) {
+          if (!lo) lo = s;
+          hi = s;
+        }
+      }
+      if (!lo) {
+        tm[0] = 0;
+        return -1;
+      }
+      segLo[x] = lo;
+      segHi[x] = hi;
     }
-    esAt.set(es); tm[0] = 1; tm[2] = 0;
+    esAt.set(es);
+    tm[0] = 1;
+    tm[2] = 0;
     terrStale = false;
     return 1;
   }
@@ -256,13 +360,15 @@ export function ladder(p, o = {}) {
   // L2: would joining chains at end x and neighbour y be impossible?
   function chainOk(x, y) {
     if (S.other[x] === y) return false;
-    const px = S.near[x], py = S.near[y];
+    const px = S.near[x],
+      py = S.near[y];
     if (px && py && px - py !== 1 && py - px !== 1) return false;
     const full = min0(S.lo[x], S.lo[y]) === 1 && Math.max(S.hi[x], S.hi[y]) === K;
     if (full && S.sz[x] + S.sz[y] !== TC) return false;
     return edgeFits(x, y);
   }
-  function chainPass() { // -1 contradiction, else #edges removed
+  function chainPass() {
+    // -1 contradiction, else #edges removed
     let ch = 0;
     for (let x = 0; x < T; x++) {
       if (!S.dflag[x]) continue;
@@ -270,7 +376,10 @@ export function ladder(p, o = {}) {
       if (S.din[x] >= need[x]) continue;
       for (let d = 0; d < 4; d++) {
         if (S.es[x * 4 + d] !== 0) continue;
-        if (!chainOk(x, nb[x * 4 + d])) { if (!setEdge(x, d, 2)) return -1; ch++; }
+        if (!chainOk(x, nb[x * 4 + d])) {
+          if (!setEdge(x, d, 2)) return -1;
+          ch++;
+        }
       }
     }
     return ch;
@@ -282,8 +391,12 @@ export function ladder(p, o = {}) {
     if (K - 1 > 64) return 0;
     const r = refreshTerritory();
     if (r < 0) return -1;
-    if (incr && r === 0 && S.tm[2]) { if (st) st.skipped = (st.skipped || 0) + 1; return 0; } // same data as at the last complete pass: every edge left passed it
-    const { dS, dE, Dseg, segLo, segHi } = S, slack = S.tm[1];
+    if (incr && r === 0 && S.tm[2]) {
+      if (st) st.skipped = (st.skipped || 0) + 1;
+      return 0;
+    } // same data as at the last complete pass: every edge left passed it
+    const { dS, dE, Dseg, segLo, segHi } = S,
+      slack = S.tm[1];
     let ch = 0;
     for (let x = 0; x < T; x++) {
       for (let d = 0; d < 4; d++) {
@@ -291,14 +404,23 @@ export function ladder(p, o = {}) {
         const y = nb[x * 4 + d];
         if (y < x) continue;
         let fits = false;
-        for (let s = Math.max(segLo[x], segLo[y]); s <= Math.min(segHi[x], segHi[y]) && !fits; s++) {
+        for (
+          let s = Math.max(segLo[x], segLo[y]);
+          s <= Math.min(segHi[x], segHi[y]) && !fits;
+          s++
+        ) {
           // exact test: x and y on segment s, edge used in the s-direction consistent with each end
-          const dxs = dS[(s - 1) * T + x], dxe = dE[(s - 1) * T + x];
-          const dys = dS[(s - 1) * T + y], dye = dE[(s - 1) * T + y];
+          const dxs = dS[(s - 1) * T + x],
+            dxe = dE[(s - 1) * T + x];
+          const dys = dS[(s - 1) * T + y],
+            dye = dE[(s - 1) * T + y];
           if (dxs >= 0 && dye >= 0 && dxs + 1 + dye <= Dseg[s] + slack) fits = true;
           else if (dys >= 0 && dxe >= 0 && dys + 1 + dxe <= Dseg[s] + slack) fits = true;
         }
-        if (!fits) { if (!setEdge(x, d, 2)) return -1; ch++; }
+        if (!fits) {
+          if (!setEdge(x, d, 2)) return -1;
+          ch++;
+        }
       }
     }
     S.tm[2] = 1;
@@ -315,20 +437,32 @@ export function ladder(p, o = {}) {
       if (isSolved()) return 1;
       let r;
       if (maxLevel >= 2) {
-        lvl = 2; r = chainPass();
+        lvl = 2;
+        r = chainPass();
         if (r < 0) return 0;
-        if (r > 0) { if (rec) passesBy[2]++; continue; }
+        if (r > 0) {
+          if (rec) passesBy[2]++;
+          continue;
+        }
       }
       if (maxLevel >= 3) {
-        lvl = 3; r = territory();
+        lvl = 3;
+        r = territory();
         if (r < 0) return 0;
-        if (r > 0) { if (rec) passesBy[3]++; continue; }
+        if (r > 0) {
+          if (rec) passesBy[3]++;
+          continue;
+        }
       }
       let progressed = false;
       for (let d = 1; d <= pd && !progressed; d++) {
-        const L = lvl = 3 + d; r = probePass(d);
+        const L = (lvl = 3 + d);
+        r = probePass(d);
         if (r < 0) return 0;
-        if (r > 0) { if (rec) passesBy[L]++; progressed = true; }
+        if (r > 0) {
+          if (rec) passesBy[L]++;
+          progressed = true;
+        }
         if (isSolved()) return 1;
       }
       if (!progressed) return 2;
@@ -341,16 +475,29 @@ export function ladder(p, o = {}) {
   // Try `val` on edge (x,e) inside scratch buffer; returns true if it stays consistent.
   function trial(buf, x, e, val, d) {
     if (++probeTrials > trialCap) throw CAP;
-    const prev = S, prevRec = rec, prevLvl = lvl;
-    copy(buf, S); S = buf; rec = false; q.length = 0;
+    const prev = S,
+      prevRec = rec,
+      prevLvl = lvl;
+    copy(buf, S);
+    S = buf;
+    rec = false;
+    q.length = 0;
     let ok = false;
-    try { ok = setEdge(x, e, val) && propagate(3, d - 1) !== 0; } finally { q.length = 0; S = prev; rec = prevRec; lvl = prevLvl; }
+    try {
+      ok = setEdge(x, e, val) && propagate(3, d - 1) !== 0;
+    } finally {
+      q.length = 0;
+      S = prev;
+      rec = prevRec;
+      lvl = prevLvl;
+    }
     return ok;
   }
 
   // One sweep of what-if analysis at nesting depth d. Returns #forced edges, or -1 on contradiction.
   function probePass(d) {
-    const A = scratch(d, 0), B = scratch(d, 1);
+    const A = scratch(d, 0),
+      B = scratch(d, 1);
     let hits = 0;
     for (let x = 0; x < T; x++) {
       for (let e = 0; e < 4; e++) {
@@ -361,10 +508,15 @@ export function ladder(p, o = {}) {
         const okOut = trial(B, x, e, 2, d);
         if (!okIn && !okOut) return -1;
         let n = 0;
-        if (!okIn) { if (!setEdge(x, e, 2)) return -1; n = 1; }
-        else if (!okOut) { if (!setEdge(x, e, 1)) return -1; n = 1; }
-        else {
-          for (let i = 0; i < T * 4; i++) { // consequences shared by both branches
+        if (!okIn) {
+          if (!setEdge(x, e, 2)) return -1;
+          n = 1;
+        } else if (!okOut) {
+          if (!setEdge(x, e, 1)) return -1;
+          n = 1;
+        } else {
+          for (let i = 0; i < T * 4; i++) {
+            // consequences shared by both branches
             if (S.es[i] === 0 && A.es[i] !== 0 && A.es[i] === B.es[i]) {
               if (!setEdge(i >> 2, i & 3, A.es[i])) return -1;
               n++;
@@ -386,43 +538,88 @@ export function ladder(p, o = {}) {
   const sr = { nodes: 0, depth: 0, found: false };
   function search(depth) {
     if (++sr.nodes > (o.searchCap ?? 20000)) throw CAP;
-    let best = -1, bs = 99;
-    for (let u = 0; u < T; u++) { // most constrained cell: fewest surplus open edges, chain ends first
+    let best = -1,
+      bs = 99;
+    for (let u = 0; u < T; u++) {
+      // most constrained cell: fewest surplus open edges, chain ends first
       if (S.din[u] >= need[u]) continue;
       const s = S.dopen[u] - need[u] + (S.din[u] ? 0 : 0.5);
-      if (s < bs) { bs = s; best = u; }
+      if (s < bs) {
+        bs = s;
+        best = u;
+      }
     }
     let e = 0;
     while (S.es[best * 4 + e] !== 0) e++;
     const buf = scratch(pdMax + 1 + depth, 0);
     for (const val of [1, 2]) {
       const prev = S;
-      copy(buf, S); S = buf; q.length = 0; rec = false;
+      copy(buf, S);
+      S = buf;
+      q.length = 0;
+      rec = false;
       let r = 0;
-      try { r = setEdge(best, e, val) ? propagate(3, 0) : 0; } finally { q.length = 0; }
-      if (r === 1) { sr.found = true; sr.depth = Math.max(sr.depth, depth + 1); return; }
-      if (r === 2) { search(depth + 1); if (sr.found) { sr.depth = Math.max(sr.depth, depth + 1); return; } }
+      try {
+        r = setEdge(best, e, val) ? propagate(3, 0) : 0;
+      } finally {
+        q.length = 0;
+      }
+      if (r === 1) {
+        sr.found = true;
+        sr.depth = Math.max(sr.depth, depth + 1);
+        return;
+      }
+      if (r === 2) {
+        search(depth + 1);
+        if (sr.found) {
+          sr.depth = Math.max(sr.depth, depth + 1);
+          return;
+        }
+      }
       S = prev;
     }
   }
 
-  let status = 2, exceeded = false;
+  let status = 2,
+    exceeded = false;
   try {
     status = propagate(3, pdMax);
-    if (status === 2 && o.search !== false) { rec = false; search(0); status = sr.found ? 1 : 2; passesBy[6] = 1; }
-  } catch (err) { if (err !== CAP) throw err; exceeded = true; S = real; }
+    if (status === 2 && o.search !== false) {
+      rec = false;
+      search(0);
+      status = sr.found ? 1 : 2;
+      passesBy[6] = 1;
+    }
+  } catch (err) {
+    if (err !== CAP) throw err;
+    exceeded = true;
+    S = real;
+  }
 
   const solved = status === 1 && !exceeded && (sr.found || isSolved());
   let hardest = 0;
-  for (let l = 6; l >= 1; l--) if (passesBy[l] > 0 || (l === 1 && edgesBy[1] > 0)) { hardest = l; break; }
+  for (let l = 6; l >= 1; l--)
+    if (passesBy[l] > 0 || (l === 1 && edgesBy[1] > 0)) {
+      hardest = l;
+      break;
+    }
   // extractPath reads whichever buffer actually holds the solved edges: `real` when propagation
   // alone solved it, or the live `S` (a scratch buffer left pointing at the winning branch — see
   // search()'s success path above, which never copies back to `real`) when the search fallback
   // found it. Read S BEFORE anything below could touch it again.
   const path = solved ? extractPath(S, nb, start, TC) : null;
   return {
-    solved, exceeded, contradiction: status === 0, hardest, edges: edgesBy, passes: passesBy,
-    probeTrials, search: sr, work, ms: performance.now() - t0, path,
+    solved,
+    exceeded,
+    contradiction: status === 0,
+    hardest,
+    edges: edgesBy,
+    passes: passesBy,
+    probeTrials,
+    search: sr,
+    work,
+    ms: performance.now() - t0,
+    path,
   };
 }
 
@@ -445,17 +642,25 @@ export function ladder(p, o = {}) {
 //    4 N=6 puzzles exist there, human 1-2, consistent with but not proof of the floor).
 export function grade(p, r) {
   const n = p.n;
-  if (r.exceeded || r.contradiction) return { grade: 5, note: 'solver exceeded work cap or found a contradiction (bad puzzle?)' };
+  if (r.exceeded || r.contradiction)
+    return { grade: 5, note: 'solver exceeded work cap or found a contradiction (bad puzzle?)' };
   if (n <= 5) return { grade: 0, note: 'N<=5 floor' };
   if (n === 6) return { grade: 1, note: 'N=6 floor' };
   if (r.hardest >= 5) {
     const g = r.probeTrials >= 3500 ? 5 : 4;
-    return { grade: g, note: `needs nested (probe2) guessing — 4/5 split unreliable, n=4 labels only (probeTrials=${r.probeTrials})` };
+    return {
+      grade: g,
+      note: `needs nested (probe2) guessing — 4/5 split unreliable, n=4 labels only (probeTrials=${r.probeTrials})`,
+    };
   }
-  if (!r.solved || !r.path) return { grade: 2, note: 'no solved path to compute wideFrac from — flat fallback' };
+  if (!r.solved || !r.path)
+    return { grade: 2, note: 'no solved path to compute wideFrac from — flat fallback' };
   const wf = wideFrac(p, r.path);
   const g = wf.frac > 0.15 ? 2 : 1;
-  return { grade: g, note: `wideFrac=${wf.frac.toFixed(3)} (${wf.wide}/${wf.decisive} decisive branches went wide) — coarse 2-bucket split (rho=0.55 on 43 labels, see ladder.js header), not a fine-grained fit` };
+  return {
+    grade: g,
+    note: `wideFrac=${wf.frac.toFixed(3)} (${wf.wide}/${wf.decisive} decisive branches went wide) — coarse 2-bucket split (rho=0.55 on 43 labels, see ladder.js header), not a fine-grained fit`,
+  };
 }
 
 // wideFrac: fraction of the solved path's branch points where the path took the WIDER-looking
@@ -479,21 +684,36 @@ export function wideFrac(p, path) {
   const { nb, T } = buildNeighbors(p);
   const vis = new Uint8Array(T);
   vis[path[0]] = 1;
-  let decisive = 0, wide = 0;
-  const freeExits = cell => { let n = 0; for (let d = 0; d < 4; d++) { const v = nb[cell * 4 + d]; if (v >= 0 && !vis[v]) n++; } return n; };
+  let decisive = 0,
+    wide = 0;
+  const freeExits = cell => {
+    let n = 0;
+    for (let d = 0; d < 4; d++) {
+      const v = nb[cell * 4 + d];
+      if (v >= 0 && !vis[v]) n++;
+    }
+    return n;
+  };
   for (let i = 1; i < path.length; i++) {
-    const cur = path[i - 1], nxt = path[i];
-    let branches = 0, minEx = 99, maxEx = -1, nextEx = -1;
+    const cur = path[i - 1],
+      nxt = path[i];
+    let branches = 0,
+      minEx = 99,
+      maxEx = -1,
+      nextEx = -1;
     for (let d = 0; d < 4; d++) {
       const v = nb[cur * 4 + d];
       if (v < 0 || vis[v]) continue;
       branches++;
-      vis[v] = 1; const ex = freeExits(v); vis[v] = 0;
+      vis[v] = 1;
+      const ex = freeExits(v);
+      vis[v] = 0;
       if (ex < minEx) minEx = ex;
       if (ex > maxEx) maxEx = ex;
       if (v === nxt) nextEx = ex;
     }
-    if (branches > 1 && minEx !== maxEx) { // decisive branch point (>1 option, options differ in openness)
+    if (branches > 1 && minEx !== maxEx) {
+      // decisive branch point (>1 option, options differ in openness)
       decisive++;
       if (nextEx === maxEx) wide++;
     }
@@ -504,12 +724,19 @@ export function wideFrac(p, path) {
 
 function extractPath(st, nb, start, T) {
   const path = [start];
-  let prev = -1, cur = start;
+  let prev = -1,
+    cur = start;
   while (path.length <= T) {
     let nx = -1;
-    for (let d = 0; d < 4; d++) if (st.es[cur * 4 + d] === 1 && nb[cur * 4 + d] !== prev) { nx = nb[cur * 4 + d]; break; }
+    for (let d = 0; d < 4; d++)
+      if (st.es[cur * 4 + d] === 1 && nb[cur * 4 + d] !== prev) {
+        nx = nb[cur * 4 + d];
+        break;
+      }
     if (nx < 0) break;
-    path.push(nx); prev = cur; cur = nx;
+    path.push(nx);
+    prev = cur;
+    cur = nx;
   }
   return path;
 }

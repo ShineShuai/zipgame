@@ -12,52 +12,83 @@
 import { BUILTIN } from './builtin.js';
 import { applyEntry, loadFonts as realLoadFonts } from './apply.js';
 import { cleanBundle } from './bundle.js';
+import { EVENT_KEY, EVENT_RE, SEED_KEY, SEED_RE, endOfDay, newSeed, offerOrder } from './event.js';
 import {
-  EVENT_KEY, EVENT_RE, SEED_KEY, SEED_RE, endOfDay, newSeed, offerOrder,
-} from './event.js';
-import {
-  MODE_KEY, POOL_KEY, activeEntry, evictable, isClassicPool, nextEntry, parseState, remove, save, select, serialize, setCap,
+  MODE_KEY,
+  POOL_KEY,
+  activeEntry,
+  evictable,
+  isClassicPool,
+  nextEntry,
+  parseState,
+  remove,
+  save,
+  select,
+  serialize,
+  setCap,
 } from './pool.js';
 import { slotsFor } from './slots.js';
 import { FINAL_MS, OFFER_KEY, TRIAL_MS, parseOffer, serializeOffer } from './trial.js';
 
 const MAX_TIMEOUT = 2 ** 31 - 1;
-const OFFER_RETRY_MS = 5 * 60 * 1000;   // first wait before an offer that could not be fetched is asked again (it doubles, up to 8 times this)
-const OFFER_TRIES = 3;     // files tried for one offer (the picked theme, then the next ones) before there is no offer
+const OFFER_RETRY_MS = 5 * 60 * 1000; // first wait before an offer that could not be fetched is asked again (it doubles, up to 8 times this)
+const OFFER_TRIES = 3; // files tried for one offer (the picked theme, then the next ones) before there is no offer
 
 export function createThemes({
-  storage, media, store, source, apply = applyEntry, loadFonts = realLoadFonts, known, now = Date.now, timers = globalThis, random = Math.random,
-  trialMs = TRIAL_MS, idle = () => true, focused = true,
+  storage,
+  media,
+  store,
+  source,
+  apply = applyEntry,
+  loadFonts = realLoadFonts,
+  known,
+  now = Date.now,
+  timers = globalThis,
+  random = Math.random,
+  trialMs = TRIAL_MS,
+  idle = () => true,
+  focused = true,
 }) {
-  const read = key => { try { return storage.getItem(key); } catch { return null; } };
+  const read = key => {
+    try {
+      return storage.getItem(key);
+    } catch {
+      return null;
+    }
+  };
   const write = (key, value) => {
-    try { if (value === null) storage.removeItem(key); else storage.setItem(key, value); } catch { /* private mode: not saved */ }
+    try {
+      if (value === null) storage.removeItem(key);
+      else storage.setItem(key, value);
+    } catch {
+      /* private mode: not saved */
+    }
   };
   const systemMode = () => (media?.matches ? 'dark' : 'light');
   let state = parseState(read(POOL_KEY), read(MODE_KEY));
   let shown = null;
   let content = null;
   let fonts = null;
-  let trialing = null;     // the bundle on trial, if any
+  let trialing = null; // the bundle on trial, if any
   let timer = null;
-  let lastTry = '';        // the free slots and ids of the last borrowing (settle)
-  let offer = parseOffer(read(OFFER_KEY), trialMs);   // the theme that waits for the player, or null (see trial.js)
-  if (offer && read(EVENT_KEY) === offer.event) offer = null;   // answered in another tab
-  let ticking = null;     // when the foreground clock last started (null: not counting)
-  let clock = null;       // the timer at the end of the trial time
-  let expiry = null;      // the timer at the end of the day, for a waiting offer
-  let held = false;       // a choice is being made: the clock waits
-  let wanted = null;      // { id, until }: the event that found another offer open; asked again when that offer ends
-  let retryTimer = null;  // the timer that asks again for an event whose files could not be fetched
-  let retries = 0;        // how many times in a row for that event (for the wait)
-  let retryFor = null;    // the event those retries are for
+  let lastTry = ''; // the free slots and ids of the last borrowing (settle)
+  let offer = parseOffer(read(OFFER_KEY), trialMs); // the theme that waits for the player, or null (see trial.js)
+  if (offer && read(EVENT_KEY) === offer.event) offer = null; // answered in another tab
+  let ticking = null; // when the foreground clock last started (null: not counting)
+  let clock = null; // the timer at the end of the trial time
+  let expiry = null; // the timer at the end of the day, for a waiting offer
+  let held = false; // a choice is being made: the clock waits
+  let wanted = null; // { id, until }: the event that found another offer open; asked again when that offer ends
+  let retryTimer = null; // the timer that asks again for an event whose files could not be fetched
+  let retries = 0; // how many times in a row for that event (for the wait)
+  let retryFor = null; // the event those retries are for
   let visible = focused;
   const listeners = new Set();
   const notify = () => listeners.forEach(fn => fn(api));
 
   function persist() {
     write(POOL_KEY, serialize(state));
-    write(MODE_KEY, state.active ? activeEntry(state, systemMode()).mode : null);   // the old key: stats.html follows it
+    write(MODE_KEY, state.active ? activeEntry(state, systemMode()).mode : null); // the old key: stats.html follows it
   }
 
   function show(entry, loaded) {
@@ -74,60 +105,122 @@ export function createThemes({
   // Shows the stored (or the system's) theme. A theme of the pool whose copy is not on this device any more (storage was
   // cleared, the device refused it) is not the player's now: it leaves the pool and the built-in of its mode shows.
   function showActive() {
-    if (offer?.phase === 'trial') {   // the theme on trial is the one on the page, whatever the pool says
+    if (offer?.phase === 'trial') {
+      // the theme on trial is the one on the page, whatever the pool says
       const t = offer.theme;
       trialing = t;
       show(t.entry, t.entry.builtin ? null : { css: t.css, art: t.art, fonts: t.fonts });
       return;
     }
     const entry = activeEntry(state, systemMode());
-    if (entry.builtin) { show(entry, null); return; }
+    if (entry.builtin) {
+      show(entry, null);
+      return;
+    }
     const loaded = store.load(entry.id);
-    if (loaded) { show(entry, loaded); return; }
+    if (loaded) {
+      show(entry, loaded);
+      return;
+    }
     state = remove(state, entry.id);
     persist();
     show(builtinOf(entry.mode), null);
   }
 
-  const clearTrial = () => { trialing = null; if (timer) timers.clearTimeout(timer); timer = null; };
-  const choose = next => { clearTrial(); interruptOffer(); state = next; persist(); showActive(); };
+  const clearTrial = () => {
+    trialing = null;
+    if (timer) timers.clearTimeout(timer);
+    timer = null;
+  };
+  const choose = next => {
+    clearTrial();
+    interruptOffer();
+    state = next;
+    persist();
+    showActive();
+  };
 
   // ---- the offer that waits: pending -> trial -> final (trial.js)
   const saveOffer = () => write(OFFER_KEY, offer ? serializeOffer(offer) : null);
-  const stopClock = () => { if (clock) timers.clearTimeout(clock); clock = null; };
-  const stopExpiry = () => { if (expiry) timers.clearTimeout(expiry); expiry = null; };
-  const settle = () => { if (ticking !== null) { offer.left = Math.max(0, offer.left - (now() - ticking)); ticking = null; } };   // foreground time used
-  const grace = () => Math.max(offer.until, now() + FINAL_MS);   // a trial that began late in the day still gets its last question
-  function clearOffer() { stopClock(); stopExpiry(); ticking = null; held = false; offer = null; saveOffer(); }
+  const stopClock = () => {
+    if (clock) timers.clearTimeout(clock);
+    clock = null;
+  };
+  const stopExpiry = () => {
+    if (expiry) timers.clearTimeout(expiry);
+    expiry = null;
+  };
+  const settle = () => {
+    if (ticking !== null) {
+      offer.left = Math.max(0, offer.left - (now() - ticking));
+      ticking = null;
+    }
+  }; // foreground time used
+  const grace = () => Math.max(offer.until, now() + FINAL_MS); // a trial that began late in the day still gets its last question
+  function clearOffer() {
+    stopClock();
+    stopExpiry();
+    ticking = null;
+    held = false;
+    offer = null;
+    saveOffer();
+  }
 
   function planExpiry() {
     stopExpiry();
     if (!offer || offer.phase === 'trial') return;
-    expiry = timers.setTimeout(() => { expiry = null; sweep(); planExpiry(); }, Math.min(Math.max(offer.until - now(), 0), MAX_TIMEOUT) + 1);
+    expiry = timers.setTimeout(
+      () => {
+        expiry = null;
+        sweep();
+        planExpiry();
+      },
+      Math.min(Math.max(offer.until - now(), 0), MAX_TIMEOUT) + 1,
+    );
   }
   // The place is free again: the event that found it taken (and is not over) is asked now, so it needs no reload and no new trigger.
   function retryWanted() {
     const next = wanted;
     wanted = null;
-    if (next && next.until > now()) api.offer(next).catch(() => { /* the next trigger tries again */ });
+    if (next && next.until > now())
+      api.offer(next).catch(() => {
+        /* the next trigger tries again */
+      });
   }
   // The manifest or the files could not be had (offline, a bad link, a captive portal: the browser's `online` event does not tell): ask again
   // while the event lasts and the page is seen, after 5, 10, 20, 40 minutes. The page's own triggers (seen again, network back) ask too.
   function retryLater(id, end) {
     if (retryTimer || !visible || end <= now()) return;
-    if (retryFor !== id) { retryFor = id; retries = 0; }
+    if (retryFor !== id) {
+      retryFor = id;
+      retries = 0;
+    }
     const wait = OFFER_RETRY_MS * 2 ** Math.min(retries++, 3);
-    retryTimer = timers.setTimeout(() => { retryTimer = null; api.offer({ id, until: end }).catch(() => { /* the next trigger tries again */ }); }, Math.min(wait, MAX_TIMEOUT));
+    retryTimer = timers.setTimeout(
+      () => {
+        retryTimer = null;
+        api.offer({ id, until: end }).catch(() => {
+          /* the next trigger tries again */
+        });
+      },
+      Math.min(wait, MAX_TIMEOUT),
+    );
   }
-  const stopRetry = () => { if (retryTimer) timers.clearTimeout(retryTimer); retryTimer = null; retries = 0; };
-  function sweep(retry = true) {   // the day is over and the offer was not answered: it is gone, and answered
+  const stopRetry = () => {
+    if (retryTimer) timers.clearTimeout(retryTimer);
+    retryTimer = null;
+    retries = 0;
+  };
+  function sweep(retry = true) {
+    // the day is over and the offer was not answered: it is gone, and answered
     if (!offer || offer.phase === 'trial' || offer.until > now()) return;
     write(EVENT_KEY, offer.event);
     clearOffer();
     notify();
     if (retry) retryWanted();
   }
-  function toFinal() {   // the trial time is up
+  function toFinal() {
+    // the trial time is up
     stopClock();
     settle();
     offer.phase = 'final';
@@ -147,17 +240,27 @@ export function createThemes({
     clock = null;
     if (offer?.phase !== 'trial') return;
     settle();
-    if (offer.left > 0) { runClock(); return; }                       // the timer was clamped: not yet
-    if (!idle()) { clock = timers.setTimeout(finish, 1000); return; }   // never in the middle of a puzzle: at the next menu
+    if (offer.left > 0) {
+      runClock();
+      return;
+    } // the timer was clamped: not yet
+    if (!idle()) {
+      clock = timers.setTimeout(finish, 1000);
+      return;
+    } // never in the middle of a puzzle: at the next menu
     toFinal();
     showActive();
     notify();
   }
-  function interruptOffer() {   // another theme was chosen during the trial: the trial waits, with its time left, for the rest of the day
+  function interruptOffer() {
+    // another theme was chosen during the trial: the trial waits, with its time left, for the rest of the day
     if (offer?.phase !== 'trial') return;
     stopClock();
     settle();
-    if (offer.left <= 0) { toFinal(); return; }
+    if (offer.left <= 0) {
+      toFinal();
+      return;
+    }
     offer.phase = 'pending';
     offer.until = grace();
     saveOffer();
@@ -168,8 +271,9 @@ export function createThemes({
   // names no theme, or the device refuses it). Nothing changes on false.
   function keep(bundle, replaceId) {
     const next = save(state, bundle.entry, replaceId);
-    if (!next || (!bundle.entry.builtin && !store.save(bundle))) return false;   // a built-in is the app's own: no copy to keep
-    for (const e of state.pool) if (!next.pool.some(p => p.id === e.id) && !e.builtin) store.remove(e.id);
+    if (!next || (!bundle.entry.builtin && !store.save(bundle))) return false; // a built-in is the app's own: no copy to keep
+    for (const e of state.pool)
+      if (!next.pool.some(p => p.id === e.id) && !e.builtin) store.remove(e.id);
     state = next;
     return true;
   }
@@ -177,13 +281,16 @@ export function createThemes({
   // The device seed: random, made on first use, so that the same event gives the same theme on this device and another one elsewhere.
   const seed = () => {
     let value = read(SEED_KEY);
-    if (!SEED_RE.test(value ?? '')) { value = newSeed(random); write(SEED_KEY, value); }
+    if (!SEED_RE.test(value ?? '')) {
+      value = newSeed(random);
+      write(SEED_KEY, value);
+    }
     return value;
   };
 
   // The bundle of a pool entry, on trial (null: the file is missing, is not a valid bundle, or is not the theme the manifest says).
   const bundleOf = async c => {
-    if (c.entry.builtin) return { entry: c.entry, css: null, art: null, fonts: [] };   // light, dark: nothing to fetch
+    if (c.entry.builtin) return { entry: c.entry, css: null, art: null, fonts: [] }; // light, dark: nothing to fetch
     const raw = await source?.bundle?.(c.f);
     return raw && raw.id === c.entry.id ? cleanBundle(raw, { known }) : null;
   };
@@ -199,8 +306,15 @@ export function createThemes({
     clearTrial();
     interruptOffer();
     trialing = bundle;
-    show(bundle.entry, bundle.entry.builtin ? null : { css: bundle.css, art: bundle.art, fonts: bundle.fonts });
-    const revert = () => { if (trialing !== bundle) return; clearTrial(); showActive(); };
+    show(
+      bundle.entry,
+      bundle.entry.builtin ? null : { css: bundle.css, art: bundle.art, fonts: bundle.fonts },
+    );
+    const revert = () => {
+      if (trialing !== bundle) return;
+      clearTrial();
+      showActive();
+    };
     if (until) timer = timers.setTimeout(revert, Math.min(until - now(), MAX_TIMEOUT));
     return {
       entry: bundle.entry,
@@ -221,15 +335,23 @@ export function createThemes({
     current: () => shown ?? activeEntry(state, systemMode()),
     art: () => content?.art ?? null,
     owns: id => state.pool.some(e => e.id === id),
-    answered: id => read(EVENT_KEY) === id,   // the player kept or left that event's theme, or its day ended
+    answered: id => read(EVENT_KEY) === id, // the player kept or left that event's theme, or its day ended
     isClassic: () => isClassicPool(state),
-    upcoming: () => nextEntry(state, api.current().id),   // what the header button would switch to
-    onChange: fn => { listeners.add(fn); return () => listeners.delete(fn); },
+    upcoming: () => nextEntry(state, api.current().id), // what the header button would switch to
+    onChange: fn => {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
     // Call once at start.
     start: () => {
-      media?.addEventListener?.('change', () => { if (!state.active && !trialing) showActive(); });
+      media?.addEventListener?.('change', () => {
+        if (!state.active && !trialing) showActive();
+      });
       sweep();
-      if (offer) { planExpiry(); runClock(); }
+      if (offer) {
+        planExpiry();
+        runClock();
+      }
       showActive();
     },
     select: id => choose(select(state, id)),
@@ -237,7 +359,8 @@ export function createThemes({
     // Awards raise the cap (never above 4); the themes a lowered cap cuts leave the device too.
     setCap: n => {
       const next = setCap(state, n);
-      for (const e of state.pool) if (!next.pool.some(p => p.id === e.id) && !e.builtin) store.remove(e.id);
+      for (const e of state.pool)
+        if (!next.pool.some(p => p.id === e.id) && !e.builtin) store.remove(e.id);
       state = next;
       persist();
       showActive();
@@ -248,7 +371,7 @@ export function createThemes({
     // reachable, empty, all owned, all drafts, or the files are not valid): the next trigger tries again.
     offer: async ({ id, until } = {}) => {
       if (!EVENT_RE.test(id ?? '') || (until && until <= now())) return false;
-      const end = until ?? endOfDay(now());   // the day it is asked on: a slow network must not carry the offer into the next day
+      const end = until ?? endOfDay(now()); // the day it is asked on: a slow network must not carry the offer into the next day
       sweep(false);
       if (offer) {
         if (offer.event === id) return true;
@@ -257,18 +380,19 @@ export function createThemes({
       }
       wanted = null;
       if (read(EVENT_KEY) === id) return false;
-      const site = await source?.pool?.();   // null: not reachable
+      const site = await source?.pool?.(); // null: not reachable
       const list = (site ?? []).filter(c => c.live && !api.owns(c.entry.id));
       const order = offerOrder(list, seed(), id).slice(0, OFFER_TRIES);
       for (const c of order) {
         const theme = await bundleOf(c);
         if (!theme) continue;
-        if (offer) {   // an offer came in while the file was fetched
+        if (offer) {
+          // an offer came in while the file was fetched
           if (offer.event === id) return true;
           wanted = { id, until: end };
           return false;
         }
-        if (end <= now()) return false;   // the event ended while the files came
+        if (end <= now()) return false; // the event ended while the files came
         stopRetry();
         offer = { event: id, phase: 'pending', until: end, left: trialMs, theme };
         saveOffer();
@@ -276,7 +400,7 @@ export function createThemes({
         notify();
         return true;
       }
-      if (site === null || order.length) retryLater(id, end);   // nothing could be fetched (an empty or fully owned pool is no failure)
+      if (site === null || order.length) retryLater(id, end); // nothing could be fetched (an empty or fully owned pool is no failure)
       return false;
     },
     // What the chip and the sheet draw: null, or { event, phase: 'pending' | 'trial' | 'final', entry, left (ms of trial time; in
@@ -284,7 +408,15 @@ export function createThemes({
     offerView: () => {
       if (!offer) return null;
       const used = ticking === null ? 0 : now() - ticking;
-      return { event: offer.event, phase: offer.phase, entry: offer.theme.entry, left: Math.max(0, offer.left - used), until: offer.until, held, trialMs };
+      return {
+        event: offer.event,
+        phase: offer.phase,
+        entry: offer.theme.entry,
+        left: Math.max(0, offer.left - used),
+        until: offer.until,
+        held,
+        trialMs,
+      };
     },
     // The player starts the trial (a waiting offer; also the rest of an interrupted one). false: nothing waits.
     startOffer: () => {
@@ -336,12 +468,18 @@ export function createThemes({
       notify();
     },
     // The clock waits while a choice is being made (which theme the keep replaces).
-    holdOffer: on => { held = Boolean(on); if (offer) runClock(); },
+    holdOffer: on => {
+      held = Boolean(on);
+      if (offer) runClock();
+    },
     // The page is seen (true) or hidden (false): only seen time counts for the trial; saved at once when it is hidden, so a killed tab keeps it.
     focus: seen => {
       visible = Boolean(seen);
       if (visible) sweep();
-      if (offer) { runClock(); if (!visible) saveOffer(); }
+      if (offer) {
+        runClock();
+        if (!visible) saveOffer();
+      }
     },
     // The player's activity ({ gotdSolves, bestStreak }, slots.js) raises the pool's slots (never lowers them). Promise-free: true when a slot came.
     awardSlots: counts => {
@@ -393,7 +531,8 @@ export function createThemes({
     // answers the event, which is not offered again. null: no valid id, the event is over or already answered, or there is nothing to
     // offer (the pool is not reachable, empty, all owned, all drafts, or the files are not valid).
     event: async ({ id, until } = {}) => {
-      if (!EVENT_RE.test(id ?? '') || read(EVENT_KEY) === id || (until && until <= now())) return null;
+      if (!EVENT_RE.test(id ?? '') || read(EVENT_KEY) === id || (until && until <= now()))
+        return null;
       const list = ((await source?.pool?.()) ?? []).filter(c => c.live && !api.owns(c.entry.id));
       for (const c of offerOrder(list, seed(), id).slice(0, OFFER_TRIES)) {
         const t = await trialOf(c, { until });
@@ -401,14 +540,22 @@ export function createThemes({
         const answered = () => write(EVENT_KEY, id);
         return {
           entry: t.entry,
-          commit: async replaceId => { const ok = await t.commit(replaceId); if (ok) answered(); return ok; },
-          revert: () => { answered(); t.revert(); },
+          commit: async replaceId => {
+            const ok = await t.commit(replaceId);
+            if (ok) answered();
+            return ok;
+          },
+          revert: () => {
+            answered();
+            t.revert();
+          },
         };
       }
       return null;
     },
     // The dev reveal: every theme of the site's pool, drafts too: Promise<[{ entry, f, live, owned }]> ([] when it is not reachable).
-    pool: async () => ((await source?.pool?.()) ?? []).map(c => ({ ...c, owned: api.owns(c.entry.id) })),
+    pool: async () =>
+      ((await source?.pool?.()) ?? []).map(c => ({ ...c, owned: api.owns(c.entry.id) })),
     // Shows any theme of the pool on trial, with no end and whatever the cap: Promise<{ entry, commit, revert } | null>.
     tryPool: async id => {
       const c = ((await source?.pool?.()) ?? []).find(x => x.entry.id === id);

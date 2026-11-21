@@ -21,9 +21,18 @@ import { utcDayNumber } from './daily.js';
 // `from` day (a UTC day number; null = never) has come. `open(day)` says the kind is
 // open to everyone that day (its release), which counts as unlocked without the
 // player's own unlock.
-export const UNLOCK_KEY = 'zip_unlock', VERSION = 1, PLAYED_KEPT = 8;
+export const UNLOCK_KEY = 'zip_unlock',
+  VERSION = 1,
+  PLAYED_KEPT = 8;
 
-export const fresh = () => ({ v: VERSION, unlocked: {}, tokens: 0, choices: 0, played: [], active: null });
+export const fresh = () => ({
+  v: VERSION,
+  unlocked: {},
+  tokens: 0,
+  choices: 0,
+  played: [],
+  active: null,
+});
 
 const isCount = x => Number.isInteger(x) && x >= 0;
 
@@ -31,14 +40,34 @@ const isCount = x => Number.isInteger(x) && x >= 0;
 // dropped, and a game left in progress is dropped too (abandoned). An older record kept its chances
 // as a list: its length is the count.
 export function sanitize(c, ids) {
-  if (!c || typeof c !== 'object' || c.v !== VERSION || !c.unlocked || typeof c.unlocked !== 'object') return null;
+  if (
+    !c ||
+    typeof c !== 'object' ||
+    c.v !== VERSION ||
+    !c.unlocked ||
+    typeof c.unlocked !== 'object'
+  )
+    return null;
   const tokens = Array.isArray(c.tokens) ? c.tokens.length : c.tokens;
   const played = c.played === undefined ? [] : c.played;
   // tokens and choices are this device's earned minus spent: below 0 while it spends what another device earned (sync)
-  if (!Number.isInteger(tokens) || !Number.isInteger(c.choices) || !Array.isArray(played) || !played.every(isCount)) return null;
+  if (
+    !Number.isInteger(tokens) ||
+    !Number.isInteger(c.choices) ||
+    !Array.isArray(played) ||
+    !played.every(isCount)
+  )
+    return null;
   const unlocked = {};
   for (const id of ids) if (isCount(c.unlocked[id])) unlocked[id] = c.unlocked[id];
-  return { v: VERSION, unlocked, tokens, choices: c.choices, played: played.slice(-PLAYED_KEPT), active: null };
+  return {
+    v: VERSION,
+    unlocked,
+    tokens,
+    choices: c.choices,
+    played: played.slice(-PLAYED_KEPT),
+    active: null,
+  };
 }
 
 // sync (platform/sync/engine.js, optional): `s` stays this device's own record (what it earned, spent and
@@ -47,7 +76,13 @@ export function createUnlock(storage, defs, now = () => new Date(), sync = null)
   const ids = defs.map(d => d.id);
   const today = () => utcDayNumber(now());
   let s = null; // null until init()
-  const save = async () => { try { await storage.set(UNLOCK_KEY, JSON.stringify(s)); } catch { /* ignore */ } };
+  const save = async () => {
+    try {
+      await storage.set(UNLOCK_KEY, JSON.stringify(s));
+    } catch {
+      /* ignore */
+    }
+  };
   // Unlocked by the player, or open to everyone today (a solid kind after its release).
   const group = () => {
     if (!s || !sync) return s;
@@ -73,42 +108,83 @@ export function createUnlock(storage, defs, now = () => new Date(), sync = null)
   // offerLast = its last day. nextLucky is the first lucky day after today.
   const view = () => {
     if (!s) return null;
-    const day = today(), next = nextLucky(day), g = group();
+    const day = today(),
+      next = nextLucky(day),
+      g = group();
     const offer = activeOffers(day).find(o => !g.played.includes(o));
     return {
-      tokens: g.tokens, choices: g.choices, offer: offer ?? null, open: offer !== undefined && !s.active && !all(),
-      offerLast: offer === undefined ? null : offerEnd(offer) - 1, luckyToday: isLucky(day),
-      nextLucky: next, daysToNext: next - day, active: s.active, allUnlocked: all(),
+      tokens: g.tokens,
+      choices: g.choices,
+      offer: offer ?? null,
+      open: offer !== undefined && !s.active && !all(),
+      offerLast: offer === undefined ? null : offerEnd(offer) - 1,
+      luckyToday: isLucky(day),
+      nextLucky: next,
+      daysToNext: next - day,
+      active: s.active,
+      allUnlocked: all(),
     };
   };
   return {
     // Loads the state (a new player starts with nothing).
     async init() {
       try {
-        const r = await storage.get(UNLOCK_KEY), c = r && JSON.parse(r.value), clean = sanitize(c, ids);
-        if (clean) { s = clean; if (c.active) await save(); return; }
-      } catch { /* fall through */ }
+        const r = await storage.get(UNLOCK_KEY),
+          c = r && JSON.parse(r.value),
+          clean = sanitize(c, ids);
+        if (clean) {
+          s = clean;
+          if (c.active) await save();
+          return;
+        }
+      } catch {
+        /* fall through */
+      }
       s = fresh();
       await save();
     },
     unlocked: isUnlocked,
     allUnlocked: all,
     view,
-    async addChoice() { if (s) { s.choices++; await save(); } },
-    async takeChoice() { if (!s || group().choices < 1) return false; s.choices--; await save(); return true; },
-    async addToken() { if (s) { s.tokens++; await save(); } },
+    async addChoice() {
+      if (s) {
+        s.choices++;
+        await save();
+      }
+    },
+    async takeChoice() {
+      if (!s || group().choices < 1) return false;
+      s.choices--;
+      await save();
+      return true;
+    },
+    async addToken() {
+      if (s) {
+        s.tokens++;
+        await save();
+      }
+    },
     // Starts the lucky game of the open offer and draws the variant (rand(n) -> integer 0..n-1). A
     // locked variant gets one of its LUCKY sizes, an unlocked one any of its sizes. A player with an
     // unlock chance (holder) spends it now. null = no offer to play. Nothing else can start before
     // finish() or refund().
     async begin(rand) {
-      const v = view(), list = live();
+      const v = view(),
+        list = live();
       if (!v || !v.open || !list.length) return null;
-      const def = list[rand(list.length)], isNew = !isUnlocked(def.id);
-      const sizes = isNew ? def.locked : def.pool, holder = group().tokens > 0;
+      const def = list[rand(list.length)],
+        isNew = !isUnlocked(def.id);
+      const sizes = isNew ? def.locked : def.pool,
+        holder = group().tokens > 0;
       if (holder) s.tokens--;
       s.played = [...s.played, v.offer].slice(-PLAYED_KEPT);
-      s.active = { id: def.id, size: sizes[rand(sizes.length)], day: today(), offer: v.offer, holder };
+      s.active = {
+        id: def.id,
+        size: sizes[rand(sizes.length)],
+        day: today(),
+        offer: v.offer,
+        holder,
+      };
       await save();
       return { id: def.id, size: s.active.size, isNew, holder };
     },
@@ -117,14 +193,16 @@ export function createUnlock(storage, defs, now = () => new Date(), sync = null)
       if (!s || !s.active) return;
       const { offer, holder } = s.active;
       if (holder) s.tokens++;
-      s.played = s.played.filter(o => o !== offer); s.active = null;
+      s.played = s.played.filter(o => o !== offer);
+      s.active = null;
       await save();
     },
     // The game ended: solved (a holder unlocks the variant, once) or not (leaving, a page reload).
     // null when no game was in progress, so calling it twice is harmless.
     async finish(solved) {
       if (!s || !s.active) return null;
-      const { id, holder } = s.active, newly = solved && holder && !isUnlocked(id);
+      const { id, holder } = s.active,
+        newly = solved && holder && !isUnlocked(id);
       s.active = null;
       if (newly) s.unlocked[id] = today();
       await save();

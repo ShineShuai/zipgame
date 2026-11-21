@@ -11,15 +11,27 @@ const SECRET = /^[A-Za-z0-9_-]{22}$/;
 
 // `pid`: the player number of this device (0 or 1); it is the host's 0 unless the game was taken
 // over by a guest, or a friend joined a game that was on.
-export const makeRecord = ({
-  role, pid, seed, text, ops, hints, startedWall, secret,
-}, saved = Date.now()) => ({
-  v: 1, saved, role, pid, seed, text, ops, hints, startedWall, secret,
+export const makeRecord = (
+  { role, pid, seed, text, ops, hints, startedWall, secret },
+  saved = Date.now(),
+) => ({
+  v: 1,
+  saved,
+  role,
+  pid,
+  seed,
+  text,
+  ops,
+  hints,
+  startedWall,
+  secret,
 });
 
 const whole = value => Number.isInteger(value) && value >= 0;
-const soundOp = op => Boolean(op) && (op.kind === 'add' || op.kind === 'remove')
-  && [op.a, op.b, op.clock, op.seq, op.pid, op.owner ?? 0].every(whole);
+const soundOp = op =>
+  Boolean(op) &&
+  (op.kind === 'add' || op.kind === 'remove') &&
+  [op.a, op.b, op.clock, op.seq, op.pid, op.owner ?? 0].every(whole);
 
 // The saved text -> the record, or null for anything that is not one, or is too old.
 export function parseGame(raw, now = Date.now()) {
@@ -28,12 +40,22 @@ export function parseGame(raw, now = Date.now()) {
     if (data && data.pid === undefined) {
       data.pid = data.role === 'host' ? 0 : 1;
     }
-    const sound = data && data.v === 1 && (data.role === 'host' || data.role === 'guest')
-      && (data.pid === 0 || data.pid === 1) && whole(data.seed)
-      && typeof data.text === 'string' && data.text.length <= TEXT_MAX
-      && Array.isArray(data.ops) && data.ops.length <= OPS_MAX && data.ops.every(soundOp)
-      && whole(data.hints) && whole(data.startedWall) && SECRET.test(data.secret)
-      && whole(data.saved) && now - data.saved < KEEP_MS;
+    const sound =
+      data &&
+      data.v === 1 &&
+      (data.role === 'host' || data.role === 'guest') &&
+      (data.pid === 0 || data.pid === 1) &&
+      whole(data.seed) &&
+      typeof data.text === 'string' &&
+      data.text.length <= TEXT_MAX &&
+      Array.isArray(data.ops) &&
+      data.ops.length <= OPS_MAX &&
+      data.ops.every(soundOp) &&
+      whole(data.hints) &&
+      whole(data.startedWall) &&
+      SECRET.test(data.secret) &&
+      whole(data.saved) &&
+      now - data.saved < KEEP_MS;
     return sound ? data : null;
   } catch {
     return null;

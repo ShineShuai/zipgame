@@ -31,7 +31,15 @@ import { PLAYED_SURFACES, modelOf } from './model.js';
 // still hands the path to isSolved(), the rule of the single-player game.
 
 export const REASONS = [
-  'blocked', 'present', 'degree', 'cycle', 'order', 'gap', 'steps', 'direction', 'colours',
+  'blocked',
+  'present',
+  'degree',
+  'cycle',
+  'order',
+  'gap',
+  'steps',
+  'direction',
+  'colours',
 ];
 
 // null when Patchwork can play `puzzle`, else a message: every flat puzzle, and the surface kinds
@@ -40,7 +48,8 @@ export const REASONS = [
 export function unsupported(puzzle) {
   if (isSurfacePuzzle(puzzle)) {
     return PLAYED_SURFACES.includes(puzzle.kind)
-      ? null : `Patchwork does not play ${puzzle.kind} puzzles (yet).`;
+      ? null
+      : `Patchwork does not play ${puzzle.kind} puzzles (yet).`;
   }
   return null;
 }
@@ -91,8 +100,13 @@ function stepsProblem(numbers, total) {
   const fits = sign => {
     const first = value0 - sign * index0;
     const end = first + sign * last;
-    return first >= 1 && first <= total && end >= 1 && end <= total
-      && marked.every(([index, value]) => value === first + sign * index);
+    return (
+      first >= 1 &&
+      first <= total &&
+      end >= 1 &&
+      end <= total &&
+      marked.every(([index, value]) => value === first + sign * index)
+    );
   };
   return fits(1) || fits(-1) ? null : 'steps';
 }
@@ -173,7 +187,10 @@ export function createDrawing(puzzle) {
   // The numbers of a piece against the rules of its type: null, or the reason.
   function numbersProblem(piece) {
     if (puzzle.exact) {
-      return stepsProblem(piece.map(cell => puzzle.cp[cell] || 0), model.cells);
+      return stepsProblem(
+        piece.map(cell => puzzle.cp[cell] || 0),
+        model.cells,
+      );
     }
     const numbers = numbersOf(piece);
     if (puzzle.loop) {
@@ -267,10 +284,14 @@ export function createDrawing(puzzle) {
   function solved() {
     const wanted = model.cells - (puzzle.loop ? 0 : puzzle.split ? 2 : 1);
     const bridge = puzzle.split ? fragmentOf(start).length : -1; // where the blue path begins
-    return stamps.size === wanted && candidates().some(along => (
-      along.every((cell, i) => i === 0 || i === bridge || model.canStep(along[i - 1], cell))
-      && model.solved(along)
-    ));
+    return (
+      stamps.size === wanted &&
+      candidates().some(
+        along =>
+          along.every((cell, i) => i === 0 || i === bridge || model.canStep(along[i - 1], cell)) &&
+          model.solved(along),
+      )
+    );
   }
 
   return {

@@ -15,7 +15,9 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 const join = chunks => {
-  const parts = chunks.map(chunk => (chunk instanceof Uint8Array ? chunk : Uint8Array.from(chunk)));
+  const parts = chunks.map(chunk =>
+    chunk instanceof Uint8Array ? chunk : Uint8Array.from(chunk),
+  );
   const out = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
   let at = 0;
   for (const part of parts) {
@@ -50,21 +52,20 @@ const string = value => {
   return join([[bytes.length >> 8, bytes.length & 255], bytes]);
 };
 
-export const connectPacket = (clientId, keepAliveS) => packet(
-  CONNECT << 4,
-  string('MQTT'),
-  [4, 2, keepAliveS >> 8, keepAliveS & 255], // level 4 = 3.1.1, flags: clean session
-  string(clientId),
-);
+export const connectPacket = (clientId, keepAliveS) =>
+  packet(
+    CONNECT << 4,
+    string('MQTT'),
+    [4, 2, keepAliveS >> 8, keepAliveS & 255], // level 4 = 3.1.1, flags: clean session
+    string(clientId),
+  );
 
-export const subscribePacket = (id, filter) => packet(
-  (SUBSCRIBE << 4) | 2, [id >> 8, id & 255], string(filter), [0],
-);
+export const subscribePacket = (id, filter) =>
+  packet((SUBSCRIBE << 4) | 2, [id >> 8, id & 255], string(filter), [0]);
 
 // An empty `text` with retain removes the retained message of the topic.
-export const publishPacket = (topic, text, retain = false) => packet(
-  (PUBLISH << 4) | (retain ? 1 : 0), string(topic), encoder.encode(text),
-);
+export const publishPacket = (topic, text, retain = false) =>
+  packet((PUBLISH << 4) | (retain ? 1 : 0), string(topic), encoder.encode(text));
 
 export const PINGREQ_PACKET = Uint8Array.of(PINGREQ << 4, 0);
 export const DISCONNECT_PACKET = Uint8Array.of(DISCONNECT << 4, 0);
@@ -94,7 +95,9 @@ export function createParser() {
         return packets;
       }
       packets.push({
-        type: buffer[0] >> 4, flags: buffer[0] & 15, body: buffer.slice(at, at + length),
+        type: buffer[0] >> 4,
+        flags: buffer[0] & 15,
+        body: buffer.slice(at, at + length),
       });
       buffer = buffer.slice(at + length);
     }
@@ -207,8 +210,8 @@ export function createMqtt({
       return state === 'up';
     },
     // false when the message could not be handed to the socket
-    publish: (topic, text, retain = false) => state === 'up'
-      && write(publishPacket(topic, text, retain)),
+    publish: (topic, text, retain = false) =>
+      state === 'up' && write(publishPacket(topic, text, retain)),
     subscribe(filter) {
       nextId = (nextId % 65535) + 1;
       return state === 'up' && write(subscribePacket(nextId, filter));

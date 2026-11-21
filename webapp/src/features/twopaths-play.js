@@ -52,9 +52,8 @@ export function walkColour(p, paths, colour, cell, opts = {}) {
 export const solvedPaths = (p, paths) => isSolvedPaths(p, paths[RED], paths[BLUE]);
 
 // How many numbers each colour's path has reached: [red, blue].
-export const reached = (p, paths) => paths.map(
-  path => path.reduce((count, cell) => count + (colourOfCell(p, cell) >= 0 ? 1 : 0), 0),
-);
+export const reached = (p, paths) =>
+  paths.map(path => path.reduce((count, cell) => count + (colourOfCell(p, cell) >= 0 ? 1 : 0), 0));
 
 // The colour strip (features/share.js legsUndo) of a move that took cells off `colour`'s path:
 // prevPath = the path before the move, keep = how many cells stay. The legs of the blue path are

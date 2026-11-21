@@ -99,7 +99,10 @@ export function cubeMesh(n) {
       xyz[axis] = sign * n;
       xyz[(axis + 1) % 3] = 2 * u - n;
       xyz[(axis + 2) % 3] = 2 * v - n;
-      return mesh.vertex(xyz.join(','), xyz.map(x => x / n));
+      return mesh.vertex(
+        xyz.join(','),
+        xyz.map(x => x / n),
+      );
     };
     for (let i = 0; i < n; i++) {
       for (let j = 0; j < n; j++) {
@@ -114,6 +117,11 @@ export function cubeMesh(n) {
 export function ballMesh(entry) {
   const mesh = makeMesh();
   const ids = entry.v.map((xyz, i) => mesh.vertex(String(i), xyz));
-  entry.r.forEach((ring, face) => mesh.cell(face, ring.map(k => ids[k])));
+  entry.r.forEach((ring, face) =>
+    mesh.cell(
+      face,
+      ring.map(k => ids[k]),
+    ),
+  );
   return mesh;
 }

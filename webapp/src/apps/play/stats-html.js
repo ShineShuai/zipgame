@@ -40,24 +40,53 @@ const statsTable = (title, sub, head, rows) => `
         </div>
       </div>
     </details>`;
-const statsRow = (cells, keys, current) => `<tr${current ? ' class="current"' : ''}>${cells.map((value, i) =>
-  `<td data-label="${t(keys[i])}">${i === 0 ? value : `<b>${value}</b>`}</td>`).join('')}</tr>`;
+const statsRow = (cells, keys, current) =>
+  `<tr${current ? ' class="current"' : ''}>${cells
+    .map(
+      (value, i) => `<td data-label="${t(keys[i])}">${i === 0 ? value : `<b>${value}</b>`}</td>`,
+    )
+    .join('')}</tr>`;
 
-const LOCAL_HEAD = ['stats.grid', 'stats.next', 'stats.solves', 'stats.avg', 'stats.sd', 'stats.best']; // i18n keys
+const LOCAL_HEAD = [
+  'stats.grid',
+  'stats.next',
+  'stats.solves',
+  'stats.avg',
+  'stats.sd',
+  'stats.best',
+]; // i18n keys
 function localStatsHtml(scope = '') {
-  const rows = scopeSizes(scope).filter(n => store.total(n, scope).n || S.nextIdx[scopeKey(n, scope)] || n === S.puzzle.n).map(n => {
-    const c = statCells(n, scope);
-    return statsRow([sizeLabel(scope, n), gameNo(n, scope), c.solves, c.avg, c.sd, c.best], LOCAL_HEAD, n === S.puzzle.n);
-  }).join('');
-  return statsTable(scope ? t('stats.variantTitle', t('mode.' + scope)) : t('stats.title'), t('stats.sub'), LOCAL_HEAD, rows);
+  const rows = scopeSizes(scope)
+    .filter(n => store.total(n, scope).n || S.nextIdx[scopeKey(n, scope)] || n === S.puzzle.n)
+    .map(n => {
+      const c = statCells(n, scope);
+      return statsRow(
+        [sizeLabel(scope, n), gameNo(n, scope), c.solves, c.avg, c.sd, c.best],
+        LOCAL_HEAD,
+        n === S.puzzle.n,
+      );
+    })
+    .join('');
+  return statsTable(
+    scope ? t('stats.variantTitle', t('mode.' + scope)) : t('stats.title'),
+    t('stats.sub'),
+    LOCAL_HEAD,
+    rows,
+  );
 }
 
 const GOTD_HEAD = ['stats.grid', 'stats.date', 'stats.time'];
 function gotdStatsHtml() {
-  const rows = SIZES.filter(n => store.gotdBest(n) || n === S.puzzle.n).map(n => {
-    const best = store.gotdBest(n);
-    return statsRow([`${n}x${n}`, best ? dateLabel(best.date) : '-', best ? sec(best.time) : '-'], GOTD_HEAD, n === S.puzzle.n);
-  }).join('');
+  const rows = SIZES.filter(n => store.gotdBest(n) || n === S.puzzle.n)
+    .map(n => {
+      const best = store.gotdBest(n);
+      return statsRow(
+        [`${n}x${n}`, best ? dateLabel(best.date) : '-', best ? sec(best.time) : '-'],
+        GOTD_HEAD,
+        n === S.puzzle.n,
+      );
+    })
+    .join('');
   return statsTable(t('stats.gotdTitle'), t('stats.gotdSub'), GOTD_HEAD, rows);
 }
 

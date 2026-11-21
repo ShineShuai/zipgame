@@ -8,16 +8,14 @@ import { isSolidId, sizesFor } from './variants.js';
 // As in free play, a locked type is shown only while the hidden things are revealed (V held) or once
 // it was picked (`held`, until the screen closes); revealed, everything is playable.
 
-export const levelOf = (info, id) => (info ? info.access[id] ?? 'none' : 'all');
+export const levelOf = (info, id) => (info ? (info.access[id] ?? 'none') : 'all');
 
-export const isShown = (info, id, { revealed = false, held = new Set() } = {}) => (
-  levelOf(info, id) !== 'none' || revealed || held.has(id)
-);
+export const isShown = (info, id, { revealed = false, held = new Set() } = {}) =>
+  levelOf(info, id) !== 'none' || revealed || held.has(id);
 
 // The 3D tab is there once a 3D kind is unlocked or released, or while revealed.
-export const hasSolidTab = (info, { revealed = false, held = new Set() } = {}) => (
-  !info || info.solid || revealed || [...held].some(isSolidId)
-);
+export const hasSolidTab = (info, { revealed = false, held = new Set() } = {}) =>
+  !info || info.solid || revealed || [...held].some(isSolidId);
 
 // The sizes on offer for a type: all of them, or the open ones of a 'part' type.
 export function offeredSizes(info, id, revealed = false) {
@@ -32,5 +30,6 @@ export function offeredSizes(info, id, revealed = false) {
 // The type to start from in a tab: the one asked for if it is shown, else the first that is.
 export function firstShown(ids, wanted, info, ctx) {
   return ids.includes(wanted) && isShown(info, wanted, ctx)
-    ? wanted : ids.find(id => isShown(info, id, ctx)) ?? ids[0];
+    ? wanted
+    : (ids.find(id => isShown(info, id, ctx)) ?? ids[0]);
 }

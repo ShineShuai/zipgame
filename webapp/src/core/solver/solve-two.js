@@ -24,8 +24,10 @@ import { gridDist } from '../geom.js';
 // the editor's eyes (model.js), but the search does not mind.
 export function solveTwo(p, opts, search) {
   if (p.holes || p.arrows || p.exact || p.wrap || p.loop || p.portals) {
-    throw new Error('solve: a Two paths puzzle cannot have holes, arrows, Exact numbers, '
-      + 'wrap-around, a loop or portals (yet)');
+    throw new Error(
+      'solve: a Two paths puzzle cannot have holes, arrows, Exact numbers, ' +
+        'wrap-around, a loop or portals (yet)',
+    );
   }
   const [a, b] = bridgeCells(p);
   if (a === undefined || b === undefined || a < 0 || b < 0) {
@@ -37,7 +39,11 @@ export function solveTwo(p, opts, search) {
     setWallId(walls, edgeId(p.n, a, b), true);
   }
   const q = { n: p.n, cp: p.cp, walls, portals: [[a, b]] };
-  const extra = !opts.mustUse ? [] : Array.isArray(opts.mustUse[0]) ? opts.mustUse : [opts.mustUse];
+  const extra = !opts.mustUse
+    ? []
+    : Array.isArray(opts.mustUse[0])
+      ? opts.mustUse
+      : [opts.mustUse];
   // the grid edge between the bridge cells (walled above) is one no path walks: nothing to find
   if (extra.some(([x, y]) => (x === a && y === b) || (x === b && y === a))) {
     return { count: 0, exceeded: false, nodes: 0, paths: opts.capture ? [] : undefined };

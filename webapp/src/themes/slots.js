@@ -7,10 +7,13 @@ import { MAX_CAP, MIN_CAP } from './pool.js';
 export const SLOT_GOTD_SOLVES = 12;
 export const SLOT_STREAK_DAYS = 30;
 
-export const slotsFor = ({ gotdSolves = 0, bestStreak = 0, groupCap = 0 } = {}) => Math.min(
-  MAX_CAP,
-  Math.max(
-    MIN_CAP + (gotdSolves >= SLOT_GOTD_SOLVES ? 1 : 0) + (bestStreak >= SLOT_STREAK_DAYS ? 1 : 0),
-    Number.isInteger(groupCap) ? groupCap : 0,
-  ),
-);
+export const slotsFor = ({ gotdSolves = 0, bestStreak = 0, groupCap = 0 } = {}) =>
+  Math.min(
+    MAX_CAP,
+    Math.max(
+      MIN_CAP +
+        (gotdSolves >= SLOT_GOTD_SOLVES ? 1 : 0) +
+        (bestStreak >= SLOT_STREAK_DAYS ? 1 : 0),
+      Number.isInteger(groupCap) ? groupCap : 0,
+    ),
+  );

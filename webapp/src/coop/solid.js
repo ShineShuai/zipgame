@@ -3,12 +3,15 @@ import { solidIsDark } from '../apps/play/board.js';
 import { isSurfacePuzzle, startCell, topologyOf } from '../core/surface/puzzle.js';
 import { behind, buildBallView } from '../view/ball.js';
 import { IDENTITY, buildView, cellDirection, orbit, turnToward } from '../view/proj.js';
-import {
-  LIGHT_PALETTE, PLAY_DARK_PALETTE, surfaceSvg,
-} from '../view/surface-board.js';
+import { LIGHT_PALETTE, PLAY_DARK_PALETTE, surfaceSvg } from '../view/surface-board.js';
 import { buildNet, routePieces } from '../view/surface-net.js';
 import {
-  ARROW_TURN, FOLLOW_EDGE, ORBIT_SLOP, ORBIT_SPEED, createTurner, crossedCut,
+  ARROW_TURN,
+  FOLLOW_EDGE,
+  ORBIT_SLOP,
+  ORBIT_SPEED,
+  createTurner,
+  crossedCut,
 } from '../view/solid-nav.js';
 import { PLAYER_COLORS } from './view.js';
 
@@ -30,10 +33,8 @@ const MAP_WIDTH = 300;
 const round = value => Math.round(value * 100) / 100;
 
 // The solid starts turned to cell 1, so that it is in view.
-export const startRotation = puzzle => turnToward(
-  IDENTITY,
-  cellDirection(topologyOf(puzzle), startCell(puzzle)),
-);
+export const startRotation = puzzle =>
+  turnToward(IDENTITY, cellDirection(topologyOf(puzzle), startCell(puzzle)));
 
 // An arrow key turns the solid.
 export const turnByKey = (rotation, key) => orbit(rotation, ...ARROW_TURN[key]);
@@ -62,11 +63,13 @@ export function layoutsFor(puzzle, view, rotation) {
     : { main: [buildNet(top)], inset: null };
 }
 
-const piecesOf = (net, a, b) => (net.routePieces
-  ? net.routePieces([a, b]) : routePieces(net, [a, b]));
+const piecesOf = (net, a, b) =>
+  net.routePieces ? net.routePieces([a, b]) : routePieces(net, [a, b]);
 
-const polylineMiddle = points => points[Math.floor((points.length - 1) / 2)]
-  .map((value, axis) => (value + points[Math.ceil((points.length - 1) / 2)][axis]) / 2);
+const polylineMiddle = points =>
+  points[Math.floor((points.length - 1) / 2)].map(
+    (value, axis) => (value + points[Math.ceil((points.length - 1) / 2)][axis]) / 2,
+  );
 
 // The lines that the players drew (one group per player, in their colour), and the mark of the hint
 // on its edge: svg for the layer under the numbers of one picture.
@@ -83,40 +86,43 @@ function linesLayer(drawing, hint, net, frame, px) {
   }
   let markup = '';
   for (const [player, lines] of byPlayer) {
-    markup += `<g data-role="lines" stroke="${PLAYER_COLORS[player] ?? PLAYER_COLORS[0]}" `
-      + `stroke-width="${width}">${lines.join('')}</g>`;
+    markup +=
+      `<g data-role="lines" stroke="${PLAYER_COLORS[player] ?? PLAYER_COLORS[0]}" ` +
+      `stroke-width="${width}">${lines.join('')}</g>`;
   }
   if (hint) {
     const piece = piecesOf(net, ...hint.edge).find(candidate => candidate.length > 1);
     if (piece) {
       const [x, y] = polylineMiddle(pixels(piece));
       const name = hint.kind === 'wrong' ? 'sf-wrong' : 'sf-hint';
-      markup += `<circle class="${name}" data-mark="hint" cx="${round(x)}" cy="${round(y)}" `
-        + `r="${round(px * 0.3)}"/>`;
+      markup +=
+        `<circle class="${name}" data-mark="hint" cx="${round(x)}" cy="${round(y)}" ` +
+        `r="${round(px * 0.3)}"/>`;
     }
   }
   return markup;
 }
 
-const palette = () => (typeof document !== 'undefined'
-  && solidIsDark(document) ? PLAY_DARK_PALETTE : LIGHT_PALETTE);
+const palette = () =>
+  typeof document !== 'undefined' && solidIsDark(document) ? PLAY_DARK_PALETTE : LIGHT_PALETTE;
 
 // The board of a solid game: { html, layouts, frames }. `layouts` and `frames` are those of the
 // main pictures, for hit-testing (cellUnder, edgeNear, netPoint).
 export function solidBoard(puzzle, drawing, { view, rotation, hint = null }) {
   const { main, inset } = layoutsFor(puzzle, view, rotation);
-  const picture = (net, idSuffix) => surfaceSvg(net, {
-    P: puzzle,
-    selected: -1,
-    buffer: '',
-    playing: false,
-    template: null,
-    solutions: [],
-    visible: [],
-    palette: palette(),
-    idSuffix,
-    under: (frame, px) => linesLayer(drawing, hint, net, frame, px),
-  });
+  const picture = (net, idSuffix) =>
+    surfaceSvg(net, {
+      P: puzzle,
+      selected: -1,
+      buffer: '',
+      playing: false,
+      template: null,
+      solutions: [],
+      visible: [],
+      palette: palette(),
+      idSuffix,
+      under: (frame, px) => linesLayer(drawing, hint, net, frame, px),
+    });
   const pictures = main.map((net, i) => picture(net, String(i)));
   const views = pictures
     .map((one, i) => `<div class="sf-view" data-view="${i}">${one.markup}</div>`)

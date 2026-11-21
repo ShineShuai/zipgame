@@ -91,8 +91,10 @@ export function shapeIsViable(n, holes) {
 export function shapeProblem(n, holes) {
   const [a, b] = colourCounts(n, holes);
   if (Math.abs(a - b) > 1) {
-    return `Checkerboard rule: ${a} cells of one colour against ${b} of the other. A path `
-      + 'alternates colours, so the counts may differ by 1 at most.';
+    return (
+      `Checkerboard rule: ${a} cells of one colour against ${b} of the other. A path ` +
+      'alternates colours, so the counts may differ by 1 at most.'
+    );
   }
   const adj = adjacency(n, holes);
   let cells = 0;
@@ -297,7 +299,10 @@ const SILHOUETTE_MAKERS = {
     const bar = between(rnd, lo, Math.ceil(n / 2));
     const stem = between(rnd, lo, n - 2);
     const c0 = oneOf(rnd, halves(n - stem));
-    const holes = rectHoles(n, [[bar, 0, n - bar, c0], [bar, c0 + stem, n - bar, n - c0 - stem]]);
+    const holes = rectHoles(n, [
+      [bar, 0, n - bar, c0],
+      [bar, c0 + stem, n - bar, n - c0 - stem],
+    ]);
     return rotate(n, holes, between(rnd, 0, 3));
   },
 
@@ -325,7 +330,10 @@ const SILHOUETTE_MAKERS = {
     const side = between(rnd, lo, hiSide);
     const depth = between(rnd, minDepth, hiDepth);
     const width = n - 2 * side;
-    const holes = rectHoles(n, [[0, side, depth, width], [n - depth, side, depth, width]]);
+    const holes = rectHoles(n, [
+      [0, side, depth, width],
+      [n - depth, side, depth, width],
+    ]);
     return rotate(n, holes, between(rnd, 0, 1));
   },
 };

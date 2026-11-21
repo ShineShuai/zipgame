@@ -22,15 +22,22 @@ function failure({ status, body }) {
 }
 
 export function supabaseCloud(
-  { url, key }, name, { fetchFn = (...a) => fetch(...a), timeoutMs = 5000 } = {},
+  { url, key },
+  name,
+  { fetchFn = (...a) => fetch(...a), timeoutMs = 5000 } = {},
 ) {
   const rpc = async (fn, args, keepalive = false) => {
-    const reply = await fetchJson(fetchFn, `${trim(url)}/rest/v1/rpc/${fn}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: key },
-      body: JSON.stringify(args),
-      ...(keepalive ? { keepalive: true } : {}),
-    }, timeoutMs);
+    const reply = await fetchJson(
+      fetchFn,
+      `${trim(url)}/rest/v1/rpc/${fn}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: key },
+        body: JSON.stringify(args),
+        ...(keepalive ? { keepalive: true } : {}),
+      },
+      timeoutMs,
+    );
     if (!reply.ok) throw failure(reply);
     return reply.body;
   };
@@ -39,8 +46,11 @@ export function supabaseCloud(
     kind: 'supabase',
     // -> 'stored' | 'stale' (the server has this slice or a newer one)
     async put({ id, auth, dev, seq, data, keepalive }) {
-      const body = await rpc('sync_put',
-        { p_id: id, p_auth: auth, p_dev: dev, p_seq: seq, p_data: data }, keepalive);
+      const body = await rpc(
+        'sync_put',
+        { p_id: id, p_auth: auth, p_dev: dev, p_seq: seq, p_data: data },
+        keepalive,
+      );
       if (!body || body.ok !== true) throw new CloudError('network', 'not a reply');
       return body.stored ? 'stored' : 'stale';
     },
@@ -48,8 +58,15 @@ export function supabaseCloud(
     async get({ id, have }) {
       const body = await rpc('sync_get', { p_id: id, p_have: have || {} });
       if (!body || !Array.isArray(body.slices)) throw new CloudError('network', 'not a reply');
-      return body.slices.filter(row => row && isDev(row.dev) && Number.isSafeInteger(row.seq)
-        && typeof row.data === 'string' && row.data.length <= DATA_MAX && DATA.test(row.data));
+      return body.slices.filter(
+        row =>
+          row &&
+          isDev(row.dev) &&
+          Number.isSafeInteger(row.seq) &&
+          typeof row.data === 'string' &&
+          row.data.length <= DATA_MAX &&
+          DATA.test(row.data),
+      );
     },
     // -> true when a group was deleted, false when there was none
     async remove({ id, auth }) {

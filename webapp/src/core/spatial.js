@@ -45,13 +45,15 @@ export function segmentCrossCount(pts) {
 export function segmentOverlapCount(pts) {
   const boxes = [];
   for (let i = 0; i < pts.length - 1; i++) {
-    const [r1, c1] = pts[i], [r2, c2] = pts[i + 1];
+    const [r1, c1] = pts[i],
+      [r2, c2] = pts[i + 1];
     boxes.push([Math.min(r1, r2), Math.max(r1, r2), Math.min(c1, c2), Math.max(c1, c2)]);
   }
   let count = 0;
   for (let i = 0; i < boxes.length; i++) {
     for (let j = i + 2; j < boxes.length; j++) {
-      const [r1a, r1b, c1a, c1b] = boxes[i], [r2a, r2b, c2a, c2b] = boxes[j];
+      const [r1a, r1b, c1a, c1b] = boxes[i],
+        [r2a, r2b, c2a, c2b] = boxes[j];
       if (r1a <= r2b && r2a <= r1b && c1a <= c2b && c2a <= c1b) count++;
     }
   }
@@ -67,7 +69,9 @@ export function spatialMetrics(p) {
   const overlap = segmentOverlapCount(pts);
   return {
     K: pts.length,
-    segmentCrossCount: cross, crossPerSeg: cross / segs,
-    segmentOverlapCount: overlap, overlapPerSeg: overlap / segs,
+    segmentCrossCount: cross,
+    crossPerSeg: cross / segs,
+    segmentOverlapCount: overlap,
+    overlapPerSeg: overlap / segs,
   };
 }

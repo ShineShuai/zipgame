@@ -97,7 +97,15 @@ function puzzleCopy(variant, puzzle) {
 // needs no generator. Only a standard game has a grade: the receiver grades a variant's puzzle
 // again, and a record with a grade there cannot be encoded.
 export function makeShareRecord({
-  gotdDate, n, grade, timeS, pct, legs, K, variant = null, puzzle,
+  gotdDate,
+  n,
+  grade,
+  timeS,
+  pct,
+  legs,
+  K,
+  variant = null,
+  puzzle,
 }) {
   const common = {
     n,
@@ -115,9 +123,14 @@ export function makeShareRecord({
 
 // What identifies a shared game: its code without what a player adds to it (time, strip, grade,
 // percent). The same Game of Day, or the same puzzle, gives the same key; null if not encodable.
-export const shareKey = rec => encodeShare({
-  ...rec, timeS: 0.1, levels: [], grade: null, pct: null,
-});
+export const shareKey = rec =>
+  encodeShare({
+    ...rec,
+    timeS: 0.1,
+    levels: [],
+    grade: null,
+    pct: null,
+  });
 
 // How hard the game fought back on the colour strip: [sum of the levels, sum of their squares].
 // The squares break a tie in favour of a spike (one red leg is worse than three yellow ones).
@@ -176,10 +189,12 @@ export function parseShareLink(search) {
 export const sizeArg = ({ variant, n }) => (variant === PENTAGON_KIND ? PENTAGON_CELLS[n] : n);
 
 export function shareText(rec, url, tr) {
-  const head = rec.kind === 'gotd'
-    ? tr('share.headGotd', dateLabel(dateOfDay(rec.day)), rec.n)
-    : rec.variant ? tr('share.head' + rec.variant[0].toUpperCase() + rec.variant.slice(1), sizeArg(rec))
-      : tr('share.headLocal', rec.n);
+  const head =
+    rec.kind === 'gotd'
+      ? tr('share.headGotd', dateLabel(dateOfDay(rec.day)), rec.n)
+      : rec.variant
+        ? tr('share.head' + rec.variant[0].toUpperCase() + rec.variant.slice(1), sizeArg(rec))
+        : tr('share.headLocal', rec.n);
   const grade = rec.grade == null ? '' : ` · ${tr('grade.' + rec.grade)} ${rec.grade}/5`;
   const result = [`⏱ ${rec.timeS.toFixed(1)}s`];
   if (rec.pct != null) {
@@ -219,5 +234,5 @@ export const isPlayable = st => PLAYABLE.includes(st.status);
 
 // A saved Game of Day that is played or out of the replay window will never be playable from the
 // shared list again (it follows the replay scheme instead), so it leaves the list.
-export const isSpent = (rec, st) => rec.kind === 'gotd'
-  && (st.status === 'played' || st.status === 'old');
+export const isSpent = (rec, st) =>
+  rec.kind === 'gotd' && (st.status === 'played' || st.status === 'old');

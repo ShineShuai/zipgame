@@ -18,12 +18,19 @@ function outline(shape, color, x, y, radius, width) {
   const look = `fill="none" stroke="${color}" stroke-width="${num(width)}" stroke-linejoin="round"`;
   if (shape === 'diamond') {
     const r = radius * 1.15;
-    return `<polygon ${look} points="${pts([[x, y - r], [x + r, y], [x, y + r], [x - r, y]])}"/>`;
+    return `<polygon ${look} points="${pts([
+      [x, y - r],
+      [x + r, y],
+      [x, y + r],
+      [x - r, y],
+    ])}"/>`;
   }
   if (shape === 'square') {
     const r = radius * 0.9;
-    return `<rect ${look} x="${num(x - r)}" y="${num(y - r)}" width="${num(2 * r)}" ` +
-      `height="${num(2 * r)}" rx="${num(radius * 0.25)}"/>`;
+    return (
+      `<rect ${look} x="${num(x - r)}" y="${num(y - r)}" width="${num(2 * r)}" ` +
+      `height="${num(2 * r)}" rx="${num(radius * 0.25)}"/>`
+    );
   }
   if (shape === 'triangle') {
     const top = [x, y - radius * 1.1];
@@ -40,7 +47,10 @@ function outline(shape, color, x, y, radius, width) {
 export function portalIcon(shape, color, x, y, size = 60) {
   const r = size * 0.34;
   const k = size / 60;
-  return `<circle cx="${num(x)}" cy="${num(y)}" r="${num(r)}" fill="${color}" ` +
+  return (
+    `<circle cx="${num(x)}" cy="${num(y)}" r="${num(r)}" fill="${color}" ` +
     'fill-opacity="0.14" stroke="none"/>' +
-    outline(shape, color, x, y, r, 3.5 * k) + outline(shape, color, x, y, r * 0.5, 2.5 * k);
+    outline(shape, color, x, y, r, 3.5 * k) +
+    outline(shape, color, x, y, r * 0.5, 2.5 * k)
+  );
 }

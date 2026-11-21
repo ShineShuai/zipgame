@@ -12,8 +12,14 @@ export const fresh = () => ({ v: VERSION, cap: 0, themes: [] });
 
 // A record from storage or from another device, cleaned; null when it is not one.
 export function sanitize(c) {
-  const shaped = c && typeof c === 'object' && c.v === VERSION && Array.isArray(c.themes)
-    && Number.isInteger(c.cap) && c.cap >= 0 && c.cap <= MAX_CAP;
+  const shaped =
+    c &&
+    typeof c === 'object' &&
+    c.v === VERSION &&
+    Array.isArray(c.themes) &&
+    Number.isInteger(c.cap) &&
+    c.cap >= 0 &&
+    c.cap <= MAX_CAP;
   if (!shaped) {
     return null;
   }
@@ -34,7 +40,9 @@ export function createSlotsSync(storage, sync = null) {
   const save = async () => {
     try {
       await storage.set(SLOTS_KEY, JSON.stringify(state));
-    } catch { /* best effort, like every write */ }
+    } catch {
+      /* best effort, like every write */
+    }
   };
   return {
     async init() {
@@ -51,9 +59,11 @@ export function createSlotsSync(storage, sync = null) {
     // when something changed; never lowers the number.
     async publish(cap, themes) {
       const next = sanitize({ v: VERSION, cap: Math.max(cap, state.cap), themes });
-      const same = next && next.cap === state.cap
-        && next.themes.length === state.themes.length
-        && next.themes.every((id, i) => id === state.themes[i]);
+      const same =
+        next &&
+        next.cap === state.cap &&
+        next.themes.length === state.themes.length &&
+        next.themes.every((id, i) => id === state.themes[i]);
       if (!next || same) {
         return;
       }

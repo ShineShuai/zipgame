@@ -415,8 +415,8 @@ export function solveSurface(p, opts = {}) {
       if (remaining === 1) {
         search(cell, depth + 1, wanted);
       } else if (
-        (rowDone[wanted] || (fillRow(wanted), true))
-        && toNumber[wanted * T + cell] + tail[wanted] <= remaining - 1
+        (rowDone[wanted] || (fillRow(wanted), true)) &&
+        toNumber[wanted * T + cell] + tail[wanted] <= remaining - 1
       ) {
         const alive = takeAway(head);
         if (alive && linked(head, cell)) {

@@ -23,8 +23,13 @@ export const newDevId = () => toBase64Url(globalThis.crypto.getRandomValues(new 
 const isObject = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 // The structure only; what the keys hold is checked by their merge rules.
-export const isSlice = value => isObject(value) && value.v === SLICE_VERSION
-  && isDev(value.dev) && Number.isSafeInteger(value.seq) && value.seq >= 0 && isObject(value.keys);
+export const isSlice = value =>
+  isObject(value) &&
+  value.v === SLICE_VERSION &&
+  isDev(value.dev) &&
+  Number.isSafeInteger(value.seq) &&
+  value.seq >= 0 &&
+  isObject(value.keys);
 
 const compressionSupported = () =>
   typeof CompressionStream === 'function' && typeof DecompressionStream === 'function';
@@ -77,9 +82,12 @@ export async function packSlice(slice, { max = SLICE_MAX, shrink = {} } = {}) {
   if (bytes.length <= max) {
     return bytes;
   }
-  const keys = Object.fromEntries(Object.entries(slice.keys).map(
-    ([key, value]) => [key, shrink[key] ? shrink[key](value) : value],
-  ));
+  const keys = Object.fromEntries(
+    Object.entries(slice.keys).map(([key, value]) => [
+      key,
+      shrink[key] ? shrink[key](value) : value,
+    ]),
+  );
   bytes = await encode({ ...slice, keys });
   return bytes.length <= max ? bytes : null;
 }
@@ -94,7 +102,8 @@ export async function unpackSlice(bytes, { max = SLICE_MAX } = {}) {
     if (bytes[0] === RAW) {
       text = bytes.subarray(1);
     } else if (bytes[0] === DEFLATE && compressionSupported()) {
-      const stream = new Blob([bytes.subarray(1)]).stream()
+      const stream = new Blob([bytes.subarray(1)])
+        .stream()
         .pipeThrough(new DecompressionStream('deflate-raw'));
       text = await readAll(stream, UNPACKED_MAX);
     } else {

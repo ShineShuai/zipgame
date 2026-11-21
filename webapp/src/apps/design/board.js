@@ -3,39 +3,68 @@ import { hasWallId } from '../../core/edges.js';
 import { neighbourCell, isPortalPair, portalPartner } from '../../core/geom.js';
 import { portalIcon, portalColor, portalShape } from '../../view/portal-icons.js';
 import {
-  polyPoints, wallSegments, cellCenter, arrowSegment, arrowMarks, pathD, seamMarks, chordSegments,
+  polyPoints,
+  wallSegments,
+  cellCenter,
+  arrowSegment,
+  arrowMarks,
+  pathD,
+  seamMarks,
+  chordSegments,
   WRAP_PAD,
 } from '../../view/geometry.js';
 import { boardConnectivity, boardPropagation, boardLegCollide } from '../../core/connectivity.js';
 import { bridgeCells, colourNumberOf } from '../../core/twopaths.js';
 
-export const TPL_C = '#8b93b8', PLAY_C = '#5b7cfa', SOL_C = ['#ffa62b', '#38bdf8'], LEG_C = '#c754ff', GRAPH_C = '#2dd4bf';
+export const TPL_C = '#8b93b8',
+  PLAY_C = '#5b7cfa',
+  SOL_C = ['#ffa62b', '#38bdf8'],
+  LEG_C = '#c754ff',
+  GRAPH_C = '#2dd4bf';
 export const ARROW_C = '#ffd23f';
 // Two paths: the red and the blue path on the dark board
 export const TWO_C = ['#ff6b73', '#6f8fff'];
-export const cellSizeFor = n => n <= 5 ? 66 : n <= 7 ? 54 : 46;
+export const cellSizeFor = n => (n <= 5 ? 66 : n <= 7 ? 54 : 46);
 const NS = 'http://www.w3.org/2000/svg';
-const box = (cls, x, y, w, h) => { const d = document.createElement('div'); d.className = cls; Object.assign(d.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' }); return d; };
+const box = (cls, x, y, w, h) => {
+  const d = document.createElement('div');
+  d.className = cls;
+  Object.assign(d.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
+  return d;
+};
 const poly = (pts, stroke, w, attrs = {}, tag = 'polyline') => {
   const e = document.createElementNS(NS, tag);
   const geometry = tag === 'path' ? { d: pts } : { points: pts };
-  for (const [k, v] of Object.entries({ ...geometry, fill: 'none', stroke, 'stroke-width': w, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', ...attrs })) e.setAttribute(k, v);
+  for (const [k, v] of Object.entries({
+    ...geometry,
+    fill: 'none',
+    stroke,
+    'stroke-width': w,
+    'stroke-linecap': 'round',
+    'stroke-linejoin': 'round',
+    ...attrs,
+  }))
+    e.setAttribute(k, v);
   return e;
 };
 // A route through cells: a polyline; on a wrap-around board a path, whose steps over a seam are two
 // stubs (geometry.js pathD).
-const route = (n, cells, wrap, stroke, w, attrs = {}) => (wrap
-  ? poly(pathD(n, cells, 1, true), stroke, w, attrs, 'path')
-  : poly(polyPoints(n, cells), stroke, w, attrs));
+const route = (n, cells, wrap, stroke, w, attrs = {}) =>
+  wrap
+    ? poly(pathD(n, cells, 1, true), stroke, w, attrs, 'path')
+    : poly(polyPoints(n, cells), stroke, w, attrs);
 // A route through cells of a Teleport puzzle: the line is broken at every jump over a portal pair
 // (it would cross
 // cells the route does not visit), and the jump is a dotted arc from one portal to the other. d:
 // the broken line.
-export const portalD = (n, cells, portals) => cells.map((cell, k) => {
-  const [x, y] = cellCenter(n, cell, 1);
-  const jump = k > 0 && isPortalPair(portals, cells[k - 1], cell);
-  return (k && !jump ? 'L' : 'M') + +x.toFixed(3) + ' ' + +y.toFixed(3);
-}).join(' ');
+export const portalD = (n, cells, portals) =>
+  cells
+    .map((cell, k) => {
+      const [x, y] = cellCenter(n, cell, 1);
+      const jump = k > 0 && isPortalPair(portals, cells[k - 1], cell);
+      return (k && !jump ? 'L' : 'M') + +x.toFixed(3) + ' ' + +y.toFixed(3);
+    })
+    .join(' ');
 // The dotted arcs of the jumps of `cells` as svg elements, in cell units.
 function jumpArcs(n, cells, portals, stroke, width, opacity = 0.95) {
   const arcs = [];
@@ -92,15 +121,26 @@ const splitRoute = (n, cells, p, stroke, w, attrs = {}) =>
 // A Loop puzzle's route closes: from its last cell back to cell 1 (the ring). Other puzzles: as it is.
 const ringCells = (p, cells) => (p.loop && cells.length > 2 ? [...cells, cells[0]] : cells);
 // The in / out arrowheads of the seam steps of a wrap-around route (geometry.js seamMarks), in cell units.
-const MARK_LEN = 0.32, MARK_HALF = 0.2;
+const MARK_LEN = 0.32,
+  MARK_HALF = 0.2;
 function seamMarkEls(n, cells, color, opacity = 0.95) {
   return seamMarks(n, cells, 1).map(({ x, y, dx, dy }) => {
     const tip = [x + (dx * MARK_LEN) / 2, y + (dy * MARK_LEN) / 2];
     const base = [x - (dx * MARK_LEN) / 2, y - (dy * MARK_LEN) / 2];
-    const wings = [[base[0] - dy * MARK_HALF, base[1] + dx * MARK_HALF], [base[0] + dy * MARK_HALF, base[1] - dx * MARK_HALF]];
+    const wings = [
+      [base[0] - dy * MARK_HALF, base[1] + dx * MARK_HALF],
+      [base[0] + dy * MARK_HALF, base[1] - dx * MARK_HALF],
+    ];
     const points = [tip, ...wings].map(q => q.map(v => +v.toFixed(3)).join(',')).join(' ');
     const tri = document.createElementNS(NS, 'polygon');
-    const attrs = { points, fill: color, stroke: '#0d1120', 'stroke-width': 0.04, 'stroke-linejoin': 'round', opacity };
+    const attrs = {
+      points,
+      fill: color,
+      stroke: '#0d1120',
+      'stroke-width': 0.04,
+      'stroke-linejoin': 'round',
+      opacity,
+    };
     for (const [k, v] of Object.entries(attrs)) tri.setAttribute(k, v);
     return tri;
   });
@@ -109,10 +149,15 @@ function seamMarkEls(n, cells, color, opacity = 0.95) {
 // Paint the whole editable board. V = { P, cellSize, mode, selected, buffer, playMode, playPath, preview, previewVisible, solutions, solVisible, dragSrc }.
 // Returns refs to the live play-path elements.
 export function renderBoard(board, stage, V) {
-  const { P, cellSize: cs } = V, n = P.n, size = n * cs, wrap = !!P.wrap;
+  const { P, cellSize: cs } = V,
+    n = P.n,
+    size = n * cs,
+    wrap = !!P.wrap;
   // A wrap-around board has a margin of WRAP_PAD cells on every side (view/geometry.js), where the
   // stubs of a step over a seam and the wall handles of the seam edges are.
-  const pad = wrap ? WRAP_PAD : 0, pm = pad * cs, total = size + 2 * pm;
+  const pad = wrap ? WRAP_PAD : 0,
+    pm = pad * cs,
+    total = size + 2 * pm;
   board.style.width = board.style.height = total + 'px';
   stage.style.setProperty('--board-size', total + 'px');
   board.classList.toggle('wallmode', (V.mode === 'wall' || V.mode === 'arrow') && !V.playMode);
@@ -125,47 +170,85 @@ export function renderBoard(board, stage, V) {
   const holes = P.holes || null;
   const cellEls = new Array(n * n);
   for (let i = 0; i < n * n; i++) {
-    const d = box((holes && holes[i] ? 'cell hole' : 'cell editable') + (P.cp[i] ? ' has-number' : '') + (i === V.selected && !V.playMode ? ' selected' : ''), pm + (i % n) * cs, pm + ((i / n) | 0) * cs, cs, cs);
-    d.dataset.idx = i; board.appendChild(d); cellEls[i] = d;
+    const d = box(
+      (holes && holes[i] ? 'cell hole' : 'cell editable') +
+        (P.cp[i] ? ' has-number' : '') +
+        (i === V.selected && !V.playMode ? ' selected' : ''),
+      pm + (i % n) * cs,
+      pm + ((i / n) | 0) * cs,
+      cs,
+      cs,
+    );
+    d.dataset.idx = i;
+    board.appendChild(d);
+    cellEls[i] = d;
   }
   if (wrap) board.appendChild(box('wrapframe', pm, pm, size, size));
-  const HT = Math.max(10, Math.round(cs * 0.26)), INSET = Math.round(cs * 0.16);
-  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
-    const e = (r * n + c) * 2, i = e / 2;
-    const rightOk = !holes || !(holes[i] || (c < n - 1 && holes[i + 1]));
-    const downOk = !holes || !(holes[i] || (r < n - 1 && holes[i + n]));
-    // A wall across a seam has a handle on both borders of the board.
-    if ((c < n - 1 || wrap) && rightOk) {
-      for (const x of c < n - 1 ? [pm + (c + 1) * cs] : [pm + size, pm]) {
-        const d = box('wallhit v' + (hasWallId(P.walls, e) ? ' on' : ''), x - HT / 2, pm + r * cs + INSET, HT, cs - 2 * INSET); d.dataset.edge = e; board.appendChild(d);
+  const HT = Math.max(10, Math.round(cs * 0.26)),
+    INSET = Math.round(cs * 0.16);
+  for (let r = 0; r < n; r++)
+    for (let c = 0; c < n; c++) {
+      const e = (r * n + c) * 2,
+        i = e / 2;
+      const rightOk = !holes || !(holes[i] || (c < n - 1 && holes[i + 1]));
+      const downOk = !holes || !(holes[i] || (r < n - 1 && holes[i + n]));
+      // A wall across a seam has a handle on both borders of the board.
+      if ((c < n - 1 || wrap) && rightOk) {
+        for (const x of c < n - 1 ? [pm + (c + 1) * cs] : [pm + size, pm]) {
+          const d = box(
+            'wallhit v' + (hasWallId(P.walls, e) ? ' on' : ''),
+            x - HT / 2,
+            pm + r * cs + INSET,
+            HT,
+            cs - 2 * INSET,
+          );
+          d.dataset.edge = e;
+          board.appendChild(d);
+        }
+      }
+      if ((r < n - 1 || wrap) && downOk) {
+        for (const y of r < n - 1 ? [pm + (r + 1) * cs] : [pm + size, pm]) {
+          const d = box(
+            'wallhit h' + (hasWallId(P.walls, e + 1) ? ' on' : ''),
+            pm + c * cs + INSET,
+            y - HT / 2,
+            cs - 2 * INSET,
+            HT,
+          );
+          d.dataset.edge = e + 1;
+          board.appendChild(d);
+        }
       }
     }
-    if ((r < n - 1 || wrap) && downOk) {
-      for (const y of r < n - 1 ? [pm + (r + 1) * cs] : [pm + size, pm]) {
-        const d = box('wallhit h' + (hasWallId(P.walls, e + 1) ? ' on' : ''), pm + c * cs + INSET, y - HT / 2, cs - 2 * INSET, HT); d.dataset.edge = e + 1; board.appendChild(d);
-      }
-    }
-  }
 
   const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('class', 'pathlayer'); svg.setAttribute('viewBox', `${-pad} ${-pad} ${n + 2 * pad} ${n + 2 * pad}`); svg.style.width = svg.style.height = total + 'px';
+  svg.setAttribute('class', 'pathlayer');
+  svg.setAttribute('viewBox', `${-pad} ${-pad} ${n + 2 * pad} ${n + 2 * pad}`);
+  svg.style.width = svg.style.height = total + 'px';
   if (P.portals) {
     // the portals, under the lines; a pair has its own colour and shape (view/portal-icons.js)
-    P.portals.forEach((pair, index) => pair.forEach(cell => {
-      const g = document.createElementNS(NS, 'g');
-      const [cx, cy] = cellCenter(n, cell, 1);
-      g.setAttribute('class', 'portal');
-      g.setAttribute('data-portal-cell', cell);
-      g.innerHTML = portalIcon(portalShape(index), portalColor(index), cx, cy, 1);
-      svg.appendChild(g);
-    }));
+    P.portals.forEach((pair, index) =>
+      pair.forEach(cell => {
+        const g = document.createElementNS(NS, 'g');
+        const [cx, cy] = cellCenter(n, cell, 1);
+        g.setAttribute('class', 'portal');
+        g.setAttribute('data-portal-cell', cell);
+        g.innerHTML = portalIcon(portalShape(index), portalColor(index), cx, cy, 1);
+        svg.appendChild(g);
+      }),
+    );
     if (V.pending >= 0 && !V.playMode) {
       // the first cell of a pair being placed: waiting for its partner
       const ring = document.createElementNS(NS, 'circle');
       const [cx, cy] = cellCenter(n, V.pending, 1);
       const look = {
-        cx, cy, r: 0.4, fill: 'none', stroke: portalColor(P.portals.length),
-        'stroke-width': 0.07, 'stroke-dasharray': '0.18 0.12',
+        cx,
+        cy,
+        r: 0.4,
+        fill: 'none',
+        stroke: portalColor(P.portals.length),
+        'stroke-width': 0.07,
+        'stroke-dasharray': '0.18 0.12',
       };
       for (const [k, v] of Object.entries(look)) ring.setAttribute(k, v);
       svg.appendChild(ring);
@@ -173,17 +256,25 @@ export function renderBoard(board, stage, V) {
   }
   if (V.preview && V.previewVisible && !V.playMode) {
     const dashed = { 'stroke-dasharray': '0.28 0.22', opacity: 0.65 };
-    svg.appendChild(P.portals ? portalRoute(n, V.preview, P.portals, TPL_C, 0.2, dashed)
-      : P.split ? splitRoute(n, V.preview, P, TPL_C, 0.2, dashed)
-        : route(n, ringCells(P, V.preview), wrap, TPL_C, 0.2, dashed));
+    svg.appendChild(
+      P.portals
+        ? portalRoute(n, V.preview, P.portals, TPL_C, 0.2, dashed)
+        : P.split
+          ? splitRoute(n, V.preview, P, TPL_C, 0.2, dashed)
+          : route(n, ringCells(P, V.preview), wrap, TPL_C, 0.2, dashed),
+    );
     if (wrap) seamMarkEls(n, V.preview, TPL_C, 0.65).forEach(m => svg.appendChild(m));
   }
   V.solutions.forEach((sol, i) => {
     if (!V.solVisible[i]) return;
     const look = { opacity: 0.92, ...(i === 1 ? { 'stroke-dasharray': '0.34 0.24' } : {}) };
-    svg.appendChild(P.portals ? portalRoute(n, sol, P.portals, SOL_C[i], 0.24, look)
-      : P.split ? splitRoute(n, sol, P, SOL_C[i], 0.24, look)
-        : route(n, ringCells(P, sol), wrap, SOL_C[i], 0.24, look));
+    svg.appendChild(
+      P.portals
+        ? portalRoute(n, sol, P.portals, SOL_C[i], 0.24, look)
+        : P.split
+          ? splitRoute(n, sol, P, SOL_C[i], 0.24, look)
+          : route(n, ringCells(P, sol), wrap, SOL_C[i], 0.24, look),
+    );
     if (wrap) seamMarkEls(n, sol, SOL_C[i], 0.92).forEach(m => svg.appendChild(m));
   });
   const refs = {};
@@ -191,7 +282,8 @@ export function renderBoard(board, stage, V) {
     // a Teleport route is a path, broken at the jumps (portalD), with the arcs of the jumps in a
     // layer of their own
     const lookPlay = { opacity: 0.95 };
-    if (P.split) { // Two paths: a line and a head for each colour (paintPlayTwo)
+    if (P.split) {
+      // Two paths: a line and a head for each colour (paintPlayTwo)
       refs.lines = TWO_C.map(color => poly('', color, 0.3, lookPlay));
       refs.lines.forEach(line => svg.appendChild(line));
       refs.heads = TWO_C.map(color => {
@@ -202,16 +294,22 @@ export function renderBoard(board, stage, V) {
         return head;
       });
     } else {
-      refs.line = P.portals ? poly('', PLAY_C, 0.3, lookPlay, 'path')
+      refs.line = P.portals
+        ? poly('', PLAY_C, 0.3, lookPlay, 'path')
         : route(n, [], wrap, PLAY_C, 0.3, lookPlay);
       svg.appendChild(refs.line);
     }
     const layers = [
-      ['graphLayer', 'graphlayer'], ['propLayer', 'proplayer'], ['legLayer', 'leglayer'],
-      ['seamLayer', 'seamlayer'], ['jumpLayer', 'jumplayer'],
+      ['graphLayer', 'graphlayer'],
+      ['propLayer', 'proplayer'],
+      ['legLayer', 'leglayer'],
+      ['seamLayer', 'seamlayer'],
+      ['jumpLayer', 'jumplayer'],
     ];
     for (const [k, cls] of layers) {
-      refs[k] = document.createElementNS(NS, 'g'); refs[k].setAttribute('class', cls); svg.appendChild(refs[k]);
+      refs[k] = document.createElementNS(NS, 'g');
+      refs[k].setAttribute('class', cls);
+      svg.appendChild(refs[k]);
     }
     if (!P.split) {
       refs.head = document.createElementNS(NS, 'circle');
@@ -220,12 +318,18 @@ export function renderBoard(board, stage, V) {
       svg.appendChild(refs.head);
     }
   }
-  if (P.arrows) { // one-way arrows, above the lines
+  if (P.arrows) {
+    // one-way arrows, above the lines
     for (const { edge, points } of arrowMarks(P)) {
       const tri = document.createElementNS(NS, 'polygon');
       const attrs = {
-        points, fill: ARROW_C, stroke: '#0d1120', 'stroke-width': 0.04, 'stroke-linejoin': 'round',
-        class: 'arrowmark', 'data-edge': edge,
+        points,
+        fill: ARROW_C,
+        stroke: '#0d1120',
+        'stroke-width': 0.04,
+        'stroke-linejoin': 'round',
+        class: 'arrowmark',
+        'data-edge': edge,
       };
       for (const [k, v] of Object.entries(attrs)) tri.setAttribute(k, v);
       svg.appendChild(tri);
@@ -233,24 +337,34 @@ export function renderBoard(board, stage, V) {
   }
   board.appendChild(svg);
 
-  const layer = document.createElement('div'); layer.className = 'numlayer';
-  const K = maxNumber(P), visited = V.playMode ? new Set(V.playPath) : null;
+  const layer = document.createElement('div');
+  layer.className = 'numlayer';
+  const K = maxNumber(P),
+    visited = V.playMode ? new Set(V.playPath) : null;
   for (let i = 0; i < n * n; i++) {
-    const v = P.cp[i], pending = !V.playMode && i === V.selected && V.buffer !== '';
+    const v = P.cp[i],
+      pending = !V.playMode && i === V.selected && V.buffer !== '';
     if (!v && !pending) continue;
-    const holder = box('badge', pm + (i % n) * cs, pm + ((i / n) | 0) * cs, cs, cs), inner = document.createElement('div');
+    const holder = box('badge', pm + (i % n) * cs, pm + ((i / n) | 0) * cs, cs, cs),
+      inner = document.createElement('div');
     // Two paths: a number is red or blue and counts within its colour; one being typed has the
     // colour picked
     const typing = { colour: V.numColour || 0, number: v };
     const two = P.split ? (v ? colourNumberOf(P, i) : typing) : null;
     const first = two ? v && two.number === 1 : v === 1;
     const last = two ? v && v === (two.colour === 0 ? P.split : K) : v && v === K;
-    inner.className = 'badge-inner' + (pending ? ' pending' : '') + (first ? ' start' : '')
-      + (last ? ' end' : '') + (visited && visited.has(i) ? ' visited' : '')
-      + (i === V.dragSrc ? ' dragging' : '') + (two ? (two.colour === 0 ? ' red' : ' blue') : '');
+    inner.className =
+      'badge-inner' +
+      (pending ? ' pending' : '') +
+      (first ? ' start' : '') +
+      (last ? ' end' : '') +
+      (visited && visited.has(i) ? ' visited' : '') +
+      (i === V.dragSrc ? ' dragging' : '') +
+      (two ? (two.colour === 0 ? ' red' : ' blue') : '');
     inner.style.fontSize = Math.max(11, Math.round(cs * (v > 99 ? 0.24 : 0.3))) + 'px';
     inner.textContent = pending ? V.buffer : two ? two.number : v;
-    holder.appendChild(inner); layer.appendChild(holder);
+    holder.appendChild(inner);
+    layer.appendChild(holder);
   }
   board.appendChild(layer);
   refs.cells = cellEls;
@@ -268,10 +382,21 @@ export function renderBoard(board, stage, V) {
 // showGraph: directed checkpoint graph, an arrow k -> k+1 for every consecutive pair (path-independent).
 // Each reads from its own pass (boardConnectivity / boardPropagation / boardLegCollide) computed once if
 // enabled. Returns { legConflicts } (boardLegCollide's conflicts, [] when off) for the caller's info line.
-export function paintPlay(refs, n, path, P, showConn, showDead, showProp, showLegCollide, showGraph) {
+export function paintPlay(
+  refs,
+  n,
+  path,
+  P,
+  showConn,
+  showDead,
+  showProp,
+  showLegCollide,
+  showGraph,
+) {
   const out = { legConflicts: [] };
   if (!refs.line) return out;
-  const done = path.length === cellCount(P), wrap = !!P.wrap;
+  const done = path.length === cellCount(P),
+    wrap = !!P.wrap;
   const drawn = done ? ringCells(P, path) : path; // a solved Loop puzzle is drawn closed
   if (P.portals) {
     refs.line.setAttribute('d', drawn.length > 1 ? portalD(n, drawn, P.portals) : '');
@@ -285,29 +410,50 @@ export function paintPlay(refs, n, path, P, showConn, showDead, showProp, showLe
   refs.line.style.display = path.length > 1 ? '' : 'none';
   if (refs.seamLayer) {
     refs.seamLayer.innerHTML = '';
-    if (wrap) seamMarkEls(n, path, done ? '#3ddc97' : PLAY_C).forEach(m => refs.seamLayer.appendChild(m));
+    if (wrap)
+      seamMarkEls(n, path, done ? '#3ddc97' : PLAY_C).forEach(m => refs.seamLayer.appendChild(m));
   }
   refs.line.setAttribute('stroke', done ? '#3ddc97' : PLAY_C);
   if (path.length) {
     const h = path[path.length - 1];
-    refs.head.setAttribute('cx', (h % n) + 0.5); refs.head.setAttribute('cy', ((h / n) | 0) + 0.5);
-    refs.head.setAttribute('fill', done ? '#8ff5c9' : '#c3d0ff'); refs.head.style.display = '';
+    refs.head.setAttribute('cx', (h % n) + 0.5);
+    refs.head.setAttribute('cy', ((h / n) | 0) + 0.5);
+    refs.head.setAttribute('fill', done ? '#8ff5c9' : '#c3d0ff');
+    refs.head.style.display = '';
   } else refs.head.style.display = 'none';
 
-  if (refs.graphLayer) { refs.graphLayer.innerHTML = ''; if (showGraph) drawGraph(refs.graphLayer, P); }
+  if (refs.graphLayer) {
+    refs.graphLayer.innerHTML = '';
+    if (showGraph) drawGraph(refs.graphLayer, P);
+  }
   if (refs.propLayer) refs.propLayer.innerHTML = '';
   if (refs.legLayer) refs.legLayer.innerHTML = '';
   if (!refs.cells) return out;
   if ((!showConn && !showDead && !showProp && !showLegCollide) || done || !path.length) {
-    for (const c of refs.cells) if (c) c.classList.remove('conn-dead', 'conn-unreachable', 'conn-forced', 'conn-stuck', 'conn-leg-stuck');
+    for (const c of refs.cells)
+      if (c)
+        c.classList.remove(
+          'conn-dead',
+          'conn-unreachable',
+          'conn-forced',
+          'conn-stuck',
+          'conn-leg-stuck',
+        );
     return out;
   }
-  const { deadEnd, unreachable } = (showConn || showDead) ? boardConnectivity(P, path) : { deadEnd: new Set(), unreachable: new Set() };
-  const { dirs, infeasible } = showProp ? boardPropagation(P, path) : { dirs: null, infeasible: false };
+  const { deadEnd, unreachable } =
+    showConn || showDead
+      ? boardConnectivity(P, path)
+      : { deadEnd: new Set(), unreachable: new Set() };
+  const { dirs, infeasible } = showProp
+    ? boardPropagation(P, path)
+    : { dirs: null, infeasible: false };
   const conflicts = showLegCollide ? boardLegCollide(P, path).conflicts : [];
-  const contested = new Set(); for (const k of conflicts) for (const c of k.cells) contested.add(c);
+  const contested = new Set();
+  for (const k of conflicts) for (const c of k.cells) contested.add(c);
   for (let i = 0; i < refs.cells.length; i++) {
-    const c = refs.cells[i]; if (!c) continue;
+    const c = refs.cells[i];
+    if (!c) continue;
     c.classList.toggle('conn-dead', showDead && deadEnd.has(i));
     c.classList.toggle('conn-unreachable', showConn && unreachable.has(i));
     c.classList.toggle('conn-forced', showProp && dirs && dirs[i] !== 0);
@@ -320,28 +466,39 @@ export function paintPlay(refs, n, path, P, showConn, showDead, showProp, showLe
       if (!mask) continue;
       // dir order R,L,D,U (see prune.js DR/DC) — only draw R and D to avoid double-drawing each
       // edge from both endpoints (its reverse direction on the neighbour is the same segment).
-      if (P.portals && (mask & 16)) { // a forced portal edge (slot 4 of the lower cell of its pair)
+      if (P.portals && mask & 16) {
+        // a forced portal edge (slot 4 of the lower cell of its pair)
         const [x1, y1] = cellCenter(n, i, 1);
         const [x2, y2] = cellCenter(n, portalPartner(P.portals, i), 1);
         refs.propLayer.appendChild(seg(x1, y1, x2, y2));
       }
-      for (const [bit, dir] of [[1, 0], [4, 2]]) {
+      for (const [bit, dir] of [
+        [1, 0],
+        [4, 2],
+      ]) {
         if (!(mask & bit)) continue;
         const next = neighbourCell(n, !!P.wrap, i, dir);
-        for (const piece of chordSegments(n, !!P.wrap, i, next)) refs.propLayer.appendChild(seg(...piece));
+        for (const piece of chordSegments(n, !!P.wrap, i, next))
+          refs.propLayer.appendChild(seg(...piece));
       }
     }
   }
   if (conflicts.length && refs.legLayer) {
     const drawn = new Set();
-    for (const { a, b } of conflicts) for (const leg of [a, b]) {
-      const key = leg.join('-'); if (drawn.has(key)) continue; drawn.add(key);
-      const pieces = chordSegments(n, !!P.wrap, leg[0], leg[1]);
-      for (const piece of pieces) refs.legLayer.appendChild(seg(...piece, LEG_C, 0.1, 0.9));
-      // the label sits on the middle of the first piece, kept inside the board
-      const [x1, y1, x2, y2] = pieces[0], inside = v => Math.min(n - 0.3, Math.max(0.3, v));
-      refs.legLayer.appendChild(label(inside((x1 + x2) / 2), inside((y1 + y2) / 2), legName(P, leg), '#ecd0ff'));
-    }
+    for (const { a, b } of conflicts)
+      for (const leg of [a, b]) {
+        const key = leg.join('-');
+        if (drawn.has(key)) continue;
+        drawn.add(key);
+        const pieces = chordSegments(n, !!P.wrap, leg[0], leg[1]);
+        for (const piece of pieces) refs.legLayer.appendChild(seg(...piece, LEG_C, 0.1, 0.9));
+        // the label sits on the middle of the first piece, kept inside the board
+        const [x1, y1, x2, y2] = pieces[0],
+          inside = v => Math.min(n - 0.3, Math.max(0.3, v));
+        refs.legLayer.appendChild(
+          label(inside((x1 + x2) / 2), inside((y1 + y2) / 2), legName(P, leg), '#ecd0ff'),
+        );
+      }
   }
   out.legConflicts = conflicts;
   return out;
@@ -352,13 +509,15 @@ export function paintPlay(refs, n, path, P, showConn, showDead, showProp, showLe
 export function paintPlayTwo(refs, P, paths, solved) {
   if (!refs.lines) return;
   paths.forEach((path, colour) => {
-    const line = refs.lines[colour], head = refs.heads[colour];
+    const line = refs.lines[colour],
+      head = refs.heads[colour];
     line.setAttribute('points', polyPoints(P.n, path));
     line.setAttribute('stroke', solved ? '#3ddc97' : TWO_C[colour]);
     line.style.display = path.length > 1 ? '' : 'none';
     if (path.length) {
       const h = path[path.length - 1];
-      head.setAttribute('cx', (h % P.n) + 0.5); head.setAttribute('cy', ((h / P.n) | 0) + 0.5);
+      head.setAttribute('cx', (h % P.n) + 0.5);
+      head.setAttribute('cy', ((h / P.n) | 0) + 0.5);
       head.style.display = '';
     } else head.style.display = 'none';
   });
@@ -370,10 +529,14 @@ export const legName = (P, [s, t]) => `${P.cp[s] || '●'}→${P.cp[t]}`;
 function drawGraph(layer, P) {
   const cells = checkpointCells(P);
   for (let k = 0; k + 1 < cells.length; k++) {
-    const { line, head } = P.wrap ? wrapArrow(P.n, cells[k], cells[k + 1]) : arrowSegment(P.n, cells[k], cells[k + 1]);
-    for (const piece of P.wrap ? line : [line]) layer.appendChild(seg(...piece, GRAPH_C, 0.06, 0.95));
+    const { line, head } = P.wrap
+      ? wrapArrow(P.n, cells[k], cells[k + 1])
+      : arrowSegment(P.n, cells[k], cells[k + 1]);
+    for (const piece of P.wrap ? line : [line])
+      layer.appendChild(seg(...piece, GRAPH_C, 0.06, 0.95));
     const tri = document.createElementNS(NS, 'polygon');
-    for (const [a, v] of Object.entries({ points: head.join(' '), fill: GRAPH_C, opacity: 0.95 })) tri.setAttribute(a, v);
+    for (const [a, v] of Object.entries({ points: head.join(' '), fill: GRAPH_C, opacity: 0.95 }))
+      tri.setAttribute(a, v);
     layer.appendChild(tri);
   }
 }
@@ -384,12 +547,20 @@ function wrapArrow(n, a, b, inset = 0.34, headLen = 0.22, headHalf = 0.1) {
   const pieces = chordSegments(n, true, a, b);
   let head = [];
   const line = pieces.map(([x1, y1, x2, y2], i) => {
-    const len = Math.hypot(x2 - x1, y2 - y1) || 1, ux = (x2 - x1) / len, uy = (y2 - y1) / len;
+    const len = Math.hypot(x2 - x1, y2 - y1) || 1,
+      ux = (x2 - x1) / len,
+      uy = (y2 - y1) / len;
     const from = i === 0 ? [x1 + ux * inset, y1 + uy * inset] : [x1, y1];
     if (i < pieces.length - 1) return [...from, x2, y2];
     const tip = [x2 - ux * inset, y2 - uy * inset];
     const base = [tip[0] - ux * headLen, tip[1] - uy * headLen];
-    head = [...tip, base[0] - uy * headHalf, base[1] + ux * headHalf, base[0] + uy * headHalf, base[1] - ux * headHalf];
+    head = [
+      ...tip,
+      base[0] - uy * headHalf,
+      base[1] + ux * headHalf,
+      base[0] + uy * headHalf,
+      base[1] - ux * headHalf,
+    ];
     return [...from, ...base];
   });
   return { line, head };
@@ -397,14 +568,37 @@ function wrapArrow(n, a, b, inset = 0.34, headLen = 0.22, headHalf = 0.1) {
 
 function label(x, y, text, fill) {
   const e = document.createElementNS(NS, 'text');
-  for (const [k, v] of Object.entries({ x, y, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': 0.26, 'font-weight': 700, fill, stroke: '#0d1120', 'stroke-width': 0.07, 'paint-order': 'stroke', 'stroke-linejoin': 'round' })) e.setAttribute(k, v);
+  for (const [k, v] of Object.entries({
+    x,
+    y,
+    'text-anchor': 'middle',
+    'dominant-baseline': 'central',
+    'font-size': 0.26,
+    'font-weight': 700,
+    fill,
+    stroke: '#0d1120',
+    'stroke-width': 0.07,
+    'paint-order': 'stroke',
+    'stroke-linejoin': 'round',
+  }))
+    e.setAttribute(k, v);
   e.textContent = text;
   return e;
 }
 
 function seg(x1, y1, x2, y2, stroke = '#ffd23f', width = 0.1, opacity = 0.85) {
   const e = document.createElementNS(NS, 'line');
-  for (const [k, v] of Object.entries({ x1, y1, x2, y2, stroke, 'stroke-width': width, 'stroke-linecap': 'round', opacity })) e.setAttribute(k, v);
+  for (const [k, v] of Object.entries({
+    x1,
+    y1,
+    x2,
+    y2,
+    stroke,
+    'stroke-width': width,
+    'stroke-linecap': 'round',
+    opacity,
+  }))
+    e.setAttribute(k, v);
   return e;
 }
 
@@ -414,30 +608,52 @@ function seg(x1, y1, x2, y2, stroke = '#ffd23f', width = 0.1, opacity = 0.85) {
 // p: { n, cp, walls, arrows? }. path: optional array of cell indices (a found solution) to draw as
 // a line.
 export function miniPreviewSvg(p, path, color) {
-  const n = p.n, wrap = !!p.wrap, PAD = wrap ? 0.3 : 0.06; // a wrap-around board shows the stubs of its seam steps
-  const lines = wallSegments(p).map(([x1, y1, x2, y2]) =>
-    `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#5b6489" stroke-width="0.08" stroke-linecap="round"/>`).join('');
-  const marks = p.arrows ? arrowMarks(p).map(({ points }) =>
-    `<polygon points="${points}" fill="${ARROW_C}" stroke="#0d1120" stroke-width="0.03" `
-    + 'stroke-linejoin="round"/>').join('') : '';
+  const n = p.n,
+    wrap = !!p.wrap,
+    PAD = wrap ? 0.3 : 0.06; // a wrap-around board shows the stubs of its seam steps
+  const lines = wallSegments(p)
+    .map(
+      ([x1, y1, x2, y2]) =>
+        `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#5b6489" stroke-width="0.08" stroke-linecap="round"/>`,
+    )
+    .join('');
+  const marks = p.arrows
+    ? arrowMarks(p)
+        .map(
+          ({ points }) =>
+            `<polygon points="${points}" fill="${ARROW_C}" stroke="#0d1120" stroke-width="0.03" ` +
+            'stroke-linejoin="round"/>',
+        )
+        .join('')
+    : '';
   const dots = [];
   for (let i = 0; i < n * n; i++) {
     if (!p.cp[i]) continue;
     const [cx, cy] = cellCenter(n, i);
     const isEnd = p.cp[i] === maxNumber(p);
-    dots.push(`<circle cx="${cx}" cy="${cy}" r="0.16" fill="${p.cp[i] === 1 ? '#3ddc97' : isEnd ? '#ffa62b' : '#232a44'}" stroke="#8b93b8" stroke-width="0.03"/>`);
+    dots.push(
+      `<circle cx="${cx}" cy="${cy}" r="0.16" fill="${p.cp[i] === 1 ? '#3ddc97' : isEnd ? '#ffa62b' : '#232a44'}" stroke="#8b93b8" stroke-width="0.03"/>`,
+    );
   }
   const look = `fill="none" stroke="${color}" stroke-width="0.09" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"`;
   let pathLine = '';
-  const rings = (p.portals || []).map((pair, i) => pair.map(cell => {
-    const [cx, cy] = cellCenter(n, cell, 1);
-    return portalIcon(portalShape(i), portalColor(i), cx, cy, 1);
-  }).join('')).join('');
+  const rings = (p.portals || [])
+    .map((pair, i) =>
+      pair
+        .map(cell => {
+          const [cx, cy] = cellCenter(n, cell, 1);
+          return portalIcon(portalShape(i), portalColor(i), cx, cy, 1);
+        })
+        .join(''),
+    )
+    .join('');
   if (path && path.length > 1 && (p.portals || p.split)) {
     pathLine = `<path d="${portalD(n, path, p.portals || bridgeLinks(p))}" ${look}/>`;
   } else if (path && path.length > 1) {
     path = ringCells(p, path);
-    pathLine = wrap ? `<path d="${pathD(n, path, 1, true)}" ${look}/>` : `<polyline points="${polyPoints(n, path)}" ${look}/>`;
+    pathLine = wrap
+      ? `<path d="${pathD(n, path, 1, true)}" ${look}/>`
+      : `<polyline points="${polyPoints(n, path)}" ${look}/>`;
   }
   return `<svg viewBox="${-PAD} ${-PAD} ${n + 2 * PAD} ${n + 2 * PAD}" class="mini-preview">
     <rect x="0" y="0" width="${n}" height="${n}" fill="none" stroke="#232a44" stroke-width="0.05"/>

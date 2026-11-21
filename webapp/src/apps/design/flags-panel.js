@@ -1,21 +1,42 @@
-import { encodeFlags, decodeFlags, flagsToHex, hexToFlags, DEFAULT_FLAGS_INT, PHASES } from '../../core/gen/flags.js';
+import {
+  encodeFlags,
+  decodeFlags,
+  flagsToHex,
+  hexToFlags,
+  DEFAULT_FLAGS_INT,
+  PHASES,
+} from '../../core/gen/flags.js';
 
 // One phase row's checkboxes: prop/legCollide/pocket/parity/prune2 as checkboxes, seg as a 3-way
 // select (off/next/all). Each checkbox/select carries data-phase + data-flag so the panel can read
 // the whole row generically.
-const PHASE_LABEL = { build: 'Build (makeUnique)', minimize: 'Minimize (per-wall check)', score: 'Score / Solve' };
+const PHASE_LABEL = {
+  build: 'Build (makeUnique)',
+  minimize: 'Minimize (per-wall check)',
+  score: 'Score / Solve',
+};
 const FLAG_LABEL = {
   prop: ['Propagation', 'Forced-edge deduction (prop) — same solutions, far fewer nodes.'],
-  legCollide: ['Leg collision', 'Cross-leg collision check (legCollide) — catches some dead branches connectivity/dead-ends/forced-edges miss; pricier per node.'],
+  legCollide: [
+    'Leg collision',
+    'Cross-leg collision check (legCollide) — catches some dead branches connectivity/dead-ends/forced-edges miss; pricier per node.',
+  ],
   pocket: ['Pocket', 'Single-entrance pocket check (pocket).'],
   parity: ['Parity', 'Bipartite slack check (parity).'],
-  prune2: ['Distance bound', 'Static wall-aware distance bound to the remaining checkpoints (prune2).'],
-  freedEdge: ['Freed edge', 'Minimize only: test each wall removal by searching for a solution that walks the freed edge (stops at the first one) instead of counting up to 2 solutions. Faster, fewer search-limit hits; a different (seeded) result than without.'],
+  prune2: [
+    'Distance bound',
+    'Static wall-aware distance bound to the remaining checkpoints (prune2).',
+  ],
+  freedEdge: [
+    'Freed edge',
+    'Minimize only: test each wall removal by searching for a solution that walks the freed edge (stops at the first one) instead of counting up to 2 solutions. Faster, fewer search-limit hits; a different (seeded) result than without.',
+  ],
 };
 
 function phaseRowHtml(side, phase) {
   const p = side ? `${side}-${phase}` : phase;
-  const cb = f => `<label class="flag-cb" title="${FLAG_LABEL[f][1]}"><input class="flags-input" type="checkbox" data-phase="${p}" data-flag="${f}">${FLAG_LABEL[f][0]}</label>`;
+  const cb = f =>
+    `<label class="flag-cb" title="${FLAG_LABEL[f][1]}"><input class="flags-input" type="checkbox" data-phase="${p}" data-flag="${f}">${FLAG_LABEL[f][0]}</label>`;
   return `<div class="flags-phase-row">
     <div class="flags-phase-label">${PHASE_LABEL[phase]}</div>
     <div class="flags-phase-cbs">
@@ -69,13 +90,21 @@ export function mountFlagsPanel(el, side, initial = DEFAULT_FLAGS_INT) {
   function read() {
     const byPhase = {};
     for (const ph of PHASES) byPhase[ph] = {};
-    let path = 'warnsdorff', cps = 'gap';
+    let path = 'warnsdorff',
+      cps = 'gap';
     for (const inp of inputs) {
       const flag = inp.dataset.flag;
-      if (flag === 'path') { path = inp.value; continue; }
-      if (flag === 'cps') { cps = inp.value; continue; }
+      if (flag === 'path') {
+        path = inp.value;
+        continue;
+      }
+      if (flag === 'cps') {
+        cps = inp.value;
+        continue;
+      }
       const phase = inp.dataset.phase.replace(new RegExp(`^${s}-?`), '');
-      byPhase[phase][flag] = flag === 'seg' ? (inp.value === 'off' ? false : inp.value) : inp.checked;
+      byPhase[phase][flag] =
+        flag === 'seg' ? (inp.value === 'off' ? false : inp.value) : inp.checked;
     }
     return encodeFlags({ ...byPhase, path, cps });
   }
@@ -83,8 +112,14 @@ export function mountFlagsPanel(el, side, initial = DEFAULT_FLAGS_INT) {
     const d = decodeFlags(v);
     for (const inp of inputs) {
       const flag = inp.dataset.flag;
-      if (flag === 'path') { inp.value = d.path; continue; }
-      if (flag === 'cps') { inp.value = d.cps; continue; }
+      if (flag === 'path') {
+        inp.value = d.path;
+        continue;
+      }
+      if (flag === 'cps') {
+        inp.value = d.cps;
+        continue;
+      }
       const phase = inp.dataset.phase.replace(new RegExp(`^${s}-?`), '');
       const val = d[phase][flag];
       if (flag === 'seg') inp.value = val === 'all' ? 'all' : val ? 'next' : 'off';
@@ -94,11 +129,19 @@ export function mountFlagsPanel(el, side, initial = DEFAULT_FLAGS_INT) {
   }
 
   write(initial);
-  for (const inp of inputs) inp.addEventListener('change', () => { hexInput.value = flagsToHex(read()); listeners.forEach(fn => fn(read())); });
+  for (const inp of inputs)
+    inp.addEventListener('change', () => {
+      hexInput.value = flagsToHex(read());
+      listeners.forEach(fn => fn(read()));
+    });
   hexInput.addEventListener('change', () => {
     const v = hexToFlags(hexInput.value);
-    if (v == null) { hexInput.value = flagsToHex(read()); return; } // invalid text: revert, don't clobber the checkboxes
-    write(v); listeners.forEach(fn => fn(v));
+    if (v == null) {
+      hexInput.value = flagsToHex(read());
+      return;
+    } // invalid text: revert, don't clobber the checkboxes
+    write(v);
+    listeners.forEach(fn => fn(v));
   });
 
   return { get: read, set: write, onChange: fn => listeners.push(fn) };

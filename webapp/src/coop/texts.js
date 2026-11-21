@@ -6,14 +6,16 @@ import { getLang } from '../ui/i18n.js';
 // the play app (Time, Menu, Hint, Solved in ..., grades) is taken from the app's own texts.
 // {0}, {1} ... are filled by tx().
 export const EN = {
-  rules: 'Drag across cells to draw lines. Lift your finger and start anywhere. Drag back along '
-    + 'a line from its end to erase it, or press and hold on a line to cut it. Join all the lines '
-    + 'into one path from 1 to the last number, covering every cell.',
+  rules:
+    'Drag across cells to draw lines. Lift your finger and start anywhere. Drag back along ' +
+    'a line from its end to erase it, or press and hold on a line to cut it. Join all the lines ' +
+    'into one path from 1 to the last number, covering every cell.',
   generating: 'Making a puzzle… {0}%',
   onlineTitle: 'Play together',
   onlineSub: 'Two players, two devices, connected directly.',
-  onlineBlurb: 'Send an invite link to a friend. When your friend opens it and you accept, the '
-    + 'devices connect. You draw in orange, your friend in blue, on the same puzzle.',
+  onlineBlurb:
+    'Send an invite link to a friend. When your friend opens it and you accept, the ' +
+    'devices connect. You draw in orange, your friend in blue, on the same puzzle.',
   invite: 'Invite a friend',
   making: 'Preparing the invite…',
   step1: '1. Send this link to your friend',
@@ -50,10 +52,12 @@ export const EN = {
   declined: 'The host declined your request.',
   taken: 'This invite is already taken.',
   hostNoAnswer: 'No answer from the host. Ask them to keep their invite page open.',
-  noSignal: 'Could not reach the servers that bring you together. Check the network, or ask '
-    + 'the host for a code link.',
-  noSignalHost: 'Could not reach the servers that bring you together. You can invite with a '
-    + 'code instead.',
+  noSignal:
+    'Could not reach the servers that bring you together. Check the network, or ask ' +
+    'the host for a code link.',
+  noSignalHost:
+    'Could not reach the servers that bring you together. You can invite with a ' +
+    'code instead.',
   useCode: 'Invite with a code instead',
   expired: 'The invite expired. Start a new one.',
   keepOpen: 'Keep this page open until your friend has joined.',
@@ -73,8 +77,9 @@ export const EN = {
   reconnected: 'Reconnected.',
   reconnectFailed: 'Could not reconnect. You can keep playing alone.',
   rejoinTitle: 'A game is still open',
-  rejoinBlurb: 'A game with a friend was left open on this device. Rejoin it: your lines are '
-    + 'kept, and your friend can come back too.',
+  rejoinBlurb:
+    'A game with a friend was left open on this device. Rejoin it: your lines are ' +
+    'kept, and your friend can come back too.',
   rejoin: 'Rejoin the game',
   discard: 'Discard',
   you: 'You',
@@ -97,8 +102,9 @@ export const EN = {
   variant: 'Type',
   jump: 'Tap the pulsing portal to link the two.',
   colours: 'A line cannot join a red number and a blue one.',
-  solidTurn: 'Turn the solid: drag the background, two fingers or the arrow keys. Hold or '
-    + 'right-click a line to cut it.',
+  solidTurn:
+    'Turn the solid: drag the background, two fingers or the arrow keys. Hold or ' +
+    'right-click a line to cut it.',
   solidNet: 'A side with a letter on the border continues at the same letter.',
   solidMap: 'The two halves of the ball: a cell on the rim is on both.',
   hintWrong: 'This line is not part of the solution.',
@@ -111,13 +117,15 @@ export const EN = {
 };
 
 export const ZH = {
-  rules: '拖动画线，可随时抬手并从任意位置重新开始。从线的末端沿线拖回去即可擦除，'
-    + '或长按某条线将其剪断。把所有线连成一条从 1 到最大数字、覆盖每个格子的路径。',
+  rules:
+    '拖动画线，可随时抬手并从任意位置重新开始。从线的末端沿线拖回去即可擦除，' +
+    '或长按某条线将其剪断。把所有线连成一条从 1 到最大数字、覆盖每个格子的路径。',
   generating: '正在生成… {0}%',
   onlineTitle: '一起玩',
   onlineSub: '两人两台设备，直接连接。',
-  onlineBlurb: '把邀请链接发给朋友。朋友打开链接、你同意后，两台设备就会连接。'
-    + '你用橙色画线，朋友用蓝色，在同一道题上。',
+  onlineBlurb:
+    '把邀请链接发给朋友。朋友打开链接、你同意后，两台设备就会连接。' +
+    '你用橙色画线，朋友用蓝色，在同一道题上。',
   invite: '邀请朋友',
   making: '正在准备邀请…',
   step1: '1. 把这个链接发给朋友',

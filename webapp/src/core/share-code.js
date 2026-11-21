@@ -235,11 +235,7 @@ const isTeleportPuzzle = p =>
 // A Two paths puzzle: a standard one with the number list split between red and blue, each colour
 // with at least 2 numbers (validate() in model.js).
 const isTwoPathsPuzzle = p =>
-  isBoard(p) &&
-  onlyFlag(p, 'split') &&
-  hasLayers(p) &&
-  isNumbered(marksOf(p)) &&
-  validate(p).ok;
+  isBoard(p) && onlyFlag(p, 'split') && hasLayers(p) && isNumbered(marksOf(p)) && validate(p).ok;
 
 // A Pentagon puzzle { surface: 'pentagon', n, cp, walls } (core/surface/puzzle.js): one of the
 // boards, one wall bit per edge of the board, numbered 1..K without gaps, and valid.
@@ -248,8 +244,14 @@ function isPentagonPuzzle(p) {
     return false;
   }
   const top = surfaceTopology(PENTAGON_KIND, p.n);
-  return Boolean(p.cp && p.walls) && p.cp.length === top.T && p.walls.length === top.E
-    && p.walls.every(w => w === 0 || w === 1) && isNumbered(marksOf(p)) && validateSurface(p).ok;
+  return (
+    Boolean(p.cp && p.walls) &&
+    p.cp.length === top.T &&
+    p.walls.length === top.E &&
+    p.walls.every(w => w === 0 || w === 1) &&
+    isNumbered(marksOf(p)) &&
+    validateSurface(p).ok
+  );
 }
 
 // by puzzle type id (index in VARIANTS)
@@ -279,9 +281,8 @@ function isEncodablePuzzleRecord(rec) {
   if (id < 0 || rec.kind !== 'local' || !p || p.n !== rec.n || !sound(p)) {
     return false;
   }
-  const gradeOk = id === 0 && !own
-    ? rec.grade == null || isInt(rec.grade, 0, 5)
-    : rec.grade == null;
+  const gradeOk =
+    id === 0 && !own ? rec.grade == null || isInt(rec.grade, 0, 5) : rec.grade == null;
   const K = rec.variant === PENTAGON ? marksOf(p).length : labelCount(p);
   const levelsOk =
     Array.isArray(rec.levels) &&

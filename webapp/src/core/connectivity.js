@@ -1,6 +1,11 @@
 import { endCell, labelRanks, maxNumber } from './model.js';
 import {
-  buildNeighbors, makeReachable, isDeadEnd, forcedEdges, legConflicts, segBlockerDir,
+  buildNeighbors,
+  makeReachable,
+  isDeadEnd,
+  forcedEdges,
+  legConflicts,
+  segBlockerDir,
 } from './solver/prune.js';
 import { buildMoves } from './solver/solve-dir.js';
 import { makeDirPropagator } from './solver/propagate-dir.js';
@@ -10,7 +15,12 @@ import { makeDirPropagator } from './solver/propagate-dir.js';
 function takenCells(p, path, T) {
   const vis = new Uint8Array(T);
   let holes = 0;
-  if (p.holes) for (let i = 0; i < T; i++) if (p.holes[i]) { vis[i] = 1; holes++; }
+  if (p.holes)
+    for (let i = 0; i < T; i++)
+      if (p.holes[i]) {
+        vis[i] = 1;
+        holes++;
+      }
   for (const c of path) vis[c] = 1;
   return { vis, holes };
 }
@@ -31,7 +41,8 @@ function takenCells(p, path, T) {
 //                 the path can no longer stitch back together
 export function boardConnectivity(p, path) {
   if (p.loop) {
-    if (path.length < 2) return { reachable: new Set(), deadEnd: new Set(), unreachable: new Set(), connOk: true };
+    if (path.length < 2)
+      return { reachable: new Set(), deadEnd: new Set(), unreachable: new Set(), connOk: true };
     return boardConnectivity(...openRest(p, path));
   }
   if (p.arrows) return boardConnectivityDir(p, path);
@@ -48,7 +59,10 @@ export function boardConnectivity(p, path) {
   const unreachable = new Set();
   for (let cell = 0; cell < T; cell++) {
     if (vis[cell]) continue;
-    if (!reachable.has(cell)) { unreachable.add(cell); continue; }
+    if (!reachable.has(cell)) {
+      unreachable.add(cell);
+      continue;
+    }
     if (cell !== end && isDeadEnd(nb, vis, head, cell)) deadEnd.add(cell);
   }
 
@@ -69,7 +83,8 @@ export function boardConnectivity(p, path) {
 //                 forced-edge deduction has already found a contradiction)
 export function boardPropagation(p, path) {
   if (p.loop) {
-    if (path.length < 2) return { forced: new Set(), dirs: new Uint8Array(p.n * p.n), infeasible: false };
+    if (path.length < 2)
+      return { forced: new Set(), dirs: new Uint8Array(p.n * p.n), infeasible: false };
     return boardPropagation(...openRest(p, path));
   }
   if (p.arrows) return boardPropagationDir(p, path);
@@ -102,7 +117,9 @@ export function boardPropagation(p, path) {
 // tradeoff if it's ever wired into solve()).
 export function boardLegCollide(p, path) {
   if (p.loop) {
-    return path.length < 2 ? { infeasible: false, conflicts: [] } : boardLegCollide(...openRest(p, path));
+    return path.length < 2
+      ? { infeasible: false, conflicts: [] }
+      : boardLegCollide(...openRest(p, path));
   }
   const { nb, T } = p.arrows ? { nb: buildMoves(p).out, T: p.n * p.n } : buildNeighbors(p);
   const { vis } = takenCells(p, path, T);
@@ -123,7 +140,11 @@ export function boardLegCollide(p, path) {
   const legs = [[head, pos[need]]];
   for (let k = need; k < K; k++) legs.push([pos[k], pos[k + 1]]);
   const blocker = p.arrows ? segBlockerDir : undefined; // arrows: routes are walks of allowed moves
-  const conflicts = legConflicts(nb, T, vis, legs, blocker).map(({ i, j, cells }) => ({ a: legs[i], b: legs[j], cells }));
+  const conflicts = legConflicts(nb, T, vis, legs, blocker).map(({ i, j, cells }) => ({
+    a: legs[i],
+    b: legs[j],
+    cells,
+  }));
   return { infeasible: conflicts.length > 0, conflicts };
 }
 
@@ -140,16 +161,23 @@ export function boardLegCollide(p, path) {
 // every unvisited cell, not just the reachable ones: a cell that cannot be left is cut off from the
 // end as well, and showing it as a dead end says why.
 function boardConnectivityDir(p, path) {
-  const moves = buildMoves(p), { out, pre, T } = moves;
+  const moves = buildMoves(p),
+    { out, pre, T } = moves;
   const vis = new Uint8Array(T);
   for (const c of path) vis[c] = 1;
   const head = path.length ? path[path.length - 1] : -1;
   const end = endCell(p);
 
-  const flood = (from, next) => { // the unvisited cells reached from `from` over `next(cell) -> cells`
-    const seen = new Set(), stack = [from];
+  const flood = (from, next) => {
+    // the unvisited cells reached from `from` over `next(cell) -> cells`
+    const seen = new Set(),
+      stack = [from];
     while (stack.length) {
-      for (const v of next(stack.pop())) if (v >= 0 && !vis[v] && !seen.has(v)) { seen.add(v); stack.push(v); }
+      for (const v of next(stack.pop()))
+        if (v >= 0 && !vis[v] && !seen.has(v)) {
+          seen.add(v);
+          stack.push(v);
+        }
     }
     return seen;
   };
@@ -159,7 +187,8 @@ function boardConnectivityDir(p, path) {
   // cells that can get to the end (while the end is free: once it is on the path, nothing can)
   const toEnd = end >= 0 && !vis[end] ? flood(end, moveIn).add(end) : null;
 
-  const deadEnd = new Set(), unreachable = new Set();
+  const deadEnd = new Set(),
+    unreachable = new Set();
   for (let cell = 0; cell < T; cell++) {
     if (vis[cell]) continue;
     if (!reachable.has(cell) || (toEnd && !toEnd.has(cell))) unreachable.add(cell);
@@ -170,14 +199,20 @@ function boardConnectivityDir(p, path) {
     if (!exits.size || !entries.size || sameOnly) deadEnd.add(cell);
   }
   const unvisited = T - path.length;
-  return { reachable, deadEnd, unreachable, connOk: reachable.size === unvisited && unreachable.size === 0 };
+  return {
+    reachable,
+    deadEnd,
+    unreachable,
+    connOk: reachable.size === unvisited && unreachable.size === 0,
+  };
 }
 
 // boardPropagation for one-way moves: a cell with one move left to make has it forced (makeDirPropagator
 // of propagate-dir.js, the directed solver's own deduction). dirs marks both ends of a forced move,
 // as the two-way version does for an edge.
 function boardPropagationDir(p, path) {
-  const moves = buildMoves(p), { out, T } = moves;
+  const moves = buildMoves(p),
+    { out, T } = moves;
   const vis = new Uint8Array(T);
   for (const c of path) vis[c] = 1;
   const head = path.length ? path[path.length - 1] : -1;
@@ -188,12 +223,14 @@ function boardPropagationDir(p, path) {
   const prop = makeDirPropagator(moves, end, vis);
   if (!prop.deduce(head, T - path.length + 1)) return none(true);
 
-  const dirs = new Uint8Array(T), forced = new Set();
+  const dirs = new Uint8Array(T),
+    forced = new Set();
   for (let u = 0; u < T; u++) {
     if (u === end || (vis[u] && u !== head)) continue;
     const mask = prop.av[u];
-    if (!mask || (mask & (mask - 1))) continue; // none, or more than one move left: nothing forced
-    const d = 31 - Math.clz32(mask), v = out[u * 4 + d];
+    if (!mask || mask & (mask - 1)) continue; // none, or more than one move left: nothing forced
+    const d = 31 - Math.clz32(mask),
+      v = out[u * 4 + d];
     dirs[u] |= 1 << d;
     dirs[v] |= 1 << (d ^ 1);
     for (const c of [u, v]) if (c !== head) forced.add(c);
@@ -210,7 +247,8 @@ function boardPropagationDir(p, path) {
 // here, even right after the second cell, which the ring cannot do: that only ever makes them weaker.)
 // -> [the open puzzle, its path] for `path` of at least 2 cells (the first is cell 1).
 function openRest(p, path) {
-  const start = path[0], K = maxNumber(p);
+  const start = path[0],
+    K = maxNumber(p);
   const cp = p.cp.map(v => (v > 1 ? v - 1 : 0));
   cp[start] = K;
   const { loop, ...open } = p;

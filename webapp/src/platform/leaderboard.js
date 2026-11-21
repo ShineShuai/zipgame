@@ -10,13 +10,37 @@ import { binOf, summarize, MIN_MS, MAX_MS, TOP_K } from '../core/hist.js';
 export const trim = u => u.replace(/\/+$/, '');
 export const cloudflareBackend = ({ url }, id = 'cloudflare') => ({
   name: id,
-  request: ({ d, t, b }) => ({ url: trim(url) + '/gotd', init: { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify({ d, t, b }) } }),
-  read: ({ from, to }) => ({ url: `${trim(url)}/stats?from=${from}&to=${to}`, init: { method: 'GET' } }), // simple request: no preflight
+  request: ({ d, t, b }) => ({
+    url: trim(url) + '/gotd',
+    init: {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: JSON.stringify({ d, t, b }),
+    },
+  }),
+  read: ({ from, to }) => ({
+    url: `${trim(url)}/stats?from=${from}&to=${to}`,
+    init: { method: 'GET' },
+  }), // simple request: no preflight
 });
 export const supabaseBackend = ({ url, key }, id = 'supabase') => ({
   name: id,
-  request: ({ d, t, b }) => ({ url: trim(url) + '/rest/v1/rpc/submit_gotd', init: { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: key }, body: JSON.stringify({ p_day: d, p_ms: t, p_bin: b }) } }),
-  read: ({ from, to }) => ({ url: trim(url) + '/rest/v1/rpc/read_gotd', init: { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: key }, body: JSON.stringify({ p_from: from, p_to: to }) } }),
+  request: ({ d, t, b }) => ({
+    url: trim(url) + '/rest/v1/rpc/submit_gotd',
+    init: {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: key },
+      body: JSON.stringify({ p_day: d, p_ms: t, p_bin: b }),
+    },
+  }),
+  read: ({ from, to }) => ({
+    url: trim(url) + '/rest/v1/rpc/read_gotd',
+    init: {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: key },
+      body: JSON.stringify({ p_from: from, p_to: to }),
+    },
+  }),
 });
 
 // Turso: the browser talks to the database's HTTP API (Hrana over HTTP, POST <url>/v2/pipeline) with a public token that can only read and
@@ -39,27 +63,57 @@ export const TURSO_SQL = {
       'seeds', json(COALESCE(xx.seeds, '[]')))) FROM dd JOIN bb USING (day) JOIN tt USING (day) LEFT JOIN xx USING (day)), '[]'))) AS reply`,
 };
 export const hranaInt = n => ({ type: 'integer', value: String(n) }); // Hrana sends integers as strings (they may exceed 2^53)
-const newUid = () => (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 12));
-export const pipeline = stmts => JSON.stringify({ requests: [...stmts.map(([sql, args]) => ({ type: 'execute', stmt: { sql, args } })), { type: 'close' }] });
+const newUid = () =>
+  globalThis.crypto && crypto.randomUUID
+    ? crypto.randomUUID()
+    : Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+export const pipeline = stmts =>
+  JSON.stringify({
+    requests: [
+      ...stmts.map(([sql, args]) => ({ type: 'execute', stmt: { sql, args } })),
+      { type: 'close' },
+    ],
+  });
 // the first row of one pipeline result as { column: value } (integers as numbers), or throws on an error result
 function tursoRow(result) {
-  if (!result || result.type !== 'ok') throw Object.assign(new Error((result && result.error && result.error.message) || 'no result'), { sqlError: true });
+  if (!result || result.type !== 'ok')
+    throw Object.assign(
+      new Error((result && result.error && result.error.message) || 'no result'),
+      { sqlError: true },
+    );
   const { cols, rows } = result.response.result;
   if (!rows.length) return null;
-  return Object.fromEntries(cols.map((c, i) => [c.name, rows[0][i].type === 'integer' ? Number(rows[0][i].value) : rows[0][i].type === 'null' ? null : rows[0][i].value]));
+  return Object.fromEntries(
+    cols.map((c, i) => [
+      c.name,
+      rows[0][i].type === 'integer'
+        ? Number(rows[0][i].value)
+        : rows[0][i].type === 'null'
+          ? null
+          : rows[0][i].value,
+    ]),
+  );
 }
 export const tursoBackend = ({ url, key }, id = 'turso') => ({
   name: id,
   request: ({ d, t, b, u = newUid() }) => ({
     url: trim(url) + '/v2/pipeline',
     init: {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
-      body: pipeline([[TURSO_SQL.insert, [{ type: 'text', value: u }, hranaInt(d), hranaInt(t), hranaInt(b)]], [TURSO_SQL.summary, [hranaInt(d), hranaInt(b)]]]),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
+      body: pipeline([
+        [TURSO_SQL.insert, [{ type: 'text', value: u }, hranaInt(d), hranaInt(t), hranaInt(b)]],
+        [TURSO_SQL.summary, [hranaInt(d), hranaInt(b)]],
+      ]),
     },
   }),
   read: ({ from, to }) => ({
     url: trim(url) + '/v2/pipeline',
-    init: { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, body: pipeline([[TURSO_SQL.read, [hranaInt(from), hranaInt(to)]]]) },
+    init: {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
+      body: pipeline([[TURSO_SQL.read, [hranaInt(from), hranaInt(to)]]]),
+    },
   }),
   decode(kind, body) {
     const results = body && body.results;
@@ -68,16 +122,22 @@ export const tursoBackend = ({ url, key }, id = 'turso') => ({
       const reply = JSON.parse(tursoRow(results[0]).reply);
       return { days: reply.days.sort((a, b) => a.d - b.d) };
     }
-    if (results[0] && results[0].type === 'error' && /\binvalid\b/.test(results[0].error.message)) return { rejected: true };
+    if (results[0] && results[0].type === 'error' && /\binvalid\b/.test(results[0].error.message))
+      return { rejected: true };
     tursoRow(results[0]); // INSERT: throws on any other error
     const row = tursoRow(results[1]);
     return { n: row.n, sum: row.sum, below: row.below, cnt: row.cnt, best: JSON.parse(row.best) };
   },
 });
 
-const FACTORIES = { cloudflare: cloudflareBackend, supabase: supabaseBackend, turso: tursoBackend };
+const FACTORIES = {
+  cloudflare: cloudflareBackend,
+  supabase: supabaseBackend,
+  turso: tursoBackend,
+};
 const KEYED = new Set(['supabase', 'turso']); // types whose entry needs a key (Supabase: the anon key; Turso: the insert-only token)
-const configured = entry => Boolean(entry && FACTORIES[entry.type] && entry.url && (!KEYED.has(entry.type) || entry.key));
+const configured = entry =>
+  Boolean(entry && FACTORIES[entry.type] && entry.url && (!KEYED.has(entry.type) || entry.key));
 
 // The configured backends as { always, chain, list }:
 //   always  the always-written backend, or null (not set, unknown or not configured)
@@ -96,7 +156,10 @@ export function backendsFromConfig(cfg, first) {
   }
   const chain = ids.map(build).filter(Boolean);
   const named = new Set([cfg.always, ...ids]);
-  const others = Object.keys(cfg.backends).filter(id => !named.has(id)).map(build).filter(Boolean);
+  const others = Object.keys(cfg.backends)
+    .filter(id => !named.has(id))
+    .map(build)
+    .filter(Boolean);
   return { always, chain, list: [always, ...chain, ...others].filter(Boolean) };
 }
 
@@ -109,7 +172,10 @@ export function backendsFromConfig(cfg, first) {
 //   failed    nothing stored: the caller keeps the solve pending and retries later
 // `always` and the backup chain run in parallel. The chain fails over on timeout, network error, non-2xx (except 400/422) or a malformed reply.
 // A timeout after the server already stored the solve can count it twice on that backend or on the next one (accepted, rare).
-export function createLeaderboard({ always, chain }, { fetchFn = (...a) => fetch(...a), timeoutMs = 3000 } = {}) {
+export function createLeaderboard(
+  { always, chain },
+  { fetchFn = (...a) => fetch(...a), timeoutMs = 3000 } = {},
+) {
   const readOrder = [always, ...chain].filter(Boolean).map(be => be.name);
 
   async function tryBackend(be, req) {
@@ -159,8 +225,16 @@ export function createLeaderboard({ always, chain }, { fetchFn = (...a) => fetch
       const settled = answers.filter(a => a.kind !== 'failed').map(a => a.be.name);
       const nowDone = [...done, ...settled];
       if (stored.length) {
-        const complete = (!always || nowDone.includes(always.name)) && (!chain.length || chain.some(be => nowDone.includes(be.name)));
-        return { status: 'ok', done: nowDone, complete, backend: stored[0].be.name, summary: stored[0].summary };
+        const complete =
+          (!always || nowDone.includes(always.name)) &&
+          (!chain.length || chain.some(be => nowDone.includes(be.name)));
+        return {
+          status: 'ok',
+          done: nowDone,
+          complete,
+          backend: stored[0].be.name,
+          summary: stored[0].summary,
+        };
       }
       if (settled.length) return { status: 'rejected', done: nowDone, complete: true };
       return { status: 'failed', done, complete: false };
@@ -189,7 +263,16 @@ export function afterSubmit(prev, r, order) {
   let kept = {}; // { live, n } of the champion rule (features/champ.js), if the record has it
   if (prev.live !== undefined) kept = prev.live ? { live: true, n: prev.n } : { live: false };
   if (sent) return { solved: prev.solved, time: prev.time, sent: true, ...kept, stats };
-  return { solved: prev.solved, time: prev.time, sent: false, ...kept, stats, statsFrom: better ? r.backend : prev.statsFrom, done: r.done, rounds };
+  return {
+    solved: prev.solved,
+    time: prev.time,
+    sent: false,
+    ...kept,
+    stats,
+    statsFrom: better ? r.backend : prev.statsFrom,
+    done: r.done,
+    rounds,
+  };
 }
 
 // One submit round for the solved attempt of `date` (first submit, or a retry of a record with sent === false): writes the solve to the backends

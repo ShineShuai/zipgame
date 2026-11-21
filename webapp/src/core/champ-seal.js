@@ -24,12 +24,17 @@ import { floorMs } from './floor.js';
 import { isDev, newDevId } from './sync/slice.js';
 
 export const LEDGER_VERSION = 1;
-export const PER_PICK = 5, FLOOR_FROM = 7, J_KEPT = 32, E_KEPT = 40, HI_STEP = 2;
+export const PER_PICK = 5,
+  FLOOR_FROM = 7,
+  J_KEPT = 32,
+  E_KEPT = 40,
+  HI_STEP = 2;
 const SALT = 'zz.champ.7f3a';
 
 // cyrb53: a small 53-bit hash of a string, written in base 36.
 function hash53(text) {
-  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  let h1 = 0xdeadbeef,
+    h2 = 0x41c6ce57;
   for (let i = 0; i < text.length; i++) {
     const code = text.charCodeAt(i);
     h1 = Math.imul(h1 ^ code, 2654435761);
@@ -50,9 +55,16 @@ const checkpoint = (id, count, tip) => [count, tip, cpSeal(id, count, tip)];
 const sealed = v => ({ ...v, z: wholeSeal(v) });
 
 // A new copy for a device that has none (or whose copy failed its seals).
-export const fresh = (today, id = newDevId()) => sealed({
-  v: LEDGER_VERSION, id, j: [], e: [], c: checkpoint(id, 0, seal('genesis', id)), g: 0, hi: today,
-});
+export const fresh = (today, id = newDevId()) =>
+  sealed({
+    v: LEDGER_VERSION,
+    id,
+    j: [],
+    e: [],
+    c: checkpoint(id, 0, seal('genesis', id)),
+    g: 0,
+    hi: today,
+  });
 
 // A copy as it came from storage or from another device -> the same copy, or null when it is
 // not one of this ledger (wrong shape, or any seal wrong).
@@ -76,8 +88,10 @@ export function clean(value) {
 // them the same way). Not a chain: the wins of every device, one per day (the first device's
 // stands), the folded counts added, the picks handed out added.
 export function view(entries) {
-  const seen = new Set(), e = [];
-  let count = 0, g = 0;
+  const seen = new Set(),
+    e = [];
+  let count = 0,
+    g = 0;
   for (const { value } of entries) {
     count += value.c[0];
     g += value.g;
@@ -118,7 +132,8 @@ export const judged = (v, day) => sealed({ ...v, j: [...v.j, day].slice(-J_KEPT)
 // Adds a win; the oldest wins beyond E_KEPT are folded into the checkpoint.
 export function win(v, day, ms) {
   const prev = v.e.length ? v.e[v.e.length - 1][2] : v.c[1];
-  let e = [...v.e, [day, ms, entrySeal(v.id, prev, day, ms)]], c = v.c;
+  let e = [...v.e, [day, ms, entrySeal(v.id, prev, day, ms)]],
+    c = v.c;
   if (e.length > E_KEPT) {
     const cut = e.length - E_KEPT;
     c = checkpoint(v.id, v.c[0] + cut, e[cut - 1][2]);

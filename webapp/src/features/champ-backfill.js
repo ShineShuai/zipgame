@@ -19,8 +19,12 @@ export const backfillOpen = (cfg, now = new Date()) =>
 
 // A record from before the rule that says "you beat 100%" with enough players.
 export const isOldWin = (rec, minPlayers) =>
-  Boolean(rec) && rec.solved === true && rec.live === undefined && Boolean(rec.stats)
-  && rec.stats.pct === 100 && rec.stats.n >= minPlayers;
+  Boolean(rec) &&
+  rec.solved === true &&
+  rec.live === undefined &&
+  Boolean(rec.stats) &&
+  rec.stats.pct === 100 &&
+  rec.stats.n >= minPlayers;
 
 // champ = features/champ.js (after init), store = features/stats-store.js, cfg = config.js CHAMP.
 // Returns the number of wins credited.
@@ -32,12 +36,14 @@ export async function backfillChamp(champ, store, storage, cfg, now = () => new 
     if (await storage.get(BACKFILL_KEY)) {
       return 0;
     }
-  } catch { /* storage that cannot be read: try, a day is never counted twice */ }
+  } catch {
+    /* storage that cannot be read: try, a day is never counted twice */
+  }
   const records = await store.allAttempts();
   let wins = 0;
   for (const date of Object.keys(records).sort()) {
     const rec = records[date];
-    if (isOldWin(rec, cfg.minPlayers) && await champ.settle(date, true, rec.time)) {
+    if (isOldWin(rec, cfg.minPlayers) && (await champ.settle(date, true, rec.time))) {
       wins++;
     }
   }

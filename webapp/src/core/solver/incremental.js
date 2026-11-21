@@ -43,7 +43,12 @@ const POP = Array.from({ length: 64 }, (_, mask) => {
 // path covers in all.
 export function makeIncremental(nb, T, end, vis, holes = null, cells = T) {
   const W = (nb.length / T) | 0; // direction slots per cell: 4, or 6 with a portal
-  const AV = 0, FR = T, FD = 2 * T, DG = 3 * T, OE = 4 * T, CN = 5 * T;
+  const AV = 0,
+    FR = T,
+    FD = 2 * T,
+    DG = 3 * T,
+    OE = 4 * T,
+    CN = 5 * T;
   const S = new Int32Array(6 * T);
   // static open-edge mask (walls and borders excluded; the portal edge included)
   const nbm = new Uint8Array(T);
@@ -56,8 +61,8 @@ export function makeIncremental(nb, T, end, vis, holes = null, cells = T) {
   let tp = 0;
   const pq = new Int32Array(W * T + 8); // cells whose open degree just reached what they need
   let qt = 0;
-  let hd = -1;    // head cell
-  let pneed = 0;  // cells a head -> end chain has to contain
+  let hd = -1; // head cell
+  let pneed = 0; // cells a head -> end chain has to contain
 
   function set(i, value) {
     if (tp + 2 > tr.length) {
@@ -93,7 +98,7 @@ export function makeIncremental(nb, T, end, vis, holes = null, cells = T) {
   // x and y are the two ends of one forced chain: an open edge between them would close a cycle. Drop it.
   function dropClosingEdge(x, y) {
     for (let d = 0; d < W; d++) {
-      if (nb[x * W + d] !== y || ((S[AV + x] & ~S[FR + x]) >> d & 1) === 0) continue;
+      if (nb[x * W + d] !== y || (((S[AV + x] & ~S[FR + x]) >> d) & 1) === 0) continue;
       set(AV + x, S[AV + x] & ~(1 << d));
       set(AV + y, S[AV + y] & ~(1 << (d ^ 1)));
       const dx = S[DG + x] - 1;
@@ -203,7 +208,8 @@ export function makeIncremental(nb, T, end, vis, holes = null, cells = T) {
       const left = S[DG + w] - 1;
       set(DG + w, left);
       if (w === v) {
-        if (S[FR + w] & bit) { // the forced edge h-v is used up: v is left needing one edge fewer
+        if (S[FR + w] & bit) {
+          // the forced edge h-v is used up: v is left needing one edge fewer
           set(FR + w, S[FR + w] & ~bit);
           set(FD + w, S[FD + w] - 1);
         }

@@ -31,7 +31,14 @@ import { makeRng } from '../rng.js';
 import { allEdges, edgeCells, hasWallId, setWallId, wallIds, pathEdgeIds } from '../edges.js';
 import { solve } from '../solver/solve.js';
 import { REF_FLAGS } from '../difficulty.js';
-import { trapProfile, trapMetricsFromProfile, ladderTrials, TRAP_MODEL, TRAP_CFG, SIZE_GRADE_CAP } from '../trap.js';
+import {
+  trapProfile,
+  trapMetricsFromProfile,
+  ladderTrials,
+  TRAP_MODEL,
+  TRAP_CFG,
+  SIZE_GRADE_CAP,
+} from '../trap.js';
 import { generateUnique } from './generate.js';
 
 export const TARGET_CFG = {
@@ -61,41 +68,87 @@ export const TARGET_CFG = {
 const cutsOf = model => model.cuts || [0.5, 1.5, 2.5, 3.5, 4.5]; // no cuts = the old round() rule (see trapGradeOf)
 
 // Highest grade a puzzle of this size can show: the size cap, and the number of grades the cuts define.
-export const maxTargetGrade = (n, model = TRAP_MODEL) => Math.min(cutsOf(model).length, SIZE_GRADE_CAP[n] ?? 5);
+export const maxTargetGrade = (n, model = TRAP_MODEL) =>
+  Math.min(cutsOf(model).length, SIZE_GRADE_CAP[n] ?? 5);
 
 // The trap-score band of a grade at size n, from the model's cuts: grade g = score in [lo, hi). The top grade (and the
 // size cap, which makes a lower grade the top one) is open above, grade 0 is open below. [a, b] = the band with the
 // safety margin: the target interval the search tries to reach. `grade` is clamped to what the size allows.
 // atLeast = true: "this grade or harder", the band is open above.
-export function targetBand(grade, n, model = TRAP_MODEL, margin = TARGET_CFG.margin, atLeast = false) {
-  const cuts = cutsOf(model), top = maxTargetGrade(n, model);
+export function targetBand(
+  grade,
+  n,
+  model = TRAP_MODEL,
+  margin = TARGET_CFG.margin,
+  atLeast = false,
+) {
+  const cuts = cutsOf(model),
+    top = maxTargetGrade(n, model);
   const g = Math.max(0, Math.min(top, Math.round(grade)));
   const spacing = cuts.length > 1 ? (cuts[cuts.length - 1] - cuts[0]) / (cuts.length - 1) : 1;
-  const lo = g > 0 ? cuts[g - 1] : -Infinity, hi = atLeast || g >= top ? Infinity : cuts[g];
+  const lo = g > 0 ? cuts[g - 1] : -Infinity,
+    hi = atLeast || g >= top ? Infinity : cuts[g];
   const inset = Math.min(margin * spacing, 0.3 * (hi - lo)); // an open side makes hi - lo infinite: only a narrow finite band shrinks the margin
   return { grade: g, top, lo, hi, a: lo + inset, b: hi - inset, spacing };
 }
 
 // How far a score is from the safe interval (0 inside).
-export const missOf = (pred, band) => (pred < band.a ? band.a - pred : pred > band.b ? pred - band.b : 0);
+export const missOf = (pred, band) =>
+  pred < band.a ? band.a - pred : pred > band.b ? pred - band.b : 0;
 
 // Most proposals (tried changes) of one try; a run makes at most `retries` tries.
-export const proposalBudget = (n, effort = 1) => Math.max(10, Math.round(effort * (TARGET_CFG.proposalsPerCell * n * n + TARGET_CFG.proposalsBase)));
+export const proposalBudget = (n, effort = 1) =>
+  Math.max(
+    10,
+    Math.round(effort * (TARGET_CFG.proposalsPerCell * n * n + TARGET_CFG.proposalsBase)),
+  );
 
 // ---- the changes ----
 
 const pick = (list, rnd) => list[Math.floor(rnd() * list.length)];
 
 // Weighted choice; `up` = the puzzle has to get harder.
-const MOVES_UP = [['move', 0.34], ['remove', 0.2], ['shift', 0.2], ['rmcp', 0.16], ['add', 0.05], ['addcp', 0.05]];
-const MOVES_DOWN = [['add', 0.22], ['addcp', 0.28], ['move', 0.14], ['shift', 0.14], ['remove', 0.11], ['rmcp', 0.11]];
+const MOVES_UP = [
+  ['move', 0.34],
+  ['remove', 0.2],
+  ['shift', 0.2],
+  ['rmcp', 0.16],
+  ['add', 0.05],
+  ['addcp', 0.05],
+];
+const MOVES_DOWN = [
+  ['add', 0.22],
+  ['addcp', 0.28],
+  ['move', 0.14],
+  ['shift', 0.14],
+  ['remove', 0.11],
+  ['rmcp', 0.11],
+];
 // In wall-minimal mode adding a wall or removing one is pointless (an extra wall is stripped again, a needed one cannot go):
 // only swapping a wall for another, and the checkpoint changes (an added checkpoint can make walls unnecessary).
-const MOVES_UP_MIN = [['move', 0.45], ['shift', 0.25], ['rmcp', 0.2], ['addcp', 0.1]];
-const MOVES_DOWN_MIN = [['addcp', 0.4], ['shift', 0.2], ['move', 0.2], ['rmcp', 0.2]];
+const MOVES_UP_MIN = [
+  ['move', 0.45],
+  ['shift', 0.25],
+  ['rmcp', 0.2],
+  ['addcp', 0.1],
+];
+const MOVES_DOWN_MIN = [
+  ['addcp', 0.4],
+  ['shift', 0.2],
+  ['move', 0.2],
+  ['rmcp', 0.2],
+];
 function pickMove(up, rnd, minimal) {
   let r = rnd();
-  for (const [name, w] of minimal ? (up ? MOVES_UP_MIN : MOVES_DOWN_MIN) : (up ? MOVES_UP : MOVES_DOWN)) { if ((r -= w) < 0) return name; }
+  for (const [name, w] of minimal
+    ? up
+      ? MOVES_UP_MIN
+      : MOVES_DOWN_MIN
+    : up
+      ? MOVES_UP
+      : MOVES_DOWN) {
+    if ((r -= w) < 0) return name;
+  }
   return 'move';
 }
 
@@ -103,7 +156,10 @@ function pickMove(up, rnd, minimal) {
 // removable(q, w) = true when q stays unique without wall w (it takes the wall out then, and leaves it in otherwise).
 function dropWalls(q, removable, rnd) {
   const ws = wallIds(q);
-  for (let i = ws.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [ws[i], ws[j]] = [ws[j], ws[i]]; }
+  for (let i = ws.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [ws[i], ws[j]] = [ws[j], ws[i]];
+  }
   for (const w of ws) removable(q, w);
   return q;
 }
@@ -121,9 +177,17 @@ function propose(p, ctx, rnd, up) {
   const { path, pos, free, Kmin, Kmax, maxWalls } = ctx;
   const q = clonePuzzle(p);
   q.path = path;
-  const walls = wallIds(q), move = pickMove(up, rnd, ctx.minimal);
-  const addOne = () => { // a random wall on an edge off the solution path that is not walled yet
-    for (let t = 0; t < 12; t++) { const e = pick(free, rnd); if (!hasWallId(q.walls, e)) { setWallId(q.walls, e, true); return true; } }
+  const walls = wallIds(q),
+    move = pickMove(up, rnd, ctx.minimal);
+  const addOne = () => {
+    // a random wall on an edge off the solution path that is not walled yet
+    for (let t = 0; t < 12; t++) {
+      const e = pick(free, rnd);
+      if (!hasWallId(q.walls, e)) {
+        setWallId(q.walls, e, true);
+        return true;
+      }
+    }
     return false;
   };
   if (move === 'add') return walls.length < maxWalls && addOne() ? { q, check: false } : null;
@@ -140,15 +204,23 @@ function propose(p, ctx, rnd, up) {
     // to stay unique (a wall anywhere else breaks uniqueness about 9 times in 10 when every wall is needed).
     const second = ctx.guided && ctx.witness(q, w);
     if (second) {
-      const at = pathEdgeIds(ctx.n, second).filter(e => ctx.freeSet.has(e) && !hasWallId(q.walls, e));
-      if (at.length) { setWallId(q.walls, pick(at, rnd), true); return { q, check: true }; }
+      const at = pathEdgeIds(ctx.n, second).filter(
+        e => ctx.freeSet.has(e) && !hasWallId(q.walls, e),
+      );
+      if (at.length) {
+        setWallId(q.walls, pick(at, rnd), true);
+        return { q, check: true };
+      }
     }
     return addOne() ? { q, check: true } : null;
   }
-  const cells = cpCells(q), K = cells.length;
+  const cells = cpCells(q),
+    K = cells.length;
   if (move === 'shift') {
     if (K < 3) return null;
-    const k = 1 + Math.floor(rnd() * (K - 2)), i = pos[cells[k]], j = i + (rnd() < 0.5 ? -1 : 1); // k = 0-based index of an inner checkpoint
+    const k = 1 + Math.floor(rnd() * (K - 2)),
+      i = pos[cells[k]],
+      j = i + (rnd() < 0.5 ? -1 : 1); // k = 0-based index of an inner checkpoint
     if (j <= pos[cells[k - 1]] || j >= pos[cells[k + 1]]) return null;
     q.cp[path[j]] = k + 1;
     q.cp[path[i]] = 0;
@@ -213,25 +285,54 @@ export function* generateTargeted(n, grade, seed, o = {}) {
   const model = o.model || TRAP_MODEL;
   const band = targetBand(grade, n, model, o.margin ?? TARGET_CFG.margin, o.atLeast === true);
   const rnd = makeRng(seed);
-  const T = n * n, cells = o.cells ?? T;
-  let Kmin = Math.max(4, n), Kmax = Math.max(Kmin + 1, Math.round(cells / 4));
-  if (o.minCheckpoints > 0) { Kmin = Math.max(2, Math.floor(o.minCheckpoints)); Kmax = Math.max(Kmax, Kmin); }
-  if (o.maxCheckpoints > 0) { Kmax = Math.max(2, Math.floor(o.maxCheckpoints)); Kmin = Math.min(Kmin, Kmax); }
+  const T = n * n,
+    cells = o.cells ?? T;
+  let Kmin = Math.max(4, n),
+    Kmax = Math.max(Kmin + 1, Math.round(cells / 4));
+  if (o.minCheckpoints > 0) {
+    Kmin = Math.max(2, Math.floor(o.minCheckpoints));
+    Kmax = Math.max(Kmax, Kmin);
+  }
+  if (o.maxCheckpoints > 0) {
+    Kmax = Math.max(2, Math.floor(o.maxCheckpoints));
+    Kmin = Math.min(Kmin, Kmax);
+  }
   const cap = Math.max(TARGET_CFG.uniqueCapFloor, TARGET_CFG.uniqueCapPerCell * T);
-  const minimal = o.minimize !== false, t0 = performance.now();
+  const minimal = o.minimize !== false,
+    t0 = performance.now();
   const retries = Math.max(1, o.retries ?? TARGET_CFG.retries);
-  const depth = proposalBudget(n, o.effort ?? 1), patience = Math.max(30, Math.round(depth * TARGET_CFG.patience));
+  const depth = proposalBudget(n, o.effort ?? 1),
+    patience = Math.max(30, Math.round(depth * TARGET_CFG.patience));
   const hardWalls = o.maxWalls >= 0 ? Math.floor(o.maxWalls) : Infinity;
-  const maxWalls = o.maxWalls >= 0 ? hardWalls : Math.max(2, Math.floor(TARGET_CFG.maxWallsPerCell * cells));
+  const maxWalls =
+    o.maxWalls >= 0 ? hardWalls : Math.max(2, Math.floor(TARGET_CFG.maxWallsPerCell * cells));
   const K0 = Math.max(Kmin, Math.min(Kmax, Math.round(Kmax - ((Kmax - Kmin) * band.grade) / 5))); // fewer checkpoints for harder targets
-  const stats = { scored: 0, cacheHits: 0, filtered: 0, ladderRuns: 0, ladderAborts: 0, uniqueRuns: 0, uniqueHits: 0, dropRuns: 0, witnessSkips: 0 };
-  const solveOnce = q => { const r = solve(q, { limit: 2, nodeCap: cap, ...REF_FLAGS }); return r.count === 1 && !r.exceeded; };
+  const stats = {
+    scored: 0,
+    cacheHits: 0,
+    filtered: 0,
+    ladderRuns: 0,
+    ladderAborts: 0,
+    uniqueRuns: 0,
+    uniqueHits: 0,
+    dropRuns: 0,
+    witnessSkips: 0,
+  };
+  const solveOnce = q => {
+    const r = solve(q, { limit: 2, nodeCap: cap, ...REF_FLAGS });
+    return r.count === 1 && !r.exceeded;
+  };
   const uniq = o.cache === false ? null : new Map(); // puzzle -> its uniqueness verdict (the same puzzle is proposed again and again)
   const isUnique = q => {
     if (!uniq) return solveOnce(q);
     const key = keyOf(q);
     let v = uniq.get(key);
-    if (v === undefined) { v = solveOnce(q); if (uniq.size >= TARGET_CFG.cacheMax) uniq.clear(); uniq.set(key, v); stats.uniqueRuns++; } else stats.uniqueHits++;
+    if (v === undefined) {
+      v = solveOnce(q);
+      if (uniq.size >= TARGET_CFG.cacheMax) uniq.clear();
+      uniq.set(key, v);
+      stats.uniqueRuns++;
+    } else stats.uniqueHits++;
     return v;
   };
   // Walls a puzzle does not need are stripped (dropWalls). The puzzle is unique when this runs, so without wall w it stays unique iff no
@@ -239,23 +340,43 @@ export function* generateTargeted(n, grade, seed, o = {}) {
   // has to stay comes with a WITNESS, the second solution that appears without it; the next candidate, one change away, then only
   // needs the witness checked (a path walk) instead of a search. Witnesses are kept per wall in `wit` (wall id -> path).
   // o.freedEdge = false: the plain uniqueness check, no witnesses (same result unless a node cap is hit).
-  const validPath = (q, path) => { for (let i = 1; i < path.length; i++) if (!canStep(q, path[i - 1], path[i])) return false; return isSolved(q, path); };
-  const freedSearch = (q, w) => { const [a, b] = edgeCells(n, w); return solve(q, { limit: 1, nodeCap: cap, mustUse: [a, b], capture: true, ...REF_FLAGS }); };
+  const validPath = (q, path) => {
+    for (let i = 1; i < path.length; i++) if (!canStep(q, path[i - 1], path[i])) return false;
+    return isSolved(q, path);
+  };
+  const freedSearch = (q, w) => {
+    const [a, b] = edgeCells(n, w);
+    return solve(q, { limit: 1, nodeCap: cap, mustUse: [a, b], capture: true, ...REF_FLAGS });
+  };
   const strip = (q, parentWit) => {
     const wit = new Map();
-    dropWalls(q, o.freedEdge === false
-      ? (q_, w) => { setWallId(q_.walls, w, false); if (isUnique(q_)) return true; setWallId(q_.walls, w, true); return false; }
-      : (q_, w) => {
-        setWallId(q_.walls, w, false);
-        const old = parentWit && parentWit.get(w);
-        if (old && validPath(q_, old)) { stats.witnessSkips++; setWallId(q_.walls, w, true); wit.set(w, old); return false; }
-        stats.dropRuns++;
-        const r = freedSearch(q_, w);
-        if (!r.exceeded && r.count === 0) return true;
-        setWallId(q_.walls, w, true);
-        if (r.count === 1) wit.set(w, r.paths[0]);
-        return false;
-      }, rnd);
+    dropWalls(
+      q,
+      o.freedEdge === false
+        ? (q_, w) => {
+            setWallId(q_.walls, w, false);
+            if (isUnique(q_)) return true;
+            setWallId(q_.walls, w, true);
+            return false;
+          }
+        : (q_, w) => {
+            setWallId(q_.walls, w, false);
+            const old = parentWit && parentWit.get(w);
+            if (old && validPath(q_, old)) {
+              stats.witnessSkips++;
+              setWallId(q_.walls, w, true);
+              wit.set(w, old);
+              return false;
+            }
+            stats.dropRuns++;
+            const r = freedSearch(q_, w);
+            if (!r.exceeded && r.count === 0) return true;
+            setWallId(q_.walls, w, true);
+            if (r.count === 1) wit.set(w, r.paths[0]);
+            return false;
+          },
+      rnd,
+    );
     return wit;
   };
 
@@ -263,19 +384,33 @@ export function* generateTargeted(n, grade, seed, o = {}) {
   // ladder's term c * lTr (c > 0) is the only expensive one, with lTr = log(1 + ladder trials) >= 0. `win` = [lo, hi] is the window of
   // scores in which the change would be kept; a score outside it only has to be recognised as outside (OUT), so the cheap terms give
   // the lowest possible score (no trials) and the ladder runs with a trial cap that makes the score exceed hi.
-  const lTrOn = model.features.includes('lTr'), lCoef = lTrOn ? model.w.lTr / model.sd.lTr : 0;
+  const lTrOn = model.features.includes('lTr'),
+    lCoef = lTrOn ? model.w.lTr / model.sd.lTr : 0;
   const staged = o.prefilter !== false && lCoef > 0;
   const lTrMax = Math.log1p(TRAP_CFG.ladderWorkCap + 1); // every trial assigns an edge: at most workCap + 1 trials
   const cache = o.cache === false ? null : new Map();
   const score = (q, path, win) => {
     if (wallIds(q).length > hardWalls) return null;
     stats.scored++;
-    const key = cache ? keyOf(q) : null, known = cache ? cache.get(key) : undefined;
+    const key = cache ? keyOf(q) : null,
+      known = cache ? cache.get(key) : undefined;
     if (known) {
-      if ('exact' in known) { stats.cacheHits++; return known.exact; }
-      if (win && (known.lb > win.hi + EPS || known.ub < win.lo - EPS)) { stats.cacheHits++; return OUT; } // known to be above / below the window
+      if ('exact' in known) {
+        stats.cacheHits++;
+        return known.exact;
+      }
+      if (win && (known.lb > win.hi + EPS || known.ub < win.lo - EPS)) {
+        stats.cacheHits++;
+        return OUT;
+      } // known to be above / below the window
     }
-    const keep = v => { if (cache) { if (cache.size >= TARGET_CFG.cacheMax) cache.clear(); cache.set(key, v); } return v; };
+    const keep = v => {
+      if (cache) {
+        if (cache.size >= TARGET_CFG.cacheMax) cache.clear();
+        cache.set(key, v);
+      }
+      return v;
+    };
     const profile = trapProfile(q, path, TRAP_CFG);
     if (profile.nonUnique) return keep({ exact: null }).exact;
     if (!(staged && win)) {
@@ -283,49 +418,128 @@ export function* generateTargeted(n, grade, seed, o = {}) {
       return keep({ exact: { pred: m.predicted, grade: m.grade } }).exact;
     }
     const low = trapMetricsFromProfile(q, path, profile, TRAP_CFG, 0, model).predicted; // lTr = 0: the lowest score the puzzle can have
-    if (low > win.hi + EPS) { stats.filtered++; keep({ lb: low }); return OUT; }
+    if (low > win.hi + EPS) {
+      stats.filtered++;
+      keep({ lb: low });
+      return OUT;
+    }
     const high = low + lCoef * lTrMax;
-    if (high < win.lo - EPS) { stats.filtered++; keep({ ub: high }); return OUT; }
-    const trialCap = Number.isFinite(win.hi) ? Math.ceil(Math.expm1(Math.max(0, (win.hi - low) / lCoef))) + 1 : Infinity;
+    if (high < win.lo - EPS) {
+      stats.filtered++;
+      keep({ ub: high });
+      return OUT;
+    }
+    const trialCap = Number.isFinite(win.hi)
+      ? Math.ceil(Math.expm1(Math.max(0, (win.hi - low) / lCoef))) + 1
+      : Infinity;
     stats.ladderRuns++;
     const trials = ladderTrials(q, TRAP_CFG, trialCap);
-    if (trials > trialCap) { stats.ladderAborts++; keep({ lb: low + lCoef * Math.log1p(trials) }); return OUT; } // more trials than the window allows
+    if (trials > trialCap) {
+      stats.ladderAborts++;
+      keep({ lb: low + lCoef * Math.log1p(trials) });
+      return OUT;
+    } // more trials than the window allows
     const m = trapMetricsFromProfile(q, path, profile, TRAP_CFG, trials, model);
     return keep({ exact: { pred: m.predicted, grade: m.grade } }).exact;
   };
 
-  let best = null, proposals = 0, restarts = 0, tries = 0, failedStarts = 0, tryProps = 0;
+  let best = null,
+    proposals = 0,
+    restarts = 0,
+    tries = 0,
+    failedStarts = 0,
+    tryProps = 0;
   const event = (phase, cur) => {
     const b = best || cur;
-    return { frac: Math.min(1, Number.isFinite(retries) ? (tries - 1 + Math.min(1, tryProps / depth)) / retries : 0), elapsedMs: performance.now() - t0, proposals, restarts, tries, retries, pred: b ? b.pred : null, grade: b ? b.grade : null, walls: b ? wallIds(b.puzzle).length : null, K: b ? maxNumber(b.puzzle) : null, target: band.grade, phase };
+    return {
+      frac: Math.min(
+        1,
+        Number.isFinite(retries) ? (tries - 1 + Math.min(1, tryProps / depth)) / retries : 0,
+      ),
+      elapsedMs: performance.now() - t0,
+      proposals,
+      restarts,
+      tries,
+      retries,
+      pred: b ? b.pred : null,
+      grade: b ? b.grade : null,
+      walls: b ? wallIds(b.puzzle).length : null,
+      K: b ? maxNumber(b.puzzle) : null,
+      target: band.grade,
+      phase,
+    };
   };
-  const consider = cur => { if (!best || cur.d < best.d) best = cur; };
+  const consider = cur => {
+    if (!best || cur.d < best.d) best = cur;
+  };
   const stopped = () => (o.stop ? o.stop() === true : false);
 
-  while (tries < retries && !(best && (best.d === 0 || stopped())) && failedStarts < TARGET_CFG.maxFailedStarts) {
+  while (
+    tries < retries &&
+    !(best && (best.d === 0 || stopped())) &&
+    failedStarts < TARGET_CFG.maxFailedStarts
+  ) {
     tries++;
     tryProps = 1;
     // 1. A fresh unique puzzle with its solution path.
-    const inner = o.start ? o.start(rnd, K0, cap) : generateUnique(n, K0, rnd, { tries: TARGET_CFG.startTries, nodeCap: cap });
+    const inner = o.start
+      ? o.start(rnd, K0, cap)
+      : generateUnique(n, K0, rnd, { tries: TARGET_CFG.startTries, nodeCap: cap });
     let start;
-    for (let s = inner.next(); ; s = inner.next()) { if (s.done) { start = s.value; break; } yield event('start', null); }
+    for (let s = inner.next(); ; s = inner.next()) {
+      if (s.done) {
+        start = s.value;
+        break;
+      }
+      yield event('start', null);
+    }
     proposals++;
     const path = start.unique && start.puzzle.path;
     let startWit = new Map();
-    if (path && minimal) { start.puzzle.path = path; startWit = strip(start.puzzle, null); }
+    if (path && minimal) {
+      start.puzzle.path = path;
+      startWit = strip(start.puzzle, null);
+    }
     const first = path && score(start.puzzle, path, null);
-    if (!first) { failedStarts++; continue; }
+    if (!first) {
+      failedStarts++;
+      continue;
+    }
     failedStarts = 0;
-    const ctx = { n, path, pos: Int32Array.from({ length: T }), free: null, freeSet: null, Kmin, Kmax, maxWalls, minimal, guided: o.guided === true, wit: null, witness: null };
-    path.forEach((c, i) => { ctx.pos[c] = i; });
+    const ctx = {
+      n,
+      path,
+      pos: Int32Array.from({ length: T }),
+      free: null,
+      freeSet: null,
+      Kmin,
+      Kmax,
+      maxWalls,
+      minimal,
+      guided: o.guided === true,
+      wit: null,
+      witness: null,
+    };
+    path.forEach((c, i) => {
+      ctx.pos[c] = i;
+    });
     const onPath = new Set(pathEdgeIds(n, path));
     const holes = start.puzzle.holes;
-    const atHole = e => { if (!holes) return false; const [a, b] = edgeCells(n, e); return holes[a] === 1 || holes[b] === 1; }; // no such edge: a wall there changes nothing
+    const atHole = e => {
+      if (!holes) return false;
+      const [a, b] = edgeCells(n, e);
+      return holes[a] === 1 || holes[b] === 1;
+    }; // no such edge: a wall there changes nothing
     ctx.free = allEdges(n).filter(e => !onPath.has(e) && !atHole(e));
     ctx.freeSet = new Set(ctx.free);
-    ctx.witness = (q, w) => { // a second solution of q, which has wall w taken out (null = none found); remembered in ctx.wit
+    ctx.witness = (q, w) => {
+      // a second solution of q, which has wall w taken out (null = none found); remembered in ctx.wit
       let v = ctx.wit.get(w);
-      if (v === undefined) { const r = freedSearch(q, w); v = !r.exceeded && r.count === 1 ? r.paths[0] : null; ctx.wit.set(w, v); }
+      if (v === undefined) {
+        const r = freedSearch(q, w);
+        v = !r.exceeded && r.count === 1 ? r.paths[0] : null;
+        ctx.wit.set(w, v);
+      }
       return v;
     };
     let cur = { puzzle: start.puzzle, ...first, d: missOf(first.pred, band), wit: startWit };
@@ -335,20 +549,40 @@ export function* generateTargeted(n, grade, seed, o = {}) {
     // 2. Hill-climb with plateau moves: keep every change that is not farther from the target.
     let stale = 0;
     while (tryProps < depth && cur.d > 0 && stale < patience && !stopped()) {
-      proposals++; tryProps++;
+      proposals++;
+      tryProps++;
       ctx.wit = cur.wit;
       const m = propose(cur.puzzle, ctx, rnd, cur.pred < band.a);
-      if (!m || (o.valid && !o.valid(m.q)) || (m.check && !isUnique(m.q))) { stale++; continue; }
+      if (!m || (o.valid && !o.valid(m.q)) || (m.check && !isUnique(m.q))) {
+        stale++;
+        continue;
+      }
       const win = { lo: band.a - cur.d, hi: band.b + cur.d };
-      let q = m.q, s = score(q, path, win);
-      if (s === OUT) { stale++; yield event('search', cur); continue; }
-      if (!s) { stale++; continue; }
+      let q = m.q,
+        s = score(q, path, win);
+      if (s === OUT) {
+        stale++;
+        yield event('search', cur);
+        continue;
+      }
+      if (!s) {
+        stale++;
+        continue;
+      }
       // A candidate that is not worse is stripped of the walls it does not need before it is kept, and judged as that stripped puzzle.
       let wit = new Map();
       if (minimal && missOf(s.pred, band) <= cur.d) {
-        wit = strip(q, cur.wit); s = score(q, path, win);
-        if (s === OUT) { stale++; yield event('search', cur); continue; }
-        if (!s) { stale++; continue; }
+        wit = strip(q, cur.wit);
+        s = score(q, path, win);
+        if (s === OUT) {
+          stale++;
+          yield event('search', cur);
+          continue;
+        }
+        if (!s) {
+          stale++;
+          continue;
+        }
       }
       const d = missOf(s.pred, band);
       if (d <= cur.d) {
@@ -361,13 +595,49 @@ export function* generateTargeted(n, grade, seed, o = {}) {
     restarts++;
   }
 
-  if (!best) return { puzzle: null, unique: false, grade: null, pred: null, target: band.grade, requested: grade, hit: false, inside: false, lo: band.lo, hi: band.hi, proposals, restarts, tries, retries, K: 0, walls: 0, stats, elapsedMs: performance.now() - t0 };
+  if (!best)
+    return {
+      puzzle: null,
+      unique: false,
+      grade: null,
+      pred: null,
+      target: band.grade,
+      requested: grade,
+      hit: false,
+      inside: false,
+      lo: band.lo,
+      hi: band.hi,
+      proposals,
+      restarts,
+      tries,
+      retries,
+      K: 0,
+      walls: 0,
+      stats,
+      elapsedMs: performance.now() - t0,
+    };
   const puzzle = best.puzzle;
   puzzle.seed = seed;
   yield { ...event('search', best), frac: 1 };
   return {
-    puzzle, unique: true, grade: best.grade, pred: best.pred, target: band.grade, requested: grade,
-    hit: o.atLeast === true ? best.grade >= band.grade : best.grade === band.grade, inside: best.d === 0, lo: band.lo, hi: band.hi,
-    proposals, restarts, tries, retries, K: maxNumber(puzzle), walls: wallIds(puzzle).length, minimal, stats, elapsedMs: performance.now() - t0,
+    puzzle,
+    unique: true,
+    grade: best.grade,
+    pred: best.pred,
+    target: band.grade,
+    requested: grade,
+    hit: o.atLeast === true ? best.grade >= band.grade : best.grade === band.grade,
+    inside: best.d === 0,
+    lo: band.lo,
+    hi: band.hi,
+    proposals,
+    restarts,
+    tries,
+    retries,
+    K: maxNumber(puzzle),
+    walls: wallIds(puzzle).length,
+    minimal,
+    stats,
+    elapsedMs: performance.now() - t0,
   };
 }

@@ -22,7 +22,9 @@ export async function fetchJson(fetchFn, url, init, timeoutMs) {
     let body = null;
     try {
       body = await response.json();
-    } catch { /* an error page: judged by its status */ }
+    } catch {
+      /* an error page: judged by its status */
+    }
     return { ok: response.ok, status: response.status, body };
   } catch (error) {
     throw new CloudError('network', error && error.message);

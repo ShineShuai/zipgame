@@ -14,14 +14,18 @@ import { validCss } from './store.js';
 export const OFFER_KEY = 'zip_theme_o';
 export const TRIAL_MS = 30 * 60 * 1000;
 export const FINAL_MS = 30 * 60 * 1000;
-const MAX_RECORD = 400 * 1024;   // characters
+const MAX_RECORD = 400 * 1024; // characters
 const PHASES = ['pending', 'trial', 'final'];
 
 // text -> { event, phase, until, left, theme } or null (missing or damaged)
 export function parseOffer(text, trialMs = TRIAL_MS) {
   if (typeof text !== 'string' || text.length > MAX_RECORD) return null;
   let r = null;
-  try { r = JSON.parse(text); } catch { return null; }
+  try {
+    r = JSON.parse(text);
+  } catch {
+    return null;
+  }
   if (!r || r.v !== 1 || !PHASES.includes(r.phase) || !EVENT_RE.test(r.event ?? '')) return null;
   if (!Number.isFinite(r.until) || !Number.isFinite(r.left) || r.left < 0) return null;
   const entry = cleanEntry(r.theme?.entry);
@@ -32,10 +36,21 @@ export function parseOffer(text, trialMs = TRIAL_MS) {
     if (!validCss(entry.id, r.theme.css) || !fonts) return null;
     theme = { entry, css: r.theme.css, art: cleanArt(r.theme.art), fonts };
   }
-  return { event: r.event, phase: r.phase, until: r.until, left: Math.min(r.left, trialMs), theme };
+  return {
+    event: r.event,
+    phase: r.phase,
+    until: r.until,
+    left: Math.min(r.left, trialMs),
+    theme,
+  };
 }
 
-export const serializeOffer = o => JSON.stringify({
-  v: 1, event: o.event, phase: o.phase, until: o.until, left: Math.round(o.left),
-  theme: { entry: o.theme.entry, css: o.theme.css, art: o.theme.art, fonts: o.theme.fonts },
-});
+export const serializeOffer = o =>
+  JSON.stringify({
+    v: 1,
+    event: o.event,
+    phase: o.phase,
+    until: o.until,
+    left: Math.round(o.left),
+    theme: { entry: o.theme.entry, css: o.theme.css, art: o.theme.art, fonts: o.theme.fonts },
+  });

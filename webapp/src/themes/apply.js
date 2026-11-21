@@ -10,7 +10,10 @@ const STYLE_ID = 'theme-css';
 
 function setStyle(doc, css) {
   let el = doc.getElementById(STYLE_ID);
-  if (!css) { el?.remove(); return; }
+  if (!css) {
+    el?.remove();
+    return;
+  }
   if (!el) {
     el = doc.createElement('style');
     el.id = STYLE_ID;
@@ -28,7 +31,7 @@ function setMark(doc, svg) {
     const span = doc.createElement('span');
     span.className = 'brand-art';
     span.setAttribute('aria-hidden', 'true');
-    span.innerHTML = scopeIds(svg, freshScope());   // rebuilt from the whitelist in svg.js; its ids are its own
+    span.innerHTML = scopeIds(svg, freshScope()); // rebuilt from the whitelist in svg.js; its ids are its own
     holder.append(span);
   }
 }
@@ -40,26 +43,41 @@ export function applyEntry(entry, loaded, doc = document) {
   root.dataset.theme = entry.id;
   root.dataset.mode = entry.mode;
   for (const [axis, key] of Object.entries(entry.layout)) root.dataset[axis] = key;
-  setStyle(doc, entry.builtin ? null : loaded?.css ?? null);
+  setStyle(doc, entry.builtin ? null : (loaded?.css ?? null));
   doc.querySelector('meta[name="theme-color"]')?.setAttribute('content', entry.chrome);
   setMark(doc, loaded?.art?.mark ?? null);
   setArt(loaded?.art ?? null);
-  doc.dispatchEvent(new CustomEvent(THEME_EVENT, { detail: { id: entry.id, mode: entry.mode, art: loaded?.art ?? null } }));
+  doc.dispatchEvent(
+    new CustomEvent(THEME_EVENT, {
+      detail: { id: entry.id, mode: entry.mode, art: loaded?.art ?? null },
+    }),
+  );
 }
 
 // Registers a theme's fonts with the FontFace API (binary data: no url, so nothing for the CSP to allow). Returns { release }
 // which takes them out again when the theme goes. `env` is injectable for tests.
-export function loadFonts(fonts, env = { FontFace: globalThis.FontFace, set: globalThis.document?.fonts }) {
+export function loadFonts(
+  fonts,
+  env = { FontFace: globalThis.FontFace, set: globalThis.document?.fonts },
+) {
   const faces = [];
   if (!env.FontFace || !env.set) return { release() {} };
   for (const f of fonts) {
     try {
-      const bytes = globalThis.Buffer ? Buffer.from(f.data, 'base64') : Uint8Array.from(atob(f.data), c => c.charCodeAt(0));
+      const bytes = globalThis.Buffer
+        ? Buffer.from(f.data, 'base64')
+        : Uint8Array.from(atob(f.data), c => c.charCodeAt(0));
       const face = new env.FontFace(f.family, bytes, { weight: f.weight, display: 'swap' });
       env.set.add(face);
       faces.push(face);
       face.load?.().catch?.(() => {});
-    } catch { /* a font that cannot load: the system stack is the fallback */ }
+    } catch {
+      /* a font that cannot load: the system stack is the fallback */
+    }
   }
-  return { release() { for (const face of faces) env.set.delete(face); } };
+  return {
+    release() {
+      for (const face of faces) env.set.delete(face);
+    },
+  };
 }

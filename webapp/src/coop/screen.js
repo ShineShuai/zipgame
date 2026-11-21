@@ -2,9 +2,7 @@ import { playGradesFor } from '../core/grades.js';
 import { actionIcon } from '../apps/play/icons.js';
 import { HINT_PENALTY_S, maxHints, penalizedTime } from '../features/hints.js';
 import { runAsync } from '../platform/run.js';
-import {
-  sfxBack, sfxBlocked, sfxCheckpoint, sfxMove, sfxSolved,
-} from '../platform/sound.js';
+import { sfxBack, sfxBlocked, sfxCheckpoint, sfxMove, sfxSolved } from '../platform/sound.js';
 import { t } from '../ui/i18n.js';
 import { DEFAULT_SIZE, SIGNAL_BROKERS } from './config.js';
 import { edgeAt } from './cut.js';
@@ -13,40 +11,72 @@ import { coopHint } from './hint.js';
 import { fromBase64Url, toBase64Url } from './invite.js';
 import { hostRoom, joinRoom } from './join.js';
 import { clearGame, loadGame, makeRecord, saveGame } from './keep.js';
+import { firstShown, hasSolidTab, isShown, levelOf, offeredSizes } from './access.js';
 import {
-  firstShown, hasSolidTab, isShown, levelOf, offeredSizes,
-} from './access.js';
-import {
-  captionHtml, confirmDialog, exportDialog, gamePage, generatingPage, invitePage, joinPage,
-  lobbyPage, menuPage, resultCard, roomInvitePage, roomJoinPage, sizeOptionsHtml, STAGE_TEXT,
-  sizeLabel, tabOf, variantRulesHtml,
+  captionHtml,
+  confirmDialog,
+  exportDialog,
+  gamePage,
+  generatingPage,
+  invitePage,
+  joinPage,
+  lobbyPage,
+  menuPage,
+  resultCard,
+  roomInvitePage,
+  roomJoinPage,
+  sizeOptionsHtml,
+  STAGE_TEXT,
+  sizeLabel,
+  tabOf,
+  variantRulesHtml,
 } from './pages.js';
 import { createReplica } from './replica.js';
 import {
-  acceptReply, createInvite, joinInvite, probeServers, probeText, rtcSupported,
+  acceptReply,
+  createInvite,
+  joinInvite,
+  probeServers,
+  probeText,
+  rtcSupported,
 } from './rtc.js';
 import { resumeRoom } from './resume.js';
 import { newSecret, signalSupported } from './secret.js';
 import { createSession } from './session.js';
 import { createHub } from './signal.js';
 import { recordSolve } from './stats.js';
-import {
-  changed, startStroke, strokeStep, undoStroke,
-} from './stroke.js';
+import { changed, startStroke, strokeStep, undoStroke } from './stroke.js';
 import { tx } from './texts.js';
 import {
-  FLAT_IDS, isSolidId, nearestSize, SOLID_IDS, sizeName, statKey, variantById, variantOf,
+  FLAT_IDS,
+  isSolidId,
+  nearestSize,
+  SOLID_IDS,
+  sizeName,
+  statKey,
+  variantById,
+  variantOf,
 } from './variants.js';
 import { portalPartner } from '../core/geom.js';
 import { isPentagon } from '../core/pentagon.js';
 import { topologyOf } from '../core/surface/puzzle.js';
-import {
-  cellAtClient, cellPxOf, padOf, pressPoint,
-} from './layout.js';
+import { cellAtClient, cellPxOf, padOf, pressPoint } from './layout.js';
 import { serializePuzzle } from './model.js';
 import {
-  ARROW_TURN, FOLLOW_EDGE, ORBIT_SLOP, cellUnder, createTurner, crossedCut, edgeNear, isSolid,
-  netPoint, solidBoard, startRotation, turnBy, turnByKey, turnable,
+  ARROW_TURN,
+  FOLLOW_EDGE,
+  ORBIT_SLOP,
+  cellUnder,
+  createTurner,
+  crossedCut,
+  edgeNear,
+  isSolid,
+  netPoint,
+  solidBoard,
+  startRotation,
+  turnBy,
+  turnByKey,
+  turnable,
 } from './solid.js';
 import { boardView, boardMarkup } from './view.js';
 import { pentagonAcross } from '../apps/play/pentagon-board.js';
@@ -74,7 +104,6 @@ const KEEP_DELAY_MS = 1000; // a game in progress is saved this long after the l
 const pageUrl = () => location.href.split('#')[0].split('?')[0];
 const linkFor = code => `${pageUrl()}#c=${code}`;
 const roomLinkFor = token => `${pageUrl()}#j=${token}`;
-
 
 async function copyText(text, input) {
   try {
@@ -204,44 +233,62 @@ export function openScreen(env) {
       loadAccess();
     }
     const pages = {
-      menu: () => menuPage({
-        size: state.size,
-        rtc,
-        ...pickView(),
-        status: state.status,
-        error: state.error,
-        saved: Boolean(state.kept) && rtc && signalSupported(),
-      }),
-      inviting: () => (room ? roomInvitePage({
-        link: state.link,
-        status: state.status,
-        error: state.error,
-        canShare,
-        requests: state.requests,
-        needGreeting: state.needGreeting,
-        down: state.signalDown,
-      }) : invitePage({
-        link: state.link, status: state.status, error: state.error, canShare,
-      })),
-      joining: () => (room ? roomJoinPage({
-        stage: state.stage,
-        greeting: state.greeting,
-        needGreeting: state.needGreeting,
-        status: state.status,
-        error: state.error,
-      }) : joinPage({
-        code: state.code, status: state.status, error: state.error, canShare,
-      })),
-      lobby: () => lobbyPage({
-        role: state.role, size: state.size, status: state.status, error: state.error,
-        ...pickView(),
-      }),
-      generating: () => generatingPage({
-        percent: state.progress,
-        waiting: state.waiting,
-        online: Boolean(state.session),
-        variant: state.variant,
-      }),
+      menu: () =>
+        menuPage({
+          size: state.size,
+          rtc,
+          ...pickView(),
+          status: state.status,
+          error: state.error,
+          saved: Boolean(state.kept) && rtc && signalSupported(),
+        }),
+      inviting: () =>
+        room
+          ? roomInvitePage({
+              link: state.link,
+              status: state.status,
+              error: state.error,
+              canShare,
+              requests: state.requests,
+              needGreeting: state.needGreeting,
+              down: state.signalDown,
+            })
+          : invitePage({
+              link: state.link,
+              status: state.status,
+              error: state.error,
+              canShare,
+            }),
+      joining: () =>
+        room
+          ? roomJoinPage({
+              stage: state.stage,
+              greeting: state.greeting,
+              needGreeting: state.needGreeting,
+              status: state.status,
+              error: state.error,
+            })
+          : joinPage({
+              code: state.code,
+              status: state.status,
+              error: state.error,
+              canShare,
+            }),
+      lobby: () =>
+        lobbyPage({
+          role: state.role,
+          size: state.size,
+          status: state.status,
+          error: state.error,
+          ...pickView(),
+        }),
+      generating: () =>
+        generatingPage({
+          percent: state.progress,
+          waiting: state.waiting,
+          online: Boolean(state.session),
+          variant: state.variant,
+        }),
     };
     if (pages[state.phase]) {
       root.innerHTML = pages[state.phase]();
@@ -329,9 +376,10 @@ export function openScreen(env) {
   const turnsHere = () => solid() && turnable(state.puzzle, state.view);
 
   // The whole picture of view `i` as a view box.
-  const fullOf = i => (solid()
-    ? { x: 0, y: 0, w: state.solidFrames[i].width, h: state.solidFrames[i].height }
-    : boardView(state.puzzle));
+  const fullOf = i =>
+    solid()
+      ? { x: 0, y: 0, w: state.solidFrames[i].width, h: state.solidFrames[i].height }
+      : boardView(state.puzzle);
 
   // Writes the camera into the viewBox of every svg of the board.
   function showZoom() {
@@ -363,9 +411,11 @@ export function openScreen(env) {
         return full.w / (state.solidLayouts[0].side * state.solidFrames[0].scale);
       }
       return isPentagon(state.puzzle)
-        ? pentagonAcross(state.puzzle) : state.puzzle.n + 2 * padOf(state.puzzle);
+        ? pentagonAcross(state.puzzle)
+        : state.puzzle.n + 2 * padOf(state.puzzle);
     })();
-    const picture = () => (isSolid ? board.querySelector('.sf-view svg') : board.firstElementChild);
+    const picture = () =>
+      isSolid ? board.querySelector('.sf-view svg') : board.firstElementChild;
     zoom = createZoom({
       target: board,
       measure: () => picture()?.getBoundingClientRect(),
@@ -411,7 +461,9 @@ export function openScreen(env) {
     const board = el('coopBoard');
     if (board && solid()) {
       const picture = solidBoard(state.puzzle, state.drawing, {
-        view: state.view, rotation: state.rotation, hint: state.hint,
+        view: state.view,
+        rotation: state.rotation,
+        hint: state.hint,
       });
       board.classList.add('solid-wrap');
       board.classList.toggle('turnable', turnable(state.puzzle, state.view));
@@ -473,11 +525,33 @@ export function openScreen(env) {
     state.invitation?.close();
     closeAttempts();
     Object.assign(state, {
-      session: null, connection: null, role: 'solo', peerHere: false, waiting: false,
-      secret: '', keepTimer: null, attempts: [], peerLeft: false, startedWall: 0,
-      invitation: null, fromGame: false, peerSeen: false, lostAt: 0,
-      link: '', code: '', status: '', error: false, route: '', probe: null, mode: 'code',
-      requests: [], needGreeting: false, signalDown: false, stage: '', greeting: '', signalText: '',
+      session: null,
+      connection: null,
+      role: 'solo',
+      peerHere: false,
+      waiting: false,
+      secret: '',
+      keepTimer: null,
+      attempts: [],
+      peerLeft: false,
+      startedWall: 0,
+      invitation: null,
+      fromGame: false,
+      peerSeen: false,
+      lostAt: 0,
+      link: '',
+      code: '',
+      status: '',
+      error: false,
+      route: '',
+      probe: null,
+      mode: 'code',
+      requests: [],
+      needGreeting: false,
+      signalDown: false,
+      stage: '',
+      greeting: '',
+      signalText: '',
     });
   }
 
@@ -542,11 +616,15 @@ export function openScreen(env) {
   // for both with everything drawn so far. Until then the game stays as it was.
   function adoptRunning(connection, secret) {
     const token = state.token;
-    const text = state.session?.current?.text
-      ?? serializePuzzle(state.puzzle, { path: state.puzzle.path });
+    const text =
+      state.session?.current?.text ?? serializePuzzle(state.puzzle, { path: state.puzzle.path });
     const session = createSession({
-      role: 'host', pid: pid(), channel: connection.channel, onEvent: onSessionEvent,
-      heartbeat: true, info: gameInfo,
+      role: 'host',
+      pid: pid(),
+      channel: connection.channel,
+      onEvent: onSessionEvent,
+      heartbeat: true,
+      info: gameInfo,
     });
     const restored = session.restore({ text, seed: state.seed, ops: state.drawing.ops() });
     state.invitation = connection;
@@ -596,7 +674,11 @@ export function openScreen(env) {
     state.secret = secret ? toBase64Url(secret) : '';
     state.peerLeft = false;
     state.session = createSession({
-      role, channel: connection.channel, onEvent: onSessionEvent, heartbeat: true, info: gameInfo,
+      role,
+      channel: connection.channel,
+      onEvent: onSessionEvent,
+      heartbeat: true,
+      info: gameInfo,
     });
     connection.channel.onopen = () => {
       if (state.phase !== 'inviting' && state.phase !== 'joining') {
@@ -653,7 +735,12 @@ export function openScreen(env) {
         onExpired: () => {
           if (current() && state.phase === 'inviting') {
             Object.assign(state, {
-              room: null, hub: null, link: '', requests: [], status: tx('expired'), error: true,
+              room: null,
+              hub: null,
+              link: '',
+              requests: [],
+              status: tx('expired'),
+              error: true,
             });
             render();
           }
@@ -700,8 +787,14 @@ export function openScreen(env) {
     state.invitation?.close();
     closeSignal();
     Object.assign(state, {
-      fromGame: false, invitation: null, phase: 'playing', mode: 'code', requests: [], link: '',
-      status: '', error: false,
+      fromGame: false,
+      invitation: null,
+      phase: 'playing',
+      mode: 'code',
+      requests: [],
+      link: '',
+      status: '',
+      error: false,
     });
     renderGame();
     if (state.session && state.secret && !state.peerLeft && !state.peerHere) {
@@ -791,7 +884,11 @@ export function openScreen(env) {
     const token = state.token;
     const current = () => token === state.token && state.phase === 'joining';
     Object.assign(state, {
-      phase: 'joining', role: 'guest', mode: 'room', stage: 'looking', status: tx('lookingHost'),
+      phase: 'joining',
+      role: 'guest',
+      mode: 'room',
+      stage: 'looking',
+      status: tx('lookingHost'),
     });
     render();
     if (!signalSupported()) {
@@ -854,11 +951,16 @@ export function openScreen(env) {
         Object.assign(state, { puzzle: event.puzzle, seed: event.seed, drawing: event.replica });
         break;
       case 'start':
-        if (event.shared) { // host: the friend has the game that is on
+        if (event.shared) {
+          // host: the friend has the game that is on
           markPeer(true);
           if (state.fromGame) {
             Object.assign(state, {
-              fromGame: false, phase: 'playing', mode: 'code', requests: [], link: '',
+              fromGame: false,
+              phase: 'playing',
+              mode: 'code',
+              requests: [],
+              link: '',
             });
             renderGame();
             keepNow();
@@ -904,7 +1006,10 @@ export function openScreen(env) {
       case 'stalled': // host: the other device never took the puzzle
         if (state.phase === 'generating' && state.waiting) {
           Object.assign(state, {
-            phase: 'lobby', waiting: false, status: tx('noAnswer'), error: true,
+            phase: 'lobby',
+            waiting: false,
+            status: tx('noAnswer'),
+            error: true,
           });
           render();
         }
@@ -912,8 +1017,12 @@ export function openScreen(env) {
       default: // left, closed
         state.peerLeft = state.peerLeft || event.type === 'left';
         markPeer(false);
-        if (event.type === 'closed' && state.phase === 'playing' && state.secret
-          && !state.peerLeft) {
+        if (
+          event.type === 'closed' &&
+          state.phase === 'playing' &&
+          state.secret &&
+          !state.peerLeft
+        ) {
           startResume(); // not said goodbye: a break, which the two can mend
           break;
         }
@@ -948,16 +1057,19 @@ export function openScreen(env) {
     if (!storage || !game || !state.secret || !state.drawing || state.phase !== 'playing') {
       return;
     }
-    saveGame(storage, makeRecord({
-      role: state.role,
-      pid: pid(),
-      seed: game.seed,
-      text: game.text,
-      ops: state.drawing.ops(),
-      hints: state.hintsUsed,
-      startedWall: state.startedWall,
-      secret: state.secret,
-    }));
+    saveGame(
+      storage,
+      makeRecord({
+        role: state.role,
+        pid: pid(),
+        seed: game.seed,
+        text: game.text,
+        ops: state.drawing.ops(),
+        hints: state.hintsUsed,
+        startedWall: state.startedWall,
+        secret: state.secret,
+      }),
+    );
   }
 
   function keepSoon() {
@@ -986,8 +1098,11 @@ export function openScreen(env) {
   function reattach(connection) {
     state.attempts.push(connection);
     connection.channel.onopen = () => {
-      if (state.phase !== 'playing' || state.connection === connection
-        || !state.attempts.includes(connection)) {
+      if (
+        state.phase !== 'playing' ||
+        state.connection === connection ||
+        !state.attempts.includes(connection)
+      ) {
         return;
       }
       const old = state.connection;
@@ -1075,7 +1190,11 @@ export function openScreen(env) {
     teardown();
     const token = state.token;
     const session = createSession({
-      role: record.role, pid: record.pid, onEvent: onSessionEvent, heartbeat: true, info: gameInfo,
+      role: record.role,
+      pid: record.pid,
+      onEvent: onSessionEvent,
+      heartbeat: true,
+      info: gameInfo,
     });
     let drawing = null;
     try {
@@ -1182,8 +1301,16 @@ export function openScreen(env) {
   function beginPlaying({ elapsed = 0, hints = 0 } = {}) {
     state.grade = gradeOf(state.puzzle);
     Object.assign(state, {
-      phase: 'playing', history: [], hint: null, hintsUsed: hints, elapsed, waiting: false,
-      jumpFrom: null, startedWall: Date.now() - elapsed * 1000, cam: null, pan: false,
+      phase: 'playing',
+      history: [],
+      hint: null,
+      hintsUsed: hints,
+      elapsed,
+      waiting: false,
+      jumpFrom: null,
+      startedWall: Date.now() - elapsed * 1000,
+      cam: null,
+      pan: false,
     });
     strokes.clear();
     pointers.clear();
@@ -1220,9 +1347,10 @@ export function openScreen(env) {
     const total = penalizedTime(state.elapsed, state.hintsUsed);
     const online = Boolean(state.session);
     const summary = recordOnce(online, total);
-    const penalty = state.hintsUsed > 0
-      ? t('game.penalty', seconds(HINT_PENALTY_S * state.hintsUsed), state.hintsUsed)
-      : '';
+    const penalty =
+      state.hintsUsed > 0
+        ? t('game.penalty', seconds(HINT_PENALTY_S * state.hintsUsed), state.hintsUsed)
+        : '';
     const lines = [];
     if (online) {
       const counts = [0, 0];
@@ -1231,8 +1359,9 @@ export function openScreen(env) {
       }
       lines.push(tx('split', counts[0], counts[1]));
     }
-    lines.push(tx(online ? 'stats2' : 'stats', seconds(summary.best), seconds(summary.mean),
-      summary.n));
+    lines.push(
+      tx(online ? 'stats2' : 'stats', seconds(summary.best), seconds(summary.mean), summary.n),
+    );
     const done = el('coopDone');
     if (done) {
       done.innerHTML = resultCard({ solved: t('game.solved', seconds(total), penalty), lines });
@@ -1262,12 +1391,14 @@ export function openScreen(env) {
 
   // ---------- pointer input ----------
   // where the whole picture is on the page (the zoom moves it: see view/camera.js boardRect)
-  const drawingRect = board => (zoom ? zoom.rect() : board.firstElementChild.getBoundingClientRect());
+  const drawingRect = board =>
+    zoom ? zoom.rect() : board.firstElementChild.getBoundingClientRect();
 
   // A Wrap-around board has a margin: a drag that leaves the board comes in on the other side.
-  const cellAt = (board, event) => (solid()
-    ? cellUnder(board, event.clientX, event.clientY)
-    : cellAtClient(state.puzzle, drawingRect(board), event.clientX, event.clientY));
+  const cellAt = (board, event) =>
+    solid()
+      ? cellUnder(board, event.clientX, event.clientY)
+      : cellAtClient(state.puzzle, drawingRect(board), event.clientX, event.clientY);
 
   // Cuts the line under the point (client coordinates), if there is one: true when it did.
   function cutAt(clientX, clientY, player) {
@@ -1275,7 +1406,12 @@ export function openScreen(env) {
     let edge;
     if (solid()) {
       edge = edgeNear(
-        board, state.drawing, state.solidLayouts, state.solidFrames, clientX, clientY,
+        board,
+        state.drawing,
+        state.solidLayouts,
+        state.solidFrames,
+        clientX,
+        clientY,
       );
     } else {
       const [x, y, unit] = pressPoint(state.puzzle, drawingRect(board), clientX, clientY);
@@ -1382,7 +1518,8 @@ export function openScreen(env) {
       x0: event.clientX,
       y0: event.clientY,
       lastPoint: crossing()
-        ? netPoint(board, state.solidFrames, event.clientX, event.clientY) : null,
+        ? netPoint(board, state.solidFrames, event.clientX, event.clientY)
+        : null,
     };
     entry.hold = setTimeout(() => onHoldElapsed(entry), HOLD_MS);
     strokes.set(event.pointerId, entry);
@@ -1422,20 +1559,22 @@ export function openScreen(env) {
     // zoomed in, the same drag turns the solid less: the surface keeps up with the finger
     const slower = state.cam ? 1 / state.cam.s : 1;
     state.rotation = turnBy(
-      state.rotation, (x - orbiting.last[0]) * slower, (y - orbiting.last[1]) * slower,
+      state.rotation,
+      (x - orbiting.last[0]) * slower,
+      (y - orbiting.last[1]) * slower,
     );
     orbiting.last = [x, y];
     redrawBoard();
   }
 
   // About one cell of a solid, in pixels: the size of a step of a fast drag.
-  const solidCellPx = board => (
-    board.querySelector('svg').getBoundingClientRect().width / Math.sqrt(topologyOf(state.puzzle).T)
-  );
+  const solidCellPx = board =>
+    board.querySelector('svg').getBoundingClientRect().width /
+    Math.sqrt(topologyOf(state.puzzle).T);
 
   // Whether the board is a net with cuts: leaving the head over a cut is a step.
-  const crossing = () => solid() && state.view === 'net'
-    && (state.solidLayouts[0]?.cuts?.length ?? 0) > 0;
+  const crossing = () =>
+    solid() && state.view === 'net' && (state.solidLayouts[0]?.cuts?.length ?? 0) > 0;
 
   // The pointer left the head of the stroke over a cut of the net: the line goes on where the cut
   // leads.
@@ -1443,7 +1582,11 @@ export function openScreen(env) {
     const at = netPoint(board, state.solidFrames, probe.clientX, probe.clientY);
     if (at && entry.lastPoint) {
       const target = crossedCut(
-        topologyOf(state.puzzle), state.solidLayouts[0], entry.stroke.head, entry.lastPoint, at,
+        topologyOf(state.puzzle),
+        state.solidLayouts[0],
+        entry.stroke.head,
+        entry.lastPoint,
+        at,
       );
       if (target >= 0) {
         applyStep(entry, target);
@@ -1740,9 +1883,14 @@ export function openScreen(env) {
     const ctx = { revealed: state.revealed, held: state.held };
     state.picks['3d'] = firstShown(SOLID_IDS, state.picks['3d'], state.access, ctx);
     state.picks.flat = firstShown(FLAT_IDS, state.picks.flat, state.access, ctx);
-    state.variant = isSolidId(state.variant) && hasSolidTab(state.access, ctx)
-      ? state.picks['3d'] : state.picks.flat;
-    state.size = nearestSize(state.size, offeredSizes(state.access, state.variant, state.revealed));
+    state.variant =
+      isSolidId(state.variant) && hasSolidTab(state.access, ctx)
+        ? state.picks['3d']
+        : state.picks.flat;
+    state.size = nearestSize(
+      state.size,
+      offeredSizes(state.access, state.variant, state.revealed),
+    );
   }
 
   // Redraws, in place, what depends on the pick, the lock and the tab: the tiles that are shown,
@@ -1751,7 +1899,9 @@ export function openScreen(env) {
     fitPick();
     const ctx = { revealed: state.revealed, held: state.held };
     root.querySelectorAll('.variant-opt[data-locked]').forEach(node => {
-      node.style.display = isShown(state.access, node.id.replace('coopOpt-', ''), ctx) ? '' : 'none';
+      node.style.display = isShown(state.access, node.id.replace('coopOpt-', ''), ctx)
+        ? ''
+        : 'none';
     });
     const tab = tabOf(state.variant);
     const tabs = el('coopTabs');
@@ -1866,8 +2016,13 @@ export function openScreen(env) {
       event.preventDefault(); // + - 0 zoom, the arrows pan a zoomed board
       return;
     }
-    if (ARROW_TURN[event.key] && !typing && solid() && turnable(state.puzzle, state.view)
-      && (state.phase === 'playing' || state.phase === 'solved')) {
+    if (
+      ARROW_TURN[event.key] &&
+      !typing &&
+      solid() &&
+      turnable(state.puzzle, state.view) &&
+      (state.phase === 'playing' || state.phase === 'solved')
+    ) {
       event.preventDefault();
       turner.stop();
       state.rotation = turnByKey(state.rotation, event.key);
@@ -1892,11 +2047,13 @@ export function openScreen(env) {
 
   // The app's language button redraws the screen in the new language.
   const toggle = document.getElementById('langToggle');
-  const languageWatch = toggle ? new MutationObserver(() => {
-    if (!state.confirming && !state.exporting) {
-      render();
-    }
-  }) : null;
+  const languageWatch = toggle
+    ? new MutationObserver(() => {
+        if (!state.confirming && !state.exporting) {
+          render();
+        }
+      })
+    : null;
   languageWatch?.observe(toggle, { attributes: true, attributeFilter: ['data-on'] });
 
   // Shows or hides what the app keeps for hold-V: the seed, the grade's numbers, Export.
@@ -1926,7 +2083,10 @@ export function openScreen(env) {
       if (levelOf(state.access, state.variant) === 'none') {
         state.held.add(state.variant);
       }
-      state.size = nearestSize(state.size, offeredSizes(state.access, state.variant, state.revealed));
+      state.size = nearestSize(
+        state.size,
+        offeredSizes(state.access, state.variant, state.revealed),
+      );
       syncPick();
     }
   });

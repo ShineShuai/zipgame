@@ -61,9 +61,9 @@ export function makePropagator(nb, T, end, vis, cells = T) {
     }
     nbm[i] = mask;
   }
-  let qt = 0;      // length of pq
-  let pcur = -1;   // head cell of the current deduce() call
-  let pneed = 0;   // cells a head -> end chain has to contain
+  let qt = 0; // length of pq
+  let pcur = -1; // head cell of the current deduce() call
+  let pneed = 0; // cells a head -> end chain has to contain
 
   // Path-degree cell u still needs.
   function required(u) {
@@ -92,7 +92,7 @@ export function makePropagator(nb, T, end, vis, cells = T) {
   // whole cycle-closing check.
   function dropClosingEdge(x, y) {
     for (let d = 0; d < W; d++) {
-      if (nb[x * W + d] !== y || ((av[x] & ~fr[x]) >> d & 1) === 0) continue;
+      if (nb[x * W + d] !== y || (((av[x] & ~fr[x]) >> d) & 1) === 0) continue;
       av[x] &= ~(1 << d);
       av[y] &= ~(1 << (d ^ 1));
       dg[x]--;

@@ -1,53 +1,85 @@
 // The pool picker: the list a player chooses their theme from once the pool holds three or more (the header button steps through a
 // pool of two). Pure: the items for a pool and the markup for them (every string in an entry was cleaned by pool.cleanEntry, but is
 // escaped here anyway); src/ui/theme-picker.js puts it on the page.
-export const esc = text => String(text).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+export const esc = text =>
+  String(text).replace(
+    /[&<>"]/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c],
+  );
 
 // [{ id, name, symbol, swatches, current }] in pool order
-export const pickerItems = (state, activeId, lang) => state.pool.map(e => ({
-  id: e.id, name: e.name[lang] ?? e.name.en, symbol: e.symbol, swatches: e.swatches ?? [], current: e.id === activeId,
-}));
+export const pickerItems = (state, activeId, lang) =>
+  state.pool.map(e => ({
+    id: e.id,
+    name: e.name[lang] ?? e.name.en,
+    symbol: e.symbol,
+    swatches: e.swatches ?? [],
+    current: e.id === activeId,
+  }));
 
 // rule: { line, open } texts: the public rule of the offer days and the label of the button that
 // opens the info panel (src/ui/theme-rule.js). Both are escaped here.
-const pickerRuleHtml = ({ line, open }) => `<div class="theme-picker-rule"><p>${esc(line)}</p>`
-  + '<button type="button" role="menuitem" data-rule>'
-  + '<span class="tip-i" aria-hidden="true">i</span>'
-  + `<span class="theme-name">${esc(open)}</span></button></div>`;
+const pickerRuleHtml = ({ line, open }) =>
+  `<div class="theme-picker-rule"><p>${esc(line)}</p>` +
+  '<button type="button" role="menuitem" data-rule>' +
+  '<span class="tip-i" aria-hidden="true">i</span>' +
+  `<span class="theme-name">${esc(open)}</span></button></div>`;
 
 export function pickerHtml(items, title, rule = null) {
-  const rows = items.map(i => `<button type="button" role="menuitemradio" aria-checked="${i.current}" data-theme-id="${esc(i.id)}"`
-    + `${i.current ? ' class="current"' : ''}>`
-    + `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="var(--icon-stroke)" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${i.symbol}</svg>`
-    + `<span class="theme-name">${esc(i.name)}</span>`
-    + `<span class="theme-swatches" aria-hidden="true">${i.swatches.map(c => `<i style="background:${esc(c)}"></i>`).join('')}</span></button>`);
-  return `<div class="theme-picker-title">${esc(title)}</div>${rows.join('')}`
-    + `${rule ? pickerRuleHtml(rule) : ''}`;
+  const rows = items.map(
+    i =>
+      `<button type="button" role="menuitemradio" aria-checked="${i.current}" data-theme-id="${esc(i.id)}"` +
+      `${i.current ? ' class="current"' : ''}>` +
+      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="var(--icon-stroke)" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${i.symbol}</svg>` +
+      `<span class="theme-name">${esc(i.name)}</span>` +
+      `<span class="theme-swatches" aria-hidden="true">${i.swatches.map(c => `<i style="background:${esc(c)}"></i>`).join('')}</span></button>`,
+  );
+  return (
+    `<div class="theme-picker-title">${esc(title)}</div>${rows.join('')}` +
+    `${rule ? pickerRuleHtml(rule) : ''}`
+  );
 }
 
 // ---- the dev reveal: every theme of the site's pool (controller.pool()), drafts included ----
 // [{ id, name, symbol, swatches, live, owned, current }] in manifest order
-export const devItems = (list, activeId, lang) => list.map(c => ({
-  id: c.entry.id, name: c.entry.name[lang] ?? c.entry.name.en, symbol: c.entry.symbol, swatches: c.entry.swatches ?? [], live: c.live, owned: c.owned, current: c.entry.id === activeId,
-}));
+export const devItems = (list, activeId, lang) =>
+  list.map(c => ({
+    id: c.entry.id,
+    name: c.entry.name[lang] ?? c.entry.name.en,
+    symbol: c.entry.symbol,
+    swatches: c.entry.swatches ?? [],
+    live: c.live,
+    owned: c.owned,
+    current: c.entry.id === activeId,
+  }));
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 // next: { year, month, day, date, days } (calendar.js nextEvent) -> "Next offer day: Sun 2026-11-15 (in 3 days)"
 export function nextDayText(next, labels) {
-  const when = next.days === 0 ? labels.today : next.days === 1 ? labels.tomorrow : labels.inDays.replace('{n}', next.days);
+  const when =
+    next.days === 0
+      ? labels.today
+      : next.days === 1
+        ? labels.tomorrow
+        : labels.inDays.replace('{n}', next.days);
   return `${labels.next}: ${WEEKDAYS[new Date(next.year, next.month - 1, next.day).getDay()]} ${next.date} (${when})`;
 }
 
 // labels: { all, draft, keep, offer, none, next, today, tomorrow, inDays }. A row: the theme (tap: try it, nothing is kept) and "+" (keep it,
 // whatever the cap); the footer shows the next offer day (`next`, or null) and starts an offer as an event would.
 export function devHtml(items, labels, next = null) {
-  const rows = items.map(i => `<div class="theme-dev-row"><button type="button" data-try-id="${esc(i.id)}"${i.current ? ' class="current"' : ''}>`
-    + `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="var(--icon-stroke)" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${i.symbol}</svg>`
-    + `<span class="theme-name">${esc(i.name)}${i.live ? '' : ` <em class="theme-draft">${esc(labels.draft)}</em>`}</span>`
-    + `<span class="theme-swatches" aria-hidden="true">${i.swatches.map(c => `<i style="background:${esc(c)}"></i>`).join('')}</span></button>`
-    + `${i.owned ? '' : `<button type="button" class="theme-keep" data-keep-id="${esc(i.id)}" aria-label="${esc(labels.keep)}" title="${esc(labels.keep)}">+</button>`}</div>`);
-  return `<div class="theme-picker-title">${esc(labels.all)}</div>${rows.join('') || `<div class="theme-picker-empty">${esc(labels.none)}</div>`}`
-    + `${next ? `<div class="theme-picker-empty" data-next>${esc(nextDayText(next, labels))}</div>` : ''}`
-    + `<button type="button" class="theme-offer-now" data-offer-now>${esc(labels.offer)}</button><div class="theme-picker-empty" data-note role="status"></div>`;
+  const rows = items.map(
+    i =>
+      `<div class="theme-dev-row"><button type="button" data-try-id="${esc(i.id)}"${i.current ? ' class="current"' : ''}>` +
+      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="var(--icon-stroke)" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${i.symbol}</svg>` +
+      `<span class="theme-name">${esc(i.name)}${i.live ? '' : ` <em class="theme-draft">${esc(labels.draft)}</em>`}</span>` +
+      `<span class="theme-swatches" aria-hidden="true">${i.swatches.map(c => `<i style="background:${esc(c)}"></i>`).join('')}</span></button>` +
+      `${i.owned ? '' : `<button type="button" class="theme-keep" data-keep-id="${esc(i.id)}" aria-label="${esc(labels.keep)}" title="${esc(labels.keep)}">+</button>`}</div>`,
+  );
+  return (
+    `<div class="theme-picker-title">${esc(labels.all)}</div>${rows.join('') || `<div class="theme-picker-empty">${esc(labels.none)}</div>`}` +
+    `${next ? `<div class="theme-picker-empty" data-next>${esc(nextDayText(next, labels))}</div>` : ''}` +
+    `<button type="button" class="theme-offer-now" data-offer-now>${esc(labels.offer)}</button><div class="theme-picker-empty" data-note role="status"></div>`
+  );
 }

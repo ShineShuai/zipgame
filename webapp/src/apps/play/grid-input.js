@@ -6,18 +6,34 @@ import { legsUndo } from '../../features/share.js';
 import { WRAP_PAD, cellAtPoint } from '../../view/geometry.js';
 import { edgeVelocity, isZoomed } from '../../view/camera.js';
 import {
-  routeCells, seamMarksSvg, jumpMarksSvg, loopOpenMarks, loopOpen, badgeColorsTwo, badgeColors,
+  routeCells,
+  seamMarksSvg,
+  jumpMarksSvg,
+  loopOpenMarks,
+  loopOpen,
+  badgeColorsTwo,
+  badgeColors,
   stepWrong,
 } from './board.js';
 import { pentagonAcross, pentagonCellAt, pentagonPoint } from './pentagon-board.js';
 import { isPentagon } from '../../core/pentagon.js';
-import { legsUndoTwo, newPaths, walkColour, solvedPaths, pickColour } from '../../features/twopaths-play.js';
+import {
+  legsUndoTwo,
+  newPaths,
+  walkColour,
+  solvedPaths,
+  pickColour,
+} from '../../features/twopaths-play.js';
 import { t } from '../../ui/i18n.js';
 import { traceClear, traceStep, traceTrack } from '../../features/playlog.js';
-import { sfxBlocked, sfxCheckpoint, sfxMoveAfterCheckpoint, sfxMove, sfxBack } from '../../platform/sound.js';
 import {
-  $, S, render, storage,
-} from './state.js';
+  sfxBlocked,
+  sfxCheckpoint,
+  sfxMoveAfterCheckpoint,
+  sfxMove,
+  sfxBack,
+} from '../../platform/sound.js';
+import { $, S, render, storage } from './state.js';
 import { cellPoint, fullViewOf, routeOf, solvedOf, stepOf } from './puzzle-kit.js';
 import { createRouter } from './gesture.js';
 import { createZoom } from './zoom.js';
@@ -76,12 +92,16 @@ export function resetPaths() {
   render();
 }
 export function setupGridInput(svg) {
-  const p = S.puzzle, n = p.n, pathEl = svg.querySelector('[data-role="path"]');
+  const p = S.puzzle,
+    n = p.n,
+    pathEl = svg.querySelector('[data-role="path"]');
   // Two paths: one path element per colour (S.paths); S.path is the path of the colour drawn now
   const two = Boolean(p.split);
   const pathEls = [...svg.querySelectorAll('[data-role="path"]')];
-  const wrap = Boolean(p.wrap), pad = wrap ? WRAP_PAD : 0; // a wrap-around board has a margin
-  let dragging = false, last = null;
+  const wrap = Boolean(p.wrap),
+    pad = wrap ? WRAP_PAD : 0; // a wrap-around board has a margin
+  let dragging = false,
+    last = null;
   // The zoom (S.cam): the board's picture is `full`, the part of it on screen is the camera's. The
   // pointer is mapped to cells through zoom.rect(), where the whole picture is on the page.
   const full = fullViewOf(p);
@@ -113,7 +133,11 @@ export function setupGridInput(svg) {
   // full path on every backtrack, since the head's own cell may not itself be a checkpoint.
   // (an Exact puzzle's numbers are steps, so the checkpoints are counted by rank)
   const rank = labelRanks(p);
-  const highestCp = path => { let hi = 0; for (const c of path) if (rank[c] > hi) hi = rank[c]; return hi; };
+  const highestCp = path => {
+    let hi = 0;
+    for (const c of path) if (rank[c] > hi) hi = rank[c];
+    return hi;
+  };
   let segment = highestCp(S.path);
   const seamEl = wrap ? svg.querySelector('[data-role="seam"]') : null;
   const loopEl = p.loop ? svg.querySelector('[data-role="loop-open"]') : null;
@@ -132,10 +156,14 @@ export function setupGridInput(svg) {
     if (seamEl) seamEl.innerHTML = seamMarksSvg(n, S.path);
     // Teleport: the jumps, and the portal to tap next
     if (jumpEl) jumpEl.innerHTML = jumpMarksSvg(p, S.path, S.finished);
-    if (loopEl) { // Loop: the open ring's two ends, and the line under the board
+    if (loopEl) {
+      // Loop: the open ring's two ends, and the line under the board
       loopEl.innerHTML = loopOpenMarks(p, S.path);
       const note = $('loopNote');
-      if (note) { note.textContent = t(loopNoteKey()); note.classList.toggle('error', !S.finished && loopOpen(p, S.path)); }
+      if (note) {
+        note.textContent = t(loopNoteKey());
+        note.classList.toggle('error', !S.finished && loopOpen(p, S.path));
+      }
     }
     const stepNow = $('hudStep'); // Exact: the step the head is on
     if (stepNow) stepNow.textContent = S.path.length;
@@ -152,7 +180,11 @@ export function setupGridInput(svg) {
     shape.setAttribute('stroke', colors.stroke);
     badge.querySelector('text').setAttribute('fill', colors.text);
   };
-  const clearHint = () => { if (S.hintCell == null && S.hintWrongCell == null) return; S.hintCell = S.hintWrongCell = null; svg.querySelectorAll('[data-role="hint"],[data-role="hint-wrong"]').forEach(e => e.remove()); };
+  const clearHint = () => {
+    if (S.hintCell == null && S.hintWrongCell == null) return;
+    S.hintCell = S.hintWrongCell = null;
+    svg.querySelectorAll('[data-role="hint"],[data-role="hint-wrong"]').forEach(e => e.remove());
+  };
   // (an Exact puzzle's badges can turn red on any move: the step of a number passes)
   const syncFills = () => {
     const on = new Set(two ? [...S.paths[0], ...S.paths[1]] : S.path);
@@ -171,7 +203,9 @@ export function setupGridInput(svg) {
   }
   function walkTo(cell) {
     if (cell < 0 || S.finished || (p.holes && p.holes[cell])) return; // a hole is not part of the board
-    const prev = S.path[S.path.length - 1], before = S.path.length, prevPath = S.path.slice();
+    const prev = S.path[S.path.length - 1],
+      before = S.path.length,
+      prevPath = S.path.slice();
     const kind = two ? walkColour(p, S.paths, S.colour, cell) : stepOf(p, S.path, cell);
     if (kind && S.trace) {
       traceStep(S.trace, kind, before, S.path.length);
@@ -191,12 +225,19 @@ export function setupGridInput(svg) {
     if (p.exact || (kind !== 'push' && kind !== 'pop')) syncFills();
     else if (kind === 'push') fill(cell, true);
     else fill(prev, false);
-    setD(); clearHint();
+    setD();
+    clearHint();
     const solved = kind === 'push' && (two ? solvedPaths(p, S.paths) : solvedOf(p, S.path));
-    if (solved) { onSolved(); setD(); return; }
+    if (solved) {
+      onSolved();
+      setD();
+      return;
+    }
     if (kind === 'push') {
       const onCp = p.cp[cell] > 0;
-      if (onCp) sfxCheckpoint(); else if (segment > 0) sfxMoveAfterCheckpoint(segment); else sfxMove();
+      if (onCp) sfxCheckpoint();
+      else if (segment > 0) sfxMoveAfterCheckpoint(segment);
+      else sfxMove();
       if (onCp) segment = rank[cell];
     } else if (kind === 'pop' || kind === 'trunc' || kind === 'reset') {
       sfxBack();
@@ -214,15 +255,19 @@ export function setupGridInput(svg) {
     refreshTwoLegend();
   }
   const across = isPentagon(p) ? pentagonAcross(p) : n; // cells across the board, about
-  function move(x, y) { // interpolate so fast drags don't skip cells
+  function move(x, y) {
+    // interpolate so fast drags don't skip cells
     const rect = zoom.rect();
     const cell = (px, py) => {
       if (isPentagon(p)) return pentagonCellAt(p, ...pentagonPoint(p, rect, px, py));
       return cellAtPoint(n, px - rect.left, py - rect.top, rect.width, rect.height, pad, wrap);
     };
     if (last) {
-      const dx = x - last.x, dy = y - last.y, stepPx = Math.max(2, rect.width / across / 2), k = Math.max(1, Math.ceil(Math.hypot(dx, dy) / stepPx));
-      for (let i = 1; i <= k; i++) walkTo(cell(last.x + dx * i / k, last.y + dy * i / k));
+      const dx = x - last.x,
+        dy = y - last.y,
+        stepPx = Math.max(2, rect.width / across / 2),
+        k = Math.max(1, Math.ceil(Math.hypot(dx, dy) / stepPx));
+      for (let i = 1; i <= k; i++) walkTo(cell(last.x + (dx * i) / k, last.y + (dy * i) / k));
     } else walkTo(cell(x, y));
     last = { x, y };
   }

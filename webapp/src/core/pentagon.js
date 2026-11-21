@@ -48,7 +48,13 @@ const SAME = 1e-6; // two points closer than this are one point
 // 4.37..4.63 (80), 4.64..5.20 (100) and 5.37..5.63 (120); the sizes below sit in the middle of
 // them.
 const WINDOW = {
-  4: [2, 2], 5: [2.5, 2.5], 6: [3, 3], 7: [3.5, 3.5], 8: [4, 4], 9: [4.5, 4.5], 10: [4.9, 4.9],
+  4: [2, 2],
+  5: [2.5, 2.5],
+  6: [3, 3],
+  7: [3.5, 3.5],
+  8: [4, 4],
+  9: [4.5, 4.5],
+  10: [4.9, 4.9],
   11: [5.5, 5.5],
 };
 // Centres whose y differ by less than this are in one row (theoretically equal y values differ

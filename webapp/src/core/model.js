@@ -42,8 +42,16 @@ export const clonePuzzle = p => ({
 });
 // Cells the path has to cover: all n*n, minus the holes. A puzzle may carry `holes` (Uint8Array(n*n), 1 = hole): cells that are
 // not part of the board (no edges, no checkpoint, not drawn, not counted). Only the Cutout variant (gen/cutout.js) has them.
-export const cellCount = p => { let c = p.n * p.n; if (p.holes) for (let i = 0; i < p.holes.length; i++) if (p.holes[i]) c--; return c; };
-export const maxNumber = p => { let m = 0; for (const v of p.cp) if (v > m) m = v; return m; };
+export const cellCount = p => {
+  let c = p.n * p.n;
+  if (p.holes) for (let i = 0; i < p.holes.length; i++) if (p.holes[i]) c--;
+  return c;
+};
+export const maxNumber = p => {
+  let m = 0;
+  for (const v of p.cp) if (v > m) m = v;
+  return m;
+};
 export const startCell = p => p.cp.indexOf(1);
 // The numbered cells, in ascending order of their number.
 export const numberedCells = p => {
@@ -132,7 +140,10 @@ function validateExact(p, nums) {
   const problem = exactLegProblem(p);
   return problem ? { ok: false, msg: problem } : { ok: true, max: nums.length };
 }
-export const endCell = p => { const m = maxNumber(p); return m ? p.cp.indexOf(m) : -1; };
+export const endCell = p => {
+  const m = maxNumber(p);
+  return m ? p.cp.indexOf(m) : -1;
+};
 
 // A wrap-around (torus) puzzle: its edges join across the borders (core/geom.js). A 2 x 2 board
 // would put two edges between the same two cells, so n >= 3. Holes, arrows and Exact numbers do
@@ -171,8 +182,10 @@ export function portalProblem(p) {
     return 'Invalid: a Teleport puzzle needs at least one pair of portals.';
   }
   if (p.holes || p.arrows || p.exact || p.wrap || p.loop) {
-    return 'Invalid: a Teleport puzzle cannot have holes, arrows, exact numbers, wrap-around or '
-      + 'a loop (yet).';
+    return (
+      'Invalid: a Teleport puzzle cannot have holes, arrows, exact numbers, wrap-around or ' +
+      'a loop (yet).'
+    );
   }
   const used = new Set();
   for (const pair of portals) {
@@ -216,8 +229,10 @@ export function portalPairProblem(p, a, b) {
 // the other variants' extras comes with it (yet).
 function twoPathsProblem(p, count) {
   if (p.holes || p.arrows || p.exact || p.wrap || p.loop || p.portals) {
-    return 'Invalid: a Two paths puzzle cannot have holes, arrows, exact numbers, wrap-around, '
-      + 'a loop or portals (yet).';
+    return (
+      'Invalid: a Two paths puzzle cannot have holes, arrows, exact numbers, wrap-around, ' +
+      'a loop or portals (yet).'
+    );
   }
   if (!Number.isInteger(p.split) || p.split < 2 || p.split > count - 2) {
     return `Invalid: the red path needs 2 numbers or more and so does the blue one (split ${p.split} of ${count}).`;
@@ -228,11 +243,17 @@ function twoPathsProblem(p, count) {
 export function validate(p) {
   const nums = [];
   for (const v of p.cp) if (v) nums.push(v);
-  if (!nums.length) return { ok: false, msg: 'No checkpoints yet — place at least a cell with number 1.' };
+  if (!nums.length)
+    return { ok: false, msg: 'No checkpoints yet — place at least a cell with number 1.' };
   const set = new Set(nums);
-  if (set.size !== nums.length) return { ok: false, msg: 'Invalid: duplicate checkpoint numbers.' };
-  if (!set.has(1)) return { ok: false, msg: 'Invalid: missing checkpoint 1 — numbering must start at 1.' };
-  if (p.holes) for (let i = 0; i < p.cp.length; i++) if (p.holes[i] && p.cp[i]) return { ok: false, msg: 'Invalid: a checkpoint sits on a hole.' };
+  if (set.size !== nums.length)
+    return { ok: false, msg: 'Invalid: duplicate checkpoint numbers.' };
+  if (!set.has(1))
+    return { ok: false, msg: 'Invalid: missing checkpoint 1 — numbering must start at 1.' };
+  if (p.holes)
+    for (let i = 0; i < p.cp.length; i++)
+      if (p.holes[i] && p.cp[i])
+        return { ok: false, msg: 'Invalid: a checkpoint sits on a hole.' };
   if (p.wrap) {
     const problem = wrapProblem(p);
     if (problem) return { ok: false, msg: problem };
@@ -255,6 +276,8 @@ export function validate(p) {
     if (problem) return { ok: false, msg: problem };
   }
   const max = Math.max(...nums);
-  for (let k = 1; k <= max; k++) if (!set.has(k)) return { ok: false, msg: `Invalid: gap in checkpoints — number ${k} is missing.` };
+  for (let k = 1; k <= max; k++)
+    if (!set.has(k))
+      return { ok: false, msg: `Invalid: gap in checkpoints — number ${k} is missing.` };
   return { ok: true, max };
 }

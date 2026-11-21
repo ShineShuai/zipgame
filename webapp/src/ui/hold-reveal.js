@@ -1,8 +1,11 @@
 // Hold-to-reveal for hidden developer info: visible only while the key is held.
 
-const isTextField = target => Boolean(
-  target && target.tagName && (/^(input|textarea|select)$/i.test(target.tagName) || target.isContentEditable)
-);
+const isTextField = target =>
+  Boolean(
+    target &&
+      target.tagName &&
+      (/^(input|textarea|select)$/i.test(target.tagName) || target.isContentEditable),
+  );
 
 // Event handlers that call setVisible(true / false) as the key goes down / up.
 // Kept free of DOM globals so they can be tested directly.

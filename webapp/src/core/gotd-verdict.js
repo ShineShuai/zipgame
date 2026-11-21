@@ -25,21 +25,32 @@ export const VERDICTS = ['approve', 'reject'];
 export function nextSelection(sel, g) {
   const keep = { unsure: !!(sel && sel.unsure) };
   if (sel && sel.lo === sel.hi && sel.lo === g) return null;
-  if (sel && sel.lo === sel.hi && Math.abs(g - sel.lo) === 1) return { lo: Math.min(g, sel.lo), hi: Math.max(g, sel.lo), lean: 0, ...keep };
+  if (sel && sel.lo === sel.hi && Math.abs(g - sel.lo) === 1)
+    return { lo: Math.min(g, sel.lo), hi: Math.max(g, sel.lo), lean: 0, ...keep };
   return { lo: g, hi: g, lean: 0, ...keep };
 }
-export const nextLean = (sel, d) => (sel && sel.hi - sel.lo === 1 ? { ...sel, lean: sel.lean === d ? 0 : d } : sel);
+export const nextLean = (sel, d) =>
+  sel && sel.hi - sel.lo === 1 ? { ...sel, lean: sel.lean === d ? 0 : d } : sel;
 export const toggleUnsure = sel => (sel ? { ...sel, unsure: !sel.unsure } : sel);
 // What a rating alone suggests; the reviewer's button decides (makeVerdict takes this only when no verdict is given).
 export const decide = rating => (rating.human >= APPROVE_MIN ? 'approve' : 'reject');
 
 // Counts the path cells a solver took back: note(length) after every change of the path; a shorter path adds the difference.
 export function createTakebacks() {
-  let prev = 0, total = 0;
+  let prev = 0,
+    total = 0;
   return {
-    note(length) { if (length < prev) total += prev - length; prev = length; },
-    reset() { prev = 0; total = 0; },
-    get total() { return total; },
+    note(length) {
+      if (length < prev) total += prev - length;
+      prev = length;
+    },
+    reset() {
+      prev = 0;
+      total = 0;
+    },
+    get total() {
+      return total;
+    },
   };
 }
 
@@ -48,41 +59,83 @@ const round1 = x => Math.round(x * 10) / 10;
 // candidate = an index entry; sel = the widget's selection or null (no rating); verdict = 'approve' | 'reject', the reviewer's decision (default: what the rating suggests);
 // now = an ISO time 'YYYY-MM-DDTHH:MM:SSZ' (the caller's clock: this module has none)
 export function makeVerdict({ candidate, sel, verdict, solved, playS, takebacks, now, key }) {
-  const r = sel ? ratingFromSelection(sel) : null, decision = verdict ?? (r ? decide(r) : null);
+  const r = sel ? ratingFromSelection(sel) : null,
+    decision = verdict ?? (r ? decide(r) : null);
   if (!VERDICTS.includes(decision)) throw new Error('no verdict');
   return {
-    id: candidate.id, size: candidate.size, stamp: candidate.stamp, model: { grade: candidate.trap.grade, pred: candidate.trap.pred },
-    ...(r ? { human: r.human, lo: r.lo, hi: r.hi } : {}), ...(r && sel.unsure ? { unsure: true } : {}),
-    solved: !!solved, ...(playS != null ? { playS: round1(playS) } : {}), takebacks: takebacks | 0,
-    verdict: decision, at: now, ...(key ? { key } : {}),
+    id: candidate.id,
+    size: candidate.size,
+    stamp: candidate.stamp,
+    model: { grade: candidate.trap.grade, pred: candidate.trap.pred },
+    ...(r ? { human: r.human, lo: r.lo, hi: r.hi } : {}),
+    ...(r && sel.unsure ? { unsure: true } : {}),
+    solved: !!solved,
+    ...(playS != null ? { playS: round1(playS) } : {}),
+    takebacks: takebacks | 0,
+    verdict: decision,
+    at: now,
+    ...(key ? { key } : {}),
   };
 }
 
 // '' when the verdict is well formed, else what is wrong with it.
-const keyFits = v => { try { return typeof v.key === 'string' && ratingKey(v.key) === v.key && puzzleId(symmetryKey(v.key)) === v.id; } catch { return false; } };
+const keyFits = v => {
+  try {
+    return (
+      typeof v.key === 'string' &&
+      ratingKey(v.key) === v.key &&
+      puzzleId(symmetryKey(v.key)) === v.id
+    );
+  } catch {
+    return false;
+  }
+};
 export function verdictProblem(v) {
   if (!v || typeof v !== 'object') return 'not an object';
-  if (typeof v.id !== 'string' || !/^[0-9a-f]{12}$/.test(v.id)) return '"id" must be 12 hex digits';
+  if (typeof v.id !== 'string' || !/^[0-9a-f]{12}$/.test(v.id))
+    return '"id" must be 12 hex digits';
   if (!VERDICTS.includes(v.verdict)) return `"verdict" must be ${VERDICTS.join(' or ')}`;
   const grade = x => typeof x === 'number' && x >= 0 && x <= 5;
   const rated = v.human !== undefined || v.lo !== undefined || v.hi !== undefined; // the rating is optional, but all or nothing
-  if (rated && (!grade(v.human) || !grade(v.lo) || !grade(v.hi) || v.lo > v.hi)) return '"human", "lo", "hi" must be numbers from 0 to 5 with lo <= hi';
+  if (rated && (!grade(v.human) || !grade(v.lo) || !grade(v.hi) || v.lo > v.hi))
+    return '"human", "lo", "hi" must be numbers from 0 to 5 with lo <= hi';
   if (typeof v.solved !== 'boolean') return '"solved" must be true or false';
-  if (v.playS !== undefined && !(typeof v.playS === 'number' && v.playS >= 0)) return '"playS" must be a number of seconds';
-  if (!Number.isInteger(v.takebacks) || v.takebacks < 0) return '"takebacks" must be a whole number';
-  if (v.key !== undefined && !keyFits(v)) return '"key" must be the canonical text (size / checkpoints / walls) of the puzzle with this id';
-  if (typeof v.at !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(v.at)) return '"at" must be an ISO time like 2026-11-05T10:11:12Z';
+  if (v.playS !== undefined && !(typeof v.playS === 'number' && v.playS >= 0))
+    return '"playS" must be a number of seconds';
+  if (!Number.isInteger(v.takebacks) || v.takebacks < 0)
+    return '"takebacks" must be a whole number';
+  if (v.key !== undefined && !keyFits(v))
+    return '"key" must be the canonical text (size / checkpoints / walls) of the puzzle with this id';
+  if (typeof v.at !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(v.at))
+    return '"at" must be an ISO time like 2026-11-05T10:11:12Z';
   return '';
 }
 
-const byTime = (a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-export const formatVerdicts = list => `{\n  "v": ${VERDICTS_VERSION},\n  "verdicts": [${list.length ? '\n' + [...list].sort(byTime).map(v => `    ${JSON.stringify(v)}`).join(',\n') + '\n  ' : ''}]\n}\n`;
+const byTime = (a, b) =>
+  a.at < b.at ? -1 : a.at > b.at ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+export const formatVerdicts = list =>
+  `{\n  "v": ${VERDICTS_VERSION},\n  "verdicts": [${
+    list.length
+      ? '\n' +
+        [...list]
+          .sort(byTime)
+          .map(v => `    ${JSON.stringify(v)}`)
+          .join(',\n') +
+        '\n  '
+      : ''
+  }]\n}\n`;
 
 // Throws an Error that names what is wrong (a missing file is the caller's business: no verdicts yet).
 export function parseVerdicts(text) {
   let data;
-  try { data = JSON.parse(text); } catch (e) { throw new Error(`verdicts.json is not valid JSON (${e.message})`); }
-  const bad = msg => { throw new Error(`verdicts.json: ${msg}`); };
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    throw new Error(`verdicts.json is not valid JSON (${e.message})`);
+  }
+  const bad = msg => {
+    throw new Error(`verdicts.json: ${msg}`);
+  };
   if (!data || data.v !== VERDICTS_VERSION) bad(`"v" must be ${VERDICTS_VERSION}`);
   if (!Array.isArray(data.verdicts)) bad('"verdicts" must be an array');
   const seen = new Set();
@@ -100,7 +153,12 @@ export function mergeVerdicts(a, b) {
   const byId = new Map(a.map(v => [v.id, v]));
   for (const v of b) {
     const old = byId.get(v.id);
-    if (!old || v.at > old.at || (v.at === old.at && v.verdict === 'reject' && old.verdict !== 'reject')) byId.set(v.id, v);
+    if (
+      !old ||
+      v.at > old.at ||
+      (v.at === old.at && v.verdict === 'reject' && old.verdict !== 'reject')
+    )
+      byId.set(v.id, v);
   }
   return [...byId.values()].sort(byTime);
 }
@@ -124,17 +182,33 @@ export function applyVerdicts(index, verdicts) {
 export function reviewStats(verdicts) {
   const by = {};
   for (const v of verdicts) {
-    const s = by[v.stamp || '?'] ||= { reviewed: 0, approved: 0, rejected: 0, sumErr: 0, worst: 0 };
+    const s = (by[v.stamp || '?'] ||= {
+      reviewed: 0,
+      approved: 0,
+      rejected: 0,
+      sumErr: 0,
+      worst: 0,
+    });
     s.reviewed++;
     s[v.verdict === 'approve' ? 'approved' : 'rejected']++;
-    if (v.model && typeof v.human === 'number') { const e = v.human - v.model.grade; s.sumErr += e; if (Math.abs(e) > Math.abs(s.worst)) s.worst = e; }
+    if (v.model && typeof v.human === 'number') {
+      const e = v.human - v.model.grade;
+      s.sumErr += e;
+      if (Math.abs(e) > Math.abs(s.worst)) s.worst = e;
+    }
   }
   return by;
 }
 
 // Where two copies of a verdicts file disagree: the ids both have with a different decision or rating, as { id, kept, dropped } (mergeVerdicts keeps the newer one).
 export function verdictConflicts(a, b) {
-  const old = new Map(a.map(v => [v.id, v])), same = (x, y) => x.verdict === y.verdict && x.human === y.human && x.lo === y.lo && x.hi === y.hi && !x.unsure === !y.unsure;
+  const old = new Map(a.map(v => [v.id, v])),
+    same = (x, y) =>
+      x.verdict === y.verdict &&
+      x.human === y.human &&
+      x.lo === y.lo &&
+      x.hi === y.hi &&
+      !x.unsure === !y.unsure;
   const out = [];
   for (const v of b) {
     const o = old.get(v.id);
@@ -154,17 +228,52 @@ export function verdictConflicts(a, b) {
 //      unrated: n, unresolved: [id], skipped: [id] }
 // Running it again after the rows were added gives `same` for all of them: nothing is added twice.
 export function harvestRatings(verdicts, ratings, { solvedOnly = false } = {}) {
-  const out = { add: [], same: [], differs: [], equivalent: [], unrated: 0, unresolved: [], skipped: [] };
-  const byKey = new Map(ratings.map(r => [ratingKey(r.key), r])), bySym = new Map(ratings.map(r => [symmetryKey(r.key), r.key]));
-  const row = v => ({ key: v.key, human: v.human, lo: v.lo, hi: v.hi, ...(v.unsure ? { unsure: true } : {}) });
-  const same = (r, v) => r.human === v.human && (r.lo ?? r.human) === v.lo && (r.hi ?? r.human) === v.hi && !r.unsure === !v.unsure;
+  const out = {
+    add: [],
+    same: [],
+    differs: [],
+    equivalent: [],
+    unrated: 0,
+    unresolved: [],
+    skipped: [],
+  };
+  const byKey = new Map(ratings.map(r => [ratingKey(r.key), r])),
+    bySym = new Map(ratings.map(r => [symmetryKey(r.key), r.key]));
+  const row = v => ({
+    key: v.key,
+    human: v.human,
+    lo: v.lo,
+    hi: v.hi,
+    ...(v.unsure ? { unsure: true } : {}),
+  });
+  const same = (r, v) =>
+    r.human === v.human &&
+    (r.lo ?? r.human) === v.lo &&
+    (r.hi ?? r.human) === v.hi &&
+    !r.unsure === !v.unsure;
   for (const v of verdicts) {
-    if (v.human === undefined) { out.unrated++; continue; }
-    if (!v.key) { out.unresolved.push(v.id); continue; }
-    if (solvedOnly && !v.solved) { out.skipped.push(v.id); continue; }
+    if (v.human === undefined) {
+      out.unrated++;
+      continue;
+    }
+    if (!v.key) {
+      out.unresolved.push(v.id);
+      continue;
+    }
+    if (solvedOnly && !v.solved) {
+      out.skipped.push(v.id);
+      continue;
+    }
     const have = byKey.get(v.key);
-    if (have) { if (same(have, v)) out.same.push(v.id); else out.differs.push({ id: v.id, have, got: row(v) }); continue; }
-    if (bySym.has(symmetryKey(v.key))) { out.equivalent.push({ id: v.id, key: bySym.get(symmetryKey(v.key)) }); continue; }
+    if (have) {
+      if (same(have, v)) out.same.push(v.id);
+      else out.differs.push({ id: v.id, have, got: row(v) });
+      continue;
+    }
+    if (bySym.has(symmetryKey(v.key))) {
+      out.equivalent.push({ id: v.id, key: bySym.get(symmetryKey(v.key)) });
+      continue;
+    }
     out.add.push({ ...row(v), id: v.id });
   }
   return out;

@@ -86,8 +86,10 @@ export function jumpCurve(n, a, b, s = 1) {
 
 const CURVE_PARTS = 12;
 
-const onCurve = ({ from, via, to }, t) => [0, 1].map(axis => (1 - t) * (1 - t) * from[axis]
-  + 2 * (1 - t) * t * via[axis] + t * t * to[axis]);
+const onCurve = ({ from, via, to }, t) =>
+  [0, 1].map(
+    axis => (1 - t) * (1 - t) * from[axis] + 2 * (1 - t) * t * via[axis] + t * t * to[axis],
+  );
 
 // The straight pieces [x1, y1, x2, y2] that the line of the edge a-b is made of.
 export function edgeSegments(puzzle, a, b, s = 1) {
@@ -97,8 +99,9 @@ export function edgeSegments(puzzle, a, b, s = 1) {
   }
   if (isPortalPair(puzzle.portals, a, b)) {
     const curve = jumpCurve(n, a, b, s);
-    const points = Array.from({ length: CURVE_PARTS + 1 },
-      (_, i) => onCurve(curve, i / CURVE_PARTS));
+    const points = Array.from({ length: CURVE_PARTS + 1 }, (_, i) =>
+      onCurve(curve, i / CURVE_PARTS),
+    );
     return points.slice(1).map((point, i) => [...points[i], ...point]);
   }
   const [ax, ay] = cellCenter(n, a, s);
@@ -107,10 +110,16 @@ export function edgeSegments(puzzle, a, b, s = 1) {
     const far = (n + SEAM_STUB) * s;
     const near = -SEAM_STUB * s;
     if (Math.abs(bx - ax) > 1.01 * s) {
-      return [[ax, ay, bx < ax ? far : near, ay], [bx < ax ? near : far, by, bx, by]];
+      return [
+        [ax, ay, bx < ax ? far : near, ay],
+        [bx < ax ? near : far, by, bx, by],
+      ];
     }
     if (Math.abs(by - ay) > 1.01 * s) {
-      return [[ax, ay, ax, by < ay ? far : near], [bx, by < ay ? near : far, bx, by]];
+      return [
+        [ax, ay, ax, by < ay ? far : near],
+        [bx, by < ay ? near : far, bx, by],
+      ];
     }
   }
   return [[ax, ay, bx, by]];

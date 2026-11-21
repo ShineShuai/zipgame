@@ -31,19 +31,31 @@ export async function deriveCloudKeys(secret, iterations = KDF_ITERATIONS) {
     throw new RangeError('no secret');
   }
   const password = await subtle().importKey('raw', secret, 'PBKDF2', false, ['deriveBits']);
-  const master = new Uint8Array(await subtle().deriveBits(
-    { name: 'PBKDF2', hash: 'SHA-256', salt: text.encode(SALT), iterations }, password, 256,
-  ));
+  const master = new Uint8Array(
+    await subtle().deriveBits(
+      { name: 'PBKDF2', hash: 'SHA-256', salt: text.encode(SALT), iterations },
+      password,
+      256,
+    ),
+  );
   const base = await subtle().importKey('raw', master, 'HKDF', false, ['deriveBits', 'deriveKey']);
-  const params = label => (
-    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: text.encode(label) });
+  const params = label => ({
+    name: 'HKDF',
+    hash: 'SHA-256',
+    salt: new Uint8Array(0),
+    info: text.encode(label),
+  });
   const bits = async (label, length) =>
     new Uint8Array(await subtle().deriveBits(params(label), base, length));
   return {
     id: hex(await bits('zipsync id', 128)),
     auth: toBase64Url(await bits('zipsync auth', 256)),
     key: await subtle().deriveKey(
-      params('zipsync key'), base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'],
+      params('zipsync key'),
+      base,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt'],
     ),
   };
 }
@@ -53,9 +65,13 @@ const aad = (id, dev) => text.encode(`zipsync1|${id}|${dev}`);
 // bytes -> sealed bytes (nonce + ciphertext + tag)
 export async function seal(key, id, dev, bytes) {
   const nonce = globalThis.crypto.getRandomValues(new Uint8Array(NONCE_BYTES));
-  const sealed = new Uint8Array(await subtle().encrypt(
-    { name: 'AES-GCM', iv: nonce, additionalData: aad(id, dev) }, key, bytes,
-  ));
+  const sealed = new Uint8Array(
+    await subtle().encrypt(
+      { name: 'AES-GCM', iv: nonce, additionalData: aad(id, dev) },
+      key,
+      bytes,
+    ),
+  );
   const out = new Uint8Array(NONCE_BYTES + sealed.length);
   out.set(nonce);
   out.set(sealed, NONCE_BYTES);
@@ -68,10 +84,13 @@ export async function open(key, id, dev, sealed) {
     if (!(sealed instanceof Uint8Array) || sealed.length < NONCE_BYTES + 16) {
       return null;
     }
-    return new Uint8Array(await subtle().decrypt(
-      { name: 'AES-GCM', iv: sealed.subarray(0, NONCE_BYTES), additionalData: aad(id, dev) },
-      key, sealed.subarray(NONCE_BYTES),
-    ));
+    return new Uint8Array(
+      await subtle().decrypt(
+        { name: 'AES-GCM', iv: sealed.subarray(0, NONCE_BYTES), additionalData: aad(id, dev) },
+        key,
+        sealed.subarray(NONCE_BYTES),
+      ),
+    );
   } catch {
     return null;
   }

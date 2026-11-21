@@ -36,7 +36,8 @@ export function slim(event) {
 export async function runJob(job, onEvent) {
   await prepare(job);
   const gen = generatorFor(job);
-  let last = null, sent = -Infinity;
+  let last = null,
+    sent = -Infinity;
   for (;;) {
     const r = gen.next();
     if (r.done) return r.value;

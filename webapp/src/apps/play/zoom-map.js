@@ -17,12 +17,15 @@ const GAP_PX = 8;
 const round = value => Math.round(value * 100) / 100;
 
 // The paths of the game as the d of svg paths: one, or one per colour (Two paths).
-const pathsOf = S => (S.puzzle.split
-  ? S.paths.map(path => (path.length > 1 ? routeOf(S.puzzle, path) : ''))
-  : [(() => {
-    const line = routeCells(S.puzzle, S.path, S.finished);
-    return line.length > 1 ? routeOf(S.puzzle, line) : '';
-  })()]);
+const pathsOf = S =>
+  S.puzzle.split
+    ? S.paths.map(path => (path.length > 1 ? routeOf(S.puzzle, path) : ''))
+    : [
+        (() => {
+          const line = routeCells(S.puzzle, S.path, S.finished);
+          return line.length > 1 ? routeOf(S.puzzle, line) : '';
+        })(),
+      ];
 
 // Hidden markup; setupZoomMap shows it. S is the play state.
 export function zoomMapHtml(S) {
@@ -36,19 +39,22 @@ export function zoomMapHtml(S) {
       dots.push(`<circle cx="${round(x)}" cy="${round(y)}" r="${round(CELL * 0.5)}"/>`);
     }
   });
-  const paths = pathsOf(S).map((d, colour) => (
-    `<path data-colour="${colour}" d="${d}" stroke="${COLORS.twoPath?.[colour] ?? COLORS.path}"/>`
-  ));
-  return `<div class="zoom-map" id="zoomMap" hidden role="img" aria-label="${t('zoom.map')}" `
-    + `style="width:${MAP_PX}px;height:${round((MAP_PX * full.h) / full.w)}px">`
-    + `<svg viewBox="${round(full.x)} ${round(full.y)} ${round(full.w)} ${round(full.h)}" `
-    + `preserveAspectRatio="none"><rect class="zm-board" x="${round(full.x)}" y="${round(full.y)}" `
-    + `width="${round(full.w)}" height="${round(full.h)}"/>`
-    + `<g class="zm-paths" fill="none" stroke-width="${stroke}" stroke-linecap="round" `
-    + `stroke-linejoin="round">${paths.join('')}</g>`
-    + `<g class="zm-dots">${dots.join('')}</g>`
-    + `<rect class="zm-view" x="0" y="0" width="0" height="0" `
-    + `stroke-width="${stroke}"/></svg></div>`;
+  const paths = pathsOf(S).map(
+    (d, colour) =>
+      `<path data-colour="${colour}" d="${d}" stroke="${COLORS.twoPath?.[colour] ?? COLORS.path}"/>`,
+  );
+  return (
+    `<div class="zoom-map" id="zoomMap" hidden role="img" aria-label="${t('zoom.map')}" ` +
+    `style="width:${MAP_PX}px;height:${round((MAP_PX * full.h) / full.w)}px">` +
+    `<svg viewBox="${round(full.x)} ${round(full.y)} ${round(full.w)} ${round(full.h)}" ` +
+    `preserveAspectRatio="none"><rect class="zm-board" x="${round(full.x)}" y="${round(full.y)}" ` +
+    `width="${round(full.w)}" height="${round(full.h)}"/>` +
+    `<g class="zm-paths" fill="none" stroke-width="${stroke}" stroke-linecap="round" ` +
+    `stroke-linejoin="round">${paths.join('')}</g>` +
+    `<g class="zm-dots">${dots.join('')}</g>` +
+    `<rect class="zm-view" x="0" y="0" width="0" height="0" ` +
+    `stroke-width="${stroke}"/></svg></div>`
+  );
 }
 
 // Wires the overview of the page to `zoom` (zoom.js). `head()`: the picture point of the head of
@@ -94,10 +100,13 @@ export function setupZoomMap(zoom, S, head) {
   // a tap or a drag on the overview puts the middle of the view there
   const centreAt = (event, animate) => {
     const box = svg.getBoundingClientRect();
-    zoom.centreOn([
-      full.x + ((event.clientX - box.left) / box.width) * full.w,
-      full.y + ((event.clientY - box.top) / box.height) * full.h,
-    ], animate);
+    zoom.centreOn(
+      [
+        full.x + ((event.clientX - box.left) / box.width) * full.w,
+        full.y + ((event.clientY - box.top) / box.height) * full.h,
+      ],
+      animate,
+    );
   };
   let dragging = false;
   map.addEventListener('pointerdown', event => {

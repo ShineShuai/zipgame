@@ -124,4 +124,3 @@ export function portalsBipartite(n, portals) {
   if (!portals) return true;
   return portals.every(([a, b]) => gridDist(n, false, a, b) % 2 === 1);
 }
-

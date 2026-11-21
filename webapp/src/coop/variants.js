@@ -8,9 +8,7 @@ import { PENTAGON_SIZES, isPentagon } from '../core/pentagon.js';
 import { loadBalls, pickBall } from '../core/solid/balls.js';
 import { generateSurfaceSteps } from '../core/surface/gen.js';
 import { isSurfacePuzzle } from '../core/surface/puzzle.js';
-import {
-  BALL_KIND, SURFACE_SIZES, ballEntry,
-} from '../core/surface/topology.js';
+import { BALL_KIND, SURFACE_SIZES, ballEntry } from '../core/surface/topology.js';
 import { generate, PLAY_SIZES, WRAP_SIZES } from '../core/gen/generate.js';
 import { generateTeleport, TELEPORT_SIZES } from '../core/gen/teleport.js';
 
@@ -103,8 +101,8 @@ export const SOLID_IDS = ['tetra', 'cube', 'ball'];
 export const isSolidId = id => SOLID_IDS.includes(id);
 export const FLAT_IDS = COOP_VARIANTS.map(({ id }) => id).filter(id => !isSolidId(id));
 
-export const variantById = id => COOP_VARIANTS.find(variant => variant.id === id)
-  ?? COOP_VARIANTS[0];
+export const variantById = id =>
+  COOP_VARIANTS.find(variant => variant.id === id) ?? COOP_VARIANTS[0];
 
 export const sizesFor = id => variantById(id).sizes();
 

@@ -149,7 +149,7 @@ export function isDeadEnd(nb, vis, head, cell) {
 // pocket that lacks a still-needed checkpoint.
 export function makePocketOk(nb, T, vis, needCp) {
   const W = (nb.length / T) | 0;
-  const seen = new Int32Array(T);   // per-component stamp: which flood-fill last touched this cell
+  const seen = new Int32Array(T); // per-component stamp: which flood-fill last touched this cell
   const claimed = new Int32Array(T); // per-call epoch: which pocketOk() call already assigned this cell to some component
   const stack = new Int32Array(T);
   let stamp = 0;
@@ -163,7 +163,8 @@ export function makePocketOk(nb, T, vis, needCp) {
       // Flood-fill the component containing `seed`, with `cur` treated as an obstacle (so the
       // fill can't leak back out through cur), tracking whether it holds a needed checkpoint.
       stamp++;
-      let sp = 0, hasNeed = !!needCp[seed];
+      let sp = 0,
+        hasNeed = !!needCp[seed];
       stack[sp++] = seed;
       seen[seed] = stamp;
       claimed[seed] = epoch;
@@ -319,7 +320,10 @@ export function segBlocker(nb, T, vis, s, t) {
     let reachedT = false;
     while (stack.length) {
       const u = stack.pop();
-      if (u === t) { reachedT = true; break; }
+      if (u === t) {
+        reachedT = true;
+        break;
+      }
       for (let d = 0; d < W; d++) {
         const w = nb[u * W + d];
         if (w < 0 || w === v || !inC[w] || seen[w]) continue;

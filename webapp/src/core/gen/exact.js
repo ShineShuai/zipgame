@@ -256,7 +256,9 @@ export function* generateExact(n, seed, o = {}) {
     const path = pathFor(n, rnd, o.path);
     const p = fullExactPuzzle(n, path);
     const events = minimizeLabels(p, path.slice(1, -1), rnd, checkCap, {
-      floor, bound: bestKept, solveOpts,
+      floor,
+      bound: bestKept,
+      solveOpts,
     });
     let step = events.next();
     for (; !step.done; step = events.next()) {

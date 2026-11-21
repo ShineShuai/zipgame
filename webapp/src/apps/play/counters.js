@@ -17,7 +17,9 @@ const scopes = () => ['', ...PLAY_VARIANTS.map(v => v.id)];
 export const scopeSizes = scope => (scope ? sizesFor(scope, SIZES) : SIZES);
 export async function peekNext() {
   const next = {};
-  for (const scope of scopes()) for (const n of scopeSizes(scope)) next[scopeKey(n, scope)] = (await daily.peek(n, scope)).index;
+  for (const scope of scopes())
+    for (const n of scopeSizes(scope))
+      next[scopeKey(n, scope)] = (await daily.peek(n, scope)).index;
   return next;
 }
 export async function refreshNext() {
@@ -27,11 +29,15 @@ export async function refreshNext() {
   if (S.screen === 'menu') render();
 }
 
-export const gameNo = (n, scope = '') => { const i = S.nextIdx[scopeKey(n, scope)]; return i == null ? '-' : '#' + (i + 1); };
+export const gameNo = (n, scope = '') => {
+  const i = S.nextIdx[scopeKey(n, scope)];
+  return i == null ? '-' : '#' + (i + 1);
+};
 
 // Puzzle types: 'standard' and the variants of ./variants.js (Cutout, core/gen/cutout.js; One way arrows,
 // core/gen/arrows.js). A variant is random, with no daily sequence (its counter only counts the day's games); it has its own grade
 // (core/trap.js modelFor) and stats, per variant and size; a shared one carries its puzzle in the link. A variant is hidden until the player has unlocked it (features/unlock.js: the lucky game);
 // hold V shows them all. The menu offers the shown ones as icon tiles (variantPickerHtml); the Game of Day is always
 // a standard puzzle.
-export const todayText = () => t('menu.today', gameNo(S.size, S.mode === 'standard' ? '' : S.mode));
+export const todayText = () =>
+  t('menu.today', gameNo(S.size, S.mode === 'standard' ? '' : S.mode));

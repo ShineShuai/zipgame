@@ -14,60 +14,102 @@ import { shuffle } from '../rng.js';
 export function gapCheckpoints(n, path, K, wrap = false, teleport = null) {
   const man = teleport ? teleport.dist : (a, b) => gridDist(n, wrap, a, b);
   const skip = teleport ? teleport.skip : null;
-  const target = 0.65 * (path.length - 1) / (K - 1);
-  const idx = [0, path.length - 1], chosen = new Set(idx);
+  const target = (0.65 * (path.length - 1)) / (K - 1);
+  const idx = [0, path.length - 1],
+    chosen = new Set(idx);
   while (idx.length < K) {
-    let bestP = -1, bestS = Infinity, bestAt = -1;
+    let bestP = -1,
+      bestS = Infinity,
+      bestAt = -1;
     for (let p = 0; p < path.length; p++) {
       if (chosen.has(p) || (skip && skip.has(path[p]))) continue;
-      let lo = 0; while (lo < idx.length && idx[lo] < p) lo++;
-      const pr = idx[lo - 1], sc = idx[lo], mp = man(path[pr], path[p]), ms = man(path[p], path[sc]);
+      let lo = 0;
+      while (lo < idx.length && idx[lo] < p) lo++;
+      const pr = idx[lo - 1],
+        sc = idx[lo],
+        mp = man(path[pr], path[p]),
+        ms = man(path[p], path[sc]);
       if (mp > p - pr || ms > sc - p) continue;
       const s = (mp - target) ** 2 + (ms - target) ** 2;
-      if (s < bestS) { bestS = s; bestP = p; bestAt = lo; }
+      if (s < bestS) {
+        bestS = s;
+        bestP = p;
+        bestAt = lo;
+      }
     }
     if (bestP < 0) return null;
-    idx.splice(bestAt, 0, bestP); chosen.add(bestP);
+    idx.splice(bestAt, 0, bestP);
+    chosen.add(bestP);
   }
   return idx;
 }
 
 // K path positions chosen uniformly at random (plus both ends).
 export function randomCheckpoints(len, K, rnd) {
-  const mid = []; for (let i = 1; i < len - 1; i++) mid.push(i);
-  return [0, ...shuffle(mid, rnd).slice(0, K - 2).sort((a, b) => a - b), len - 1];
+  const mid = [];
+  for (let i = 1; i < len - 1; i++) mid.push(i);
+  return [
+    0,
+    ...shuffle(mid, rnd)
+      .slice(0, K - 2)
+      .sort((a, b) => a - b),
+    len - 1,
+  ];
 }
 
 // Scatter K random checkpoints, ordered by nearest-next (wall-aware BFS distance; p.wrap: across the seams too).
 // A board with holes (p.holes, Cutout) numbers cells that are left only, and its routes keep off the holes.
 // Returns a new cp array.
 export function scatter(p, K, rnd) {
-  const n = p.n, T = n * n, holes = p.holes || null;
+  const n = p.n,
+    T = n * n,
+    holes = p.holes || null;
   const open = [];
   for (let i = 0; i < T; i++) if (!(holes && holes[i])) open.push(i);
   K = Math.max(2, Math.min(K, open.length));
   const bfs = (src, dst) => {
     if (src === dst) return 0;
-    const seen = new Uint8Array(T); let fr = [src], d = 0; seen[src] = 1;
+    const seen = new Uint8Array(T);
+    let fr = [src],
+      d = 0;
+    seen[src] = 1;
     while (fr.length) {
-      d++; const nx = [];
-      for (const u of fr) for (const dir of [3, 2, 1, 0]) {
-        const v = neighbourCell(n, !!p.wrap, u, dir); // -1 = off the board (a torus has no such)
-        if (v < 0 || seen[v] || hasWall(p, u, v) || (holes && holes[v])) continue;
-        if (v === dst) return d; seen[v] = 1; nx.push(v);
-      }
+      d++;
+      const nx = [];
+      for (const u of fr)
+        for (const dir of [3, 2, 1, 0]) {
+          const v = neighbourCell(n, !!p.wrap, u, dir); // -1 = off the board (a torus has no such)
+          if (v < 0 || seen[v] || hasWall(p, u, v) || (holes && holes[v])) continue;
+          if (v === dst) return d;
+          seen[v] = 1;
+          nx.push(v);
+        }
       fr = nx;
     }
     return Infinity;
   };
-  const cells = shuffle(open, rnd).slice(0, K), rest = cells.slice(1), order = [cells[0]];
+  const cells = shuffle(open, rnd).slice(0, K),
+    rest = cells.slice(1),
+    order = [cells[0]];
   let cur = cells[0];
   while (rest.length) {
-    let bi = 0, bd = Infinity;
-    for (let i = 0; i < rest.length; i++) { const d = bfs(cur, rest[i]); if (d < bd) { bd = d; bi = i; } }
-    cur = rest[bi]; order.push(cur); rest.splice(bi, 1);
+    let bi = 0,
+      bd = Infinity;
+    for (let i = 0; i < rest.length; i++) {
+      const d = bfs(cur, rest[i]);
+      if (d < bd) {
+        bd = d;
+        bi = i;
+      }
+    }
+    cur = rest[bi];
+    order.push(cur);
+    rest.splice(bi, 1);
   }
-  const cp = new Uint16Array(T); order.forEach((c, i) => { cp[c] = i + 1; });
+  const cp = new Uint16Array(T);
+  order.forEach((c, i) => {
+    cp[c] = i + 1;
+  });
   return cp;
 }
 

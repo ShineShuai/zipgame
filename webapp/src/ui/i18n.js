@@ -2,7 +2,10 @@
 // {n} placeholders (test/unit/ui.test.js checks). A value is a string with {0}, {1}.. placeholders, or a function
 // of the arguments (for plurals). Dev-only texts (hold "v") are intentionally not translated.
 // "2,3,5" (or a single number) as "2, 3 and 5".
-const andList = x => { const r = String(x).split(','); return r.length > 1 ? `${r.slice(0, -1).join(', ')} and ${r[r.length - 1]}` : r[0]; };
+const andList = x => {
+  const r = String(x).split(',');
+  return r.length > 1 ? `${r.slice(0, -1).join(', ')} and ${r[r.length - 1]}` : r[0];
+};
 export const EN = {
   'lang.switch': 'Switch to Chinese',
   'brand.name': 'zigzag',
@@ -28,18 +31,24 @@ export const EN = {
   'theme.offer.finalTitle': 'Trial over',
   'theme.offer.finalText': 'Keep it? It is gone when today ends.',
   'theme.offer.finalChip': 'Keep {0}?',
-  'theme.offer.rule': 'Offer days follow a public rule: (day ⊕ month ⊕ last digit of the year) mod 16 is one of four secret digits.',
+  'theme.offer.rule':
+    'Offer days follow a public rule: (day ⊕ month ⊕ last digit of the year) mod 16 is one of four secret digits.',
   'theme.rule.open': 'How offer days work',
   'theme.rule.title': 'Theme offer days',
-  'theme.rule.lead': 'A theme is offered on one or two days a month. The rule is public; only four secret digits (0-9, all different) are kept back.',
-  'theme.rule.step1': 'Take the day of the month, the month (1-12) and the last digit of the year.',
-  'theme.rule.step2': 'Combine them with XOR (⊕), two at a time. Write both numbers in binary: a bit of the result is 1 where the two differ. For example 6 ⊕ 3: 110 ⊕ 011 = 101 = 5.',
+  'theme.rule.lead':
+    'A theme is offered on one or two days a month. The rule is public; only four secret digits (0-9, all different) are kept back.',
+  'theme.rule.step1':
+    'Take the day of the month, the month (1-12) and the last digit of the year.',
+  'theme.rule.step2':
+    'Combine them with XOR (⊕), two at a time. Write both numbers in binary: a bit of the result is 1 where the two differ. For example 6 ⊕ 3: 110 ⊕ 011 = 101 = 5.',
   'theme.rule.step3': 'Keep the remainder after dividing by 16 (the last four bits).',
   'theme.rule.step4': 'On an offer day the result is one of the four secret digits.',
-  'theme.rule.example': 'Example, {0}: {1} ⊕ {2} = {4}; {4} ⊕ {3} = {5}; {5} mod 16 = {6}. That is no digit, so it is no offer day.',
+  'theme.rule.example':
+    'Example, {0}: {1} ⊕ {2} = {4}; {4} ⊕ {3} = {5}; {5} mod 16 = {6}. That is no digit, so it is no offer day.',
   'theme.rule.last': 'Work out the four digits from the days on which a theme is offered.',
   'theme.slot.earned': 'New theme slot unlocked: you can keep {0} themes.',
-  'theme.slot.copied': 'New theme slot unlocked: you can keep {0} themes. Added from your other device: {1}.',
+  'theme.slot.copied':
+    'New theme slot unlocked: you can keep {0} themes. Added from your other device: {1}.',
   'theme.copied': 'Added from your other device: {1}.',
   'menu.rulesLink': 'Rules ›',
   'menu.howto': 'How to play',
@@ -53,7 +62,12 @@ export const EN = {
   'info.lucky': 'Lucky game',
   'info.chances': 'Unlock chances',
   'info.gift': 'Happiest day',
-  'grade.0': 'Warm-up', 'grade.1': 'Easy', 'grade.2': 'Medium', 'grade.3': 'Hard', 'grade.4': 'Expert', 'grade.5': 'Brutal',
+  'grade.0': 'Warm-up',
+  'grade.1': 'Easy',
+  'grade.2': 'Medium',
+  'grade.3': 'Hard',
+  'grade.4': 'Expert',
+  'grade.5': 'Brutal',
   'gen.title': 'Generating puzzle…',
   'gen.sub': '{0}x{0} grid — looking for the cleanest layout.',
   'gen.searching': 'searching…',
@@ -61,7 +75,8 @@ export const EN = {
   'gen.progress': '{0}%',
   'menu.title': 'Free play',
   'menu.sub': 'Any size, as many puzzles as you like.',
-  'menu.blurb': 'Connect the numbers in order through every cell. No revisits, no crossings. Drag with mouse or finger to draw.',
+  'menu.blurb':
+    'Connect the numbers in order through every cell. No revisits, no crossings. Drag with mouse or finger to draw.',
   'menu.size': 'Grid size',
   'menu.today': "Today's game: {0}",
   'menu.playLocal': 'Play',
@@ -75,28 +90,34 @@ export const EN = {
   'gotd.played': "Already played today's Game of Day.",
   'gotd.none': 'No game of day today.',
   'menu.replay': 'Replay ({0})',
-  'replay.locked': n => `Solve ${n} more Game of Day puzzle${n === 1 ? '' : 's'} (live or replay) to earn a replay.`,
+  'replay.locked': n =>
+    `Solve ${n} more Game of Day puzzle${n === 1 ? '' : 's'} (live or replay) to earn a replay.`,
   'replay.progress': n => `Next replay after ${n} more Game of Day solve${n === 1 ? '' : 's'}.`,
   'replay.title': 'Replay a missed Game of Day',
-  'replay.sub': 'Pick a day. A missed day counts in that day\'s averages; a day showing your time is a repeat and changes no stats.',
+  'replay.sub':
+    "Pick a day. A missed day counts in that day's averages; a day showing your time is a repeat and changes no stats.",
   'replay.prev': s => `Your time: ${s}`,
   'replay.abandoned': 'Abandoned',
-  'streak.line': (n, f) => `Streak: ${n} day${n === 1 ? '' : 's'} · ${f} freeze${f === 1 ? '' : 's'}`,
+  'streak.line': (n, f) =>
+    `Streak: ${n} day${n === 1 ? '' : 's'} · ${f} freeze${f === 1 ? '' : 's'}`,
   'status.replays': 'replays',
   'status.toGo': n => `${n} solve${n === 1 ? '' : 's'} to go`,
   'status.streak': 'day streak',
   'streak.keep': 'Solve a puzzle today to keep it.',
   'streak.none': 'Solve a puzzle today to start a streak.',
-  'streak.help': (ramp, every, max, heal) => `Any solved puzzle counts. A streak reward (a freeze, max ${max}, and a replay or unlock chance) comes after ${andList(ramp)} streak days at first, then every ${every}. A freeze covers one missed day; replaying a missed Game of Day heals it (up to ${heal} days later): it counts as a streak day and gives the freeze back.`,
+  'streak.help': (ramp, every, max, heal) =>
+    `Any solved puzzle counts. A streak reward (a freeze, max ${max}, and a replay or unlock chance) comes after ${andList(ramp)} streak days at first, then every ${every}. A freeze covers one missed day; replaying a missed Game of Day heals it (up to ${heal} days later): it counts as a streak day and gives the freeze back.`,
   'streak.next': n => `Next reward after ${n} more streak day${n === 1 ? '' : 's'}.`,
   'champ.label': 'beat 100%',
   'champ.next': n => `Next reward after ${n} more win${n === 1 ? '' : 's'}.`,
-  'champ.help': n => 'A win: beat 100% of the players on the live Game of Day (not a replay). '
-    + `${n} wins earn a reward: a replay chance or an unlock chance.`,
-  'champ.won': n => `★ You beat 100% of the players! ${n} more win${n === 1 ? '' : 's'} `
-    + 'to the next reward.',
+  'champ.help': n =>
+    'A win: beat 100% of the players on the live Game of Day (not a replay). ' +
+    `${n} wins earn a reward: a replay chance or an unlock chance.`,
+  'champ.won': n =>
+    `★ You beat 100% of the players! ${n} more win${n === 1 ? '' : 's'} ` + 'to the next reward.',
   'champ.pick': '★ You beat 100% of the players! A reward is waiting for you.',
-  'streak.repair': n => `${n} missed day${n === 1 ? '' : 's'} to heal: replay ${n === 1 ? 'its' : 'their'} Game of Day.`,
+  'streak.repair': n =>
+    `${n} missed day${n === 1 ? '' : 's'} to heal: replay ${n === 1 ? 'its' : 'their'} Game of Day.`,
   'streak.healed': 'Missed day healed: it counts for your streak.',
   'replay.heal': 'Heals your streak',
   'replay.left': n => `${n} replay${n === 1 ? '' : 's'} left`,
@@ -112,9 +133,16 @@ export const EN = {
   'stats.sub': 'Today / total (UTC day, seconds)',
   'stats.gotdTitle': 'Your Game of Day times',
   'stats.gotdSub': 'Your latest Game of Day time for each grid size (seconds)',
-  'stats.grid': 'Grid', 'stats.next': 'Next game', 'stats.solves': 'Solves', 'stats.avg': 'Avg', 'stats.sd': 'Std dev', 'stats.best': 'Best (last 20)',
-  'stats.date': 'Date', 'stats.time': 'Time (s)',
-  'stats.everyone': (avg, n) => `Everyone: ${avg} avg${n == null ? '' : ` (${n} player${n === 1 ? '' : 's'})`}`,
+  'stats.grid': 'Grid',
+  'stats.next': 'Next game',
+  'stats.solves': 'Solves',
+  'stats.avg': 'Avg',
+  'stats.sd': 'Std dev',
+  'stats.best': 'Best (last 20)',
+  'stats.date': 'Date',
+  'stats.time': 'Time (s)',
+  'stats.everyone': (avg, n) =>
+    `Everyone: ${avg} avg${n == null ? '' : ` (${n} player${n === 1 ? '' : 's'})`}`,
   'stats.top': 'Top {0}: {1} avg',
   'stats.beat': 'You beat {0}%',
   'game.gotdTitle': 'Game of Day {0}',
@@ -130,7 +158,8 @@ export const EN = {
   'game.solved': 'Solved in {0}{1}',
   'share.play': 'Play this game',
   'share.tipLabel': 'What do the colors mean?',
-  'share.tip': 'One square per leg between two checkpoints, colored by the cells drawn and then taken back there: 🟩 none, 🟨 1–2, 🟧 3–6, 🟥 7 or more. The route itself is not shared.',
+  'share.tip':
+    'One square per leg between two checkpoints, colored by the cells drawn and then taken back there: 🟩 none, 🟨 1–2, 🟧 3–6, 🟥 7 or more. The route itself is not shared.',
   'share.title': 'Shared with you',
   'share.gotd': 'Game of Day {0}',
   'share.local': 'Local game',
@@ -156,10 +185,12 @@ export const EN = {
   // shows while V is held; its other texts are in src/coop/texts.js.
   'coop.title': 'Patchwork',
   'coop.sub': 'Draw pieces anywhere, join them into one path.',
-  'coop.blurb': 'Lift your finger and start anywhere, then join the pieces into one path. Alone or with a friend on another device.',
+  'coop.blurb':
+    'Lift your finger and start anywhere, then join the pieces into one path. Alone or with a friend on another device.',
   'coop.open': 'Open',
   'sync.title': 'Your devices',
-  'sync.blurb': 'Keep your statistics, streak and chances the same on all your devices. No account, no login. Nothing is synced until you turn it on.',
+  'sync.blurb':
+    'Keep your statistics, streak and chances the same on all your devices. No account, no login. Nothing is synced until you turn it on.',
   'sync.sumOff': 'Off · same progress everywhere',
   'sync.sumCloud': 'Cloud sync is on',
   'sync.sumConfirm': 'A device wants to link',
@@ -178,12 +209,14 @@ export const EN = {
   'sync.less': 'Fewer options',
   'sync.tapAgain': 'Tap again to confirm',
   'sync.link': 'Link another device',
-  'sync.linkSteps': 'Open this link on your other device and keep both pages open until it says linked.',
+  'sync.linkSteps':
+    'Open this link on your other device and keep both pages open until it says linked.',
   'sync.copy': 'Copy link',
   'sync.copied': 'Link copied',
   'sync.share': 'Share',
   'sync.cancel': 'Cancel',
-  'sync.confirm': 'Another device wants to link with this one. Your statistics, streak and chances will be combined on both. Continue only if you made the link yourself.',
+  'sync.confirm':
+    'Another device wants to link with this one. Your statistics, streak and chances will be combined on both. Continue only if you made the link yourself.',
   'sync.confirmYes': 'Link this device',
   'sync.waiting': 'Waiting for the other device…',
   'sync.connecting': 'Connecting…',
@@ -205,17 +238,22 @@ export const EN = {
   'sync.failDown': 'No connection to the helper servers. Check your network and try again.',
   'sync.failExpired': 'The link ran out. Make a new one.',
   'sync.failUsed': 'That link was already used. Make a new one.',
-  'sync.failTimeout': 'The other device did not answer. Open the link there and keep both pages open.',
-  'sync.failConnect': 'The devices could not connect (a strict network can block it). Try again, or put both on the same Wi-Fi.',
+  'sync.failTimeout':
+    'The other device did not answer. Open the link there and keep both pages open.',
+  'sync.failConnect':
+    'The devices could not connect (a strict network can block it). Try again, or put both on the same Wi-Fi.',
   'sync.failOther': 'Linking did not work. Try again.',
-  'sync.privacy': 'Your data is encrypted on this device before it is sent, so no server can read it. Servers can still see that a group exists, when it changes, how many devices write to it, and their IP addresses. There is no account and no name.',
+  'sync.privacy':
+    'Your data is encrypted on this device before it is sent, so no server can read it. Servers can still see that a group exists, when it changes, how many devices write to it, and their IP addresses. There is no account and no name.',
   'sync.makePhrase': 'Make a sync phrase',
   'sync.havePhrase': 'I have a sync phrase',
-  'sync.phraseShow': 'Type these eight words on your other device under “I have a sync phrase”. Anyone who knows them can read and change your game data, so keep them private.',
+  'sync.phraseShow':
+    'Type these eight words on your other device under “I have a sync phrase”. Anyone who knows them can read and change your game data, so keep them private.',
   'sync.copyPhrase': 'Copy phrase',
   'sync.phraseCopied': 'Phrase copied',
   'sync.done': 'Done',
-  'sync.phraseEnter': 'Type the eight words of your sync phrase (any case, separated by spaces or commas).',
+  'sync.phraseEnter':
+    'Type the eight words of your sync phrase (any case, separated by spaces or commas).',
   'sync.phraseJoin': 'Join',
   'sync.phraseCount': 'A sync phrase has eight words.',
   'sync.phraseWord': 'Word {0} is not one of ours. Check it.',
@@ -228,11 +266,15 @@ export const EN = {
   'sync.cloudFail': 'Cloud: the servers could not be reached. It will try again.',
   'sync.cloudRefused': 'Cloud: the server refused the data. It will try again.',
   'sync.cloudTooBig': 'Cloud: your data is too big to sync.',
-  'sync.noteCloudFailed': 'Sync could not reach the servers. Your data is safe on this device, and it will try again.',
-  'sync.noteCloudRefused': 'The sync server refused your data, so this device is not syncing to the cloud right now. Your data is safe on this device.',
-  'sync.noteTooBig': 'Your data is too big to sync. It is safe on this device, but not copied to your other devices.',
+  'sync.noteCloudFailed':
+    'Sync could not reach the servers. Your data is safe on this device, and it will try again.',
+  'sync.noteCloudRefused':
+    'The sync server refused your data, so this device is not syncing to the cloud right now. Your data is safe on this device.',
+  'sync.noteTooBig':
+    'Your data is too big to sync. It is safe on this device, but not copied to your other devices.',
   'sync.noteRecovered': 'Cloud sync works again.',
-  'sync.noteMeetFailed': 'Could not connect to your other device (a strict network can block it). It will try again.',
+  'sync.noteMeetFailed':
+    'Could not connect to your other device (a strict network can block it). It will try again.',
   'sync.noteClose': 'Close',
   'sync.cloudOn': 'Turn on cloud sync',
   'sync.cloudShow': 'Show phrase',
@@ -256,24 +298,38 @@ export const EN = {
   'mode.wrapTag': 'Leave one side, enter the other',
   'mode.loop': 'Loop',
   'mode.loopTag': 'The path closes into a ring',
-  'mode.standardRules': 'Draw one path from 1 through every cell, reaching the numbers in order. Move up, down, left or right; never revisit a cell or cross a wall.',
-  'mode.cutoutRules': 'Same as Standard, but the board has holes: you cannot enter them, and every other cell must be visited.',
-  'mode.arrowsRules': 'No walls. An arrow can be crossed only in the direction it points; otherwise the Standard rules apply.',
-  'mode.exactRules': 'A number is the step on which the path enters its cell: the cell marked 20 is the 20th cell you visit. Every cell must be visited.',
-  'mode.wrapRules': 'The board edges connect: leave on one side, enter on the opposite side. Otherwise the Standard rules apply, and walls still block.',
-  'mode.loopRules': 'The path is a ring: its last cell must touch cell 1. Reach the numbers in order around the ring; after the highest number it goes on through the remaining cells and back to 1. Otherwise the Standard rules apply, and walls still block.',
+  'mode.standardRules':
+    'Draw one path from 1 through every cell, reaching the numbers in order. Move up, down, left or right; never revisit a cell or cross a wall.',
+  'mode.cutoutRules':
+    'Same as Standard, but the board has holes: you cannot enter them, and every other cell must be visited.',
+  'mode.arrowsRules':
+    'No walls. An arrow can be crossed only in the direction it points; otherwise the Standard rules apply.',
+  'mode.exactRules':
+    'A number is the step on which the path enters its cell: the cell marked 20 is the 20th cell you visit. Every cell must be visited.',
+  'mode.wrapRules':
+    'The board edges connect: leave on one side, enter on the opposite side. Otherwise the Standard rules apply, and walls still block.',
+  'mode.loopRules':
+    'The path is a ring: its last cell must touch cell 1. Reach the numbers in order around the ring; after the highest number it goes on through the remaining cells and back to 1. Otherwise the Standard rules apply, and walls still block.',
   'mode.teleport': 'Teleport',
   'mode.teleportTag': 'Linked portals are one step apart',
-  'mode.teleportRules': 'Cells with matching portal icons are linked: moving from one to the other counts as a step (tap the other portal to jump). Each cell is still visited once, so each portal is used at most once, and walls never block a portal. Otherwise the Standard rules apply.',
+  'mode.teleportRules':
+    'Cells with matching portal icons are linked: moving from one to the other counts as a step (tap the other portal to jump). Each cell is still visited once, so each portal is used at most once, and walls never block a portal. Otherwise the Standard rules apply.',
   'mode.twopaths': 'Two paths',
   'mode.twopathsTag': 'A red and a blue path share the board',
-  'mode.twopathsRules': 'Draw two paths, red and blue, that together cover every cell and never share one. Each colour has its own numbers, counted from 1: the red path runs from red 1 to its last red number, the blue path from blue 1 to its last blue number, each in order. Start on a 1 to draw its colour; a path ends on its last number. Walls block both paths. Otherwise the Standard rules apply.',
+  'mode.twopathsRules':
+    'Draw two paths, red and blue, that together cover every cell and never share one. Each colour has its own numbers, counted from 1: the red path runs from red 1 to its last red number, the blue path from blue 1 to its last blue number, each in order. Start on a 1 to draw its colour; a path ends on its last number. Walls block both paths. Otherwise the Standard rules apply.',
   'mode.pentagon': 'Pentagon',
   'mode.pentagonTag': 'A board of pentagon cells',
-  'mode.pentagonRules': 'The cells are pentagons: every cell touches up to five others, one over each side. Draw one path from 1 through every cell, reaching the numbers in order; never revisit a cell or cross a wall.',
-  'shape.donut': 'Donut', 'shape.pillars': 'Pillars', 'shape.octagon': 'Octagon',
-  'shape.ell': 'L-shape', 'shape.cross': 'Cross', 'shape.tee': 'T-shape',
-  'shape.ushape': 'U-shape', 'shape.hshape': 'H-shape',
+  'mode.pentagonRules':
+    'The cells are pentagons: every cell touches up to five others, one over each side. Draw one path from 1 through every cell, reaching the numbers in order; never revisit a cell or cross a wall.',
+  'shape.donut': 'Donut',
+  'shape.pillars': 'Pillars',
+  'shape.octagon': 'Octagon',
+  'shape.ell': 'L-shape',
+  'shape.cross': 'Cross',
+  'shape.tee': 'T-shape',
+  'shape.ushape': 'U-shape',
+  'shape.hshape': 'H-shape',
   'gen.subCutout': '{0}x{0} board — cutting out the shape.',
   'gen.subArrows': '{0}x{0} board — placing the arrows.',
   'gen.arrows': n => `${n} arrow${n === 1 ? '' : 's'} so far`,
@@ -296,7 +352,8 @@ export const EN = {
   'game.sharedWrapTitle': 'Shared Wrap-around {0}x{0}',
   'game.loopTitle': 'Loop {0}x{0}',
   'game.loopHint': 'The last cell must touch cell 1 to close the ring.',
-  'game.loopOpen': 'Every cell is visited, but the ring is not closed: the last cell must touch cell 1 (no wall between). The red rings mark the two ends.',
+  'game.loopOpen':
+    'Every cell is visited, but the ring is not closed: the last cell must touch cell 1 (no wall between). The red rings mark the two ends.',
   'game.loopClosed': 'The ring is closed.',
   'game.sharedLoopTitle': 'Shared Loop {0}x{0}',
   'game.teleportTitle': 'Teleport {0}x{0}',
@@ -321,21 +378,29 @@ export const EN = {
   'zoom.out': 'Zoom out',
   'zoom.fit': 'Fit the board',
   'zoom.hint': 'Pinch to zoom, two fingers to move.',
-  'solid.followTip': 'Follow: while you draw, the solid turns by itself to keep the end of your path in view.',
-  'solid.followOn': 'Follow is on: the solid turns by itself to keep the end of your path in view.',
+  'solid.followTip':
+    'Follow: while you draw, the solid turns by itself to keep the end of your path in view.',
+  'solid.followOn':
+    'Follow is on: the solid turns by itself to keep the end of your path in view.',
   'solid.followOff': 'Follow is off: turn the solid yourself.',
-  'solid.turn': 'Turn the solid: right-drag, two fingers, drag the background or the arrow keys. Pinch to zoom. Draw from checkpoint 1.',
-  'solid.netNote': 'A side with a letter on the border continues at the same letter. Draw from checkpoint 1.',
-  'solid.mapNote': 'The two halves of the ball: a cell on the rim is on both. Draw from checkpoint 1.',
+  'solid.turn':
+    'Turn the solid: right-drag, two fingers, drag the background or the arrow keys. Pinch to zoom. Draw from checkpoint 1.',
+  'solid.netNote':
+    'A side with a letter on the border continues at the same letter. Draw from checkpoint 1.',
+  'solid.mapNote':
+    'The two halves of the ball: a cell on the rim is on both. Draw from checkpoint 1.',
   'mode.tetra': 'Tetrahedron',
   'mode.tetraTag': 'Four faces of triangles',
-  'mode.tetraRules': 'The board is the surface of a tetrahedron: four faces, each cut into triangles. Connect the numbers in order with one path through every cell, as on the flat board. The path leaves a face over its edge and goes on across the next face. Turn the solid with a right-drag, two fingers or the arrow keys.',
+  'mode.tetraRules':
+    'The board is the surface of a tetrahedron: four faces, each cut into triangles. Connect the numbers in order with one path through every cell, as on the flat board. The path leaves a face over its edge and goes on across the next face. Turn the solid with a right-drag, two fingers or the arrow keys.',
   'mode.cube': 'Cube',
   'mode.cubeTag': 'Six faces of squares',
-  'mode.cubeRules': 'The board is the surface of a cube: six faces, each cut into squares. Connect the numbers in order with one path through every cell, as on the flat board. The path leaves a face over its edge and goes on across the next face. Turn the solid with a right-drag, two fingers or the arrow keys.',
+  'mode.cubeRules':
+    'The board is the surface of a cube: six faces, each cut into squares. Connect the numbers in order with one path through every cell, as on the flat board. The path leaves a face over its edge and goes on across the next face. Turn the solid with a right-drag, two fingers or the arrow keys.',
   'mode.ball': 'Ball',
   'mode.ballTag': 'Triangles, squares, pentagons',
-  'mode.ballRules': 'The board is the surface of a ball made of triangles, squares and pentagons. Connect the numbers in order with one path through every cell; a cell has as many neighbours as it has sides. Turn the ball with a right-drag, two fingers or the arrow keys; it follows the end of your path.',
+  'mode.ballRules':
+    'The board is the surface of a ball made of triangles, squares and pentagons. Connect the numbers in order with one path through every cell; a cell has as many neighbours as it has sides. Turn the ball with a right-drag, two fingers or the arrow keys; it follows the end of your path.',
   'gen.subSolid': 'Building the solid, looking for the cleanest layout.',
   'game.tetraTitle': 'Tetrahedron {0}',
   'game.cubeTitle': 'Cube {0}',
@@ -363,15 +428,19 @@ export const EN = {
   'share.pentagon': 'Pentagon',
   'share.headPentagon': 'zigzag Pentagon · {0} cells',
   'lucky.chances': n => `${n} unlock chance${n === 1 ? '' : 's'}`,
-  'unlock.tip.chance': 'Everyone can play the lucky game. An unlock chance is spent when you start it; solving it then unlocks its variant.',
+  'unlock.tip.chance':
+    'Everyone can play the lucky game. An unlock chance is spent when you start it; solving it then unlocks its variant.',
   'unlock.tip.streak': 'Every streak reward lets you pick an unlock chance instead of a replay.',
   'lucky.title': 'Lucky game',
   'lucky.readyChance': 'A mystery variant is waiting: solve it to unlock it. Open until {0}.',
-  'lucky.readyFun': 'A mystery variant is waiting. With an unlock chance, solving it unlocks it. Open until {0}.',
-  'lucky.used': (n, date) => `You played this lucky game. Next lucky day: ${date} (in ${n} day${n === 1 ? '' : 's'}).`,
+  'lucky.readyFun':
+    'A mystery variant is waiting. With an unlock chance, solving it unlocks it. Open until {0}.',
+  'lucky.used': (n, date) =>
+    `You played this lucky game. Next lucky day: ${date} (in ${n} day${n === 1 ? '' : 's'}).`,
   'lucky.play': 'Play',
   'lucky.tag': 'Lucky',
-  'lucky.onceChance': 'One try: leaving this game or reloading the page forfeits your unlock chance.',
+  'lucky.onceChance':
+    'One try: leaving this game or reloading the page forfeits your unlock chance.',
   'lucky.onceFun': 'One try per lucky game. You have no unlock chance, so nothing gets unlocked.',
   'lucky.unlocked': 'Unlocked: {0}! It is now in Free play.',
   'lucky.unlockedSolid': 'Unlocked: {0}! It is now in the 3D puzzles card.',
@@ -379,7 +448,8 @@ export const EN = {
   'lucky.noChance': '{0} stays locked. Earn an unlock chance with a streak reward to unlock it.',
   'lucky.lostNote': 'The last lucky game was left unfinished: your unlock chance is gone.',
   'lucky.how': 'How is the lucky day chosen?',
-  'lucky.howText': 'Every week (Mon-Sun, UTC) has one lucky day: the day whose number climbs highest on its Collatz path (halve an even number, triple an odd one and add 1, until you reach 1). The number counts the days since 1 Jan 1970. The cells show the peak of each day.',
+  'lucky.howText':
+    'Every week (Mon-Sun, UTC) has one lucky day: the day whose number climbs highest on its Collatz path (halve an even number, triple an odd one and add 1, until you reach 1). The number counts the days since 1 Jan 1970. The cells show the peak of each day.',
   'lucky.week': 'Week {0} - {1}',
   'reward.title': 'Reward',
   'reward.pick': 'Pick one reward:',
@@ -390,9 +460,12 @@ export const EN = {
   'gift.open': 'Open',
   'gift.opened': 'Gift opened: {0}',
   'gift.how': 'Why is today the happiest day?',
-  'gift.howText': 'Every month (UTC) has one happiest day. They all count from a hidden reference day: it is day 1, the next day is day 2, and so on. A day is the happier the fewer steps its number needs to reach 1, where a step replaces a number by the sum of the squares of its digits: 13 → 1² + 3² = 10 → 1² + 0² = 1 takes 2 steps. A tie goes to the day whose chain climbs highest, then to the earlier day. If no number of the month reaches 1, the fewest steps until a number repeats wins.',
-  'gift.recent': 'The reference day is not told, but the latest happiest days below are enough to work it out. Can you find it?',
-  'gift.soon': 'The reference day is not told. Once enough gifts have been given, the latest happiest days will be listed here, enough to work it out.',
+  'gift.howText':
+    'Every month (UTC) has one happiest day. They all count from a hidden reference day: it is day 1, the next day is day 2, and so on. A day is the happier the fewer steps its number needs to reach 1, where a step replaces a number by the sum of the squares of its digits: 13 → 1² + 3² = 10 → 1² + 0² = 1 takes 2 steps. A tie goes to the day whose chain climbs highest, then to the earlier day. If no number of the month reaches 1, the fewest steps until a number repeats wins.',
+  'gift.recent':
+    'The reference day is not told, but the latest happiest days below are enough to work it out. Can you find it?',
+  'gift.soon':
+    'The reference day is not told. Once enough gifts have been given, the latest happiest days will be listed here, enough to work it out.',
 };
 
 export const ZH = {
@@ -420,15 +493,19 @@ export const ZH = {
   'theme.offer.finalTitle': '试用结束',
   'theme.offer.finalText': '要保留吗？今天结束后它将消失。',
   'theme.offer.finalChip': '保留 {0}？',
-  'theme.offer.rule': '限定日遵循公开规则：（日 ⊕ 月 ⊕ 年份末位）除以 16 的余数，是四个秘密数字之一。',
+  'theme.offer.rule':
+    '限定日遵循公开规则：（日 ⊕ 月 ⊕ 年份末位）除以 16 的余数，是四个秘密数字之一。',
   'theme.rule.open': '限定日如何确定',
   'theme.rule.title': '限定主题日',
-  'theme.rule.lead': '每月有一到两天会提供限定主题。规则是公开的，只有四个秘密数字（0-9，互不相同）没有公布。',
+  'theme.rule.lead':
+    '每月有一到两天会提供限定主题。规则是公开的，只有四个秘密数字（0-9，互不相同）没有公布。',
   'theme.rule.step1': '取当天的日期（几号）、月份（1-12）和年份的最后一位数字。',
-  'theme.rule.step2': '用异或（⊕）两个两个地合并。先把两个数写成二进制：结果的某一位，在两数该位不同时为 1。例如 6 ⊕ 3：110 ⊕ 011 = 101 = 5。',
+  'theme.rule.step2':
+    '用异或（⊕）两个两个地合并。先把两个数写成二进制：结果的某一位，在两数该位不同时为 1。例如 6 ⊕ 3：110 ⊕ 011 = 101 = 5。',
   'theme.rule.step3': '再取除以 16 的余数（即二进制的最后四位）。',
   'theme.rule.step4': '在限定日，结果是四个秘密数字之一。',
-  'theme.rule.example': '例：{0}：{1} ⊕ {2} = {4}；{4} ⊕ {3} = {5}；{5} 除以 16 余 {6}。这不是一位数字，所以不是限定日。',
+  'theme.rule.example':
+    '例：{0}：{1} ⊕ {2} = {4}；{4} ⊕ {3} = {5}；{5} 除以 16 余 {6}。这不是一位数字，所以不是限定日。',
   'theme.rule.last': '请根据出现限定主题的日子，推算出这四个数字。',
   'theme.slot.earned': '解锁新的主题栏位：现在可以保留 {0} 个主题。',
   'theme.slot.copied': '解锁新的主题栏位：现在可以保留 {0} 个主题。已从你的另一台设备添加：{1}。',
@@ -445,7 +522,12 @@ export const ZH = {
   'info.lucky': '幸运挑战',
   'info.chances': '解锁机会',
   'info.gift': '最开心的一天',
-  'grade.0': '热身', 'grade.1': '简单', 'grade.2': '中等', 'grade.3': '困难', 'grade.4': '专家', 'grade.5': '残酷',
+  'grade.0': '热身',
+  'grade.1': '简单',
+  'grade.2': '中等',
+  'grade.3': '困难',
+  'grade.4': '专家',
+  'grade.5': '残酷',
   'gen.title': '正在生成谜题…',
   'gen.sub': '{0}x{0} 网格——正在寻找最整洁的布局。',
   'gen.searching': '搜索中…',
@@ -453,7 +535,8 @@ export const ZH = {
   'gen.progress': '{0}%',
   'menu.title': '自由练习',
   'menu.sub': '任意尺寸，想玩几题就玩几题。',
-  'menu.blurb': '按顺序连接各个数字，并经过每一个格子。不能重复经过，也不能交叉。用鼠标或手指拖动来画线。',
+  'menu.blurb':
+    '按顺序连接各个数字，并经过每一个格子。不能重复经过，也不能交叉。用鼠标或手指拖动来画线。',
   'menu.size': '网格大小',
   'menu.today': '今日游戏：{0}',
   'menu.playLocal': '开始游戏',
@@ -470,7 +553,8 @@ export const ZH = {
   'replay.locked': n => `再完成 ${n} 次每日挑战（当天或补玩）即可获得一次补玩机会。`,
   'replay.progress': n => `再完成 ${n} 次每日挑战可获得下一次补玩机会。`,
   'replay.title': '补玩错过的每日挑战',
-  'replay.sub': '选择一个日期。错过的日期会计入当天的平均成绩；显示你用时的日期是重玩，不影响任何统计。',
+  'replay.sub':
+    '选择一个日期。错过的日期会计入当天的平均成绩；显示你用时的日期是重玩，不影响任何统计。',
   'replay.prev': s => `你的用时：${s}`,
   'replay.abandoned': '已放弃',
   'streak.line': (n, f) => `连续 ${n} 天 · ${f} 张冻结卡`,
@@ -479,12 +563,14 @@ export const ZH = {
   'status.streak': '天连续',
   'streak.keep': '今天完成一道题即可保持。',
   'streak.none': '今天完成一道题，开始连续记录。',
-  'streak.help': (ramp, every, max, heal) => `完成任意题目即可计入。连续 ${String(ramp).split(',').join('、')} 天时依次获得前几项连续奖励（一张冻结卡，最多 ${max} 张，加一次补玩或解锁机会），之后每连续 ${every} 天一次。冻结卡可抵消一个缺席日；补玩错过的每日挑战可将其补上（缺席后 ${heal} 天内）：该日计入连续天数并返还冻结卡。`,
+  'streak.help': (ramp, every, max, heal) =>
+    `完成任意题目即可计入。连续 ${String(ramp).split(',').join('、')} 天时依次获得前几项连续奖励（一张冻结卡，最多 ${max} 张，加一次补玩或解锁机会），之后每连续 ${every} 天一次。冻结卡可抵消一个缺席日；补玩错过的每日挑战可将其补上（缺席后 ${heal} 天内）：该日计入连续天数并返还冻结卡。`,
   'streak.next': n => `再连续 ${n} 天可获得下一项奖励。`,
   'champ.label': '击败 100%',
   'champ.next': n => `再赢 ${n} 次可获得下一项奖励。`,
-  'champ.help': n => '胜利：在当天的每日挑战中击败 100% 的玩家（重玩不计入）。'
-    + `累计 ${n} 次胜利可得一项奖励：一次重玩机会或一次解锁机会。`,
+  'champ.help': n =>
+    '胜利：在当天的每日挑战中击败 100% 的玩家（重玩不计入）。' +
+    `累计 ${n} 次胜利可得一项奖励：一次重玩机会或一次解锁机会。`,
   'champ.won': n => `★ 你击败了 100% 的玩家！再赢 ${n} 次可获得下一项奖励。`,
   'champ.pick': '★ 你击败了 100% 的玩家！奖励已到手。',
   'streak.repair': n => `有 ${n} 个缺席日可补：补玩当天的每日挑战。`,
@@ -503,8 +589,14 @@ export const ZH = {
   'stats.sub': '今日 / 总计（UTC 日，单位：秒）',
   'stats.gotdTitle': '你的每日挑战用时',
   'stats.gotdSub': '每个网格尺寸最近一次每日挑战的用时（秒）',
-  'stats.grid': '网格', 'stats.next': '下一局', 'stats.solves': '完成数', 'stats.avg': '平均', 'stats.sd': '标准差', 'stats.best': '最佳（最近 20 局）',
-  'stats.date': '日期', 'stats.time': '用时（秒）',
+  'stats.grid': '网格',
+  'stats.next': '下一局',
+  'stats.solves': '完成数',
+  'stats.avg': '平均',
+  'stats.sd': '标准差',
+  'stats.best': '最佳（最近 20 局）',
+  'stats.date': '日期',
+  'stats.time': '用时（秒）',
   'stats.everyone': (avg, n) => `所有玩家：平均 ${avg}${n == null ? '' : `（${n} 人）`}`,
   'stats.top': '前 {0} 名：平均 {1}',
   'stats.beat': '你超过了 {0}% 的玩家',
@@ -521,7 +613,8 @@ export const ZH = {
   'game.solved': '完成，用时 {0}{1}',
   'share.play': '玩这一局',
   'share.tipLabel': '颜色是什么意思？',
-  'share.tip': '每个方块代表相邻两个检查点之间的一段，按这一段里画出后又撤回的格数着色：🟩 无，🟨 1–2 格，🟧 3–6 格，🟥 7 格及以上。不会泄露具体路线。',
+  'share.tip':
+    '每个方块代表相邻两个检查点之间的一段，按这一段里画出后又撤回的格数着色：🟩 无，🟨 1–2 格，🟧 3–6 格，🟥 7 格及以上。不会泄露具体路线。',
   'share.title': '朋友分享给你的题目',
   'share.gotd': '每日挑战 {0}',
   'share.local': '本地游戏',
@@ -545,10 +638,12 @@ export const ZH = {
   'menu.mode': '谜题类型',
   'coop.title': '拼线',
   'coop.sub': '随处画线，再拼成一条路径。',
-  'coop.blurb': '可随时抬手、从任意位置重新开始，再把各段拼成一条路径。可以独自玩，也可以与另一台设备上的朋友一起玩。',
+  'coop.blurb':
+    '可随时抬手、从任意位置重新开始，再把各段拼成一条路径。可以独自玩，也可以与另一台设备上的朋友一起玩。',
   'coop.open': '打开',
   'sync.title': '你的设备',
-  'sync.blurb': '让统计、连胜和机会在你的所有设备上保持一致。无需账号或登录。开启之前不会同步任何内容。',
+  'sync.blurb':
+    '让统计、连胜和机会在你的所有设备上保持一致。无需账号或登录。开启之前不会同步任何内容。',
   'sync.sumOff': '未开启 · 多设备同步进度',
   'sync.sumCloud': '云同步已开启',
   'sync.sumConfirm': '有设备想要链接',
@@ -572,7 +667,8 @@ export const ZH = {
   'sync.copied': '链接已复制',
   'sync.share': '分享',
   'sync.cancel': '取消',
-  'sync.confirm': '有另一台设备想与本设备链接。你的统计、连胜和机会将在两台设备上合并。只有当链接是你自己创建的，才继续。',
+  'sync.confirm':
+    '有另一台设备想与本设备链接。你的统计、连胜和机会将在两台设备上合并。只有当链接是你自己创建的，才继续。',
   'sync.confirmYes': '链接本设备',
   'sync.waiting': '正在等待另一台设备…',
   'sync.connecting': '正在连接…',
@@ -595,12 +691,15 @@ export const ZH = {
   'sync.failExpired': '链接已过期，请重新创建。',
   'sync.failUsed': '该链接已被使用，请重新创建。',
   'sync.failTimeout': '另一台设备没有响应。请在那里打开链接，并保持两台设备的页面都打开。',
-  'sync.failConnect': '设备之间无法连接（严格的网络可能会阻止）。请重试，或让两台设备连接同一个 Wi-Fi。',
+  'sync.failConnect':
+    '设备之间无法连接（严格的网络可能会阻止）。请重试，或让两台设备连接同一个 Wi-Fi。',
   'sync.failOther': '链接没有成功，请重试。',
-  'sync.privacy': '你的数据在离开本设备之前已加密，任何服务器都无法读取。服务器仍能看到存在一个同步组、它何时更新、有几台设备写入，以及这些设备的 IP 地址。没有账号，也没有姓名。',
+  'sync.privacy':
+    '你的数据在离开本设备之前已加密，任何服务器都无法读取。服务器仍能看到存在一个同步组、它何时更新、有几台设备写入，以及这些设备的 IP 地址。没有账号，也没有姓名。',
   'sync.makePhrase': '生成同步短语',
   'sync.havePhrase': '我有同步短语',
-  'sync.phraseShow': '请在另一台设备上的“我有同步短语”中输入这八个词。知道这些词的人可以读取并修改你的游戏数据，请妥善保管。',
+  'sync.phraseShow':
+    '请在另一台设备上的“我有同步短语”中输入这八个词。知道这些词的人可以读取并修改你的游戏数据，请妥善保管。',
   'sync.copyPhrase': '复制短语',
   'sync.phraseCopied': '短语已复制',
   'sync.done': '完成',
@@ -618,8 +717,10 @@ export const ZH = {
   'sync.cloudRefused': '云端：服务器拒绝了数据，稍后会重试。',
   'sync.cloudTooBig': '云端：数据太大，无法同步。',
   'sync.noteCloudFailed': '同步无法连接服务器。你的数据仍安全保存在本设备上，稍后会自动重试。',
-  'sync.noteCloudRefused': '同步服务器拒绝了你的数据，本设备暂时无法云同步。你的数据仍安全保存在本设备上。',
-  'sync.noteTooBig': '你的数据太大，无法同步。数据仍安全保存在本设备上，但不会复制到你的其他设备。',
+  'sync.noteCloudRefused':
+    '同步服务器拒绝了你的数据，本设备暂时无法云同步。你的数据仍安全保存在本设备上。',
+  'sync.noteTooBig':
+    '你的数据太大，无法同步。数据仍安全保存在本设备上，但不会复制到你的其他设备。',
   'sync.noteRecovered': '云同步已恢复。',
   'sync.noteMeetFailed': '无法连接到你的另一台设备（严格的网络可能会阻止）。稍后会自动重试。',
   'sync.noteClose': '关闭',
@@ -645,23 +746,35 @@ export const ZH = {
   'mode.wrapTag': '从一侧出去，从另一侧进来',
   'mode.loop': '闭环',
   'mode.loopTag': '路径首尾相接成环',
-  'mode.standardRules': '画一条路径，从 1 出发，按数字顺序走遍每个格子。可以上下左右移动，不能重复经过格子，也不能穿过墙。',
+  'mode.standardRules':
+    '画一条路径，从 1 出发，按数字顺序走遍每个格子。可以上下左右移动，不能重复经过格子，也不能穿过墙。',
   'mode.cutoutRules': '规则同标准，但棋盘上有镂空：镂空处不能进入，其余每个格子都要走到。',
   'mode.arrowsRules': '没有墙。箭头只允许沿箭头方向通过；其余规则与标准相同。',
-  'mode.exactRules': '数字就是路径进入该格的步数：标有 20 的格子必须是你走的第 20 个格子。每个格子都要走到。',
+  'mode.exactRules':
+    '数字就是路径进入该格的步数：标有 20 的格子必须是你走的第 20 个格子。每个格子都要走到。',
   'mode.wrapRules': '棋盘边缘首尾相连：从一侧出去，就从对侧进来。其余规则与标准相同，墙仍然挡路。',
-  'mode.loopRules': '路径是一个环：最后一个格子必须与 1 相邻。数字沿环按顺序经过；最大的数字之后，路径继续走完剩下的格子，再回到 1。其余规则与标准相同，墙仍然挡路。',
+  'mode.loopRules':
+    '路径是一个环：最后一个格子必须与 1 相邻。数字沿环按顺序经过；最大的数字之后，路径继续走完剩下的格子，再回到 1。其余规则与标准相同，墙仍然挡路。',
   'mode.teleport': '传送',
   'mode.teleportTag': '成对的传送门只隔一步',
-  'mode.teleportRules': '图标相同的格子互相连通：从其中一个走到另一个算一步（点按另一个传送门即可跳过去）。每个格子仍然只能经过一次，所以每个传送门最多使用一次，墙不会挡住传送门。其余规则与标准相同。',
+  'mode.teleportRules':
+    '图标相同的格子互相连通：从其中一个走到另一个算一步（点按另一个传送门即可跳过去）。每个格子仍然只能经过一次，所以每个传送门最多使用一次，墙不会挡住传送门。其余规则与标准相同。',
   'mode.twopaths': '双路径',
   'mode.twopathsTag': '红蓝两条路径共享棋盘',
-  'mode.twopathsRules': '画出红、蓝两条路径，它们合起来经过每个格子，且互不重叠。每种颜色有各自的数字，都从 1 开始：红色路径从红 1 走到最后一个红色数字，蓝色路径从蓝 1 走到最后一个蓝色数字，各自按顺序经过。从某个 1 开始画，就会画出对应的颜色；路径在最后一个数字处结束。墙对两条路径都有效。其余规则与标准相同。',
+  'mode.twopathsRules':
+    '画出红、蓝两条路径，它们合起来经过每个格子，且互不重叠。每种颜色有各自的数字，都从 1 开始：红色路径从红 1 走到最后一个红色数字，蓝色路径从蓝 1 走到最后一个蓝色数字，各自按顺序经过。从某个 1 开始画，就会画出对应的颜色；路径在最后一个数字处结束。墙对两条路径都有效。其余规则与标准相同。',
   'mode.pentagon': '五边形',
   'mode.pentagonTag': '由五边形格子组成的棋盘',
-  'mode.pentagonRules': '格子是五边形：每个格子最多与五个相邻格子相接，每条边一个。画一条路径，从 1 出发，按数字顺序走遍每个格子；不能重复经过格子，也不能穿过墙。',
-  'shape.donut': '环形', 'shape.pillars': '立柱', 'shape.octagon': '八角形', 'shape.ell': 'L 形',
-  'shape.cross': '十字形', 'shape.tee': 'T 形', 'shape.ushape': 'U 形', 'shape.hshape': 'H 形',
+  'mode.pentagonRules':
+    '格子是五边形：每个格子最多与五个相邻格子相接，每条边一个。画一条路径，从 1 出发，按数字顺序走遍每个格子；不能重复经过格子，也不能穿过墙。',
+  'shape.donut': '环形',
+  'shape.pillars': '立柱',
+  'shape.octagon': '八角形',
+  'shape.ell': 'L 形',
+  'shape.cross': '十字形',
+  'shape.tee': 'T 形',
+  'shape.ushape': 'U 形',
+  'shape.hshape': 'H 形',
   'gen.subCutout': '{0}x{0} 棋盘——正在挖出形状。',
   'gen.subArrows': '{0}x{0} 棋盘——正在放置箭头。',
   'gen.arrows': n => `目前 ${n} 个箭头`,
@@ -684,7 +797,8 @@ export const ZH = {
   'game.sharedWrapTitle': '分享环绕 {0}x{0}',
   'game.loopTitle': '闭环 {0}x{0}',
   'game.loopHint': '最后一个格子必须与 1 相邻，才能首尾相接成环。',
-  'game.loopOpen': '所有格子都走完了，但环没有闭合：最后一个格子必须与 1 相邻（中间不能有墙）。红圈标出了应该相接的两端。',
+  'game.loopOpen':
+    '所有格子都走完了，但环没有闭合：最后一个格子必须与 1 相邻（中间不能有墙）。红圈标出了应该相接的两端。',
   'game.loopClosed': '环已闭合。',
   'game.sharedLoopTitle': '分享闭环 {0}x{0}',
   'game.teleportTitle': '传送 {0}x{0}',
@@ -717,13 +831,16 @@ export const ZH = {
   'solid.mapNote': '球的两半：位于边缘的格子在两半中都会出现。从数字 1 开始画。',
   'mode.tetra': '四面体',
   'mode.tetraTag': '四个三角形的面',
-  'mode.tetraRules': '棋盘是四面体的表面：四个面，每个面被分成三角形格子。和平面棋盘一样，用一条路径按顺序连接数字并经过每个格子。路径可以越过棱，继续走到相邻的面。用右键拖动、双指或方向键转动立体。',
+  'mode.tetraRules':
+    '棋盘是四面体的表面：四个面，每个面被分成三角形格子。和平面棋盘一样，用一条路径按顺序连接数字并经过每个格子。路径可以越过棱，继续走到相邻的面。用右键拖动、双指或方向键转动立体。',
   'mode.cube': '立方体',
   'mode.cubeTag': '六个正方形的面',
-  'mode.cubeRules': '棋盘是立方体的表面：六个面，每个面被分成正方形格子。和平面棋盘一样，用一条路径按顺序连接数字并经过每个格子。路径可以越过棱，继续走到相邻的面。用右键拖动、双指或方向键转动立体。',
+  'mode.cubeRules':
+    '棋盘是立方体的表面：六个面，每个面被分成正方形格子。和平面棋盘一样，用一条路径按顺序连接数字并经过每个格子。路径可以越过棱，继续走到相邻的面。用右键拖动、双指或方向键转动立体。',
   'mode.ball': '球',
   'mode.ballTag': '三角形、正方形、五边形',
-  'mode.ballRules': '棋盘是一个球的表面，由三角形、正方形和五边形格子拼成。用一条路径按顺序连接数字并经过每个格子；一个格子有几条边，就有几个相邻的格子。用右键拖动、双指或方向键转动球体，球会跟随路径的末端。',
+  'mode.ballRules':
+    '棋盘是一个球的表面，由三角形、正方形和五边形格子拼成。用一条路径按顺序连接数字并经过每个格子；一个格子有几条边，就有几个相邻的格子。用右键拖动、双指或方向键转动球体，球会跟随路径的末端。',
   'gen.subSolid': '正在构建立体，寻找最干净的布局。',
   'game.tetraTitle': '四面体 {0}',
   'game.cubeTitle': '立方体 {0}',
@@ -767,7 +884,8 @@ export const ZH = {
   'lucky.noChance': '{0} 仍未解锁。获得连续奖励即可得到解锁机会。',
   'lucky.lostNote': '上一局幸运挑战没有完成：你的解锁机会已失效。',
   'lucky.how': '幸运日是怎么选出来的？',
-  'lucky.howText': '每周（周一至周日，UTC）有一个幸运日：编号在 Collatz 路径上爬得最高的那一天（偶数除以 2，奇数乘 3 再加 1，直到变成 1）。编号是自 1970 年 1 月 1 日起的天数。下方格子显示每天的峰值。',
+  'lucky.howText':
+    '每周（周一至周日，UTC）有一个幸运日：编号在 Collatz 路径上爬得最高的那一天（偶数除以 2，奇数乘 3 再加 1，直到变成 1）。编号是自 1970 年 1 月 1 日起的天数。下方格子显示每天的峰值。',
   'lucky.week': '{0} - {1} 这一周',
   'reward.title': '奖励',
   'reward.pick': '请选择一项奖励：',
@@ -778,7 +896,8 @@ export const ZH = {
   'gift.open': '打开',
   'gift.opened': '礼物已打开：{0}',
   'gift.how': '为什么今天是最开心的一天？',
-  'gift.howText': '每个月（UTC）有一个最开心的日子。它们都从一个未公开的基准日算起：基准日是第 1 天，之后依次是第 2 天、第 3 天……一天的编号走到 1 所需的步数越少，这一天越开心；每一步把一个数换成它各位数字的平方和：13 → 1² + 3² = 10 → 1² + 0² = 1，共 2 步。步数相同时，链条爬得最高的那天胜出，再相同则取较早的一天。如果当月没有任何编号能走到 1，则取直到出现重复数字为止步数最少的一天。',
+  'gift.howText':
+    '每个月（UTC）有一个最开心的日子。它们都从一个未公开的基准日算起：基准日是第 1 天，之后依次是第 2 天、第 3 天……一天的编号走到 1 所需的步数越少，这一天越开心；每一步把一个数换成它各位数字的平方和：13 → 1² + 3² = 10 → 1² + 0² = 1，共 2 步。步数相同时，链条爬得最高的那天胜出，再相同则取较早的一天。如果当月没有任何编号能走到 1，则取直到出现重复数字为止步数最少的一天。',
   'gift.recent': '基准日不会公布，但下面最近的开心日足以让你推出它。你能找到它吗？',
   'gift.soon': '基准日不会公布。等到送出足够多的礼物后，最近的开心日会列在这里，足以让你推出它。',
 };
@@ -787,7 +906,9 @@ const DICTS = { en: EN, zh: ZH };
 let lang = 'en';
 
 export const getLang = () => lang;
-export const setLang = l => { lang = l in DICTS ? l : 'en'; };
+export const setLang = l => {
+  lang = l in DICTS ? l : 'en';
+};
 
 export function t(key, ...args) {
   const v = DICTS[lang][key] ?? EN[key];

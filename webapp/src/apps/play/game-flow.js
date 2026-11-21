@@ -16,8 +16,27 @@ import { sfxSolved } from '../../platform/sound.js';
 import { eventAt } from '../../themes/calendar.js';
 import { awardSlots, offerTheme, themes, watchDay } from '../../ui/theme.js';
 import {
-  $, S, SIZES, behaviour, calib, champ, daily, dayNo, lb, playlog, randomInt, randomSeed, render,
-  replay, sec, slotsSync, solid, storage, store, streak, unlock,
+  $,
+  S,
+  SIZES,
+  behaviour,
+  calib,
+  champ,
+  daily,
+  dayNo,
+  lb,
+  playlog,
+  randomInt,
+  randomSeed,
+  render,
+  replay,
+  sec,
+  slotsSync,
+  solid,
+  storage,
+  store,
+  streak,
+  unlock,
 } from './state.js';
 import { refreshNext } from './counters.js';
 import { gradePuzzle } from './puzzle-kit.js';
@@ -25,7 +44,16 @@ import { maybeShowRules } from './popups.js';
 import { paintGenerating } from './generating.js';
 
 export function logPlay(solved) {
-  if (!playlog || !S.puzzle || S.variant || !S.trace || S.logged || S.screen !== 'game' || (!solved && S.trace.pushes < 2)) return;
+  if (
+    !playlog ||
+    !S.puzzle ||
+    S.variant ||
+    !S.trace ||
+    S.logged ||
+    S.screen !== 'game' ||
+    (!solved && S.trace.pushes < 2)
+  )
+    return;
   S.logged = true;
   const ms = S.timerId != null ? performance.now() - S.startTime : S.elapsed * 1000;
   const mode = S.isGotd ? (S.isReplay ? 'replay' : 'gotd') : 'local';
@@ -40,28 +68,59 @@ export function logPlay(solved) {
 function uploadBehaviour(history, ms, mode, abandoned = false) {
   if (!behaviour) return;
   const attempt = S.isGotd ? store.attemptOn(S.gotdDate) : null;
-  const game = { puzzle: S.puzzle, mode, ms, hints: S.hintsUsed, abandoned,
-    events: S.sol ? traceEvents(S.trace) : null, hiddenMs: S.trace.hiddenMs,
-    undone: S.trace.undone, maxUndone: S.trace.maxUndone,
-    day: S.isGotd ? dayOfDate(S.gotdDate) : S.gameDay ?? dayNo(), variant: S.variant, shared: S.isShared, known: Boolean(attempt && attempt.solved) };
-  history.then(h => {
-    const row = rowFromGame({ ...game, skill: skillBucket(h, mode) }, BEHAVIOUR);
-    return row && behaviour.enqueue(row);
-  })
+  const game = {
+    puzzle: S.puzzle,
+    mode,
+    ms,
+    hints: S.hintsUsed,
+    abandoned,
+    events: S.sol ? traceEvents(S.trace) : null,
+    hiddenMs: S.trace.hiddenMs,
+    undone: S.trace.undone,
+    maxUndone: S.trace.maxUndone,
+    day: S.isGotd ? dayOfDate(S.gotdDate) : (S.gameDay ?? dayNo()),
+    variant: S.variant,
+    shared: S.isShared,
+    known: Boolean(attempt && attempt.solved),
+  };
+  history
+    .then(h => {
+      const row = rowFromGame({ ...game, skill: skillBucket(h, mode) }, BEHAVIOUR);
+      return row && behaviour.enqueue(row);
+    })
     .catch(e => console.warn('behaviour upload skipped:', e));
 }
 
 export function onSolved() {
   logPlay(true); // before the hint penalty below: the log keeps the raw time
-  if (streak) streak.record().then(milestone => { if (milestone) grantChoice(); awardThemeSlots(); }).catch(e => console.warn('streak record failed:', e)); // a streak reward earned: a replay or unlock chance; a best streak of 30 days: a theme slot
-  S.finished = true; stopTimer(); sfxSolved();
+  if (streak)
+    streak
+      .record()
+      .then(milestone => {
+        if (milestone) grantChoice();
+        awardThemeSlots();
+      })
+      .catch(e => console.warn('streak record failed:', e)); // a streak reward earned: a replay or unlock chance; a best streak of 30 days: a theme slot
+  S.finished = true;
+  stopTimer();
+  sfxSolved();
   if (S.lucky) finishLucky();
-  if (!S.penaltyApplied) { S.elapsed = penalizedTime(S.elapsed, S.hintsUsed); S.penaltyApplied = true; } // once, even if the path is reset and re-solved
-  if (S.isGotd) { const a = store.attemptOn(S.gotdDate); if (!(a && a.solved)) finishGotd(S.puzzle.n, S.gotdDate, S.elapsed, S.isReplay); } // a Game of Day (live or replay) counts once
-  else { // stats and daily counter of the puzzle type (a variant has its own)
-    const n = S.puzzle.n, scope = S.variant || ''; store.recordSolve(n, dayNo(), S.elapsed, scope);
+  if (!S.penaltyApplied) {
+    S.elapsed = penalizedTime(S.elapsed, S.hintsUsed);
+    S.penaltyApplied = true;
+  } // once, even if the path is reset and re-solved
+  if (S.isGotd) {
+    const a = store.attemptOn(S.gotdDate);
+    if (!(a && a.solved)) finishGotd(S.puzzle.n, S.gotdDate, S.elapsed, S.isReplay);
+  } // a Game of Day (live or replay) counts once
+  else {
+    // stats and daily counter of the puzzle type (a variant has its own)
+    const n = S.puzzle.n,
+      scope = S.variant || '';
+    store.recordSolve(n, dayNo(), S.elapsed, scope);
     if (S.calib) calib.markSolved(n, S.gameIndex);
-    else if (!S.isShared) daily.markSolved(n, S.gameIndex, scope).then(refreshNext); }
+    else if (!S.isShared) daily.markSolved(n, S.gameIndex, scope).then(refreshNext);
+  }
 }
 
 // Game of Day (live or replay): record locally, count it towards the next replay chance, then submit to the averages backend
@@ -85,7 +144,9 @@ async function healStreak(date) {
     for (let i = 0; i < healed.rewards; i++) await grantChoice();
     awardThemeSlots(); // a healed day can lift the best streak
     if (S.screen === 'game') render();
-  } catch (e) { console.warn('streak heal failed:', e); }
+  } catch (e) {
+    console.warn('streak heal failed:', e);
+  }
 }
 // Unlock chances (features/unlock.js) come from the streak: with every streak reward the player picks a replay chance or an unlock
 // chance (none left to unlock: a replay, as before).
@@ -113,7 +174,10 @@ export function publishThemeSlots() {
   const controller = themes();
   if (!slotsSync || !controller) return;
   const { cap, pool } = controller.state();
-  slotsSync.publish(cap, pool.filter(entry => !entry.builtin).map(entry => entry.id));
+  slotsSync.publish(
+    cap,
+    pool.filter(entry => !entry.builtin).map(entry => entry.id),
+  );
 }
 // An offer day (src/themes/calendar.js, the digits in config.js THEMES): a theme of the site's
 // pool is offered until the local day ends. Promise<boolean>: false when today is no offer day
@@ -127,11 +191,15 @@ export function checkThemeEvent(now = new Date()) {
 // offer day needs no reload.
 export const watchThemeEvents = () => watchDay(() => checkThemeEvent());
 export async function grantChoice() {
-  if (unlock && !unlock.view().allUnlocked) await unlock.addChoice(); else await replay.addBonus();
+  if (unlock && !unlock.view().allUnlocked) await unlock.addChoice();
+  else await replay.addBonus();
   if (S.screen === 'game' || S.screen === 'menu') render();
 }
 export async function claimReward(kind) {
-  if (unlock && await unlock.takeChoice()) { if (kind === 'unlock') await unlock.addToken(); else await replay.addBonus(); }
+  if (unlock && (await unlock.takeChoice())) {
+    if (kind === 'unlock') await unlock.addToken();
+    else await replay.addBonus();
+  }
   render();
 }
 // One submit round (platform/leaderboard.js submitAttempt): the attempt record says which backends already hold the solve.
@@ -149,7 +217,9 @@ async function judgeChamp(date, rec) {
     const picks = await champ.takePicks();
     if (won && S.isGotd && S.gotdDate === date) S.champWon = { pick: picks > 0 };
     for (let i = 0; i < picks; i++) await grantChoice();
-  } catch (e) { console.warn('champion judge failed:', e); }
+  } catch (e) {
+    console.warn('champion judge failed:', e);
+  }
 }
 // Reward picks earned over the group's wins that no device has handed out yet (device sync).
 export async function claimChampPicks() {
@@ -176,7 +246,36 @@ export function beginGame(puzzle, gotdDate, isReplay = false, isShared = false, 
   S.sharedFocus = null;
   const variant = variantOf(puzzle);
   const difficulty = gradePuzzle(puzzle);
-  Object.assign(S, { variant, lucky, luckyResult: null, luckyNote: null, genNotice: null, healed: false, champWon: null, trace: newTrace(), legs: [], isShared, logged: false, puzzle, isGotd: !!gotdDate, isReplay, replayPick: null, gotdDate: gotdDate || null, path: [], finished: false, elapsed: 0, hintsUsed: 0, penaltyApplied: false, hintCell: null, hintWrongCell: null, screen: 'game', gotdHint: null, difficulty, cam: null, pan: false });
+  Object.assign(S, {
+    variant,
+    lucky,
+    luckyResult: null,
+    luckyNote: null,
+    genNotice: null,
+    healed: false,
+    champWon: null,
+    trace: newTrace(),
+    legs: [],
+    isShared,
+    logged: false,
+    puzzle,
+    isGotd: !!gotdDate,
+    isReplay,
+    replayPick: null,
+    gotdDate: gotdDate || null,
+    path: [],
+    finished: false,
+    elapsed: 0,
+    hintsUsed: 0,
+    penaltyApplied: false,
+    hintCell: null,
+    hintWrongCell: null,
+    screen: 'game',
+    gotdHint: null,
+    difficulty,
+    cam: null,
+    pan: false,
+  });
   S.calib = Boolean(puzzle.calib); // a calibration game: played blind, counted by its own counter
   S.sol = solutionOf(puzzle, variant);
   // the wrong turns of the game are the player's path against this
@@ -184,33 +283,60 @@ export function beginGame(puzzle, gotdDate, isReplay = false, isShared = false, 
   S.paths = newPaths();
   S.colour = 0;
   if (puzzle.split) S.path = S.paths[0];
-  startTimer(); render(); maybeShowRules(); markHowtoSeen();
+  startTimer();
+  render();
+  maybeShowRules();
+  markHowtoSeen();
 }
-const generateShown = (n, seed, mode, signal) => runGeneration({ task: 'flat', mode, n, seed }, {
-  signal,
-  onEvent: e => {
-    S.gen = { frac: e.frac == null ? S.gen.frac : e.frac, walls: e.walls ?? e.arrows ?? e.labels, K: e.K };
-    paintGenerating();
-  },
-});
+const generateShown = (n, seed, mode, signal) =>
+  runGeneration(
+    { task: 'flat', mode, n, seed },
+    {
+      signal,
+      onEvent: e => {
+        S.gen = {
+          frac: e.frac == null ? S.gen.frac : e.frac,
+          walls: e.walls ?? e.arrows ?? e.labels,
+          K: e.K,
+        };
+        paintGenerating();
+      },
+    },
+  );
 // how: 'open' (Play local: current or next-if-solved) | 'skip' (New puzzle); a variant is always a new random one.
 // lucky: the lucky game (startLucky): its chance is given back when the puzzle cannot be made.
 export async function startLocal(how, mode = 'standard', lucky = false) {
   if (calib && mode === 'standard' && !lucky) return startCalibration(how);
   if (mode !== 'standard') S.size = nearestSize(S.size, sizesFor(mode, SIZES)); // e.g. after a shared 12x12 one
-  S.screen = 'generating'; S.genMode = mode; S.gen = { frac: 0, walls: null, K: null }; S.genNotice = null; render();
-  const job = S.genJob = cancellable();
+  S.screen = 'generating';
+  S.genMode = mode;
+  S.gen = { frac: 0, walls: null, K: null };
+  S.genNotice = null;
+  render();
+  const job = (S.genJob = cancellable());
   try {
-    const scope = mode === 'standard' ? '' : mode, game = how === 'skip' ? await daily.skip(S.size, scope) : await daily.open(S.size, scope);
-    const index = game.index, seed = scope ? randomSeed() : game.seed; // a variant is random: its counter only numbers the day's games
+    const scope = mode === 'standard' ? '' : mode,
+      game = how === 'skip' ? await daily.skip(S.size, scope) : await daily.open(S.size, scope);
+    const index = game.index,
+      seed = scope ? randomSeed() : game.seed; // a variant is random: its counter only numbers the day's games
     const puzzle = await generateShown(S.size, seed, mode, job.signal);
-    S.gameIndex = index; S.seed = seed;
-    S.gameDay = mode !== 'standard' ? null : [dayNo(), dayNo() - 1].find(d => dailySeed(d, S.size, index, ALGO_VERSION) === seed) ?? null; // the day this seed was made on (the behaviour log wants it)
+    S.gameIndex = index;
+    S.seed = seed;
+    S.gameDay =
+      mode !== 'standard'
+        ? null
+        : ([dayNo(), dayNo() - 1].find(d => dailySeed(d, S.size, index, ALGO_VERSION) === seed) ??
+          null); // the day this seed was made on (the behaviour log wants it)
     beginGame(puzzle, null, false, false, lucky);
-  } catch (e) { // cancelled by the player (silent), too slow, or failed: the menu comes back, the chance of a lucky game with it
-    if (!isAbort(e)) { console.error('startLocal failed:', e); S.genNotice = isTimeout(e) ? 'err.generateSlow' : 'err.generate'; }
+  } catch (e) {
+    // cancelled by the player (silent), too slow, or failed: the menu comes back, the chance of a lucky game with it
+    if (!isAbort(e)) {
+      console.error('startLocal failed:', e);
+      S.genNotice = isTimeout(e) ? 'err.generateSlow' : 'err.generate';
+    }
     if (lucky) await unlock.refund();
-    S.screen = 'menu'; render();
+    S.screen = 'menu';
+    render();
   } finally {
     job.end();
     if (S.genJob === job) S.genJob = null;
@@ -228,7 +354,9 @@ async function startCalibration(how) {
     beginGame(puzzle);
   } catch (e) {
     console.error('startCalibration failed:', e);
-    S.genNotice = 'err.generate'; S.screen = 'menu'; render();
+    S.genNotice = 'err.generate';
+    S.screen = 'menu';
+    render();
   }
 }
 // Lucky game: open to everyone, once per offer. Draws a variant (a locked one has a size of 7-10, features/unlock.js) and plays
@@ -239,7 +367,8 @@ export async function startLucky() {
   const pick = await unlock.begin(randomInt);
   if (!pick) return render();
   S.luckyHolder = pick.holder;
-  if (solid.isKind(pick.id)) { // a solid kind: the solid game screen
+  if (solid.isKind(pick.id)) {
+    // a solid kind: the solid game screen
     return solid.start({ kind: pick.id, size: pick.size, lucky: true });
   }
   S.size = pick.size;
@@ -249,7 +378,8 @@ export async function finishLucky() {
   const r = await unlock.finish(true);
   if (!r) return; // a re-solve after a reset: the first solve counted
   S.luckyResult = r;
-  if (r.newly) { // the new tile is picked in the menu
+  if (r.newly) {
+    // the new tile is picked in the menu
     if (solid.isKind(r.id)) {
       solid.pick(r.id);
     } else {
@@ -263,16 +393,30 @@ export function leaveLucky() {
   if (!S.lucky) return;
   S.lucky = false;
   const active = unlock && unlock.view().active;
-  if (active) { unlock.finish(false); if (active.holder) S.luckyNote = 'lucky.lostNote'; }
+  if (active) {
+    unlock.finish(false);
+    if (active.holder) S.luckyNote = 'lucky.lostNote';
+  }
 }
 // The rules line of the menu is open (on a phone) until the first game has been started on this device.
 function markHowtoSeen() {
   if (S.howtoSeen) return;
-  S.howtoSeen = true; S.howtoOpen = false;
+  S.howtoSeen = true;
+  S.howtoOpen = false;
   storage.set('howto-seen', '1');
 }
 export function startTimer() {
-  stopTimer(); S.startTime = performance.now() - S.elapsed * 1000;
-  S.timerId = setInterval(() => { S.elapsed = (performance.now() - S.startTime) / 1000; const el = $('hudTime'); if (el) el.textContent = sec(S.elapsed); }, 100);
+  stopTimer();
+  S.startTime = performance.now() - S.elapsed * 1000;
+  S.timerId = setInterval(() => {
+    S.elapsed = (performance.now() - S.startTime) / 1000;
+    const el = $('hudTime');
+    if (el) el.textContent = sec(S.elapsed);
+  }, 100);
 }
-export function stopTimer() { if (S.timerId) { clearInterval(S.timerId); S.timerId = null; } }
+export function stopTimer() {
+  if (S.timerId) {
+    clearInterval(S.timerId);
+    S.timerId = null;
+  }
+}

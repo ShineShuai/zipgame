@@ -30,9 +30,14 @@ import { SOLID_KINDS, SOLID_SIZES, stageOf } from '../../features/solid-release.
 export const LUCKY_SIZES = [7, 8, 9, 10]; // sizes of the lucky game for a locked variant: solvable, but not trivial
 const cap = id => id[0].toUpperCase() + id.slice(1);
 export const textKeys = id => ({
-  name: `mode.${id}`, tag: `mode.${id}Tag`, rules: `mode.${id}Rules`, gen: `gen.sub${cap(id)}`,
-  title: `game.${id}Title`, sharedTitle: `game.shared${cap(id)}Title`,
-  share: `share.${id}`, shareHead: `share.head${cap(id)}`,
+  name: `mode.${id}`,
+  tag: `mode.${id}Tag`,
+  rules: `mode.${id}Rules`,
+  gen: `gen.sub${cap(id)}`,
+  title: `game.${id}Title`,
+  sharedTitle: `game.shared${cap(id)}Title`,
+  share: `share.${id}`,
+  shareHead: `share.head${cap(id)}`,
 });
 
 export const PLAY_VARIANTS = [
@@ -146,14 +151,15 @@ export const SOLID_LUCKY = {
 // game). Size 2 of the tetra is open to everyone from the first day, so a locked
 // tetra is played at 3 or 4; once unlocked it draws from every size, a ball from
 // every playable board.
-export const solidDefs = release => SOLID_KINDS.map(kind => ({
-  id: kind,
-  solid: true,
-  from: release ? release.first : null,
-  locked: SOLID_LUCKY[kind],
-  pool: kind === 'ball' ? [{ min: PLAY_MIN_CELLS, max: PLAY_MAX_CELLS }] : SOLID_SIZES[kind],
-  open: day => stageOf(kind, day, release) === 'all',
-}));
+export const solidDefs = release =>
+  SOLID_KINDS.map(kind => ({
+    id: kind,
+    solid: true,
+    from: release ? release.first : null,
+    locked: SOLID_LUCKY[kind],
+    pool: kind === 'ball' ? [{ min: PLAY_MIN_CELLS, max: PLAY_MAX_CELLS }] : SOLID_SIZES[kind],
+    open: day => stageOf(kind, day, release) === 'all',
+  }));
 
 // What the unlock feature (features/unlock.js) needs of each variant: the sizes of its
 // lucky game while it is locked (its luckySizes, default LUCKY_SIZES, that the variant
@@ -162,7 +168,8 @@ export const solidDefs = release => SOLID_KINDS.map(kind => ({
 // (solidDefs).
 export const luckyDefs = (sizes, release) => [
   ...PLAY_VARIANTS.map(variant => {
-    const pool = variant.sizes(sizes), lucky = variant.luckySizes || LUCKY_SIZES;
+    const pool = variant.sizes(sizes),
+      lucky = variant.luckySizes || LUCKY_SIZES;
     const locked = pool.filter(n => lucky.includes(n));
     return { id: variant.id, locked: locked.length ? locked : pool, pool };
   }),

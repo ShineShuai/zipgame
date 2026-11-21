@@ -2,7 +2,8 @@ import { wallIds, arrowIds, arrowDirId, arrowMove } from '../core/edges.js';
 
 // Pure board geometry in "cell units" scaled by s. Shared by every painter (SVG now, canvas later).
 export const cellCenter = (n, i, s = 1) => [((i % n) + 0.5) * s, (((i / n) | 0) + 0.5) * s];
-export const polyPoints = (n, path, s = 1) => path.map(i => cellCenter(n, i, s).join(',')).join(' ');
+export const polyPoints = (n, path, s = 1) =>
+  path.map(i => cellCenter(n, i, s).join(',')).join(' ');
 // A wrap-around board (core/geom.js) is drawn with a margin of WRAP_PAD cells on every side: a step
 // across a seam leaves the board on one side and comes in on the opposite one, and the margin is
 // where the two stubs of such a step are seen. SEAM_STUB = how far into the margin a stub reaches.
@@ -12,13 +13,18 @@ export const SEAM_STUB = 0.25;
 // goes over a seam: a stub out of the board, and a stub in from the opposite side.
 export function pathD(n, path, s = 1, wrap = false) {
   if (!wrap) return path.map((i, k) => (k ? 'L' : 'M') + cellCenter(n, i, s).join(' ')).join(' ');
-  const far = (n + SEAM_STUB) * s, near = -SEAM_STUB * s;
+  const far = (n + SEAM_STUB) * s,
+    near = -SEAM_STUB * s;
   let d = '';
   path.forEach((cell, k) => {
     const [x, y] = cellCenter(n, cell, s);
-    if (k === 0) { d = `M${x} ${y}`; return; }
+    if (k === 0) {
+      d = `M${x} ${y}`;
+      return;
+    }
     const [px, py] = cellCenter(n, path[k - 1], s);
-    const sideways = Math.abs(x - px) > 1.01 * s, vertical = Math.abs(y - py) > 1.01 * s;
+    const sideways = Math.abs(x - px) > 1.01 * s,
+      vertical = Math.abs(y - py) > 1.01 * s;
     if (sideways) d += `L${x < px ? far : near} ${py}M${x < px ? near : far} ${y}`;
     else if (vertical) d += `L${px} ${y < py ? far : near}M${x} ${y < py ? near : far}`;
     d += `L${x} ${y}`;
@@ -36,19 +42,16 @@ export const MARK_IN = 0.15; // centre of an 'in' arrowhead before the border, i
 export function seamMarks(n, path, s = 1) {
   const marks = [];
   for (let k = 1; k < path.length; k++) {
-    const [px, py] = cellCenter(n, path[k - 1], s), [x, y] = cellCenter(n, path[k], s);
-    const sideways = Math.abs(x - px) > 1.01 * s, vertical = Math.abs(y - py) > 1.01 * s;
+    const [px, py] = cellCenter(n, path[k - 1], s),
+      [x, y] = cellCenter(n, path[k], s);
+    const sideways = Math.abs(x - px) > 1.01 * s,
+      vertical = Math.abs(y - py) > 1.01 * s;
     if (!sideways && !vertical) continue;
-    const dx = sideways ? (x < px ? 1 : -1) : 0, dy = vertical ? (y < py ? 1 : -1) : 0;
+    const dx = sideways ? (x < px ? 1 : -1) : 0,
+      dy = vertical ? (y < py ? 1 : -1) : 0;
     const edge = v => (v > 0 ? n * s : 0); // the border the path leaves through, on its axis
-    const out = [
-      dx ? edge(dx) + dx * MARK_OUT * s : px,
-      dy ? edge(dy) + dy * MARK_OUT * s : py,
-    ];
-    const entry = [
-      dx ? edge(-dx) - dx * MARK_IN * s : x,
-      dy ? edge(-dy) - dy * MARK_IN * s : y,
-    ];
+    const out = [dx ? edge(dx) + dx * MARK_OUT * s : px, dy ? edge(dy) + dy * MARK_OUT * s : py];
+    const entry = [dx ? edge(-dx) - dx * MARK_IN * s : x, dy ? edge(-dy) - dy * MARK_IN * s : y];
     marks.push({ kind: 'out', x: out[0], y: out[1], dx, dy });
     marks.push({ kind: 'in', x: entry[0], y: entry[1], dx, dy });
   }
@@ -59,13 +62,18 @@ export function seamMarks(n, path, s = 1) {
 // crosses a seam is two pieces: one leaving the board from a, one coming in to b (both reach into
 // the margin; a view clips them there).
 export function chordSegments(n, wrap, a, b, s = 1) {
-  const [ax, ay] = cellCenter(n, a, s), [bx, by] = cellCenter(n, b, s);
+  const [ax, ay] = cellCenter(n, a, s),
+    [bx, by] = cellCenter(n, b, s);
   if (!wrap) return [[ax, ay, bx, by]];
   const half = (n * s) / 2;
   const shorter = d => (d > half ? d - n * s : d < -half ? d + n * s : d);
-  const dx = shorter(bx - ax), dy = shorter(by - ay);
+  const dx = shorter(bx - ax),
+    dy = shorter(by - ay);
   if (dx === bx - ax && dy === by - ay) return [[ax, ay, bx, by]];
-  return [[ax, ay, ax + dx, ay + dy], [bx - dx, by - dy, bx, by]];
+  return [
+    [ax, ay, ax + dx, ay + dy],
+    [bx - dx, by - dy, bx, by],
+  ];
 }
 // Pointer position (relative to a w×h box) -> cell index or -1. pad: the margin around the board
 // in cells (WRAP_PAD). wrap: a point in the margin belongs to the cell on the opposite side (the
@@ -73,7 +81,8 @@ export function chordSegments(n, wrap, a, b, s = 1) {
 export function cellAtPoint(n, x, y, w, h, pad = 0, wrap = false) {
   if (x < 0 || y < 0 || x >= w || y >= h) return -1;
   const span = n + 2 * pad;
-  let c = Math.floor(x / (w / span) - pad), r = Math.floor(y / (h / span) - pad);
+  let c = Math.floor(x / (w / span) - pad),
+    r = Math.floor(y / (h / span) - pad);
   if (wrap) {
     c = ((c % n) + n) % n;
     r = ((r % n) + n) % n;
@@ -84,22 +93,39 @@ export function cellAtPoint(n, x, y, w, h, pad = 0, wrap = false) {
 }
 // Wall segments as [x1,y1,x2,y2] on the shared border of the two cells they separate. A wall across
 // a seam of a wrap-around board is drawn on both borders of the board.
-export const wallSegments = (p, s = 1) => wallIds(p).flatMap(e => {
-  const a = e >> 1, r = (a / p.n) | 0, c = a % p.n;
-  const seg = e & 1
-    ? [c * s, (r + 1) * s, (c + 1) * s, (r + 1) * s]
-    : [(c + 1) * s, r * s, (c + 1) * s, (r + 1) * s];
-  if (!p.wrap || !(e & 1 ? r === p.n - 1 : c === p.n - 1)) return [seg];
-  return [seg, e & 1 ? [c * s, 0, (c + 1) * s, 0] : [0, r * s, 0, (r + 1) * s]];
-});
+export const wallSegments = (p, s = 1) =>
+  wallIds(p).flatMap(e => {
+    const a = e >> 1,
+      r = (a / p.n) | 0,
+      c = a % p.n;
+    const seg =
+      e & 1
+        ? [c * s, (r + 1) * s, (c + 1) * s, (r + 1) * s]
+        : [(c + 1) * s, r * s, (c + 1) * s, (r + 1) * s];
+    if (!p.wrap || !(e & 1 ? r === p.n - 1 : c === p.n - 1)) return [seg];
+    return [seg, e & 1 ? [c * s, 0, (c + 1) * s, 0] : [0, r * s, 0, (r + 1) * s]];
+  });
 // Arrow from cell a to cell b, trimmed by `inset` at both ends (so it clears the checkpoint badges).
 // Returns { line: [x1,y1,x2,y2] ending at the arrowhead's base, tip: [x,y], head: [x,y,x,y,x,y] triangle }.
 export function arrowSegment(n, a, b, s = 1, inset = 0.34, headLen = 0.22, headHalf = 0.1) {
-  const [ax, ay] = cellCenter(n, a, s), [bx, by] = cellCenter(n, b, s);
-  const len = Math.hypot(bx - ax, by - ay) || 1, ux = (bx - ax) / len, uy = (by - ay) / len;
-  const x1 = ax + ux * inset * s, y1 = ay + uy * inset * s, tx = bx - ux * inset * s, ty = by - uy * inset * s;
-  const hx = tx - ux * headLen * s, hy = ty - uy * headLen * s, px = -uy * headHalf * s, py = ux * headHalf * s;
-  return { line: [x1, y1, hx, hy], tip: [tx, ty], head: [tx, ty, hx + px, hy + py, hx - px, hy - py] };
+  const [ax, ay] = cellCenter(n, a, s),
+    [bx, by] = cellCenter(n, b, s);
+  const len = Math.hypot(bx - ax, by - ay) || 1,
+    ux = (bx - ax) / len,
+    uy = (by - ay) / len;
+  const x1 = ax + ux * inset * s,
+    y1 = ay + uy * inset * s,
+    tx = bx - ux * inset * s,
+    ty = by - uy * inset * s;
+  const hx = tx - ux * headLen * s,
+    hy = ty - uy * headLen * s,
+    px = -uy * headHalf * s,
+    py = ux * headHalf * s;
+  return {
+    line: [x1, y1, hx, hy],
+    tip: [tx, ty],
+    head: [tx, ty, hx + px, hy + py, hx - px, hy - py],
+  };
 }
 
 // The one-way mark on the edge between cells `from` and `to`: a triangle (as an SVG points string)

@@ -2,8 +2,13 @@ import { dailySeed } from '../core/rng.js';
 import { parse } from '../core/format.js';
 import { validate, ALGO_VERSION } from '../core/model.js';
 
-export const utcDayNumber = d => Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 86400000);
-export const utcDateString = d => '' + d.getUTCFullYear() + String(d.getUTCMonth() + 1).padStart(2, '0') + String(d.getUTCDate()).padStart(2, '0');
+export const utcDayNumber = d =>
+  Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 86400000);
+export const utcDateString = d =>
+  '' +
+  d.getUTCFullYear() +
+  String(d.getUTCMonth() + 1).padStart(2, '0') +
+  String(d.getUTCDate()).padStart(2, '0');
 
 // Storage / map key of a size within a scope: the plain size for standard (so the old keys stay), '<scope>_<n>' for a puzzle variant.
 export const scopeKey = (n, scope = '') => (scope ? scope + '_' + n : '' + n);
@@ -20,16 +25,44 @@ export function createDaily(storage, now = () => new Date()) {
   const key = (n, scope) => 'zip_daily_index_' + scopeKey(n, scope);
   const read = async (n, scope) => {
     const day = utcDayNumber(now());
-    try { const r = await storage.get(key(n, scope)); const v = r && JSON.parse(r.value); if (v && v.day === day) return { day, index: v.index | 0, solved: !!v.solved }; } catch { /* fall through */ }
+    try {
+      const r = await storage.get(key(n, scope));
+      const v = r && JSON.parse(r.value);
+      if (v && v.day === day) return { day, index: v.index | 0, solved: !!v.solved };
+    } catch {
+      /* fall through */
+    }
     return { day, index: 0, solved: false };
   };
-  const write = async (n, rec, scope) => { try { await storage.set(key(n, scope), JSON.stringify(rec)); } catch { /* ignore */ } };
+  const write = async (n, rec, scope) => {
+    try {
+      await storage.set(key(n, scope), JSON.stringify(rec));
+    } catch {
+      /* ignore */
+    }
+  };
   const game = (day, n, index) => ({ index, seed: dailySeed(day, n, index, ALGO_VERSION) }); // versioned: a new ALGO_VERSION never reuses seeds of the old puzzles
   return {
-    async peek(n, scope) { const r = await read(n, scope); return game(r.day, n, r.solved ? r.index + 1 : r.index); },
-    async open(n, scope) { const r = await read(n, scope), index = r.solved ? r.index + 1 : r.index; await write(n, { day: r.day, index, solved: false }, scope); return game(r.day, n, index); },
-    async skip(n, scope) { const r = await read(n, scope), index = r.index + 1; await write(n, { day: r.day, index, solved: false }, scope); return game(r.day, n, index); },
-    async markSolved(n, index, scope) { const r = await read(n, scope); if (r.index === index) await write(n, { day: r.day, index, solved: true }, scope); },
+    async peek(n, scope) {
+      const r = await read(n, scope);
+      return game(r.day, n, r.solved ? r.index + 1 : r.index);
+    },
+    async open(n, scope) {
+      const r = await read(n, scope),
+        index = r.solved ? r.index + 1 : r.index;
+      await write(n, { day: r.day, index, solved: false }, scope);
+      return game(r.day, n, index);
+    },
+    async skip(n, scope) {
+      const r = await read(n, scope),
+        index = r.index + 1;
+      await write(n, { day: r.day, index, solved: false }, scope);
+      return game(r.day, n, index);
+    },
+    async markSolved(n, index, scope) {
+      const r = await read(n, scope);
+      if (r.index === index) await write(n, { day: r.day, index, solved: true }, scope);
+    },
   };
 }
 
@@ -37,15 +70,22 @@ export function createDaily(storage, now = () => new Date()) {
 // `fresh`: bypass the HTTP cache (today's file); the file of a past day never changes, so a replay may be served from the cache.
 export async function fetchGameOfDayFor(date, { fresh = false } = {}) {
   try {
-    const res = await fetch('../demo/GameOfDay/' + date + '.txt', fresh ? { cache: 'no-store' } : undefined);
+    const res = await fetch(
+      '../demo/GameOfDay/' + date + '.txt',
+      fresh ? { cache: 'no-store' } : undefined,
+    );
     if (!res.ok) return null;
     const p = parse(await res.text());
     if (!validate(p).ok) return null;
     p.gotdDate = date;
     return p;
-  } catch (e) { console.warn('fetchGameOfDay failed:', e); return null; }
+  } catch (e) {
+    console.warn('fetchGameOfDay failed:', e);
+    return null;
+  }
 }
-export const fetchGameOfDay = (now = () => new Date()) => fetchGameOfDayFor(utcDateString(now()), { fresh: true });
+export const fetchGameOfDay = (now = () => new Date()) =>
+  fetchGameOfDayFor(utcDateString(now()), { fresh: true });
 
 // UTC day number -> 'YYYYMMDD' (inverse of utcDayNumber for the date part).
 export const dateOfDay = day => utcDateString(new Date(day * 86400000));

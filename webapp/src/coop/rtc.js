@@ -44,10 +44,14 @@ export function describeRoute(stats, seen, state = '') {
   stats.forEach(report => byId.set(report.id, report));
   const reports = [...byId.values()];
   const picked = r => r.selected || (r.nominated && r.state === 'succeeded');
-  const chosen = byId.get(reports.find(r => r.type === 'transport')?.selectedCandidatePairId)
-    ?? reports.find(r => r.type === 'candidate-pair' && picked(r));
+  const chosen =
+    byId.get(reports.find(r => r.type === 'transport')?.selectedCandidatePairId) ??
+    reports.find(r => r.type === 'candidate-pair' && picked(r));
   if (!chosen) {
-    const got = Object.entries(seen.types).map(([type, n]) => `${type} ${n}`).join(' ') || 'none';
+    const got =
+      Object.entries(seen.types)
+        .map(([type, n]) => `${type} ${n}`)
+        .join(' ') || 'none';
     return `ice ${state || 'no route'} · gathered ${got}`;
   }
   const local = byId.get(chosen.localCandidateId);
@@ -102,25 +106,32 @@ function probeOne({ urls }, ms) {
       }
     });
     pc.createDataChannel('probe');
-    pc.createOffer().then(offer => pc.setLocalDescription(offer)).catch(() => end(null));
+    pc.createOffer()
+      .then(offer => pc.setLocalDescription(offer))
+      .catch(() => end(null));
   });
 }
 
-export const probeServers = (servers = ICE_SERVERS, ms = 3000) => Promise.all(
-  servers.map(async ({ urls }) => ({ url: urls, ms: await probeOne({ urls }, ms) })),
-);
+export const probeServers = (servers = ICE_SERVERS, ms = 3000) =>
+  Promise.all(servers.map(async ({ urls }) => ({ url: urls, ms: await probeOne({ urls }, ms) })));
 
 // [{ url, ms }] -> "stun cloudflare.com 41ms · l.google.com x" (x = no answer)
-export const probeText = results => 'stun ' + results.map(({ url, ms }) => {
-  const host = bare(url).replace(/^stun\./, '').replace(/:\d+$/, '');
-  return `${host} ${ms === null ? 'x' : `${ms}ms`}`;
-}).join(' · ');
+export const probeText = results =>
+  'stun ' +
+  results
+    .map(({ url, ms }) => {
+      const host = bare(url)
+        .replace(/^stun\./, '')
+        .replace(/:\d+$/, '');
+      return `${host} ${ms === null ? 'x' : `${ms}ms`}`;
+    })
+    .join(' · ');
 
 // Does this connection state end the channel? `closed` always. `failed` only for a channel that had
 // been open: before that the connection may still recover (the guest's side tries for minutes,
 // until the host has pasted the reply), and a transient `failed` must not end the session.
-export const connectionEnded = (state, opened) => state === 'closed'
-  || (state === 'failed' && opened);
+export const connectionEnded = (state, opened) =>
+  state === 'closed' || (state === 'failed' && opened);
 
 function makeChannel() {
   let real = null;

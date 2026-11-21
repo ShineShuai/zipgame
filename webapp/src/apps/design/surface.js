@@ -61,25 +61,34 @@ const MAP_WIDTH = 300;
 // Puzzles Generate makes (new seeds in turn) while looking for one within Max walls.
 const GEN_TRIES = 20;
 const PLAY_STEP = { strictOrder: true };
-const NUMBER_HINT = 'Click a cell then type a number (Enter to confirm · Esc to cancel). '
-  + 'Delete or Backspace clears the cell. The numbers go 1, 2, 3... along the path.';
-const WALL_HINT = 'Click a cell near one of its sides to add or remove a wall there. A side on '
-  + 'the border of the net is glued to the side with the same letter: its wall shows on both.';
+const NUMBER_HINT =
+  'Click a cell then type a number (Enter to confirm · Esc to cancel). ' +
+  'Delete or Backspace clears the cell. The numbers go 1, 2, 3... along the path.';
+const WALL_HINT =
+  'Click a cell near one of its sides to add or remove a wall there. A side on ' +
+  'the border of the net is glued to the side with the same letter: its wall shows on both.';
 const WALL_HINT_BALL = 'Click a cell near one of its sides to add or remove a wall there.';
-const ORBIT_HINT = ' Turn the solid: right-drag, two fingers, drag the background, or the arrow '
-  + 'keys. The small net shows the whole board.';
-const BALL_HINT = ' Turn the ball: right-drag, two fingers, drag the background, or the arrow '
-  + 'keys. The small ball shows its far side.';
-const MAP_HINT = ' The two halves of the ball side by side; a cell on the rim is on both. Turn '
-  + 'it as in the Ball view.';
-const PLAY_HINT = 'Drag from checkpoint 1 through every cell, or tap the next cell. A side with '
-  + 'a letter on the border continues at the same letter. Move back over the path to undo.';
-const WALL_HINT_FLAT = 'Click a cell near one of its sides to add or remove a wall there. A side '
-  + 'on the border of the board has no neighbour: nothing to wall.';
-const PLAY_HINT_FLAT = 'Drag from checkpoint 1 through every cell, or tap the next cell. Move back '
-  + 'over the path to undo.';
-const PLAY_HINT_BALL = 'Drag from checkpoint 1 through every cell, or tap the next cell. The ball '
-  + 'turns to the head of the path (Follow head). Move back over the path to undo.';
+const ORBIT_HINT =
+  ' Turn the solid: right-drag, two fingers, drag the background, or the arrow ' +
+  'keys. The small net shows the whole board.';
+const BALL_HINT =
+  ' Turn the ball: right-drag, two fingers, drag the background, or the arrow ' +
+  'keys. The small ball shows its far side.';
+const MAP_HINT =
+  ' The two halves of the ball side by side; a cell on the rim is on both. Turn ' +
+  'it as in the Ball view.';
+const PLAY_HINT =
+  'Drag from checkpoint 1 through every cell, or tap the next cell. A side with ' +
+  'a letter on the border continues at the same letter. Move back over the path to undo.';
+const WALL_HINT_FLAT =
+  'Click a cell near one of its sides to add or remove a wall there. A side ' +
+  'on the border of the board has no neighbour: nothing to wall.';
+const PLAY_HINT_FLAT =
+  'Drag from checkpoint 1 through every cell, or tap the next cell. Move back ' +
+  'over the path to undo.';
+const PLAY_HINT_BALL =
+  'Drag from checkpoint 1 through every cell, or tap the next cell. The ball ' +
+  'turns to the head of the path (Follow head). Move back over the path to undo.';
 
 // A stopwatch that can be paused: seconds() is the time run so far, onTick gets it every 100 ms.
 function createClock(onTick) {
@@ -277,11 +286,10 @@ export function createSurfaceController(ctx) {
     const views = pictures
       .map((picture, i) => `<div class="sf-view" data-view="${i}">${picture.markup}</div>`)
       .join('');
-    const small = inset
-      ? surfaceSvg(inset, { ...state, selected: -1, idSuffix: 'm' }).markup
-      : '';
-    host.innerHTML = (pictures.length > 1 ? `<div class="sf-pair">${views}</div>` : views)
-      + (inset ? `<div class="sf-mini">${small}</div>` : '');
+    const small = inset ? surfaceSvg(inset, { ...state, selected: -1, idSuffix: 'm' }).markup : '';
+    host.innerHTML =
+      (pictures.length > 1 ? `<div class="sf-pair">${views}</div>` : views) +
+      (inset ? `<div class="sf-mini">${small}</div>` : '');
     const gap = 12;
     const width = frames.reduce((total, each) => total + each.width, gap * (frames.length - 1));
     stage.style.setProperty('--board-size', `${width}px`);
@@ -304,10 +312,10 @@ export function createSurfaceController(ctx) {
     const ball = isBall();
     $('sfView3d').textContent = ball ? 'Ball' : '3D';
     $('sfView3d').title = ball
-      ? 'The ball itself: turn it with a right-drag, two fingers, a drag on the background or '
-        + 'the arrow keys'
-      : 'The solid itself: turn it with a right-drag, two fingers, a drag on the background or '
-        + 'the arrow keys';
+      ? 'The ball itself: turn it with a right-drag, two fingers, a drag on the background or ' +
+        'the arrow keys'
+      : 'The solid itself: turn it with a right-drag, two fingers, a drag on the background or ' +
+        'the arrow keys';
     $('sfViewNet').textContent = ball ? 'Map' : 'Net';
     $('sfViewNet').title = ball
       ? 'The two halves of the ball side by side, to see every cell at once'
@@ -340,10 +348,12 @@ export function createSurfaceController(ctx) {
   // their sides.
   function flatStatus(top) {
     const hint = shapeHint(top);
-    return `Pentagon ${P.n}: ${plural(top.T, 'cell')} (${FACES[kind]}), ${plural(top.E, 'side')} `
-      + `between two cells. ${plural(hint.twoNeighbour, 'cell')} with only 2 neighbours fix `
-      + `${hint.fixed} of the ${hint.path} sides of the path before the first move. `
-      + 'One path through every cell, the numbers in order.';
+    return (
+      `Pentagon ${P.n}: ${plural(top.T, 'cell')} (${FACES[kind]}), ${plural(top.E, 'side')} ` +
+      `between two cells. ${plural(hint.twoNeighbour, 'cell')} with only 2 neighbours fix ` +
+      `${hint.fixed} of the ${hint.path} sides of the path before the first move. ` +
+      'One path through every cell, the numbers in order.'
+    );
   }
 
   function updateHint() {
@@ -407,7 +417,10 @@ export function createSurfaceController(ctx) {
     const cells = surfaceTopology(kind, n).T;
     $('sfK').max = String(cells);
     $('sfK').value = keptK({
-      typed: kTyped, value: $('sfK').value, cells, fallback: startK(kind, n),
+      typed: kTyped,
+      value: $('sfK').value,
+      cells,
+      fallback: startK(kind, n),
     });
   }
 
@@ -455,9 +468,9 @@ export function createSurfaceController(ctx) {
     if (isBall()) {
       const ball = ballEntry(P.n);
       ctx.setStatus(
-        `Ball, ${ball.name}: ${plural(top.T, 'cell')} (${compositionLabel(ball.f)}), `
-          + `${plural(top.E, 'side')}. Turn it with the mouse; Map shows both halves. One path `
-          + 'through every cell, the numbers in order.',
+        `Ball, ${ball.name}: ${plural(top.T, 'cell')} (${compositionLabel(ball.f)}), ` +
+          `${plural(top.E, 'side')}. Turn it with the mouse; Map shows both halves. One path ` +
+          'through every cell, the numbers in order.',
         'ok',
       );
       return;
@@ -467,10 +480,10 @@ export function createSurfaceController(ctx) {
       return;
     }
     ctx.setStatus(
-      `${NAME[kind]} ${P.n}: ${plural(top.T, 'cell')} (${FACES[kind]}), ${plural(top.E, 'side')}. `
-        + 'Turn the solid with the mouse; Net shows it cut open: a side with a letter on the '
-        + 'border continues at the same letter elsewhere. One path through every cell, the '
-        + 'numbers in order.',
+      `${NAME[kind]} ${P.n}: ${plural(top.T, 'cell')} (${FACES[kind]}), ${plural(top.E, 'side')}. ` +
+        'Turn the solid with the mouse; Net shows it cut open: a side with a letter on the ' +
+        'border continues at the same letter elsewhere. One path through every cell, the ' +
+        'numbers in order.',
       'ok',
     );
   }
@@ -851,20 +864,20 @@ export function createSurfaceController(ctx) {
     const info = ` (${found.nodes.toLocaleString()} nodes, ${ms.toFixed(0)}ms)`;
     if (found.count >= 2) {
       ctx.setStatus(
-        'Multiple solutions — this puzzle is NOT unique. Showing 2 '
-          + `(click the legend chips to toggle).${info}`,
+        'Multiple solutions — this puzzle is NOT unique. Showing 2 ' +
+          `(click the legend chips to toggle).${info}`,
         'warn',
       );
     } else if (found.count === 1) {
-      const capped = 'Found 1 solution so far, but the search limit was reached — it may not be '
-        + 'unique.';
+      const capped =
+        'Found 1 solution so far, but the search limit was reached — it may not be ' + 'unique.';
       ctx.setStatus(
         found.capped ? `${capped}${info}` : `Unique solution found ✓${info}`,
         found.capped ? 'warn' : 'ok',
       );
     } else {
-      const capped = 'Search limit reached without finding a solution — the puzzle may be '
-        + 'unsolvable.';
+      const capped =
+        'Search limit reached without finding a solution — the puzzle may be ' + 'unsolvable.';
       ctx.setStatus(
         found.capped ? `${capped}${info}` : `No solution exists for this puzzle.${info}`,
         found.capped ? 'warn' : 'error',
@@ -898,9 +911,8 @@ export function createSurfaceController(ctx) {
       const made = await runAsync(measured(run, clockMs), {
         onEvent: event => {
           const tries = maxWalls === null ? '' : ` (puzzle ${event.attempt})`;
-          const checked = event.phase === 'walls'
-            ? ` · ${event.done} / ${event.total} walls checked`
-            : '';
+          const checked =
+            event.phase === 'walls' ? ` · ${event.done} / ${event.total} walls checked` : '';
           ctx.setStatus(`Generating…${tries}${checked}`, '');
         },
       });
@@ -909,18 +921,18 @@ export function createSurfaceController(ctx) {
       draw();
       const limited = maxWalls !== null && !made.hit;
       const unproven = made.undecided
-        ? ` ${plural(made.undecided, 'wall')} kept without proof (search cap reached): `
-          + 'fewer may do.'
+        ? ` ${plural(made.undecided, 'wall')} kept without proof (search cap reached): ` +
+          'fewer may do.'
         : '';
       const missed = limited
-        ? ` None of ${made.attempts} puzzles needed at most ${plural(maxWalls, 'wall')}: `
-          + 'this is the one with the fewest.'
+        ? ` None of ${made.attempts} puzzles needed at most ${plural(maxWalls, 'wall')}: ` +
+          'this is the one with the fewest.'
         : '';
       const seeds = made.attempts > 1 ? ` + ${made.attempts - 1}` : '';
       ctx.setStatus(
-        `Generated a ${NAME[kind]} puzzle: ${plural(made.K, 'checkpoint')}, `
-          + `${plural(made.walls, 'wall')}, unique (proof ${plural(made.nodes, 'node')}). `
-          + `Seed ${seed}${seeds}.${missed}${unproven} The template path is shown dashed.`,
+        `Generated a ${NAME[kind]} puzzle: ${plural(made.K, 'checkpoint')}, ` +
+          `${plural(made.walls, 'wall')}, unique (proof ${plural(made.nodes, 'node')}). ` +
+          `Seed ${seed}${seeds}.${missed}${unproven} The template path is shown dashed.`,
         limited ? 'warn' : 'ok',
       );
     } catch (error) {
@@ -949,10 +961,12 @@ export function createSurfaceController(ctx) {
     if (first.capped || first.count !== 1) {
       const why = first.capped
         ? 'the search limit was reached before confirming it'
-        : first.count === 0 ? 'it has no solution' : 'it has multiple solutions';
+        : first.count === 0
+          ? 'it has no solution'
+          : 'it has multiple solutions';
       ctx.setStatus(
-        `Can't minimize — the puzzle isn't uniquely solvable as-is (${why}). `
-          + 'Solve first to check, add walls to disambiguate, or raise the search limit.',
+        `Can't minimize — the puzzle isn't uniquely solvable as-is (${why}). ` +
+          'Solve first to check, add walls to disambiguate, or raise the search limit.',
         'error',
       );
       return;
@@ -969,12 +983,13 @@ export function createSurfaceController(ctx) {
       touched();
       draw();
       const unproven = done.undecided
-        ? ` ${plural(done.undecided, 'wall')} kept without proof: the search limit was reached. `
-          + 'Raise it and minimize again.'
+        ? ` ${plural(done.undecided, 'wall')} kept without proof: the search limit was reached. ` +
+          'Raise it and minimize again.'
         : '';
-      const result = done.removed === 0
-        ? `All ${plural(before, 'wall')} are already necessary.`
-        : `Removed ${plural(done.removed, 'unnecessary wall')}; ${done.kept} left.`;
+      const result =
+        done.removed === 0
+          ? `All ${plural(before, 'wall')} are already necessary.`
+          : `Removed ${plural(done.removed, 'unnecessary wall')}; ${done.kept} left.`;
       ctx.setStatus(`${result}${unproven}`, done.undecided ? 'warn' : 'ok');
     } finally {
       working = false;
@@ -1029,9 +1044,10 @@ export function createSurfaceController(ctx) {
     togglePlay: seed => (playing ? exitPlay() : enterPlay(seed)),
     togglePause,
     text: () => serializeSurface(P),
-    exportText: withPath => serializeSurface(P, {
-      path: withPath ? path : null,
-      times: ctx.exportTimes(),
-    }),
+    exportText: withPath =>
+      serializeSurface(P, {
+        path: withPath ? path : null,
+        times: ctx.exportTimes(),
+      }),
   };
 }

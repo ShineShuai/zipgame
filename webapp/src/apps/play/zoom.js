@@ -45,9 +45,8 @@ const LINE_PX = 16;
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 
-const reducedMotion = () => (
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
-);
+const reducedMotion = () =>
+  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export function createZoom({
   svg,
@@ -222,7 +221,8 @@ export function createZoom({
   function onWheel(e) {
     refresh();
     const scale = wheelPixels(e);
-    if (e.ctrlKey || e.metaKey) { // a trackpad pinch arrives as a wheel with ctrlKey
+    if (e.ctrlKey || e.metaKey) {
+      // a trackpad pinch arrives as a wheel with ctrlKey
       e.preventDefault();
       stop();
       const step = clamp(-e.deltaY * scale * WHEEL_ZOOM, -WHEEL_LIMIT, WHEEL_LIMIT);
@@ -234,9 +234,11 @@ export function createZoom({
     if (!isZoomed(cam()) || centred()) {
       return; // the page scrolls
     }
-    const next = clampCamera(full, panCamera(
-      full, cam(), limit(), box, -e.deltaX * scale, -e.deltaY * scale,
-    ), limit());
+    const next = clampCamera(
+      full,
+      panCamera(full, cam(), limit(), box, -e.deltaX * scale, -e.deltaY * scale),
+      limit(),
+    );
     if (sameCamera(next, cam())) {
       return; // at the edge of the picture: the page scrolls
     }

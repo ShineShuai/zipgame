@@ -15,10 +15,34 @@ import { runAsync, measured } from '../../platform/run.js';
 export async function runCompare(o) {
   const seed = o.seed;
   const clockA = { ms: 0 };
-  const a = await runAsync(measured(generateUnique(o.n, o.K, makeRng(seed), { maxWalls: o.maxWalls, tries: o.tries, hardest: o.hardest, flags: o.flagsA, wrap: !!o.wrap, loop: !!o.loop }), clockA),
-    { onEvent: e => o.onEvent && o.onEvent('A', e) });
+  const a = await runAsync(
+    measured(
+      generateUnique(o.n, o.K, makeRng(seed), {
+        maxWalls: o.maxWalls,
+        tries: o.tries,
+        hardest: o.hardest,
+        flags: o.flagsA,
+        wrap: !!o.wrap,
+        loop: !!o.loop,
+      }),
+      clockA,
+    ),
+    { onEvent: e => o.onEvent && o.onEvent('A', e) },
+  );
   const clockB = { ms: 0 };
-  const b = await runAsync(measured(generateUnique(o.n, o.K, makeRng(seed), { maxWalls: o.maxWalls, tries: o.tries, hardest: o.hardest, flags: o.flagsB, wrap: !!o.wrap, loop: !!o.loop }), clockB),
-    { onEvent: e => o.onEvent && o.onEvent('B', e) });
+  const b = await runAsync(
+    measured(
+      generateUnique(o.n, o.K, makeRng(seed), {
+        maxWalls: o.maxWalls,
+        tries: o.tries,
+        hardest: o.hardest,
+        flags: o.flagsB,
+        wrap: !!o.wrap,
+        loop: !!o.loop,
+      }),
+      clockB,
+    ),
+    { onEvent: e => o.onEvent && o.onEvent('B', e) },
+  );
   return { seed, msA: clockA.ms, msB: clockB.ms, a, b };
 }

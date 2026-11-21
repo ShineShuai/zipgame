@@ -53,9 +53,15 @@ function guard(fn) {
 // once). With no answer only the standard type is on offer: a lock is never opened by mistake.
 function askAccess() {
   let answer = null;
-  document.dispatchEvent(new CustomEvent('zip:coop-access', {
-    detail: { reply: info => { answer = info; } },
-  }));
+  document.dispatchEvent(
+    new CustomEvent('zip:coop-access', {
+      detail: {
+        reply: info => {
+          answer = info;
+        },
+      },
+    }),
+  );
   return answer ?? { access: { standard: 'all' }, sizes: {}, solid: false };
 }
 

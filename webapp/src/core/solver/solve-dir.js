@@ -355,8 +355,8 @@ export function solveDirected(p, opts = {}) {
     }
     const legMark = legTrailTop;
     const poolMark = poolTop;
-    const stuck = cell === end || !feasible(cell, count, needNext)
-      || (prop && !deduced(cell, count, used));
+    const stuck =
+      cell === end || !feasible(cell, count, needNext) || (prop && !deduced(cell, count, used));
     if (stuck) {
       undoLegs(legMark, poolMark);
       vis[cell] = 0; // (the end is entered last)

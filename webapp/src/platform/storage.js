@@ -4,19 +4,56 @@
 // skipped or never clean up, and the old data stays where it is; set() must return false, not throw, when it refuses a value.
 const mem = new Map();
 const memory = {
-  name: 'memory', shared: false,
-  async get(k) { return mem.has(k) ? { value: mem.get(k) } : null; },
-  async set(k, v) { mem.set(k, v); return true; },
-  async remove(k) { mem.delete(k); },
-  async keys(prefix = '') { return [...mem.keys()].filter(k => k.startsWith(prefix)); },
+  name: 'memory',
+  shared: false,
+  async get(k) {
+    return mem.has(k) ? { value: mem.get(k) } : null;
+  },
+  async set(k, v) {
+    mem.set(k, v);
+    return true;
+  },
+  async remove(k) {
+    mem.delete(k);
+  },
+  async keys(prefix = '') {
+    return [...mem.keys()].filter(k => k.startsWith(prefix));
+  },
 };
 const local = {
-  name: 'localStorage', shared: false,
-  async get(k) { try { const v = localStorage.getItem(k); return v == null ? null : { value: v }; } catch { return null; } },
-  async set(k, v) { try { localStorage.setItem(k, v); return true; } catch { return false; /* quota / disabled */ } },
-  async remove(k) { try { localStorage.removeItem(k); } catch { /* disabled */ } },
+  name: 'localStorage',
+  shared: false,
+  async get(k) {
+    try {
+      const v = localStorage.getItem(k);
+      return v == null ? null : { value: v };
+    } catch {
+      return null;
+    }
+  },
+  async set(k, v) {
+    try {
+      localStorage.setItem(k, v);
+      return true;
+    } catch {
+      return false; /* quota / disabled */
+    }
+  },
+  async remove(k) {
+    try {
+      localStorage.removeItem(k);
+    } catch {
+      /* disabled */
+    }
+  },
   async keys(prefix = '') {
-    try { return Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)).filter(k => k && k.startsWith(prefix)); } catch { return []; }
+    try {
+      return Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)).filter(
+        k => k && k.startsWith(prefix),
+      );
+    } catch {
+      return [];
+    }
   },
 };
 
@@ -31,13 +68,22 @@ export function withEviction(base, order = EVICT_ORDER) {
     ...base,
     refused,
     async set(k, v) {
-      if (await base.set(k, v)) { refused.delete(k); return true; }
+      if (await base.set(k, v)) {
+        refused.delete(k);
+        return true;
+      }
       for (const victim of order) {
         if (victim === k || !(await base.get(victim))) continue;
         await base.remove(victim);
-        if (await base.set(k, v)) { refused.delete(k); return true; }
+        if (await base.set(k, v)) {
+          refused.delete(k);
+          return true;
+        }
       }
-      if (!refused.has(k)) console.warn(`storage: write refused for ${k} (${v.length} chars); the quota is probably full`);
+      if (!refused.has(k))
+        console.warn(
+          `storage: write refused for ${k} (${v.length} chars); the quota is probably full`,
+        );
       refused.add(k);
       return false;
     },
@@ -48,7 +94,10 @@ export function withEviction(base, order = EVICT_ORDER) {
 export async function usage(storage, prefix = 'zip') {
   let chars = 0;
   const keys = await storage.keys(prefix);
-  for (const k of keys) { const r = await storage.get(k); chars += k.length + (r ? r.value.length : 0); }
+  for (const k of keys) {
+    const r = await storage.get(k);
+    chars += k.length + (r ? r.value.length : 0);
+  }
   return { keys: keys.length, chars };
 }
 
@@ -59,10 +108,20 @@ export async function migrateKey(storage, oldKey, newKey, convert) {
   const old = await storage.get(oldKey);
   if (!old) return 'none';
   const drop = () => (storage.remove ? storage.remove(oldKey) : undefined);
-  if (await storage.get(newKey)) { await drop(); return 'done'; } // the new format is already there: the old copy is stale
+  if (await storage.get(newKey)) {
+    await drop();
+    return 'done';
+  } // the new format is already there: the old copy is stale
   let text = null;
-  try { text = convert(old.value); } catch { /* corrupt: unusable */ }
-  if (text == null) { await drop(); return 'done'; }
+  try {
+    text = convert(old.value);
+  } catch {
+    /* corrupt: unusable */
+  }
+  if (text == null) {
+    await drop();
+    return 'done';
+  }
   if (!(await storage.set(newKey, text))) return 'failed';
   const back = await storage.get(newKey);
   if (!back || back.value !== text) return 'failed';
@@ -71,5 +130,11 @@ export async function migrateKey(storage, oldKey, newKey, convert) {
 }
 
 export async function pickStorage() {
-  try { localStorage.setItem('__probe__', '1'); localStorage.removeItem('__probe__'); return withEviction(local); } catch { return memory; }
+  try {
+    localStorage.setItem('__probe__', '1');
+    localStorage.removeItem('__probe__');
+    return withEviction(local);
+  } catch {
+    return memory;
+  }
 }

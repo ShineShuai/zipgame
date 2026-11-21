@@ -27,17 +27,25 @@ export function createCalib(storage, { fetchFn = (...a) => fetch(...a), rnd = Ma
   }
   async function read(n, list) {
     try {
-      const r = await storage.get(keyOf(n)), v = r && JSON.parse(r.value);
+      const r = await storage.get(keyOf(n)),
+        v = r && JSON.parse(r.value);
       if (v && Number.isInteger(v.pos) && v.pos >= 0) return { pos: v.pos, solved: !!v.solved };
-    } catch { /* fall through: a new start */ }
+    } catch {
+      /* fall through: a new start */
+    }
     const block = Math.max(1, (index.block && index.block[n]) | 0);
     return { pos: Math.floor(rnd() * Math.floor(list.length / block)) * block, solved: false };
   }
   const write = async (n, rec) => {
-    try { await storage.set(keyOf(n), JSON.stringify(rec)); } catch { /* ignore */ }
+    try {
+      await storage.set(keyOf(n), JSON.stringify(rec));
+    } catch {
+      /* ignore */
+    }
   };
   async function puzzleAt(n, list, pos) {
-    const file = list[pos % list.length], res = await fetchFn(CALIB_DIR + file);
+    const file = list[pos % list.length],
+      res = await fetchFn(CALIB_DIR + file);
     if (!res.ok) throw new Error(`calibration puzzle ${file}: HTTP ${res.status}`);
     const p = parse(await res.text());
     if (p.n !== n || !validate(p).ok) throw new Error(`calibration puzzle ${file}: invalid`);
@@ -46,20 +54,28 @@ export function createCalib(storage, { fetchFn = (...a) => fetch(...a), rnd = Ma
   }
   return {
     // the sizes the set has, ascending
-    async sizes() { return Object.keys((await load()).sizes).map(Number).sort((a, b) => a - b); },
+    async sizes() {
+      return Object.keys((await load()).sizes)
+        .map(Number)
+        .sort((a, b) => a - b);
+    },
     async open(n) {
-      const list = (await load()).sizes[n], r = await read(n, list);
+      const list = (await load()).sizes[n],
+        r = await read(n, list);
       const pos = r.solved ? r.pos + 1 : r.pos;
       await write(n, { pos, solved: false });
       return puzzleAt(n, list, pos);
     },
     async skip(n) {
-      const list = (await load()).sizes[n], r = await read(n, list), pos = r.pos + 1;
+      const list = (await load()).sizes[n],
+        r = await read(n, list),
+        pos = r.pos + 1;
       await write(n, { pos, solved: false });
       return puzzleAt(n, list, pos);
     },
     async markSolved(n, pos) {
-      const list = (await load()).sizes[n], r = await read(n, list);
+      const list = (await load()).sizes[n],
+        r = await read(n, list);
       if (r.pos === pos) await write(n, { pos, solved: true });
     },
   };

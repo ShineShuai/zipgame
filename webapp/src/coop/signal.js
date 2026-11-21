@@ -14,8 +14,8 @@ const SEEN_MAX = 400;
 
 const realTimers = { set: (fn, ms) => setTimeout(fn, ms), clear: id => clearTimeout(id) };
 const hex = byte => byte.toString(16).padStart(2, '0');
-const clientId = () => `zc${[...globalThis.crypto.getRandomValues(new Uint8Array(8))]
-  .map(hex).join('')}`;
+const clientId = () =>
+  `zc${[...globalThis.crypto.getRandomValues(new Uint8Array(8))].map(hex).join('')}`;
 
 // Does an MQTT topic filter match a topic? "+" = one level, a trailing "#" = the rest.
 export function matches(filter, topic) {
@@ -44,7 +44,13 @@ export function createHub({
   onChange,
 }) {
   const slots = brokers.map(({ id, url }) => ({
-    id, url, client: null, up: false, ms: null, tries: 0, timer: null,
+    id,
+    url,
+    client: null,
+    up: false,
+    ms: null,
+    tries: 0,
+    timer: null,
   }));
   const listeners = new Map(); // number -> { filter, handler }
   const outbox = new Map(); // topic -> { text, left } what is (re)sent to every broker
@@ -56,7 +62,8 @@ export function createHub({
 
   const up = () => slots.filter(slot => slot.up);
   // Per broker, in order: is it connected, how long did the connect take (null while it is not).
-  const state = () => slots.map(({ id, up: isUp, ms }) => ({ id, up: isUp, ms: isUp ? ms : null }));
+  const state = () =>
+    slots.map(({ id, up: isUp, ms }) => ({ id, up: isUp, ms: isUp ? ms : null }));
 
   function flush(slot) {
     outbox.forEach(({ text }, topic) => slot.client.publish(topic, text, true));
@@ -166,8 +173,10 @@ export function createHub({
     anyUp: () => up().length > 0,
     state,
     // "signal mq 0.35s · hv x · em 1.16s" (x = not connected), for the dev line
-    report: () => `signal ${state().map(({ id, ms }) => `${id} ${ms === null
-      ? 'x' : `${(ms / 1000).toFixed(2)}s`}`).join(' · ')}`,
+    report: () =>
+      `signal ${state()
+        .map(({ id, ms }) => `${id} ${ms === null ? 'x' : `${(ms / 1000).toFixed(2)}s`}`)
+        .join(' · ')}`,
     close() {
       closed = true;
       timers.clear(resender);
