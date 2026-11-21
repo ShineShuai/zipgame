@@ -76,6 +76,18 @@ for p in index.html webapp/index.html; do
   [ "$served" = "$staged" ] || fail "$p differs from the staged file (edge rewrite?)"
 done
 
+# Web Analytics (deploy/cloudflare/analytics.json) is installed by hand: one tag per page. A second
+# one means the dashboard injects it too; it does so only for requests that accept text/html.
+token=$(node -p "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).token" \
+  deploy/cloudflare/analytics.json)
+if [ -n "$token" ]; then
+  for p in index.html webapp/index.html; do
+    tags=$(curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 -H 'Accept: text/html' \
+      "$base/$p?cb=$cb" | grep -o '<script[^>]*beacon\.min\.js' | wc -l)
+    [ "$tags" = 1 ] || fail "$p has $tags Web Analytics tags, expected 1 (automatic injection on?)"
+  done
+fi
+
 headers=$(curl -sSIL --retry 5 --retry-delay 3 "$base/webapp/index.html?cb=$cb")
 grep -qi '^x-content-type-options: *nosniff' <<< "$headers" || fail "nosniff header missing"
 grep -qi '^content-security-policy: *frame-ancestors' <<< "$headers" ||
