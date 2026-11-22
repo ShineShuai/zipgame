@@ -219,7 +219,7 @@ export function sharedGamesTests(t, ta, ok, eq) {
     ok(throws(() => new RadixReader(5n).uint(0)));
   });
 
-  // (the variants' round trip, with and without a strip, is a row of variant-contract.js)
+  // (the variants' round trip, with and without a strip, is a row of variant-contract.test.js)
   t('share-code: a standard puzzle round-trips (with and without a strip), canonically', () => {
     const [, puzzle] = PUZZLES()[0];
     ok(validate(puzzle).ok, 'the sample is valid');

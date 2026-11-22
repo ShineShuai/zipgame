@@ -564,7 +564,7 @@ test('loop-play: an unsound loop record is not encodable', () => {
   assert.deepStrictEqual(record(p, { grade: 2 }).grade, null, 'a variant record has no grade');
 });
 
-// (that the planted ring solves the puzzle is a row of variant-contract.js)
+// (that the planted ring solves the puzzle is a row of variant-contract.test.js)
 test('loop-play: a cover that does not close the ring does not solve the puzzle', () => {
   // 4 x 4, numbers on three corners: the serpentine covers the board but ends 3 cells from cell 1
   const p = { n: 4, cp: new Uint16Array(16), walls: new Uint8Array(16), loop: true };
