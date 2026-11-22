@@ -3,7 +3,7 @@
 // frozen queue in test/fixtures/gotd-queue (2 candidates for each of 20261122 = 7x7 and 20261123 = 8x8); it holds data,
 // not what the generator makes today. Its candidates carry the stamp of the day they were made, so after a refit of the model they are "of
 // an older stamp": promotion does not care (an approved candidate counts whatever its stamp, a drift of the grade is only a warning), and
-// the counts that do depend on the stamp are tested on plain objects in test/gotd-gen.js (queueStatus, planFill). Only the top-up test
+// the counts that do depend on the stamp are tested on plain objects in test/unit/gotd-gen.test.js (queueStatus, planFill). Only the top-up test
 // needs stock of the current stamp: it makes its queue with the real fill.
 // Rebuild it after a change of the queue's file format:
 //   node tools/gotd-gen.mjs fill --today 20261122 --horizon 2 --per-slot 2 --puzzles <empty dir> --queue test/fixtures/gotd-queue --ratings <file with []>
@@ -245,7 +245,7 @@ test(
 );
 
 test(
-  'gotd-gen: schedule and status run (what they count is tested on plain objects in gotd-gen.js and gotd-verdict.js)',
+  'gotd-gen: schedule and status run (what they count is tested on plain objects in unit/gotd-gen.test.js)',
   FAST,
   () => {
     let r = run('schedule', '--from', '20261121', '--days', '30');
