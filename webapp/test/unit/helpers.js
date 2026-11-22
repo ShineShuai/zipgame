@@ -3,7 +3,7 @@
 import { makePuzzle } from '../../src/core/model.js';
 import { allEdges, setWallId } from '../../src/core/edges.js';
 import { makeRng, shuffle } from '../../src/core/rng.js';
-import { ok } from '../harness.js';
+import assert from 'node:assert/strict';
 import { fixture, SAMPLES } from '../fixtures/puzzles.js';
 
 export const randPuzzle = (seed, n, K, wallFrac) => {
@@ -21,7 +21,7 @@ export const randPuzzle = (seed, n, K, wallFrac) => {
 };
 export function sampleUniquePuzzles() {
   const out = SAMPLES.map(([n, K, seed]) => fixture('sample', n, seed, { K }));
-  ok(out.length > 0, 'expected at least one unique sample puzzle to test against');
+  assert.ok(out.length > 0, 'expected at least one unique sample puzzle to test against');
   return out;
 }
 

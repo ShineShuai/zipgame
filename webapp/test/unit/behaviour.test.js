@@ -1,5 +1,6 @@
 // Unit tests of behaviour rows and their upload.
-// Part of `npm test` (test/run.mjs); the tiers and t / ta are in test/harness.js.
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import '../setup-balls.js';
 import { makePuzzle } from '../../src/core/model.js';
 import { serialize, parse } from '../../src/core/format.js';
@@ -39,7 +40,7 @@ import {
 } from '../../src/platform/behaviour.js';
 import { BEHAVIOUR, LEADERBOARD } from '../../src/config.js';
 import { solutionPath } from '../../src/core/trap.js';
-import { t, ta, eq, ok, registerAsyncTests } from '../harness.js';
+import { FAST, SLOW } from '../harness.js';
 import { fakeStorage } from './helpers.js';
 
 const BEH_TEXT =
@@ -60,8 +61,9 @@ const behGame = (extra = {}) => ({
   ...extra,
 });
 
-t.slow(
+test(
   'behaviour: the packed puzzle round-trips (generated 7x7 and 9x9, a rated one), is canonical and small',
+  SLOW,
   () => {
     for (const [n, seed] of [
       [7, 3],
@@ -69,62 +71,72 @@ t.slow(
     ]) {
       const p = runSync(generate(n, seed)),
         b = packPuzzle(p);
-      ok(b instanceof Uint8Array && b.length <= 40, `size ${n}: ${b?.length} bytes`);
-      eq(serialize(unpackPuzzle(b)), serialize(p), `size ${n}`);
-      eq([...packPuzzle(unpackPuzzle(b))], [...b], 'equal puzzles are equal bytes');
-      ok(serialize(p).length > 4 * b.length, 'the plain text is several times larger');
+      assert.ok(b instanceof Uint8Array && b.length <= 40, `size ${n}: ${b?.length} bytes`);
+      assert.deepStrictEqual(serialize(unpackPuzzle(b)), serialize(p), `size ${n}`);
+      assert.deepStrictEqual(
+        [...packPuzzle(unpackPuzzle(b))],
+        [...b],
+        'equal puzzles are equal bytes',
+      );
+      assert.ok(serialize(p).length > 4 * b.length, 'the plain text is several times larger');
     }
     const p = parse(BEH_TEXT),
       b = packPuzzle(p);
-    eq(b.length, 12);
-    eq(serialize(unpackPuzzle(b)), serialize(p));
-    eq([...fromB64u(toB64u(b))], [...b]);
-    eq(fromB64u('a'), null);
-    eq(fromB64u('a$b'), null);
-    eq(fromB64u(''), new Uint8Array(0));
+    assert.deepStrictEqual(b.length, 12);
+    assert.deepStrictEqual(serialize(unpackPuzzle(b)), serialize(p));
+    assert.deepStrictEqual([...fromB64u(toB64u(b))], [...b]);
+    assert.deepStrictEqual(fromB64u('a'), null);
+    assert.deepStrictEqual(fromB64u('a$b'), null);
+    assert.deepStrictEqual(fromB64u(''), new Uint8Array(0));
   },
 );
 
-t(
+test(
   'behaviour: unpackPuzzle refuses everything that is not exactly what packPuzzle writes; packPuzzle refuses what it cannot carry',
+  FAST,
   () => {
     const b = packPuzzle(parse(BEH_TEXT));
-    eq(unpackPuzzle(Uint8Array.of(...b, 0)), null, 'a trailing byte');
-    eq(unpackPuzzle(b.slice(0, b.length - 1)), null, 'a missing byte');
+    assert.deepStrictEqual(unpackPuzzle(Uint8Array.of(...b, 0)), null, 'a trailing byte');
+    assert.deepStrictEqual(unpackPuzzle(b.slice(0, b.length - 1)), null, 'a missing byte');
     const dirty = b.slice();
     dirty[dirty.length - 1] |= 1;
-    eq(unpackPuzzle(dirty), null, 'padding bits are zero');
-    eq(unpackPuzzle(new Uint8Array(0)), null);
-    eq(unpackPuzzle(null), null);
-    eq(unpackPuzzle(Uint8Array.of(0, 0, 0, 0)), null, 'size 0');
+    assert.deepStrictEqual(unpackPuzzle(dirty), null, 'padding bits are zero');
+    assert.deepStrictEqual(unpackPuzzle(new Uint8Array(0)), null);
+    assert.deepStrictEqual(unpackPuzzle(null), null);
+    assert.deepStrictEqual(unpackPuzzle(Uint8Array.of(0, 0, 0, 0)), null, 'size 0');
     const same = parse(BEH_TEXT);
     same.cp[0] = 1;
-    ok(packPuzzle(same) === null, 'duplicate number 1');
+    assert.ok(packPuzzle(same) === null, 'duplicate number 1');
     const gap = parse(BEH_TEXT);
     gap.cp[parse(BEH_TEXT).cp.indexOf(9)] = 12;
-    ok(packPuzzle(gap) === null, 'a gap in the numbering');
-    ok(packPuzzle({ ...parse(BEH_TEXT), holes: new Uint8Array(49) }) === null, 'a Cutout puzzle');
-    ok(packPuzzle(makePuzzle(7)) === null, 'no checkpoints');
-    ok(packPuzzle(null) === null);
+    assert.ok(packPuzzle(gap) === null, 'a gap in the numbering');
+    assert.ok(
+      packPuzzle({ ...parse(BEH_TEXT), holes: new Uint8Array(49) }) === null,
+      'a Cutout puzzle',
+    );
+    assert.ok(packPuzzle(makePuzzle(7)) === null, 'no checkpoints');
+    assert.ok(packPuzzle(null) === null);
     for (let i = 0; i < 300; i++) {
       const junk = new Uint8Array(1 + (i % 40)).map(
         (_, k) => (i * 31 + k * 17 + (i >> 3) * k) & 255,
       );
       const q = unpackPuzzle(junk);
-      ok(
-        q === null || eq(packPuzzle(q) && [...packPuzzle(q)], [...junk]) === undefined,
+      assert.ok(
+        q === null ||
+          assert.deepStrictEqual(packPuzzle(q) && [...packPuzzle(q)], [...junk]) === undefined,
         'junk is refused or canonical',
       );
     }
   },
 );
 
-t(
+test(
   'behaviour: validateRow checks every column, fills defaults, refuses unknown keys; the wire form round-trips',
+  FAST,
   () => {
     const row = { day: utcDay(), ms: 4000, u: 1, deep: 1, s: 0, pz: null, ev: null, v: 0 };
-    eq(validateRow(row), row);
-    eq(
+    assert.deepStrictEqual(validateRow(row), row);
+    assert.deepStrictEqual(
       validateRow({ day: utcDay(), ms: 4000 }),
       { ...row, u: null, deep: null, s: null },
       'a missing column is null, v defaults to 0',
@@ -147,41 +159,60 @@ t(
       [],
       'x',
     ])
-      eq(validateRow(bad), null, JSON.stringify(bad));
-    ok(
+      assert.deepStrictEqual(validateRow(bad), null, JSON.stringify(bad));
+    assert.ok(
       validateRow({ ...row, day: utcDay() - 91 }) && validateRow({ ...row, day: utcDay() + 1 }),
       'the replay window and tomorrow',
     );
     const full = { ...row, pz: packPuzzle(parse(BEH_TEXT)), ev: Uint8Array.of(1, 2) };
-    eq(validateRow(fromWire(JSON.parse(JSON.stringify(toWire(full))))), full, 'through JSON');
-    eq(fromWire({ ...toWire(full), pz: '!!' }), null);
-    eq(rowArgs(full).length, COLUMNS.length);
-    eq(rowArgs({ day: 1, ms: 2 }).slice(2), [null, null, null, null, null, null]);
+    assert.deepStrictEqual(
+      validateRow(fromWire(JSON.parse(JSON.stringify(toWire(full))))),
+      full,
+      'through JSON',
+    );
+    assert.deepStrictEqual(fromWire({ ...toWire(full), pz: '!!' }), null);
+    assert.deepStrictEqual(rowArgs(full).length, COLUMNS.length);
+    assert.deepStrictEqual(rowArgs({ day: 1, ms: 2 }).slice(2), [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+    ]);
     // compat pin: the wire format of the rows already uploaded
-    eq(COLUMN_NAMES, ['day', 'ms', 'u', 'deep', 's', 'pz', 'ev', 'v']);
+    assert.deepStrictEqual(COLUMN_NAMES, ['day', 'ms', 'u', 'deep', 's', 'pz', 'ev', 'v']);
   },
 );
 
-t('playlog: wrong turns = the path against the solution, closed when taken back', () => {
+test('playlog: wrong turns = the path against the solution, closed when taken back', FAST, () => {
   const sol = [0, 1, 2, 3, 4, 5, 6, 7, 8],
     tr = newTrace(),
     go = path => traceTrack(tr, path, sol);
   go([0]);
   go([0, 1, 2]);
-  eq([tr.open, tr.events], [null, []], 'on the solution: nothing');
+  assert.deepStrictEqual([tr.open, tr.events], [null, []], 'on the solution: nothing');
   go([0, 1, 2, 9]);
-  eq(tr.open, { i: 3, d: 1 });
+  assert.deepStrictEqual(tr.open, { i: 3, d: 1 });
   go([0, 1, 2, 9, 10]);
   go([0, 1, 2, 9, 10, 11]);
   go([0, 1, 2, 9, 10]);
-  eq(tr.open, { i: 3, d: 3 }, 'the deepest point is kept when it is partly taken back');
+  assert.deepStrictEqual(
+    tr.open,
+    { i: 3, d: 3 },
+    'the deepest point is kept when it is partly taken back',
+  );
   go([0, 1, 2, 9]);
   go([0, 1, 2]);
-  eq([tr.open, tr.events], [null, [[3, 3]]], 'taken back to step i: the wrong turn is over');
+  assert.deepStrictEqual(
+    [tr.open, tr.events],
+    [null, [[3, 3]]],
+    'taken back to step i: the wrong turn is over',
+  );
   go([0, 1, 5, 6, 7]);
   go([0, 1, 5]);
   go([0]);
-  eq(
+  assert.deepStrictEqual(
     tr.events,
     [
       [3, 3],
@@ -191,69 +222,95 @@ t('playlog: wrong turns = the path against the solution, closed when taken back'
   );
   go([0, 1, 5, 6]);
   go([0, 1, 2, 8]);
-  eq(
+  assert.deepStrictEqual(
     [tr.events.at(-1), tr.open],
     [[2, 2], { i: 3, d: 1 }],
     'taking one back and leaving elsewhere in one move',
   );
   go([]);
-  eq([tr.events.length, tr.open], [4, null], 'the reset closes it');
+  assert.deepStrictEqual([tr.events.length, tr.open], [4, null], 'the reset closes it');
   go([0, 1, 2, 3, 4, 5, 6, 7, 8]);
-  eq(tr.events.length, 4, 'the solved path adds none');
+  assert.deepStrictEqual(tr.events.length, 4, 'the solved path adds none');
   const tr2 = newTrace();
   traceTrack(tr2, [0, 4], sol);
-  eq(traceEvents(tr2), [[1, 1]], 'a wrong turn still open when the game ends counts');
-  eq(traceEvents(tr2), [[1, 1]], 'and only once');
+  assert.deepStrictEqual(
+    traceEvents(tr2),
+    [[1, 1]],
+    'a wrong turn still open when the game ends counts',
+  );
+  assert.deepStrictEqual(traceEvents(tr2), [[1, 1]], 'and only once');
   const tr3 = newTrace();
   traceTrack(tr3, [0, 4], null);
-  eq([tr3.open, tr3.events], [null, []], 'without a solution nothing is tracked');
+  assert.deepStrictEqual(
+    [tr3.open, tr3.events],
+    [null, []],
+    'without a solution nothing is tracked',
+  );
   const tr4 = newTrace();
   for (let k = 0; k < 40; k++) {
     traceTrack(tr4, [0, 4], sol);
     traceTrack(tr4, [0], sol);
   }
-  eq(tr4.events.length, 31, 'at most 31 are kept');
+  assert.deepStrictEqual(tr4.events.length, 31, 'at most 31 are kept');
   const tr5 = newTrace();
   traceTrack(tr5, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], sol);
-  eq(tr5.open, { i: 9, d: 1 }, 'a path longer than the solution has left it');
+  assert.deepStrictEqual(tr5.open, { i: 9, d: 1 }, 'a path longer than the solution has left it');
 });
 
-t(
+test(
   'behaviour: the s byte and the skill bucket (median ms per cell in half-octaves, unknown below 8 games, hints and unsolved ignored)',
+  FAST,
   () => {
     for (const kind of ['local', 'gotd', 'replay']) {
       for (const sk of [0, 7, 15]) {
-        eq(unpackS(packS(kind, sk)), { kind, skill: sk, hint: false, abandoned: false });
+        assert.deepStrictEqual(unpackS(packS(kind, sk)), {
+          kind,
+          skill: sk,
+          hint: false,
+          abandoned: false,
+        });
       }
     }
-    eq(unpackS(packS('gotd', 3, { hint: true })), {
+    assert.deepStrictEqual(unpackS(packS('gotd', 3, { hint: true })), {
       kind: 'gotd',
       skill: 3,
       hint: true,
       abandoned: false,
     });
-    eq(unpackS(packS('replay', 9, { abandoned: true, hint: true })), {
+    assert.deepStrictEqual(unpackS(packS('replay', 9, { abandoned: true, hint: true })), {
       kind: 'replay',
       skill: 9,
       hint: true,
       abandoned: true,
     });
-    eq(
+    assert.deepStrictEqual(
       packS('local', 5) & 0x3f,
       packS('local', 5, { hint: true, abandoned: true }) & 0x3f,
       'the flags are bits 6-7 only',
     );
-    eq(unpackS(3), null);
-    eq(unpackS(300), null);
-    eq(unpackS(packS('gotd', 99)).skill, UNKNOWN_SKILL, 'out of range = unknown');
+    assert.deepStrictEqual(unpackS(3), null);
+    assert.deepStrictEqual(unpackS(300), null);
+    assert.deepStrictEqual(
+      unpackS(packS('gotd', 99)).skill,
+      UNKNOWN_SKILL,
+      'out of range = unknown',
+    );
     const rec = (ms, extra = {}) => ({ n: 7, ms, solved: true, hints: 0, ...extra });
-    eq(skillBucket([]), UNKNOWN_SKILL);
-    eq(skillBucket(Array(7).fill(rec(49 * 60))), UNKNOWN_SKILL, 'seven games are too few');
-    eq(skillBucket(Array(8).fill(rec(49 * 60))), 0, '60 ms per cell is the base');
-    eq(skillBucket(Array(8).fill(rec(49 * 120))), 2);
-    eq(skillBucket(Array(8).fill(rec(49 * 480))), 6);
-    eq(skillBucket(Array(8).fill(rec(49 * 1e6))), 14, 'clamped');
-    eq(
+    assert.deepStrictEqual(skillBucket([]), UNKNOWN_SKILL);
+    assert.deepStrictEqual(
+      skillBucket(Array(7).fill(rec(49 * 60))),
+      UNKNOWN_SKILL,
+      'seven games are too few',
+    );
+    assert.deepStrictEqual(
+      skillBucket(Array(8).fill(rec(49 * 60))),
+      0,
+      '60 ms per cell is the base',
+    );
+    assert.deepStrictEqual(skillBucket(Array(8).fill(rec(49 * 120))), 2);
+    assert.deepStrictEqual(skillBucket(Array(8).fill(rec(49 * 480))), 6);
+    assert.deepStrictEqual(skillBucket(Array(8).fill(rec(49 * 1e6))), 14, 'clamped');
+    assert.deepStrictEqual(
       skillBucket([
         ...Array(8).fill(rec(49 * 120)),
         rec(1, { solved: false }),
@@ -263,7 +320,7 @@ t(
       2,
       'unsolved, hinted and empty records do not count',
     );
-    eq(
+    assert.deepStrictEqual(
       skillBucket([...Array(40).fill(rec(49 * 960)), ...Array(30).fill(rec(49 * 120))]),
       2,
       'only the last 30 games',
@@ -271,9 +328,9 @@ t(
   },
 );
 
-t('behaviour: rowFromGame — which solved games become a row', () => {
+test('behaviour: rowFromGame — which solved games become a row', FAST, () => {
   const row = rowFromGame(behGame(), BEH_CFG);
-  eq(
+  assert.deepStrictEqual(
     [row.day, row.ms, row.u, row.deep, row.v, row.ev, unpackS(row.s)],
     [
       utcDay(),
@@ -285,15 +342,18 @@ t('behaviour: rowFromGame — which solved games become a row', () => {
       { kind: 'local', skill: 6, hint: false, abandoned: false },
     ],
   );
-  eq(
+  assert.deepStrictEqual(
     serialize(unpackPuzzle(row.pz)),
     serialize(parse(BEH_TEXT)),
     'a local row carries its puzzle',
   );
   const gotd = rowFromGame(behGame({ mode: 'gotd' }), BEH_CFG);
-  eq([gotd.pz, unpackS(gotd.s).kind], [null, 'gotd']);
-  eq(unpackS(rowFromGame(behGame({ mode: 'replay' }), BEH_CFG).s).kind, 'replay');
-  eq(
+  assert.deepStrictEqual([gotd.pz, unpackS(gotd.s).kind], [null, 'gotd']);
+  assert.deepStrictEqual(
+    unpackS(rowFromGame(behGame({ mode: 'replay' }), BEH_CFG).s).kind,
+    'replay',
+  );
+  assert.deepStrictEqual(
     rowFromGame(behGame({ mode: 'gotd', puzzle: makeSized(5) }), BEH_CFG) !== null,
     true,
     'a Game of Day is logged at every size',
@@ -311,122 +371,134 @@ t('behaviour: rowFromGame — which solved games become a row', () => {
     ['an unknown mode', { mode: 'x' }],
     ['a day outside the window', { day: utcDay() - 500 }],
   ])
-    eq(rowFromGame(behGame(g), BEH_CFG), null, why);
-  eq(
+    assert.deepStrictEqual(rowFromGame(behGame(g), BEH_CFG), null, why);
+  assert.deepStrictEqual(
     rowFromGame(behGame({ hiddenMs: 5000 }), BEH_CFG) !== null,
     true,
     'exactly the limit is still fine',
   );
-  eq(
+  assert.deepStrictEqual(
     rowFromGame(behGame({ undone: 1e9, maxUndone: 70000 }), BEH_CFG).u,
     65535,
     'counts are capped',
   );
-  eq(
+  assert.deepStrictEqual(
     rowFromGame(behGame({ puzzle: makeSized(7, 7) }), { ...BEH_CFG, localSizes: [8, 9] }),
     null,
     'localSizes comes from the config',
   );
-  eq(rowFromGame(null, BEH_CFG), null);
+  assert.deepStrictEqual(rowFromGame(null, BEH_CFG), null);
 });
 
-t('behaviour: hint and abandoned games are rows with a flag; the wrong turns travel in ev', () => {
-  // compat pin: the wire format of the rows already uploaded
-  eq(ROW_VERSION, 1, 'version 1: per-kind skill, s bits 6-7, ev');
-  const hint = rowFromGame(behGame({ hints: 2 }), BEH_CFG),
-    gone = rowFromGame(behGame({ abandoned: true, ms: 9000 }), BEH_CFG);
-  eq(
-    [unpackS(hint.s).hint, unpackS(hint.s).abandoned, hint.ms],
-    [true, false, 21000],
-    'a hint game: flagged, raw time',
-  );
-  eq(
-    [unpackS(gone.s).hint, unpackS(gone.s).abandoned, gone.ms],
-    [false, true, 9000],
-    'an abandoned game: flagged, time until it was left',
-  );
-  eq(
-    rowFromGame(behGame({ abandoned: true, hiddenMs: 5001 }), BEH_CFG),
-    null,
-    'an abandoned game with a long hidden time is not sent either',
-  );
-  eq(
-    rowFromGame(behGame({ abandoned: true, mode: 'gotd', known: true }), BEH_CFG),
-    null,
-    'nor a repeat of a known Game of Day',
-  );
-  eq(rowFromGame(behGame(), BEH_CFG).ev, null, 'no wrong-turn tracking: ev is null');
-  eq(
-    [...rowFromGame(behGame({ events: [] }), BEH_CFG).ev],
-    [1],
-    'no wrong turn: the version byte alone',
-  );
-  const row = rowFromGame(
-    behGame({
+test(
+  'behaviour: hint and abandoned games are rows with a flag; the wrong turns travel in ev',
+  FAST,
+  () => {
+    // compat pin: the wire format of the rows already uploaded
+    assert.deepStrictEqual(ROW_VERSION, 1, 'version 1: per-kind skill, s bits 6-7, ev');
+    const hint = rowFromGame(behGame({ hints: 2 }), BEH_CFG),
+      gone = rowFromGame(behGame({ abandoned: true, ms: 9000 }), BEH_CFG);
+    assert.deepStrictEqual(
+      [unpackS(hint.s).hint, unpackS(hint.s).abandoned, hint.ms],
+      [true, false, 21000],
+      'a hint game: flagged, raw time',
+    );
+    assert.deepStrictEqual(
+      [unpackS(gone.s).hint, unpackS(gone.s).abandoned, gone.ms],
+      [false, true, 9000],
+      'an abandoned game: flagged, time until it was left',
+    );
+    assert.deepStrictEqual(
+      rowFromGame(behGame({ abandoned: true, hiddenMs: 5001 }), BEH_CFG),
+      null,
+      'an abandoned game with a long hidden time is not sent either',
+    );
+    assert.deepStrictEqual(
+      rowFromGame(behGame({ abandoned: true, mode: 'gotd', known: true }), BEH_CFG),
+      null,
+      'nor a repeat of a known Game of Day',
+    );
+    assert.deepStrictEqual(
+      rowFromGame(behGame(), BEH_CFG).ev,
+      null,
+      'no wrong-turn tracking: ev is null',
+    );
+    assert.deepStrictEqual(
+      [...rowFromGame(behGame({ events: [] }), BEH_CFG).ev],
+      [1],
+      'no wrong turn: the version byte alone',
+    );
+    const row = rowFromGame(
+      behGame({
+        events: [
+          [3, 2],
+          [10, 40],
+        ],
+      }),
+      BEH_CFG,
+    );
+    assert.deepStrictEqual([...row.ev], [1, 3, 2, 10, 40]);
+    assert.deepStrictEqual(validateRow(row) !== null, true);
+    assert.deepStrictEqual(describeRow(row), {
+      kind: 'local',
+      skill: 6,
+      hint: false,
+      abandoned: false,
       events: [
         [3, 2],
         [10, 40],
       ],
-    }),
-    BEH_CFG,
-  );
-  eq([...row.ev], [1, 3, 2, 10, 40]);
-  eq(validateRow(row) !== null, true);
-  eq(describeRow(row), {
-    kind: 'local',
-    skill: 6,
-    hint: false,
-    abandoned: false,
-    events: [
-      [3, 2],
-      [10, 40],
-    ],
-    puzzle: unpackPuzzle(row.pz),
-  });
-});
+      puzzle: unpackPuzzle(row.pz),
+    });
+  },
+);
 
-t('behaviour: packEv / unpackEv: a version byte, 2 bytes per wrong turn, at most 31', () => {
-  eq([...packEv([])], [1]);
-  eq(packEv(null), null);
-  eq(packEv(undefined), null);
-  eq(
-    [
-      ...packEv([
-        [300, 0],
-        [-4, 999],
-      ]),
-    ],
-    [1, 255, 1, 0, 255],
-    'clamped to a byte; a wrong turn is at least 1 cell deep',
-  );
-  const many = packEv(Array.from({ length: 50 }, (_, i) => [i, i + 1]));
-  eq(
-    [many.length, EV_MAX_EVENTS],
-    [63, 31],
-    'at most 31 wrong turns: 63 bytes, inside the 64 of the column',
-  );
-  eq(unpackEv(many).length, 31);
-  eq(unpackEv(packEv([[7, 3]])), [[7, 3]]);
-  eq(unpackEv(packEv([])), []);
-  const bads = [
-    null,
-    [1, 2],
-    Uint8Array.of(2),
-    Uint8Array.of(1, 5),
-    Uint8Array.of(1, 1, 1, 1, 1, 1),
-  ];
-  bads.push(new Uint8Array(66).fill(1));
-  for (const bad of bads) {
-    const bytes = Array.isArray(bad) ? Uint8Array.from(bad) : bad;
-    eq(unpackEv(bytes), null, 'not this layout: ' + bad);
-  }
-});
+test(
+  'behaviour: packEv / unpackEv: a version byte, 2 bytes per wrong turn, at most 31',
+  FAST,
+  () => {
+    assert.deepStrictEqual([...packEv([])], [1]);
+    assert.deepStrictEqual(packEv(null), null);
+    assert.deepStrictEqual(packEv(undefined), null);
+    assert.deepStrictEqual(
+      [
+        ...packEv([
+          [300, 0],
+          [-4, 999],
+        ]),
+      ],
+      [1, 255, 1, 0, 255],
+      'clamped to a byte; a wrong turn is at least 1 cell deep',
+    );
+    const many = packEv(Array.from({ length: 50 }, (_, i) => [i, i + 1]));
+    assert.deepStrictEqual(
+      [many.length, EV_MAX_EVENTS],
+      [63, 31],
+      'at most 31 wrong turns: 63 bytes, inside the 64 of the column',
+    );
+    assert.deepStrictEqual(unpackEv(many).length, 31);
+    assert.deepStrictEqual(unpackEv(packEv([[7, 3]])), [[7, 3]]);
+    assert.deepStrictEqual(unpackEv(packEv([])), []);
+    const bads = [
+      null,
+      [1, 2],
+      Uint8Array.of(2),
+      Uint8Array.of(1, 5),
+      Uint8Array.of(1, 1, 1, 1, 1, 1),
+    ];
+    bads.push(new Uint8Array(66).fill(1));
+    for (const bad of bads) {
+      const bytes = Array.isArray(bad) ? Uint8Array.from(bad) : bad;
+      assert.deepStrictEqual(unpackEv(bytes), null, 'not this layout: ' + bad);
+    }
+  },
+);
 
-t('behaviour: a wrong turn on a real puzzle: path -> trace -> row -> describeRow', () => {
+test('behaviour: a wrong turn on a real puzzle: path -> trace -> row -> describeRow', FAST, () => {
   const p = parse(BEH_TEXT),
     sol = solutionPath(p),
     n = p.n;
-  ok(sol && sol.length === n * n, 'the test puzzle has a solution');
+  assert.ok(sol && sol.length === n * n, 'the test puzzle has a solution');
   const wrong = [sol[3] + 1, sol[3] - 1, sol[3] + n, sol[3] - n].find(
     c => c >= 0 && c < n * n && !sol.slice(0, 5).includes(c),
   );
@@ -437,31 +509,51 @@ t('behaviour: a wrong turn on a real puzzle: path -> trace -> row -> describeRow
   go(sol.slice(0, 4));
   go(sol);
   const row = rowFromGame(behGame({ puzzle: p, events: traceEvents(tr) }), BEH_CFG);
-  eq(describeRow(row).events, [[4, 1]], 'left the solution at step 4, one cell deep');
-  eq(
+  assert.deepStrictEqual(
+    describeRow(row).events,
+    [[4, 1]],
+    'left the solution at step 4, one cell deep',
+  );
+  assert.deepStrictEqual(
     describeRow({ ...row, ev: fromB64u(toB64u(row.ev)) }).events,
     [[4, 1]],
     'through the wire form',
   );
 });
 
-t('behaviour: the skill bucket counts one kind of game (local vs Game of Day + replay)', () => {
-  const rec = (ms, mode) => ({ n: 7, ms, solved: true, hints: 0, mode });
-  const mixed = [
-    ...Array(8).fill(rec(49 * 120, 'local')),
-    ...Array(8).fill(rec(49 * 960, 'gotd')),
-  ];
-  eq(skillBucket(mixed, 'local'), 2);
-  eq(skillBucket(mixed, 'gotd'), 8);
-  eq(skillBucket(mixed, 'replay'), 8, 'a replay counts with the Game of Day');
-  eq(skillBucket(mixed.slice(0, 12), 'gotd'), UNKNOWN_SKILL, 'fewer than 8 games of that kind');
-  eq(skillBucket(mixed), 6, 'no kind: all games (the median of both kinds), as in version 0');
-  eq(
-    skillBucket(Array(8).fill({ n: 7, ms: 49 * 120, solved: true, hints: 0 }), 'local'),
-    2,
-    'a record without a mode is a local game',
-  );
-});
+test(
+  'behaviour: the skill bucket counts one kind of game (local vs Game of Day + replay)',
+  FAST,
+  () => {
+    const rec = (ms, mode) => ({ n: 7, ms, solved: true, hints: 0, mode });
+    const mixed = [
+      ...Array(8).fill(rec(49 * 120, 'local')),
+      ...Array(8).fill(rec(49 * 960, 'gotd')),
+    ];
+    assert.deepStrictEqual(skillBucket(mixed, 'local'), 2);
+    assert.deepStrictEqual(skillBucket(mixed, 'gotd'), 8);
+    assert.deepStrictEqual(
+      skillBucket(mixed, 'replay'),
+      8,
+      'a replay counts with the Game of Day',
+    );
+    assert.deepStrictEqual(
+      skillBucket(mixed.slice(0, 12), 'gotd'),
+      UNKNOWN_SKILL,
+      'fewer than 8 games of that kind',
+    );
+    assert.deepStrictEqual(
+      skillBucket(mixed),
+      6,
+      'no kind: all games (the median of both kinds), as in version 0',
+    );
+    assert.deepStrictEqual(
+      skillBucket(Array(8).fill({ n: 7, ms: 49 * 120, solved: true, hints: 0 }), 'local'),
+      2,
+      'a record without a mode is a local game',
+    );
+  },
+);
 
 // a size-n puzzle with two checkpoints, enough for the gating tests
 function makeSized(n) {
@@ -471,13 +563,14 @@ function makeSized(n) {
   return p;
 }
 
-t(
+test(
   'behaviour: the config — only Turso and Cloudflare backends, sizes as asked, and a switch',
+  FAST,
   () => {
-    eq(typeof BEHAVIOUR.enabled, 'boolean');
-    eq(BEHAVIOUR.localSizes, [7, 11]);
+    assert.deepStrictEqual(typeof BEHAVIOUR.enabled, 'boolean');
+    assert.deepStrictEqual(BEHAVIOUR.localSizes, [7, 11]);
     const sinks = sinksFromConfig(BEHAVIOUR, LEADERBOARD);
-    eq(
+    assert.deepStrictEqual(
       sinks.map(s => s.name),
       [BEHAVIOUR.primary, BEHAVIOUR.backup],
     );
@@ -489,21 +582,21 @@ t(
         d: { type: 'turso', url: 'https://x' },
       },
     };
-    eq(
+    assert.deepStrictEqual(
       sinksFromConfig({ primary: 'a', backup: 'b' }, lb).map(s => s.name),
       ['a'],
       'Supabase never receives behaviour rows',
     );
-    eq(
+    assert.deepStrictEqual(
       sinksFromConfig({ primary: 'd', backup: 'c' }, lb).map(s => s.name),
       ['c'],
       'a Turso entry without its token is left out',
     );
-    eq(
+    assert.deepStrictEqual(
       sinksFromConfig({ primary: 'c', backup: 'c' }, lb).map(s => s.name),
       ['c'],
     );
-    eq(sinksFromConfig({ primary: 'nope', backup: 'zzz' }, lb), []);
+    assert.deepStrictEqual(sinksFromConfig({ primary: 'nope', backup: 'zzz' }, lb), []);
   },
 );
 
@@ -561,62 +654,65 @@ const behUp = (extra = {}, plan) => {
   };
 };
 
-ta(
+test(
   'behaviour upload: a row goes to the primary only, with the puzzle as a blob and nothing that identifies the player',
+  FAST,
   async () => {
     const { f, up } = behUp();
-    eq(await up.enqueue(behRow()), true);
-    eq(f.calls.length, 1);
-    ok(f.calls[0].url === 'https://t.example/v2/pipeline', f.calls[0].url);
+    assert.deepStrictEqual(await up.enqueue(behRow()), true);
+    assert.deepStrictEqual(f.calls.length, 1);
+    assert.ok(f.calls[0].url === 'https://t.example/v2/pipeline', f.calls[0].url);
     const sent = JSON.parse(f.calls[0].body).requests[0].stmt;
-    ok(/^INSERT INTO play \(day, ms, u, deep, s, pz, ev, v\) VALUES/.test(sent.sql));
-    eq(
+    assert.ok(/^INSERT INTO play \(day, ms, u, deep, s, pz, ev, v\) VALUES/.test(sent.sql));
+    assert.deepStrictEqual(
       sent.args.map(a => a.type),
       ['integer', 'integer', 'integer', 'integer', 'integer', 'blob', 'null', 'integer'],
     );
-    eq(
+    assert.deepStrictEqual(
       fromB64u(sent.args[5].base64.replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, ''))
         .length,
       12,
     );
-    eq(await up.pending(), 0, 'stored: off the queue');
-    ok(!/uid|device|player|user/i.test(f.calls[0].body));
+    assert.deepStrictEqual(await up.pending(), 0, 'stored: off the queue');
+    assert.ok(!/uid|device|player|user/i.test(f.calls[0].body));
   },
 );
 
-ta(
+test(
   'behaviour upload: the backup is tried only when the primary does not answer; a rejection is final; Cloudflare gets JSON',
+  FAST,
   async () => {
     let { f, up } = behUp({}, ['down']);
     await up.enqueue(behRow());
-    eq(
+    assert.deepStrictEqual(
       f.calls.map(c => c.url),
       ['https://t.example/v2/pipeline', 'https://c.example/play'],
     );
-    eq(await up.pending(), 0);
+    assert.deepStrictEqual(await up.pending(), 0);
     const w = JSON.parse(f.calls[1].body);
-    eq(
+    assert.deepStrictEqual(
       [w.day, w.ms, w.u, w.v, typeof w.pz, w.ev],
       [utcDay(), 21000, 12, ROW_VERSION, 'string', null],
     );
-    eq(validateRow(fromWire(w)).ms, 21000);
+    assert.deepStrictEqual(validateRow(fromWire(w)).ms, 21000);
     ({ f, up } = behUp({}, ['invalid']));
     await up.enqueue(behRow());
-    eq(f.calls.length, 1, 'rejected by the primary: no backup, no retry');
-    eq(await up.pending(), 0);
+    assert.deepStrictEqual(f.calls.length, 1, 'rejected by the primary: no backup, no retry');
+    assert.deepStrictEqual(await up.pending(), 0);
     ({ f, up } = behUp({}, ['hang', 'invalid']));
     await up.enqueue(behRow());
-    eq(
+    assert.deepStrictEqual(
       f.calls.map(c => c.a),
       ['hang', 'invalid'],
       'a timeout counts as not answering',
     );
-    eq(await up.pending(), 0);
+    assert.deepStrictEqual(await up.pending(), 0);
   },
 );
 
-ta(
+test(
   'behaviour upload: a row nobody takes is kept for the next page loads, three in all, then dropped; one page load is one round',
+  FAST,
   async () => {
     const st = fakeStorage(),
       cfg = { enabled: true, defaultOn: true },
@@ -630,25 +726,30 @@ ta(
         });
     let up = mk();
     await up.enqueue(behRow());
-    eq(await up.pending(), 1, 'round 1 failed');
+    assert.deepStrictEqual(await up.pending(), 1, 'round 1 failed');
     await up.flush();
     await up.flush();
-    eq(await up.pending(), 1, 'more flushes in the same page load are not new rounds');
+    assert.deepStrictEqual(
+      await up.pending(),
+      1,
+      'more flushes in the same page load are not new rounds',
+    );
     for (let round = 2; round < BEHAVIOUR_ROUNDS; round++) {
       up = mk();
       await up.flush();
-      eq(await up.pending(), 1, `round ${round} (a new page load)`);
+      assert.deepStrictEqual(await up.pending(), 1, `round ${round} (a new page load)`);
     }
     up = mk();
     await up.flush();
-    eq(await up.pending(), 0, 'the last round: dropped');
+    assert.deepStrictEqual(await up.pending(), 0, 'the last round: dropped');
     const stored = JSON.parse((await st.get(QUEUE_KEY)).value);
-    eq(stored, []);
+    assert.deepStrictEqual(stored, []);
   },
 );
 
-ta(
+test(
   'behaviour upload: the queue survives a reload (rows as JSON), a corrupt or hostile value, and is capped',
+  FAST,
   async () => {
     const st = fakeStorage();
     let up = createBehaviour({
@@ -659,7 +760,7 @@ ta(
       timeoutMs: 50,
     });
     for (let i = 0; i < QUEUE_MAX + 5; i++) await up.enqueue({ ...behRow(), ms: 1000 + i });
-    eq(await up.pending(), QUEUE_MAX, 'capped; the oldest go first');
+    assert.deepStrictEqual(await up.pending(), QUEUE_MAX, 'capped; the oldest go first');
     const f = behFetch();
     up = createBehaviour({
       storage: st,
@@ -669,8 +770,8 @@ ta(
       timeoutMs: 50,
     });
     const r = await up.flush();
-    eq([r.sent, r.pending, f.calls.length], [QUEUE_MAX, 0, QUEUE_MAX]);
-    eq(
+    assert.deepStrictEqual([r.sent, r.pending, f.calls.length], [QUEUE_MAX, 0, QUEUE_MAX]);
+    assert.deepStrictEqual(
       JSON.parse(f.calls[0].body).requests[0].stmt.args[1].value,
       '1005',
       'the five oldest were dropped',
@@ -689,34 +790,39 @@ ta(
         fetchFn: g,
         timeoutMs: 50,
       });
-      eq((await u2.flush()).sent, 0, junk.slice(0, 20));
-      eq(g.calls.length, 0, 'invalid stored rows are never sent');
+      assert.deepStrictEqual((await u2.flush()).sent, 0, junk.slice(0, 20));
+      assert.deepStrictEqual(g.calls.length, 0, 'invalid stored rows are never sent');
     }
   },
 );
 
-ta(
+test(
   'behaviour upload: the switches — config.enabled, the device setting (default, on, off), and the queue is thrown away when it goes off',
+  FAST,
   async () => {
     let { f, up } = behUp({ enabled: false });
-    eq(await up.isOn(), false);
-    eq(await up.enqueue(behRow()), false);
-    eq(f.calls.length, 0, 'enabled: false sends nothing');
+    assert.deepStrictEqual(await up.isOn(), false);
+    assert.deepStrictEqual(await up.enqueue(behRow()), false);
+    assert.deepStrictEqual(f.calls.length, 0, 'enabled: false sends nothing');
     ({ f, up } = behUp({ defaultOn: false }));
-    eq(await up.isOn(), false);
-    eq(await up.enqueue(behRow()), false);
-    eq(f.calls.length, 0);
+    assert.deepStrictEqual(await up.isOn(), false);
+    assert.deepStrictEqual(await up.enqueue(behRow()), false);
+    assert.deepStrictEqual(f.calls.length, 0);
     await up.setOn(true);
-    eq(await up.isOn(), true);
-    eq(await up.enqueue(behRow()), true);
-    eq(f.calls.length, 1);
+    assert.deepStrictEqual(await up.isOn(), true);
+    assert.deepStrictEqual(await up.enqueue(behRow()), true);
+    assert.deepStrictEqual(f.calls.length, 1);
     ({ f, up } = behUp({}, Array(10).fill('down')));
     await up.enqueue(behRow());
-    eq(await up.pending(), 1);
+    assert.deepStrictEqual(await up.pending(), 1);
     await up.setOn(false);
-    eq([await up.isOn(), await up.pending()], [false, 0], 'off empties the queue');
+    assert.deepStrictEqual(
+      [await up.isOn(), await up.pending()],
+      [false, 0],
+      'off empties the queue',
+    );
     await up.flush();
-    eq(f.calls.length, 2, 'and nothing more is sent');
+    assert.deepStrictEqual(f.calls.length, 2, 'and nothing more is sent');
     const st = fakeStorage();
     await st.set(QUEUE_KEY, JSON.stringify([{ row: toWire(behRow()), rounds: 0 }]));
     const g = behFetch();
@@ -728,13 +834,11 @@ ta(
       timeoutMs: 50,
     });
     await off.flush();
-    eq(
+    assert.deepStrictEqual(
       [g.calls.length, JSON.parse((await st.get(QUEUE_KEY)).value)],
       [0, []],
       'a queue left from an earlier run is discarded when the flag is off',
     );
-    eq(ON_KEY, 'zip_behaviour_on'); // compat pin: the stored choice of the player
+    assert.deepStrictEqual(ON_KEY, 'zip_behaviour_on'); // compat pin: the stored choice of the player
   },
 );
-
-registerAsyncTests();
