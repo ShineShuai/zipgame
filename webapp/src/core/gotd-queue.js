@@ -3,7 +3,9 @@
 //
 // demo/GameOfDay-queue/index.json (written by `gotd-gen.mjs fill`, one candidate per line so a diff stays readable):
 //   { "v": 1,
-//     "slots": { "YYYYMMDD": { "size": 8, "attempts": 5 } },   generator runs spent on a day; a rerun continues after them, never repeats them
+//     "slots": { "YYYYMMDD": { "size": 8, "attempts": 5, "stamp": "a6-..." } },
+//         generator runs spent on a day under that stamp; a rerun continues after them,
+//         never repeats them
 //     "candidates": [ { id, file, size, slot, attempt, seed, stamp, status, K, walls, pathKey, trap: {...}, corr: {...} } ] }
 // status: pending (made, not reviewed), approved / rejected (a human's verdict, written by the review step that comes after this one).
 // A candidate is made FOR a day (`slot`), but any day of the same size may use it: a day that was published by other means hands its
@@ -73,15 +75,23 @@ export function parseIndex(text) {
   return ix;
 }
 
-// A pending candidate counts only under the generator stamp it was made with: after a refit its grade is a claim of the old model.
-// An approved one always counts (a human judged it); a rejected one never does.
+// A pending candidate counts only under the generator stamp its grade was made under: after a
+// refit its grade is a claim of the old model, until restampQueue grades it again.
+// grades it again. An approved one always counts (a human judged it); a rejected one never does.
 export const usable = (c, stamp) =>
   c.status === 'approved' || (c.status === 'pending' && c.stamp === stamp);
+
+const runsSpent = (slot, stamp) =>
+  slot && (slot.stamp === undefined || slot.stamp === stamp) ? slot.attempts : 0;
 
 // Which days need how many candidates.
 //   today      UTC day number          horizon  days from today that get candidates      perSlot  candidates wanted per open day
 //   published  Set of 'YYYYMMDD' that already have a Game-of-Day file (those days are closed)
 // -> { slots: [{ day, date, size, have, need, attempts }] (open days, earliest first), adopt: [{ id, slot }] }
+// `attempts`: the runs the day has used under this stamp. The seed holds the stamp, so a new
+// stamp starts at 0 and repeats no seed; a counter from before slots carried a stamp counts
+// for every stamp.
+// carried a stamp counts for every stamp.
 // `adopt`: candidates made for a day that is published or past now move to the earliest open day of their size that still lacks some.
 export function planFill({
   today,
@@ -114,15 +124,49 @@ export function planFill({
       ...s,
       have,
       need: Math.max(0, perSlot - have),
-      attempts: index.slots[s.date]?.attempts ?? 0,
+      attempts: runsSpent(index.slots[s.date], stamp),
     };
   });
   return { slots, adopt };
 }
 
+// After a refit (any change of the stamp) the pending candidates of the old stamp are graded
+// again under the current one instead of being made again: a candidate the current model
+// still calls Hard keeps its id, file, day, seed and attempt and takes the new stamp and
+// grade numbers (`trap`, `corr`, K, walls); one it does not stays as it is (pending under
+// the old stamp: not offered, still blocking duplicates, tried again by the next fill).
+// The origin lines of its file still name the stamp that made it.
+//   vet   (candidate) -> vetCandidate's answer for the candidate's puzzle. The caller loads
+//         the file and keeps `distinct` (what the candidates graded must differ from).
+// -> { index, old: how many were pending under another stamp, kept: how many took this
+//      one, fails: { reason: count } }
+export function restampQueue({ index, stamp, vet, log = () => {} }) {
+  const old = index.candidates
+      .filter(c => c.status === 'pending' && c.stamp !== stamp)
+      .sort(byOrder),
+    kept = new Map(),
+    fails = {};
+  for (const c of old) {
+    const r = vet(c);
+    if (r.ok && r.entry.id === c.id) {
+      const { K, walls, pathKey, trap, corr } = r.entry;
+      kept.set(c.id, { ...c, stamp, K, walls, pathKey, trap, corr });
+      log(`${c.file}: grade ${trap.grade} score ${trap.pred}`);
+      continue;
+    }
+    const reason = r.ok ? 'file' : r.reason,
+      detail = r.ok ? 'the file is another puzzle' : r.detail;
+    fails[reason] = (fails[reason] || 0) + 1;
+    log(`${c.file}: not kept, ${reason}${detail ? ` (${detail})` : ''}`);
+  }
+  const candidates = index.candidates.map(c => kept.get(c.id) ?? c);
+  return { index: { ...index, candidates }, old: old.length, kept: kept.size, fails };
+}
+
 // Runs the generator for the slots that need candidates, earliest day first.
 //   maxNew          most candidates this run may add             maxAttempts    most generator runs this run may spend
-//   slotAttempts    most runs one day may use in all (counted over all runs: index.slots[date].attempts); a day that used them up is `starved`
+//   slotAttempts    most runs one day may use in all under this stamp
+//                   (index.slots[date].attempts); a day that used them up is `starved`
 //   make            ({ stamp, day, date, size, attempt, distinct }) -> makeCandidate's answer
 // -> { added: [{ entry, puzzle, symKey, path, origin }], slots: { date: { size, attempts } } (days whose counter moved), fails: { reason: count }, starved: [date], tries }
 export function fillQueue({
@@ -171,7 +215,7 @@ export function fillQueue({
       );
       need--;
     }
-    if (attempts !== s.attempts) slots[s.date] = { size: s.size, attempts };
+    if (attempts !== s.attempts) slots[s.date] = { size: s.size, attempts, stamp };
     if (need > 0 && attempts >= slotAttempts) starved.push(s.date);
   }
   return { added, slots, fails, starved, tries };

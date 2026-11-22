@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The automatic Game of Day: a queue of candidate puzzles that are Hard or harder, distinct from every puzzle we have, with the sizes of a fixed schedule.
-//   node tools/gotd-gen.mjs fill     [--today YYYYMMDD] [--horizon 30] [--per-slot 3] [--max-new 24] [--max-attempts 120] [--dry-run] [--summary FILE] [--annotations]
+//   node tools/gotd-gen.mjs fill     [--today YYYYMMDD] [--horizon 30] [--per-slot 3] [--max-new 24] [--max-attempts 120] [--no-restamp] [--min-grade 0] [--dry-run] [--summary FILE] [--annotations]
 //   node tools/gotd-gen.mjs promote  [--today YYYYMMDD] [--until YYYYMMDD | --horizon N] [--dry-run] [--summary FILE] [--annotations]   verdicts -> statuses, approved candidates -> published days
 //   node tools/gotd-gen.mjs check    [--annotations]       every puzzle of the published days, the queue and its rejected ones is distinct; index and verdicts.json are valid (exit 1 if not)
 //   node tools/gotd-gen.mjs status   [--today YYYYMMDD] [--horizon N]    stamp, days ahead, queue by size, the next 14 days
@@ -15,7 +15,7 @@
 //   the gates of src/core/gotd-gen.js (grade with margin, unique, distinct up to rotation / reflection / reversed numbering, from published puzzles,
 //   the queue, rejected ones and the rated ones of ratings.json). No clock decides anything: the same files and arguments give the same candidates
 //   (seed = stamp, day, size, attempt), so a rerun adds nothing. A stamp covers the generator, the trap model and the settings: a pending candidate of
-//   an older stamp does not count, an approved one always does. Files: <queue>/c-<size>-<id>.txt (no solution path, a reviewer plays it blind; two comment lines say how it was made: the summary line of
+//   an older stamp does not count until `fill` has graded it again under the current model (restampQueue of src/core/gotd-queue.js: a valid, distinct one keeps its file, day and review whatever the model grades it; --min-grade N keeps only those graded N or more, 3 = Hard; it concerns only this step: a candidate `fill` makes is always graded 3 or more and clears the margin; the others stay out), an approved one always counts; the runs a day has used are counted per stamp. Files: <queue>/c-<size>-<id>.txt (no solution path, a reviewer plays it blind; two comment lines say how it was made: the summary line of
 //   gen-target.mjs and the gen-target command that makes it again, copied into the published day) and
 //   <queue>/index.json (what the gates measured, the attempts spent per day, the status).
 // promote: the human's side. The design app's "GOTD review" panel plays a pending candidate blind and the reviewer rates it; its export is <queue>/verdicts.json
@@ -69,6 +69,7 @@ import {
   queueStatus,
   fillQueue,
   applyFill,
+  restampQueue,
 } from '../src/core/gotd-queue.js';
 import {
   parseVerdicts,
@@ -247,6 +248,81 @@ function check() {
 // ---- fill ----
 const sizeLine = s =>
   `${s.date} ${s.size}x${s.size}: have ${s.have}, need ${s.need}, runs used ${s.attempts}`;
+// What a candidate must differ from: the published days (their solution paths too), the queue
+// (rejected ones too) and the rated puzzles. The published days and the rated ones are read
+// once; `skip` names queue files left out (the candidates about to be graded again).
+function distinctOf(published) {
+  const days = [],
+    rated = ratedKeys().map(k => ({
+      symKey: k,
+      where: 'a rated puzzle of ' + rel(dir.ratings),
+    }));
+  for (const r of published) {
+    if (r.error) continue;
+    const sol = solutionPath(r.p, OFFLINE_PATH_CAP); // a published 12x12 needs ~3M nodes, more than the app's own budget
+    if (!sol)
+      note(
+        'warning',
+        'no solution within the search budget: only its puzzle, not its path, is compared',
+        r.file,
+      );
+    days.push({ symKey: r.symKey, pathKey: sol && pathKey(r.p.n, sol), where: rel(r.file) });
+  }
+  return (index, skip = new Set()) => {
+    const distinct = createDistinct(),
+      byFile = new Map(index.candidates.map(c => [c.file, c]));
+    for (const e of days) distinct.add(e);
+    for (const f of txtFiles(dir.queue)) {
+      const r = skip.has(path.basename(f)) ? { error: 'skipped' } : loadPuzzle(f);
+      if (!r.error)
+        distinct.add({
+          symKey: r.symKey,
+          pathKey: byFile.get(path.basename(f))?.pathKey,
+          where: rel(f),
+        });
+    }
+    for (const e of rated) distinct.add(e);
+    return distinct;
+  };
+}
+
+// Pending candidates of an older stamp are graded again under the current model (restampQueue)
+// instead of being made again. -> { index, old, kept, fails }; fill writes the index.
+function restamp(index, stamp, distinctFor, minGrade) {
+  const old = index.candidates.filter(c => c.status === 'pending' && c.stamp !== stamp);
+  if (!old.length || flag('no-restamp')) return { index, old: 0, kept: 0, fails: {} };
+  const distinct = distinctFor(index, new Set(old.map(c => c.file)));
+  const r = restampQueue({
+    index,
+    stamp,
+    vet: c => {
+      const file = path.join(dir.queue, c.file);
+      if (!fs.existsSync(file)) return { ok: false, reason: 'file', detail: 'no such file' };
+      const f = loadPuzzle(file);
+      if (f.error) return { ok: false, reason: 'file', detail: f.error };
+      const v = vetCandidate(f.p, c.size, distinct, { holdGrade: true, margin: 0 });
+      distinct.add({ symKey: f.symKey, pathKey: c.pathKey, where: rel(file) });
+      if (!v.ok) return v;
+      const grade = v.entry.trap.grade;
+      if (grade < minGrade)
+        return { ok: false, reason: 'grade', detail: `grade ${grade}, wanted ${minGrade}+` };
+      return v;
+    },
+    log: msg => console.log('  restamp ' + msg),
+  });
+  const fails = Object.entries(r.fails)
+    .map(([k, v]) => `${k} ${v}`)
+    .join(', ');
+  const graded = `${r.kept} of ${r.old} pending candidate(s) of an older stamp graded again`;
+  const olds = new Set(old.map(c => c.id)),
+    below = r.index.candidates.filter(
+      c => olds.has(c.id) && c.stamp === stamp && c.trap.grade < GOTD_CFG.grade,
+    ).length;
+  const lower = below ? `; ${below} of them below grade ${GOTD_CFG.grade}` : '';
+  console.log(`restamp: ${graded} under ${stamp}${lower}${fails ? `; not kept: ${fails}` : ''}`);
+  return r;
+}
+
 function fill() {
   const today = dayArg('today', todayUtc()),
     stamp = genStamp();
@@ -254,9 +330,17 @@ function fill() {
     perSlot = int('per-slot', GOTD_CFG.perSlot, 1);
   const maxNew = int('max-new', 24, 0),
     maxAttempts = int('max-attempts', 120, 0);
-  const index = readState().index,
-    published = txtFiles(dir.puzzles).map(loadPuzzle);
+  // restamp keeps a valid, distinct candidate whatever the model grades it, unless this asks more
+  const minGrade = Math.min(5, int('min-grade', 0, 0));
+  const published = txtFiles(dir.puzzles).map(loadPuzzle);
   for (const r of published) if (r.error) note('warning', `skipped: ${r.error}`, r.file);
+  let distinctFrom; // read the published days only when something needs them
+  const distinctFor = (ix, skip) => {
+    distinctFrom ??= distinctOf(published);
+    return distinctFrom(ix, skip);
+  };
+  const regraded = restamp(readState().index, stamp, distinctFor, minGrade),
+    index = regraded.index;
   const plan = planFill({
     today,
     horizon,
@@ -273,31 +357,7 @@ function fill() {
   const lines = [];
   let result = { added: [], slots: {}, fails: {}, starved: [], tries: 0 };
   if (plan.slots.some(s => s.need > 0) && maxNew > 0) {
-    // what a new candidate must differ from: published days, the queue (rejected ones too), the rated puzzles
-    const distinct = createDistinct(),
-      byId = new Map(index.candidates.map(c => [c.file, c]));
-    for (const r of published) {
-      if (r.error) continue;
-      const sol = solutionPath(r.p, OFFLINE_PATH_CAP); // a published 12x12 needs ~3M nodes, more than the app's own budget
-      if (!sol)
-        note(
-          'warning',
-          'no solution within the search budget: only its puzzle, not its path, is compared',
-          r.file,
-        );
-      distinct.add({ symKey: r.symKey, pathKey: sol && pathKey(r.p.n, sol), where: rel(r.file) });
-    }
-    for (const f of txtFiles(dir.queue)) {
-      const r = loadPuzzle(f);
-      if (!r.error)
-        distinct.add({
-          symKey: r.symKey,
-          pathKey: byId.get(path.basename(f))?.pathKey,
-          where: rel(f),
-        });
-    }
-    for (const k of ratedKeys())
-      distinct.add({ symKey: k, where: 'a rated puzzle of ' + rel(dir.ratings) });
+    const distinct = distinctFor(index);
     result = fillQueue({
       plan,
       distinct,
@@ -343,6 +403,9 @@ function fill() {
       `### gotd-gen fill (${stamp})`,
       '',
       `${result.added.length} candidate(s) added in ${result.tries} run(s)${fails ? `, rejected: ${fails}` : ''}.`,
+      ...(regraded.old
+        ? ['', `${regraded.kept} of ${regraded.old} older pending candidate(s) graded again.`]
+        : []),
       '',
       '| day | size | have | need after |',
       '|---|---|---|---|',

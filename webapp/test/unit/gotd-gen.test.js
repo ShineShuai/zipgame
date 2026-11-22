@@ -52,6 +52,7 @@ import {
   planFill,
   fillQueue,
   applyFill,
+  restampQueue,
   usable,
   queueStatus,
   planPromote,
@@ -824,7 +825,11 @@ test(
       r.added.filter(a => a.entry.slot === '20261122').map(a => a.entry.attempt),
       [0, 2],
     );
-    assert.deepStrictEqual(r.slots['20261121'], { size: sizeOn('20261121'), attempts: 4 });
+    assert.deepStrictEqual(r.slots['20261121'], {
+      size: sizeOn('20261121'),
+      attempts: 4,
+      stamp: 'S',
+    });
     assert.deepStrictEqual(r.slots['20261122'].attempts, 3);
     assert.deepStrictEqual(r.starved, []);
     const few = fillQueue({
@@ -925,6 +930,111 @@ test(
       0,
     );
     assert.deepStrictEqual(made1, calls, 'the generator is not called');
+  },
+);
+
+test('gotd plan: the runs a day has used count per stamp; a new stamp starts at 0', FAST, () => {
+  const index = emptyIndex();
+  index.slots['20261121'] = { size: sizeOn('20261121'), attempts: 4, stamp: 'OLD' };
+  index.slots['20261122'] = { size: sizeOn('20261122'), attempts: 3, stamp: 'S' };
+  index.slots['20261123'] = { size: sizeOn('20261123'), attempts: 2 };
+  const plan = planFill({
+    today,
+    horizon: 3,
+    perSlot: 1,
+    published: new Set(),
+    index,
+    stamp: 'S',
+  });
+  assert.deepStrictEqual(
+    plan.slots.map(s => s.attempts),
+    [0, 3, 2],
+    'a counter without a stamp counts for every stamp',
+  );
+  const r = fillQueue({ plan, distinct: createDistinct(), stamp: 'S', make: stub });
+  assert.deepStrictEqual(
+    r.added.map(a => [a.entry.slot, a.entry.attempt]),
+    [
+      ['20261121', 0],
+      ['20261122', 3],
+      ['20261123', 2],
+    ],
+    'the day of the old stamp starts again at attempt 0',
+  );
+  assert.deepStrictEqual(r.slots['20261121'], {
+    size: sizeOn('20261121'),
+    attempts: 1,
+    stamp: 'S',
+  });
+});
+
+test(
+  'gotd restamp: a candidate still Hard takes the stamp and keeps its place; the others stay',
+  FAST,
+  () => {
+    const old = (n, size, slot, over = {}) =>
+      queueCand(id12(n), size, slot, { stamp: 'OLD', trap: { pred: 2.3, grade: 3 }, ...over });
+    const index = {
+      ...emptyIndex(),
+      candidates: [
+        old(1, 7, '20261121'),
+        old(2, 7, '20261121'),
+        old(3, 8, '20261122'),
+        old(4, 8, '20261122'),
+        queueCand(id12(5), 8, '20261122'),
+        old(6, 8, '20261122', { status: 'approved' }),
+        old(7, 8, '20261122', { status: 'rejected' }),
+      ],
+    };
+    const seen = [],
+      log = [];
+    const vet = c => {
+      seen.push(+c.id);
+      if (c.id === id12(2)) return { ok: false, reason: 'margin', detail: 'score 2.1 < 2.4' };
+      if (c.id === id12(3)) return { ok: true, entry: { id: id12(99) } };
+      if (c.id === id12(4)) return { ok: false, reason: 'duplicate', detail: 'a day' };
+      return {
+        ok: true,
+        entry: {
+          id: c.id,
+          K: 9,
+          walls: 3,
+          pathKey: 'pk',
+          trap: { pred: 2.6, grade: 3 },
+          corr: { wideFrac: 0.1 },
+        },
+      };
+    };
+    const r = restampQueue({ index, stamp: 'S', vet, log: m => log.push(m) });
+    assert.deepStrictEqual(
+      seen,
+      [1, 2, 3, 4],
+      'only pending ones of another stamp, earliest day first',
+    );
+    assert.deepStrictEqual([r.old, r.kept, r.fails], [4, 1, { margin: 1, file: 1, duplicate: 1 }]);
+    const by = n => r.index.candidates.find(c => c.id === id12(n));
+    assert.deepStrictEqual(by(1), {
+      ...old(1, 7, '20261121'),
+      stamp: 'S',
+      K: 9,
+      walls: 3,
+      pathKey: 'pk',
+      trap: { pred: 2.6, grade: 3 },
+      corr: { wideFrac: 0.1 },
+    });
+    assert.deepStrictEqual(
+      [2, 3, 4, 6, 7].map(n => by(n).stamp),
+      ['OLD', 'OLD', 'OLD', 'OLD', 'OLD'],
+      'not kept, approved and rejected ones are as they were',
+    );
+    assert.deepStrictEqual(by(5), index.candidates[4], 'a candidate of this stamp is not touched');
+    assert.deepStrictEqual(log.length, 4);
+    assert.deepStrictEqual(
+      r.index.candidates.filter(c => usable(c, 'S')).map(c => +c.id),
+      [1, 5, 6],
+      'the kept one counts now',
+    );
+    assert.deepStrictEqual(index.candidates[0].stamp, 'OLD', 'the index given is not changed');
   },
 );
 
