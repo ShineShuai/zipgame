@@ -216,7 +216,7 @@ jobs:
       cancel-in-progress: false
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deploy_retry.outputs.page_url || steps.deploy_first.outputs.page_url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -235,7 +235,19 @@ jobs:
         with:
           path: _site
 
-      - id: deployment
+      # deploy-pages lists the artifact once, without a retry, right after the upload in this job.
+      # The artifact service may not show it yet ("Found 0 artifact(s)"). That check fails before
+      # a deployment exists, so a second try after a pause is safe.
+      - id: deploy_first
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+        continue-on-error: true
+
+      - name: Pause before the second deploy try
+        if: steps.deploy_first.outcome == 'failure'
+        run: sleep 30
+
+      - id: deploy_retry
+        if: steps.deploy_first.outcome == 'failure'
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
 
       # The query string bypasses the CDN cache, which may still hold files of the old branch deployment.
@@ -243,7 +255,7 @@ jobs:
       # What must stay private is checked with retries: a 503 of the host right after the deploy is no verdict.
       - name: Smoke test
         env:
-          URL: ${{ steps.deployment.outputs.page_url }}
+          URL: ${{ steps.deploy_retry.outputs.page_url || steps.deploy_first.outputs.page_url }}
           RUN_ID: ${{ github.run_id }}
         run: |
           base="${URL%/}"
