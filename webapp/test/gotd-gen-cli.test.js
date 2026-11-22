@@ -24,6 +24,7 @@ import {
   parseRatingsJson,
 } from '../src/core/ratings-io.js';
 import { makeVerdict, formatVerdicts, parseVerdicts } from '../src/core/gotd-verdict.js';
+import { genStamp } from '../src/core/gotd-gen.js';
 
 const tool = fileURLToPath(new URL('../tools/gotd-gen.mjs', import.meta.url));
 const FROZEN_QUEUE = fileURLToPath(new URL('./fixtures/gotd-queue', import.meta.url));
@@ -305,6 +306,81 @@ function world(name, { real = false } = {}) {
     });
   return w;
 }
+const RESTAMP = [
+  'fill',
+  '--today',
+  '20261122',
+  '--horizon',
+  '2',
+  '--per-slot',
+  '2',
+  '--max-new',
+  '0',
+];
+
+test(
+  'gotd-gen fill: pending candidates of an older stamp are graded again, not made again',
+  FAST,
+  () => {
+    const stamp = genStamp(),
+      w = world('rs1'),
+      before = w.index().candidates;
+    assert.equal(before.length, 4);
+    assert.ok(
+      before.every(c => c.stamp !== stamp),
+      'the frozen queue is of an older stamp',
+    );
+    const off = world('rs0').cli(...RESTAMP, '--no-restamp');
+    assert.equal(off.status, 0, off.stdout + off.stderr);
+    assert.doesNotMatch(off.stdout, /restamp/, '--no-restamp: no grading again');
+
+    let r = w.cli(...RESTAMP);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const m = r.stdout.match(
+      /^restamp: (\d) of 4 pending candidate\(s\) of an older stamp graded again under (\S+)/m,
+    );
+    assert.ok(m, r.stdout);
+    assert.equal(m[2], stamp);
+    const kept = +m[1],
+      after = w.index().candidates;
+    assert.equal(after.filter(c => c.stamp === stamp).length, kept);
+    for (const c of after) {
+      const b = before.find(x => x.id === c.id);
+      assert.deepEqual(
+        [c.file, c.slot, c.attempt, c.seed, c.status],
+        [b.file, b.slot, b.attempt, b.seed, b.status],
+        'a candidate keeps its file, day, attempt and seed',
+      );
+      if (c.stamp !== stamp) assert.deepEqual(c, b, 'one that is not kept stays as it was');
+    }
+    const text = fs.readFileSync(path.join(w.queue, 'index.json'), 'utf8');
+    r = w.cli(...RESTAMP);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    if (kept === 4) assert.doesNotMatch(r.stdout, /restamp/, 'nothing is left to grade again');
+    else assert.match(r.stdout, new RegExp(`^restamp: 0 of ${4 - kept} pending`, 'm'));
+    assert.equal(fs.readFileSync(path.join(w.queue, 'index.json'), 'utf8'), text, 'a rerun');
+  },
+);
+
+test(
+  'gotd-gen fill: older-stamp candidates that still pass are kept with the same numbers',
+  SLOW,
+  () => {
+    const w = world('rs2', { real: true }),
+      made = w.index();
+    assert.equal(made.candidates.length, 2);
+    const file = path.join(w.queue, 'index.json'),
+      old = structuredClone(made);
+    for (const c of old.candidates) c.stamp = 'a6-old';
+    fs.writeFileSync(file, JSON.stringify(old));
+    const r = w.cli('fill', '--today', '20261122', '--horizon', '1', '--per-slot', '2');
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /^restamp: 2 of 2 pending candidate\(s\) of an older stamp/m);
+    assert.match(r.stdout, /added 0 candidate\(s\) in 0 generator run\(s\)/);
+    assert.deepEqual(w.index(), made, 'the index is what the first fill wrote');
+  },
+);
+
 const PROMOTE = ['promote', '--today', '20261122', '--horizon', '2'];
 
 test(

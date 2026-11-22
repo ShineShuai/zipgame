@@ -4,7 +4,8 @@
 // Gates, in this order (vetCandidate):
 //   1. the puzzle is valid, has the slot's size, and survives a round trip through its plain-text file;
 //   2. it is not a puzzle we already have, up to rotation, reflection and reversed numbering (symmetryKey of ratings-io.js);
-//   3. grade: Hard or harder under the CURRENT trap model (the Play badge), and the score clears the grade-3 cut by GOTD_CFG.margin;
+//   3. grade: Hard or harder under the CURRENT trap model (the Play badge), and the score clears
+//      the grade-3 cut by GOTD_CFG.margin (option `margin`; restampQueue grades again with 0);
 //   4. it has exactly one solution (a re-check with the reference solver, not the generator's own verdict);
 //   5. its solution path is not the path of a puzzle we already have (same path = the same solution with other clues);
 //   6. the numbers a human reviewer and a later calibration need are recorded (`corr`: metrics the generator never climbs).
@@ -84,7 +85,14 @@ const uniqueCap = n => Math.max(TARGET_CFG.uniqueCapFloor, TARGET_CFG.uniqueCapP
 
 // -> { ok: true, entry, symKey, path } or { ok: false, reason, detail }. `entry` = what the queue index records about the puzzle.
 // holdGrade: gate 3 does not reject (a human already judged the puzzle; the model may have been refitted since): a grade or margin miss comes back as `drift` on an ok answer.
-export function vetCandidate(puzzle, size, distinct, { holdGrade = false } = {}) {
+// margin: the share of a cut spacing the score must clear the grade cut by (GOTD_CFG.margin
+// unless given).
+export function vetCandidate(
+  puzzle,
+  size,
+  distinct,
+  { holdGrade = false, margin = GOTD_CFG.margin } = {},
+) {
   const fail = (reason, detail = '') => ({ ok: false, reason, detail });
   const v = validate(puzzle);
   if (!v.ok) return fail('invalid', v.msg);
@@ -103,7 +111,7 @@ export function vetCandidate(puzzle, size, distinct, { holdGrade = false } = {})
   if (dup) return fail('duplicate', dup.where);
   const m = trapMetrics(q, TRAP_CFG, null, modelFor(q));
   if (!m.ok) return fail('unsolved', m.reason);
-  const band = targetBand(GOTD_CFG.grade, size, TRAP_MODEL, GOTD_CFG.margin, true);
+  const band = targetBand(GOTD_CFG.grade, size, TRAP_MODEL, margin, true);
   let drift = '';
   if (m.grade < band.grade) drift = `grade ${m.grade}, wanted ${band.grade}+`;
   else if (m.predicted < band.a) drift = `score ${r3(m.predicted)} < ${r3(band.a)}`;

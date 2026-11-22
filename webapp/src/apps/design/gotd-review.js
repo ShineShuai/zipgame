@@ -144,7 +144,7 @@ export function mountGotdReview(
     const rated = merged().filter(v => v.human !== undefined).length;
     el('counts').textContent = !loaded
       ? 'Not loaded.'
-      : `${q.length} to review (${fit} can fill an open day, ${q.length - fit} extra) · ${p.open.length} open day(s) of the next ${p.span} without an approved one · ${merged().length} verdicts (${approved} approved, ${rated} rated) · ${unsent()} not in the repository's verdicts.json yet${old ? ` · ${old} pending candidate(s) of an older generator stamp are not offered (run fill)` : ''}`;
+      : `${q.length} to review (${fit} can fill an open day, ${q.length - fit} extra) · ${p.open.length} open day(s) of the next ${p.span} without an approved one · ${merged().length} verdicts (${approved} approved, ${rated} rated) · ${unsent()} not in the repository's verdicts.json yet${old ? ` · ${old} pending candidate(s) of an older generator stamp are not offered (run fill: it grades them again)` : ''}`;
     act('next').disabled = !loaded || phase === 'playing' || phase === 'rating';
     el('playBtns').style.display = phase === 'playing' ? '' : 'none';
     el('rate').style.display = phase === 'rating' ? '' : 'none';
@@ -253,7 +253,7 @@ export function mountGotdReview(
       tell(
         !loaded
           ? 'Load the queue first.'
-          : `Nothing left to review.${stale() ? ` ${stale()} pending candidate(s) of an older generator stamp are not offered.` : ''} Run node tools/gotd-gen.mjs fill for more.`,
+          : `Nothing left to review.${stale() ? ` ${stale()} pending candidate(s) of an older generator stamp are not offered.` : ''} Run node tools/gotd-gen.mjs fill: it grades them again and makes more.`,
       );
       paint();
       return;
