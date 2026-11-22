@@ -233,7 +233,6 @@
   "test/unit/worker-run.test.js": 1,
   "test/unlock.js": 4,
   "test/variant-contract.js": 9,
-  "test/wrap-all.js": 1,
   "test/zoom.js": 3,
   "tools/ball-catalog.mjs": 1,
   "tools/behaviour-lib.mjs": 13,
