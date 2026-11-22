@@ -827,7 +827,7 @@ test('wrap-play: an unsound wrap record is not encodable', FAST, () => {
   assert.deepStrictEqual(record(p, { grade: 2 }).grade, null, 'a variant record has no grade');
 });
 
-// (that the planted path solves the puzzle is a row of variant-contract.js)
+// (that the planted path solves the puzzle is a row of variant-contract.test.js)
 test('wrap-play: a whole game on a hand-made torus puzzle', FAST, () => {
   const { p, path } = torusPuzzle(5, 5, makeRng(5), 0.3),
     played = [];

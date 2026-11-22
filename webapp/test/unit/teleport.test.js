@@ -972,7 +972,7 @@ test('teleport-play: a share record copies the portal pairs', FAST, () => {
   );
 });
 
-// (the grade by trap only, with the model of the type, is a row of variant-contract.js)
+// (the grade by trap only, with the model of the type, is a row of variant-contract.test.js)
 test('teleport-play: the technique ladder says it does not know portals', FAST, () => {
   assert.ok(ladder(tele(6, 1)).error, 'the technique ladder says it does not know portals');
 });

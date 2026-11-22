@@ -1168,7 +1168,7 @@ test(
   },
 );
 
-// (the grade by trap only, with the model of the type, is a row of variant-contract.js)
+// (the grade by trap only, with the model of the type, is a row of variant-contract.test.js)
 test('twopaths-play: colourNumber counts each colour from 1', FAST, () => {
   const p = game(6, 1);
   assert.deepStrictEqual(colourNumber(p, p.split + 1), 1, 'colourNumber');
