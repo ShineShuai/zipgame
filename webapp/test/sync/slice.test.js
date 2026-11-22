@@ -12,6 +12,7 @@ import {
   unpackSlice,
   UNPACKED_MAX,
 } from '../../src/core/sync/slice.js';
+import { makeRng } from '../../src/core/rng.js';
 
 const slice = (keys = {}, seq = 1, dev = newDevId()) => ({ v: 1, dev, seq, keys });
 
@@ -85,7 +86,8 @@ test('base64url text that is not base64url gives null', () => {
 });
 
 test('a slice that is too big loses what its keys can do without, or is refused', async () => {
-  const noise = () => Array.from({ length: 20 }, () => (Math.random() * 100).toFixed(3) * 1);
+  const rnd = makeRng(5);
+  const noise = () => Array.from({ length: 20 }, () => (rnd() * 100).toFixed(3) * 1);
   const t = {};
   const d = {};
   for (let i = 0; i < 200; i++) {
@@ -99,14 +101,15 @@ test('a slice that is too big loses what its keys can do without, or is refused'
   const back = await unpackSlice(bytes);
   assert.deepEqual(back.keys.zip_stats_v2.t.scope7, [50, 12.5, 3.25, []]);
   assert.deepEqual(back.keys.zip_stats_v2.d.scope7, [20000, 3, 12.5, 3.25, []]);
-  const noShrink = slice({ junk: Array.from({ length: 6000 }, () => Math.random()) });
+  const noShrink = slice({ junk: Array.from({ length: 6000 }, () => rnd()) });
   assert.equal(await packSlice(noShrink, { shrink: SHRINKS }), null);
 });
 
 test('a realistic statistics copy fits as it is, recent times and all', async () => {
   const t = {};
+  const rnd = makeRng(6);
   for (let i = 0; i < 40; i++) {
-    const recent = Array.from({ length: 20 }, () => +(Math.random() * 60).toFixed(1));
+    const recent = Array.from({ length: 20 }, () => +(rnd() * 60).toFixed(1));
     t[`scope${i}`] = [50, 12.5, 3.25, recent];
   }
   const copy = slice({ zip_stats_v2: { v: 2, t, d: {}, b: {} } });

@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createMqtt } from '../../src/coop/mqtt.js';
 import { createHub, matches } from '../../src/coop/signal.js';
-import { createNetwork, manualTimers, settle, until } from './fake-broker.js';
+import { createNetwork, manualTimers } from './fake-broker.js';
+import { turn, until } from '../wait.js';
 
 const URLS = ['wss://mq', 'wss://hv', 'wss://em'];
 const brokers = URLS.map((url, i) => ({ id: ['mq', 'hv', 'em'][i], url }));
@@ -60,7 +61,7 @@ test('a message goes to every broker and is delivered once, whatever the brokers
   await until(() => allUp(a.hub) && allUp(b.hub), 'both connected');
   a.hub.publish('r/one', 'hello');
   await until(() => b.got.length > 0, 'delivery');
-  await settle();
+  await turn();
   assert.deepEqual(b.got, ['r/one=hello']);
   for (const broker of net.brokers.values()) {
     assert.equal(broker.retained.get('r/one'), 'hello', `${broker.url} holds it`);
@@ -74,7 +75,7 @@ test('one broker down, then all down: the others carry it; the report says which
   const b = device(net);
   b.listen('r/+');
   await until(() => a.hub.anyUp() && b.hub.anyUp(), 'connected');
-  await settle();
+  await turn();
   assert.deepEqual(upMap(a.hub), { mq: true, hv: false, em: true });
   a.hub.publish('r/one', 'hello');
   await until(() => b.got.length === 1, 'delivery via the two');
@@ -91,16 +92,16 @@ test('a late subscriber gets the retained message; clear removes it everywhere',
   const a = device(net);
   await until(() => a.hub.anyUp(), 'connected');
   a.hub.publish('r/open', 'sealed');
-  await settle();
+  await turn();
   const late = device(net);
   late.listen('r/open');
   await until(() => late.got.length === 1, 'the retained message');
   a.hub.clear('r/open');
-  await settle();
+  await turn();
   net.brokers.forEach(broker => assert.equal(broker.retained.has('r/open'), false));
   const later = device(net);
   later.listen('r/open');
-  await settle();
+  await turn();
   assert.deepEqual(later.got, []);
 });
 
@@ -110,14 +111,14 @@ test('a lost broker is reconnected after a growing wait, and gets the messages a
   const a = device(net);
   await until(() => isUp(a.hub, 'mq'), 'connected');
   a.hub.publish('r/one', 'sealed');
-  await settle();
+  await turn();
   broker.retained.clear();
   broker.down = true;
   broker.drop();
   await until(() => !isUp(a.hub, 'mq'), 'mq lost');
   const connects = broker.connects;
   a.timers.advance(700); // 1000 ms * (0.5 + 1 / 2)
-  await settle();
+  await turn();
   assert.equal(isUp(a.hub, 'mq'), false, 'still down: tried again');
   broker.down = false;
   a.timers.advance(2100); // the second wait is 2 s
@@ -132,17 +133,17 @@ test('what waits for an answer is sent again a few times, no more', async () => 
   await until(() => allUp(a.hub), 'all up');
   const broker = net.brokers.get('wss://mq');
   a.hub.publish('r/ask', 'sealed', { repeat: 2 });
-  await settle();
+  await turn();
   for (let i = 0; i < 6; i++) {
     a.timers.advance(3000);
-    await settle(5);
+    await turn();
   }
   const sent = broker.log.filter(entry => entry.topic === 'r/ask').length;
   assert.equal(sent, 3, 'once and twice more');
   a.hub.publish('r/once', 'x');
-  await settle();
+  await turn();
   a.timers.advance(30000);
-  await settle();
+  await turn();
   assert.equal(broker.log.filter(entry => entry.topic === 'r/once').length, 1);
 });
 
@@ -200,7 +201,7 @@ test('a message that is too long, or empty, is not delivered; close ends everyth
   a.hub.close();
   await until(() => !a.hub.anyUp(), 'closed');
   a.timers.advance(60000);
-  await settle();
+  await turn();
   assert.equal(a.hub.anyUp(), false, 'no reconnect after close');
   assert.equal(a.timers.size, 0);
 });

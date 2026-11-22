@@ -555,12 +555,11 @@ test('design panel: rating a puzzle as one grade, a range, a range leaning to on
   const p = cachedSamples()[0],
     key = ratingKey(p),
     dom = makePanelDom();
-  mountDifficultyPanel(
+  await mountDifficultyPanel(
     dom.el,
     () => p,
     () => undefined,
   ).run();
-  await new Promise(r => setTimeout(r, 20));
   const last = async () => (await readLog()).find(e => e.key === key);
   await dom.grade(2).onclick();
   let e = await last();
@@ -607,8 +606,7 @@ test('design panel: Export ratings.json downloads the log in the shared format',
     () => p,
     () => undefined,
   );
-  panel.run();
-  await new Promise(r => setTimeout(r, 20));
+  await panel.run();
   await dom.grade(1).onclick();
   await dom.grade(2).onclick();
   await dom.lean(-1).onclick(); // 1 or 2, close to 1
@@ -657,12 +655,11 @@ test('design panel: Import ratings.json merges, regrades with the current code, 
     { key: 'size 5\ncheckpoints\nwalls', human: 0, metrics: null },
   ]); // old-style key (with # comments) + an unrelated entry
   const dom = makePanelDom();
-  mountDifficultyPanel(
+  await mountDifficultyPanel(
     dom.el,
     () => a,
     () => undefined,
   ).run();
-  await new Promise(r => setTimeout(r, 20));
   const file = {
     text: async () =>
       JSON.stringify([
@@ -706,7 +703,7 @@ test('design panel: unsure flag needs a rating, keeps the rating, is exported an
   const p = cachedSamples()[0],
     key = ratingKey(p),
     dom = makePanelDom();
-  mountDifficultyPanel(
+  await mountDifficultyPanel(
     dom.el,
     () => p,
     () => undefined,
@@ -766,7 +763,7 @@ test('design panel: unsure flag needs a rating, keeps the rating, is exported an
   assert.ok(!('unsure' in e), 'sure again: the field disappears');
   await writeLog([]);
   const dom2 = makePanelDom();
-  mountDifficultyPanel(
+  await mountDifficultyPanel(
     dom2.el,
     () => p,
     () => undefined,
@@ -798,7 +795,7 @@ test('design panel: pairwise — compare with the previous puzzle, either orient
       () => current,
       () => undefined,
     );
-  panel.run();
+  await panel.run();
   await wait(30);
   assert.ok(
     dom.sel('.diff-pair-text').textContent.startsWith('No previous puzzle yet'),
@@ -807,7 +804,7 @@ test('design panel: pairwise — compare with the previous puzzle, either orient
   await dom.pair('harder').onclick();
   assert.deepStrictEqual(await readJson(PAIR_LOG, []), [], 'no previous puzzle: nothing recorded');
   current = B;
-  panel.run();
+  await panel.run();
   await wait(30);
   assert.ok(
     dom.sel('.diff-pair-text').textContent.includes('Previous puzzle:') &&
@@ -827,7 +824,7 @@ test('design panel: pairwise — compare with the previous puzzle, either orient
     "both puzzles' grades are cached for the agreement table",
   );
   assert.ok(dom.sel('.diff-pair-text').textContent.includes('You said this one is harder'));
-  panel.run();
+  await panel.run();
   await wait(30);
   assert.ok(
     dom.sel('.diff-pair-text').textContent.includes('Previous puzzle:') &&
@@ -845,7 +842,7 @@ test('design panel: pairwise — compare with the previous puzzle, either orient
   assert.deepStrictEqual(await readJson(PAIR_LOG, []), [], 'same verdict again removes the pair');
   await dom.pair('harder').onclick(); // B is harder than A, stored as a=A, b=B
   current = A;
-  panel.run();
+  await panel.run();
   await wait(30); // now A is current and B previous: the stored pair must be read in the other orientation
   assert.ok(
     dom.sel('.diff-pair-text').textContent.includes('You said this one is easier'),
@@ -910,7 +907,7 @@ test('design panel: pairwise — compare with the previous puzzle, either orient
   }
   await writeJson(PAIR_LOG, []);
   const dom2 = makePanelDom();
-  mountDifficultyPanel(
+  await mountDifficultyPanel(
     dom2.el,
     () => A,
     () => undefined,
@@ -949,11 +946,11 @@ test('design panel: a rotated copy of a rated puzzle is flagged while rating; Fi
       () => current,
       () => undefined,
     );
-  panel.run();
+  await panel.run();
   await wait(30);
   await dom.grade(2).onclick();
   current = R;
-  panel.run();
+  await panel.run();
   await wait(30);
   assert.ok(
     dom.sel('.diff-dup-note').textContent.includes('Same puzzle as one you already rated (2)'),

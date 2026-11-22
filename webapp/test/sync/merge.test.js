@@ -20,11 +20,13 @@ const near = (x, y, message) =>
   assert.ok(Math.abs(x - y) < 1e-9 * Math.max(1, Math.abs(x)), message);
 const ledgerOf = (id, days) =>
   days.reduce((copy, day) => win(judged(copy, day), day, 9000), fresh(20000, id));
-const shuffled = list =>
-  list
-    .map(x => [Math.random(), x])
-    .sort((a, b) => a[0] - b[0])
-    .map(x => x[1]);
+// Every order of a short list (three devices: six), so that no order is left to chance.
+const orders = list =>
+  list.length < 2
+    ? [list]
+    : list.flatMap((x, i) =>
+        orders([...list.slice(0, i), ...list.slice(i + 1)]).map(rest => [x, ...rest]),
+      );
 
 test('the synced keys are exactly these, and what is device-local is not among them', () => {
   assert.deepEqual(
@@ -94,8 +96,8 @@ test(
       entry(dev, statsCopy({ s: packed(statOf(sets[i])) })),
     );
     const all = statOf(sets.flat());
-    for (let round = 0; round < 10; round++) {
-      const [n, mean, M2] = MERGES[STATS_KEY].view(shuffled(entries)).t.s;
+    for (const order of orders(entries)) {
+      const [n, mean, M2] = MERGES[STATS_KEY].view(order).t.s;
       assert.equal(n, all.n);
       near(mean, all.mean, 'mean');
       near(M2, all.M2, 'M2');
@@ -259,12 +261,10 @@ test('streak: a tie goes to the more rewards, then to the first device id', () =
     entry(B, streakCopy({ earned: 2, prog: 0 })),
   ];
   assert.equal(MERGES[STREAK_KEY].view(pick).earned, 2);
-  assert.equal(
-    MERGES[STREAK_KEY].view(
-      shuffled([entry(A, streakCopy({ freezes: 1 })), entry(B, streakCopy({ freezes: 2 }))]),
-    ).freezes,
-    1,
-  );
+  const freezes = [entry(A, streakCopy({ freezes: 1 })), entry(B, streakCopy({ freezes: 2 }))];
+  for (const order of orders(freezes)) {
+    assert.equal(MERGES[STREAK_KEY].view(order).freezes, 1);
+  }
 });
 
 test('streak: a player with no solve yet (last null) loses to one with a solve', () => {
@@ -431,9 +431,11 @@ test('theme slots: a copy is cleaned (number in range, pool ids, at most four)',
   }
 });
 
-// ---- every rule: the same set of entries gives the same value, in any order ------------
+// ---- every rule: the same entries give the same value, and are left alone ------------
+// The engine sorts the entries by device before it folds them (engine.test.js: the devices end up
+// equal whatever order the slices came in), so a rule may depend on that order, and some do.
 
-test('every rule is a function of the set of entries (any order, same value)', () => {
+test('every rule is pure: the same entries give the same value, and are left as they were', () => {
   const samples = {
     [GOTD_KEY]: [
       gotdCopy(
@@ -473,11 +475,9 @@ test('every rule is a function of the set of entries (any order, same value)', (
   };
   for (const [key, values] of Object.entries(samples)) {
     const entries = [A, B, C].map((dev, i) => entry(dev, MERGES[key].clean(values[i])));
+    const before = structuredClone(entries);
     const first = MERGES[key].view(entries, A);
-    for (let round = 0; round < 12; round++) {
-      const sorted = shuffled(entries).sort((x, y) => (x.dev < y.dev ? -1 : 1));
-      assert.deepEqual(MERGES[key].view(sorted, A), first, key);
-      assert.deepEqual(MERGES[key].view(entries, A), first, `${key}: pure`);
-    }
+    assert.deepEqual(MERGES[key].view(entries, A), first, `${key}: the same value again`);
+    assert.deepEqual(entries, before, `${key}: the entries are left as they were`);
   }
 });

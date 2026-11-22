@@ -8,7 +8,8 @@ import {
   readPublish,
   subscribePacket,
 } from '../../src/coop/mqtt.js';
-import { createNetwork, manualTimers, settle, until } from './fake-broker.js';
+import { createNetwork, manualTimers } from './fake-broker.js';
+import { turn, until } from '../wait.js';
 
 const bytes = (...parts) =>
   Uint8Array.from(
@@ -120,7 +121,7 @@ test('a connection that never answers is given up after connectMs', async () => 
   const broker = net.brokers.get('wss://silent');
   broker.handle = () => {}; // accepts the socket, never answers CONNECT
   const silent = client(net, 'wss://silent');
-  await settle();
+  await turn();
   assert.deepEqual(silent.events, []);
   silent.timers.advance(10000);
   assert.deepEqual(silent.events, ['close']);

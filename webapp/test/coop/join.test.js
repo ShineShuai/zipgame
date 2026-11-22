@@ -21,7 +21,8 @@ import {
   splitToken,
   unseal,
 } from '../../src/coop/secret.js';
-import { createNetwork, manualTimers, settle, until } from './fake-broker.js';
+import { createNetwork, heldTopics, manualTimers } from './fake-broker.js';
+import { quiet, until } from '../wait.js';
 
 const URLS = ['wss://mq', 'wss://hv', 'wss://em'];
 const brokers = URLS.map((url, i) => ({ id: ['mq', 'hv', 'em'][i], url }));
@@ -174,8 +175,10 @@ test('the whole handshake: greeting, accept, offer and answer cross', async () =
 
   host.room.close();
   guest.room.close();
-  await settle();
-  net.brokers.forEach(broker => assert.equal(broker.retained.size, 0, `${broker.url} is clean`));
+  await until(
+    () => heldTopics(net).length === 0,
+    () => `the brokers to be clean, they hold ${heldTopics(net)}`,
+  );
 });
 
 test('declining tells the guest, and nothing is offered', async () => {
@@ -283,7 +286,7 @@ test('someone else with the link cannot pose as the host: its offer is ignored',
   await guest.room.ask('hello');
   await until(() => forged.length === 1, 'the attacker answered first');
   await until(() => host.last().length === 1, 'the real request');
-  await settle(60);
+  await quiet(60);
   assert.ok(!guest.log.some(line => line.includes('EVIL')), 'never joined the attacker');
   assert.notEqual(guest.stage(), 'connecting');
   await host.room.accept(host.last()[0].id);
@@ -376,9 +379,11 @@ test('an invite expires, and the guest gives up when nobody answers', async () =
   assert.equal(guest.stage(), 'timeout');
   host.timers.advance(ROOM_MS);
   assert.equal(expired, 1);
-  await settle();
-  const topics = [...net.brokers.values()].flatMap(broker => [...broker.retained.keys()]);
-  assert.ok(!topics.some(topic => topic.endsWith('/open')), 'the room is gone');
+  const open = () => heldTopics(net).filter(topic => topic.endsWith('/open'));
+  await until(
+    () => open().length === 0,
+    () => `the room to be gone, it still holds ${open()}`,
+  );
   const asked = host.requests[0][0].id;
   assert.equal(await host.room.accept(asked), false, 'a closed room accepts nobody');
 });

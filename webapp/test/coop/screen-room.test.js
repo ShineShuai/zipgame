@@ -13,7 +13,8 @@ import { fixture } from '../fixtures/puzzles.js';
 import { solutionOf } from '../../src/features/hints.js';
 import { EN } from '../../src/coop/texts.js';
 import { installFakeDom } from './fake-dom.js';
-import { createNetwork, settle, until } from './fake-broker.js';
+import { createNetwork } from './fake-broker.js';
+import { quiet, until } from '../wait.js';
 
 // The screen, in a fake page, against the real brokers' addresses on a fake network. There is no
 // WebRTC in Node, so a connection that is really started fails at once: the screen must say so.
@@ -32,6 +33,11 @@ const stubRtc = {
   joinInvite: async () => ({ code: 'answer', connection: { close() {} } }),
 };
 const remaining = () => [...net.brokers.values()].flatMap(broker => [...broker.retained.keys()]);
+const brokersClean = () =>
+  until(
+    () => remaining().length === 0,
+    () => `the brokers to be clean, they hold ${remaining()}`,
+  );
 
 // Whatever a test opens is closed when it ends, however it ends: an open room keeps timers (the
 // invite lasts minutes), and a test that failed halfway would keep the whole run from finishing.
@@ -94,8 +100,7 @@ test("the host's screen: link, requests, greeting box, accept, decline, cancel",
   assert.equal(dom.status(), EN.noRtc);
 
   dom.click('cancel');
-  await settle(30);
-  assert.deepEqual(remaining(), [], 'the brokers are left clean');
+  await brokersClean();
 });
 
 test("the guest's screen: the greeting form, the news, and a failing connection", async t => {
@@ -132,8 +137,7 @@ test("the guest's screen: the greeting form, the news, and a failing connection"
   await until(() => dom.failed() && dom.status() === EN.noRtc, 'the failed connection is shown');
   host.close();
   dom.click('cancel');
-  await settle(30);
-  assert.deepEqual(remaining(), [], 'the brokers are left clean');
+  await brokersClean();
 });
 
 test('a link that is no token is reported', async t => {
@@ -201,7 +205,7 @@ test('a game that is too old, or damaged, is not offered', async t => {
   const old = await kept('host');
   await saveGame(storage, { ...old, saved: Date.now() - 25 * 3600 * 1000 });
   opened(t, openScreen({ ...env, storage }));
-  await settle(40);
+  await quiet(40);
   assert.ok(!dom.html().includes('data-act="rejoin"'));
   storage.data.set(GAME_KEY, '{"v":1');
   assert.equal(await loadGame(storage), null);
@@ -231,9 +235,8 @@ test('rejoining shows the game with its time, and looks for the other device', a
   if (dom.html().includes('data-act="leave"')) {
     dom.click('leave');
   }
-  await settle(30);
-  assert.equal(storage.data.has(GAME_KEY), false, 'a game that is left is forgotten');
-  assert.deepEqual(remaining(), [], 'the brokers are left clean');
+  await until(() => !storage.data.has(GAME_KEY), 'the game that is left to be forgotten');
+  await brokersClean();
   assert.equal(screen !== null, true);
 });
 

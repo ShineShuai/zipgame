@@ -9,7 +9,8 @@ import { fromBase64Url } from '../../src/coop/invite.js';
 import { createSession } from '../../src/coop/session.js';
 import { createHub } from '../../src/coop/signal.js';
 import { fakePair } from './fake-channel.js';
-import { createNetwork, manualTimers, until } from './fake-broker.js';
+import { createNetwork, manualTimers } from './fake-broker.js';
+import { until } from '../wait.js';
 
 // The whole way back after a break, without a browser: two sessions with a heartbeat, a channel
 // that goes silent, resume rooms on fake brokers, and a fake WebRTC that connects what was offered

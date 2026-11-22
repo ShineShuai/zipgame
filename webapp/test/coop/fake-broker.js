@@ -255,16 +255,6 @@ export function manualTimers() {
   };
 }
 
-// Waits until `check()` is true: the tests wait for real crypto (a thread pool) and for the
-// messages of the fake network, which take several turns. The limit only matters when a test
-// fails; a loaded CI runner needs far more than a quiet laptop, so it is generous.
-export async function until(check, what = 'a condition', ms = 15000) {
-  const end = Date.now() + ms;
-  while (!check()) {
-    if (Date.now() > end) {
-      throw new Error(`timed out waiting for ${what}`);
-    }
-    await new Promise(resolve => setTimeout(resolve, 1));
-  }
-}
-export const settle = (ms = 30) => new Promise(resolve => setTimeout(resolve, ms));
+// The topics that the brokers of a network still hold (retained).
+export const heldTopics = net =>
+  [...net.brokers.values()].flatMap(broker => [...broker.retained.keys()]);

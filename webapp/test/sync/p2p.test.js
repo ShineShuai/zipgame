@@ -17,6 +17,7 @@ import {
   tokenOfHash,
 } from '../../src/platform/sync/p2p.js';
 import { memoryStorage } from './helpers.js';
+import { until } from '../wait.js';
 
 const present = existsSync(new URL('../../src/coop/join.js', import.meta.url));
 const load = async path => (present ? import(path) : {});
@@ -24,7 +25,7 @@ const { hostRoom, joinRoom } = await load('../../src/coop/join.js');
 const { createMqtt } = await load('../../src/coop/mqtt.js');
 const { resumeRoom } = await load('../../src/coop/resume.js');
 const { createHub } = await load('../../src/coop/signal.js');
-const { createNetwork, manualTimers, until } = await load('../coop/fake-broker.js');
+const { createNetwork, manualTimers } = await load('../coop/fake-broker.js');
 const coopTest = (name, fn) => test(name, { skip: present ? false : 'src/coop was removed' }, fn);
 
 const URLS = ['wss://mq', 'wss://hv', 'wss://em'];
