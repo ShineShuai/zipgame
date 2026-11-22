@@ -5,7 +5,8 @@ import { ALIVE_MS, ATTEMPT_MS, BEAT_MS, RESUME_MS, resumeRoom } from '../../src/
 import { createHub } from '../../src/coop/signal.js';
 import { deriveResume, newSecret, seal, unseal } from '../../src/coop/secret.js';
 import { fromBase64Url } from '../../src/coop/invite.js';
-import { createNetwork, manualTimers, settle, until } from './fake-broker.js';
+import { createNetwork, heldTopics, manualTimers } from './fake-broker.js';
+import { quiet, until } from '../wait.js';
 
 const URLS = ['wss://mq', 'wss://hv', 'wss://em'];
 const brokers = URLS.map((url, i) => ({ id: ['mq', 'hv', 'em'][i], url }));
@@ -89,7 +90,7 @@ test('two devices that look for each other meet: one offers, the other answers',
   await a.open();
   await b.open();
   await until(() => a.log.length + b.log.length >= 3, 'offer, answer and its acceptance');
-  await settle(30);
+  await quiet(30);
   assert.equal(calls(a, b).length, 1, 'only one of them offers');
   const caller = a.log.some(line => line.startsWith('createInvite')) ? a : b;
   const callee = caller === a ? b : a;
@@ -130,12 +131,12 @@ test('only holders of the secret take part; an offer for another run is ignored'
     }),
   );
   rogue.hub.publish(`${to}b`, 'junk');
-  await settle(60);
+  await quiet(60);
   const here = `zipcoop/1/${room}/here/1`;
   rogue.hub.publish(here, await seal(key, here, { n: 'rogue-run', beat: 0 }));
   const stale = { from: 'rogue-run', to: 'another-run', offer: 'OLD' };
   rogue.hub.publish(to, await seal(key, to, stale));
-  await settle(80);
+  await quiet(80);
   assert.ok(!a.log.some(line => line.includes('EVIL') || line.includes('OLD')), a.log.join());
   assert.deepEqual(a.peers, [true], 'the rogue with the key is seen as the other device');
 });
@@ -152,7 +153,7 @@ test("an offer that comes before its maker's beat is answered when the beat come
   const n = (await unseal(key, seen[0][0], seen[0][1])).n;
   const offer = `zipcoop/1/${room}/offer/0`;
   rogue.hub.publish(offer, await seal(key, offer, { from: '+early', to: n, offer: 'FIRST' }));
-  await settle(60);
+  await quiet(60);
   assert.deepEqual(b.log, [], 'b does not know who "+early" is yet');
   const here = `zipcoop/1/${room}/here/0`;
   rogue.hub.publish(here, await seal(key, here, { n: '+early', beat: 0 }));
@@ -203,7 +204,7 @@ test('an offer from the one that may not offer is not answered', async () => {
   const offer = `zipcoop/1/${room}/offer/0`;
   rogue.hub.publish(here, await seal(key, here, { n: '~later', beat: 0 })); // sorts after any n
   rogue.hub.publish(offer, await seal(key, offer, { from: '~later', to: n, offer: 'NO' }));
-  await settle(80);
+  await quiet(80);
   assert.ok(!b.log.some(line => line.includes('NO')), 'b offers itself (its n is the smaller)');
   assert.equal(b.log.filter(line => line.startsWith('createInvite')).length, 1);
 });
@@ -234,11 +235,13 @@ test('closing leaves nothing on the brokers and keeps the connections made', asy
   const ra = await a.open();
   const rb = await b.open();
   await until(() => a.connections.length === 1 && b.connections.length === 1, 'connected');
-  await settle(30);
+  await quiet(30);
   ra.close();
   rb.close();
-  await settle(40);
-  net.brokers.forEach(broker => assert.equal(broker.retained.size, 0, broker.url));
+  await until(
+    () => heldTopics(net).length === 0,
+    () => `the brokers to be clean, they hold ${heldTopics(net)}`,
+  );
   assert.ok([...a.connections, ...b.connections].every(connection => !connection.closed));
 });
 
@@ -249,6 +252,8 @@ test('nobody came: the room closes by itself after a while', async () => {
   await a.open({ onExpired: () => expired++ });
   a.timers.advance(RESUME_MS);
   assert.equal(expired, 1);
-  await settle(30);
-  net.brokers.forEach(broker => assert.equal(broker.retained.size, 0));
+  await until(
+    () => heldTopics(net).length === 0,
+    () => `the brokers to be clean, they hold ${heldTopics(net)}`,
+  );
 });

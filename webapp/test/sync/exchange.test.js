@@ -15,6 +15,7 @@ import {
   toFrames,
 } from '../../src/platform/sync/proto.js';
 import { channelPair, manualTimers, memoryStorage, nextTurn } from './helpers.js';
+import { makeRng } from '../../src/core/rng.js';
 
 const rules = (...ids) =>
   JSON.stringify({ v: 1, seen: Object.fromEntries(ids.map(id => [id, true])) });
@@ -82,11 +83,12 @@ test('devices that never meet converge through a third (gossip)', async () => {
 test('a big slice goes over in parts, each short enough for a data channel', async () => {
   const records = {};
   let count = 0;
+  const rnd = makeRng(1);
   for (;;) {
     // grow the records until the packed slice is about 12 KB (16 KB is the limit)
     const date = String(20200101 + count++);
-    const stats = { a: Math.random(), b: Math.random() };
-    records[date] = { solved: true, time: Math.random() * 1000, stats };
+    const stats = { a: rnd(), b: rnd() };
+    records[date] = { solved: true, time: rnd() * 1000, stats };
     const keys = { [GOTD_KEY]: { v: 2, a: records, n: count } };
     const slice = { v: 1, dev: 'AAAAAAAAAAA', seq: 1, keys };
     if (count % 20 === 0 && (await packSlice(slice)).length > 12000) break;

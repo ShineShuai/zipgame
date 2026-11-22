@@ -11,6 +11,7 @@ import {
   toWords,
   WORD_COUNT,
 } from '../../src/core/sync/words.js';
+import { makeRng } from '../../src/core/rng.js';
 
 const CONSONANTS = 'bdfghjklmnprstvz';
 const VOWELS = 'aeio';
@@ -103,22 +104,23 @@ test(
   },
 );
 
-test('two swapped words are caught almost always', () => {
-  let caught = 0;
+test('two swapped words are always caught', () => {
+  const rnd = makeRng(1);
   let tried = 0;
-  for (let i = 0; i < 2000; i++) {
-    const words = toWords(newSecret());
-    const [x, y] = [Math.floor(Math.random() * 8), Math.floor(Math.random() * 8)];
-    if (words[x] === words[y]) continue;
-    [words[x], words[y]] = [words[y], words[x]];
-    tried++;
-    try {
-      fromWords(words);
-    } catch {
-      caught++;
+  for (let i = 0; i < 100; i++) {
+    const secret = Uint8Array.from({ length: SECRET_BYTES }, () => Math.floor(rnd() * 256));
+    const words = toWords(secret);
+    for (let x = 0; x < words.length; x++) {
+      for (let y = x + 1; y < words.length; y++) {
+        if (words[x] === words[y]) continue;
+        const swapped = [...words];
+        [swapped[x], swapped[y]] = [swapped[y], swapped[x]];
+        tried++;
+        assert.throws(() => fromWords(swapped), PhraseError, `secret ${i}: words ${x} and ${y}`);
+      }
     }
   }
-  assert.ok(caught / tried > 0.999, `${caught}/${tried}`);
+  assert.ok(tried > 2000, 'the swaps were tried');
 });
 
 test('toWords wants exactly 10 bytes', () => {

@@ -580,7 +580,9 @@ function downloadText(text, name) {
 
 // Mounts the panel: a button that runs the diagnostics on the current puzzle (via getPuzzle())
 // and renders into resultEl. Returns { run() } so the caller (main.js) can trigger it from its own
-// button binding, matching how doSolve/doMinimize are wired there.
+// button binding, matching how doSolve/doMinimize are wired there. run() returns a promise that
+// settles when the log, the rating and the comparison are drawn (main.js ignores it, a test
+// awaits it: a rating made before that would be overwritten by the drawing of the stored one).
 //
 // Output is wrapped in a collapsible section (the diagnostics + rating log grow long once
 // expanded) with a header the user can click to hide/show everything below it without losing the
@@ -1029,9 +1031,7 @@ export function mountDifficultyPanel(resultEl, getPuzzle, getNodeCap, onShowPath
       .querySelectorAll('.diff-trap-show')
       .forEach(b => (b.onclick = () => onShowPath?.(lastRoutes[+b.dataset.k])));
     applyCollapsed();
-    renderLog();
-    syncRating();
-    advancePrev().then(syncPair);
+    return Promise.all([renderLog(), syncRating(), advancePrev().then(syncPair)]);
   }
   return { run };
 }

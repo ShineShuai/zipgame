@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { GOTD_KEY, STATS_KEY } from '../../src/features/stats-store.js';
 import { UNLOCK_KEY } from '../../src/features/unlock.js';
+import { SLOTS_KEY } from '../../src/features/slots-sync.js';
 import { RULES_SEEN_KEY } from '../../src/features/rules-seen.js';
 import { isDev } from '../../src/core/sync/slice.js';
 import { SECRET_BYTES } from '../../src/core/sync/words.js';
 import { createSync, FOREIGN_KEY, IDENTITY_KEY } from '../../src/platform/sync/engine.js';
 import { memoryStorage } from './helpers.js';
+import { makeRng, shuffle } from '../../src/core/rng.js';
 
 const json = value => JSON.stringify(value);
 const OFF_STATUS = { enabled: false, p2p: false, cloud: false, dev: null, devices: 0 };
@@ -302,9 +304,9 @@ test("adoptSecret(): joins another group and forgets the old group's slices", as
   assert.equal(await sync.adoptSecret(new Uint8Array(3)), false);
 });
 
-test(
-  'three devices that only trade slices, in any order and with repeats, ' + 'end up equal',
-  async () => {
+// The devices trade in shuffled orders from a seeded generator: a failure names its seed.
+for (const seed of [1, 2, 3, 4, 5]) {
+  test(`three devices trading slices in any order end up equal (seed ${seed})`, async () => {
     const stat = (n, mean) => [n, mean, n * 2, [mean]];
     const make = async copies => {
       const d = await device(copies);
@@ -316,20 +318,24 @@ test(
         [UNLOCK_KEY]: json(unlockCopy({ tokens: 2, unlocked: { a: 5 } })),
         [STATS_KEY]: json({ v: 2, t: { s: stat(3, 10) }, d: {}, b: {} }),
         [RULES_SEEN_KEY]: rules('a'),
+        [SLOTS_KEY]: json({ v: 1, cap: 1, themes: ['c'] }),
       }),
       await make({
         [UNLOCK_KEY]: json(unlockCopy({ tokens: -1, unlocked: { b: 6 } })),
         [STATS_KEY]: json({ v: 2, t: { s: stat(2, 20) }, d: {}, b: {} }),
         [RULES_SEEN_KEY]: rules('b'),
+        [SLOTS_KEY]: json({ v: 1, cap: 4, themes: ['b'] }),
       }),
       await make({
         [UNLOCK_KEY]: json(unlockCopy({ choices: 4 })),
         [STATS_KEY]: json({ v: 2, t: { s: stat(5, 5) }, d: {}, b: {} }),
+        [SLOTS_KEY]: json({ v: 1, cap: 2, themes: ['a'] }),
       }),
     ];
-    const shuffle = list => [...list].sort(() => Math.random() - 0.5);
-    await settle(devices, shuffle);
-    await settle(devices, shuffle); // a second round: repeats change nothing
+    const rnd = makeRng(seed);
+    const inOrder = list => shuffle([...list], rnd);
+    await settle(devices, inOrder);
+    await settle(devices, inOrder); // a second round: repeats change nothing
     const views = async key =>
       Promise.all(
         devices.map(async d => {
@@ -337,16 +343,19 @@ test(
           return d.sync.view(key, raw ? JSON.parse(raw.value) : null);
         }),
       );
-    for (const key of [UNLOCK_KEY, STATS_KEY, RULES_SEEN_KEY]) {
+    for (const key of [UNLOCK_KEY, STATS_KEY, RULES_SEEN_KEY, SLOTS_KEY]) {
       const [first, ...rest] = await views(key);
-      for (const other of rest) assert.deepEqual(other, first, key);
+      for (const other of rest) assert.deepEqual(other, first, `${key}, seed ${seed}`);
     }
     const [unlock] = await views(UNLOCK_KEY);
     assert.deepEqual([unlock.tokens, unlock.choices, unlock.unlocked], [1, 4, { a: 5, b: 6 }]);
     const [stats] = await views(STATS_KEY);
     assert.equal(stats.t.s[0], 10);
-  },
-);
+    // the themes come in the order of the devices, the same one on every device (checked above)
+    const [slots] = await views(SLOTS_KEY);
+    assert.deepEqual([slots.cap, [...slots.themes].sort()], [4, ['a', 'b', 'c']]);
+  });
+}
 
 test(
   'slicesFor(): a device gets what it lacks, never what it has; garbage in ' +

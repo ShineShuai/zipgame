@@ -9,6 +9,7 @@ import { supabaseCloud } from '../../src/platform/sync/cloud/supabase.js';
 import { tursoCloud } from '../../src/platform/sync/cloud/turso.js';
 import { createSync } from '../../src/platform/sync/engine.js';
 import { fakeSupabase, fakeTurso, memoryStorage, sqliteTest, tursoDatabase } from './helpers.js';
+import { makeRng } from '../../src/core/rng.js';
 
 const rules = (...ids) =>
   JSON.stringify({ v: 1, seen: Object.fromEntries(ids.map(id => [id, true])) });
@@ -305,9 +306,10 @@ test('a slice too big even after shrinking is not sent, and says so', async () =
   const world = await servers().make();
   const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('x') } });
   const records = {};
+  const rnd = makeRng(3);
   for (let i = 0; i < 3000; i++) {
     // records that stay records: nothing can shrink them
-    records[String(20100101 + i)] = { solved: true, time: Math.random() * 1000, n: Math.random() };
+    records[String(20100101 + i)] = { solved: true, time: rnd() * 1000, n: rnd() };
   }
   await a.storage.set('zip_gotd_v2', JSON.stringify({ v: 2, a: records, n: 3000 }));
   const result = await a.cloud.push({ force: true });
@@ -341,8 +343,9 @@ test('a slice that is too big is an error of the round even when a server answer
   const world = await servers().make();
   const a = await device(world, { data: { [RULES_SEEN_KEY]: rules('x') } });
   const records = {};
+  const rnd = makeRng(3);
   for (let i = 0; i < 3000; i++) {
-    records[String(20100101 + i)] = { solved: true, time: Math.random() * 1000, n: Math.random() };
+    records[String(20100101 + i)] = { solved: true, time: rnd() * 1000, n: rnd() };
   }
   await a.storage.set('zip_gotd_v2', JSON.stringify({ v: 2, a: records, n: 3000 }));
   const events = [];
