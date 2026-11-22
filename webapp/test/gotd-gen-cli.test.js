@@ -266,6 +266,7 @@ test('gotd-gen: bad arguments and unknown commands exit 1 with a message', FAST,
     ['nope'],
     [],
     ['fill', '--horizon', '0'],
+    ['fill', '--min-grade', '-1'],
     ['promote', '--horizon', '0'],
     ['promote', '--until', '2026-11-22'],
     ['promote', '--today', '20261122', '--until', '20261121'],
@@ -318,8 +319,11 @@ const RESTAMP = [
   '0',
 ];
 
+const RESTAMPED =
+  /^restamp: (\d) of 4 pending candidate\(s\) of an older stamp graded again under ([\w-]+)/m;
+
 test(
-  'gotd-gen fill: pending candidates of an older stamp are graded again, not made again',
+  'gotd-gen fill: older-stamp candidates are graded again and kept whatever their grade',
   FAST,
   () => {
     const stamp = genStamp(),
@@ -336,28 +340,60 @@ test(
 
     let r = w.cli(...RESTAMP);
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    const m = r.stdout.match(
-      /^restamp: (\d) of 4 pending candidate\(s\) of an older stamp graded again under (\S+)/m,
-    );
+    const m = r.stdout.match(RESTAMPED);
     assert.ok(m, r.stdout);
-    assert.equal(m[2], stamp);
-    const kept = +m[1],
-      after = w.index().candidates;
-    assert.equal(after.filter(c => c.stamp === stamp).length, kept);
+    assert.deepEqual([+m[1], m[2]], [4, stamp], 'valid and distinct: all kept by default');
+    const after = w.index().candidates;
     for (const c of after) {
       const b = before.find(x => x.id === c.id);
+      assert.equal(c.stamp, stamp);
       assert.deepEqual(
         [c.file, c.slot, c.attempt, c.seed, c.status],
         [b.file, b.slot, b.attempt, b.seed, b.status],
         'a candidate keeps its file, day, attempt and seed',
       );
-      if (c.stamp !== stamp) assert.deepEqual(c, b, 'one that is not kept stays as it was');
     }
-    const text = fs.readFileSync(path.join(w.queue, 'index.json'), 'utf8');
+    const low = after.filter(c => c.trap.grade < 3).length;
+    if (low) assert.match(r.stdout, new RegExp(`; ${low} of them below grade 3`));
+    else assert.doesNotMatch(r.stdout, /below grade/);
     r = w.cli(...RESTAMP);
     assert.equal(r.status, 0, r.stdout + r.stderr);
-    if (kept === 4) assert.doesNotMatch(r.stdout, /restamp/, 'nothing is left to grade again');
-    else assert.match(r.stdout, new RegExp(`^restamp: 0 of ${4 - kept} pending`, 'm'));
+    assert.doesNotMatch(r.stdout, /restamp/, 'nothing is left to grade again');
+  },
+);
+
+test(
+  'gotd-gen fill --min-grade: only candidates graded that high are kept, the rest stay',
+  FAST,
+  () => {
+    const stamp = genStamp(),
+      w = world('rs3'),
+      before = w.index().candidates;
+    const r = w.cli(...RESTAMP, '--min-grade', '5');
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const m = r.stdout.match(RESTAMPED);
+    assert.ok(m, r.stdout);
+    const after = w.index().candidates,
+      kept = after.filter(c => c.stamp === stamp);
+    assert.equal(kept.length, +m[1]);
+    assert.ok(
+      kept.every(c => c.trap.grade >= 5),
+      'a kept candidate is graded 5',
+    );
+    for (const c of after) {
+      if (c.stamp !== stamp)
+        assert.deepEqual(
+          c,
+          before.find(x => x.id === c.id),
+          'not kept: as it was',
+        );
+    }
+    if (kept.length < 4) assert.match(r.stdout, /; not kept: grade \d/);
+    const text = fs.readFileSync(path.join(w.queue, 'index.json'), 'utf8'),
+      again = w.cli(...RESTAMP, '--min-grade', '5');
+    assert.equal(again.status, 0, again.stdout + again.stderr);
+    if (kept.length < 4)
+      assert.match(again.stdout, new RegExp(`^restamp: 0 of ${4 - kept.length} pending`, 'm'));
     assert.equal(fs.readFileSync(path.join(w.queue, 'index.json'), 'utf8'), text, 'a rerun');
   },
 );
@@ -369,6 +405,10 @@ test(
     const w = world('rs2', { real: true }),
       made = w.index();
     assert.equal(made.candidates.length, 2);
+    assert.ok(
+      made.candidates.every(c => c.trap.grade >= 3),
+      'a candidate fill makes is graded 3 or more, whatever --min-grade (default 0) says',
+    );
     const file = path.join(w.queue, 'index.json'),
       old = structuredClone(made);
     for (const c of old.candidates) c.stamp = 'a6-old';
