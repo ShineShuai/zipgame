@@ -1,10 +1,14 @@
-// The speed budget of the fast tier, for every test of a test file: the t / ta tests of harness.js and the tests of the files that
-// call node:test themselves. test/run.mjs loads this file (node --import) and so does harness.js, so a file run by hand is measured too.
-//   - A fast test that uses 0.5 s of CPU time, or 1.5 s of wall time (a test that waits for child processes uses little CPU of
-//     its own), is reported: it belongs in the slow tier (t.slow, or the SLOW option of node:test).
-//   - It fails at 1 s of CPU time or 3 s of wall time (ZIGZAG_FAST_BUDGET_MS sets the CPU limit), but not on CI: a shared runner is
-//     slower than a laptop, which is no regression. There the report is all there is (run.mjs puts it in the job summary).
-//   - Only the fast tier is checked: every test that runs in it is a fast test. In the other tiers the slow ones run too.
+// The speed budget of the fast tier, for every test of a test file. test/run.mjs loads this file
+// (node --import), and so does harness.js, so a file that uses FAST, SLOW or sampled is measured
+// when it is run by hand too.
+//   - A fast test that uses 0.5 s of CPU time, or 1.5 s of wall time (a test that waits for child
+//     processes uses little CPU of its own), is reported: it belongs in the slow tier (the SLOW
+//     option of node:test).
+//   - It fails at 1 s of CPU time or 3 s of wall time (ZIGZAG_FAST_BUDGET_MS sets the CPU limit),
+//     but not on CI: a shared runner is slower than a laptop, which is no regression. There the
+//     report is all there is (run.mjs puts it in the job summary).
+//   - Only the fast tier is checked: every test that runs in it is a fast test. In the other tiers
+//     the slow ones run too.
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach } from 'node:test';
