@@ -1,5 +1,6 @@
 // Unit tests of the solver: pruning, propagation, forced edges, leg collisions, connectivity.
-// Part of `npm test` (test/run.mjs); the tiers and t / ta are in test/harness.js.
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import '../setup-balls.js';
 import {
   makePuzzle,
@@ -26,7 +27,7 @@ import { makeIncremental } from '../../src/core/solver/incremental.js';
 import { randomPathPuzzle } from '../../src/core/gen/generate.js';
 import { refNodeCap, REF_FLAGS } from '../../src/core/difficulty.js';
 import { solutionPath, trapProfile, TRAP_CFG } from '../../src/core/trap.js';
-import { t, eq, ok, registerAsyncTests, sampled } from '../harness.js';
+import { FAST, SLOW, sampled } from '../harness.js';
 import { gridMoves, oracle } from '../oracle.js';
 import { cachedSamples, randPuzzle, sampleUniquePuzzles } from './helpers.js';
 
@@ -52,8 +53,9 @@ const ALL_PRUNES = {
   legCollide: true,
 };
 
-t(
+test(
   'solver: plain and with every pruning option (alone, all together) match brute force (n=3,4; random walls/checkpoints)',
+  FAST,
   () => {
     const sets = [
       {},
@@ -68,15 +70,16 @@ t(
         expected = brute(p);
       for (const extra of sets) {
         const r = solve(p, { limit: 1e9, nodeCap: 1e7, ...extra });
-        ok(!r.exceeded);
-        eq(r.count, expected, `case ${s} ${JSON.stringify(extra)}`);
+        assert.ok(!r.exceeded);
+        assert.deepStrictEqual(r.count, expected, `case ${s} ${JSON.stringify(extra)}`);
       }
     }
   },
 );
 
-t.slow(
+test(
   'solver: every pruning option alone, all together, and random combinations keep count, paths and DFS order, and never cost a node',
+  SLOW,
   () => {
     const rnd = makeRng(2024),
       names = Object.keys(PRUNE_OPTIONS),
@@ -89,7 +92,7 @@ t.slow(
       for (const limit of [2, 1e9]) {
         const run = extra => {
           const r = solve(p, { ...extra, limit, nodeCap: 3e6, capture: true });
-          ok(!r.exceeded, `case ${s}`);
+          assert.ok(!r.exceeded, `case ${s}`);
           return r;
         };
         const plain = run({});
@@ -97,9 +100,9 @@ t.slow(
         const check = (extra, than = plain) => {
           const r = run(extra),
             what = `case ${s} limit ${limit} ${JSON.stringify(extra)}`;
-          eq(r.count, plain.count, `count ${what}`);
-          eq(r.paths, plain.paths, `paths ${what}`);
-          ok(r.nodes <= than.nodes, `nodes ${what}`);
+          assert.deepStrictEqual(r.count, plain.count, `count ${what}`);
+          assert.deepStrictEqual(r.paths, plain.paths, `paths ${what}`);
+          assert.ok(r.nodes <= than.nodes, `nodes ${what}`);
           return r;
         };
         check(singles[(s + (limit === 2 ? 0 : 3)) % singles.length]); // the option under test rotates: each meets every kind of puzzle
@@ -116,12 +119,13 @@ t.slow(
         }
       }
     }
-    ok(toggles > 250, `${toggles} toggles checked`);
+    assert.ok(toggles > 250, `${toggles} toggles checked`);
   },
 );
 
-t(
+test(
   'solver: legCollide catches the reported forced-corridor-collision case (fewer nodes than baseline)',
+  FAST,
   () => {
     const n = 7,
       p = makePuzzle(n);
@@ -155,133 +159,144 @@ t(
     // collision check's benefit, not just equivalence.
     const a = solve(p, { limit: 2, nodeCap: 5000, capture: true });
     const b = solve(p, { limit: 2, nodeCap: 5000, capture: true, legCollide: true });
-    ok(
+    assert.ok(
       a.exceeded && a.count === 0,
       'sanity: baseline should NOT resolve this instance within 5000 nodes',
     );
-    ok(
+    assert.ok(
       b.count === 1,
       `legCollide should find the (unique) solution within the same budget (got count=${b.count})`,
     );
     // Full-budget equivalence: same solution set once both are allowed to finish.
     const aFull = solve(p, { limit: 2, nodeCap: 2e6, capture: true });
     const bFull = solve(p, { limit: 2, nodeCap: 2e6, capture: true, legCollide: true });
-    ok(!aFull.exceeded && !bFull.exceeded);
-    eq(bFull.count, aFull.count);
-    eq(bFull.paths, aFull.paths);
-    ok(
+    assert.ok(!aFull.exceeded && !bFull.exceeded);
+    assert.deepStrictEqual(bFull.count, aFull.count);
+    assert.deepStrictEqual(bFull.paths, aFull.paths);
+    assert.ok(
       bFull.nodes <= aFull.nodes,
       `legCollide should not need more nodes than baseline (base=${aFull.nodes}, legCollide=${bFull.nodes})`,
     );
   },
 );
 
-t('forcedEdges: standalone deduction sound against exhaustive completion enumeration', () => {
-  // For a given (puzzle, path-prefix, head), enumerate every valid completion by brute force.
-  // forcedEdges().infeasible must imply zero completions. Every forced cell must be entered via
-  // its forced direction in every completion that does exist (never contradicted).
-  function completions(p, prefix) {
-    const n = p.n,
-      T = n * n,
-      K = Math.max(...p.cp),
-      end = p.cp.indexOf(K);
-    const vis = new Uint8Array(T);
-    for (const c of prefix) vis[c] = 1;
-    const nbr = i => {
-      const r = (i / n) | 0,
-        c = i % n,
-        o = [];
-      if (c < n - 1) o.push(i + 1);
-      if (c > 0) o.push(i - 1);
-      if (r < n - 1) o.push(i + n);
-      if (r > 0) o.push(i - n);
-      return o;
-    };
-    const wall = (a, b) => p.walls[Math.min(a, b)] & (Math.abs(a - b) === 1 ? 1 : 2);
-    const out = [];
-    let need = 1;
-    for (const c of prefix) {
-      if (p.cp[c]) {
-        if (p.cp[c] !== need) return [];
-        need++;
-      }
-    }
-    const head = prefix[prefix.length - 1];
-    const go = (c, k, nd, path) => {
-      let need2 = nd;
-      if (p.cp[c]) {
-        if (p.cp[c] !== need2) return;
-        need2++;
-      }
-      if (k === T) {
-        if (c === end && need2 === K + 1) out.push(path.slice());
-        return;
-      }
-      for (const v of nbr(c)) {
-        if (vis[v] || wall(c, v)) continue;
-        vis[v] = 1;
-        path.push(v);
-        go(v, k + 1, need2, path);
-        path.pop();
-        vis[v] = 0;
-      }
-    };
-    go(head, prefix.length, need, prefix.slice());
-    return out;
-  }
-
-  let checked = 0,
-    forcedChecks = 0;
-  for (let s = 1; s <= 60; s++) {
-    const n = 3 + (s % 3),
-      p = randPuzzle(s, n, 2 + (s % 4), 0.1 * (s % 5));
-    const K = Math.max(...p.cp);
-    if (K < 1) continue;
-    const sol = solve(p, { limit: 1, nodeCap: 5000, capture: true });
-    if (sol.count !== 1) continue; // only test on puzzles with a findable solution to walk prefixes of
-    const path = sol.paths[0];
-    const { nb, T } = buildNeighbors(p);
-    for (let cut = 1; cut < path.length; cut++) {
-      const prefix = path.slice(0, cut);
+test(
+  'forcedEdges: standalone deduction sound against exhaustive completion enumeration',
+  FAST,
+  () => {
+    // For a given (puzzle, path-prefix, head), enumerate every valid completion by brute force.
+    // forcedEdges().infeasible must imply zero completions. Every forced cell must be entered via
+    // its forced direction in every completion that does exist (never contradicted).
+    function completions(p, prefix) {
+      const n = p.n,
+        T = n * n,
+        K = Math.max(...p.cp),
+        end = p.cp.indexOf(K);
       const vis = new Uint8Array(T);
       for (const c of prefix) vis[c] = 1;
-      const head = prefix[prefix.length - 1];
-      const end = p.cp.indexOf(K);
-      const { forced, dirs, infeasible } = forcedEdges(nb, T, vis, head, end);
-      const all = completions(p, prefix);
-      checked++;
-      if (infeasible) {
-        ok(all.length === 0, `infeasible but completions exist: seed ${s} cut ${cut}`);
-        continue;
+      const nbr = i => {
+        const r = (i / n) | 0,
+          c = i % n,
+          o = [];
+        if (c < n - 1) o.push(i + 1);
+        if (c > 0) o.push(i - 1);
+        if (r < n - 1) o.push(i + n);
+        if (r > 0) o.push(i - n);
+        return o;
+      };
+      const wall = (a, b) => p.walls[Math.min(a, b)] & (Math.abs(a - b) === 1 ? 1 : 2);
+      const out = [];
+      let need = 1;
+      for (const c of prefix) {
+        if (p.cp[c]) {
+          if (p.cp[c] !== need) return [];
+          need++;
+        }
       }
-      if (all.length === 0) continue; // forcedEdges may under-detect infeasibility (that's fine, it's a sound-not-complete prune) — nothing to check
-      // Every forced direction must be an edge actually used (u adjacent to its dir-d neighbour
-      // in the path) in EVERY completion — the precise meaning of "this edge is forced".
-      for (const u of forced) {
-        for (let d = 0; d < 4; d++) {
-          if (!((dirs[u] >> d) & 1)) continue;
-          const v = nb[u * 4 + d];
-          for (const full of all) {
-            const idx = full.indexOf(u);
-            ok(idx >= 0, `forced cell ${u} missing from a completion: seed ${s} cut ${cut}`);
-            const prev = idx > 0 ? full[idx - 1] : -1;
-            const next = idx < full.length - 1 ? full[idx + 1] : -1;
-            ok(
-              prev === v || next === v,
-              `forced edge ${u}->${v} (dir ${d}) not used in a completion: seed ${s} cut ${cut}`,
-            );
+      const head = prefix[prefix.length - 1];
+      const go = (c, k, nd, path) => {
+        let need2 = nd;
+        if (p.cp[c]) {
+          if (p.cp[c] !== need2) return;
+          need2++;
+        }
+        if (k === T) {
+          if (c === end && need2 === K + 1) out.push(path.slice());
+          return;
+        }
+        for (const v of nbr(c)) {
+          if (vis[v] || wall(c, v)) continue;
+          vis[v] = 1;
+          path.push(v);
+          go(v, k + 1, need2, path);
+          path.pop();
+          vis[v] = 0;
+        }
+      };
+      go(head, prefix.length, need, prefix.slice());
+      return out;
+    }
+
+    let checked = 0,
+      forcedChecks = 0;
+    for (let s = 1; s <= 60; s++) {
+      const n = 3 + (s % 3),
+        p = randPuzzle(s, n, 2 + (s % 4), 0.1 * (s % 5));
+      const K = Math.max(...p.cp);
+      if (K < 1) continue;
+      const sol = solve(p, { limit: 1, nodeCap: 5000, capture: true });
+      if (sol.count !== 1) continue; // only test on puzzles with a findable solution to walk prefixes of
+      const path = sol.paths[0];
+      const { nb, T } = buildNeighbors(p);
+      for (let cut = 1; cut < path.length; cut++) {
+        const prefix = path.slice(0, cut);
+        const vis = new Uint8Array(T);
+        for (const c of prefix) vis[c] = 1;
+        const head = prefix[prefix.length - 1];
+        const end = p.cp.indexOf(K);
+        const { forced, dirs, infeasible } = forcedEdges(nb, T, vis, head, end);
+        const all = completions(p, prefix);
+        checked++;
+        if (infeasible) {
+          assert.ok(all.length === 0, `infeasible but completions exist: seed ${s} cut ${cut}`);
+          continue;
+        }
+        if (all.length === 0) continue; // forcedEdges may under-detect infeasibility (that's fine, it's a sound-not-complete prune) — nothing to check
+        // Every forced direction must be an edge actually used (u adjacent to its dir-d neighbour
+        // in the path) in EVERY completion — the precise meaning of "this edge is forced".
+        for (const u of forced) {
+          for (let d = 0; d < 4; d++) {
+            if (!((dirs[u] >> d) & 1)) continue;
+            const v = nb[u * 4 + d];
+            for (const full of all) {
+              const idx = full.indexOf(u);
+              assert.ok(
+                idx >= 0,
+                `forced cell ${u} missing from a completion: seed ${s} cut ${cut}`,
+              );
+              const prev = idx > 0 ? full[idx - 1] : -1;
+              const next = idx < full.length - 1 ? full[idx + 1] : -1;
+              assert.ok(
+                prev === v || next === v,
+                `forced edge ${u}->${v} (dir ${d}) not used in a completion: seed ${s} cut ${cut}`,
+              );
+            }
+            forcedChecks++;
           }
-          forcedChecks++;
         }
       }
     }
-  }
-  ok(checked > 50, `expected enough cases, got ${checked}`);
-  ok(forcedChecks > 50, `expected some forced-edge checks to actually run, got ${forcedChecks}`);
-});
+    assert.ok(checked > 50, `expected enough cases, got ${checked}`);
+    assert.ok(
+      forcedChecks > 50,
+      `expected some forced-edge checks to actually run, got ${forcedChecks}`,
+    );
+  },
+);
 
-t(
+test(
   'forcedEdges / propagation: dropping the edge that would close a forced chain into a cycle',
+  FAST,
   () => {
     // 4x4, start (0,1), checkpoint 2 at (0,0), end (3,2), no walls, head on the start cell. The
     // corner cells force their two edges each. Two of the resulting chains end on neighbouring
@@ -295,14 +310,23 @@ t(
       end = p.cp.indexOf(3);
     const vis = new Uint8Array(T);
     vis[start] = 1;
-    eq(solve(p, { limit: 1, nodeCap: 1e6 }).count, 0, 'sanity: no solution exists');
-    eq(forcedEdges(nb, T, vis, start, end).infeasible, true);
-    eq(solve(p, { limit: 1, nodeCap: 1e6, prop: true }).nodes, 1, 'prop refutes it at the root');
+    assert.deepStrictEqual(
+      solve(p, { limit: 1, nodeCap: 1e6 }).count,
+      0,
+      'sanity: no solution exists',
+    );
+    assert.deepStrictEqual(forcedEdges(nb, T, vis, start, end).infeasible, true);
+    assert.deepStrictEqual(
+      solve(p, { limit: 1, nodeCap: 1e6, prop: true }).nodes,
+      1,
+      'prop refutes it at the root',
+    );
   },
 );
 
-t(
+test(
   'forcedEdges: sound on random positions, and whenever it says infeasible the prop solver refutes the same prefix',
+  FAST,
   () => {
     let checked = 0,
       flagged = 0;
@@ -338,20 +362,24 @@ t(
       if (!r.infeasible) continue;
       flagged++;
       const truth = solve(p, { limit: 1, nodeCap: 1e6, forced: prefix });
-      eq(truth.count, 0, `forcedEdges infeasible but a completion exists: seed ${s}`);
+      assert.deepStrictEqual(
+        truth.count,
+        0,
+        `forcedEdges infeasible but a completion exists: seed ${s}`,
+      );
       const withProp = solve(p, { limit: 1, nodeCap: 1e6, forced: prefix, prop: true });
-      eq(withProp.count, 0);
-      ok(
+      assert.deepStrictEqual(withProp.count, 0);
+      assert.ok(
         withProp.subNodes <= 1,
         `prop solver did not refute the prefix at once: seed ${s}, subNodes ${withProp.subNodes}`,
       );
     }
-    ok(checked > 400, `expected many positions, got ${checked}`);
-    ok(flagged > 20, `expected some infeasible positions, got ${flagged}`);
+    assert.ok(checked > 400, `expected many positions, got ${checked}`);
+    assert.ok(flagged > 20, `expected some infeasible positions, got ${flagged}`);
   },
 );
 
-t('legsCollide: never fires on a genuine prefix of a real solution (soundness)', () => {
+test('legsCollide: never fires on a genuine prefix of a real solution (soundness)', FAST, () => {
   // legsCollide is a NECESSARY (not sufficient) infeasibility condition: it may miss some dead
   // positions, but it must NEVER fire on a prefix that a real solution actually continues from.
   // Cross-check against solve()'s own found paths (ground truth), general to any puzzle — not
@@ -383,16 +411,17 @@ t('legsCollide: never fires on a genuine prefix of a real solution (soundness)',
       checked++;
       if (legsCollide(nb, T, vis, legs)) {
         firedOnRealPrefix++;
-        ok(false, `false positive: seed ${s} cut ${cut}`);
+        assert.ok(false, `false positive: seed ${s} cut ${cut}`);
       }
     }
   }
-  ok(checked > 100, `expected enough cases, got ${checked}`);
-  eq(firedOnRealPrefix, 0);
+  assert.ok(checked > 100, `expected enough cases, got ${checked}`);
+  assert.deepStrictEqual(firedOnRealPrefix, 0);
 });
 
-t(
+test(
   'legsCollide: catches the reported forced-corridor-collision case one move before existing checks',
+  FAST,
   () => {
     // Regression test for a specific reported position: two consecutive checkpoint legs' forced
     // corridors overlap outside their shared endpoint, making the position dead — but connOk,
@@ -458,8 +487,8 @@ t(
       collideAt[cut] = legsCollide(nb, T, vis, legs);
     }
     // legsCollide must fire by cut=13 (one move before the reported dead move to (4,5) at cut=14).
-    ok(collideAt[13], 'legsCollide should already fire at cut=13 (head at (4,4))');
-    ok(collideAt[14], 'legsCollide should still fire at cut=14 (the reported position)');
+    assert.ok(collideAt[13], 'legsCollide should already fire at cut=13 (head at (4,4))');
+    assert.ok(collideAt[14], 'legsCollide should still fire at cut=14 (the reported position)');
     // And the position genuinely has zero completions from cut=13 onward (exhaustive check).
     const vis13 = new Uint8Array(T);
     for (const c of fullPath.slice(0, 13)) vis13[c] = 1;
@@ -482,7 +511,7 @@ t(
     }
     let need13 = 1;
     for (const c of fullPath.slice(0, 13)) if (p.cp[c]) need13 = p.cp[c] + 1;
-    eq(
+    assert.deepStrictEqual(
       anyCompletion(fullPath[12], 13, need13),
       false,
       'position should genuinely be unsolvable from cut=13',
@@ -490,8 +519,9 @@ t(
   },
 );
 
-t(
+test(
   'legConflicts / boardLegCollide: agree with legsCollide; report the colliding legs and contested cells',
+  FAST,
   () => {
     // Reported position (same puzzle as the regression test above): path cut at 13 cells, head at (4,4).
     const n = 7,
@@ -537,30 +567,30 @@ t(
       [4, 4],
     ].map(([r, c]) => rc(r, c));
     const res = boardLegCollide(p, path);
-    eq(res.infeasible, true);
-    ok(res.conflicts.length > 0, 'expected at least one conflict');
+    assert.deepStrictEqual(res.infeasible, true);
+    assert.ok(res.conflicts.length > 0, 'expected at least one conflict');
     const head = path[path.length - 1],
       { nb, T } = buildNeighbors(p),
       vis = new Uint8Array(T);
     for (const c of path) vis[c] = 1;
     for (const { a, b, cells } of res.conflicts) {
-      ok(cells.length > 0, 'a conflict names at least one contested cell');
+      assert.ok(cells.length > 0, 'a conflict names at least one contested cell');
       for (const leg of [a, b])
-        ok(
+        assert.ok(
           (leg[0] === head || p.cp[leg[0]] > 0) && p.cp[leg[1]] > 0,
           'leg runs head/checkpoint -> checkpoint',
         );
-      eq(a[1] === b[1], false, 'two distinct legs');
+      assert.deepStrictEqual(a[1] === b[1], false, 'two distinct legs');
       const ba = segBlocker(nb, T, vis, a[0], a[1]),
         bb = segBlocker(nb, T, vis, b[0], b[1]);
-      for (const c of cells) ok(ba.has(c) && bb.has(c), `cell ${c} is forced by both legs`);
+      for (const c of cells) assert.ok(ba.has(c) && bb.has(c), `cell ${c} is forced by both legs`);
     }
     // Open position: nothing to report.
     const open = makePuzzle(3);
     open.cp[0] = 1;
     open.cp[4] = 2;
     open.cp[8] = 3;
-    eq(boardLegCollide(open, [0]), { infeasible: false, conflicts: [] });
+    assert.deepStrictEqual(boardLegCollide(open, [0]), { infeasible: false, conflicts: [] });
     // legsCollide <=> legConflicts non-empty, on random puzzles and every prefix of their solutions.
     let checked = 0,
       collided = 0;
@@ -591,32 +621,37 @@ t(
           for (let k = need; k < KK; k++) legs.push([ps[k - 1], ps[k]]);
           const conf = legConflicts(nb, T, vis, legs);
           checked++;
-          eq(conf.length > 0, legsCollide(nb, T, vis, legs), `seed ${sd} cut ${cut}`);
+          assert.deepStrictEqual(
+            conf.length > 0,
+            legsCollide(nb, T, vis, legs),
+            `seed ${sd} cut ${cut}`,
+          );
           if (conf.length) collided++;
         }
     }
-    ok(
+    assert.ok(
       checked > 200 && collided > 0,
       `expected cases with collisions, checked ${checked} collided ${collided}`,
     );
   },
 );
 
-t(
+test(
   'connectivity: reachable/deadEnd/unreachable on open board, walled split, and forced dead end',
+  FAST,
   () => {
     // 3x3, no walls: from cell 0, every other cell is reachable and nothing is a forced dead end yet.
     const open = makePuzzle(3);
     open.cp[0] = 1;
     open.cp[8] = 9;
     let r = boardConnectivity(open, [0]);
-    eq(r.connOk, true);
-    eq(
+    assert.deepStrictEqual(r.connOk, true);
+    assert.deepStrictEqual(
       [...r.reachable].sort((a, b) => a - b),
       [1, 2, 3, 4, 5, 6, 7, 8],
     );
-    eq(r.deadEnd.size, 0);
-    eq(r.unreachable.size, 0);
+    assert.deepStrictEqual(r.deadEnd.size, 0);
+    assert.deepStrictEqual(r.unreachable.size, 0);
 
     // Wall off cell 8 (end) from both its neighbours (5 and 7): the board splits, connOk must go false
     // and the isolated end cell is correctly excluded (still "unreachable", not a dead end, since it's cut off).
@@ -626,9 +661,9 @@ t(
     setWallId(split.walls, edgeId(3, 8, 7), true);
     setWallId(split.walls, edgeId(3, 8, 5), true);
     r = boardConnectivity(split, [0]);
-    eq(r.connOk, false);
-    eq(r.unreachable.has(8), true);
-    eq(r.reachable.has(8), false);
+    assert.deepStrictEqual(r.connOk, false);
+    assert.deepStrictEqual(r.unreachable.has(8), true);
+    assert.deepStrictEqual(r.reachable.has(8), false);
 
     // Wall a middle cell (4) down to one open neighbour only: with head at 0 and 1 visited, cell 4's only
     // free neighbour left is 5, so it's a forced dead end (must be entered last from that side).
@@ -639,47 +674,56 @@ t(
     setWallId(dead.walls, edgeId(3, 4, 3), true);
     setWallId(dead.walls, edgeId(3, 4, 7), true);
     r = boardConnectivity(dead, [0, 1]);
-    eq(r.deadEnd.has(4), true, 'cell 4 has only neighbour 5 left, must be a forced dead end');
+    assert.deepStrictEqual(
+      r.deadEnd.has(4),
+      true,
+      'cell 4 has only neighbour 5 left, must be a forced dead end',
+    );
 
     // The head cell itself and already-visited cells are never reported.
-    eq(r.reachable.has(0), false);
-    eq(r.reachable.has(1), false);
+    assert.deepStrictEqual(r.reachable.has(0), false);
+    assert.deepStrictEqual(r.reachable.has(1), false);
   },
 );
 
-t('solver prune: overlay dead-end flag and solver noDeadEnd agree (random puzzles/paths)', () => {
-  // boardConnectivity's isDeadEnd and the solver's noDeadEnd both reduce to the same freeNeighbors
-  // rule (see solver/prune.js) — pin that they actually agree, not just that each looks right alone.
-  // noDeadEnd(head) is all-or-nothing over every neighbour of head, so the equivalent per-call
-  // assertion is: it fails iff at least one head-adjacent, non-end, reachable cell is flagged dead
-  // by the overlay (the free===0 branch is unreachable by adjacency symmetry — see write-up).
-  const rnd = makeRng(20260923);
-  for (let trial = 0; trial < 40; trial++) {
-    const n = 3 + (trial % 4);
-    const p = randomPathPuzzle(n, 2 + (trial % (n * n - 1)), rnd);
-    const cut = 1 + Math.floor(rnd() * (p.path.length - 1));
-    const path = p.path.slice(0, cut);
-    const head = path[path.length - 1];
-    const r = boardConnectivity(p, path);
-    const { nb, T } = buildNeighbors(p);
-    const vis = new Uint8Array(T);
-    for (const c of path) vis[c] = 1;
-    const noDeadEnd = makeNoDeadEnd(nb, vis, endCell(p));
-    let headAdjacentDead = false;
-    for (let d = 0; d < 4; d++) {
-      const u = nb[head * 4 + d];
-      if (u >= 0 && r.deadEnd.has(u)) headAdjacentDead = true;
+test(
+  'solver prune: overlay dead-end flag and solver noDeadEnd agree (random puzzles/paths)',
+  FAST,
+  () => {
+    // boardConnectivity's isDeadEnd and the solver's noDeadEnd both reduce to the same freeNeighbors
+    // rule (see solver/prune.js) — pin that they actually agree, not just that each looks right alone.
+    // noDeadEnd(head) is all-or-nothing over every neighbour of head, so the equivalent per-call
+    // assertion is: it fails iff at least one head-adjacent, non-end, reachable cell is flagged dead
+    // by the overlay (the free===0 branch is unreachable by adjacency symmetry — see write-up).
+    const rnd = makeRng(20260923);
+    for (let trial = 0; trial < 40; trial++) {
+      const n = 3 + (trial % 4);
+      const p = randomPathPuzzle(n, 2 + (trial % (n * n - 1)), rnd);
+      const cut = 1 + Math.floor(rnd() * (p.path.length - 1));
+      const path = p.path.slice(0, cut);
+      const head = path[path.length - 1];
+      const r = boardConnectivity(p, path);
+      const { nb, T } = buildNeighbors(p);
+      const vis = new Uint8Array(T);
+      for (const c of path) vis[c] = 1;
+      const noDeadEnd = makeNoDeadEnd(nb, vis, endCell(p));
+      let headAdjacentDead = false;
+      for (let d = 0; d < 4; d++) {
+        const u = nb[head * 4 + d];
+        if (u >= 0 && r.deadEnd.has(u)) headAdjacentDead = true;
+      }
+      assert.deepStrictEqual(
+        noDeadEnd(head),
+        !headAdjacentDead,
+        `trial ${trial}: noDeadEnd(head) must disagree with the overlay only never`,
+      );
     }
-    eq(
-      noDeadEnd(head),
-      !headAdjacentDead,
-      `trial ${trial}: noDeadEnd(head) must disagree with the overlay only never`,
-    );
-  }
-});
+  },
+);
 
-t.slow(
+test(
   'solver: incremental prop, fast path and local connectivity change nothing but speed (nodes, count, paths, DFS order, decision counters)',
+  SLOW,
   () => {
     let cmp = 0;
     const REF = { incr: false, fast: false, lconn: false }; // the from-scratch propagation and plain flood fill
@@ -688,7 +732,7 @@ t.slow(
       const a = solve(p, { ...o, ...REF });
       for (const mode of [{}, { incr: false }]) {
         const b = solve(p, { ...o, ...mode });
-        eq(
+        assert.deepStrictEqual(
           [b.nodes, b.count, b.exceeded, b.paths, b.decisionNodes, b.maxDecisionDepth],
           [a.nodes, a.count, a.exceeded, a.paths, a.decisionNodes, a.maxDecisionDepth],
           `${label} ${JSON.stringify(mode)}`,
@@ -719,12 +763,13 @@ t.slow(
         const [x, y] = edgeCells(p.n, w);
         same(q, { prop: true, mustUse: [x, y] }, 1, `freed wall ${w} of n=${p.n} mustUse`);
       }
-    ok(cmp >= 900, 'compared ' + cmp);
+    assert.ok(cmp >= 900, 'compared ' + cmp);
   },
 );
 
-t(
+test(
   'incremental propagation: after every move, undo and redo, the state equals propagate.js deduce() from scratch (the play-mode overlay engine)',
+  FAST,
   () => {
     let states = 0,
       infeasible = 0;
@@ -740,7 +785,7 @@ t(
         });
       boards.push(f);
     });
-    ok(boards.length >= 4, 'boards ' + boards.length);
+    assert.ok(boards.length >= 4, 'boards ' + boards.length);
     for (const [bi, p] of boards.entries())
       for (const seed of [1, 2, 3]) {
         const n = p.n,
@@ -770,7 +815,7 @@ t(
         };
         const agree = (cur, count, okInc, label) => {
           const okOne = scratch(cur, count);
-          eq(okInc, okOne, `${label}: feasibility`);
+          assert.deepStrictEqual(okInc, okOne, `${label}: feasibility`);
           states++;
           if (!okOne) {
             infeasible++;
@@ -778,7 +823,11 @@ t(
           }
           for (let u = 0; u < T; u++)
             if (!vis[u] || u === cur)
-              eq([inc.S[u], inc.forcedBits(u)], [one.av[u], one.fr[u]], `${label}: cell ${u}`);
+              assert.deepStrictEqual(
+                [inc.S[u], inc.forcedBits(u)],
+                [one.av[u], one.fr[u]],
+                `${label}: cell ${u}`,
+              );
         };
         for (let walk = 0; walk < 8; walk++) {
           vis.fill(0);
@@ -816,47 +865,64 @@ t(
           }
         }
       }
-    ok(
+    assert.ok(
       states > 1500 && infeasible < states,
       'compared ' + states + ' states, ' + infeasible + ' infeasible',
     );
   },
 );
 
-t('solver: mustUse finds exactly the solutions that walk the edge (all flag sets)', () => {
-  let cmp = 0;
-  const seeds = sampled(Array.from({ length: 60 }, (_, i) => i + 1));
-  for (const s of seeds) {
-    const n = 3 + (s % 3),
-      p = randPuzzle(s, n, 2 + (s % 3), 0.04 * (s % 6));
-    const all = solve(p, { limit: 1e9, nodeCap: 1e7, capture: true });
-    ok(!all.exceeded);
-    for (const e of allEdges(n)) {
-      if (hasWallId(p.walls, e)) continue;
-      const [a, b] = edgeCells(n, e);
-      const want = all.paths
-        .filter(w =>
-          w.some((c, i) => i > 0 && ((w[i - 1] === a && c === b) || (w[i - 1] === b && c === a))),
-        )
-        .map(String);
-      for (const extra of [
-        {},
-        { prop: true },
-        { prop: true, pocket: true, parity: true },
-        { prop: true, legCollide: true },
-      ]) {
-        const r = solve(p, { ...extra, limit: 1e9, nodeCap: 1e7, capture: true, mustUse: [a, b] });
-        ok(!r.exceeded);
-        eq(r.paths.map(String), want, `case ${s} edge ${e} ${JSON.stringify(extra)}`);
-        cmp++;
+test(
+  'solver: mustUse finds exactly the solutions that walk the edge (all flag sets)',
+  FAST,
+  () => {
+    let cmp = 0;
+    const seeds = sampled(Array.from({ length: 60 }, (_, i) => i + 1));
+    for (const s of seeds) {
+      const n = 3 + (s % 3),
+        p = randPuzzle(s, n, 2 + (s % 3), 0.04 * (s % 6));
+      const all = solve(p, { limit: 1e9, nodeCap: 1e7, capture: true });
+      assert.ok(!all.exceeded);
+      for (const e of allEdges(n)) {
+        if (hasWallId(p.walls, e)) continue;
+        const [a, b] = edgeCells(n, e);
+        const want = all.paths
+          .filter(w =>
+            w.some(
+              (c, i) => i > 0 && ((w[i - 1] === a && c === b) || (w[i - 1] === b && c === a)),
+            ),
+          )
+          .map(String);
+        for (const extra of [
+          {},
+          { prop: true },
+          { prop: true, pocket: true, parity: true },
+          { prop: true, legCollide: true },
+        ]) {
+          const r = solve(p, {
+            ...extra,
+            limit: 1e9,
+            nodeCap: 1e7,
+            capture: true,
+            mustUse: [a, b],
+          });
+          assert.ok(!r.exceeded);
+          assert.deepStrictEqual(
+            r.paths.map(String),
+            want,
+            `case ${s} edge ${e} ${JSON.stringify(extra)}`,
+          );
+          cmp++;
+        }
       }
     }
-  }
-  ok(cmp > (1000 * seeds.length) / 60, 'compared ' + cmp); // scales with the sample
-});
+    assert.ok(cmp > (1000 * seeds.length) / 60, 'compared ' + cmp); // scales with the sample
+  },
+);
 
-t(
+test(
   'forcedEdges: a path that already ran through the end cell is reported infeasible (design app free play)',
+  FAST,
   () => {
     const p = makePuzzle(3);
     p.cp[0] = 1;
@@ -866,13 +932,14 @@ t(
     [0, 1, 2].forEach(c => {
       vis[c] = 1;
     });
-    eq(forcedEdges(nb, 9, vis, 2, 1).infeasible, true);
-    eq(forcedEdges(nb, 9, vis, 1, 1).infeasible, false); // head on the end: nothing to deduce, as before
+    assert.deepStrictEqual(forcedEdges(nb, 9, vis, 2, 1).infeasible, true);
+    assert.deepStrictEqual(forcedEdges(nb, 9, vis, 1, 1).infeasible, false); // head on the end: nothing to deduce, as before
   },
 );
 
-t(
+test(
   'solve(): decisions option is additive-only — same count/exceeded/nodes/paths as without it',
+  FAST,
   () => {
     for (const p of sampleUniquePuzzles()) {
       const cap = refNodeCap(p.n);
@@ -884,15 +951,19 @@ t(
         decisions: true,
         ...REF_FLAGS,
       });
-      eq(plain.count, withD.count, 'count');
-      eq(plain.exceeded, withD.exceeded, 'exceeded');
-      eq(plain.nodes, withD.nodes, 'nodes — decision counting must not change search or pruning');
-      eq(plain.paths, withD.paths, 'paths (capture)');
-      ok(
+      assert.deepStrictEqual(plain.count, withD.count, 'count');
+      assert.deepStrictEqual(plain.exceeded, withD.exceeded, 'exceeded');
+      assert.deepStrictEqual(
+        plain.nodes,
+        withD.nodes,
+        'nodes — decision counting must not change search or pruning',
+      );
+      assert.deepStrictEqual(plain.paths, withD.paths, 'paths (capture)');
+      assert.ok(
         Number.isInteger(withD.decisionNodes) && withD.decisionNodes >= 0,
         'decisionNodes present and sane',
       );
-      ok(
+      assert.ok(
         withD.maxDecisionDepth >= 0 && withD.maxDecisionDepth <= 1,
         'maxDecisionDepth is a 0..1 fraction',
       );
@@ -900,15 +971,20 @@ t(
   },
 );
 
-t('solve(): decisionNodes/maxDecisionDepth absent unless opts.decisions is truthy', () => {
-  const p = sampleUniquePuzzles()[0];
-  const r = solve(p, { limit: 2, nodeCap: refNodeCap(p.n) });
-  eq('decisionNodes' in r, false);
-  eq('maxDecisionDepth' in r, false);
-});
+test(
+  'solve(): decisionNodes/maxDecisionDepth absent unless opts.decisions is truthy',
+  FAST,
+  () => {
+    const p = sampleUniquePuzzles()[0];
+    const r = solve(p, { limit: 2, nodeCap: refNodeCap(p.n) });
+    assert.deepStrictEqual('decisionNodes' in r, false);
+    assert.deepStrictEqual('maxDecisionDepth' in r, false);
+  },
+);
 
-t(
+test(
   'solve(): forced prefix of just the start cell changes nothing (count/nodes/paths identical)',
+  FAST,
   () => {
     for (const p of cachedSamples()) {
       const plain = solve(p, { limit: 2, nodeCap: refNodeCap(p.n), capture: true, ...REF_FLAGS });
@@ -919,16 +995,17 @@ t(
         forced: [p.cp.indexOf(1)],
         ...REF_FLAGS,
       });
-      eq(f.count, plain.count);
-      eq(f.nodes, plain.nodes);
-      eq(f.paths, plain.paths);
-      eq(f.subNodes, plain.nodes);
+      assert.deepStrictEqual(f.count, plain.count);
+      assert.deepStrictEqual(f.nodes, plain.nodes);
+      assert.deepStrictEqual(f.paths, plain.paths);
+      assert.deepStrictEqual(f.subNodes, plain.nodes);
     }
   },
 );
 
-t(
+test(
   'solve(): forced prefix along the solution still finds it; a forced wrong turn finds nothing',
+  FAST,
   () => {
     for (const p of cachedSamples()) {
       const path = solutionPath(p),
@@ -940,11 +1017,11 @@ t(
         forced: path.slice(0, k + 1),
         ...REF_FLAGS,
       });
-      eq(on.count, 1);
-      eq(on.paths[0], path);
-      eq(on.nodes - on.subNodes, k, 'prefix nodes are not charged to the cap');
+      assert.deepStrictEqual(on.count, 1);
+      assert.deepStrictEqual(on.paths[0], path);
+      assert.deepStrictEqual(on.nodes - on.subNodes, k, 'prefix nodes are not charged to the cap');
       const prof = trapProfile(p, path);
-      ok(prof.length > 0, 'a real puzzle has wrong turns');
+      assert.ok(prof.length > 0, 'a real puzzle has wrong turns');
       for (const w of prof) {
         const off = solve(p, {
           limit: 1,
@@ -952,11 +1029,13 @@ t(
           forced: path.slice(0, w.i + 1).concat(w.cell),
           ...REF_FLAGS,
         });
-        eq(off.count, 0, `wrong turn at step ${w.i} must be refuted on a unique puzzle`);
+        assert.deepStrictEqual(
+          off.count,
+          0,
+          `wrong turn at step ${w.i} must be refuted on a unique puzzle`,
+        );
       }
-      eq(prof.nonUnique, false);
+      assert.deepStrictEqual(prof.nonUnique, false);
     }
   },
 );
-
-registerAsyncTests();
