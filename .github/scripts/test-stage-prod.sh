@@ -19,12 +19,20 @@ cat > .github/scripts/stage-site.sh <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 mkdir -p "$1/demo/GameOfDay" "$1/webapp"
+cat > "$1/index.html" <<'HTML'
+<html><body>home</body></html>
+HTML
+cat > "$1/webapp/index.html" <<'HTML'
+<html><head><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; connect-src 'self'"></head><body>app</body></html>
+HTML
 for i in $(seq -5 24); do
   : > "$1/demo/GameOfDay/$(date -u -d "$i day" +%Y%m%d).txt"
 done
 : > "$1/webapp/design.html"
 STUB
 : > deploy/cloudflare/_headers
+cp "$here/../../deploy/cloudflare/add-beacon.mjs" deploy/cloudflare/
+echo '{ "token": "" }' > deploy/cloudflare/analytics.json
 echo "export const VERSION = '1.2.3';" > webapp/src/version.js
 mkdir -p demo/GameOfDay
 for i in $(seq -2 9); do
@@ -72,6 +80,26 @@ if GOTD_AHEAD=two stage "$tmp/bad" 2> /dev/null; then
   check "a GOTD_AHEAD that is no number fails" fail ok
 else
   check "a GOTD_AHEAD that is no number fails" fail fail
+fi
+
+# Web Analytics: the tag only with a token, on the two public pages; the app CSP lets it in.
+tags() { grep -o '<script[^>]*beacon\.min\.js' "$1" | wc -l | tr -d ' '; }
+stage "$tmp/wa0"
+check "no token: no Web Analytics tag" 00 \
+  "$(tags "$tmp/wa0/zigzag/index.html")$(tags "$tmp/wa0/zigzag/webapp/index.html")"
+echo '{ "token": "0123456789abcdef0123456789abcdef" }' > deploy/cloudflare/analytics.json
+stage "$tmp/wa1"
+check "token: one tag on the home page" 1 "$(tags "$tmp/wa1/zigzag/index.html")"
+check "token: one tag on the app page" 1 "$(tags "$tmp/wa1/zigzag/webapp/index.html")"
+csp="script-src 'self' https://static.cloudflareinsights.com/beacon.min.js;"
+csp="$csp connect-src 'self' https://cloudflareinsights.com"
+check "token: the app CSP lets the script and its report in" 1 \
+  "$(grep -c "$csp" "$tmp/wa1/zigzag/webapp/index.html")"
+echo '{ "token": "bad token" }' > deploy/cloudflare/analytics.json
+if stage "$tmp/wa2" 2> /dev/null; then
+  check "a malformed token fails" fail ok
+else
+  check "a malformed token fails" fail fail
 fi
 
 [ "$fails" -eq 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }

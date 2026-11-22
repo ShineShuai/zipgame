@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Builds the production folder from the checked-out commit: the site of stage-site.sh without the
 # pages that are not part of production, below DIST/zigzag/, plus the Cloudflare _headers and
-# build.json. The host root belongs to the portal Worker (repo play), not to this site. Run from the repo root; deploy/cloudflare/ must be there.
+# build.json, and the Web Analytics tag when deploy/cloudflare/analytics.json has a token
+# (add-beacon.mjs). The host root belongs to the portal Worker (repo play), not to this site. Run from the repo root; deploy/cloudflare/ must be there.
 #   stage-prod.sh DIST SHA [PUZZLES]
 #   GOTD_AHEAD  (optional, the repository variable of the same name; unset = off) K: only the
 #            puzzles of today and of the next K days (UTC) ship, so nobody can read tomorrow's
@@ -29,6 +30,7 @@ rm -f "$tmp/site/webapp/design.html" "$tmp/site/webapp/stats.html" \
 rm -rf "$dist"
 mkdir -p "$dist/zigzag"
 cp -a "$tmp/site/." "$dist/zigzag/"
+node deploy/cloudflare/add-beacon.mjs "$dist/zigzag" deploy/cloudflare/analytics.json
 
 if [ -n "$puzzles" ]; then
   git cat-file -e "$puzzles^{tree}" 2> /dev/null || die "$puzzles is not a tree of this clone"
