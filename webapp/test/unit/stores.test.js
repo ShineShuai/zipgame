@@ -1,5 +1,6 @@
 // Unit tests of what the app stores: daily counters, stats, attempts, play log, calib, log store.
-// Part of `npm test` (test/run.mjs); the tiers and t / ta are in test/harness.js.
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import '../setup-balls.js';
 import { makePuzzle, ALGO_VERSION } from '../../src/core/model.js';
 import { serialize, parse } from '../../src/core/format.js';
@@ -35,11 +36,12 @@ import { STATS_KEY, GOTD_KEY, ATTEMPT_KEEP_DAYS } from '../../src/features/stats
 import { skillBucket } from '../../src/core/behaviour.js';
 import { createCalib, calibRequested, CALIB_DIR } from '../../src/features/calib.js';
 import { pickStorage } from '../../src/platform/storage.js';
-import { t, ta, eq, ok, registerAsyncTests } from '../harness.js';
+import { FAST, SLOW } from '../harness.js';
 import { atDay, fakeStorage } from './helpers.js';
 
-t(
+test(
   'playlog: a trace counts cells drawn and taken back, with the real rules; pushes - undone = cells left on the board',
+  FAST,
   () => {
     const p = makePuzzle(3);
     p.cp[0] = 1;
@@ -52,12 +54,12 @@ t(
         traceStep(tr, k, b, path.length);
         return k;
       };
-    eq([0, 1, 2, 5].map(mv), ['push', 'push', 'push', 'push']);
-    eq(mv(2), 'pop', 'one-step undo');
-    eq([5, 4, 3].map(mv), ['push', 'push', 'push']);
-    eq(mv(1), 'trunc', 'cut back to an earlier cell');
-    eq(mv(8), null, 'a blocked move is not counted');
-    eq(
+    assert.deepStrictEqual([0, 1, 2, 5].map(mv), ['push', 'push', 'push', 'push']);
+    assert.deepStrictEqual(mv(2), 'pop', 'one-step undo');
+    assert.deepStrictEqual([5, 4, 3].map(mv), ['push', 'push', 'push']);
+    assert.deepStrictEqual(mv(1), 'trunc', 'cut back to an earlier cell');
+    assert.deepStrictEqual(mv(8), null, 'a blocked move is not counted');
+    assert.deepStrictEqual(
       {
         pushes: tr.pushes,
         undone: tr.undone,
@@ -67,37 +69,43 @@ t(
       },
       { pushes: 7, undone: 5, maxUndone: 4, backtracks: 2, resets: 0 },
     );
-    eq(tr.pushes - tr.undone, path.length, 'pushes - undone = cells on the board');
+    assert.deepStrictEqual(
+      tr.pushes - tr.undone,
+      path.length,
+      'pushes - undone = cells on the board',
+    );
     traceClear(tr, path.length);
-    eq(
+    assert.deepStrictEqual(
       [tr.resets, tr.undone, tr.backtracks],
       [1, 7, 3],
       'the reset button takes back everything drawn',
     );
     traceClear(tr, 0);
-    eq(tr.resets, 1, 'resetting an empty path counts nothing');
+    assert.deepStrictEqual(tr.resets, 1, 'resetting an empty path counts nothing');
   },
 );
 
-t(
+test(
   'playlog: consecutive one-step undos are one take-back action; maxUndone is the deepest one',
+  FAST,
   () => {
     const tr = newTrace();
     for (let i = 0; i < 6; i++) traceStep(tr, 'push', i, i + 1);
     for (let i = 0; i < 3; i++) traceStep(tr, 'pop', 6 - i, 5 - i); // one run of 3
     traceStep(tr, 'push', 3, 4);
     traceStep(tr, 'pop', 4, 3); // a second run of 1
-    eq([tr.backtracks, tr.undone, tr.maxUndone], [2, 4, 3]);
+    assert.deepStrictEqual([tr.backtracks, tr.undone, tr.maxUndone], [2, 4, 3]);
   },
 );
 
-ta(
+test(
   'playlog: a record keeps size, raw time, solved, any hint, mode and minute; the stored list is capped, survives a reload and a corrupt value',
+  FAST,
   async () => {
     const p = makePuzzle(3),
       at = 7 * 60000 + 123;
     const rec = buildRecord(p, { ms: 12345.6, solved: true, hints: 2, mode: 'gotd', at });
-    eq(rec, { n: 3, ms: 12346, solved: true, hints: 2, mode: 'gotd', at });
+    assert.deepStrictEqual(rec, { n: 3, ms: 12346, solved: true, hints: 2, mode: 'gotd', at });
     const st = fakeStorage(),
       log = createPlayLog(st, 2),
       mk = (i, o = {}) => buildRecord(p, { ms: 1000 * i, solved: true, at: i * 60000, ...o });
@@ -107,7 +115,7 @@ ta(
       log.add(mk(3, { solved: false })),
     ]);
     const all = await log.all();
-    eq(
+    assert.deepStrictEqual(
       all.map(r => [r.ms, r.solved, r.hints, r.mode, r.at]),
       [
         [2000, true, 1, 'replay', 120000],
@@ -115,15 +123,28 @@ ta(
       ],
       'concurrent adds are all kept, then the oldest is dropped past the cap; hints are kept as any/none',
     );
-    eq((await createPlayLog(st, 2).all()).length, 2, 'a new log object reads the same list back');
-    eq(await st.get(PLAYLOG_LEGACY_KEY), null, 'nothing is written under the old key');
+    assert.deepStrictEqual(
+      (await createPlayLog(st, 2).all()).length,
+      2,
+      'a new log object reads the same list back',
+    );
+    assert.deepStrictEqual(
+      await st.get(PLAYLOG_LEGACY_KEY),
+      null,
+      'nothing is written under the old key',
+    );
     await st.set(PLAYLOG_KEY, '{not json');
-    eq(await createPlayLog(st).all(), [], 'a corrupt value reads as an empty log');
+    assert.deepStrictEqual(
+      await createPlayLog(st).all(),
+      [],
+      'a corrupt value reads as an empty log',
+    );
   },
 );
 
-ta(
+test(
   'playlog: a v1 log is converted once; skill bucket and streak days read the same as before; the old key goes; the new value is far smaller',
+  FAST,
   async () => {
     const p = makePuzzle(5),
       legacy = [];
@@ -150,14 +171,22 @@ ta(
       old = JSON.stringify(legacy);
     await st.set(PLAYLOG_LEGACY_KEY, old);
     const all = await createPlayLog(st).all();
-    eq(all.length, 60);
-    eq(skillBucket(all), skillBucket(legacy), 'the skill bucket of the upload is unchanged');
+    assert.deepStrictEqual(all.length, 60);
+    assert.deepStrictEqual(
+      skillBucket(all),
+      skillBucket(legacy),
+      'the skill bucket of the upload is unchanged',
+    );
     const days = l =>
       [...new Set(l.filter(r => r.solved).map(r => Math.floor(r.at / 86400000)))].sort(
         (x, y) => x - y,
       );
-    eq(days(all), days(legacy), 'the streak bootstrap sees the same solved days');
-    eq(
+    assert.deepStrictEqual(
+      days(all),
+      days(legacy),
+      'the streak bootstrap sees the same solved days',
+    );
+    assert.deepStrictEqual(
       [
         await st.get(PLAYLOG_LEGACY_KEY),
         (await st.get(PLAYLOG_KEY)).value.length < old.length / 8,
@@ -165,12 +194,17 @@ ta(
       [null, true],
       'the old key is gone and the new value is at least 8x smaller',
     );
-    eq((await createPlayLog(st).all()).length, 60, 'a second load reads the converted value');
+    assert.deepStrictEqual(
+      (await createPlayLog(st).all()).length,
+      60,
+      'a second load reads the converted value',
+    );
   },
 );
 
-ta(
+test(
   'playlog: a refused write of the converted value keeps the old one for the next load',
+  FAST,
   async () => {
     const st = fakeStorage(450),
       legacy = JSON.stringify(
@@ -186,12 +220,15 @@ ta(
         })),
       );
     await st.set(PLAYLOG_LEGACY_KEY, legacy);
-    eq(await migrateKey(st, PLAYLOG_LEGACY_KEY, PLAYLOG_KEY, () => 'y'.repeat(500)), 'failed');
-    ok(await st.get(PLAYLOG_LEGACY_KEY), 'the old value is still there');
+    assert.deepStrictEqual(
+      await migrateKey(st, PLAYLOG_LEGACY_KEY, PLAYLOG_KEY, () => 'y'.repeat(500)),
+      'failed',
+    );
+    assert.ok(await st.get(PLAYLOG_LEGACY_KEY), 'the old value is still there');
   },
 );
 
-ta("playlog: two tabs sharing the storage keep each other's records", async () => {
+test("playlog: two tabs sharing the storage keep each other's records", FAST, async () => {
   const st = fakeStorage(),
     A = createPlayLog(st),
     B = createPlayLog(st),
@@ -200,16 +237,17 @@ ta("playlog: two tabs sharing the storage keep each other's records", async () =
   await A.add(mk(1));
   await B.add(mk(2));
   await A.add(mk(3));
-  eq(
+  assert.deepStrictEqual(
     (await B.all()).map(r => r.ms),
     [1000, 2000, 3000],
     'every record is there, in order, for either tab',
   );
-  eq((await A.all()).length, 3);
+  assert.deepStrictEqual((await A.all()).length, 3);
 });
 
-ta(
+test(
   'storage: a write refused in the end is logged once per key and listed in refused; a later success clears it',
+  FAST,
   async () => {
     const warns = [],
       warn = console.warn;
@@ -217,34 +255,42 @@ ta(
     try {
       const st = withEviction(fakeStorage(60));
       await st.set('zip_streak', 's'.repeat(20));
-      eq(
+      assert.deepStrictEqual(
         [await st.set('zip_big', 'z'.repeat(200)), await st.set('zip_big', 'z'.repeat(300))],
         [false, false],
       );
-      eq([warns.length, [...st.refused]], [1, ['zip_big']], 'one warning for the key');
-      eq([await st.set('zip_big', 'ok'), st.refused.size], [true, 0]);
+      assert.deepStrictEqual(
+        [warns.length, [...st.refused]],
+        [1, ['zip_big']],
+        'one warning for the key',
+      );
+      assert.deepStrictEqual([await st.set('zip_big', 'ok'), st.refused.size], [true, 0]);
     } finally {
       console.warn = warn;
     }
   },
 );
 
-ta(
+test(
   'storage: a refused write frees the play log (never stats or streak) and retries; usage counts keys and chars',
+  FAST,
   async () => {
     const st = withEviction(fakeStorage(200));
     await st.set('zip_playlog_v2', 'p'.repeat(120));
     await st.set('zip_streak', 's'.repeat(40));
-    eq(
+    assert.deepStrictEqual(
       await st.set('zip_stats_v2', 't'.repeat(100)),
       true,
       'written after the play log was dropped',
     );
-    eq([await st.get('zip_playlog_v2'), (await st.get('zip_streak')).value.length], [null, 40]);
+    assert.deepStrictEqual(
+      [await st.get('zip_playlog_v2'), (await st.get('zip_streak')).value.length],
+      [null, 40],
+    );
     const warn = console.warn;
     console.warn = () => {}; // the refusal is logged (tested below)
     try {
-      eq(
+      assert.deepStrictEqual(
         await st.set('zip_big', 'z'.repeat(500)),
         false,
         'nothing else may be evicted: the write is refused',
@@ -252,139 +298,170 @@ ta(
     } finally {
       console.warn = warn;
     }
-    ok((await st.get('zip_streak')) && (await st.get('zip_stats_v2')), 'stats and streak survive');
-    eq(await usage(st), {
+    assert.ok(
+      (await st.get('zip_streak')) && (await st.get('zip_stats_v2')),
+      'stats and streak survive',
+    );
+    assert.deepStrictEqual(await usage(st), {
       keys: 2,
       chars: 'zip_streak'.length + 40 + 'zip_stats_v2'.length + 100,
     });
   },
 );
 
-ta('calib: serves the fixed set in order from a random block; skip, wrap, reload', async () => {
-  const fs = await import('node:fs');
-  eq(['?calib', '?x=1&calib=1', '?lb=a', ''].map(calibRequested), [true, true, false, false]);
-  const rated = JSON.parse(fs.readFileSync(new URL('../../tools/ratings.json', import.meta.url)));
-  const keyOfSize = n => rated.find(r => parse(r.key).n === n).key;
-  const files = Array.from({ length: 6 }, (_, i) => `cal-5-00${i}.txt`),
-    text = keyOfSize(5);
-  const server =
-    (index, body = text) =>
-    async url => {
-      const miss = { ok: false, status: 404 };
-      if (url === CALIB_DIR + 'index.json') {
-        return index ? { ok: true, json: async () => index } : miss;
+test(
+  'calib: serves the fixed set in order from a random block; skip, wrap, reload',
+  FAST,
+  async () => {
+    const fs = await import('node:fs');
+    assert.deepStrictEqual(['?calib', '?x=1&calib=1', '?lb=a', ''].map(calibRequested), [
+      true,
+      true,
+      false,
+      false,
+    ]);
+    const rated = JSON.parse(
+      fs.readFileSync(new URL('../../tools/ratings.json', import.meta.url)),
+    );
+    const keyOfSize = n => rated.find(r => parse(r.key).n === n).key;
+    const files = Array.from({ length: 6 }, (_, i) => `cal-5-00${i}.txt`),
+      text = keyOfSize(5);
+    const server =
+      (index, body = text) =>
+      async url => {
+        const miss = { ok: false, status: 404 };
+        if (url === CALIB_DIR + 'index.json') {
+          return index ? { ok: true, json: async () => index } : miss;
+        }
+        const hit = files.includes(url.slice(CALIB_DIR.length));
+        return hit ? { ok: true, text: async () => body } : miss;
+      };
+    const index = { v: 1, sizes: { 5: files }, block: { 5: 3 } },
+      st = fakeStorage();
+    const mk = (o = {}) => createCalib(st, { fetchFn: server(index), rnd: () => 0.99, ...o });
+    let c = mk();
+    assert.deepStrictEqual(await c.sizes(), [5]);
+    let g = await c.open(5);
+    assert.deepStrictEqual(
+      [g.pos, g.puzzle.calib, g.puzzle.n],
+      [3, files[3], 5],
+      'random start, block-aligned',
+    );
+    assert.deepStrictEqual((await c.open(5)).pos, 3, 'an unsolved puzzle stays the current one');
+    await c.markSolved(5, 2);
+    assert.deepStrictEqual((await c.open(5)).pos, 3, 'a stale solve changes nothing');
+    await c.markSolved(5, 3);
+    assert.deepStrictEqual((await c.open(5)).pos, 4, 'solved: the next one');
+    assert.deepStrictEqual((await c.skip(5)).pos, 5);
+    g = await c.skip(5);
+    assert.deepStrictEqual([g.pos, g.puzzle.calib], [6, files[0]], 'the order wraps around');
+    c = mk({ rnd: () => 0 });
+    assert.deepStrictEqual(
+      (await c.open(5)).pos,
+      6,
+      'a reload keeps the place (the start is only random once)',
+    );
+    const fresh = createCalib(fakeStorage(), { fetchFn: server(index), rnd: () => 0 });
+    assert.deepStrictEqual((await fresh.open(5)).pos, 0);
+    const rejects = async (c2, why) => {
+      let e = null;
+      try {
+        await c2.open(5);
+      } catch (x) {
+        e = x;
       }
-      const hit = files.includes(url.slice(CALIB_DIR.length));
-      return hit ? { ok: true, text: async () => body } : miss;
+      assert.ok(e, why);
     };
-  const index = { v: 1, sizes: { 5: files }, block: { 5: 3 } },
-    st = fakeStorage();
-  const mk = (o = {}) => createCalib(st, { fetchFn: server(index), rnd: () => 0.99, ...o });
-  let c = mk();
-  eq(await c.sizes(), [5]);
-  let g = await c.open(5);
-  eq([g.pos, g.puzzle.calib, g.puzzle.n], [3, files[3], 5], 'random start, block-aligned');
-  eq((await c.open(5)).pos, 3, 'an unsolved puzzle stays the current one');
-  await c.markSolved(5, 2);
-  eq((await c.open(5)).pos, 3, 'a stale solve changes nothing');
-  await c.markSolved(5, 3);
-  eq((await c.open(5)).pos, 4, 'solved: the next one');
-  eq((await c.skip(5)).pos, 5);
-  g = await c.skip(5);
-  eq([g.pos, g.puzzle.calib], [6, files[0]], 'the order wraps around');
-  c = mk({ rnd: () => 0 });
-  eq((await c.open(5)).pos, 6, 'a reload keeps the place (the start is only random once)');
-  const fresh = createCalib(fakeStorage(), { fetchFn: server(index), rnd: () => 0 });
-  eq((await fresh.open(5)).pos, 0);
-  const rejects = async (c2, why) => {
-    let e = null;
-    try {
-      await c2.open(5);
-    } catch (x) {
-      e = x;
+    const mkBad = (idx, body) => createCalib(fakeStorage(), { fetchFn: server(idx, body) });
+    await rejects(mkBad(null), 'no index');
+    await rejects(mkBad({ v: 1, sizes: { 5: [] } }), 'an empty list');
+    await rejects(mkBad({ v: 2, sizes: { 5: files } }), 'an unknown version');
+    await rejects(mkBad(index, keyOfSize(6)), 'a puzzle of another size');
+  },
+);
+
+test(
+  'daily: sequence per size is independent of what was played in other sizes',
+  FAST,
+  async () => {
+    const A = createDaily(fakeStorage(), atDay(19)),
+      B = createDaily(fakeStorage(), atDay(19)),
+      seedsA = [],
+      seedsB = [];
+    for (const step of [
+      ['open', 5],
+      ['open', 7],
+      ['skip', 5],
+      ['skip', 7],
+      ['skip', 5],
+    ]) {
+      const g = await A[step[0]](step[1]);
+      if (step[1] === 5) seedsA.push(g.seed);
     }
-    ok(e, why);
-  };
-  const mkBad = (idx, body) => createCalib(fakeStorage(), { fetchFn: server(idx, body) });
-  await rejects(mkBad(null), 'no index');
-  await rejects(mkBad({ v: 1, sizes: { 5: [] } }), 'an empty list');
-  await rejects(mkBad({ v: 2, sizes: { 5: files } }), 'an unknown version');
-  await rejects(mkBad(index, keyOfSize(6)), 'a puzzle of another size');
-});
+    for (const step of [
+      ['open', 5],
+      ['skip', 5],
+      ['skip', 5],
+    ])
+      seedsB.push((await B[step[0]](step[1])).seed);
+    assert.deepStrictEqual(seedsA, seedsB);
+    assert.deepStrictEqual(new Set(seedsA).size, 3);
+  },
+);
 
-ta('daily: sequence per size is independent of what was played in other sizes', async () => {
-  const A = createDaily(fakeStorage(), atDay(19)),
-    B = createDaily(fakeStorage(), atDay(19)),
-    seedsA = [],
-    seedsB = [];
-  for (const step of [
-    ['open', 5],
-    ['open', 7],
-    ['skip', 5],
-    ['skip', 7],
-    ['skip', 5],
-  ]) {
-    const g = await A[step[0]](step[1]);
-    if (step[1] === 5) seedsA.push(g.seed);
-  }
-  for (const step of [
-    ['open', 5],
-    ['skip', 5],
-    ['skip', 5],
-  ])
-    seedsB.push((await B[step[0]](step[1])).seed);
-  eq(seedsA, seedsB);
-  eq(new Set(seedsA).size, 3);
-});
-
-ta(
+test(
   'daily: Play local advances only after the current game was solved; New puzzle always advances',
+  FAST,
   async () => {
     const D = createDaily(fakeStorage(), atDay(19));
     const g1 = await D.open(5),
       again = await D.open(5);
-    eq(again.index, g1.index, 'unsolved -> same game');
+    assert.deepStrictEqual(again.index, g1.index, 'unsolved -> same game');
     await D.markSolved(5, g1.index);
-    eq((await D.peek(5)).index, 1, 'peek shows next');
-    eq((await D.open(5)).index, 1, 'solved -> next game');
-    eq((await D.skip(5)).index, 2);
-    eq((await D.open(7)).index, 0, 'other size untouched');
+    assert.deepStrictEqual((await D.peek(5)).index, 1, 'peek shows next');
+    assert.deepStrictEqual((await D.open(5)).index, 1, 'solved -> next game');
+    assert.deepStrictEqual((await D.skip(5)).index, 2);
+    assert.deepStrictEqual((await D.open(7)).index, 0, 'other size untouched');
   },
 );
 
-ta('daily: counter resets on a new UTC day; seeds match dailySeed', async () => {
+test('daily: counter resets on a new UTC day; seeds match dailySeed', FAST, async () => {
   const st = fakeStorage(),
     d19 = createDaily(st, atDay(19)),
     d20 = createDaily(st, atDay(20));
   await d19.skip(5);
   await d19.skip(5);
-  eq((await d19.peek(5)).index, 2);
-  eq((await d20.peek(5)).index, 0);
-  eq((await d20.peek(5)).seed, dailySeed(utcDayNumber(atDay(20)()), 5, 0, ALGO_VERSION));
+  assert.deepStrictEqual((await d19.peek(5)).index, 2);
+  assert.deepStrictEqual((await d20.peek(5)).index, 0);
+  assert.deepStrictEqual(
+    (await d20.peek(5)).seed,
+    dailySeed(utcDayNumber(atDay(20)()), 5, 0, ALGO_VERSION),
+  );
 });
 
-ta('stats-store: today resets each day, total accumulates, both persist', async () => {
+test('stats-store: today resets each day, total accumulates, both persist', FAST, async () => {
   const st = fakeStorage(),
     S = createStore(st, [5]);
   await S.hydrate('20260919');
   await S.recordSolve(5, 100, 10);
   await S.recordSolve(5, 100, 20);
   await S.recordSolve(5, 101, 30);
-  eq([S.today(5, 100).n, S.today(5, 101).n, S.total(5).n], [0, 1, 3]);
-  eq(S.today(5, 101).recent, [30]);
+  assert.deepStrictEqual([S.today(5, 100).n, S.today(5, 101).n, S.total(5).n], [0, 1, 3]);
+  assert.deepStrictEqual(S.today(5, 101).recent, [30]);
   const S2 = createStore(st, [5]);
   await S2.hydrate('20260919');
-  eq([S2.today(5, 101).n, S2.total(5).n], [1, 3]);
+  assert.deepStrictEqual([S2.today(5, 101).n, S2.total(5).n], [1, 3]);
 });
 
-ta(
+test(
   'daily: a variant counts its own games; the standard counter and keys are untouched',
+  FAST,
   async () => {
     const st = fakeStorage(),
       D = createDaily(st, atDay(19));
-    eq((await D.open(5, 'cutout')).index, 0);
+    assert.deepStrictEqual((await D.open(5, 'cutout')).index, 0);
     await D.markSolved(5, 0, 'cutout');
-    eq(
+    assert.deepStrictEqual(
       [
         (await D.peek(5, 'cutout')).index,
         (await D.peek(5)).index,
@@ -393,9 +470,9 @@ ta(
       ],
       [1, 0, 0, 0],
     );
-    eq((await D.skip(5, 'arrows')).index, 1);
-    eq((await D.open(5)).index, 0, 'standard still at its first game');
-    eq(
+    assert.deepStrictEqual((await D.skip(5, 'arrows')).index, 1);
+    assert.deepStrictEqual((await D.open(5)).index, 0, 'standard still at its first game');
+    assert.deepStrictEqual(
       [
         (await st.get('zip_daily_index_cutout_5')) !== null,
         (await st.get('zip_daily_index_arrows_5')) !== null,
@@ -403,7 +480,7 @@ ta(
       ],
       [true, true, true],
     );
-    eq(
+    assert.deepStrictEqual(
       (await createDaily(fakeStorage(), atDay(19)).peek(5, 'cutout')).index,
       0,
       'a fresh storage starts at game 1',
@@ -411,8 +488,9 @@ ta(
   },
 );
 
-ta(
+test(
   'stats-store: a variant keeps its own stats per size; standard totals do not move; both persist',
+  FAST,
   async () => {
     const st = fakeStorage(),
       scopes = { cutout: [5, 6] },
@@ -421,7 +499,7 @@ ta(
     await S.recordSolve(5, 100, 10, 'cutout');
     await S.recordSolve(5, 100, 20, 'cutout');
     await S.recordSolve(5, 100, 30);
-    eq(
+    assert.deepStrictEqual(
       [
         S.total(5, 'cutout').n,
         S.total(5).n,
@@ -433,7 +511,7 @@ ta(
     );
     const S2 = createStore(st, [5], scopes);
     await S2.hydrate('20260919');
-    eq(
+    assert.deepStrictEqual(
       [
         S2.total(5, 'cutout').n,
         S2.today(5, 100, 'cutout').n,
@@ -442,7 +520,7 @@ ta(
       ],
       [2, 2, 0, 1],
     );
-    eq(
+    assert.deepStrictEqual(
       [
         await st.keys('zip_local_stats_'),
         await st.keys('zip_today_stats_'),
@@ -454,8 +532,9 @@ ta(
   },
 );
 
-ta(
+test(
   'stats-store: legacy keys (known sizes, variants, orphans) are converted to one key; values, today and best survive; the old keys go',
+  FAST,
   async () => {
     const st = fakeStorage(),
       scopes = { cutout: [5] },
@@ -468,7 +547,7 @@ ta(
     await st.set('zip_today_stats_6', '{broken'); // a damaged value is skipped
     const S = createStore(st, [5], scopes);
     await S.hydrate('20260919');
-    eq(
+    assert.deepStrictEqual(
       [
         S.total(5).n,
         S.total(5).mean,
@@ -482,20 +561,25 @@ ta(
     const left = (await st.keys('zip_'))
       .filter(k => k !== STATS_KEY && !k.startsWith('zip_gotd_attempt_'))
       .sort();
-    eq(left, [], 'every legacy key is gone, the unreadable one included');
-    eq(
+    assert.deepStrictEqual(left, [], 'every legacy key is gone, the unreadable one included');
+    assert.deepStrictEqual(
       JSON.parse((await st.get(STATS_KEY)).value).t['9'],
       [7, 70, 24.5, [70, 71]],
       'orphan sizes are carried over, not lost',
     );
     const S2 = createStore(st, [5], scopes);
     await S2.hydrate('20260919');
-    eq([S2.total(5).mean, S2.gotdBest(5).time], [10.25, 41.5], 'a second load reads the blob');
+    assert.deepStrictEqual(
+      [S2.total(5).mean, S2.gotdBest(5).time],
+      [10.25, 41.5],
+      'a second load reads the blob',
+    );
   },
 );
 
-ta(
+test(
   "stats-store: two tabs writing different variants keep each other's stats; an older day's today entry is dropped on the next write",
+  FAST,
   async () => {
     const st = fakeStorage(),
       scopes = { cutout: [5] },
@@ -507,9 +591,9 @@ ta(
     await B.recordSolve(5, 100, 20, 'cutout');
     const C = createStore(st, [5], scopes);
     await C.hydrate('20260919');
-    eq([C.total(5).n, C.total(5, 'cutout').n], [1, 1]);
+    assert.deepStrictEqual([C.total(5).n, C.total(5, 'cutout').n], [1, 1]);
     await C.recordSolve(5, 101, 30);
-    eq(
+    assert.deepStrictEqual(
       Object.entries(JSON.parse((await st.get(STATS_KEY)).value).d).map(([k, v]) => [k, v[0]]),
       [['5', 101]],
       'the day-100 entry of the other scope is gone',
@@ -517,23 +601,28 @@ ta(
   },
 );
 
-ta.slow('stats-store: the blob of a full device stays small (15 sizes x 6 variants)', async () => {
-  const st = fakeStorage(),
-    sizes = Array.from({ length: 15 }, (_, i) => i + 2),
-    scopes = Object.fromEntries(['a', 'b', 'c', 'd', 'e', 'f'].map(id => [id, sizes]));
-  const S = createStore(st, sizes, scopes);
-  await S.hydrate('20260919');
-  for (const n of sizes)
-    for (const sc of ['', ...Object.keys(scopes)])
-      for (let i = 0; i < 25; i++)
-        await S.recordSolve(n, 100, 12345.678912345 + i * 1111.1111, sc);
-  const len = (await st.get(STATS_KEY)).value.length;
-  ok(len < 60000, 'worst case, every scope played: ' + len + ' chars');
-  eq(S.total(15).recent.length, 20);
-});
+test(
+  'stats-store: the blob of a full device stays small (15 sizes x 6 variants)',
+  SLOW,
+  async () => {
+    const st = fakeStorage(),
+      sizes = Array.from({ length: 15 }, (_, i) => i + 2),
+      scopes = Object.fromEntries(['a', 'b', 'c', 'd', 'e', 'f'].map(id => [id, sizes]));
+    const S = createStore(st, sizes, scopes);
+    await S.hydrate('20260919');
+    for (const n of sizes)
+      for (const sc of ['', ...Object.keys(scopes)])
+        for (let i = 0; i < 25; i++)
+          await S.recordSolve(n, 100, 12345.678912345 + i * 1111.1111, sc);
+    const len = (await st.get(STATS_KEY)).value.length;
+    assert.ok(len < 60000, 'worst case, every scope played: ' + len + ' chars');
+    assert.deepStrictEqual(S.total(15).recent.length, 20);
+  },
+);
 
-ta(
+test(
   'attempts: legacy per-date keys are converted to one key; records are kept as they are; dates past the keep window go; a blob record wins',
+  FAST,
   async () => {
     const st = fakeStorage(),
       full = {
@@ -555,8 +644,12 @@ ta(
     await st.set(GOTD_KEY, JSON.stringify({ v: 2, a: { 20260918: { solved: true, time: 7 } } }));
     const S = createStore(st, [5]);
     await S.hydrate('20260919');
-    eq(S.attempt(), full, 'the full record, submit state included, reads back as before');
-    eq(
+    assert.deepStrictEqual(
+      S.attempt(),
+      full,
+      'the full record, submit state included, reads back as before',
+    );
+    assert.deepStrictEqual(
       [
         await S.loadAttempt('20260918'),
         await S.loadAttempt('20260917'),
@@ -565,38 +658,42 @@ ta(
       ],
       [{ solved: true, time: 7 }, null, null, null],
     );
-    eq(await st.keys('zip_gotd_attempt_'), [], 'every old key is gone');
-    eq(Object.keys(JSON.parse((await st.get(GOTD_KEY)).value).a).sort(), ['20260918', '20260919']);
+    assert.deepStrictEqual(await st.keys('zip_gotd_attempt_'), [], 'every old key is gone');
+    assert.deepStrictEqual(Object.keys(JSON.parse((await st.get(GOTD_KEY)).value).a).sort(), [
+      '20260918',
+      '20260919',
+    ]);
   },
 );
 
-ta(
+test(
   'attempts: the Game-of-Day solves in total only grow: one per date (a repeat or a late submit flag adds nothing), replays count, pruned dates stay counted, an old blob counts its solved dates',
+  FAST,
   async () => {
     const st = fakeStorage(),
       S = createStore(st, [5]);
     await S.hydrate('20260101');
-    eq(S.gotdSolves(), 0);
+    assert.deepStrictEqual(S.gotdSolves(), 0);
     await S.saveAttempt('20260101', { solved: false, time: null });
-    eq(S.gotdSolves(), 0, 'a try is not a solve');
+    assert.deepStrictEqual(S.gotdSolves(), 0, 'a try is not a solve');
     await S.recordGotd(5, '20260101', 30);
-    eq(S.gotdSolves(), 1);
+    assert.deepStrictEqual(S.gotdSolves(), 1);
     await S.saveAttempt('20260101', { solved: true, time: 30, sent: true });
-    eq(S.gotdSolves(), 1, 'the same date again');
+    assert.deepStrictEqual(S.gotdSolves(), 1, 'the same date again');
     await S.recordGotd(5, '20251231', 40, false, true);
-    eq(S.gotdSolves(), 2, 'a replay of another date');
+    assert.deepStrictEqual(S.gotdSolves(), 2, 'a replay of another date');
     const dateAt = i =>
       new Date(Date.UTC(2025, 0, 1) + i * 86400000).toISOString().slice(0, 10).replace(/-/g, '');
     for (let i = 0; i < 300; i++) await S.saveAttempt(dateAt(i), { solved: true, time: 30 });
-    ok(
+    assert.ok(
       Object.keys(JSON.parse((await st.get(GOTD_KEY)).value).a).length < 2 * ATTEMPT_KEEP_DAYS,
       'the old dates went',
     );
     const total = S.gotdSolves();
-    ok(total >= 300, 'the pruned dates stay counted: ' + total);
+    assert.ok(total >= 300, 'the pruned dates stay counted: ' + total);
     const again = createStore(st, [5]);
     await again.hydrate('20260101');
-    eq(again.gotdSolves(), total, 'it is read back');
+    assert.deepStrictEqual(again.gotdSolves(), total, 'it is read back');
     const old = fakeStorage();
     await old.set(
       GOTD_KEY,
@@ -611,12 +708,13 @@ ta(
     );
     const O = createStore(old, [5]);
     await O.hydrate('20260921');
-    eq(O.gotdSolves(), 2, 'a blob without a count: its solved dates');
+    assert.deepStrictEqual(O.gotdSolves(), 2, 'a blob without a count: its solved dates');
   },
 );
 
-ta(
+test(
   'attempts: only the last 120 days before the newest date are kept; 400 days of play stay in one small key',
+  FAST,
   async () => {
     const st = fakeStorage(),
       S = createStore(st, [5]);
@@ -631,7 +729,7 @@ ta(
         stats: { n: 120, mean: 31.123, top: 20.5, pct: 63 },
       });
     const a = JSON.parse((await st.get(GOTD_KEY)).value).a;
-    eq(
+    assert.deepStrictEqual(
       [
         Object.keys(a).length,
         (await S.loadAttempt(dateAt(399))) !== null,
@@ -640,12 +738,13 @@ ta(
       ],
       [ATTEMPT_KEEP_DAYS + 1, true, true, null],
     );
-    ok((await usage(st)).chars < 16000, 'chars: ' + (await usage(st)).chars);
+    assert.ok((await usage(st)).chars < 16000, 'chars: ' + (await usage(st)).chars);
   },
 );
 
-ta(
+test(
   "attempts: a refused conversion keeps reading the old keys (a played date never looks missed) and retries on the next load; two tabs keep each other's dates",
+  FAST,
   async () => {
     const st = fakeStorage(),
       rec = { solved: true, time: 12, sent: true, stats: null };
@@ -658,11 +757,11 @@ ta(
     };
     const S = createStore(refuse, [5]);
     await S.hydrate('20260919');
-    eq(await S.loadAttempt('20260919'), rec, 'read from the old key');
-    ok(await st.get('zip_gotd_attempt_20260919'), 'and it is not removed');
+    assert.deepStrictEqual(await S.loadAttempt('20260919'), rec, 'read from the old key');
+    assert.ok(await st.get('zip_gotd_attempt_20260919'), 'and it is not removed');
     const S2 = createStore(st, [5]);
     await S2.hydrate('20260919');
-    eq(
+    assert.deepStrictEqual(
       [await S2.loadAttempt('20260919'), (await st.keys('zip_gotd_attempt_')).length],
       [rec, 0],
       'the next load converts',
@@ -673,7 +772,7 @@ ta(
     await B.hydrate('20260919');
     await A.saveAttempt('20260920', { solved: false, time: null });
     await B.saveAttempt('20260921', { solved: true, time: 5 });
-    eq(Object.keys(JSON.parse((await st.get(GOTD_KEY)).value).a).sort(), [
+    assert.deepStrictEqual(Object.keys(JSON.parse((await st.get(GOTD_KEY)).value).a).sort(), [
       '20260919',
       '20260920',
       '20260921',
@@ -681,8 +780,9 @@ ta(
   },
 );
 
-ta(
+test(
   'stats-store: overlapping recordSolve and recordGotd (the app does not await the first) keep both; a corrupt entry or a stat without `recent` does not block or lose data',
+  FAST,
   async () => {
     const st = fakeStorage(),
       S = createStore(st, [5]);
@@ -690,12 +790,16 @@ ta(
     S.recordSolve(5, 100, 10);
     await S.recordGotd(5, '20260919', 10, false, false);
     const b = JSON.parse((await st.get(STATS_KEY)).value);
-    eq([b.t['5'][0], b.b['5']], [1, ['20260919', 10]], 'neither write was lost');
+    assert.deepStrictEqual(
+      [b.t['5'][0], b.b['5']],
+      [1, ['20260919', 10]],
+      'neither write was lost',
+    );
     await st.set(STATS_KEY, JSON.stringify({ v: 2, t: {}, d: { 5: null }, b: {} }));
     const S2 = createStore(st, [5]);
     await S2.hydrate('20260919');
     await S2.recordSolve(5, 100, 10);
-    eq(
+    assert.deepStrictEqual(
       JSON.parse((await st.get(STATS_KEY)).value).t['5'][0],
       1,
       'a null entry is dropped, the write goes through',
@@ -704,25 +808,34 @@ ta(
     await st3.set('zip_local_stats_5', JSON.stringify({ n: 3, mean: 10, M2: 2 }));
     const S3 = createStore(st3, [5]);
     await S3.hydrate('20260919');
-    eq([S3.total(5).n, S3.total(5).recent], [3, []], 'an old stat shape is kept');
+    assert.deepStrictEqual(
+      [S3.total(5).n, S3.total(5).recent],
+      [3, []],
+      'an old stat shape is kept',
+    );
   },
 );
 
-ta('attempts: a stray or future-dated legacy key never wipes the replay window', async () => {
-  const st = fakeStorage(),
-    rec = JSON.stringify({ solved: true, time: 5 });
-  for (const d of ['20260919', 'test', '20300101']) await st.set('zip_gotd_attempt_' + d, rec);
-  const S = createStore(st, [5]);
-  await S.hydrate('20260919');
-  eq(
-    [!!S.attempt(), Object.keys(JSON.parse((await st.get(GOTD_KEY)).value).a).sort()],
-    [true, ['20260919', '20300101']],
-    'the malformed key goes, today stays',
-  );
-});
+test(
+  'attempts: a stray or future-dated legacy key never wipes the replay window',
+  FAST,
+  async () => {
+    const st = fakeStorage(),
+      rec = JSON.stringify({ solved: true, time: 5 });
+    for (const d of ['20260919', 'test', '20300101']) await st.set('zip_gotd_attempt_' + d, rec);
+    const S = createStore(st, [5]);
+    await S.hydrate('20260919');
+    assert.deepStrictEqual(
+      [!!S.attempt(), Object.keys(JSON.parse((await st.get(GOTD_KEY)).value).a).sort()],
+      [true, ['20260919', '20300101']],
+      'the malformed key goes, today stays',
+    );
+  },
+);
 
-ta(
+test(
   'playlog: a refused conversion keeps the old history in memory and the next add writes it all',
+  FAST,
   async () => {
     const st = fakeStorage(),
       old = JSON.stringify(
@@ -744,15 +857,20 @@ ta(
       },
     };
     const L = createPlayLog(port);
-    eq((await L.all()).length, 5, 'history is available this session');
+    assert.deepStrictEqual((await L.all()).length, 5, 'history is available this session');
     refuse = false;
     await L.add({ n: 5, ms: 1, solved: true, hints: 0, mode: 'local', at: 1.8e12 });
-    eq((await createPlayLog(st).all()).length, 6, 'all of it survives the next load');
+    assert.deepStrictEqual(
+      (await createPlayLog(st).all()).length,
+      6,
+      'all of it survives the next load',
+    );
   },
 );
 
-ta(
+test(
   'log-store: ratings and pairs round-trip through the compact format; the v1 keys are converted once and removed',
+  FAST,
   async () => {
     const m1 = { 'grade: trap': 2.12346, decisionNodes: 4, B: 0.5 },
       m2 = { 'grade: trap': 1, B: 0.25, extra: 7 };
@@ -767,12 +885,12 @@ ta(
           ? Object.fromEntries(Object.entries(x).sort())
           : x,
       );
-    eq(
+    assert.deepStrictEqual(
       sorted(unpackRatings(JSON.parse(JSON.stringify(packRatings(ratings))))),
       sorted(ratings),
       'extra fields included',
     );
-    eq(
+    assert.deepStrictEqual(
       unpackRatings(
         packRatings([{ key: 'k', human: 1, metrics: { a: 1 / 3, b: 123456789, c: 1234.56789 } }]),
       )[0].metrics,
@@ -783,13 +901,13 @@ ta(
       { a: 'A', b: 'B', cmp: 'harder', ma: m1, mb: m2 },
       { a: 'B', b: 'C', cmp: 'same', ma: m2, mb: null },
     ];
-    eq(
+    assert.deepStrictEqual(
       unpackPairs(JSON.parse(JSON.stringify(packPairs(pairs)))),
       pairs,
       'pairs share their puzzles',
     );
-    eq(unpackRatings(null), []);
-    eq(
+    assert.deepStrictEqual(unpackRatings(null), []);
+    assert.deepStrictEqual(
       unpackPairs({ v: 2, m: [], p: [], q: [[0, 1, 'same']] }),
       [],
       'a dangling pair index is dropped',
@@ -800,63 +918,70 @@ ta(
     await s.remove(PAIR_KEY);
     await s.set(RATING_KEY_V1, JSON.stringify(ratings));
     await s.set(PAIR_KEY_V1, JSON.stringify(pairs));
-    eq(
+    assert.deepStrictEqual(
       sorted(await loadRatings()),
       sorted(ratings),
       'v1 ratings read back through the conversion',
     );
-    eq(await loadPairs(), pairs);
-    eq(
+    assert.deepStrictEqual(await loadPairs(), pairs);
+    assert.deepStrictEqual(
       [await s.get(RATING_KEY_V1), await s.get(PAIR_KEY_V1)],
       [null, null],
       'the old keys are removed',
     );
-    ok((await s.get(RATING_KEY)) && (await s.get(PAIR_KEY)));
-    eq(sorted(await loadRatings()), sorted(ratings), 'a second load reads v2');
+    assert.ok((await s.get(RATING_KEY)) && (await s.get(PAIR_KEY)));
+    assert.deepStrictEqual(sorted(await loadRatings()), sorted(ratings), 'a second load reads v2');
     await s.set(PAIR_KEY_V1, '{broken');
     await s.remove(PAIR_KEY);
-    eq(await loadPairs(), [], 'a corrupt v1 value converts to an empty log');
+    assert.deepStrictEqual(await loadPairs(), [], 'a corrupt v1 value converts to an empty log');
     await saveRatings([]);
     await savePairs([]);
   },
 );
 
-ta('log-store: 300 rated puzzles with 25 metrics take under half of the v1 size', async () => {
-  const names = Array.from({ length: 25 }, (_, i) => 'metric number ' + i),
-    ratings = Array.from({ length: 300 }, (_, i) => ({
-      key:
-        'size 7\ncheckpoints ' +
-        '0,4=5 2,0=2 4,6=4 5,3=1 '.repeat(3) +
-        '\nwalls ' +
-        'H,0,1 V,3,1 '.repeat(8),
-      human: i % 6,
-      lo: i % 6,
-      hi: i % 6,
-      metrics: Object.fromEntries(names.map((n, j) => [n, Math.sqrt(i + j)])),
-    }));
-  const v1 = JSON.stringify(ratings).length,
-    v2 = JSON.stringify(packRatings(ratings)).length;
-  ok(v2 < v1 / 2, `v1 ${v1} -> v2 ${v2}`);
-});
+test(
+  'log-store: 300 rated puzzles with 25 metrics take under half of the v1 size',
+  FAST,
+  async () => {
+    const names = Array.from({ length: 25 }, (_, i) => 'metric number ' + i),
+      ratings = Array.from({ length: 300 }, (_, i) => ({
+        key:
+          'size 7\ncheckpoints ' +
+          '0,4=5 2,0=2 4,6=4 5,3=1 '.repeat(3) +
+          '\nwalls ' +
+          'H,0,1 V,3,1 '.repeat(8),
+        human: i % 6,
+        lo: i % 6,
+        hi: i % 6,
+        metrics: Object.fromEntries(names.map((n, j) => [n, Math.sqrt(i + j)])),
+      }));
+    const v1 = JSON.stringify(ratings).length,
+      v2 = JSON.stringify(packRatings(ratings)).length;
+    assert.ok(v2 < v1 / 2, `v1 ${v1} -> v2 ${v2}`);
+  },
+);
 
-ta(
+test(
   "stats-store: a replay keeps today's record and the per-size Game-of-Day time; attemptOn reads any loaded date",
+  FAST,
   async () => {
     const st = fakeStorage(),
       S = createStore(st, [5]);
     await S.hydrate('20260929');
     await S.recordGotd(5, '20260929', 42.1, true);
-    eq(S.gotdBest(5), { date: '20260929', time: 42.1 });
+    assert.deepStrictEqual(S.gotdBest(5), { date: '20260929', time: 42.1 });
     await S.recordGotd(5, '20260920', 9.5, true, true);
-    eq(S.gotdBest(5), { date: '20260929', time: 42.1 });
-    eq(S.attempt(), { solved: true, time: 42.1, sent: false });
-    eq(S.attemptDate(), '20260929');
-    eq(S.attemptOn('20260920'), { solved: true, time: 9.5, sent: false });
+    assert.deepStrictEqual(S.gotdBest(5), { date: '20260929', time: 42.1 });
+    assert.deepStrictEqual(S.attempt(), { solved: true, time: 42.1, sent: false });
+    assert.deepStrictEqual(S.attemptDate(), '20260929');
+    assert.deepStrictEqual(S.attemptOn('20260920'), { solved: true, time: 9.5, sent: false });
     const S2 = createStore(st, [5]);
     await S2.hydrate('20260929');
-    eq(S2.attemptOn('20260920'), null, 'not loaded yet');
-    eq(await S2.loadAttempt('20260920'), { solved: true, time: 9.5, sent: false });
+    assert.deepStrictEqual(S2.attemptOn('20260920'), null, 'not loaded yet');
+    assert.deepStrictEqual(await S2.loadAttempt('20260920'), {
+      solved: true,
+      time: 9.5,
+      sent: false,
+    });
   },
 );
-
-registerAsyncTests();
