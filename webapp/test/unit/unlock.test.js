@@ -700,20 +700,10 @@ test(
 // ---------- the release of the 3D puzzles (features/solid-release.js) ----------
 const RELEASE = { first: 20261201, tetra: 7, cube: 21, ball: 35 };
 
-const throwsRange = (fn, what) => {
-  let threw = false;
-  try {
-    fn();
-  } catch (error) {
-    threw = error instanceof RangeError;
-  }
-  assert.ok(threw, `${what} must throw a RangeError`);
-};
-
 test('solid release: dates, stages and the sizes open to everyone', FAST, () => {
   assert.deepStrictEqual(dayOfYmd(20261201), Date.UTC(2026, 11, 1) / 86400000);
   for (const bad of [20261301, 20260230, '2026-12-01', 'x', null, 0, 202612011]) {
-    throwsRange(() => dayOfYmd(bad), `date ${bad}`);
+    assert.throws(() => dayOfYmd(bad), RangeError, `date ${bad} must throw a RangeError`);
   }
   assert.deepStrictEqual(releaseDays(null), null);
   assert.deepStrictEqual(
@@ -748,7 +738,11 @@ test('solid release: dates, stages and the sizes open to everyone', FAST, () => 
   );
   for (const key of ['tetra', 'cube', 'ball']) {
     for (const bad of [-1, 1.5, '7', undefined]) {
-      throwsRange(() => releaseDays({ ...RELEASE, [key]: bad }), `${key}: ${bad}`);
+      assert.throws(
+        () => releaseDays({ ...RELEASE, [key]: bad }),
+        RangeError,
+        `${key}: ${bad} must throw a RangeError`,
+      );
     }
   }
   releaseDays(SOLID_RELEASE); // the shipped config is valid

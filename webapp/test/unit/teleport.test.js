@@ -68,17 +68,9 @@ import {
 } from '../../src/view/portal-icons.js';
 import { ladder } from '../../src/core/ladder.js';
 import { made } from '../fixtures/made.js';
+import { REFUSED } from '../errors.js';
 
 // ---- the core: data, format, rules, solver
-
-const threw = f => {
-  try {
-    f();
-    return false;
-  } catch {
-    return true;
-  }
-};
 
 // A Teleport puzzle: `numbers` = { cell: number }, `portals` = [[a, b], ...].
 function teleportPuzzle(n, numbers, portals) {
@@ -285,14 +277,12 @@ test('teleport: format — round trip, canonical order, errors, path over a port
     'size 5\nholes 4,4\nportals 0,0~2,2',
     'size 5\nportals 0,0~2,2 x',
   ])
-    assert.ok(
-      threw(() => parse(bad)),
-      'should reject: ' + bad,
-    );
+    assert.throws(() => parse(bad), REFUSED, 'should reject: ' + bad);
   const withPath = parse('size 4\ncheckpoints 0,0=1\nportals 0,1~3,1\npath 0,0 0,1 3,1');
   assert.deepStrictEqual(withPath.path, [0, 1, 13]);
-  assert.ok(
-    threw(() => parse('size 4\nportals 0,1~3,1\npath 0,0 3,1')),
+  assert.throws(
+    () => parse('size 4\nportals 0,1~3,1\npath 0,0 3,1'),
+    REFUSED,
     'a path may jump only over a portal pair',
   );
 });
@@ -335,8 +325,9 @@ test('teleport: pathEdgeIds gives a portal step an id beyond every grid edge', F
   assert.deepStrictEqual(ids, [edgeId(4, 1, 0), portalEdgeId(4, 0), edgeId(4, 13, 12)]);
   assert.ok(portalEdgeId(4, 0) >= 2 * 16);
   assert.deepStrictEqual(pathEdgeIds(4, [6, 3], false, false, portals), [portalEdgeId(4, 1)]);
-  assert.ok(
-    threw(() => pathEdgeIds(4, [0, 13], false, false, null)),
+  assert.throws(
+    () => pathEdgeIds(4, [0, 13], false, false, null),
+    REFUSED,
     'without the pairs a jump is not an edge',
   );
 });
@@ -459,9 +450,9 @@ test(
 
 test('teleport: solve refuses a mix with another variant', FAST, () => {
   const p = teleportPuzzle(4, { 0: 1, 15: 2 }, [[1, 14]]);
-  assert.ok(threw(() => solve({ ...p, wrap: true })));
-  assert.ok(threw(() => solve({ ...p, loop: true })));
-  assert.ok(threw(() => solve({ ...p, exact: true })));
+  assert.throws(() => solve({ ...p, wrap: true }), REFUSED);
+  assert.throws(() => solve({ ...p, loop: true }), REFUSED);
+  assert.throws(() => solve({ ...p, exact: true }), REFUSED);
   assert.deepStrictEqual(cellCount(p), 16);
 });
 
@@ -660,24 +651,15 @@ test(
     'and plain generation is untouched',
   FAST,
   () => {
-    const throws = f => {
-      try {
-        f();
-        return false;
-      } catch {
-        return true;
-      }
-    };
-    assert.ok(
-      throws(() => runSync(generate(3, 1, { teleport: true }))),
-      'n < 4',
-    );
-    assert.ok(
-      throws(() => runSync(generate(6, 1, { teleport: true, wrap: true }))),
+    assert.throws(() => runSync(generate(3, 1, { teleport: true })), REFUSED, 'n < 4');
+    assert.throws(
+      () => runSync(generate(6, 1, { teleport: true, wrap: true })),
+      REFUSED,
       'with wrap',
     );
-    assert.ok(
-      throws(() => runSync(generate(6, 1, { teleport: true, loop: true }))),
+    assert.throws(
+      () => runSync(generate(6, 1, { teleport: true, loop: true })),
+      REFUSED,
       'with loop',
     );
     const plain = runSync(generate(6, 9));
@@ -709,16 +691,9 @@ test('teleport-gen: design app — randomPathPuzzle and generateUnique with pair
   assert.deepStrictEqual(solve(r.puzzle, { limit: 2, nodeCap: 5e7, prop: true }).count, 1);
   const none = randomPathPuzzle(6, 6, makeRng(3));
   assert.ok(!none.portals, 'without pairs: a standard puzzle');
-  const throws = f => {
-    try {
-      f();
-      return false;
-    } catch {
-      return true;
-    }
-  };
-  assert.ok(
-    throws(() => runSync(generateUnique(7, 6, makeRng(1), { pairs: 1, wrap: true }))),
+  assert.throws(
+    () => runSync(generateUnique(7, 6, makeRng(1), { pairs: 1, wrap: true })),
+    REFUSED,
     'no pairs with wrap',
   );
 });

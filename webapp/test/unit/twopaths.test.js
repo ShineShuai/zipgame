@@ -73,17 +73,9 @@ import {
 import { made } from '../fixtures/made.js';
 import { ladder } from '../../src/core/ladder.js';
 import { splitD } from '../../src/apps/design/board.js';
+import { REFUSED } from '../errors.js';
 
 // ---- the core: model, rules, format, share code, solver
-
-const threw = f => {
-  try {
-    f();
-    return false;
-  } catch {
-    return true;
-  }
-};
 
 // A random Two paths puzzle: a Hamiltonian path cut at a random place, each piece turned at random,
 // 2 to 4 numbers on each piece (its ends included), random walls off the planted path.
@@ -445,11 +437,12 @@ test(
       const w = { ...base(), split: 2, ...extra };
       assert.ok(!validate(w).ok, `refused with ${Object.keys(extra)}`);
     }
-    assert.ok(
-      threw(() => solve({ ...base(), split: 2, wrap: true })),
+    assert.throws(
+      () => solve({ ...base(), split: 2, wrap: true }),
+      REFUSED,
       'the solver refuses a combination',
     );
-    assert.ok(threw(() => solve({ ...base(), split: 2, portals: [[1, 14]] })));
+    assert.throws(() => solve({ ...base(), split: 2, portals: [[1, 14]] }), REFUSED);
     assert.deepStrictEqual(clonePuzzle(p).split, 2, 'clonePuzzle keeps split');
     assert.deepStrictEqual(clonePuzzle(base()).split, undefined);
     // numbering with a gap is still refused
@@ -482,10 +475,7 @@ test('twopaths: the text format keeps split, and a path line may cross the bridg
     'size 4\nsplit 2\nholes 1,1',
     'size 4\nsplit 2\narrows',
   ]) {
-    assert.ok(
-      threw(() => parse(bad)),
-      `refused: ${bad.replace(/\n/g, ' / ')}`,
-    );
+    assert.throws(() => parse(bad), REFUSED, `refused: ${bad.replace(/\n/g, ' / ')}`);
   }
   assert.ok(
     !/^split/m.test(serialize(parse('size 4\ncheckpoints 0,0=1 3,3=2\nwalls'))),
@@ -494,8 +484,9 @@ test('twopaths: the text format keeps split, and a path line may cross the bridg
   // a jump that is not the bridge is still refused: swap two cells of the red path
   const jumpy = p.path.slice();
   [jumpy[1], jumpy[3]] = [jumpy[3], jumpy[1]];
-  assert.ok(
-    threw(() => parse(serialize(p, { path: jumpy }))),
+  assert.throws(
+    () => parse(serialize(p, { path: jumpy })),
+    REFUSED,
     'a path that jumps elsewhere',
   );
 });
@@ -760,20 +751,20 @@ test(
   FAST,
   () => {
     for (const n of TWOPATHS_SIZES) assert.ok(TWOPATHS_CANDIDATES[n] > 0, `candidates for ${n}`);
-    assert.ok(
-      threw(() => generated(3, 1)),
-      'n = 3',
-    );
-    assert.ok(
-      threw(() => runSync(generate(6, 1, { twopaths: true, wrap: true }))),
+    assert.throws(() => generated(3, 1), REFUSED, 'n = 3');
+    assert.throws(
+      () => runSync(generate(6, 1, { twopaths: true, wrap: true })),
+      REFUSED,
       'with wrap',
     );
-    assert.ok(
-      threw(() => runSync(generate(6, 1, { twopaths: true, loop: true }))),
+    assert.throws(
+      () => runSync(generate(6, 1, { twopaths: true, loop: true })),
+      REFUSED,
       'with loop',
     );
-    assert.ok(
-      threw(() => runSync(generate(6, 1, { twopaths: true, teleport: true }))),
+    assert.throws(
+      () => runSync(generate(6, 1, { twopaths: true, teleport: true })),
+      REFUSED,
       'with teleport',
     );
   },

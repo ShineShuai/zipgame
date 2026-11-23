@@ -70,6 +70,7 @@ import {
   routeCrossings,
   slotBetween,
 } from '../../src/view/surface-net.js';
+import { REFUSED } from '../errors.js';
 import {
   IDENTITY,
   buildView,
@@ -121,15 +122,6 @@ import { EN, ZH, t as translate } from '../../src/ui/i18n.js';
 // ---- the closed surfaces: graph, model, solver, generator
 
 const slow = typeof process !== 'undefined' && Boolean(process.env.SURFACE_SLOW);
-
-const threw = f => {
-  try {
-    f();
-    return false;
-  } catch {
-    return true;
-  }
-};
 
 // Every Hamiltonian path that obeys the rules, by plain search with no pruning at all
 // (test/oracle.js).
@@ -207,10 +199,10 @@ test(
         assert.ok(surfaceTopology(kind, n).T <= 110, `${kind} ${n} stays small enough`);
       }
     }
-    assert.ok(threw(() => surfaceTopology('sphere', 3)));
-    assert.ok(threw(() => surfaceTopology('cube', 0)));
-    assert.ok(threw(() => surfaceTopology('cube', 13)));
-    assert.ok(threw(() => surfaceTopology('cube', 2.5)));
+    assert.throws(() => surfaceTopology('sphere', 3), REFUSED);
+    assert.throws(() => surfaceTopology('cube', 0), REFUSED);
+    assert.throws(() => surfaceTopology('cube', 13), REFUSED);
+    assert.throws(() => surfaceTopology('cube', 2.5), REFUSED);
   },
 );
 
@@ -403,10 +395,7 @@ test('surface solver: limit, second solution, node cap', FAST, () => {
   assert.deepStrictEqual(capped.capped, true);
   assert.ok(capped.nodes <= 4);
   const bad = makeSurfacePuzzle('cube', 2);
-  assert.ok(
-    threw(() => solveSurface(bad)),
-    'no numbers: invalid',
-  );
+  assert.throws(() => solveSurface(bad), REFUSED, 'no numbers: invalid');
 });
 
 test('surface puzzle: validate, canStep and isSolved', FAST, () => {
@@ -475,18 +464,12 @@ test('surface puzzle: plain text round trip and errors', FAST, () => {
     'surface cube 2\nfoo',
   ];
   for (const text of bad) {
-    assert.ok(
-      threw(() => parseSurface(text)),
-      `should reject: ${JSON.stringify(text)}`,
-    );
+    assert.throws(() => parseSurface(text), REFUSED, `should reject: ${JSON.stringify(text)}`);
   }
   const top = surfaceTopology('cube', 2);
   const wall = edgeBetween(top, 0, top.nb[0]);
   const throughWall = `surface cube 2\nwalls ${wall}\npath 0 ${top.nb[0]}`;
-  assert.ok(
-    threw(() => parseSurface(throughWall)),
-    'path through a wall',
-  );
+  assert.throws(() => parseSurface(throughWall), REFUSED, 'path through a wall');
 });
 
 test('surface generator: random Hamiltonian path on every board size', FAST, () => {
@@ -1319,9 +1302,9 @@ test('ball catalog: closed, convex, counter-clockwise, Euler and the corner form
     );
     assert.deepStrictEqual(surfaceCellCount(BALL_KIND, entry.id), top.T);
   }
-  assert.ok(threw(() => surfaceTopology(BALL_KIND, 'nope')));
-  assert.ok(threw(() => surfaceTopology(BALL_KIND, 12)));
-  assert.ok(threw(() => ballEntry('')));
+  assert.throws(() => surfaceTopology(BALL_KIND, 'nope'), REFUSED);
+  assert.throws(() => surfaceTopology(BALL_KIND, 12), REFUSED);
+  assert.throws(() => ballEntry(''), REFUSED);
 });
 
 test(
@@ -1450,15 +1433,12 @@ test('ball catalog: the cells of a type are congruent; uneven balls are not offe
 
 test('ball catalog: the registry is empty until it is given the catalog', FAST, () => {
   assert.deepStrictEqual(fresh.ballsLoaded(), false);
-  assert.ok(
-    threw(() => fresh.ballEntry('tetra')),
-    'not loaded',
-  );
+  assert.throws(() => fresh.ballEntry('tetra'), REFUSED, 'not loaded');
   fresh.registerBalls(BALL_CATALOG);
   assert.deepStrictEqual(fresh.ballsLoaded(), true);
   assert.deepStrictEqual(fresh.ballEntry('tetra').id, 'tetra');
   assert.deepStrictEqual(fresh.ballList().length, BALL_CATALOG.length);
-  assert.ok(threw(() => fresh.ballEntry('nope')));
+  assert.throws(() => fresh.ballEntry('nope'), REFUSED);
 });
 
 test('ball puzzles: generated, unique, solvable, and the text format round-trips', FAST, () => {
@@ -1497,11 +1477,12 @@ test('ball puzzles: generated, unique, solvable, and the text format round-trips
       `${id}: same seed, same puzzle`,
     );
   }
-  assert.ok(threw(() => makeSurfacePuzzle(BALL_KIND, 'nope')));
-  assert.ok(threw(() => parseSurface('surface ball nope\n')));
-  assert.ok(threw(() => parseSurface('surface ball\n')));
-  assert.ok(
-    threw(() => generateSurface(BALL_KIND, 'cuboct', 1)),
+  assert.throws(() => makeSurfacePuzzle(BALL_KIND, 'nope'), REFUSED);
+  assert.throws(() => parseSurface('surface ball nope\n'), REFUSED);
+  assert.throws(() => parseSurface('surface ball\n'), REFUSED);
+  assert.throws(
+    () => generateSurface(BALL_KIND, 'cuboct', 1),
+    REFUSED,
     'no puzzle on an unplayable board',
   );
 });

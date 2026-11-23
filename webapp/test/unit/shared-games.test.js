@@ -181,43 +181,28 @@ test('radix-code: a subset costs log2 C(size, k) bits; fields share bits', () =>
 });
 
 test('radix-code: bad input is refused (writer) or reported as RangeError (reader)', () => {
-  const throws = fn => {
-    try {
-      fn();
-    } catch (e) {
-      return e instanceof RangeError;
-    }
-    return false;
-  };
   const w = () => new RadixWriter();
-  assert.ok(
-    throws(() => w().uint(7, 7)) &&
-      throws(() => w().uint(-1, 7)) &&
-      throws(() => w().uint(1.5, 7)),
-  );
-  assert.ok(
-    throws(() => w().count(5, 4)) &&
-      throws(() => w().subset([3, 3], 9)) &&
-      throws(() => w().subset([4, 2], 9)),
-  );
-  assert.ok(
-    throws(() => w().subset([9], 9)) &&
-      throws(() => w().distinct([1, 1], 4)) &&
-      throws(() => w().distinct([4], 4)),
-  );
-  assert.ok(
-    throws(() => new RadixReader(5n).count(3)),
+  assert.throws(() => w().uint(7, 7), RangeError);
+  assert.throws(() => w().uint(-1, 7), RangeError);
+  assert.throws(() => w().uint(1.5, 7), RangeError);
+  assert.throws(() => w().count(5, 4), RangeError);
+  assert.throws(() => w().subset([3, 3], 9), RangeError);
+  assert.throws(() => w().subset([4, 2], 9), RangeError);
+  assert.throws(() => w().subset([9], 9), RangeError);
+  assert.throws(() => w().distinct([1, 1], 4), RangeError);
+  assert.throws(() => w().distinct([4], 4), RangeError);
+  assert.throws(
+    () => new RadixReader(5n).count(3),
+    RangeError,
     'a count above its maximum (size class 2, mantissa 1 = 4 > 3)',
   );
-  assert.ok(
-    throws(() => new RadixReader(5n).distinct(2, 3)),
-    'more picks than items',
-  );
-  assert.ok(
-    throws(() => new RadixReader(5n).fixedSubset(2, 3)),
+  assert.throws(() => new RadixReader(5n).distinct(2, 3), RangeError, 'more picks than items');
+  assert.throws(
+    () => new RadixReader(5n).fixedSubset(2, 3),
+    RangeError,
     'a bigger subset than the set',
   );
-  assert.ok(throws(() => new RadixReader(5n).uint(0)));
+  assert.throws(() => new RadixReader(5n).uint(0), RangeError);
 });
 
 // (the variants' round trip, with and without a strip, is a row of variant-contract.test.js)

@@ -48,19 +48,11 @@ import { sizesFor, luckyDefs } from '../../src/apps/play/variants.js';
 import { encodeShare, decodeShare } from '../../src/core/share-code.js';
 import { makeShareRecord, shareStatus } from '../../src/features/share.js';
 import { made } from '../fixtures/made.js';
+import { REFUSED } from '../errors.js';
 
 // ---- the core: edges, rules, solver, format
 
 const torus = n => ({ ...makePuzzle(n), wrap: true });
-const threw = f => {
-  try {
-    f();
-    return false;
-  } catch {
-    return true;
-  }
-};
-
 // A random Hamiltonian path of the torus: depth-first search in random order, retried on a budget.
 function torusPath(n, rnd) {
   const T = n * n;
@@ -226,22 +218,14 @@ test(
 );
 
 test('wrap: a grid edge id refuses non-neighbour cells (a forgotten wrap flag)', FAST, () => {
-  assert.ok(
-    threw(() => edgeId(3, 0, 2)),
-    'the seam pair 0, 2 is no grid edge',
-  );
-  assert.ok(
-    threw(() => edgeId(3, 2, 3)),
+  assert.throws(() => edgeId(3, 0, 2), REFUSED, 'the seam pair 0, 2 is no grid edge');
+  assert.throws(
+    () => edgeId(3, 2, 3),
+    REFUSED,
     'end of a row and start of the next: no grid edge',
   );
-  assert.ok(
-    threw(() => edgeId(3, 0, 4)),
-    'diagonal cells',
-  );
-  assert.ok(
-    threw(() => pathEdgeIds(3, [0, 2, 1])),
-    'a seam step without the flag',
-  );
+  assert.throws(() => edgeId(3, 0, 4), REFUSED, 'diagonal cells');
+  assert.throws(() => pathEdgeIds(3, [0, 2, 1]), REFUSED, 'a seam step without the flag');
   assert.deepStrictEqual(pathEdgeIds(3, [0, 2, 1], true), [4, 2], 'the same steps with the flag');
   assert.deepStrictEqual(edgeId(3, 0, 1), 0, 'right neighbour');
   assert.deepStrictEqual(edgeId(3, 4, 1), 3, 'upper neighbour, either order');
@@ -284,10 +268,7 @@ test(
       'walls round trip, seam walls included',
     );
     assert.ok(!/^wrap$/m.test(serialize(makePuzzle(3))), 'a grid puzzle has no wrap line');
-    assert.ok(
-      threw(() => parse('size 3\nwalls V,0,2')),
-      'a grid cannot have a seam wall',
-    );
+    assert.throws(() => parse('size 3\nwalls V,0,2'), REFUSED, 'a grid cannot have a seam wall');
     assert.deepStrictEqual(
       parse('size 3\nwrap\nwalls V,0,2').walls[2],
       1,
@@ -295,16 +276,15 @@ test(
     );
     const seam = parse('size 3\nwrap\npath 0,0 0,2 0,1');
     assert.deepStrictEqual(seam.path.join(','), '0,2,1', 'a seam step is a legal path step');
-    assert.ok(
-      threw(() => parse('size 3\npath 0,0 0,2 0,1')),
+    assert.throws(
+      () => parse('size 3\npath 0,0 0,2 0,1'),
+      REFUSED,
       'the same step is not legal on the grid',
     );
-    assert.ok(
-      threw(() => parse('size 2\nwrap')),
-      'a 2 x 2 torus is refused',
-    );
-    assert.ok(
-      threw(() => parse('size 3\nwrap\narrows 0,0>0,1')),
+    assert.throws(() => parse('size 2\nwrap'), REFUSED, 'a 2 x 2 torus is refused');
+    assert.throws(
+      () => parse('size 3\nwrap\narrows 0,0>0,1'),
+      REFUSED,
       'a torus cannot have arrows',
     );
   },
@@ -527,12 +507,10 @@ test('wrap-gen: generateUnique and randomPathPuzzle take wrap; n < 3 is refused'
   const free = randomPathPuzzle(4, 4, makeRng(2), true);
   assert.ok(free.wrap === true && isTorusPath(4, free.path), 'randomPathPuzzle: a torus path');
   assert.ok(!randomPathPuzzle(4, 4, makeRng(2)).wrap, 'randomPathPuzzle: the grid default');
-  assert.ok(
-    threw(() => run(generate(2, 1, { wrap: true }))),
-    'generate: 2 x 2 is refused',
-  );
-  assert.ok(
-    threw(() => run(generateUnique(2, 2, makeRng(1), { wrap: true }))),
+  assert.throws(() => run(generate(2, 1, { wrap: true })), REFUSED, 'generate: 2 x 2 is refused');
+  assert.throws(
+    () => run(generateUnique(2, 2, makeRng(1), { wrap: true })),
+    REFUSED,
     'generateUnique: 2 x 2',
   );
   assert.ok(
