@@ -137,7 +137,14 @@ const threw = f => {
     return true;
   }
 };
-const generated = (n, seed, o) => runSync(generatePentagon(n, seed, o));
+// The generator is deterministic (the 16/36/64 test makes a puzzle twice to check it), so a puzzle
+// that a test only reads is made once for the file. Every caller gets its own copy.
+const madeOnce = new Map();
+const generated = (n, seed, o) => {
+  const key = JSON.stringify([n, seed, o]);
+  if (!madeOnce.has(key)) madeOnce.set(key, runSync(generatePentagon(n, seed, o)));
+  return structuredClone(madeOnce.get(key));
+};
 
 // Every Hamiltonian path that obeys the rules, by plain search with no pruning at all
 // (test/oracle.js).
@@ -438,7 +445,7 @@ test(
         assert.deepStrictEqual(solved.path, p.path, 'and it is the stored path');
         if (n === 4)
           assert.deepStrictEqual(brute(p), 1, `n=${n} seed=${seed}: unique by plain search`);
-        const again = generated(n, seed);
+        const again = runSync(generatePentagon(n, seed)); // made again on purpose
         assert.deepStrictEqual(
           [Array.from(again.cp), Array.from(again.walls), again.path],
           [Array.from(p.cp), Array.from(p.walls), p.path],
