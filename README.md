@@ -443,11 +443,13 @@ workflow itself:
    page's links and its two languages; the app entry points need a browser, so the unit tests never load
    them and this catches a typo'd import that would otherwise break the page), then the unit, co-op
    and sync tests: the fast tier (`npm test`) on Node 20, every test (`npm run test:all`, the golden puzzles
-   included) on Node 22. On Node 22 it also runs the theme tests, the server and benchmark-result tests,
-   the self-test of the release selection and a dry run of the site staging. A separate job runs the
-   research tools' tests (`npm run test:tools`) when the tools, the engine they import or the frozen test
+   included) on Node 22. On Node 22 it also runs the theme tests and the server and benchmark-result tests.
+   A second job, beside the tests, runs the self-tests of the release selection, the puzzle release and
+   the puzzle window and the dry runs of the site and production staging; the deploy waits for both.
+   A third job runs the research tools' tests (`npm run test:tools`) when the tools, the engine they import or the frozen test
    inputs changed.
-2. **Benchmark** on `main` and on demand (Actions → Webapp CI → Run workflow). It publishes the results
+2. **Benchmark** on `main` and on demand (Actions → Webapp CI → Run workflow), started with the tests.
+   It publishes the results
    in the job summary and as an artifact, and fails if the solver's pruning options ever change the
    solutions found. Timings depend on the runner, so treat them as informational.
 3. **Deploy to Pages** for a push to `main` once the tests pass (the test site, below).

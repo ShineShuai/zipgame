@@ -5,7 +5,8 @@ name: Webapp CI
 # push and pull request that touches any of it, or this workflow. When they pass, a push to main (or a manual
 # run on main) deploys to GitHub Pages: only the allowlist in .github/scripts/stage-site.sh is published.
 # The benchmark is slower and its timings depend on the runner, so it only runs on the default branch and on
-# demand (Actions tab -> Webapp CI -> Run workflow). It does not gate the deployment.
+# demand (Actions tab -> Webapp CI -> Run workflow). It does not gate the deployment, and it starts with
+# the tests, not after them, so that it does not make the run longer.
 on:
   push:
     branches: [main]
@@ -95,32 +96,41 @@ jobs:
           npm run test:server
           npm run test:bench
 
+  # The shell scripts that decide what ships, and a dry run of how it is staged. They mostly wait
+  # (about 25 seconds, 3 of them computing), so they run beside the tests: a run is as long as its
+  # longest job, and in the test job they came after the tests. The deploy waits for both.
+  scripts:
+    name: Release and staging scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
       # The rules that pick what production deploys (.github/scripts/select-release.sh).
       - name: Release selection self-test
-        if: matrix.node == 22
         run: bash ../.github/scripts/test-select-release.sh
 
       # The rules that pick when the Game of Day puzzles are released (.github/scripts/select-puzzles.sh)
       # and the check that the code reads them (.github/scripts/check-puzzles.mjs).
       - name: Puzzle release self-test
-        if: matrix.node == 22
         run: bash ../.github/scripts/test-select-puzzles.sh
 
       # The puzzle window of the production site (GOTD_AHEAD, .github/scripts/stage-prod.sh).
       - name: Puzzle window self-test
-        if: matrix.node == 22
         run: bash ../.github/scripts/test-stage-prod.sh
 
       # What the deploy job publishes: an allowlist, then a scan for files and secrets that must never ship.
       - name: Dry-run site staging
-        if: matrix.node == 22
         working-directory: .
         run: bash .github/scripts/stage-site.sh "$RUNNER_TEMP/site"
 
       # The production folder with the puzzles laid over it from a tree id, as prod.yml and gotd.yml
       # stage it; the puzzles of this commit have to be readable by this code.
       - name: Dry-run production staging
-        if: matrix.node == 22
         working-directory: .
         run: |
           puzzles=$(git rev-parse HEAD:demo/GameOfDay)
@@ -168,7 +178,6 @@ jobs:
   bench:
     name: Benchmark
     if: github.ref_name == github.event.repository.default_branch || github.event_name == 'workflow_dispatch'
-    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -201,7 +210,7 @@ jobs:
   deploy:
     name: Deploy to Pages
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: test            # same commit, same workflow: what was tested is what ships
+    needs: [test, scripts] # same commit, same workflow: what was tested is what ships
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
