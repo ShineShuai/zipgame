@@ -30,6 +30,7 @@ import { luckyDefs } from '../../src/apps/play/variants.js';
 import { encodeShare } from '../../src/core/share-code.js';
 import { makeShareRecord } from '../../src/features/share.js';
 import { made } from '../fixtures/made.js';
+import { REFUSED } from '../errors.js';
 
 // ---- the ring-not-closed indicator
 
@@ -90,15 +91,6 @@ test('the loop notes have a text in both languages', () => {
 });
 
 // ---- the core: model, rules, format, solver
-
-const threw = f => {
-  try {
-    f();
-    return false;
-  } catch {
-    return true;
-  }
-};
 
 // A Loop puzzle with `numbers` = { cell: number }.
 function loopPuzzle(n, numbers) {
@@ -203,20 +195,16 @@ test('loop: plain-text format — a `loop` line, round trip, and the errors', ()
   assert.ok(q.loop === true);
   assert.deepStrictEqual(serialize(q), text);
   assert.ok(!parse(serialize(makePuzzle(4))).loop);
-  assert.ok(
-    threw(() => parse('size 4\nloop 1\ncheckpoints 0,0=1')),
+  assert.throws(
+    () => parse('size 4\nloop 1\ncheckpoints 0,0=1'),
+    REFUSED,
     'a value on the loop line',
   );
-  assert.ok(
-    threw(() => parse('size 4\nloop\nwrap\ncheckpoints 0,0=1')),
-    'loop with wrap',
-  );
-  assert.ok(
-    threw(() => parse('size 4\nloop\nexact\ncheckpoints 0,0=1')),
-    'loop with exact',
-  );
-  assert.ok(
-    threw(() => parse('size 4\nloop\nholes 1,1\ncheckpoints 0,0=1')),
+  assert.throws(() => parse('size 4\nloop\nwrap\ncheckpoints 0,0=1'), REFUSED, 'loop with wrap');
+  assert.throws(() => parse('size 4\nloop\nexact\ncheckpoints 0,0=1'), REFUSED, 'loop with exact');
+  assert.throws(
+    () => parse('size 4\nloop\nholes 1,1\ncheckpoints 0,0=1'),
+    REFUSED,
     'loop with holes',
   );
 });

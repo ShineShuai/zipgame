@@ -75,6 +75,7 @@ import { TRAP_CFG, trapGradeOf, SIZE_GRADE_CAP } from '../../src/core/trap.js';
 import { COLORS } from '../../src/apps/play/board.js';
 import { sanitize, serialize as serializeShared } from '../../src/features/shared-games.js';
 import { maxHints, computeHint, solutionOf } from '../../src/features/hints.js';
+import { REFUSED } from '../errors.js';
 import {
   PLAY_VARIANTS,
   variantById,
@@ -128,14 +129,6 @@ const withCells = (n, cells, edges) => {
     p.walls[edge] = 1;
   });
   return p;
-};
-const threw = f => {
-  try {
-    f();
-    return false;
-  } catch {
-    return true;
-  }
 };
 // The generator is deterministic (the 16/36/64 test makes a puzzle twice to check it), so a puzzle
 // that a test only reads is made once for the file. Every caller gets its own copy.
@@ -338,7 +331,8 @@ test(
     }
     const again = pentagonMesh(6);
     assert.deepStrictEqual(again.cells, pentagonMesh(6).cells, 'the same mesh every time');
-    assert.ok(threw(() => pentagonMesh(3)) && threw(() => board(12)), 'only the boards 4 to 11');
+    assert.throws(() => pentagonMesh(3), REFUSED, 'only the boards 4 to 11');
+    assert.throws(() => board(12), REFUSED, 'only the boards 4 to 11');
   },
 );
 
@@ -376,15 +370,9 @@ test(
     );
     assert.deepStrictEqual(back.path, p.path);
     assert.ok(validateSurface(back).ok);
-    assert.ok(
-      threw(() => parseSurface('surface pentagon 12\n')),
-      'size 12 does not exist',
-    );
+    assert.throws(() => parseSurface('surface pentagon 12\n'), REFUSED, 'size 12 does not exist');
     const past = `surface pentagon 4\nwalls ${board(4).E}\n`;
-    assert.ok(
-      threw(() => parseSurface(past)),
-      'edge past the last',
-    );
+    assert.throws(() => parseSurface(past), REFUSED, 'edge past the last');
     assert.deepStrictEqual(wallCount(makeSurfacePuzzle(PENTAGON_KIND, 4)), 0);
   },
 );
@@ -479,7 +467,8 @@ test(
       wallCount(p),
       'the last event has the wall count',
     );
-    assert.ok(threw(() => generated(3, 1)) && threw(() => generated(12, 1)));
+    assert.throws(() => generated(3, 1), REFUSED);
+    assert.throws(() => generated(12, 1), REFUSED);
   },
 );
 
