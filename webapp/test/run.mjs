@@ -45,15 +45,15 @@ const suites = (named.length ? named : Object.keys(groups))
   .filter(file => tier !== 'slow' || hasSlow(file));
 
 // The longest files start first. A run is over when its last file is, and a long file that starts
-// late ends it: the gotd-gen command line (64 s of CPU alone) used to start at second 66 of 130.
-// Alone, tier all, in seconds of CPU: 64, 32, 31, 21, 19, 15, 12, 11 (every file together: 292).
+// late ends it: the gotd-gen command line (then 64 s of CPU alone) started at second 66 of 130.
+// Alone, tier all, in seconds of CPU: 32, 31, 21, 20, 19, 15, 12, 11 (every file together: 247).
 // With this list the run is within 1 s of the best possible order. A stale list only costs time,
 // but a name that is not a file is an error, so a renamed file is noticed.
 const LONGEST_FIRST = [
-  'test/gotd-gen-cli.test.js',
   'test/unit/trap-target.test.js',
-  'test/unit/gotd-gen.test.js',
+  'test/gotd-gen-cli.test.js',
   'test/unit/pentagon.test.js',
+  'test/unit/gotd-gen.test.js',
   'test/unit/fixtures.test.js',
   'test/unit/cutout.test.js',
   'test/unit/solver.test.js',
