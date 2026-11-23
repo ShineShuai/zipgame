@@ -10,8 +10,9 @@
 //   - every element id an app looks up ($('id'), getElementById('id')) exists in the page of the app
 //     (design.html, stats.html) or is written by the app itself
 // Run: node test/check.js
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { availableParallelism } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -133,18 +134,29 @@ const inCoop = name => COOP_DIRS.some(dir => name.startsWith(dir));
 
 const jsFiles = ['src', 'test', 'bench'].flatMap(dir => filesUnder(join(root, dir), '.js'));
 
-for (const file of jsFiles) {
-  try {
-    execFileSync(process.execPath, ['--check', file], { stdio: 'pipe' });
-  } catch (error) {
-    report(
-      file,
-      1,
-      'syntax error: ' +
-        String(error.stderr)
-          .split('\n')
-          .find(line => line.includes('Error')),
-    );
+// node --check parses with the Node that runs this (the Node 20 job checks what Node 20 accepts).
+// One process per file, as many side by side as there are cores: 327 files took 8 s in a row.
+// -> the message of the error, or null.
+const syntaxError = file =>
+  new Promise(done =>
+    execFile(process.execPath, ['--check', file], (error, _out, stderr) =>
+      done(error ? String(stderr) || 'syntax error' : null),
+    ),
+  );
+const syntax = new Array(jsFiles.length);
+let nextFile = 0;
+await Promise.all(
+  Array.from({ length: Math.min(availableParallelism(), jsFiles.length) }, async () => {
+    while (nextFile < jsFiles.length) {
+      const i = nextFile++;
+      syntax[i] = await syntaxError(jsFiles[i]);
+    }
+  }),
+);
+
+for (const [i, file] of jsFiles.entries()) {
+  if (syntax[i] !== null) {
+    report(file, 1, 'syntax error: ' + syntax[i].split('\n').find(line => line.includes('Error')));
     continue;
   }
 

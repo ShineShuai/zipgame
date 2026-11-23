@@ -44,6 +44,15 @@ import { generateCutout, CUTOUT_MODEL } from '../../src/core/gen/cutout.js';
 import { FAST, SLOW } from '../harness.js';
 import { cachedSamples } from './helpers.js';
 
+// The generator is deterministic (the tests below make a puzzle twice to check it), so a run
+// that a test only reads is made once for the file. Every caller gets its own copy.
+const targetedOnce = new Map();
+const targeted = (n, g, seed, opts) => {
+  const key = JSON.stringify([n, g, seed, opts]);
+  if (!targetedOnce.has(key)) targetedOnce.set(key, runSync(generateTargeted(n, g, seed, opts)));
+  return structuredClone(targetedOnce.get(key));
+};
+
 test('trap: metrics are deterministic, in range, and consistent with the profile', FAST, () => {
   for (const p of cachedSamples()) {
     const a = trapMetrics(p),
@@ -407,7 +416,7 @@ test(
   'target: wall-minimal mode keeps only needed walls and the reported grade is the grade of that puzzle; the retry cap stops the search and returns the closest puzzle',
   SLOW,
   () => {
-    const r = runSync(generateTargeted(7, 3, 4)),
+    const r = targeted(7, 3, 4),
       p = r.puzzle;
     assert.ok(r.minimal === true, 'minimal by default');
     for (const w of wallIds(p)) {
@@ -499,7 +508,7 @@ test(
       [7, 4, 3],
     ]) {
       const plain = runSync(generateTargeted(n, g, seed, { retries: 2, freedEdge: false })),
-        wit = runSync(generateTargeted(n, g, seed, { retries: 2 }));
+        wit = targeted(n, g, seed, { retries: 2 });
       assert.deepStrictEqual(
         [serialize(wit.puzzle), wit.proposals, wit.pred],
         [serialize(plain.puzzle), plain.proposals, plain.pred],
@@ -531,7 +540,7 @@ test(
       const slow = runSync(
           generateTargeted(n, g, seed, { retries: 2, prefilter: false, cache: false }),
         ),
-        fast = runSync(generateTargeted(n, g, seed, { retries: 2 }));
+        fast = targeted(n, g, seed, { retries: 2 });
       assert.deepStrictEqual(
         [serialize(fast.puzzle), fast.proposals, fast.pred, fast.grade],
         [serialize(slow.puzzle), slow.proposals, slow.pred, slow.grade],
@@ -539,7 +548,7 @@ test(
       );
       assert.ok(fast.stats.cacheHits + fast.stats.uniqueHits > 0, 'the cache is used');
     }
-    const p = runSync(generateTargeted(7, 3, 4)).puzzle,
+    const p = targeted(7, 3, 4).puzzle,
       full = ladderTrials(p);
     assert.ok(full > 3, 'the sample ladder makes some trials');
     assert.deepStrictEqual(
