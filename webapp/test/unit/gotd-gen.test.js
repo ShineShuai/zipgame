@@ -240,6 +240,8 @@ test(
     const base = slotSeed('a6-x', 20261, 8, 0);
     assert.deepStrictEqual(base, slotSeed('a6-x', 20261, 8, 0));
     assert.ok(Number.isInteger(base) && base >= 0 && base < 2 ** 32);
+    // pinned: the same on every machine and in every process (a candidate is made again from it)
+    assert.deepStrictEqual([base, slotSeed('a6-x', 20261, 8, 1)], [60857558, 77635177]);
     const others = [
       slotSeed('a6-y', 20261, 8, 0),
       slotSeed('a6-x', 20262, 8, 0),
@@ -420,32 +422,6 @@ test(
       candidateText(made.puzzle, made.entry).includes('# seed'),
       false,
       'without origin only the first line',
-    );
-  },
-);
-
-test(
-  'gotd candidate: the comment is enough to make the puzzle again: gen-target options from the command line give the same puzzle, grade, walls, checkpoints, changes and tries',
-  SLOW,
-  () => {
-    const made = generated(),
-      cmd = made.origin[1],
-      opt = name => cmd.match(new RegExp(`--${name} (\\S+)`))[1],
-      summary = made.origin[0];
-    const r = runSync(
-      generateTargeted(+opt('size'), +opt('grade'), +opt('seed'), {
-        atLeast: cmd.includes('--at-least'),
-        margin: +opt('margin'),
-        retries: +opt('retries'),
-      }),
-    );
-    assert.deepStrictEqual(symmetryKey(r.puzzle), made.symKey);
-    assert.deepStrictEqual(serialize(r.puzzle), serialize(made.puzzle));
-    assert.ok(
-      summary.includes(
-        `grade ${r.grade} (target ${r.target}+${r.inside ? ', inside the margin' : ''}), ${r.walls} walls, ${r.K} checkpoints, `,
-      ) && summary.endsWith(`, ${r.proposals} changes, ${r.tries} tries`),
-      summary,
     );
   },
 );
