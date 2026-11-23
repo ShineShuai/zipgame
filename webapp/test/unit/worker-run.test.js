@@ -90,27 +90,30 @@ test(
   },
 );
 
-// The events of a job: plain data, spaced by EVENT_MS. A 7x7 reports twice; a 9x9 (the slow
-// tier) often enough to see the spacing.
-const checkJobEvents = async n => {
+// The events of a job: plain data, one per EVENT_MS. The clock is the test's, and it moves half
+// an EVENT_MS at every reading, so the spacing is exact. A real clock, read in the callback, is
+// later than the one the throttle read, by a time that a busy machine makes longer or shorter.
+test('generation job: progress events are plain and at most one per EVENT_MS', FAST, async () => {
+  let time = 0;
   const times = [];
   const events = [];
-  await runJob({ task: 'flat', mode: 'standard', n, seed: 5 }, e => {
-    times.push(performance.now());
-    events.push(e);
-  });
-  assert.ok(events.length > 0, `a ${n}x${n} takes long enough to report`);
+  await runJob(
+    { task: 'flat', mode: 'standard', n: 5, seed: 5 },
+    e => {
+      times.push(time);
+      events.push(e);
+    },
+    () => (time += EVENT_MS / 2),
+  );
+  assert.ok(events.length >= 3, `a 5x5 reports ${events.length} times`);
   for (const e of events) assert.deepStrictEqual(JSON.parse(JSON.stringify(e)), e, 'plain data');
-  for (let i = 1; i < times.length; i++) {
-    assert.ok(times[i] - times[i - 1] >= EVENT_MS - 2, 'spaced by EVENT_MS');
-  }
-};
-test('generation job: progress events are plain and at most one per EVENT_MS', FAST, () =>
-  checkJobEvents(7),
-);
-test('generation job: progress events are plain and at most one per EVENT_MS on a 9x9', SLOW, () =>
-  checkJobEvents(9),
-);
+  const gaps = times.slice(1).map((t, i) => t - times[i]);
+  assert.deepStrictEqual(
+    gaps,
+    gaps.map(() => EVENT_MS),
+    'the next event as soon as EVENT_MS is over',
+  );
+});
 
 test(
   'generation job: slim keeps numbers, text, booleans and null, and leaves objects, arrays and functions behind',

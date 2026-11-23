@@ -32,8 +32,9 @@ export function slim(event) {
   return out;
 }
 
-// Runs the job to its end and returns the generator's result; onEvent(slim event) at most every EVENT_MS.
-export async function runJob(job, onEvent) {
+// Runs the job to its end and returns the generator's result; onEvent(slim event) at most every EVENT_MS
+// on `clock`, the time in ms (a test passes its own).
+export async function runJob(job, onEvent, clock = () => performance.now()) {
   await prepare(job);
   const gen = generatorFor(job);
   let last = null,
@@ -43,7 +44,7 @@ export async function runJob(job, onEvent) {
     if (r.done) return r.value;
     if (r.value) last = r.value;
     if (last) {
-      const now = performance.now();
+      const now = clock();
       if (now - sent >= EVENT_MS) {
         onEvent(slim(last));
         last = null;
