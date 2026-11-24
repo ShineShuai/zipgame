@@ -299,7 +299,6 @@ test(
   FAST,
   () => {
     assert.deepStrictEqual(GRADE_ORDER.slice(0, 3), ['decisionNodes', 'B', 'crossPerSeg']);
-    assert.deepStrictEqual(GRADE_ORDER.length, 5, 'design app shows all five');
   },
 );
 

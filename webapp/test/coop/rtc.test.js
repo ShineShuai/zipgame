@@ -15,7 +15,7 @@ const pair = (local, remote, extra = {}) =>
   ]);
 
 test('every configured STUN url is stun:host[:port], never stun://', () => {
-  assert.ok(ICE_SERVERS.length >= 2);
+  assert.ok(ICE_SERVERS.length >= 2, 'one server that is down must not break the calls');
   for (const { urls } of ICE_SERVERS) {
     assert.match(urls, STUN_URL);
   }
