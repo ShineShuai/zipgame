@@ -1,12 +1,13 @@
 // Time-sliced driver for core generators: keeps the UI responsive without a Worker. Results are identical to runSync.
 // Wraps a generator so that `clock.ms` accumulates only the time spent inside gen.next(), i.e. the
 // algorithm's own compute time: not the setTimeout yields between slices, not the onEvent UI updates.
-// Yields and the return value pass through unchanged.
-export function* measured(gen, clock) {
+// Yields and the return value pass through unchanged. `now` is the time in ms (a test passes
+// its own).
+export function* measured(gen, clock, now = () => performance.now()) {
   for (;;) {
-    const start = performance.now();
+    const start = now();
     const step = gen.next();
-    clock.ms += performance.now() - start;
+    clock.ms += now() - start;
     if (step.done) {
       return step.value;
     }

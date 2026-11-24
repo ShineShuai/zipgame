@@ -157,12 +157,12 @@ test('format: time comments — only the given times, in a fixed order, ignored 
   );
 });
 
+// The clock is the test's: work moves it and nothing else does, so the sum is exact. A real clock
+// counts what a busy machine takes from the generator in the middle of a step (a flaky test).
 test('run: measured() passes events and the return value through and clocks only the generator’s own compute time', () => {
+  let time = 0;
   const burn = ms => {
-    const end = performance.now() + ms;
-    while (performance.now() < end) {
-      /* busy wait */
-    }
+    time += ms;
   };
   function* work() {
     yield { frac: 0.1 };
@@ -175,21 +175,21 @@ test('run: measured() passes events and the return value through and clocks only
   }
   const clock = { ms: 0 };
   const seen = [];
-  const result = runSync(measured(work(), clock), e => {
-    seen.push(e);
-    burn(40); // consumer-side work (UI updates in the app) must not be counted
-  });
+  const result = runSync(
+    measured(work(), clock, () => time),
+    e => {
+      seen.push(e);
+      burn(40); // consumer-side work (UI updates in the app) must not be counted
+    },
+  );
   assert.deepStrictEqual(result, 'done');
   assert.deepStrictEqual(
     seen,
     [{ frac: 0.1 }, { frac: 1 }],
     'falsy events are dropped by runSync as before; others arrive unchanged',
   );
-  assert.ok(clock.ms >= 24, `clock counts the 3 x 8 ms of compute (got ${clock.ms.toFixed(1)})`);
-  assert.ok(
-    clock.ms < 24 + 40,
-    `clock excludes the consumer's 2 x 40 ms (got ${clock.ms.toFixed(1)})`,
-  );
+  assert.strictEqual(time, 24 + 2 * 40, 'the consumer ran twice');
+  assert.strictEqual(clock.ms, 24, 'the clock counts the 3 x 8 ms of compute, not the 2 x 40 ms');
 });
 
 test('run: measured() works under runAsync (time-sliced, setTimeout yields) and propagates errors', async () => {
