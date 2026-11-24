@@ -42,14 +42,23 @@ defaults:
     working-directory: webapp
 
 jobs:
+  # The tests run in parts side by side, each on a runner of its own: a run is as long as its longest
+  # job, and the slow tier alone is most of the work (about 170 of 220 seconds of CPU time). Node 20
+  # runs the fast tier. Node 22 runs the fast tier and the slow tier, in two halves (the longest files
+  # are dealt out in turn: test/run.mjs, ZIGZAG_TEST_SHARD). Together that is every test, once on each
+  # Node it is meant for (the fast tier) and once on Node 22 (the slow tier).
   test:
-    name: Tests (Node ${{ matrix.node }})
+    name: Tests (Node ${{ matrix.node }}, ${{ matrix.tier }}${{ matrix.shard && format(', part {0}', matrix.shard) || '' }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        node: [20, 22]
+        include:
+          - { node: 20, tier: fast }
+          - { node: 22, tier: fast, extras: true }
+          - { node: 22, tier: slow, shard: '1/2' }
+          - { node: 22, tier: slow, shard: '2/2' }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -57,41 +66,44 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
 
-      # Every file parses, every import and html reference resolves. The app entry points
+      # Every file parses (on this Node), every import and html reference resolves. The app entry points
       # need a browser, so the unit tests never load them. Also fails if a token in config.js
       # can do more than read and insert.
       - name: Syntax and import check
+        if: matrix.tier == 'fast'
         run: npm run check
 
       # The code style (README, Code style): Biome is pinned in package.json and package-lock.json.
       # Its warnings fail the step too, so the findings stay at zero.
       - name: Format and lint (Biome)
-        if: matrix.node == 22
+        if: matrix.extras
         run: |
           npm ci
           npm run format:check
           npm run lint
 
-      # Node 20 runs the fast tier: the tests that are not marked slow (test/harness.js), under a minute.
+      # The fast tier: the tests that are not marked slow (test/harness.js), under a minute.
       - name: Unit tests (fast tier)
-        if: matrix.node == 20
+        if: matrix.tier == 'fast'
         run: npm test
 
-      # Node 22 runs every test. The slow tier includes the golden puzzles: a changed hash means the generator
-      # output changed and ALGO_VERSION has to be bumped (see README).
-      - name: Unit tests (all tiers)
-        if: matrix.node == 22
-        run: npm run test:all
+      # The slow tier includes the golden puzzles: a changed hash means the generator output changed
+      # and ALGO_VERSION has to be bumped (see README).
+      - name: Unit tests (slow tier, one half)
+        if: matrix.tier == 'slow'
+        env:
+          ZIGZAG_TEST_SHARD: ${{ matrix.shard }}
+        run: npm run test:slow
 
       # The themes themselves: every one packs into a bundle the app accepts, contrast, budgets, the site build.
       - name: Theme tests
-        if: matrix.node == 22
+        if: matrix.extras
         run: npm run test:themes
 
       # The server code (the Cloudflare worker, the Turso schema and sync) and the checks of the benchmark's
       # results run on in-memory fakes: about 3 seconds in all.
       - name: Server and benchmark result tests
-        if: matrix.node == 22
+        if: matrix.extras
         run: |
           npm run test:server
           npm run test:bench

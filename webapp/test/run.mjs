@@ -40,7 +40,7 @@ const groups = {
 };
 const named = args.filter(arg => arg in groups);
 const passed = args.filter(arg => !(arg in groups));
-const suites = (named.length ? named : Object.keys(groups))
+const listed = (named.length ? named : Object.keys(groups))
   .flatMap(name => groups[name]())
   .filter(file => tier !== 'slow' || hasSlow(file));
 
@@ -69,7 +69,17 @@ const rank = file => {
   const i = LONGEST_FIRST.indexOf(file);
   return i < 0 ? LONGEST_FIRST.length : i;
 };
-suites.sort((a, b) => rank(a) - rank(b)); // stable: the others keep their order
+listed.sort((a, b) => rank(a) - rank(b)); // stable: the others keep their order
+
+// One part of the run, for CI jobs side by side: ZIGZAG_TEST_SHARD=2/3. The files are dealt out in
+// the order above, longest first, so that every part gets about the same share of the long ones.
+const shard = process.env.ZIGZAG_TEST_SHARD || '1/1';
+const [part, parts] = shard.split('/').map(Number);
+if (!(Number.isInteger(part) && Number.isInteger(parts) && part >= 1 && part <= parts)) {
+  console.error(`test/run.mjs: ZIGZAG_TEST_SHARD is "${shard}", not i/n with 1 <= i <= n`);
+  process.exit(1);
+}
+const suites = listed.filter((_, index) => index % parts === part - 1);
 
 // On CI the machine is ours alone, so every core runs a file; node --test leaves one idle by
 // default (a quarter of a 4-core runner). A laptop keeps the default, and so does Node 20, where
@@ -79,8 +89,9 @@ const wanted = Number(
 );
 const onNode22 = Number(process.versions.node.split('.')[0]) >= 22;
 const concurrency = wanted > 0 && onNode22 ? [`--test-concurrency=${wanted}`] : [];
+const partOf = parts > 1 ? `, part ${part} of ${parts}` : '';
 console.log(
-  `test/run.mjs: tier ${tier}, ${suites.length} files, ` +
+  `test/run.mjs: tier ${tier}${partOf}, ${suites.length} files, ` +
     `${concurrency.length ? wanted : 'the default number of'} at a time`,
 );
 

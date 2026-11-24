@@ -439,11 +439,13 @@ Puzzles must not change for a given seed, or players would see different "same" 
 push to `main` that touches the home page, `assets/`, `demo/`, `webapp/`, `themes/`, the CI scripts or the
 workflow itself:
 
-1. **Tests** on Node 20 and 22: `npm run check` (syntax, import and html-reference check, plus the home
-   page's links and its two languages; the app entry points need a browser, so the unit tests never load
-   them and this catches a typo'd import that would otherwise break the page), then the unit, co-op
-   and sync tests: the fast tier (`npm test`) on Node 20, every test (`npm run test:all`, the golden puzzles
-   included) on Node 22. On Node 22 it also runs the theme tests and the server and benchmark-result tests.
+1. **Tests**, in four parts side by side, each on a runner of its own: the fast tier (`npm test`) on
+   Node 20 and on Node 22, and the slow tier (`npm run test:slow`, the golden puzzles included) on
+   Node 22 in two halves (`ZIGZAG_TEST_SHARD=1/2` and `2/2`, see `test/README.md`). The fast legs run
+   `npm run check` first (syntax, import and html-reference check, plus the home page's links and its two
+   languages; the app entry points need a browser, so the unit tests never load them and this catches a
+   typo'd import that would otherwise break the page). The Node 22 fast leg also runs Biome, the theme
+   tests and the server and benchmark-result tests.
    A second job, beside the tests, runs the self-tests of the release selection, the puzzle release and
    the puzzle window and the dry runs of the site and production staging; the deploy waits for both.
    A third job runs the research tools' tests (`npm run test:tools`) when the tools, the engine they import or the frozen test
