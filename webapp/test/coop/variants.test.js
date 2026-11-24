@@ -21,6 +21,7 @@ import {
   variantById,
   variantOf,
 } from '../../src/coop/variants.js';
+import { SURFACE_SIZES } from '../../src/core/surface/topology.js';
 
 test('the sizes on offer: every size, except Exact and arrows, which keep to their own', () => {
   assert.deepEqual(sizesFor('standard'), PLAY_SIZES);
@@ -40,8 +41,8 @@ test('the sizes on offer: every size, except Exact and arrows, which keep to the
   assert.deepEqual(sizesFor('loop'), LOOP_SIZES);
   assert.ok(sizesFor('loop').every(n => n % 2 === 0)); // a ring needs an even board
   assert.deepEqual(sizesFor('twopaths'), TWOPATHS_SIZES);
-  assert.deepEqual(sizesFor('tetra'), [2, 3, 4, 5]);
-  assert.deepEqual(sizesFor('cube'), [2, 3, 4]);
+  assert.deepEqual(sizesFor('tetra'), SURFACE_SIZES.tetra);
+  assert.deepEqual(sizesFor('cube'), SURFACE_SIZES.cube);
   assert.deepEqual(sizesFor('ball'), [0]); // the ball is drawn from the catalog
   assert.deepEqual(sizesFor('no such type'), PLAY_SIZES); // falls back to standard
 });

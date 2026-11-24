@@ -52,7 +52,7 @@ import {
 import { runSync } from '../../src/core/run.js';
 import { EN, ZH, t as translate } from '../../src/ui/i18n.js';
 import { createSolidPlay } from '../../src/apps/play/solid.js';
-import { ballEntry } from '../../src/core/surface/topology.js';
+import { SURFACE_SIZES, ballEntry } from '../../src/core/surface/topology.js';
 import { registerBalls } from '../../src/core/solid/ball-registry.js';
 import { BALL_CATALOG } from '../../src/core/solid/ball-catalog.js';
 import {
@@ -728,7 +728,7 @@ test('solid release: dates, stages and the sizes open to everyone', FAST, () => 
     ['none', 'none', 'none'],
   );
   const tetraSizes = [f - 1, f, f + 6, f + 7].map(day => openSizes('tetra', day, rel));
-  assert.deepStrictEqual(tetraSizes, [[], [2], [2], [2, 3, 4, 5]]);
+  assert.deepStrictEqual(tetraSizes, [[], [2], [2], SOLID_SIZES.tetra]);
   const cubeSizes = [f + 20, f + 21].map(day => openSizes('cube', day, rel));
   assert.deepStrictEqual(cubeSizes, [[], SOLID_SIZES.cube]);
   assert.deepStrictEqual(
@@ -777,7 +777,7 @@ test('solid release: luckyDefs has the 3D kinds only when given a release', FAST
   assert.ok(!byId.tetra.locked.includes(2), 'the free tetra size 2 is never a locked one');
   assert.deepStrictEqual(byId.tetra.locked, [3, 4]);
   assert.deepStrictEqual(byId.cube.locked, [2, 3]);
-  assert.deepStrictEqual(byId.cube.pool, [2, 3, 4]);
+  assert.deepStrictEqual(byId.cube.pool, SOLID_SIZES.cube);
   assert.deepStrictEqual(byId.ball.locked, [{ min: 10, max: 30 }]);
   assert.deepStrictEqual(byId.ball.pool, [{ min: 8, max: 100 }]);
   const open = d => [rel.first, rel.tetra, rel.cube, rel.ball].map(day => d.open(day));
@@ -1508,3 +1508,9 @@ test(
     }
   },
 );
+
+// Two tables name the sizes of the tetra and the cube: the generator's (core) and the release's.
+// A size that only one has is offered and cannot be made, or can be made and is never offered.
+test('solid release: the sizes it offers are the sizes the generator can make', FAST, () => {
+  assert.deepStrictEqual(SOLID_SIZES, { tetra: SURFACE_SIZES.tetra, cube: SURFACE_SIZES.cube });
+});
