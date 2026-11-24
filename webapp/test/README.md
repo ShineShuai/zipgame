@@ -7,7 +7,8 @@ with `node --test test/unit/wrap.test.js`, pick a test with `--test-name-pattern
 | --- | --- |
 | `npm test` | the fast tier: what the pre-commit hook and the Node 20 job run |
 | `npm run test:slow` | only the tests marked `SLOW` |
-| `npm run test:all` | both tiers: what the Node 22 job runs |
+| `npm run test:all` | both tiers, in one go |
+| `ZIGZAG_TEST_SHARD=1/2 npm run test:slow` | one half of the slow tier (CI runs the two halves side by side) |
 | `npm run check` | every file parses, every import resolves, the width ratchet holds |
 
 `harness.js` explains the tiers (`FAST`, `SLOW`, `sampled`). `budget.js` reports a fast test that
@@ -61,10 +62,15 @@ if one does, say which in the commit message. Restore the code byte for byte.
 
 ## Speed
 
-CI time is about the CPU time of the tests divided by the cores that run them (4), plus the longest
-file. So CPU time matters, and so does the order: the longest files start first (`LONGEST_FIRST` in
-`run.mjs`; a stale list costs only time). Each test file is a process of about 60 ms: do not split
-or merge files for speed. On Node 22 CI every core runs a file (`ZIGZAG_TEST_CONCURRENCY`).
+CI time is the time of the longest job. A job takes its setup (about 10 s) plus the CPU time of its
+tests divided by the cores that run them (4), and never less than its longest file. So CPU time
+matters, and so does the order: the longest files start first (`LONGEST_FIRST` in `run.mjs`; a stale
+list costs only time). Each test file is a process of about 60 ms: do not split or merge files for
+speed. On Node 22 CI every core runs a file (`ZIGZAG_TEST_CONCURRENCY`).
+
+The jobs run side by side: the fast tier on Node 20 and on Node 22, the slow tier on Node 22 in two
+halves (`ZIGZAG_TEST_SHARD`: the files, longest first, are dealt out in turn). A third half would
+not help while one file (`trap-target`, 26 s) is longer than a third of the work.
 
 Measure two trees **back to back**, alone, with the CPU time of the process and its children
 (`bash`: `time node --test file`). Run-to-run noise is about 10%: a difference below that is
