@@ -27,12 +27,17 @@ Write a test for
 - a **contract between modules or devices** (the wire, the sync, the saved formats, the hooks a
   view gives its controller: `data-act`, `data-role`);
 - a **golden output** whose change must be deliberate (`ALGO_VERSION`);
+- a **format that has already left the building** (saved puzzle text, share codes, wire rows,
+  storage keys): pin it, with a comment that says who depends on it
+  (`// compat pin: the version of the links already shared`). This is the one kind of constant
+  worth a test;
 - a **requirement with a reason**, said in the message of the assertion (at least two STUN servers:
   one that is down must not break the calls).
 
 Do not write a test for
 
 - a constant, a count or a list that the code itself defines (`SOLID_KINDS` equals a literal),
+  unless it is a compat pin as above,
 - markup, class names or wording that is not a contract (a text that a translator may change),
 - an expectation that is computed from the thing it tests (a registry compared with itself),
 - what a cheaper test already catches: the same property at two levels, unless the higher one adds
