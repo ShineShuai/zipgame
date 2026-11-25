@@ -69,7 +69,9 @@ whole queue again. `MIN_PUZZLE_DAYS` still counts the puzzles of `main`, not the
 ## Manual
 Actions -> Production deploy -> Run workflow (`ref`, `reason`). The `ref` must be on `main` or on
 a `hotfix/*` branch. `dry_run` checks and stages only. Every deploy moves the tag `prod` and adds
-`deploy/<UTC time>`; `git log prod..main` is what is not live yet.
+`deploy/<UTC time>`, after the smoke test; `git log prod..main` is what is not live yet.
+The workflow makes the tags through the REST API: `git push` of a commit that changes a file
+under `.github/workflows` is refused for the workflow token (no `workflows` permission).
 
 The `production` environment only accepts runs from `main`: always choose `main` under "Use
 workflow from". Hotfixes, rollbacks and a fix for a bug that is still soaking: see the runbook.
