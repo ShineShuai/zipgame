@@ -114,13 +114,7 @@ const overlapDay = (() => {
 test('lucky: collatzPeak of known paths; only positive integers', FAST, () => {
   assert.deepStrictEqual([1, 2, 6, 7, 27].map(collatzPeak), [1, 2, 16, 52, 9232]);
   for (const bad of [0, -3, 1.5, NaN]) {
-    let threw = false;
-    try {
-      collatzPeak(bad);
-    } catch (e) {
-      threw = e instanceof RangeError;
-    }
-    assert.ok(threw, `${bad} must throw`);
+    assert.throws(() => collatzPeak(bad), RangeError, `${bad} must throw`);
   }
 });
 
@@ -1015,13 +1009,7 @@ test('gift: chain of known numbers (steps, peak); only positive integers', FAST,
     [1, 7, 10, 13, 19, 23, 28, 31, 32, 44, 49, 68, 70, 79, 82, 86, 91, 94, 97, 100],
   );
   for (const bad of [0, -3, 1.5, NaN]) {
-    let threw = false;
-    try {
-      chain(bad);
-    } catch (e) {
-      threw = e instanceof RangeError;
-    }
-    assert.ok(threw, `${bad} must throw`);
+    assert.throws(() => chain(bad), RangeError, `${bad} must throw`);
   }
 });
 

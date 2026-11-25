@@ -1338,22 +1338,18 @@ test(
       );
       assert.ok(r.walls <= 12, `n=${n}: ${r.walls} walls`);
     }
-    let failed = 0;
     for (const o of [{ wrap: true }, { loop: true }, { pairs: 1 }]) {
-      try {
-        runSync(generateUnique(6, 6, makeRng(1), { twopaths: true, ...o }));
-      } catch {
-        failed++;
-      }
+      assert.throws(
+        () => runSync(generateUnique(6, 6, makeRng(1), { twopaths: true, ...o })),
+        REFUSED,
+        `not together with wrap, loop or portals: ${JSON.stringify(o)}`,
+      );
     }
-    assert.deepStrictEqual(failed, 3, 'not together with wrap, loop or portals');
-    let small = false;
-    try {
-      runSync(generateUnique(3, 4, makeRng(1), { twopaths: true }));
-    } catch {
-      small = true;
-    }
-    assert.ok(small, 'a 3x3 board is too small');
+    assert.throws(
+      () => runSync(generateUnique(3, 4, makeRng(1), { twopaths: true })),
+      REFUSED,
+      'a 3x3 board is too small',
+    );
   },
 );
 

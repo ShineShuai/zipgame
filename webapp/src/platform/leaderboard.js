@@ -116,13 +116,16 @@ export const tursoBackend = ({ url, key }, id = 'turso') => ({
     const results = body?.results;
     if (!Array.isArray(results)) throw new Error('not a pipeline reply');
     if (kind === 'read') {
-      const reply = JSON.parse(tursoRow(results[0]).reply);
+      const row = tursoRow(results[0]);
+      if (!row) throw new Error('the reply has no row');
+      const reply = JSON.parse(row.reply);
       return { days: reply.days.sort((a, b) => a.d - b.d) };
     }
     if (results[0] && results[0].type === 'error' && /\binvalid\b/.test(results[0].error.message))
       return { rejected: true };
     tursoRow(results[0]); // INSERT: throws on any other error
     const row = tursoRow(results[1]);
+    if (!row) throw new Error('the summary has no row'); // not a TypeError from row.n
     return { n: row.n, sum: row.sum, below: row.below, cnt: row.cnt, best: JSON.parse(row.best) };
   },
 });

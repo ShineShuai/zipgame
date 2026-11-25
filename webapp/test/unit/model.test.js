@@ -20,6 +20,7 @@ import { generate } from '../../src/core/gen/generate.js';
 import { runSync } from '../../src/core/run.js';
 import { runAsync, measured, cancellable, isAbort, isTimeout } from '../../src/platform/run.js';
 import { randPuzzle } from './helpers.js';
+import { REFUSED } from '../errors.js';
 
 test('edges: id <-> cells <-> key round trip', () => {
   for (const n of [2, 5, 16]) {
@@ -49,13 +50,7 @@ test('format: serialize/parse round trip, size 2..16, errors', () => {
     'size 3\ncheckpoints 3,0=1',
     'size 3\nfoo',
   ]) {
-    let threw = false;
-    try {
-      parse(bad);
-    } catch {
-      threw = true;
-    }
-    assert.ok(threw, 'should reject: ' + bad);
+    assert.throws(() => parse(bad), REFUSED, 'should reject: ' + bad);
   }
 });
 
@@ -79,30 +74,16 @@ test('format: path line — round trip, cell order, and rejects disconnected / w
   assert.deepStrictEqual(parse(serialize(p)).path, undefined, 'no path line -> no .path field');
 
   for (const bad of ['size 3\ncheckpoints 0,0=1\npath 0,0 2,2', 'size 3\npath 5,5']) {
-    let threw = false;
-    try {
-      parse(bad);
-    } catch {
-      threw = true;
-    }
-    assert.ok(threw, 'should reject: ' + bad);
+    assert.throws(() => parse(bad), REFUSED, 'should reject: ' + bad);
   }
   const walled = makePuzzle(3);
   setWallId(walled.walls, edgeId(3, 0, 1), true);
-  let threw = false;
-  try {
-    parse(serialize(walled, { path: [] }) + '\npath 0,0 0,1');
-  } catch {
-    threw = true;
-  }
-  assert.ok(threw, 'should reject path crossing a wall');
-  threw = false;
-  try {
-    parse('size 3\npath 0,0 0,1 0,0');
-  } catch {
-    threw = true;
-  }
-  assert.ok(threw, 'should reject repeated cell');
+  assert.throws(
+    () => parse(serialize(walled, { path: [] }) + '\npath 0,0 0,1'),
+    REFUSED,
+    'should reject path crossing a wall',
+  );
+  assert.throws(() => parse('size 3\npath 0,0 0,1 0,0'), REFUSED, 'should reject repeated cell');
 });
 
 test('format: time comments — only the given times, in a fixed order, ignored by parse, none by default', () => {

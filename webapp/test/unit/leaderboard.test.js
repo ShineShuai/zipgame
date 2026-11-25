@@ -17,6 +17,7 @@ import {
   MAX_ROUNDS,
 } from '../../src/platform/leaderboard.js';
 import { atDay, fakeStorage } from './helpers.js';
+import { REFUSED } from '../errors.js';
 
 test('leaderboard: backendsFromConfig = always + backup chain + the others; skips unconfigured and unknown types; ?lb= moves a backup first', () => {
   const cfg = {
@@ -542,15 +543,7 @@ test('turso adapter: request = one pipeline (INSERT, summary SELECT) with the to
 });
 
 test('turso adapter: decode = stats / rejected (the trigger raised invalid) / throws (any other error, nothing usable)', () => {
-  const be = tursoBackend(TB),
-    threw = f => {
-      try {
-        f();
-      } catch {
-        return true;
-      }
-      return false;
-    };
+  const be = tursoBackend(TB);
   assert.deepStrictEqual(be.decode('submit', pipe(done(1), rowOf(STATS_ROW))), GOOD);
   assert.deepStrictEqual(
     be.decode('submit', pipe(done(0), rowOf(STATS_ROW))),
@@ -563,17 +556,17 @@ test('turso adapter: decode = stats / rejected (the trigger raised invalid) / th
       rejected: true,
     },
   );
-  assert.ok(
-    threw(() =>
-      be.decode('submit', pipe(failed('SQLite error: not authorized'), rowOf(STATS_ROW))),
-    ),
+  assert.throws(
+    () => be.decode('submit', pipe(failed('SQLite error: not authorized'), rowOf(STATS_ROW))),
+    REFUSED,
     'SQLITE_AUTH is a failure, not a rejection',
   );
-  assert.ok(
-    threw(() => be.decode('submit', pipe(done(1), failed('SQLite error: no such table: solve')))),
+  assert.throws(
+    () => be.decode('submit', pipe(done(1), failed('SQLite error: no such table: solve'))),
+    REFUSED,
   );
-  assert.ok(
-    threw(() =>
+  assert.throws(
+    () =>
       be.decode(
         'submit',
         pipe(done(1), {
@@ -581,11 +574,22 @@ test('turso adapter: decode = stats / rejected (the trigger raised invalid) / th
           response: { type: 'execute', result: { cols: [], rows: [], affected_row_count: 0 } },
         }),
       ),
-    ),
+    REFUSED,
     'no stats row',
   );
-  assert.ok(
-    threw(() => be.decode('submit', { error: 'x' })) && threw(() => be.decode('read', null)),
+  assert.throws(() => be.decode('submit', { error: 'x' }), REFUSED);
+  assert.throws(() => be.decode('read', null), REFUSED);
+  assert.throws(
+    () =>
+      be.decode(
+        'read',
+        pipe({
+          type: 'ok',
+          response: { type: 'execute', result: { cols: [], rows: [], affected_row_count: 0 } },
+        }),
+      ),
+    REFUSED,
+    'no row for the read',
   );
   const day = d => ({ d, n: 3, sum: 9000, bins: [[3, 3]], best: [2000, 3000, 4000], seeds: [] });
   assert.deepStrictEqual(
@@ -599,7 +603,7 @@ test('turso adapter: decode = stats / rejected (the trigger raised invalid) / th
     'days come back oldest first',
   );
   assert.deepStrictEqual(be.decode('read', pipe(rowOf({ reply: '{"days":[]}' }))), { days: [] });
-  assert.ok(threw(() => be.decode('read', pipe(failed('SQLite error: not authorized')))));
+  assert.throws(() => be.decode('read', pipe(failed('SQLite error: not authorized'))), REFUSED);
 });
 
 test('turso adapter in the flow: HTTP 200 with an error inside = rejected / failed; a good envelope = ok; the stats page reads it too', async () => {
