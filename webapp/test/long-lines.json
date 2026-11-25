@@ -194,7 +194,7 @@
   "test/unit/leaderboard.test.js": 29,
   "test/unit/loop.test.js": 10,
   "test/unit/model.test.js": 10,
-  "test/unit/ratings.test.js": 29,
+  "test/unit/ratings.test.js": 28,
   "test/unit/replay-streak.test.js": 38,
   "test/unit/share.test.js": 13,
   "test/unit/shared-games.test.js": 2,

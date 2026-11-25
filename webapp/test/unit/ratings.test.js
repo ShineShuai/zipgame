@@ -542,8 +542,6 @@ const writeJson = async (k, v) => {
   await s.set(k, JSON.stringify(v));
 };
 
-const wait = ms => new Promise(r => setTimeout(r, ms));
-
 const resetAll = async () => {
   await writeLog([]);
   await writeJson(PAIR_LOG, []);
@@ -708,7 +706,6 @@ test('design panel: unsure flag needs a rating, keeps the rating, is exported an
     () => p,
     () => undefined,
   ).run();
-  await wait(20);
   await dom.sel('.diff-unsure-btn').onclick();
   assert.deepStrictEqual(
     await readJson(LOG_KEY, []),
@@ -768,7 +765,6 @@ test('design panel: unsure flag needs a rating, keeps the rating, is exported an
     () => p,
     () => undefined,
   ).run();
-  await wait(20);
   const input = dom2.sel('#diffLogFile');
   input.files = [
     { text: async () => JSON.stringify([{ key, human: 1.5, lo: 1, hi: 2, unsure: true }]) },
@@ -796,7 +792,6 @@ test('design panel: pairwise — compare with the previous puzzle, either orient
       () => undefined,
     );
   await panel.run();
-  await wait(30);
   assert.ok(
     dom.sel('.diff-pair-text').textContent.startsWith('No previous puzzle yet'),
     dom.sel('.diff-pair-text').textContent,
@@ -805,7 +800,6 @@ test('design panel: pairwise — compare with the previous puzzle, either orient
   assert.deepStrictEqual(await readJson(PAIR_LOG, []), [], 'no previous puzzle: nothing recorded');
   current = B;
   await panel.run();
-  await wait(30);
   assert.ok(
     dom.sel('.diff-pair-text').textContent.includes('Previous puzzle:') &&
       dom.sel('.diff-pair-text').textContent.includes('Not compared yet'),
@@ -825,7 +819,6 @@ test('design panel: pairwise — compare with the previous puzzle, either orient
   );
   assert.ok(dom.sel('.diff-pair-text').textContent.includes('You said this one is harder'));
   await panel.run();
-  await wait(30);
   assert.ok(
     dom.sel('.diff-pair-text').textContent.includes('Previous puzzle:') &&
       dom.sel('.diff-pair-text').textContent.includes('harder'),
@@ -843,7 +836,7 @@ test('design panel: pairwise — compare with the previous puzzle, either orient
   await dom.pair('harder').onclick(); // B is harder than A, stored as a=A, b=B
   current = A;
   await panel.run();
-  await wait(30); // now A is current and B previous: the stored pair must be read in the other orientation
+  // now A is current and B previous: the stored pair must be read in the other orientation
   assert.ok(
     dom.sel('.diff-pair-text').textContent.includes('You said this one is easier'),
     'B harder than A means A is easier than B: ' + dom.sel('.diff-pair-text').textContent,
@@ -912,7 +905,6 @@ test('design panel: pairwise — compare with the previous puzzle, either orient
     () => A,
     () => undefined,
   ).run();
-  await wait(30);
   const pf = dom2.sel('#diffPairFile');
   pf.files = [
     {
@@ -947,11 +939,9 @@ test('design panel: a rotated copy of a rated puzzle is flagged while rating; Fi
       () => undefined,
     );
   await panel.run();
-  await wait(30);
   await dom.grade(2).onclick();
   current = R;
   await panel.run();
-  await wait(30);
   assert.ok(
     dom.sel('.diff-dup-note').textContent.includes('Same puzzle as one you already rated (2)'),
     'note: ' + dom.sel('.diff-dup-note').textContent,
