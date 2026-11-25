@@ -83,8 +83,6 @@ jobs:
     if: ${{ needs.select.outputs.run == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions:
-      contents: write   # creates the tags; only that step gets the token
     environment:
       name: production
       url: https://play.vintoshine.com/zigzag/
@@ -162,28 +160,7 @@ jobs:
           bash "$RUNNER_TEMP/ctl/smoke-site.sh" \
             https://play.vintoshine.com/zigzag dist/zigzag "$SHA" "$PUZZLES"
 
-      # Last on purpose: a failure here can never skip the smoke test or the rollback. The tags
-      # are made with the REST API, not with `git push`: GitHub refuses a push of a commit that
-      # changes a file under .github/workflows to the workflow token, which can never hold the
-      # `workflows` permission (see deploy/README.md).
-      - name: Record the deploy (tags)
-        if: ${{ needs.select.outputs.dry != 'true' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          refs="repos/$GITHUB_REPOSITORY/git/refs"
-          tag="deploy/$(date -u +%Y%m%dT%H%M%SZ)"
-          gh api "$refs" -f ref="refs/tags/$tag" -f sha="$SHA" --silent
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/prod" --silent 2>/dev/null; then
-            gh api -X PATCH "$refs/tags/prod" -f sha="$SHA" -F force=true --silent
-          else   # the first deploy
-            gh api "$refs" -f ref=refs/tags/prod -f sha="$SHA" --silent
-          fi
-          echo "Tagged $tag and prod"
-
-      # The run stays red, but the site is back on the version that was live before. The tags
-      # were not moved yet (they follow a green smoke test), so they still name that version.
+      # The run stays red, but the site is back on the version that was live before.
       - name: Roll back to the previous version
         if: >-
           ${{ failure() && steps.smoke.conclusion == 'failure'
@@ -212,6 +189,5 @@ jobs:
             echo "- commit: \`${SHA:0:7}\`, live before: \`${LIVE:0:7}\`, dry run: $DRY"
             echo "- puzzles of main: \`${PUZZLES:0:7}\`"
             echo "- reason: $REASON"
-            echo "- earlier deploys, for a rollback (run again with one as ref):"
-            git tag --list 'deploy/*' --sort=-refname | head -5 | sed 's/^/  - `/; s/$/`/'
+            [ -z "$LIVE" ] || echo "- rollback: run again with ref=\`$LIVE\` (live before)"
           } >> "$GITHUB_STEP_SUMMARY"

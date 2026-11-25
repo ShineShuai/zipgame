@@ -10,7 +10,7 @@ name: Game of Day release
 #    MIN_PUZZLE_DAYS puzzles are ahead in a row. The rules: .github/scripts/select-puzzles.sh.
 #  - Manual: Actions -> Game of Day release -> Run workflow.
 # The code is the commit that build.json shows as live. The puzzles, the deploy config and the
-# scripts come from main. The tags (prod, deploy/...) mark the code, so nothing here moves them.
+# scripts come from main.
 # Every deploy of prod.yml carries the puzzles of main too, so the two never undo each other, and
 # they share one lock. See deploy/README.md.
 

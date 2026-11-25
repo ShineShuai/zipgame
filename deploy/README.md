@@ -48,10 +48,9 @@ tomorrow with the staged files; if it fails, the previous puzzles are deployed a
 
 The daily run is also the alarm: it fails when fewer than `MIN_PUZZLE_DAYS` puzzles are ahead in a
 row, counted from today (UTC), and a gap stops the count. A gap further ahead is a warning. The
-alarm does not hold back the release. A push or a manual run only warns. The tags `prod` and
-`deploy/...` belong to the code and are not moved. Manual: Actions -> Game of Day release -> Run
-workflow (`reason`, `dry_run`, `smoke`); it releases the puzzles of `main` again even if they are
-live. A wrong puzzle is fixed by a commit to `main`: the push releases the fix.
+alarm does not hold back the release. A push or a manual run only warns. Manual: Actions -> Game of
+Day release -> Run workflow (`reason`, `dry_run`, `smoke`); it releases the puzzles of `main` again
+even if they are live. A wrong puzzle is fixed by a commit to `main`: the push releases the fix.
 
 ### Puzzle window (`GOTD_AHEAD`, optional)
 The whole queue of puzzles ships by default, up to 17 days ahead, so a player who reads the site
@@ -68,10 +67,10 @@ whole queue again. `MIN_PUZZLE_DAYS` still counts the puzzles of `main`, not the
 
 ## Manual
 Actions -> Production deploy -> Run workflow (`ref`, `reason`). The `ref` must be on `main` or on
-a `hotfix/*` branch. `dry_run` checks and stages only. Every deploy moves the tag `prod` and adds
-`deploy/<UTC time>`, after the smoke test; `git log prod..main` is what is not live yet.
-The workflow makes the tags through the REST API: `git push` of a commit that changes a file
-under `.github/workflows` is refused for the workflow token (no `workflows` permission).
+a `hotfix/*` branch. `dry_run` checks and stages only. What is live is the sha in `build.json`.
+There are no deploy tags: the workflow token may not tag a commit whose workflow files differ from
+`main`'s, and the soaked commit often is one. The run summary names the version that was live
+before, for a rollback.
 
 The `production` environment only accepts runs from `main`: always choose `main` under "Use
 workflow from". Hotfixes, rollbacks and a fix for a bug that is still soaking: see the runbook.
@@ -93,12 +92,14 @@ prod() { # REF REASON [true = dry run]: dispatch prod.yml, wait for its run
 
 ### 0. Triage
 ```bash
-git fetch --tags --force origin
-curl -s https://play.vintoshine.com/zigzag/build.json   # live sha, the same as: git rev-parse prod
-git log --oneline prod..origin/main                      # not live yet
-git merge-base --is-ancestor <X> prod && echo live || echo "not live"
+git fetch origin
+build=https://play.vintoshine.com/zigzag/build.json
+live=$(curl -s $build | node -p 'JSON.parse(require("fs").readFileSync(0)).sha')   # what is live
+git log --oneline "$live"..origin/main                  # not live yet
+git merge-base --is-ancestor <X> "$live" && echo live || echo "not live"
 ```
-X not live: A. X live: B. A wrong puzzle: C. The workflow or a script is broken: D.
+`$live` is used below. X not live: A. X live: B. A wrong puzzle: C. The workflow or a script is
+broken: D.
 
 ### Holding the promote
 Two levers. `SOAK_DAYS` = 3650: no commit is old enough, so only the code promote stops
@@ -145,9 +146,9 @@ commit is on `main`, resume (`SOAK_DAYS` = 7) and run the check: the hold now co
 held the same way; `git push origin main`.
 
 ### B. X is live
-**B1. Ship F alone on top of `prod` (preferred).**
+**B1. Ship F alone on top of the live commit (preferred).**
 ```bash
-git switch -c hotfix/menu prod                 # the name must match hotfix/*
+git switch -c hotfix/menu "$live"              # the name must match hotfix/*
 # fix, minimal
 git commit -am "fix(play): <what>"
 git push -u origin hotfix/menu
@@ -170,16 +171,15 @@ means F depends on the newer commits: write an independent fix (B1) or ship `mai
 
 **B3. Ship all of `main` now, unsoaked commits included.**
 ```bash
-git log --oneline prod..origin/main     # what ships
+git log --oneline "$live"..origin/main # what ships
 prod main "<why>"
 ```
 No merge back is needed: live is then ahead of every candidate and the daily run skips.
 
 **B4. Roll back (F is not ready).**
 ```bash
-git tag -l 'deploy/*' --sort=-creatordate | head -3
 gh variable set SOAK_DAYS --body 3650   # first, or tonight's run ships X again
-prod deploy/<previous> "rollback: <why>"
+prod <previous> "rollback: <why>"       # the "live before" sha in the summary of X's deploy run
 ```
 Then A1 (F with `Fixes: <X>`), resume `SOAK_DAYS`, and run the check.
 
