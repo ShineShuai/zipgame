@@ -62,6 +62,7 @@ import {
 } from '../../src/core/connectivity.js';
 import { toggleHole, holeCount, boardProblem } from '../../src/apps/design/holes.js';
 import { renderBoard } from '../../src/apps/design/board.js';
+import { REFUSED } from '../errors.js';
 
 // ---- the variant: holes, layout, share, generator
 
@@ -994,13 +995,7 @@ test(
       { holes: board.holes, wrap: true },
       { holes: board.holes, loop: true },
     ]) {
-      let failed = false;
-      try {
-        runSync(generateUnique(6, 6, makeRng(1), bad));
-      } catch {
-        failed = true;
-      }
-      assert.ok(failed, 'refused');
+      assert.throws(() => runSync(generateUnique(6, 6, makeRng(1), bad)), REFUSED, 'refused');
     }
     // without o.holes nothing changes: the same puzzle for the same seed
     const a = runSync(generateUnique(5, 5, makeRng(9), { maxWalls: 8, tries: 10 }));

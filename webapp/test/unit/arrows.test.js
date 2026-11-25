@@ -73,6 +73,7 @@ import { buildNeighbors, segBlocker, segBlockerDir } from '../../src/core/solver
 import { neighbourCell } from '../../src/core/geom.js';
 import { runCompare } from '../../src/apps/design/compare.js';
 import { decodeFlags, DEFAULT_FLAGS_INT } from '../../src/core/gen/flags.js';
+import { REFUSED } from '../errors.js';
 
 // ---- the core: edges, rules, directed solver
 
@@ -1422,13 +1423,11 @@ test('generateUnique with loop: a unique ring puzzle; an odd board is refused', 
   const r = runSync(generateUnique(6, 6, makeRng(3), { maxWalls: 10, tries: 40, loop: true }));
   assert.ok(r.unique && r.puzzle.loop && validate(r.puzzle).ok);
   assert.deepStrictEqual(solve(r.puzzle, { limit: 2, nodeCap: 5e6, prop: true }).count, 1);
-  let thrown = false;
-  try {
-    runSync(generateUnique(5, 5, makeRng(3), { loop: true }));
-  } catch {
-    thrown = true;
-  }
-  assert.ok(thrown, 'no ring on an odd board');
+  assert.throws(
+    () => runSync(generateUnique(5, 5, makeRng(3), { loop: true })),
+    REFUSED,
+    'no ring on an odd board',
+  );
 });
 
 test('loop overlays: nothing is flagged on any prefix of the real ring', FAST, () => {

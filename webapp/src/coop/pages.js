@@ -442,7 +442,7 @@ export function resultCard({ solved, lines }) {
 export const exportDialog = text =>
   `<div class="modal-backdrop show" id="coopExport">` +
   `<div class="modal"><h2>Export Puzzle</h2><textarea id="coopExportText" spellcheck="false" ` +
-  `readonly>${text.replace(/</g, '&lt;')}</textarea>` +
+  `readonly>${text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</textarea>` +
   `<div class="modal-msg ok" id="coopExportMsg"></div><div class="modal-actions">` +
   `<button class="btn secondary" data-act="export-close">Close</button>` +
   `<button class="btn" data-act="export-copy">Copy to clipboard</button></div></div></div>`;

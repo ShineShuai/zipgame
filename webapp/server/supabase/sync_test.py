@@ -3,7 +3,7 @@
 Usage: PGHOST=/tmp PGPORT=5544 PGUSER=postgres python3 server/supabase/sync_test.py
 (needs psql; creates and drops the database sync_test).
 
-NOTE: written where no Postgres was at hand, so it has not been run. If a check fails, look at both sides:
+Run against PostgreSQL 16 (a scratch cluster, apt install postgresql): all checks pass. If one fails, look at both sides:
 the SQL in sync.sql and the expectation here (server/supabase/sync.sql is modelled in test/sync/helpers.js
 fakeSupabase(), which the page's tests run against)."""
 import json, pathlib, subprocess

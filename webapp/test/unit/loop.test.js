@@ -340,13 +340,7 @@ test('loop-gen: ringPath is a Hamiltonian cycle of the grid, seeded, even sizes 
     }
   }
   assert.ok(ringPath(8, makeRng(1)).join() !== ringPath(8, makeRng(2)).join(), 'seeds differ');
-  let threw = false;
-  try {
-    ringPath(5, makeRng(1));
-  } catch {
-    threw = true;
-  }
-  assert.ok(threw, 'odd size');
+  assert.throws(() => ringPath(5, makeRng(1)), REFUSED, 'odd size');
 });
 
 test('loop-gen: loopCheckpoints — cell 1 first, number K short of the way round, a tail between K and cell 1', () => {
@@ -431,13 +425,7 @@ test('loop-gen: same seed, same puzzle; other seeds, other puzzles; a standard p
 });
 
 test('loop-gen: only even sizes; the sizes on offer', () => {
-  let threw = false;
-  try {
-    runSync(generateLoop(7, 1));
-  } catch {
-    threw = true;
-  }
-  assert.ok(threw);
+  assert.throws(() => runSync(generateLoop(7, 1)), REFUSED);
 });
 
 // ---- the variant in the play app

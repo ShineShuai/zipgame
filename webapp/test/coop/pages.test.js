@@ -91,6 +91,19 @@ test('what comes from outside is escaped: greetings, links, codes, the exported 
   assert.ok(exported.includes('&lt;s>') && !exported.includes('<s>'), 'the exported puzzle text');
 });
 
+// The textarea shows its content after the browser has decoded the character references in it
+// (&lt; &amp; ...), so the text that goes in must come out as it was, whatever it holds.
+test('the export dialog shows the puzzle text as it is', () => {
+  const entity = { lt: '<', gt: '>', amp: '&', quot: '"' };
+  const decoded = html =>
+    html
+      .match(/readonly>([\s\S]*?)<\/textarea>/)[1]
+      .replace(/&(lt|gt|amp|quot);/g, (_, n) => entity[n]);
+  for (const text of ['# a <s> "c"', 'one & two', 'a &lt;b&gt; &amp; c', '&', '<&lt;']) {
+    assert.strictEqual(decoded(exportDialog(text)), text);
+  }
+});
+
 test('the host starts and decides; the guest only waits and may ask', () => {
   const newDisabled = html => /id="coopNew" disabled/.test(html);
   assert.ok(!newDisabled(gamePage(view())), 'a solo player starts a new puzzle');
