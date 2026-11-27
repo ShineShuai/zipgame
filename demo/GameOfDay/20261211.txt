@@ -1,0 +1,12 @@
+# Zip Puzzle — plain text format
+# size N
+# checkpoints r,c=n ...   (0-based row/col)
+# walls T,r,c ...        (T = H or V; H spans (r,c)-(r+1,c); V spans (r,c)-(r,c+1))
+# play_time_s 180.9
+# gotd aee6f2bcf23e gen a6-f3c40078 made-for 20261209 model-grade 3 score 2.552
+# seed 814036219: grade 3 (target 3+, inside the margin), 4 walls, 10 checkpoints, 0.2 s, 40 changes, 1 tries
+# gen a6-f3c40078: node tools/gen-target.mjs --size 8 --grade 3 --at-least --margin 0.5 --retries 12 --seed 814036219
+# review human 3 solved yes takebacks 196
+size 8
+checkpoints 1,1=1 2,4=3 3,1=9 3,3=2 4,5=8 5,0=10 5,1=5 5,5=4 6,2=6 7,5=7
+walls V,0,3 H,0,5 H,2,7 V,5,6
