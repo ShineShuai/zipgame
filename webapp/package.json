@@ -7,6 +7,10 @@
   },
   "scripts": {
     "check": "node test/check.js && node test/check-config.js && node test/check-width.js",
+    "width:fix": "node test/check-width.js --fix",
+    "format:changed": "node tools/format-changed.mjs",
+    "fix": "npm run format:changed && npm run width:fix",
+    "ci": "npm run check && npm run format:check && npm run lint && npm test",
     "width:update": "node test/check-width.js --update",
     "format": "biome format --write",
     "format:check": "biome format",
