@@ -438,12 +438,14 @@ export function cardIcon(kind) {
   );
 }
 
-// The Flat | 3D tabs (css/play.css, .play-tabs) of the free-play card and of the coop draw card: a glyph and the label of a
-// tab (id 'flat' | '3d'), then, after the last tab, the slanted thumb and the slash stripe that follow the selected one.
+// The Flat | 3D tabs (css/play.css, .play-tabs) of the free-play card and of the coop draw card:
+// a glyph and the label of a tab (id 'flat' | '3d'), then, after the last tab, the slanted thumb
+// and the slash stripe that follow the selected one.
 export const kindTabInner = (id, label) =>
   `${cardIcon(id === '3d' ? 'solid' : 'flat')}<span>${label}</span>`;
 export const KIND_TABS_FX =
-  '<span class="tab-thumb" aria-hidden="true"></span><span class="tab-cut" aria-hidden="true"></span>';
+  '<span class="tab-thumb" aria-hidden="true"></span>' +
+  '<span class="tab-cut" aria-hidden="true"></span>';
 
 // Small line icons for the action buttons of a game (icon over label on a phone, icon beside it elsewhere).
 const ACTION_PATHS = {

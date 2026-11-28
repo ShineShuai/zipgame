@@ -216,7 +216,8 @@ function playColumnHtml() {
   const flat = S.menuTab !== '3d';
   const tab = (id, key, on) =>
     `<button type="button" role="tab" id="tab-${id}" aria-selected="${on}" aria-controls="pane-${id}" data-tab="${id}">${kindTabInner(id, t(key))}</button>`;
-  // a click draws the menu again: the thumb starts at the tab it came from and slides (css/play.css, .from-*)
+  // a click draws the menu again: the thumb starts at the tab it came from and slides
+  // (css/play.css, .from-*)
   const from = S.tabFrom && S.tabFrom !== S.menuTab ? ` from-${S.tabFrom}` : '';
   S.tabFrom = null;
   return `
