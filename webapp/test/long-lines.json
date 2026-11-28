@@ -216,7 +216,7 @@
   "tools/check-ratings.mjs": 13,
   "tools/cutout-eval.mjs": 6,
   "tools/features.mjs": 15,
-  "tools/fit-trap.mjs": 21,
+  "tools/fit-trap.mjs": 20,
   "tools/gen-target.mjs": 16,
   "tools/gotd-data.mjs": 6,
   "tools/gotd-fit.mjs": 19,

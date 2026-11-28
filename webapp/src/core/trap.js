@@ -63,7 +63,15 @@ export const TRAP_MODEL = {
   w: { trapMax: 0.0658, trapTop3: 0.3098, altFrac: -0.2574, lTr: 0.2648 },
   b: 1.9363,
   cuts: [0.9428, 1.4939, 2.045, 2.596, 3.1471],
-  fit: { n: 161, of: 161, lambda: 10, looRho: 0.58, looMae: 0.92, cuts: 'anchors', looAnchors: { easy: [1,17], hard3: [17,21], hard4: [9,21] } },
+  fit: {
+    n: 161,
+    of: 161,
+    lambda: 10,
+    looRho: 0.58,
+    looMae: 0.92,
+    cuts: 'anchors',
+    looAnchors: { easy: [1, 17], hard3: [17, 21], hard4: [9, 21] },
+  },
 };
 // </TRAP_MODEL>
 

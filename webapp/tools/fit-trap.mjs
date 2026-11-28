@@ -328,6 +328,11 @@ console.log(
 const w = ridge(X, H, lambda, W);
 const finalPred = X.map(x => dot(x, w));
 const cuts = fitCuts(finalPred, H, cutWeights(H, W), CUTS_MODE).map(c => +c.toFixed(4));
+// The block is written in the shape Biome prints (format:check, check-width.js): `fit` always
+// expanded, array items separated by ", ".
+const anchors = Object.entries(looAnchors)
+  .map(([key, pair]) => `${key}: [${pair.join(', ')}]`)
+  .join(', ');
 const obj = m => '{ ' + features.map(k => `${k}: ${m[k]}`).join(', ') + ' }';
 const block = `// <TRAP_MODEL>
 export const TRAP_MODEL = {
@@ -337,7 +342,15 @@ export const TRAP_MODEL = {
   w: ${obj(Object.fromEntries(features.map((k, i) => [k, +w[i + 1].toFixed(4)])))},
   b: ${+w[0].toFixed(4)},
   cuts: [${cuts.join(', ')}],
-  fit: { n: ${n}, of: ${rated.length}, lambda: ${lambda}, looRho: ${+looStats.rho.toFixed(2)}, looMae: ${+looStats.mae.toFixed(2)}, cuts: '${CUTS_MODE}', looAnchors: { easy: [${looAnchors.easy}], hard3: [${looAnchors.hard3}], hard4: [${looAnchors.hard4}] } },
+  fit: {
+    n: ${n},
+    of: ${rated.length},
+    lambda: ${lambda},
+    looRho: ${+looStats.rho.toFixed(2)},
+    looMae: ${+looStats.mae.toFixed(2)},
+    cuts: '${CUTS_MODE}',
+    looAnchors: { ${anchors} },
+  },
 };
 // </TRAP_MODEL>`;
 const per = f => Object.fromEntries(features.map((k, i) => [k, f(k, i)]));
