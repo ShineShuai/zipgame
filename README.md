@@ -59,7 +59,8 @@ The command line tools need Node 20 or newer and run inside `webapp/`:
 cd webapp
 npm test          # the fast tier of the unit, co-op and sync tests (under a minute)
 npm run test:all  # every test: adds the slow tier (generators, golden puzzles, solver comparisons)
-npm run check     # every file parses, every import and html reference resolves
+npm run check     # every file parses, every import and html reference resolves, the width ratchet holds
+npm run ci        # what CI runs: check, Biome format and lint, the fast tier
 npm run bench     # solver and generator benchmark (about 2 minutes)
 npm run golden    # print fresh golden hashes, see "Determinism"
 ```
@@ -474,7 +475,12 @@ after it. A lint rule that is wrong for one line is switched off there with
 `// biome-ignore lint/<group>/<rule>: <reason>`. A
 formatter cannot rewrap comments or split strings, so `npm run check` also runs `test/check-width.js`: no
 file may have more lines of 100 columns or more than in `test/long-lines.json` (the number only goes
-down; `npm run width:update` lowers it after a clean-up). Write `// biome-ignore format: <reason>` above a
+down; `npm run width:update` lowers it after a clean-up). A file over its number lists the lines that are new or changed since HEAD
+(`file:line`): `npm run width:fix` rewraps the `//` comments among them, a string is split with `+`. `npm run ci` runs
+what CI runs. `npm run fix` formats (Biome) only the files that are new or changed since HEAD and wraps their
+comments: run it by hand, once, after applying a series of patches, and commit it apart (list that commit in
+`.git-blame-ignore-revs`). The `static-checks` pre-commit hook only checks, and only on request: `pre-commit run
+static-checks --hook-stage manual --all-files`. Write `// biome-ignore format: <reason>` above a
 table that is aligned by hand. The commit that formats a directory goes into `.git-blame-ignore-revs`
 (`git config blame.ignoreRevsFile .git-blame-ignore-revs`; GitHub reads the file by itself).
 

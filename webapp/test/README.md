@@ -10,6 +10,8 @@ with `node --test test/unit/wrap.test.js`, pick a test with `--test-name-pattern
 | `npm run test:all` | both tiers, in one go |
 | `ZIGZAG_TEST_SHARD=1/2 npm run test:slow` | one half of the slow tier (CI runs the two halves side by side) |
 | `npm run check` | every file parses, every import resolves, the width ratchet holds |
+| `npm run width:fix` | rewraps the `//` comments that are new or changed since HEAD and over 99 columns |
+| `npm run ci` | what CI runs: `check`, `format:check`, `lint`, then the fast tier |
 
 `harness.js` explains the tiers (`FAST`, `SLOW`, `sampled`). `budget.js` reports a fast test that
 needs 0.5 s of CPU or 1.5 s of wall time: it belongs in the slow tier.

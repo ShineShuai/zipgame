@@ -1,6 +1,16 @@
 repos:
   - repo: local
     hooks:
+      # Only checks, never rewrites; by hand: pre-commit run static-checks --hook-stage manual --all-files
+      # (or npm run ci). Needs `npm ci` in webapp/ once. A commit does not run it: stages is manual.
+      - id: static-checks
+        name: Static checks (syntax, imports, line width, Biome format and lint)
+        entry: bash -c 'cd webapp && npm run check && npm run format:check && npm run lint'
+        language: system
+        files: ^webapp/.*\.(m?js|json|css|html)$
+        pass_filenames: false
+        stages: [manual]
+
       - id: bump-demo-version
         name: Bump demo GAME_VERSION
         entry: auto_bump_version.sh
