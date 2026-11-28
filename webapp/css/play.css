@@ -574,17 +574,46 @@ button.sync-head:focus-visible { outline: 2px solid var(--accent); outline-offse
 .gotd-card .stat-item { flex: none; width: 100%; }
 .gotd-card .storage-note { margin-top: 10px; }
 
-/* Flat | 3D: only when a 3D kind is unlocked or released (solid.available()); laid over the right end of the card head */
+/* Flat | 3D: only when a 3D kind is unlocked or released (solid.available()); laid over the right end of the card head.
+   A pill with a slanted thumb: the thumb's edge is the slash between the two kinds, and a stripe in the card colour keeps
+   it visible on both sides. The thumb comes after the buttons, so the selected tab moves it with no script. The coop card
+   keeps its tabs in the page: the thumb slides (transition). The play app draws the page again on a click: its tabs carry
+   .from-flat or .from-3d (the tab the click came from) and play the same move as an animation. */
 .play-tabs {
-  position: absolute; top: 16px; right: 18px; z-index: 3; display: inline-flex; padding: 3px;
-  border: 1px solid var(--line); border-radius: var(--r-1); background: var(--surface-2);
+  position: absolute; top: 16px; right: 18px; z-index: 3; display: inline-grid; grid-template-columns: 1fr 1fr;
+  overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-chip); background: var(--surface-2);
 }
 .play-tabs button {
-  min-height: 34px; padding: 4px 16px; border: 0; border-radius: 9px; background: none; color: var(--muted);
-  font: inherit; font-weight: 700; cursor: pointer;
+  position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 40px; padding: 0 16px 0 13px; border: 0; background: none; color: var(--muted);
+  font: inherit; font-weight: 700; cursor: pointer; transition: color 0.25s;
 }
-.play-tabs button[aria-selected="true"] { background: var(--accent); color: var(--on-accent); }
-.play-col.has-tabs .card-head { padding-right: 140px; }
+.play-tabs button[aria-selected="true"] { color: var(--on-accent); }
+.play-tabs .card-icon { width: 18px; height: 18px; transition: transform 0.6s cubic-bezier(0.3, 1.35, 0.5, 1); }
+.play-tabs button:nth-of-type(2)[aria-selected="true"] .card-icon { transform: rotate(120deg); }
+.tab-thumb {
+  position: absolute; z-index: 0; top: 0; bottom: 0; left: -30%; width: 80%; background: var(--accent);
+  transform: skewX(-16deg); transition: transform 0.5s cubic-bezier(0.3, 1.35, 0.5, 1);
+}
+.play-tabs button:nth-of-type(2)[aria-selected="true"] ~ .tab-thumb { transform: translateX(100%) skewX(-16deg); }
+.tab-cut {
+  position: absolute; z-index: 2; top: 0; bottom: 0; left: 50%; width: 3px; margin-left: -1.5px;
+  background: var(--surface); transform: skewX(-16deg); pointer-events: none;
+}
+.play-tabs.from-flat .tab-thumb { animation: tab-to-3d 0.5s cubic-bezier(0.3, 1.35, 0.5, 1); }
+.play-tabs.from-3d .tab-thumb { animation: tab-to-flat 0.5s cubic-bezier(0.3, 1.35, 0.5, 1); }
+.play-tabs.from-flat .card-icon { animation: tab-cube-in 0.6s cubic-bezier(0.3, 1.35, 0.5, 1); }
+.play-tabs.from-3d .card-icon { animation: tab-cube-out 0.6s cubic-bezier(0.3, 1.35, 0.5, 1); }
+.play-tabs[class*="from-"] button[aria-selected="true"] { animation: tab-ink-on 0.3s; }
+.play-tabs[class*="from-"] button[aria-selected="false"] { animation: tab-ink-off 0.3s; }
+@keyframes tab-to-3d { from { transform: skewX(-16deg); } }
+@keyframes tab-to-flat { from { transform: translateX(100%) skewX(-16deg); } }
+@keyframes tab-cube-in { from { transform: none; } }
+@keyframes tab-cube-out { from { transform: rotate(120deg); } }
+@keyframes tab-ink-on { from { color: var(--muted); } }
+@keyframes tab-ink-off { from { color: var(--on-accent); } }
+@media (prefers-reduced-motion: reduce) { .play-tabs, .play-tabs * { transition: none !important; animation: none !important; } }
+.play-col.has-tabs .card-head { padding-right: 190px; }
 
 /* Free play and 3D cards: type tiles, a caption for the one picked, then size and Play on one row */
 .variant-picker { min-width: 0; margin: 0 0 8px; padding: 0; border: 0; }
@@ -974,8 +1003,10 @@ tr:last-child td { border-bottom: 0; }
   .menu-intro { display: none; }
   .howto { display: block; }
   .play-col .card-sub { display: none; }
-  .play-col.has-tabs .card-head { padding-right: 130px; }
+  .play-col.has-tabs .card-head { padding-right: 160px; }
   .play-tabs { top: 12px; right: 12px; }
+  .play-tabs button { min-height: 38px; gap: 6px; padding: 0 12px 0 10px; }
+  .play-tabs .card-icon { width: 16px; height: 16px; }
   .variant-card {
     grid-template-columns: minmax(0, 1fr); grid-template-areas: "icon" "name"; justify-items: center; gap: 4px;
     min-height: 0; padding: 8px 4px 7px; text-align: center;

@@ -1,4 +1,10 @@
-import { actionIcon, cardIcon, variantIcon } from '../apps/play/icons.js';
+import {
+  actionIcon,
+  cardIcon,
+  KIND_TABS_FX,
+  kindTabInner,
+  variantIcon,
+} from '../apps/play/icons.js';
 import { t } from '../ui/i18n.js';
 import { tx } from './texts.js';
 import { GREETING_MAX } from './join.js';
@@ -90,11 +96,11 @@ const variantPicker = pick => {
 const tabsHtml = pick => {
   const tab = (id, key) =>
     `<button type="button" role="tab" data-act="tab" data-coop-tab="${id}" ` +
-    `aria-selected="${pick.tab === id}">${t(key)}</button>`;
+    `aria-selected="${pick.tab === id}">${kindTabInner(id, t(key))}</button>`;
   return (
     `<div class="play-tabs" id="coopTabs" role="tablist" aria-label="${t('menu.tabs')}"` +
     `${hasSolidTab(pick.access, pick) ? '' : ' style="display:none"'}>` +
-    `${tab('flat', 'menu.tabFlat')}${tab('3d', 'menu.tabSolid')}</div>`
+    `${tab('flat', 'menu.tabFlat')}${tab('3d', 'menu.tabSolid')}${KIND_TABS_FX}</div>`
   );
 };
 
