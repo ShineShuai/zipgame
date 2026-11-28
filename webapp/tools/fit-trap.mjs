@@ -1,7 +1,7 @@
 // Fit / evaluate the trap grade against hand ratings.
 //   node tools/fit-trap.mjs [tools/ratings.json] [--features trapMax,trapTop3,altFrac,lTr] [--lambda 10] [--cuts anchors|fit|round]
 //                           [--anchor-weight 3] [--ladder-work-cap N] [--path-cap 50000000] [--cap 1000000] [--write]
-//                           [--points a,b,c,d] [--json FILE] [--target FILE]
+//                           [--points a,b,c,d] [--json FILE] [--target FILE] [--name TRAP_MODEL]
 // Grade = the ridge score cut at TRAP_MODEL.cuts. --cuts anchors (default) fits only the 0|1 and 3|4 boundaries and spaces
 // the others evenly (2 parameters, least overfit); fit = all five free (more anchor hits, but the 4|5 cut is overfit);
 // round = the old round(score). The cuts are fitted on the training part of every leave-one-out fold too, so the printed
@@ -17,8 +17,12 @@
 // --points a,b,c,d: the trap points of the four buckets (obvious, shallow, deep, capped) to use
 //   instead of TRAP_CFG.points, e.g. those tools/step-fit.mjs found (tools/apply-points.mjs runs
 //   it all). With --write the `points` of TRAP_CFG in trap.js is rewritten too.
-// --json FILE: also write { points, model, loo } as JSON (what apply-points.mjs reads).
+// --json FILE: also write { points, model, loo, ratings } as JSON (what apply-points.mjs reads;
+//   ratings = every rating with its leave-one-out score and grade).
 // --target FILE: the trap.js that --write rewrites (default src/core/trap.js), to try it on a copy.
+// --name NAME: the block --write rewrites (default TRAP_MODEL, the badge). TRAP_FREE_MODEL is the
+//   ladder-free candidate:
+//   node tools/fit-trap.mjs --features trapTop3,trapSum,segLen --name TRAP_FREE_MODEL --write
 import fs from 'node:fs';
 import { parse } from '../src/core/format.js';
 import { trapMetrics, TRAP_CFG, capGradeBySize } from '../src/core/trap.js';
@@ -43,12 +47,18 @@ const VALUE_OPTS = [
   'points',
   'json',
   'target',
+  'name',
 ].map(k => opt(k));
 const file =
   args.find(a => !a.startsWith('--') && !VALUE_OPTS.includes(a)) ||
   new URL('./ratings.json', import.meta.url).pathname;
 const features = opt('features', 'trapMax,trapTop3,altFrac,lTr').split(',');
 const lambda = +opt('lambda', 10);
+const NAME = opt('name', 'TRAP_MODEL');
+if (!/^TRAP_[A-Z_]*MODEL$/.test(NAME) || (opt('points') && NAME !== 'TRAP_MODEL')) {
+  console.error('--name must be a TRAP_..._MODEL block; --points only goes with TRAP_MODEL');
+  process.exit(1);
+}
 const CUTS_MODE = opt('cuts', 'anchors'),
   ANCHOR_W = +opt('anchor-weight', 3);
 if (!['anchors', 'fit', 'round'].includes(CUTS_MODE)) {
@@ -87,6 +97,7 @@ const rows = rated
     }
     const g = gradesFor(p, CAP);
     return {
+      key: e.key,
       human: e.human,
       n: p.n,
       w: ratingWeight(e),
@@ -334,8 +345,8 @@ const anchors = Object.entries(looAnchors)
   .map(([key, pair]) => `${key}: [${pair.join(', ')}]`)
   .join(', ');
 const obj = m => '{ ' + features.map(k => `${k}: ${m[k]}`).join(', ') + ' }';
-const block = `// <TRAP_MODEL>
-export const TRAP_MODEL = {
+const block = `// <${NAME}>
+export const ${NAME} = {
   features: [${features.map(k => `'${k}'`).join(', ')}],
   mean: ${obj(Object.fromEntries(features.map(k => [k, +stats[k].mean.toFixed(4)])))},
   sd: ${obj(Object.fromEntries(features.map(k => [k, +stats[k].sd.toFixed(4)])))},
@@ -352,7 +363,7 @@ export const TRAP_MODEL = {
     looAnchors: { ${anchors} },
   },
 };
-// </TRAP_MODEL>`;
+// </${NAME}>`;
 const per = f => Object.fromEntries(features.map((k, i) => [k, f(k, i)]));
 const modelOut = {
   features,
@@ -371,6 +382,7 @@ const modelOut = {
     looAnchors,
   },
 };
+const looPreds = loo; // the block below names its own summary `loo`
 if (opt('json')) {
   const badges = [0, 1, 2, 3, 4, 5].map(g => looGrade.filter(v => v === g).length);
   const loo = {
@@ -381,14 +393,20 @@ if (opt('json')) {
     n,
     of: rated.length,
   };
-  fs.writeFileSync(opt('json'), JSON.stringify({ points: POINTS, model: modelOut, loo }));
+  const ratings = rows.map((r, i) => ({
+    key: r.key,
+    human: r.human,
+    looPred: looPreds[i],
+    looGrade: looGrade[i],
+  }));
+  fs.writeFileSync(opt('json'), JSON.stringify({ points: POINTS, model: modelOut, loo, ratings }));
 }
 if (WRITE) {
   const target = opt('target') || new URL('../src/core/trap.js', import.meta.url);
   const src = fs.readFileSync(target, 'utf8');
-  const re = /\/\/ <TRAP_MODEL>[\s\S]*?\/\/ <\/TRAP_MODEL>/;
+  const re = new RegExp(`// <${NAME}>[\\s\\S]*?// </${NAME}>`);
   if (!re.test(src)) {
-    console.error('markers // <TRAP_MODEL> ... // </TRAP_MODEL> not found in src/core/trap.js');
+    console.error(`markers // <${NAME}> ... // </${NAME}> not found in ${target}`);
     process.exit(1);
   }
   let out = src.replace(re, () => block);
@@ -402,7 +420,7 @@ if (WRITE) {
     out = out.replace(pre, (_, head) => `${head}[${POINTS.join(', ')}]`);
   }
   fs.writeFileSync(target, out);
-  const what = opt('points') ? 'TRAP_MODEL and TRAP_CFG.points' : 'TRAP_MODEL';
+  const what = opt('points') ? `${NAME} and TRAP_CFG.points` : NAME;
   console.log(
     `\nwrote ${what} to ${opt('target') || 'src/core/trap.js'} (n=${n}, LOO rho ` +
       `${looStats.rho.toFixed(2)}, MAE ${looStats.mae.toFixed(2)})`,

@@ -134,6 +134,12 @@ const METRIC_DEFS = [
     d => (d.trap?.ok ? d.trap.predicted : undefined),
     'Ridge model over trapMax, trapTop3, altFrac, lTr on your 0-5 scale; the trap grade is this score cut at fitted thresholds (then capped by board size).',
   ],
+  [
+    'trapFreePredicted',
+    d => d.trap?.free?.predicted,
+    'Ladder-free candidate on your 0-5 scale: ridge over trapTop3, trapSum, segLen ' +
+      '(TRAP_FREE_MODEL), no ladder run.',
+  ],
   // The five calibrated 0-5 grades themselves, so the rating log shows which grade correlates best.
   ...GRADE_ORDER.map(id => [
     `grade: ${id}`,
@@ -144,6 +150,13 @@ const METRIC_DEFS = [
     'grade: trap',
     d => (d.trap?.ok ? d.trap.grade : undefined),
     'Trap grade (the Play app badge): predicted cut at thresholds fitted to the hand ratings (anchor ratings 0 and >= 3.5 weigh more), capped by board size (5x5 <= 2, 6x6 <= 3). Not quantile-calibrated. Compare against your own rating.',
+  ],
+  [
+    'grade: trapFree',
+    d => d.trap?.free?.grade,
+    'Ladder-free candidate grade: its score (trapFreePredicted) cut at thresholds fitted to the ' +
+      'hand ratings like the badge, capped by board size. Not the Play badge. Compare against ' +
+      'your own rating.',
   ],
   // Technique-ladder grade (core/ladder.js): a third, independent approach — propagates human-style
   // deduction rules (degree, chain, segment-slack territory, nested what-if guessing) instead of
@@ -164,13 +177,25 @@ const METRIC_DEFS = [
     d => (d.ladder ? ladderGrade(d.puzzle, d.ladder).grade : undefined),
     'Technique-ladder grade (core/ladder.js): N-floor, then a probe2 (nested-guessing) gate for 4/5, then a coarse wideFrac split for 1/2 below that. See ladder.js header comments for exactly how validated each piece is — it is NOT as calibrated as the trap grade. Compare against your own rating.',
   ],
+  [
+    'grade: minTrapLadder',
+    d => {
+      const g = d.trap?.ok && d.ladder ? ladderGrade(d.puzzle, d.ladder).grade : undefined;
+      return Number.isFinite(g) ? Math.min(d.trap.grade, g) : undefined;
+    },
+    'The lower of the trap grade (Play badge) and the technique-ladder grade: a puzzle counts ' +
+      'as hard only when both graders say so. Candidate, not the Play badge. Compare against ' +
+      'your own rating.',
+  ],
 ];
 // Every 0-5 grade the panel compares against your rating: the calibrated ones, trap, and ladder.
-const ALL_GRADES = [...GRADE_ORDER, 'trap', 'ladder'];
+const ALL_GRADES = [...GRADE_ORDER, 'trap', 'ladder', 'trapFree', 'minTrapLadder'];
 const GRADE_LABEL = {
   ...Object.fromEntries(GRADE_ORDER.map(id => [id, GRADED_METRICS[id].label])),
   trap: 'trap (Play badge)',
   ladder: 'technique ladder',
+  trapFree: 'ladder-free trap (candidate)',
+  minTrapLadder: 'min(trap, ladder) (candidate)',
 };
 // Metrics that exist even when the reference solve was capped (no solver-derived numbers, no grades).
 const SOLVER_FREE = new Set([
@@ -183,10 +208,13 @@ const SOLVER_FREE = new Set([
   'altFrac',
   'lTr',
   'trapPredicted',
+  'trapFreePredicted',
   'grade: trap',
+  'grade: trapFree',
   'ladderHardest',
   'ladderWideFrac',
   'grade: ladder',
+  'grade: minTrapLadder',
 ]);
 
 // Fit statistics are optional metadata (tools/fit-trap.mjs --write stores them next to the weights). An older trap.js
@@ -206,6 +234,9 @@ const fitStats = () =>
 const rc = (n, c) => `${(c / n) | 0},${c % n}`; // 0-based row,col — same convention as the puzzle text format
 const topTraps = t => t.steps.filter(s => s.score >= TRAP_CFG.points[2]).slice(0, 3); // steps with at least one deep trap
 
+const defOf = id => METRIC_DEFS.find(m => m[0] === id)[2];
+const freeValue = f => `<b>${f.grade} / 5</b> (${f.predicted.toFixed(2)})`;
+const minValue = (trap, ladderG) => `<b>${Math.min(trap.grade, ladderG.grade)} / 5</b>`;
 // Trap section: the grade, its inputs, and the worst wrong turns (each can be drawn on the board).
 function trapHtml(d) {
   const t = d.trap;
@@ -229,6 +260,7 @@ function trapHtml(d) {
       <tbody>
         ${row('trap grade (Play badge)', `<b>${t.grade} / 5</b>`, `Play app badge. Predicted ${t.predicted.toFixed(2)} on your 0-5 scale (ridge over trapMax, trapTop3, altFrac, lTr; fit to ${fitN()}hand ratings), cut at fitted thresholds${t.grade < t.gradeUncapped ? ` and capped by board size (uncapped: ${t.gradeUncapped})` : ''}.`)}
         ${row('predicted', t.predicted.toFixed(2), 'Model output before it is cut at the fitted thresholds.')}
+        ${t.free ? row('ladder-free candidate', freeValue(t.free), defOf('grade: trapFree')) : ''}
         ${row('trapMax', t.trapMax, METRIC_DEFS.find(m => m[0] === 'trapMax')[2])}
         ${row('trapTop3', t.trapTop3, METRIC_DEFS.find(m => m[0] === 'trapTop3')[2])}
         ${row('trapSum', t.trapSum.toFixed(3), METRIC_DEFS.find(m => m[0] === 'trapSum')[2])}
@@ -251,6 +283,9 @@ function ladderHtml(d) {
   if (!r) return '';
   if (r.error) return `<div class="diff-panel-flag">Technique ladder: ${r.error}.</div>`;
   const g = ladderGrade(d.puzzle, r);
+  const minRow = d.trap?.ok
+    ? row('min(trap, ladder)', minValue(d.trap, g), defOf('grade: minTrapLadder'))
+    : '';
   const rows = [];
   for (let l = 1; l <= 6; l++)
     if (r.edges[l] || r.passes[l])
@@ -262,6 +297,7 @@ function ladderHtml(d) {
     <div class="diff-section-title">${hinted('Technique ladder (candidate)', "A third, independent grader: propagates human-style deduction rules (degree, chain, segment-slack territory, then nested what-if guessing) instead of trap's per-wrong-turn refutation cost or the calibrated solver-cost metrics above. See its grade's own note below for exactly how validated that number is — treat it as a second opinion, not a replacement for trap.")}</div>
     <table class="diff-table"><tbody>
       ${row('ladder grade', `<b>${g.grade} / 5</b>`, g.note)}
+      ${minRow}
       ${row('hardest level reached', LADDER_LEVELS[r.hardest] || '—')}
       ${row('probe trials', r.probeTrials)}
       ${row('search fallback nodes', r.search.nodes)}
