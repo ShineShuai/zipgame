@@ -119,10 +119,10 @@ export const THEMES = {
 // only by a player who has unlocked every flat variant; from `first` on, the solid
 // kinds are in the lucky game's list for those players.
 export const SOLID_RELEASE = {
-  first: 20261206,
+  first: 20261202,
   tetra: 7,
-  cube: 21,
-  ball: 35,
+  cube: 360,
+  ball: 720,
 };
 
 // Champion rewards (features/champ.js, core/champ-seal.js): beat 100% of the players on the live
