@@ -227,6 +227,7 @@ function attachHandlers() {
   });
   document.querySelectorAll('[data-tab]').forEach(b => {
     b.onclick = () => {
+      S.tabFrom = S.menuTab;
       S.menuTab = b.dataset.tab;
       render();
     };

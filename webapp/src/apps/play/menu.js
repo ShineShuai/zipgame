@@ -2,7 +2,7 @@
 import { generationWhere } from './gen-runner.js';
 import { RAMP, FREEZE_EVERY, FREEZE_MAX, HEAL_DAYS } from '../../features/streak.js';
 import { dateLabel } from '../../features/share.js';
-import { variantIcon, cardIcon } from './icons.js';
+import { variantIcon, cardIcon, kindTabInner, KIND_TABS_FX } from './icons.js';
 import { PLAY_VARIANTS, sizesFor, nearestSize } from './variants.js';
 import { SOLID_KINDS } from '../../features/solid-release.js';
 import { BEHAVIOUR } from '../../config.js';
@@ -215,10 +215,14 @@ function playColumnHtml() {
     return `<div class="play-col"><div class="tab-pane">${freePlayCardHtml()}</div></div>`;
   const flat = S.menuTab !== '3d';
   const tab = (id, key, on) =>
-    `<button type="button" role="tab" id="tab-${id}" aria-selected="${on}" aria-controls="pane-${id}" data-tab="${id}">${t(key)}</button>`;
+    `<button type="button" role="tab" id="tab-${id}" aria-selected="${on}" aria-controls="pane-${id}" data-tab="${id}">${kindTabInner(id, t(key))}</button>`;
+  // a click draws the menu again: the thumb starts at the tab it came from and slides
+  // (css/play.css, .from-*)
+  const from = S.tabFrom && S.tabFrom !== S.menuTab ? ` from-${S.tabFrom}` : '';
+  S.tabFrom = null;
   return `
       <div class="play-col has-tabs">
-        <div class="play-tabs" role="tablist" aria-label="${t('menu.tabs')}">${tab('flat', 'menu.tabFlat', flat)}${tab('3d', 'menu.tabSolid', !flat)}</div>
+        <div class="play-tabs${from}" role="tablist" aria-label="${t('menu.tabs')}">${tab('flat', 'menu.tabFlat', flat)}${tab('3d', 'menu.tabSolid', !flat)}${KIND_TABS_FX}</div>
         <div class="tab-pane" id="pane-flat" role="tabpanel" aria-labelledby="tab-flat"${flat ? '' : ' hidden'}>${freePlayCardHtml()}</div>
         <div class="tab-pane" id="pane-3d" role="tabpanel" aria-labelledby="tab-3d"${flat ? ' hidden' : ''}>${solid.cardHtml()}</div>
       </div>`;

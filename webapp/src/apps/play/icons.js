@@ -422,6 +422,12 @@ const CARD_ICONS = {
     '<path d="M19.5 12a7.5 7.5 0 0 1-13 5.1L4 15M4 19.5V15h4.5"/>',
   // a cube: the solid puzzles
   solid: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/>' + '<path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>',
+  // four tiles: the flat puzzles
+  flat:
+    '<rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/>' +
+    '<rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/>' +
+    '<rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/>' +
+    '<rect x="13.5" y="13.5" width="7" height="7" rx="1.8"/>',
 };
 
 export function cardIcon(kind) {
@@ -431,6 +437,15 @@ export function cardIcon(kind) {
     `focusable="false">${CARD_ICONS[kind]}</svg>`
   );
 }
+
+// The Flat | 3D tabs (css/play.css, .play-tabs) of the free-play card and of the coop draw card:
+// a glyph and the label of a tab (id 'flat' | '3d'), then, after the last tab, the slanted thumb
+// and the slash stripe that follow the selected one.
+export const kindTabInner = (id, label) =>
+  `${cardIcon(id === '3d' ? 'solid' : 'flat')}<span>${label}</span>`;
+export const KIND_TABS_FX =
+  '<span class="tab-thumb" aria-hidden="true"></span>' +
+  '<span class="tab-cut" aria-hidden="true"></span>';
 
 // Small line icons for the action buttons of a game (icon over label on a phone, icon beside it elsewhere).
 const ACTION_PATHS = {

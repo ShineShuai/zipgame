@@ -60,6 +60,8 @@ export const S = {
   sharedNotice: null,
   sharedMsg: null,
   menuTab: 'flat',
+  // the tab the last click came from: the menu's next drawing slides the Flat | 3D thumb from it
+  tabFrom: null,
   howtoOpen: false,
   sharedOpen: false,
   statsOpen: null,
