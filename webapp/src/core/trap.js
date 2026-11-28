@@ -30,7 +30,7 @@ import { ladder } from './ladder.js';
 import { buildNeighbors } from './solver/prune.js';
 import { buildMoves } from './solver/solve-dir.js';
 import { isSolved } from './rules.js';
-import { cellCount } from './model.js';
+import { cellCount, maxNumber } from './model.js';
 import { REF_FLAGS } from './difficulty.js';
 
 // ladderWorkCap: the ladder gives up after this many edge assignments (a few hundred ms at worst; 2 of the
@@ -74,6 +74,32 @@ export const TRAP_MODEL = {
   },
 };
 // </TRAP_MODEL>
+
+// A candidate score without the ladder term, to compare with the hand ratings next to the
+// badge (design app; hold-V in the play app). The same kind of ridge fit, over trapTop3,
+// trapSum (trap points per cell) and segLen (cells between two numbers, i.e. the number
+// count). It needs the trap profile only, no ladder run. Not used for the badge, the
+// generator or the daily game. Refit: `node tools/fit-trap.mjs --features
+// trapTop3,trapSum,segLen --name TRAP_FREE_MODEL --write`.
+// <TRAP_FREE_MODEL>
+export const TRAP_FREE_MODEL = {
+  features: ['trapTop3', 'trapSum', 'segLen'],
+  mean: { trapTop3: 15.1968, trapSum: 0.4402, segLen: 7.6672 },
+  sd: { trapTop3: 7.115, trapSum: 0.2247, segLen: 1.5253 },
+  w: { trapTop3: 0.7608, trapSum: -0.3167, segLen: 0.2599 },
+  b: 1.9363,
+  cuts: [0.8755, 1.5965, 2.3176, 3.0386, 3.7596],
+  fit: {
+    n: 161,
+    of: 161,
+    lambda: 10,
+    looRho: 0.64,
+    looMae: 0.73,
+    cuts: 'anchors',
+    looAnchors: { easy: [3, 17], hard3: [13, 21], hard4: [4, 21] },
+  },
+};
+// </TRAP_FREE_MODEL>
 
 // The model with its altFrac term switched off (weight 0 = altFrac held at its mean), for boards the fit never saw. altFrac is
 // a geometry measure: the share of solution steps that have a legal wrong move. On a board with holes the holes themselves take
@@ -139,6 +165,12 @@ export function trapGradeOf(pred, model = TRAP_MODEL) {
   return Math.max(0, Math.min(5, g));
 }
 export const capGradeBySize = (grade, n) => Math.min(grade, SIZE_GRADE_CAP[n] ?? 5);
+// The ladder-free candidate (TRAP_FREE_MODEL) of the metrics `m` of a puzzle of size n:
+// { predicted, grade } on the same 0-5 scale, the grade capped by board size like the badge.
+export const trapFree = (m, n) => {
+  const predicted = trapPredict(m, TRAP_FREE_MODEL);
+  return { predicted, grade: capGradeBySize(trapGradeOf(predicted, TRAP_FREE_MODEL), n) };
+};
 
 // The puzzle's solution path: the generator's own (p.path) when valid, else one first-solution solve.
 // null when none is found within `cap` nodes.
@@ -223,6 +255,8 @@ export function trapMetricsFromProfile(
   const m = {
     T,
     altFrac: byStep.size / T,
+    // cells between two numbers on average: (T - 1) / (K - 1)
+    segLen: (T - 1) / Math.max(1, maxNumber(p) - 1),
     trapMax: steps.length ? steps[0].score : 0,
     trapTop3: steps.slice(0, 3).reduce((s, x) => s + x.score, 0),
     // every step, per cell (the grade does not use it yet)
@@ -245,11 +279,9 @@ export function trapMetricsFromProfile(
 export function trapMetrics(p, cfg = TRAP_CFG, path = null, model = TRAP_MODEL) {
   path = path || solutionPath(p, cfg.pathCap);
   if (!path) return { ok: false, reason: 'no solution found within the search budget (pathCap)' };
-  return {
-    ok: true,
-    path,
-    ...trapMetricsFromProfile(p, path, trapProfile(p, path, cfg), cfg, undefined, model),
-  };
+  const m = trapMetricsFromProfile(p, path, trapProfile(p, path, cfg), cfg, undefined, model);
+  // the ladder-free candidate was fitted on standard boards only
+  return { ok: true, path, ...m, ...(model === TRAP_MODEL && { free: trapFree(m, p.n) }) };
 }
 
 // The route to display for a trap: solution up to the step, then the wrong move.

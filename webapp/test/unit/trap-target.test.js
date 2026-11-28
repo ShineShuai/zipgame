@@ -26,6 +26,7 @@ import {
   ladderTrials,
   TRAP_CFG,
   TRAP_MODEL,
+  TRAP_FREE_MODEL,
   ARROWS_MODEL,
   modelFor,
 } from '../../src/core/trap.js';
@@ -115,10 +116,13 @@ test(
       trapSum: 0.4691,
       altFrac: 0.5,
       ladTrials: 3,
+      grade: 2,
+      free: { predicted: 1.9, grade: 2 },
     };
     Object.assign(playState, { difficulty: { trap, legacy: null }, variant: null, showDev: true });
     const shown = difficultyDevHtml();
     assert.ok(shown.includes('max 4 · top3 10 · sum 0.47'), shown.slice(0, 300));
+    assert.ok(shown.includes('trap 1.23 → 2/5 · ladder-free 1.90 → 2/5'), 'score and grade');
     assert.ok(shown.includes('display:inline'), 'visible while revealed');
     playState.showDev = false;
     assert.ok(difficultyDevHtml().includes('display:none'), 'hidden otherwise');
@@ -128,6 +132,21 @@ test(
       'metrics without it show nothing and do not throw',
     );
     Object.assign(playState, saved);
+  },
+);
+
+test(
+  'trap: the ladder-free candidate is computed from the profile alone, on standard boards only',
+  FAST,
+  () => {
+    assert.ok(!TRAP_FREE_MODEL.features.includes('lTr'), 'no ladder term');
+    for (const p of cachedSamples().slice(0, 3)) {
+      const m = trapMetrics(p),
+        score = trapPredict(m, TRAP_FREE_MODEL);
+      assert.equal(m.free.predicted, score);
+      assert.equal(m.free.grade, capGradeBySize(trapGradeOf(score, TRAP_FREE_MODEL), p.n));
+      assert.equal(trapMetrics(p, undefined, null, ARROWS_MODEL).free, undefined, 'reduced model');
+    }
   },
 );
 

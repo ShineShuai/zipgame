@@ -35,8 +35,12 @@ export function difficultyDevHtml() {
     S.variant,
   );
   const sumPart = tm && Number.isFinite(tm.trapSum) ? ` · sum ${tm.trapSum.toFixed(2)}` : '';
+  // the ladder-free candidate (core/trap.js TRAP_FREE_MODEL), only on the boards it was fitted on
+  const freePart = tm?.free
+    ? ` · ladder-free ${tm.free.predicted.toFixed(2)} → ${tm.free.grade}/5`
+    : '';
   const trapPart = tm
-    ? `trap ${tm.predicted.toFixed(2)} <span class="dev-raw">max ${tm.trapMax} · top3 ${tm.trapTop3}${sumPart}${reduced ? ' · max+top3 only, uncalibrated' : ` · alt ${tm.altFrac.toFixed(2)} · ladder trials ${tm.ladTrials}`}</span>`
+    ? `trap ${tm.predicted.toFixed(2)} → ${tm.grade}/5${freePart} <span class="dev-raw">max ${tm.trapMax} · top3 ${tm.trapTop3}${sumPart}${reduced ? ' · max+top3 only, uncalibrated' : ` · alt ${tm.altFrac.toFixed(2)} · ladder trials ${tm.ladTrials}`}</span>`
     : '';
   const legacyPart = g
     ? `decisionNodes ${g.grades.decisionNodes}/5 · B ${g.grades.B}/5 · cross ${g.grades.crossPerSeg}/5 · <span class="dev-raw">decisionNodes ${g.raw.decisionNodes} · B ${g.raw.B.toFixed(2)} · cross/seg ${g.raw.crossPerSeg.toFixed(2)}</span>`
