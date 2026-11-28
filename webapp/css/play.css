@@ -600,6 +600,14 @@ button.sync-head:focus-visible { outline: 2px solid var(--accent); outline-offse
   position: absolute; z-index: 2; top: 0; bottom: 0; left: 50%; width: 3px; margin-left: -1.5px;
   background: var(--surface); transform: skewX(-16deg); pointer-events: none;
 }
+/* The global focus ring (3px, offset 3px) is cut off by the pill's overflow: only a bar on the inner edge, between
+   the tabs, would show. Inset ring in the tab; where :has() works, one ring round the pill and the tab underlined. */
+.play-tabs button:focus-visible { outline-offset: -4px; }
+@supports selector(:has(*)) {
+  .play-tabs button:focus-visible { outline: none; }
+  .play-tabs button:focus-visible span { text-decoration: underline; text-underline-offset: 4px; }
+  .play-tabs:has(button:focus-visible) { outline: 3px solid var(--orange); outline-offset: 3px; }
+}
 .play-tabs.from-flat .tab-thumb { animation: tab-to-3d 0.5s cubic-bezier(0.3, 1.35, 0.5, 1); }
 .play-tabs.from-3d .tab-thumb { animation: tab-to-flat 0.5s cubic-bezier(0.3, 1.35, 0.5, 1); }
 .play-tabs.from-flat .card-icon { animation: tab-cube-in 0.6s cubic-bezier(0.3, 1.35, 0.5, 1); }
